@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubrid_odbc", "cubrid_odbc.vcproj", "{37E00A2E-BBC5-4736-90D9-A1B4271759BB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+		ReleaseForDelphi|Win32 = ReleaseForDelphi|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Debug|Win32.ActiveCfg = Debug|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Debug|Win32.Build.0 = Debug|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Release|Win32.ActiveCfg = Release|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Release|Win32.Build.0 = Release|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.ReleaseForDelphi|Win32.ActiveCfg = ReleaseForDelphi|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.ReleaseForDelphi|Win32.Build.0 = ReleaseForDelphi|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

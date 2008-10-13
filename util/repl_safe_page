@@ -1,0 +1,43 @@
+#!/bin/bash
+
+debug_msg() {
+  if [ $debug = 'y' ]; then
+    echo "DEBUG : $1"
+  fi
+}
+args_org="$@"
+
+debug='n'
+db_name=$1
+debug_msg "DB NAME = $db_name"
+if [ -z "$db_name" ]; then
+  printf "0"
+  exit 1
+fi
+
+if [ -z "$CUBRID_DATABASES" ]; then
+  printf "0"
+  exit 1
+else
+  db_dir=`grep "^$db_name " $CUBRID_DATABASES/databases.txt | awk '{ print $2 }'`
+fi
+debug_msg "DB DIR = $db_dir"
+
+host_map_file="$db_dir/$db_name"_repl.lst
+debug_msg "HOST MAP FILE = $host_map_file"
+if [ -f "$host_map_file" ]; then
+  :
+else
+  printf "0"
+  exit 1
+fi
+
+safe_page=`cat $host_map_file | awk '{ print $3 }' | sort | sed -n '1,1p'`
+
+debug_msg "SAFE PAGE = $safe_page"
+if [ -z $safe_page ]; then
+  printf "0"
+  exit 1
+fi
+
+printf "$safe_page"

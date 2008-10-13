@@ -1,0 +1,99 @@
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\prsht.idl";
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\mshtml.idl";
+import "c:\program files\microsoft sdks\windows\v6.0a\include\dimm.idl";
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\mshtmhst.idl";
+import "c:\program files\microsoft sdks\windows\v6.0a\include\docobj.idl";
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\exdisp.idl";
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\objsafe.idl";
+import "C:\Program Files\Microsoft SDKs\Windows\v6.0A\include\oledb.idl";
+import "c:\program files\microsoft sdks\windows\v6.0a\include\transact.idl";
+
+
+[ version(1.0), uuid(2B22247F-E9F7-47e8-A9B0-79E8039DCFC8), helpstring("CUBRIDProvider 1.0 Type Library") ]
+library CUBRIDProvider
+{
+	importlib("stdole2.tlb");
+	importlib("olepro32.dll");
+
+	[
+		version(1.0),
+		uuid(3165D76D-CB91-482f-9378-00C216FD5F32),
+		helpstring("CUBRIDProvider Error Lookup Class")
+	] 
+#line 25 "d:\\lsj1888\\developing\\developing\\src\\oledb\\error.h"
+	coclass CCUBRIDErrorLookup {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(ED0E5A7D-89F5-4862-BEF3-20E551E1D07B)
+	] 
+#line 44 "d:\\lsj1888\\developing\\developing\\src\\oledb\\error.h"
+	coclass CCUBRIDErrorInfo {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(3FA55BC9-F4E2-4926-906C-2B630A5F8530)
+	] 
+#line 28 "d:\\lsj1888\\developing\\developing\\src\\oledb\\command.h"
+	coclass CCUBRIDCommand {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(F4CD8484-A670-4511-8DF5-F77B2942B985)
+	] 
+#line 32 "d:\\lsj1888\\developing\\developing\\src\\oledb\\session.h"
+	coclass CCUBRIDSession {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		uuid(15A12058-4353-4c9a-8421-23D80F25EE4E),
+		helpstring("CUBRIDProvider Class")
+	] 
+#line 52 "d:\\lsj1888\\developing\\developing\\src\\oledb\\datasource.h"
+	coclass CCUBRIDDataSource {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(BD659D91-36B5-4e4a-BE76-E979AEB132C3)
+	] 
+#line 13 "d:\\lsj1888\\developing\\developing\\src\\oledb\\multipleresult.h"
+	coclass CMultipleResult {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(32881E3B-5F95-4019-A36B-0EF4E2AAA1DC)
+	] 
+#line 22 "d:\\lsj1888\\developing\\developing\\src\\oledb\\row.h"
+	coclass CCUBRIDRow {
+		[default] interface IUnknown;
+	};
+
+	[
+		version(1.0),
+		noncreatable,
+		uuid(857539EA-0140-40be-A8E5-1F347991CC0D)
+	] 
+#line 13 "d:\\lsj1888\\developing\\developing\\src\\oledb\\cubridstream.h"
+	coclass CCUBRIDStream {
+		[default] interface IUnknown;
+	};
+
+}
+

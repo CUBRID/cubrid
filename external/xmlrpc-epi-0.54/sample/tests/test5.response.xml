@@ -1,0 +1,28 @@
+
+<?xml version="1.0"?>
+<methodResponse>
+        <params>
+                <param>
+                        <value><array>
+                <data>
+                        <value>
+                                <i4>24288</i4>
+                                </value>
+                        <value>
+                                <boolean>0</boolean>
+                                </value>
+                        <value>Texas</value>
+                        <value>
+                                <double>1762.0</double>
+                                </value>
+                        <value>
+                                <dateTime.iso8601>19040101T05:24:54</dateTime.iso8601>
+                                </value>
+                        <value>
+                                <base64>R0lGODlhFgASAJEAAP/////OnM7O/wAAACH5BAEAAAAALAAAAAAWABIAAAJAhI+py40zDIzujEDBzW0n74AaFGChqZUYylyYq7ILXJJ1BU95l6r23RrRYhyL5jiJAT/Ink8WTPoqHx31im0UAAA7</base64>
+                                </value>
+                        </data>
+                </array></value>
+                        </param>
+                </params>
+        </methodResponse>

@@ -1,0 +1,128 @@
+Install CUBRID PHP Extension
+
+ÀÌ ¹®¼­´Â Unix/Linux È¯°æ¿¡¼­ PHP¿Í CUBRID PHP ExtensionÀ» ÇÔ²² ºôµåÇÏ°í 
+¼³Ä¡ÇÏ´Â °úÁ¤À» ¼³¸íÇÏ´Â ¹®¼­ÀÔ´Ï´Ù. ÀÌ ¹®¼­¿¡¼­ ¾÷±ÞµÇÁö ¾Ê´Â Apache ¼³Ä¡, 
+Apache¿Í PHP ¿¬µ¿Àº Apache, PHP °¢°¢ÀÇ INSTALL ¹®¼­¸¦ ÂüÁ¶ÇÏ½Ã±â ¹Ù¶ø´Ï´Ù.
+
+1) PHP¿Í CUBRID PHP ExtensionÀ» ÇÔ²² ¼³Ä¡ÇÏ±â
+
+ PHP source¸¦ ¹Þ¾Æ PHP¸¦ ¼³Ä¡ÇÏ¸é¼­  CUBRID PHP ExtensionÀ» ÇÔ²² ¼³Ä¡ÇÒ ¼ö 
+ ÀÖ½À´Ï´Ù. º» ¹®¼­¿¡¼­´Â Apache°¡ ÀÌ¹Ì /usr/local/apache¿¡ ¼³Ä¡µÇ¾î ÀÖ°í, 
+ PHP¸¦ ¼³Ä¡ÇÒ µð·ºÅä¸®´Â /usr/local/php¶ó°í °¡Á¤ÇÕ´Ï´Ù. Apache ¹öÀüÀº 2.0 
+ ÀÌ»óÀ¸·Î °¡Á¤ÇÕ´Ï´Ù. PHP´Â 4.3 ÀÌ»ó ¹öÀüÀÌ¾î¾ß ÇÕ´Ï´Ù. 
+
+ 1. ´Ù¿î·Îµå ¹ÞÀº cubrid_phpext.tar.gz ÆÄÀÏÀÇ ¾ÐÃàÀ» Ç®°í »ý¼ºµÈ cubrid_phpext
+   µð·ºÅä¸®·Î ÀÌµ¿ÇÕ´Ï´Ù.
+   
+    > tar -xzvf cubrid_phpext.tar.gz
+    > cd cubrid_phpext
+
+ 2. cubrid_phpext µð·ºÅä¸®ÀÇ ±¸Á¶´Â ´ÙÀ½°ú °°½À´Ï´Ù
+
+    src : CUBRID PHP Extension source ÆÄÀÏÀÌ µé¾îÀÖ´Â µð·ºÅä¸®
+    INSTALL : Áö±Ý º¸°í ÀÖ´Â ¹®¼­ ÆÄÀÏ
+
+ 3. cci µð·ºÅä¸®¸¦ ¸¸µé°í ±× ¾È¿¡ CUBRID CCI library¸¦ º¹»çÇÕ´Ï´Ù.
+
+    cubrid_phpext> mkdir cci
+    cubrid_phpext> cp $CUBRID_CAS/cci/libcascci.a cci
+    cubrid_phpext> cp $CUBRID_CAS/cci/cas_cci.h cci
+    
+ 4. PHP ¼Ò½º¸¦ ´Ù¿î·Îµå ¹Þ¾Æ cubrid_phpext µð·ºÅä¸®¿¡¼­ ¾ÐÃàÀ» Ç±´Ï´Ù.
+
+    cubrid_phpext> tar -xzvf php-5.1.4.tar.gz
+    
+ 5. php-5.1.4/ext µð·ºÅä¸®·Î ÀÌµ¿ÇÏ¿© cubrid µð·ºÅä¸®¸¦ »ý¼ºÇÏ°í ÀÌµ¿ÇÕ´Ï´Ù.
+    
+    cubrid_phpext> cd php-5.1.4/ext
+    ext> mkdir cubrid
+    ext> cd cubrid
+    
+ 6. cubrid µð·ºÅä¸®¿¡ src µð·ºÅä¸®¿¡ ÀÖ´Â ÆÄÀÏµéÀÇ symbolic link¸¦ »ý¼ºÇÕ´Ï´Ù.
+
+    cubrid> ln -s ../../../src/* .
+    
+ 7. PHP ¼Ò½ºÀÇ root µð·ºÅä¸®·Î ÀÌµ¿ÇÏ¿© configure ÆÄÀÏÀ» »ý¼ºÇÕ´Ï´Ù.
+
+    cubrid> cd ../..
+    php-5.1.4> ./buildconf --force
+    
+ 8. configure¸¦ ÀÌ¿ëÇÏ¿© MakefileÀ» »ý¼ºÇÕ´Ï´Ù. 
+   multi-thread ¹öÀüÀ¸·Î ºôµåÇÏ·Á¸é --enable-maintainer-zts ¿É¼ÇÀ» ÁÝ´Ï´Ù.
+   (php4.3, php4.4ÀÇ °æ¿ì --enable-experimental-zts)
+
+    php-5.1.4> ./configure --prefix=/usr/local/php \
+    --with-cubrid=shared \
+    --enable-maintainer-zts \
+    --with-apxs2=/usr/local/apache/bin/apxs
+    
+ 9. make¸¦ ½ÇÇàÇÏ¿© ºôµå¸¦ ¼öÇàÇÏ°í ¼³Ä¡ÇÕ´Ï´Ù.
+
+    php-5.1.4> make; make install
+    
+ 10. php.ini-dist ÆÄÀÏÀ» /usr/local/php/lib µð·ºÅä¸®¿¡ php.ini ÆÄÀÏ·Î º¹»çÇÏ°í
+    ÆíÁý±â·Î ¿­¾î¼­ CUBRID PHP Extension °ü·Ã ¼³Á¤ »çÇ×À» ÀÔ·ÂÇÕ´Ï´Ù.
+
+    php-5.1.4> cp php.ini-dist /usr/local/php/lib/php.ini
+    php-5.1.4> vi /usr/local/php/lib/php.ini
+    
+ 11. php.ini ÆÄÀÏÀÇ extension_dir º¯¼ö¿¡ ºôµåµÈ CUBRID PHP ExtensionÀÌ À§Ä¡ÇÑ
+    °æ·Î¸¦, extension º¯¼ö¿¡ ÆÄÀÏ ÀÌ¸§À» ÀÔ·ÂÇÕ´Ï´Ù. CUBRID PHP ExtensionÀº 
+    /usr/local/php/lib/php/extension/no-debug-zts-xxxxxxxx µð·ºÅä¸®¿¡ cubrid.so 
+    ÆÄÀÏ·Î ¼³Ä¡µË´Ï´Ù. cubrid.err_path º¯¼ö¿¡´Â cubrid_err.msg ÆÄÀÏÀÌ À§Ä¡ÇÑ
+    µð·ºÅä¸®ÀÇ °æ·Î¸¦ ÀÔ·ÂÇÕ´Ï´Ù.
+
+    extension_dir = "/usr/local/php/lib/php/extension/no-debug-zts-xxxxxxxx"
+    extension = cubrid.so
+    cubrid.err_path = $CUBRID_ERR_MSG_PATH
+
+
+2) ÀÌ¹Ì ¼³Ä¡µÇ¾î ÀÖ´Â PHP¿¡ CUBRID PHP Extension ¼³Ä¡ÇÏ±â
+
+ PHP°¡ ÀÌ¹Ì ¼³Ä¡µÇ¾î ÀÖ´Â °æ¿ì phpize¸¦ ÀÌ¿ëÇÏ¿© PHP ExtenstionÀ» ºôµåÇÒ ¼ö ÀÖ½À´Ï´Ù.
+ º» ¹®¼­¿¡¼­´Â PHP°¡ /usr/local/php¿¡ ¼³Ä¡µÇ¾î ÀÖ´Ù°í °¡Á¤ÇÏ°í ¼³¸íÇÕ´Ï´Ù.
+ PHP´Â 4.3 ÀÌ»ó ¹öÀüÀÌ¾î¾ß ÇÕ´Ï´Ù.
+
+ 1. ´Ù¿î·Îµå ¹ÞÀº cubrid_phpext.tar.gz ÆÄÀÏÀÇ ¾ÐÃàÀ» Ç®°í »ý¼ºµÈ cubrid_phpext
+   µð·ºÅä¸®·Î ÀÌµ¿ÇÕ´Ï´Ù.
+
+    > tar -xzvf cubrid_phpext.tar.gz
+    > cd cubrid_phpext
+
+ 2. cubrid_phpext µð·ºÅä¸®ÀÇ ±¸Á¶´Â ´ÙÀ½°ú °°½À´Ï´Ù
+
+    src : CUBRID PHP Extension source ÆÄÀÏÀÌ µé¾îÀÖ´Â µð·ºÅä¸®
+    INSTALL : Áö±Ý º¸°í ÀÖ´Â ¹®¼­ ÆÄÀÏ
+
+ 3. cci µð·ºÅä¸®¸¦ ¸¸µé°í ±× ¾È¿¡ CUBRID CCI library¸¦ º¹»çÇÕ´Ï´Ù.
+
+    cubrid_phpext> mkdir cci
+    cubrid_phpext> cp $CUBRID_CAS/cci/libcascci.a cci
+    cubrid_phpext> cp $CUBRID_CAS/cci/cas_cci.h cci
+
+ 4. src µð·ºÅä¸® ¾È¿¡¼­ phpize¸¦ ¼öÇàÇÕ´Ï´Ù.Ç
+    cubrid_phpext> cd src
+    src> /usr/local/php/bin/phpize
+
+ 5. configure¸¦ -with-php-config option °ú -enable-cubrid option À» ÁÖ°í ½ÇÇàÇÕ´Ï´Ù.
+    src> ./configure --enable-cubrid --with-php-config=/usr/local/php/bin/php-config
+
+ 6. ¿¡·¯ ¾øÀÌ ¼öÇàÀÌ µÇ¾úÀ¸¸é compile À» ¼öÇàÇÑ´Ù.
+    src> make
+
+ 7. Á¤»óÀûÀ¸·Î ¼öÇàµÇ¾úÀ¸¸é, modules µð·ºÅä¸®¿¡ cubrid.so°¡ »ý¼ºµË´Ï´Ù. 
+    ÀÌ¸¦ PHP¸¦ ¼³Ä¡ÇÑ µð·ºÅä¸®(/usr/local/php)ÀÇ lib/php ¾Æ·¡¿¡ extensions µð·ºÅä¸®¸¦ 
+    ¸¸µé°í ±× ¾È¿¡ º¹»çÇÕ´Ï´Ù.
+    src> mkdir /usr/local/php/lib/php/extensions
+    src> cp modules/cubrid.so /usr/local/php/lib/php/extensions
+
+ 8. cubrid error message file À» º¹»çÇÕ´Ï´Ù.
+    src> cp cubrid_err.msg /usr/local/php/lib/php/extensions
+
+ 9. ¿Ï·á ÈÄ php.ini ÆíÁý±â·Î ¿­¾î CUBRID °ü·Ã ¼³Á¤ »çÇ×À» ÀÔ·ÂÇÕ´Ï´Ù.
+    src> vi /usr/local/php/lib/php.ini  
+
+    extension_dir = "/usr/local/php/lib/php/extensions"
+    extension=cubrid.so
+    cubrid.err_path="/usr/local/php/lib/php/extensions"
+

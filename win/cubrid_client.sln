@@ -1,0 +1,81 @@
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CUBRIDProvider", "oledb\CUBRIDProvider.vcproj", "{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubrid_odbc", "odbc\cubrid_odbc.vcproj", "{37E00A2E-BBC5-4736-90D9-A1B4271759BB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ctrlservice", "ctrlservice\ctrlservice.vcproj", "{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "setupmanage", "setupmanage\setupmanage.vcproj", "{374742CB-6AC5-4889-A10A-6F4942886458}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubridservice", "cubridservice\cubridservice.vcproj", "{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubridtray", "cubridtray\cubridtray.vcproj", "{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "install_client", "install\install_client.vcproj", "{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}"
+	ProjectSection(ProjectDependencies) = postProject
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB} = {37E00A2E-BBC5-4736-90D9-A1B4271759BB}
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6} = {47F98C66-1ADB-438D-9C38-A137D7B0C3D6}
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E} = {9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20} = {ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}
+		{374742CB-6AC5-4889-A10A-6F4942886458} = {374742CB-6AC5-4889-A10A-6F4942886458}
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6} = {1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+		ReleaseForDelphi|Win32 = ReleaseForDelphi|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.Debug|Win32.ActiveCfg = Debug|Win32
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.Debug|Win32.Build.0 = Debug|Win32
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.Release|Win32.ActiveCfg = Release|Win32
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.Release|Win32.Build.0 = Release|Win32
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Debug|Win32.ActiveCfg = Debug|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Debug|Win32.Build.0 = Debug|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Release|Win32.ActiveCfg = Release|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.Release|Win32.Build.0 = Release|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.ReleaseForDelphi|Win32.ActiveCfg = ReleaseForDelphi|Win32
+		{37E00A2E-BBC5-4736-90D9-A1B4271759BB}.ReleaseForDelphi|Win32.Build.0 = ReleaseForDelphi|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.Debug|Win32.Build.0 = Debug|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.Release|Win32.ActiveCfg = Release|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.Release|Win32.Build.0 = Release|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{9E6C188D-47E6-458D-9DC5-E9E2A1A6AA5E}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.Debug|Win32.ActiveCfg = Debug|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.Debug|Win32.Build.0 = Debug|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.Release|Win32.ActiveCfg = Release|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.Release|Win32.Build.0 = Release|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{374742CB-6AC5-4889-A10A-6F4942886458}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.Debug|Win32.ActiveCfg = Debug|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.Debug|Win32.Build.0 = Debug|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.Release|Win32.ActiveCfg = Release|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.Release|Win32.Build.0 = Release|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{1FCB95F1-1C25-4D91-A859-1751DD5A4AF6}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.Debug|Win32.ActiveCfg = Debug|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.Debug|Win32.Build.0 = Debug|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.Release|Win32.ActiveCfg = Release|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.Release|Win32.Build.0 = Release|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{ECD2B09A-87A4-40E0-B1FE-D752FF52BB20}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.Debug|Win32.ActiveCfg = Debug|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.Debug|Win32.Build.0 = Debug|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.Release|Win32.ActiveCfg = Release|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.Release|Win32.Build.0 = Release|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.ReleaseForDelphi|Win32.ActiveCfg = Release|Win32
+		{1388D4DE-B6BB-427E-BF0D-7782301EDDA2}.ReleaseForDelphi|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(DPCodeReviewSolutionGUID) = preSolution
+		DPCodeReviewSolutionGUID = {00000000-0000-0000-0000-000000000000}
+	EndGlobalSection
+EndGlobal

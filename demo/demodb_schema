@@ -1,0 +1,174 @@
+call find_user('public') on class db_user to g_public;
+call find_user('PUBLIC') on class db_user to auser;
+create serial event_no
+	 start with 20422 
+	 increment by 1 
+	 minvalue 20422 
+	 maxvalue 10000000000000000000000000000000000000 
+	 nocycle;
+update db_serial set owner = :auser, started=0 where name= 'event_no';
+
+call find_user('PUBLIC') on class db_user to auser;
+create serial stadium_no
+	 start with 30141 
+	 increment by 1 
+	 minvalue 30141 
+	 maxvalue 10000000000000000000000000000000000000 
+	 nocycle;
+update db_serial set owner = :auser, started=0 where name= 'stadium_no';
+
+CREATE CLASS stadium;
+call change_owner('stadium', 'PUBLIC') on class db_root;
+
+CREATE CLASS code;
+call change_owner('code', 'PUBLIC') on class db_root;
+
+CREATE CLASS nation;
+call change_owner('nation', 'PUBLIC') on class db_root;
+
+CREATE CLASS "event";
+call change_owner('event', 'PUBLIC') on class db_root;
+
+CREATE CLASS athlete;
+call change_owner('athlete', 'PUBLIC') on class db_root;
+
+CREATE CLASS participant;
+call change_owner('participant', 'PUBLIC') on class db_root;
+
+CREATE CLASS olympic;
+call change_owner('olympic', 'PUBLIC') on class db_root;
+
+CREATE CLASS game;
+call change_owner('game', 'PUBLIC') on class db_root;
+
+CREATE CLASS record;
+call change_owner('record', 'PUBLIC') on class db_root;
+
+CREATE CLASS history;
+call change_owner('history', 'PUBLIC') on class db_root;
+
+
+
+
+ALTER CLASS stadium ADD ATTRIBUTE
+       code integer NOT NULL,
+       nation_code character(3) NOT NULL,
+       "name" character varying(50) NOT NULL,
+       area numeric(10,2),
+       seats integer,
+       address character varying(100);
+
+
+ALTER CLASS stadium ADD ATTRIBUTE
+       CONSTRAINT "pk_stadium_code" PRIMARY KEY(code);
+
+ALTER CLASS code ADD ATTRIBUTE
+       s_name character(1),
+       f_name character varying(6);
+
+
+ALTER CLASS nation ADD ATTRIBUTE
+       code character(3) NOT NULL,
+       "name" character varying(40) NOT NULL,
+       continent character varying(10),
+       capital character varying(30);
+
+
+ALTER CLASS nation ADD ATTRIBUTE
+       CONSTRAINT "pk_nation_code" PRIMARY KEY(code);
+
+ALTER CLASS "event" ADD ATTRIBUTE
+       code integer NOT NULL,
+       sports character varying(50),
+       "name" character varying(50),
+       gender character(1),
+       players integer;
+
+
+ALTER CLASS "event" ADD ATTRIBUTE
+       CONSTRAINT "pk_event_code" PRIMARY KEY(code);
+
+ALTER CLASS athlete ADD ATTRIBUTE
+       code integer AUTO_INCREMENT(16693, 1) NOT NULL,
+       "name" character varying(40) NOT NULL,
+       gender character(1),
+       nation_code character(3),
+       "event" character varying(30);
+UPDATE db_serial SET current_val = 16693, started = 0 WHERE name = 'athlete_ai_code';
+
+ALTER CLASS athlete ADD ATTRIBUTE
+       CONSTRAINT "pk_athlete_code" PRIMARY KEY(code);
+
+ALTER CLASS participant ADD ATTRIBUTE
+       host_year integer NOT NULL,
+       nation_code character(3) NOT NULL,
+       gold integer DEFAULT 0,
+       silver integer DEFAULT 0,
+       bronze integer DEFAULT 0;
+
+
+ALTER CLASS participant ADD ATTRIBUTE
+       CONSTRAINT "pk_participant_host_year_nation_code" PRIMARY KEY(host_year, nation_code);
+
+ALTER CLASS olympic ADD ATTRIBUTE
+       host_year integer NOT NULL,
+       host_nation character varying(40) NOT NULL,
+       host_city character varying(20) NOT NULL,
+       opening_date date NOT NULL,
+       closing_date date NOT NULL,
+       mascot character varying(20),
+       slogan character varying(40),
+       introduction character varying(1500);
+
+
+ALTER CLASS olympic ADD ATTRIBUTE
+       CONSTRAINT "pk_olympic_host_year" PRIMARY KEY(host_year);
+
+ALTER CLASS game ADD ATTRIBUTE
+       host_year integer NOT NULL,
+       event_code integer NOT NULL,
+       athlete_code integer NOT NULL,
+       stadium_code integer NOT NULL,
+       nation_code character(3),
+       medal character(1),
+       game_date date;
+
+
+ALTER CLASS game ADD ATTRIBUTE
+       CONSTRAINT "pk_game_host_year_event_code_athlete_code" PRIMARY KEY(host_year, event_code, athlete_code);
+
+ALTER CLASS record ADD ATTRIBUTE
+       host_year integer NOT NULL,
+       event_code integer NOT NULL,
+       athlete_code integer NOT NULL,
+       medal character(1) NOT NULL,
+       score character varying(20),
+       unit character varying(5);
+
+
+ALTER CLASS record ADD ATTRIBUTE
+       CONSTRAINT "pk_record_host_year_event_code_athlete_code_medal" PRIMARY KEY(host_year, event_code, athlete_code, medal);
+
+ALTER CLASS history ADD ATTRIBUTE
+       event_code integer NOT NULL,
+       athlete character varying(40) NOT NULL,
+       host_year integer,
+       score character varying(10),
+       unit character varying(5);
+
+
+ALTER CLASS history ADD ATTRIBUTE
+       CONSTRAINT "pk_history_event_code_athlete" PRIMARY KEY(event_code, athlete);
+
+
+
+ALTER CLASS "participant" ADD CONSTRAINT "fk_participant_host_year" FOREIGN KEY(host_year) REFERENCES olympic ON DELETE RESTRICT ON UPDATE RESTRICT ;
+
+ALTER CLASS "participant" ADD CONSTRAINT "fk_participant_nation_code" FOREIGN KEY(nation_code) REFERENCES nation ON DELETE RESTRICT ON UPDATE RESTRICT ;
+
+ALTER CLASS "game" ADD CONSTRAINT "fk_game_event_code" FOREIGN KEY(event_code) REFERENCES "event" ON DELETE RESTRICT ON UPDATE RESTRICT ;
+
+ALTER CLASS "game" ADD CONSTRAINT "fk_game_athlete_code" FOREIGN KEY(athlete_code) REFERENCES athlete ON DELETE RESTRICT ON UPDATE RESTRICT ;
+
+
+COMMIT WORK;

@@ -1,0 +1,6 @@
+#Product Runtime Configuration File
+
+osgi.splashPath=platform:/base/plugins/cubridmanager
+eclipse.product=cubridmanager.product
+osgi.bundles=cubridmanager,org.eclipse.core.commands,org.eclipse.core.expressions,org.eclipse.core.runtime@2:start,org.eclipse.help,org.eclipse.jface,org.eclipse.jface.text,org.eclipse.swt,org.eclipse.swt.motif.solaris.sparc,org.eclipse.text,org.eclipse.ui,org.eclipse.ui.workbench
+osgi.bundles.defaultStartLevel=4

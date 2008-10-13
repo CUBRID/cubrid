@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<methodCall>
+        <methodName>validator1.countTheEntities</methodName>
+        <params>
+                <param>
+                        <value><![CDATA[b&htj>q<e>ow<><a">">m&<y>>g<"kf&nup>&lsz<xi&d"<'crv<]]></value>
+                        </param>
+                </params>
+        </methodCall>

@@ -1,0 +1,110 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ *
+ * area_alloc.h - Area memory manager manager
+ * TODO: rename this file to area_alloc.h
+ *
+ * Note:
+ */
+
+#ifndef _AREA_ALLOC_H_
+#define _AREA_ALLOC_H_
+
+#ident "$Id$"
+
+#if !defined (SERVER_MODE)
+#else /* SERVER_MODE */
+#include "defs.h"
+#include "thread_impl.h"
+#endif /* SERVER_MODE */
+
+
+/*
+ * AREA_FREE_LIST - Structure used in the implementation of workspace areas.
+ *   This structure should not be used by external modules but is needed
+ *   for the definition of ws_area.
+ */
+typedef struct area_free_list AREA_FREE_LIST;
+struct area_free_list
+{
+  struct area_free_list *next;
+};
+
+/*
+ * AREA_BLOCK - Structure used in the implementation of workspace areas.
+ *   Maintains information about a block of allocation in an area.
+ *   This structure should not be used by external modules but is needed
+ *   for the definition of ws_area.
+ */
+typedef struct area_block AREA_BLOCK;
+struct area_block
+{
+  struct area_block *next;
+  char *data;
+  char *pointer;
+  char *max;
+};
+
+/*
+ * AREA - Primary structure for an allocation area.
+ *   These are usually initialized in static space by a higher module
+ *   and passed to the ws_area functions.  The "blocks" and "free" fields
+ *   must be initialized to NULL by the higher module as these will
+ *   be allocated by the area functions.
+ */
+typedef struct area AREA;
+struct area
+{
+  struct area *next;
+
+  char *name;
+  size_t element_size;
+  size_t alloc_count;
+  bool need_gc;
+
+#if defined (SERVER_MODE)
+  size_t n_threads;
+
+  AREA_BLOCK **blocks;
+  AREA_FREE_LIST **free;
+
+  size_t *n_allocs;
+  size_t *n_frees;
+  size_t *b_cnt;
+  size_t *a_cnt;
+  size_t *f_cnt;
+#else				/* SERVER_MODE */
+  AREA_BLOCK *blocks;
+  AREA_FREE_LIST *free;
+
+  size_t n_allocs;
+  size_t n_frees;
+  size_t b_cnt;
+  size_t a_cnt;
+  size_t f_cnt;
+#endif				/* SERVER_MODE */
+
+  void (*failure_function) (void);
+};
+
+
+/* system startup, shutdown */
+extern void area_init (bool enable_check);
+extern void area_final (void);
+
+/* area definition */
+extern AREA *area_create (const char *name, size_t element_size,
+			  size_t alloc_count, bool need_gc);
+extern void area_destroy (AREA * area);
+
+/* allocation functions */
+extern void *area_alloc (AREA * area);
+extern int area_validate (AREA * area, int thrd_index, const void *address);
+extern void area_free (AREA * area, void *ptr);
+extern void area_flush (AREA * area);
+
+/* debug functions */
+extern void area_dump (FILE * fpp);
+
+#endif /* _AREA_ALLOC_H_ */

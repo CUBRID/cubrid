@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?pde version="3.1"?>
+
+<product name="Cubrid Manager" id="cubridmanager.product" application="cubridmanager.application" useFeatures="false">
+
+   <aboutInfo>
+      <image path="/cubridmanager/icons/cubridmanager16.gif"/>
+      <text>
+         %aboutText
+      </text>
+   </aboutInfo>
+
+   <configIni use="default"/>
+
+   <launcherArgs>
+   </launcherArgs>
+
+   <windowImages small="/cubridmanager/icons/cubridmanager16.gif" large="/cubridmanager/icons/cubridmanager32.gif"/>
+
+
+   <launcher name="cubridmanager">
+      <solaris/>
+      <win useIco="true">
+         <ico path="/cubridmanager/icons/cubridmanager.ico"/>
+         <bmp
+            winSmallHigh="/cubridmanager/icons/cubridmanager16_256.bmp"
+            winSmallLow="/cubridmanager/icons/cubridmanager16_16.bmp"
+            winMediumHigh="/cubridmanager/icons/cubridmanager32_256.bmp"
+            winMediumLow="/cubridmanager/icons/cubridmanager32_16.bmp"
+            winLargeHigh="/cubridmanager/icons/cubridmanager48_256.bmp"
+            winLargeLow="/cubridmanager/icons/cubridmanager48_16.bmp"/>
+      </win>
+   </launcher>
+
+   <plugins>
+      <plugin id="cubridmanager"/>
+      <plugin id="org.eclipse.core.commands"/>
+      <plugin id="org.eclipse.core.expressions"/>
+      <plugin id="org.eclipse.core.runtime"/>
+      <plugin id="org.eclipse.help"/>
+      <plugin id="org.eclipse.jface"/>
+      <plugin id="org.eclipse.jface.text"/>
+      <plugin id="org.eclipse.osgi"/>
+      <plugin id="org.eclipse.swt"/>
+      <plugin id="org.eclipse.swt.gtk.linux.x86"/>
+      <plugin id="org.eclipse.swt.motif.linux.x86"/>
+      <plugin id="org.eclipse.swt.motif.solaris.sparc"/>
+      <plugin id="org.eclipse.swt.win32.win32.x86"/>
+      <plugin id="org.eclipse.text"/>
+      <plugin id="org.eclipse.ui"/>
+      <plugin id="org.eclipse.ui.workbench"/>
+   </plugins>
+
+</product>

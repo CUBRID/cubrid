@@ -1,0 +1,181 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+#include "../../win/version.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// 한국어 resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
+#ifdef _WIN32
+LANGUAGE LANG_KOREAN, SUBLANG_DEFAULT
+#pragma code_page(949)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DRIVERCONNECT DIALOG  0, 0, 187, 98
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "SQLDriverConnect"
+FONT 10, "System"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,34,77,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,104,77,50,14
+    EDITTEXT        IDTEXT_USERNAME,74,23,97,13,ES_AUTOHSCROLL
+    EDITTEXT        IDTEXT_PASSWORD,75,45,97,13,ES_PASSWORD | ES_AUTOHSCROLL
+    LTEXT           "User Name",IDC_STATIC,20,26,46,11
+    LTEXT           "Password",IDC_STATIC,23,47,46,11
+    LTEXT           "Connect HandleID",IDC_CONNECTHANDLE,73,13,85,8,NOT WS_VISIBLE
+    LTEXT           "DCI_PTR",IDC_DCI_PTR,22,63,45,8,NOT WS_VISIBLE
+END
+
+IDD_CONFIGDSN DIALOG  0, 0, 195, 209
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Config CUBRID Data Sources"
+FONT 10, "System"
+BEGIN
+    EDITTEXT        IDC_DSN,60,10,109,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_DESCRIPTION,60,30,109,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_DBNAME,60,50,110,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_DBUSER,60,70,110,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_PASSWORD,60,87,110,12,ES_PASSWORD | ES_AUTOHSCROLL
+    EDITTEXT        IDC_SERVER,60,105,110,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_PORT,60,125,110,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_FETCH_SIZE,60,145,110,12,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,45,180,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,110,180,50,14
+    LTEXT           "DSN",IDC_STATIC,15,10,15,8
+    LTEXT           "Description",IDC_STATIC,15,30,37,8
+    LTEXT           "Server Address",IDC_STATIC,7,104,53,10
+    LTEXT           "DB Name",IDC_STATIC,15,50,35,15
+    LTEXT           "Server Port",IDC_STATIC,15,125,45,15
+    LTEXT           "DB User",IDC_STATIC,15,70,35,15
+    LTEXT           "Driver",IDC_DRIVER,15,160,35,10,NOT WS_VISIBLE
+    LTEXT           "FETCH_SIZE",IDC_STATIC,15,145,45,15
+    LTEXT           "save file",IDC_SAVE_FILE,55,160,27,8,NOT WS_VISIBLE
+    LTEXT           "Se",IDC_PT_DSNITEM,95,160,57,8,NOT WS_VISIBLE
+    LTEXT           "Password",IDC_STATIC,15,86,35,15
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_DRIVERCONNECT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 180
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 91
+    END
+
+    IDD_CONFIGDSN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 187
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 202
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MAJOR_VERSION,MINOR_VERSION,PATCH_VERSION,BUILD_SERIAL_NUMBER
+ PRODUCTVERSION MAJOR_VERSION,MINOR_VERSION,PATCH_VERSION,BUILD_SERIAL_NUMBER
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x9L
+#else
+ FILEFLAGS 0x8L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041204b0"
+        BEGIN
+            VALUE "CompanyName", "Search Solution Corporation"
+            VALUE "FileDescription", "ODBC CUBRID Driver"
+            VALUE "FileVersion", VERSION_STRING
+            VALUE "InternalName", "ODBC CUBRID Driver"
+            VALUE "LegalCopyright", "Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution."
+            VALUE "OriginalFilename", "cubrid_odbc.dll"
+            VALUE "PrivateBuild", VERSION_STRING
+            VALUE "ProductName", "ODBC CUBRID Driver"
+            VALUE "ProductVersion", VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x412, 1200
+    END
+END
+
+#endif    // 한국어 resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<methodResponse>
+        <params>
+                <param>
+                        <value><struct>
+                <member>
+                        <name>times10</name>
+                        <value>
+                                <i4>550</i4>
+                                </value>
+                        </member>
+                <member>
+                        <name>times100</name>
+                        <value>
+                                <i4>5500</i4>
+                                </value>
+                        </member>
+                <member>
+                        <name>times1000</name>
+                        <value>
+                                <i4>55000</i4>
+                                </value>
+                        </member>
+                </struct></value>
+                        </param>
+                </params>
+        </methodResponse>

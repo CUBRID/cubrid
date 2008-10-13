@@ -1,0 +1,238 @@
+#!/bin/sh
+
+# Find out if there is already a server for the given database.  If
+# not, start one up.
+#
+# $Revision: 1.7 $
+
+# set -x
+RootDir="CUBRID"
+
+CUBRID_LANG=en_US
+export CUBRID_LANG
+
+usage() {
+	echo "usage: $0 [-timeout seconds] database" 1>&2
+	echo "       $0 -a : start all databases in this host" 1>&2
+	exit 1
+}
+
+
+# How long are you willing to wait for the server to come up?
+timeout=0
+db=
+start_all=0
+
+
+while [ $# -ne 0 ]
+do
+	case $1 in
+
+		-timeout)
+			shift
+			timeout=$1
+			;;
+		-a|-all)
+			start_all=1
+			;;
+		-*)
+			usage
+			;;
+		*)
+			if [ -z "${db}" ]
+			then
+				db=$1
+			else
+				usage
+			fi
+			;;
+	esac
+	shift
+done
+
+if [ -z "${db}" -a $start_all -eq 0 ]
+then
+	usage
+fi
+
+# Checking prefix 
+
+for i in $RootDir
+do
+	seevar="echo \$$i"
+	#echo $seevar
+	dir=`eval $seevar`
+	if [ "$dir" != "" ]
+	then
+		title=$dir
+	fi
+	
+	seevar="echo \$${i}_DATABASES"
+	dir=`eval $seevar`
+	if [ "$dir" != "" ]
+	then
+		databases=$dir/databases.txt
+	fi
+	
+	if [ "$title" != "" ]
+	then
+		break
+	fi
+done
+
+if [ "$title" = "" ]
+then
+	echo "Database Root Directory is not set or is set to NULL"
+	exit 1
+fi
+if [ "$databases" = "" ]
+then
+	echo "Environment variable for database location is not set" 
+	exit 1
+fi
+
+# Private labeling, ...
+commdb=${title}/bin/cub_commdb
+master=${title}/bin/cub_master
+server=${title}/bin/cub_server
+
+
+# How long between pings for server status?
+interval=3
+
+
+ping_master() {
+	if ${commdb} -P 2>&1 | egrep "Could not connect to master server on" >/dev/null
+	then
+		return 1
+	else
+		return 0
+	fi
+}
+
+ping_server() {
+	${commdb} -P 2>&1 | egrep " Server ${db}[ ,]" >/dev/null
+}
+
+check_process() {
+	ps -p ${server_pid} > /dev/null
+}
+
+start_master() {
+	if ping_master
+	then
+		# The master is up and running.
+		:
+	else
+		# Start the master
+
+		${master} </dev/null
+
+		time=0
+		while [ 1 ]
+		do
+			# Don't use ${interval} here; master seems to be picky
+			# about having enough time to get started up, and if
+			# you hit it too early it tends to go away.
+			sleep 3
+			ping_master && break;
+			if [ ${timeout} -ne 0 ]
+			then
+				time=`expr ${time} + 3`
+				if [ ${time} -gt ${timeout} ]
+				then
+					echo "$0: master process is not started after ${time} seconds; giving up" 1>&2
+					exit 1
+				fi
+			fi
+		done
+	fi
+}
+
+start_a_server() {
+
+	if [ -z "${db}" ]
+	then
+		return 1
+	fi
+
+	# if OS is the hp-ux, set LD_PRELOAD variable.
+        ostype=`eval uname`
+        if [ "$ostype" = "HP-UX" ]
+        then
+                /usr/bin/hp-pa
+                if [ $? = 0 ]
+                then
+                        LD_PRELOAD=libjvm.sl
+                else
+                        LD_PRELOAD=libjvm.so
+                fi
+                export LD_PRELOAD
+        fi
+
+	# Launch the server, and then sleep for a moment while it starts up.
+	echo "Starting server for database $db ..."
+
+	${server} ${db} &
+	server_pid=$!
+	trap 'kill ${server_pid}; exit' 2 3 # SIGINT, SIGQUIT
+	sleep ${interval}
+
+	# Now start a dance and wait for the server to stabilize.  If it
+	# hasn't shown up in some decent interval, give up and notify the user
+	# of the failure.
+
+	time=${interval}
+
+	while [ 1 ]
+	do
+		if ping_server
+		then
+			# It's ready to go...
+			return 0
+		elif ping_master
+		then
+			# Master is still cooking, but the server isn't ready
+			# yet.  Give up if we've already waited long enough;
+			# otherwise, wait some more.
+			if [ ${timeout} -ne 0 ]
+			then 
+				time=`expr ${time} + ${interval}`
+				if [ ${time} -gt ${timeout} ]
+				then
+					echo "$0: server is not accepting connections after ${time} seconds; giving up" 1>&2
+					exit 1
+				fi
+			fi
+
+			if check_process
+			then
+				:
+			else
+				exit 1
+			fi
+
+			sleep ${interval}
+		else
+			# Some disaster has befallen us: the master appears to
+			# have gone away during startup.
+			echo "$0: master process has crashed during ${db} startup; giving up" 1>&2
+			kill -9 ${server_pid}
+			exit 1
+		fi
+	done
+}
+
+echo "This may take a long time depending on the amount of recovery works to do."
+
+start_master
+
+if [ $start_all -eq 1 ]
+then
+	for db in `cut -d\  -f1 $databases`
+	do
+		start_a_server
+	done
+else
+	start_a_server
+fi

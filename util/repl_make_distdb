@@ -1,0 +1,591 @@
+#!/bin/ksh
+###############################################################################
+#  Script Name : make_distdb
+#
+#  Overview 
+#     This script provides the simple interface to construct of 
+#     distributor db.
+#     Following jobs are executed step by step.
+#    
+# STEP 0 : read the parameters 
+# STEP 1 : create the dist db 
+# STEP 2 : Start the dist db server
+# STEP 3 : set the password
+# STEP 4 : create tables
+# STEP 5 : read the master info
+# STEP 6 : read the environment info
+#
+# NOTES
+#    This script should be expanded when the repl_agent can process multiple
+#    slaves & masters
+#
+###############################################################################
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+usage() {
+  exec_name=`basename $0`
+  echo "usage: $exec_name dist_db_name [-p dba_passwd] " 1>&2
+  exit 1
+}
+
+###############################################################################
+# function : print message
+###############################################################################
+print_mes_h() {
+  case $1 in
+    STEP1)
+      echo "  STEP 1 : 배포 DB를 생성 중입니다. 잠시만 기다려 주십시오."
+      ;;
+    STEP2)
+      echo "  STEP 2 : 배포 DB 서버를 구동하고 있습니다. 잠시만 기다려 주십시오."
+      ;;
+    STEP3)
+      echo "  STEP 3 : 배포 DB 의 DBA 계정을 설정합니다."
+      ;;
+    STEP4)
+      echo "  STEP 4 : 복제에 필요한 테이블들을 생성합니다."
+      ;;
+    STEP5)
+      echo "  STEP 5 : 복제 대상 마스터 DB 정보를 입력합니다."
+      ;;
+    STEP51)
+      printf "       1. 마스터 DB의 이름을 입력하시오. >> "
+      ;;
+    STEP52)
+      echo "       2. 마스터 DB가 위치한 호스트의 IP 주소를 입력하시오."
+      echo "          - IP 주소가 부정확하게 입력되면 복제가 수행되지 않습니다."
+      printf "                마스터 DB IP >> "
+      ;;
+    STEP53)
+      printf "       3. 복제서버(repl_server)가 사용하는 TCP/IP 포트번호를 입력 하시오.>> "
+      ;;
+    STEP54)
+      echo "       4. 복제에 필요한 복제로그을 저장할 디렉토리를 입력하시오. "
+      printf "           $CurDir 이면 엔터 키를 입력하시오. >> "
+      ;;
+    STEP6)
+      echo "  STEP 6 : 복제 환경 변수를 설정합니다."
+      ;;
+    STEP61)
+      echo "       1. 추적 로그를 저장할 디렉토리를 입력하시오.  "
+      printf "           $CurDir 이면 엔터 키를 입력하시오. >> "
+      ;;
+    STEP62)
+      echo "       2. 에러로그를 저장할 디렉토리를 입력하시오. "
+      printf "           $CurDir 이면 엔터 키를 입력하시오. >> "
+      ;;
+    STEP63)
+      printf "       3. 복제 에이전트(repl_agent)의 상태 표시를 위한 TCP/IP 포트번호를 입력하시오.>> "
+      ;;
+    STEP64)
+      printf "       4. 복제 지연 시간 log 파일의 크기(line 수)를 입력하시오. >> "
+      ;;
+  esac
+}
+
+print_mes_e() {
+  case $1 in
+    STEP1)
+      echo "  STEP 1 : Creating the distributor database...."
+      ;;
+    STEP2)
+	  echo "  STEP 2 : Starting up the server for distributor.. "
+      ;;
+    STEP3)
+	  echo "  STEP 3 : Setting the DBA account of distributor database.."
+      ;;
+    STEP4)
+      echo "  STEP 4 : Creating the objects for replication... "
+      ;;
+    STEP5)
+      echo "  STEP 5 : Please provide information of the master databases ..."
+      ;;
+    STEP51)
+      printf "       1. Please enter the name of the master database >> "
+      ;;
+    STEP52)
+      echo "       2. Please enter the IP address of the master database."
+      echo "          - Replication would not work without correct IP address."
+      printf "                IP address of the master >> "
+      ;;
+    STEP53)
+      printf "       3. Please enter the TCP/IP port number of the repl_server >> "
+      ;;
+    STEP54)
+      echo "       4. Please enter the directory path of copy log."
+      printf "         If the target directory is $CurDir, just strike enter.. >> "
+      ;;
+    STEP6)
+      echo "  STEP 6 : Configuring the replication parameters.."
+      ;;
+    STEP61)
+      echo "       1. Please enter the directory path of trail log. "
+      printf "         If the target directory is $CurDir, just strike enter.. >> "
+      ;;
+    STEP62)
+      echo "       2. Please enter the directory path of error log. "
+      printf "         If the target directory is $CurDir, just strike enter.. >> "
+      ;;
+    STEP63)
+      printf "       3. Please enter the TCP/IP port number for information of repl_agent status. >> "
+      ;;
+    STEP64)
+      printf "       4. Please enter the file size(line number) of replication delay time log. >> "
+      ;;
+  esac
+}
+
+print_mes() {
+  if [ "$kor_yn" = "yes" ]
+  then
+    print_mes_h $1 $2
+  else
+    print_mes_e $1 $2
+  fi
+}
+
+print_error_h() {
+  case $1 in
+    err_check_env)
+      printf " << ERROR >> 환경 변수 설정을 확인하시기 바랍니다."
+      echo "$2"
+      ;;
+    err_cant_create_dist)
+      printf " << ERROR >> 배포 DB를 생성할 수 없습니다."
+      echo $2
+      ;;
+    err_cant_start_dist)
+      echo " << ERROR >> 배포 DB를 구동할 수 없습니다."
+      ;;
+    err_no_master_name)
+      echo " << ERROR >> 마스터 DB 이름이 입력되지 않았습니다."
+      ;;
+    err_directory_error)
+      echo " << ERROR >> 입력하신 디렉토리가 존재하지 않습니다."
+      ;;
+    err_invalid_input)
+      echo " << ERROR >> 입력하신 값들을 다시 한번 확인해 주세요. "
+      ;;
+    err_copylog_dir)
+      echo " << ERROR >> 복제로그 저장 디렉토리가 설정되지 않았습니다."
+      ;;
+    err_ip_addr)
+      echo " << ERROR >> IP 주소가 입력되지 않았습니다."
+      ;;
+    err_port_num)
+      echo " << ERROR >> 복제서버(repl_server)의 포트번호가 입력되지 않았습니다. "
+      ;;
+  esac
+  echo "#######################################################################"
+  echo " 오류로 인해 복제 환경 구성 작업을 종료합니다."
+  echo "#######################################################################"
+}
+
+print_error_e() {
+  case $1 in
+    err_check_env)
+      printf " << ERROR >> Check the environment variable."
+      echo "$2"
+      ;;
+    err_cant_create_dist)
+      printf " << ERROR >> Can't create the distributor database."
+      echo $2
+      ;;
+    err_cant_start_dist)
+      printf " << ERROR >> Can't start up the distributor database."
+      ;;
+    err_no_master_name)
+      echo " << ERROR >> Master database name should be provided."
+      ;;
+    err_directory_error)
+      echo " << ERROR >> Directory does not exists."
+      ;;
+    err_invalid_input)
+      echo " << ERROR >> Invalid input value."
+      ;;
+    err_copylog_dir)
+      echo " << ERROR >> Directory name of copy log should be provided."
+      ;;
+    err_ip_addr)
+      echo " << ERROR >> IP address should be provided."
+      ;;
+    err_port_num)
+      echo " << ERROR >> TCP port number of the repl_server should be provided."
+      ;;
+  esac
+  echo "#######################################################################"
+  echo " Stopped by error..."
+  echo "#######################################################################"
+}
+
+print_error() {
+  if [ "$kor_yn" = "yes" ]
+  then
+    print_error_h $1 $2
+  else
+    print_error_e $1 $2
+  fi
+
+  if [ "$was_created" -eq 1 ]
+  then
+    $rootdir/bin/cubrid server stop $dist_db_name > /dev/null
+    $rootdir/bin/cubrid deletedb $dist_db_name  > /dev/null
+  fi
+  exit 1
+}
+
+
+###############################################################################
+# trying to get root
+###############################################################################
+RootDir="CUBRID"
+was_created=0
+
+for i in $RootDir
+do
+  seevar="echo \$$i"
+  rootdir=`eval $seevar`
+  if [ -n "$rootdir" ]
+  then
+    break;
+  fi
+done
+
+if [ -z "$rootdir" ]
+then
+  print_error err_check_env " - CUBRID"
+fi
+
+rootDir="CUBRID_DATABASES"
+
+for i in $RootDir
+do
+  seevar="echo \$$i"
+  rootdir_db=`eval $seevar`
+  if [ -n "$rootdir_db" ]
+  then
+    break;
+  fi
+done
+
+if [ -z "$rootdir_db" ]
+then
+  print_error err_check_env " - CUBRID_DATABASES"
+fi
+
+lang="$CUBRID_LANG"
+if [ -z "$lang" ]
+then
+  lang="en_US"
+fi
+
+kor_yn="no"
+if [ ! -z "$lang" ] && [ "$lang" = "ko_KR.euckr" ]
+then
+  kor_yn="yes"
+fi
+
+if [ "$kor_yn" = "yes" ]
+then
+echo "#########################################################################"
+echo "#                                                                       #"
+echo "#                CUBRID 복제 환경 구성 : 복제 에이전트 구성             #"
+echo "#                                                                       #"
+echo "#   복제 환경을 구성하는 작업은 다음과 같은 순서로 진행되어야 합니다.   #"
+echo "#        1. 복제 에이전트 구성 (make_distdb 스크립트 구동)              #"
+echo "#        2. 마스터 DB 전체 백업 (cubrid backup 유틸리티구동)            #"
+echo "#        3. 마스터 DB 백업본 복사 (마스터 DB 호스트->슬레이브 DB 호스트)#"
+echo "#        4. 슬레이브 DB 구축 (make_slavedb 스크립트 구동)               #"
+echo "#        5. 복제 서버구동 (repl_server 유틸리티 구동)                   #"
+echo "#        6. 복제 에이전트 구동 (repl_agent 유틸리티 구동)               #"
+echo "#                                                                       #"
+echo "#     NOTE: 마스터 DB를 백업받는 시점은 슬레이브 DB 구축시점 이전이면   #"
+echo "#           언제든지 상관없으나  온라인백업을 하는 경우 가급적          #"
+echo "#           슬레이브 DB 구축 바로 전에 수행하시면 초기 복제에  소요되는 #"
+echo "#           시간을 절약하실 수 있습니다.                                #"
+echo "#           필요한 백업 파일은 다음과 같습니다.                         #"
+echo "#                          -  master_db_name.bk_vinf                    #"
+echo "#                          -  master_db_name.bk0v???                    #"
+echo "#                                                                       #"
+echo "#   복제 에이전트가 작업하기 위해 필요한 배포 DB를 생성합니다.          #"
+echo "#      - 배포 DB는 반드시 DBA 계정으로 동작해야 하므로 DBA 계정을       #"
+echo "#        지정하시기 바랍니다.                                           #"
+echo "#                                                                       #"
+echo "#   CUBRID 에서는 하나의 슬레이브 DB 당 하나의 배포 DB가 생성됩니다.    #"
+echo "#      - 배포 DB 및 복제 에이전트(repl_agent)는 마스터 DB가 위치한      #"
+echo "#        호스트에서 수행하시면 복제 작업이 느리게 진행될 수 있습니다.   #"
+echo "#                                                                       #"
+echo "#   Ctrl-C 등으로 비정상적으로 스크립트를 중단하는 경우에는             #"
+echo "#   cubrid server stop/cubrid delete 등의  유틸리티를 이용하여          #"
+echo "#   배포 DB를 삭제한 후 다시 수행하십시오.                              #"
+echo "#########################################################################"
+else
+echo "#########################################################################"
+echo "#                                                                       #"
+echo "#                Configuration of the Replication Agent                 #"
+echo "#                                                                       #"
+echo "#   To configure the replication environment,                           #"
+echo "#        1. Configure the replication agent (using make_distdb script)  #"
+echo "#        2. Back up the master database (using cubrid backup)           #"
+echo "#        3. Copy the backup files to the slave site                     #"
+echo "#        4. Construct the slave database (using make_slavedb script)    #"
+echo "#        5. Start the repl_server at the master site                    #"
+echo "#        6. Start the repl_agent at the slave site                      #"
+echo "#                                                                       #"
+echo "#   NOTE1: You have to back up the master database before constructing  #"
+echo "#          the slave databases. If you back up the master database just #"
+echo "#          before constructing the slave database, you can save the     #"
+echo "#          time to synchronize the master database and slave database.  #"
+echo "#          Following files should be copied to the slave site..         #"
+echo "#                          -  master_db_name.bk_vinf                    #"
+echo "#                          -  master_db_name.bk0v???                    #"
+echo "#                                                                       #"
+echo "#   NOTE2: To configure the distributor database, DBA account is        #"
+echo "#          is necessary. Please provide the DBA account.                #"
+echo "#                                                                       #"
+echo "#   NOTE3: A distributor database should be created per slave database. #"
+echo "#          Please create the distributor database and start up the      #"
+echo "#          repl_agent at the slave site for the best performance.       #"
+echo "#                                                                       #"
+echo "#   When you stop this script using Ctrl-C, please retry again after    #"
+echo "#   deleting the distributor database using 'cubrid server stop'after   #"
+echo "#   then 'cubrid delete'.                                               #"
+echo "#########################################################################"
+fi
+
+###############################################################################
+# STEP 0 : read the parameters
+###############################################################################
+dist_db_name=$1
+
+while [ $# -ne 0 ]
+do
+  case $2 in
+     -p)
+        shift
+        passwd=$2
+        ;;
+     *)
+        ;;
+  esac
+  shift
+done
+
+#check inputs
+if [ -z "$dist_db_name" ]
+then
+  usage
+fi
+
+CurDir=`eval pwd`
+
+###############################################################################
+# STEP 1 : create the dist db
+###############################################################################
+print_mes STEP1
+$rootdir/bin/cubrid createdb $dist_db_name 2> .distdb.tmp
+if [ "$?" -ne 0 ]
+then
+  print_error err_cant_create_dist $result
+fi
+was_created=1
+###############################################################################
+# STEP 2 : Start the dist db server
+###############################################################################
+#start the dist db server
+print_mes STEP2
+`eval $rootdir/bin/cubrid server start $dist_db_name > /dev/null`
+result=`eval cub_commdb -P | grep $dist_db_name`
+
+if [ -z "$result" ]
+then
+  $rootdir/bin/cubrid deletedb $dist_db_name
+  print_error err_cant_start_dist 
+fi
+
+###############################################################################
+# STEP 3 : set the password
+###############################################################################
+#check the DBA password
+print_mes STEP3
+if [ -n "$passwd" ]
+then
+  sql="call find_user('DBA') on class db_user to admin;call set_password('$passwd') on admin"
+  $rootdir/bin/csql $dist_db_name -u DBA  -c "$sql"  > /dev/null
+fi
+
+###############################################################################
+# STEP 4 : create tables
+###############################################################################
+print_mes STEP4
+sql="create class db_info (
+   dbid   integer PRIMARY KEY,
+   dbname varchar(126),
+   master_ip varchar(50),
+   portnum integer
+);
+create class master_info as subclass of db_info (
+   copylog_path varchar(256) not null,
+   start_pageid integer not null,
+   first_pageid integer not null,
+   last_pageid  integer not null,
+   size_of_log_buffer integer default 500 not null,
+   size_of_cache_buffer integer default 100 not null,
+   size_of_copylog integer default 5000 not null
+);
+
+create class trail_info (
+   master_dbid integer,
+   slave_dbid  integer,
+   final_pageid integer,
+   final_offset integer,
+   all_repl char(1) default 'y' not null,
+   repl_count numeric, 
+   status char(1) default 'a' not null,
+   error_msg string, 
+   stop_time timestamp, 
+   perf_poll_interval integer default 10, 
+   log_apply_interval integer default 0,
+   for_recovery char(1) default 'n' not null,
+   index_replication char(1) default 'n' not null,
+   restart_interval integer default 2,
+   PRIMARY KEY(master_dbid, slave_dbid)
+);
+
+create class slave_info as subclass of db_info(
+   userid       varchar(32),
+   passwd       varchar(32),
+   trails  set  trail_info
+);
+
+create class class_info (
+   master_dbid integer,
+   class_name varchar(256) not null,
+   PRIMARY KEY(master_dbid, class_name)
+);
+
+create class delay_info (
+   master_dbid integer,
+   slave_dbid integer,
+   c_time timestamp, 
+   delay_time integer,
+   PRIMARY KEY(master_dbid, slave_dbid, c_time)
+);
+
+create class repl_group (
+   master_dbid integer,
+   slave_dbid integer,
+   class_name varchar(256),
+   start_pageid integer,
+   start_offset integer,
+   PRIMARY KEY(master_dbid, slave_dbid, class_name),
+   UNIQUE (slave_dbid, class_name)
+);
+
+create class env_info (
+   e_name         varchar(32) not null,
+   e_value        varchar(256),
+   UNIQUE(e_name)
+);"
+
+$rootdir/bin/csql $dist_db_name -u DBA -p "$passwd" -c "$sql"
+
+###############################################################################
+# STEP 5 : read the master info
+###############################################################################
+print_mes STEP5
+print_mes STEP51
+read master_db_name
+echo
+if [ -z "$master_db_name" ]
+then
+  print_error err_no_master_name
+fi
+
+print_mes STEP52
+read master_db_ip
+if [ -z "$master_db_ip" ]
+then
+  print_error err_ip_addr
+fi
+print_mes STEP53
+read port_num
+if [ -z "$port_num" ]
+then
+  print_error err_port_num
+fi
+
+echo
+print_mes STEP54
+read copylog_path
+if [ -z "$copylog_path" ]
+then
+  copylog_path=$CurDir
+fi
+
+if [ ! -d $copylog_path ]
+then
+  print_error err_directory_error
+fi
+
+echo
+sql="insert into master_info values (1, '$master_db_name', '$master_db_ip', $port_num, '$copylog_path', -1, -1, -1, 500, 100, 5000)"
+
+$rootdir/bin/csql $dist_db_name -u DBA -p "$passwd" -c "$sql"  2> .dist.tmp
+
+result=`eval cat .dist.tmp | grep ERROR`
+
+if [ -n "$result" ]
+then
+  print_error err_invalid_input
+fi
+
+###############################################################################
+# STEP 6 : read the environment info
+###############################################################################
+print_mes STEP6
+print_mes STEP61
+read trail_log
+if [ -z "$trail_log" ]
+then
+  trail_log=$CurDir
+fi
+if [ ! -d "$trail_log" ]
+then
+  print_error err_directory_error
+fi
+echo
+print_mes STEP62
+read error_log
+if [ -z "$error_log" ]
+then
+  error_log=$CurDir
+fi
+if [ ! -d "$error_log" ]
+then
+  print_error err_directory_error
+fi
+echo
+print_mes STEP63
+read agent_port
+if [ -z "$agent_port" ]
+then
+  agent_port=33333
+fi
+echo
+print_mes STEP64
+read perf_log_size
+if [ -z "$perf_log_size" ]
+then
+  perf_log_size=10000
+fi
+
+sql="insert into env_info values ('trail_log', '$trail_log'); 
+     insert into env_info values ('error_log', '$error_log');
+     insert into env_info values ('agent_port', '$agent_port');
+     insert into env_info values ('perf_log_size', '$perf_log_size');
+     insert into env_info values ('commit_interval_msecs', '500');"
+
+$rootdir/bin/csql $dist_db_name -u DBA -p "$passwd" -c "$sql" > /dev/null

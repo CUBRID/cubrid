@@ -1,0 +1,56 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ *
+ * bocl.h - Boot managment in the client (interface)
+ * 						       
+ * Note: See .c file for overview and description of the interface functions.
+ * 									       
+ */
+
+#ifndef _BOCL_H_
+#define _BOCL_H_
+
+#ident "$Id$"
+
+#if !defined(WINDOWS)
+#include <sys/time.h>
+#endif /* !WINDOWS */
+
+#include "error_manager.h"
+#include "common.h"
+#include "transaction_cl.h"
+
+#define BOOT_IS_CLIENT_RESTARTED() (tm_Tran_index != NULL_TRAN_INDEX)
+
+/* Volume assigned for new files/objects  (e.g., heap files) */
+extern VOLID boot_User_volid;
+
+extern struct timeval boot_Server_clock;
+extern struct timeval boot_Client_clock;
+
+extern int
+boot_initialize_client (const char *program_name, bool print_version,
+			const char *db_name, const char *db_path,
+			const char *vol_path, const char *log_path,
+			const char *db_server_host, bool db_overwrite,
+			const char *db_comments, DKNPAGES npages,
+			const char *file_addmore_vols,
+			PGLENGTH db_desired_pagesize, DKNPAGES log_npages);
+extern int boot_restart_client (const char *program_name, bool print_restart,
+				const char *vlabel);
+extern int boot_shutdown_client (bool iserfinal);
+extern void boot_donot_shutdown_client_at_exit (void);
+extern void boot_server_die (void);
+extern void boot_client_all_finalize (bool iserfinal);
+#if !defined(SA_MODE)
+extern char *boot_get_host_connected (void);
+#endif /* !SA_MODE */
+
+#if defined(SA_MODE)
+extern int boot_build_catalog_classes (const char *dbname);
+extern int boot_destroy_catalog_classes (void);
+extern int boot_rebuild_catalog_classes (const char *dbname);
+#endif /* SA_MODE */
+
+#endif /* _BOCL_H_ */

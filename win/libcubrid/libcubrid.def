@@ -1,0 +1,8 @@
+LIBRARY	libcubrid
+EXPORTS
+	basename
+	envvar_root
+	net_server_start
+	os_set_signal_handler
+
+

@@ -1,0 +1,42 @@
+LIBRARY	libesql
+EXPORTS
+;
+;   variables
+;
+    sqlca
+;
+;   uci functions
+;
+    uci_startup
+    uci_start
+    uci_end
+    uci_stop
+    uci_connect
+    uci_disconnect
+    uci_commit
+    uci_rollback
+    uci_static
+    uci_open_cs
+    uci_fetch_cs
+    uci_delete_cs
+    uci_close_cs
+    uci_psh_curr_csr_oid
+    uci_prepare
+    uci_describe
+    uci_execute
+    uci_execute_immediate
+    uci_object_describe
+    uci_object_fetch
+;   uci_set_num_db_values
+    uci_get_value
+    uci_get_db_value
+    uci_get_descriptor
+    uci_put_value
+    uci_put_descriptor
+;
+;   gadget functions
+;
+    db_gadget_create
+    db_gadget_destroy
+    db_gadget_bind
+    db_gadget_exec

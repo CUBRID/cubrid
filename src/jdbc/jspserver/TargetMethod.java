@@ -1,0 +1,191 @@
+package com.cubrid.jsp;
+
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.HashMap;
+
+import com.cubrid.jsp.exception.ExecuteException;
+
+import cubrid.sql.CUBRIDOID;
+
+public class TargetMethod {
+
+    private String className;
+
+    // private Class targetClass;
+
+    private String methodName;
+
+    private Class[] argsTypes;
+
+    private static HashMap argClassMap = new HashMap();
+
+    private static HashMap descriptorMap = new HashMap();
+
+    static {
+        initArgClassMap();
+        initdescriptorMap();
+    }
+
+    public TargetMethod(String signature) throws Exception {
+        int argStart = signature.indexOf('(') + 1;
+        if (argStart < 0) {
+            throw new IllegalArgumentException("Parenthesis '(' not found");
+        }
+        int argEnd = signature.indexOf(')');
+        if (argEnd < 0) {
+            throw new IllegalArgumentException("Parenthesis ')' not found");
+        }
+        int nameStart = signature.substring(0, argStart).lastIndexOf('.') + 1;
+
+        if (signature.charAt(0) == '\'') {
+          className = signature.substring(1, nameStart - 1);
+        } else {
+          className = signature.substring(0, nameStart - 1);
+        }
+        // targetClass = getClass(className);
+        methodName = signature.substring(nameStart, argStart - 1);
+        String args = signature.substring(argStart, argEnd);
+        argsTypes = classesFor(args);
+    }
+
+    private Class getClass(String name) throws ClassNotFoundException {
+        ClassLoader cl = StoredProcedureClassLoader.getInstance();
+        return cl.loadClass(name);
+    }
+
+    private Class[] classesFor(String args) throws ClassNotFoundException,
+            ExecuteException {
+        args = args.trim();
+        if (args.length() == 0) {
+            return new Class[0];
+        }
+        // Count semicolons occurences.
+        int semiColons = 0;
+        for (int i = 0; i < args.length(); i++) {
+            if (args.charAt(i) == ',') {
+                semiColons++;
+            }
+        }
+        Class[] classes = new Class[semiColons + 1];
+
+        int index = 0;
+        for (int i = 0; i < semiColons; i++) {
+            int sep = args.indexOf(',', index);
+            classes[i] = classFor(args.substring(index, sep).trim());
+            index = sep + 1;
+        }
+
+        classes[semiColons] = classFor(args.substring(index).trim());
+        return classes;
+    }
+
+    private Class classFor(String className) throws ClassNotFoundException,
+            ExecuteException {
+        int arrayIndex = className.indexOf("[]");
+        if (arrayIndex >= 0) {
+            String arrTag;
+            if (className.indexOf("[][]") >= 0) {
+                if (className.indexOf("[][][]") >= 0) {
+                    throw new ExecuteException("Unsupport data type: "
+                            + className);
+                }
+                arrTag = "[[";
+            } else {
+                arrTag = "[";
+            }
+            className = arrTag
+                    + descriptorFor(className.substring(0, arrayIndex).trim());
+        }
+
+        if (argClassMap.containsKey(className)) {
+            return (Class) argClassMap.get(className);
+        } else {
+            return getClass(className);
+        }
+    }
+
+    private String descriptorFor(String className) {
+        if (descriptorMap.containsKey(className)) {
+            return (String) descriptorMap.get(className);
+        } else {
+            return "L" + className + ";";
+        }
+    }
+
+    private static void initArgClassMap() {
+        argClassMap.put("boolean", boolean.class);
+        argClassMap.put("byte", byte.class);
+        argClassMap.put("char", char.class);
+        argClassMap.put("short", short.class);
+        argClassMap.put("int", int.class);
+        argClassMap.put("long", long.class);
+        argClassMap.put("float", float.class);
+        argClassMap.put("double", double.class);
+
+        argClassMap.put("[Z", boolean[].class);
+        argClassMap.put("[B", byte[].class);
+        argClassMap.put("[C", char[].class);
+        argClassMap.put("[S", short[].class);
+        argClassMap.put("[I", int[].class);
+        argClassMap.put("[J", long[].class);
+        argClassMap.put("[F", float[].class);
+        argClassMap.put("[D", double[].class);
+
+        argClassMap.put("java.lang.Boolean", Boolean.class);
+        argClassMap.put("java.lang.Byte", Byte.class);
+        argClassMap.put("java.lang.Character", Character.class);
+        argClassMap.put("java.lang.Short", Short.class);
+        argClassMap.put("java.lang.Integer", Integer.class);
+        argClassMap.put("java.lang.Long", Long.class);
+        argClassMap.put("java.lang.Float", Float.class);
+        argClassMap.put("java.lang.Double", Double.class);
+        argClassMap.put("java.lang.String", String.class);
+        argClassMap.put("java.lang.Object", Object.class);
+        argClassMap.put("java.math.BigDecimal", BigDecimal.class);
+        argClassMap.put("java.sql.Date", Date.class);
+        argClassMap.put("java.sql.Time", Time.class);
+        argClassMap.put("java.sql.Timestamp", Timestamp.class);
+        argClassMap.put("cubrid.sql.CUBRIDOID", CUBRIDOID.class);
+
+        argClassMap.put("[Ljava.lang.Boolean;", Boolean[].class);
+        argClassMap.put("[Ljava.lang.Byte;", Byte[].class);
+        argClassMap.put("[Ljava.lang.Character;", Character[].class);
+        argClassMap.put("[Ljava.lang.Short;", Short[].class);
+        argClassMap.put("[Ljava.lang.Integer;", Integer[].class);
+        argClassMap.put("[Ljava.lang.Long;", Long[].class);
+        argClassMap.put("[Ljava.lang.Float;", Float[].class);
+        argClassMap.put("[Ljava.lang.Double;", Double[].class);
+        argClassMap.put("[Ljava.lang.String;", String[].class);
+        argClassMap.put("[Ljava.lang.Object;", Object[].class);
+        argClassMap.put("[Ljava.math.BigDecimal;", BigDecimal[].class);
+        argClassMap.put("[Ljava.sql.Date;", Date[].class);
+        argClassMap.put("[Ljava.sql.Time;", Time[].class);
+        argClassMap.put("[Ljava.sql.Timestamp;", Timestamp[].class);
+        argClassMap.put("[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[].class);
+    }
+
+    private static void initdescriptorMap() {
+        descriptorMap.put("boolean", "Z");
+        descriptorMap.put("byte", "B");
+        descriptorMap.put("char", "C");
+        descriptorMap.put("short", "S");
+        descriptorMap.put("int", "I");
+        descriptorMap.put("long", "J");
+        descriptorMap.put("float", "F");
+        descriptorMap.put("double", "D");
+    }
+
+    public Method getMethod() throws SecurityException, NoSuchMethodException,
+            ClassNotFoundException {
+        return getClass(className).getMethod(methodName, argsTypes);
+        // return targetClass.getMethod(methodName, argsTypes);
+    }
+
+    public Class[] getArgsTypes() {
+        return argsTypes;
+    }
+}

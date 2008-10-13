@@ -1,0 +1,269 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ *
+ *      obt.h - Definitions for the object manager
+ *
+ */
+
+#ifndef _OBT_H_
+#define _OBT_H_
+
+#ident "$Id$"
+
+#include <stdarg.h>
+
+#include "memory_manager_1.h"
+#include "object_representation.h"
+#include "class_object.h"
+
+/*
+ * TEMPLATE BASE CLASS MACROS
+ *
+ * Note :
+ *    These are used to access the base class/object from an object
+ *    template.  The rule is, if the base_class fields are NULL then
+ *    this is a normal template and the class & object fields point
+ *    to the "real" objects.  If the base_class fields are non-NULL then
+ *    this is a template on a virtual class.  The class & object fields
+ *    then point to the virtual class/object and the base_class fields
+ *    point to the "real" class & object.
+ *
+ */
+
+#define OBT_BASE_OBJECT(template_ptr) \
+  (((template_ptr)->base_object != NULL) ? \
+   (template_ptr)->base_object : (template_ptr)->object)
+
+#define OBT_BASE_CLASS(template_ptr) \
+  (((template_ptr)->base_class != NULL) ? \
+   (template_ptr)->base_class : (template_ptr)->class_)
+
+#define OBT_BASE_CLASSOBJ(template_ptr) \
+  (((template_ptr)->base_classobj != NULL) ? \
+   (template_ptr)->base_classobj : (template_ptr)->classobj)
+
+/*
+ * ERROR MACROS
+ *
+ * Note :
+ *    Shorthand macros for common calls to the error message system.
+ *
+ */
+
+#define WARN(error, code) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
+
+#if defined(WINDOWS) && defined(ERROR)
+#undef ERROR
+#endif /* WINDOWS && ERROR */
+
+#define ERROR(error, code) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
+
+#define ERROR1(error, code, arg1) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
+
+#define ERROR2(error, code, arg1, arg2) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); } while (0)
+
+#define ERROR3(error, code, arg1, arg2, arg3) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); } while (0)
+
+
+/*
+ * ATT_IS_UNIQUE
+ *
+ * Note :
+ *    Checks to see if an attribute has the UNIQUE integrity constraint.
+ *
+ */
+
+#define ATT_IS_UNIQUE(att) \
+  (classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_PRIMARY_KEY, NULL) || \
+   classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_UNIQUE, NULL) || \
+   classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_REVERSE_UNIQUE, NULL))
+
+/*
+ * OBJ_TEMPASSIGN
+ *
+ * Note :
+ *    Substructure of OBJ_TEMPLATE.  Used to store information about
+ *    a pending attribute assignment.
+ *
+ */
+
+typedef struct obj_tempassign
+{
+
+  struct obj_template *obj;	/* if new object assignment */
+  DB_VALUE *variable;		/* if non-object assignment */
+
+  /*
+   * cache of attribute definition, must be verified as part
+   * of the outer template validation
+   */
+  SM_ATTRIBUTE *att;
+
+  /* used for UPDATE templates with triggers */
+  DB_VALUE *old_value;
+
+  unsigned is_default:1;
+  unsigned is_auto_increment:1;
+
+} OBJ_TEMPASSIGN;
+
+/*
+ * OBJ_TEMPLATE
+ *
+ * Note :
+ *    Used to define a set of attribute assignments that are to be
+ *    considered as a single operation.  Either all of the assignments
+ *    will be applied or none.
+ *
+ */
+
+typedef struct obj_template
+{
+
+  /* edited object, NULL if insert template */
+  /*
+   * garbage collector tickets are not required for the object & base_object
+   * fields as the entire object template area is registered for scanning by
+   * area_create().
+   */
+  MOP object;
+
+  /* class cache, always set, matches the "object" field  */
+  MOP classobj;
+  SM_CLASS *class_;
+
+  /* base class cache, set only if class cache has a virtual class */
+  MOP base_classobj;
+  SM_CLASS *base_class;
+  MOP base_object;
+
+  /* class cache validation info */
+  int tran_id;			/* transaction id at the time the template was created */
+  unsigned int schema_id;	/* schema counter at the time the template was created */
+
+  /* template assignment vector */
+  OBJ_TEMPASSIGN **assignments;
+
+  /* Number of assignments allocated for the vector */
+  int nassigns;
+
+  /* optional address to store new object pointer when created */
+  DB_VALUE *label;
+
+  /* Used to detect cycles in the template hierarchy */
+  unsigned int traversal;
+
+  /* write lock flag */
+  unsigned write_lock:1;
+
+  /* for detection of cycles in template hierarchy */
+  unsigned traversed:1;
+
+  /*
+   * set if this is being used for the "old" temporary object in
+   * trigger processing
+   */
+  unsigned is_old_template:1;
+
+  /*
+   * Set if we're updating class attributes rather than instance attributes.
+   * This happens when the object and the class are the same.
+   */
+  unsigned is_class_update:1;
+
+  /*
+   * Set if we're doing bulk updates to disable unique checking from
+   * templates.
+   */
+  unsigned check_uniques:1;
+
+  /*
+   * Set if we ever make an assignment for an attribute that has the
+   * UNIQUE constraint.  Speeds up a common test.
+   */
+  unsigned uniques_were_modified:1;
+
+  /* Set if we ever make an assignment for a shared attribute. */
+  unsigned shared_was_modified:1;
+
+  /* Set if we should free the template after it is applied */
+  unsigned discard_on_finish:1;
+
+  /*
+   * true if we ever make an assignment for an attribute that has the
+   * FOREIGN KEY constraint.  Speeds up a common test.
+   */
+  unsigned is_fkeys_were_modified:1;
+} OBJ_TEMPLATE, *OBT;
+
+/*
+ * State used when creating templates, to indicate whether unique constraint
+ * checking is enabled.
+ * This state can be modifed using obt_enable_unique_checking()
+ */
+extern bool obt_Check_uniques;
+
+/*
+ * State variable used when creating object template, to indicate whether enable
+ * auto increment feature
+ */
+extern bool obt_Enable_autoincrement;
+
+
+/*
+ *
+ *       		   OBJECT TEMPLATE FUNCTIONS
+ *
+ *
+ */
+
+
+extern OBJ_TEMPLATE *obt_def_object (MOP class_);
+extern OBJ_TEMPLATE *obt_edit_object (MOP object);
+extern int obt_quit (OBJ_TEMPLATE * template_ptr);
+
+extern int obt_set (OBJ_TEMPLATE * template_ptr, const char *attname,
+		    DB_VALUE * value);
+extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
+			OBJ_TEMPLATE * value);
+
+extern void obt_set_label (OBJ_TEMPLATE * template_ptr, DB_VALUE * label);
+extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
+extern bool obt_enable_unique_checking (bool new_state);
+extern int obt_update (OBJ_TEMPLATE * template_ptr, MOP * newobj);
+extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
+		       int base_assignment, DB_VALUE * value,
+		       SM_VALIDATION * valid);
+
+/*
+ *
+ *                             UTILITY FUNCTIONS
+ *
+ *
+ */
+extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att,
+				       DB_VALUE * proposed_value,
+				       SM_VALIDATION * valid);
+extern int obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
+				int check_non_null);
+extern void obt_area_init (void);
+extern int obt_find_attribute (OBJ_TEMPLATE * template_ptr,
+			       int use_base_class, const char *name,
+			       SM_ATTRIBUTE ** attp);
+extern int obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
+			 DB_VALUE * value);
+extern int obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr);
+extern void obt_retain_after_finish (OBJ_TEMPLATE * template_ptr);
+
+#endif /* _OBT_H */

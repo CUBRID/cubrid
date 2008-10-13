@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<methodCall>
+<methodName>validator1.simpleStructReturnTest</methodName>
+<params>
+<param>
+	<value><i4>55</i4></value>
+	</param>
+</params>
+</methodCall>

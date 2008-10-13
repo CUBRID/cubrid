@@ -1,0 +1,59 @@
+XMLRPC-EPI
+
+This library is intended for use by those trying to implement XMLRPC 
+support (http://www.xmlrpc.org) in their C programs.  It was written 
+because the author could not find any fast, complete implementations of 
+XMLRPC, most of them thus far having been written in interpreted 
+languages.  It incorporates a few ideas from a previous C effort, 
+Expat-Ensor.  See http://xml.ensor.org for more info on that project.  
+
+It has been demonstrated fully compliant with the XMLRPC spec,
+having passed the test suite at http://validator.xmlrpc.com.
+
+NEW! Shared libexpat support
+
+[unix systems]
+With the autotools update the default option to build against a shared
+libexpat has been added. The system will search /usr/include/ for expat/h
+and /usr/lib/ for libexpat.* if you have these files in another location
+please specifcy on the configure command line
+./configure --with-expat=/location/to/expat
+
+If your distro does not come with a libexpat, please get the latest 
+version from http://expat.sourceforge.net
+
+[windows systems]
+Please download and install libexpat from http://expat.sourceforge.net, a
+windows setup.exe is avaiable for download and the visual studio project files
+are set to look in the location that the expat installer uses :-
+C:\Program Files\Expat 2.0.1\
+
+NEW! EXPERIMENTAL support for SOAP.
+
+Experimental support for SOAP is now included. Both XMLRPC and SOAP
+can be read/written by the library, and the application need not worry 
+about it, IE, there is a single API that works for both, and the choice
+is made at serialization time. When reading, the XML vocabulary will be
+automatically detected.  For an example of using SOAP, see sample.c in 
+the samples directory.  
+
+Various iterations of this code have been/are running at 
+Epinions.com and are sufficiently fast for the high traffic volume this 
+site encounters, with several xmlrpc type requests generated for each user 
+http request.  No specific speed claims are made.  Your mileage may vary.
+
+If you have robodoc installed on your system, API Documentation can be 
+generated from source like this:
+ cd src
+ make html
+ lynx xmlrpc_mi.html
+
+Sample programs are in ./sample.  See ./sample --help or the source files 
+for more info on these.  
+
+It is the author's hope that this code will be found useful by someone, 
+and would like to hear about how and where it is being used, or 
+suggestions for improvement.  
+
+Signed
+Dan Libby <dan@libby.com>, Epinions.com, Inc.

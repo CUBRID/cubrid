@@ -1,0 +1,1 @@
+#define PHP_CUBRID_VERSION "8.1.0.1119"

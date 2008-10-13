@@ -1,0 +1,313 @@
+//////////////////////////////////////////////////////////////////////////////
+//  EVENT:      Installing event is sent just before files for the component: 
+//              CUBRID are transferred. 
+///////////////////////////////////////////////////////////////////////////////
+export prototype CUBRID_Installing();
+function CUBRID_Installing()
+	NUMBER	nResult;
+	STRING	szProgram, PROGRAM;
+	STRING	szKey, szKeyTray;
+	NUMBER	nvType, nvSize;
+	STRING	svNumValue;
+
+begin
+    if( CreateRegistrySet ("CUBRID") < 0 ) then
+    	if ( nvCodePage = 949 ) then
+			MessageBox ("큐브리드 사용을 위한 레지스트리 구성을 생성할 수 없습니다.",SEVERE);
+    	else
+			MessageBox ("Unable to create registry set for CUBRID.",SEVERE);
+		endif;
+		abort;
+	endif;
+
+	Disable(LOGGING) ;
+	szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";      
+
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	RegDBGetKeyValueEx (szKey, "Path" , nvType, svNumValue, nvSize);
+	nResult = RegDBSetKeyValueEx(szKey, "Path", REGDB_STRING_EXPAND, TARGETDIR^"\\bin\\;" + svNumValue  , -1);
+
+	Enable(LOGGING) ;
+end;
+
+//////////////////////////////////////////////////////////////////////////////
+//  EVENT:      Installed event is sent just after files for the component: 
+//              CUBRID are transferred. 
+///////////////////////////////////////////////////////////////////////////////
+export prototype CUBRID_Installed();
+function CUBRID_Installed()
+	STRING	PROGRAM, Service_Path;
+	STRING  TARGET_PATH, TARGET_DIR;
+	STRING  szDBPath, svResult, szCaption;
+	STRING  ordblist_src, ordblist_target;
+	STRING  SCH_FILE, OBJ_FILE;
+	int     nResult;
+begin
+	RefreshEnvironment();
+
+	Delay(3);
+/*
+	if (cp_old_dbtxt = TRUE) then
+		ordblist_src = TARGETDIR^"databases\\databases.txt";
+		ordblist_target = TARGETDIR^"Databases\\databases.txt";
+		LongPathToQuote(ordblist_src, TRUE);
+		LongPathToQuote(ordblist_target, TRUE);
+
+		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + ordblist_target, WAIT) ;
+		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c copy " + ordblist_src + " " + ordblist_target, WAIT) ;
+	endif;
+*/	
+	// Register CUBRID Service	
+	
+	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+	Service_Path = TARGETDIR + "\\bin";
+	LongPathToQuote (PROGRAM, TRUE);
+	LongPathToQuote (Service_Path, TRUE);
+	
+	if( LaunchAppAndWait (PROGRAM, "-i " + Service_Path, WAIT ) < 0) then  
+		if ( nvCodePage = 949 ) then 
+			MessageBox("윈도우 서비스에 등록되지 않았습니다. : " + PROGRAM, WARNING);
+		else
+			MessageBox("Sorry, Failed to register with Windows Service : " + PROGRAM, WARNING);
+		endif;
+	endif;
+
+	// Start CUBRIDService
+	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+	LongPathToQuote(PROGRAM, TRUE);
+	LaunchAppAndWait(PROGRAM, "-start", WAIT);
+
+	Delay(1);
+              
+    if ( nvCodePage = 949 ) then
+		svResult = "샘플 데이터베이스(demodb)를 생성하겠습니까?";
+		szCaption = "샘플 데이터베이스(demodb)를 확인하십시오. ";
+    else
+		svResult = "Do you want to make sample databases(demodb)?";
+		szCaption = "Confirm make demodb";
+	endif;
+	nResult = SprintfBox(MB_YESNO,szCaption,"%s",svResult);
+
+	if (nResult == IDYES) then
+		szDBPath = TARGETDIR^"\\databases\\demodb";
+		DeleteFile(szDBPath^"\\*");
+
+		// make demodb database
+		TARGET_DIR = TARGETDIR + "\\databases\\demodb";
+		if (ChangeDirectory (TARGET_DIR) = 0) then
+			TARGET_PATH = TARGETDIR;
+			PROGRAM = TARGETDIR + "\\bin\\makedemo_is.bat";
+			SCH_FILE = TARGETDIR + "\\bin\\demodb_schema";
+			OBJ_FILE = TARGETDIR + "\\bin\\demodb_objects";
+						
+			LongPathToQuote(PROGRAM, TRUE);
+			LongPathToQuote(TARGET_PATH, TRUE);
+			LaunchAppAndWait(PROGRAM, "demodb " + TARGET_PATH, WAIT) ;
+			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
+			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + SCH_FILE, WAIT) ;
+			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + OBJ_FILE, WAIT) ;
+		endif;
+	endif;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//  EVENT:      Installing event is sent just before files for the component: 
+//              cubridmanager are transferred. 
+///////////////////////////////////////////////////////////////////////////////
+export prototype cubridmanager_Installing();
+function cubridmanager_Installing()
+	STRING	szKey;
+	NUMBER	nvType, nvSize, nResult, ExitCode;
+	STRING	svNumValue;
+	STRING        szProgram;
+	STRING  szDir, szFile;
+begin
+    // registry 
+    if( CreateRegistrySet ("cubridmanager") < 0 ) then
+    	if ( nvCodePage = 949 ) then
+			MessageBox ("큐브리드 매니저 클라이언트를 위한 레지스트리 구성을 생성할 수 없습니다.",SEVERE);
+    	else
+			MessageBox ("Unable to create registry set for CUBRID Manager Client.",SEVERE);
+		endif;
+		abort;
+	endif;
+
+	szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	RegDBGetKeyValueEx (szKey, "PATH" , nvType, svNumValue, nvSize);
+
+	Disable(LOGGING);         
+	nResult = RegDBSetKeyValueEx(szKey, "PATH", REGDB_STRING_EXPAND, TARGETDIR^"\\Manager\\cmclient\\;"+ svNumValue  , -1);
+	Enable(LOGGING);
+	
+	// remove old meta-data file if exist.
+	szProgram = WINSYSDIR^"\\cmd.exe";
+	LongPathToQuote(szProgram, TRUE);
+
+	szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.core.runtime";
+	if (ExistsDir(szDir) == EXISTS) then
+		// .contributions.*
+		szFile = szDir^".contributions.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);   
+
+		// .extraData.*
+		szFile = szDir^".extraData.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		
+		// .mainData.*
+		szFile = szDir^".mainData.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+
+		// .orphans.*
+		szFile = szDir^".orphans.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		
+		// .table.*
+		szFile = szDir^".table.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		
+		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.core.runtime\\.manager";
+		if (ExistsDir(szDir) == EXISTS) then
+			// .fileTable.*
+			szFile = szDir^".fileTable.*";
+			LongPathToQuote(szFile, TRUE);
+			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+
+			// .fileTableLock
+			szFile = szDir^".fileTableLock";
+			LongPathToQuote(szFile, TRUE);
+			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode); 
+		endif;
+	endif;
+
+	szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.osgi";
+	if (ExistsDir(szDir) == EXISTS) then
+		// .bundledata.*
+		szFile = szDir^".bundledata.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		
+		// .lazy.*
+		szFile = szDir^".lazy.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		                                                                         
+		// .state.*
+		szFile = szDir^".state.*";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		
+		//	splash.bmp
+		szFile = szDir^"splash.bmp";
+		LongPathToQuote(szFile, TRUE);
+		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+
+		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.osgi\\.manager";
+		if (ExistsDir(szDir) == EXISTS) then
+			// .fileTable.*	
+			szFile = szDir^".fileTable.*";
+			LongPathToQuote(szFile, TRUE);
+			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+                                                                            
+			// .fileTableLock	
+			szFile = szDir^".fileTableLock";
+			LongPathToQuote(szFile, TRUE);
+			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		endif;
+	endif;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//  EVENT:      Uninstalling event is sent just before files for the component:
+//              CUBRID are removed during uninstallation. 
+///////////////////////////////////////////////////////////////////////////////
+ 
+export prototype CUBRID_UnInstalling();
+function CUBRID_UnInstalling()
+	STRING PROGRAM, szKeyTray, svNumValue, TARGET_PATH, TARGET_DIR;
+	NUMBER nResult, nvType, nvSize;
+begin
+	Disable(LOGGING);
+	szKeyTray = "Software\\Microsoft\\Windows\\CurrentVersion\\run";
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	
+	Delay(2);
+
+	if RegDBGetKeyValueEx( szKeyTray, "CUBRID_Service_Tray" , nvType, svNumValue, nvSize ) >= 0 then
+		RegDBDeleteValue( szKeyTray, "CUBRID_Service_Tray" );
+	endif;	
+
+	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
+	LongPathToQuote(PROGRAM, TRUE);
+	if (LaunchAppAndWait (PROGRAM, "-u", WAIT) < 0) then 
+//		MessageBox("Sorry, Fail to unregiste to NT Service", WARNING);
+	endif;          
+
+	PROGRAM = TARGETDIR + "\\bin\\setupManage.exe ";
+	TARGET_PATH = TARGETDIR;
+	LongPathToQuote(TARGET_PATH, TRUE);
+	LongPathToQuote(PROGRAM, TRUE);	
+	nResult = LaunchAppAndWait (PROGRAM,  " -d " + TARGET_PATH, WAIT );
+	if nResult < 0 then
+//		MessageBox ("Sorry, Fail to remove the path information.", WARNING);
+	endif;
+
+    RefreshEnvironment();
+    
+	Enable(LOGGING) ;
+
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//  EVENT:      Installing event is sent just before files for the component: 
+//              ODBC are transferred. 
+///////////////////////////////////////////////////////////////////////////////
+export prototype ODBC_Installing();
+function ODBC_Installing()
+	STRING szKey, szOldKey;
+	NUMBER nResult;
+begin
+    // registry 
+    if( CreateRegistrySet ("ODBC") < 0 ) then
+		MessageBox ("Unable to create registry set.",SEVERE);
+	endif;
+
+    // registry 
+	szKey = "SOFTWARE\\ODBC\\ODBCINST.INI\\CUBRID Driver";
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+
+	Disable(LOGGING);
+
+	nResult = RegDBSetKeyValueEx(szKey, "DriverODBCVer", REGDB_STRING, ODBC_VERSION , -1);
+	
+	Enable(LOGGING);
+
+end;
+
+export prototype OLEDB_Installed();
+function OLEDB_Installed()
+	STRING PROGRAM;
+begin
+	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
+	LongPathToQuote (PROGRAM, TRUE);
+	if(LaunchAppAndWait("regsvr32.exe", "/s " + PROGRAM, WAIT) < 0)then
+		MessageBox("Sorry, Failed to register CUBRIDProvider", WARNING);
+	endif;
+end;
+
+export prototype OLEDB_UnInstalling();
+function OLEDB_UnInstalling()
+	STRING PROGRAM;
+begin
+	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
+	LongPathToQuote(PROGRAM, TRUE);
+	if(LaunchAppAndWait("regsvr32.exe", "/s /u " + PROGRAM, WAIT) < 0)then
+		MessageBox("Sorry, Failed to remove CUBRIDProvider from the register.", WARNING);
+	endif;
+end;

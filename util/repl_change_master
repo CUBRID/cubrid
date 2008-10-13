@@ -1,0 +1,252 @@
+#!/bin/ksh
+###############################################################################
+#  Script Name : repl_change_master
+#
+#  Overview 
+#    
+###############################################################################
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+print_msg() {
+  if [ "$kor_yn" = "yes" ]
+  then
+    case $1 in 
+       ERROR_EXIT) 
+         echo "################################################################"
+         echo " ERROR : 오류로 인해 master 변경을 종료 합니다.  "
+         echo "################################################################"
+          ;;
+       START) 
+         echo "################################################################"
+         echo "# < 실행 순서 >                                                #"
+         echo "# STEP 1 : 새로 master로 변경되는 DB의 마지막 LSA를 가져 온다. #"
+         echo "# STEP 2 : 모든 slave의 dist_db에 master의 정보를 새로 변경된  #"
+         echo "#          master의 정보로 수정한다.                           #"
+         echo "################################################################"
+          ;;
+       STEP1) 
+         echo
+         echo " STEP 1 : 새로 master로 변경되는 DB의 마지막 LSA를 가져 온다."
+         echo
+          ;;
+       STEP2) 
+         echo
+         echo " STEP 2 : 모든 slave의 dist_db에 master의 정보를 새로 변경된"
+         echo "          master의 정보로 수정한다."
+         echo
+          ;;
+       E_LSA) 
+         echo 
+         echo " Log LSA가 정확하지 않습니다."
+          ;;
+       E_CONFIG_FILE) 
+         echo 
+         echo " $2의 파일 내용이 정확 하지 않습니다."
+         echo " ### servers_info_file 형식 ###"
+         echo " # 첫번째 줄 : old_master_name old_master_hostname new_master_name new_master_hostname "
+         echo " # 두번째 줄부터 : dist_db_name dist_db_hostname dist_db_password"
+          ;;
+       END) 
+         echo "################################################################"
+         echo " MASTER 변경 작업을 종료 합니다."
+         echo "################################################################"
+          ;;
+       *)
+          ;;
+    esac
+  else
+    case $1 in 
+       ERROR_EXIT) 
+         echo "################################################################"
+         echo " ERROR : Be finished MASTER modification because of ERROR. "
+         echo "################################################################"
+          ;;
+       START) 
+         echo "################################################################"
+         echo "# < run step >                                                 #"
+         echo "# STEP 1 : load  the last LSA of DB to modify  into new master.#"
+         echo "# STEP 2 : update  master info.                                #"
+         echo "#          to newly modifyed master info. in dist_db of all slave.#"
+         echo "################################################################"
+          ;;
+       STEP1) 
+         echo
+         echo " STEP 1 : load  the last LSA of DB to modify  into new master. "
+         echo
+          ;;
+       STEP2) 
+         echo
+         echo " STEP 2 :update  master info. "
+         echo "         to newly modifyed master info. in dist_db of all slave. "
+         echo
+          ;;
+       E_LSA) 
+         echo 
+         echo " ERROR : invalid Log LSA!!."
+          ;;
+       E_CONFIG_FILE) 
+         echo 
+         echo " $2 of file  is not correct."
+         echo " ### servers_info_file format ###"
+         echo " # The first line : old_master_name old_master_hostname new_master_name new_master_hostname "
+         echo " # The second line : dist_db_name dist_db_hostname dist_db_password"
+          ;;
+       END) 
+         echo "################################################################"
+         echo "  Be finished MASTER modification. "
+         echo "################################################################"
+          ;;
+       *)
+          ;;
+    esac
+  fi
+}
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+usage() {
+  exec_name=`basename $0`
+  echo "usage: $exec_name servers_info_file" 1>&2
+  echo "       <servers_info_file format>" 1>&2
+  echo "       master_name master_host new_master_name new_master_host " 1>&2
+  echo "       dist_name dist_host dist_passwd" 1>&2
+  echo "       dist_name dist_host dist_passwd" 1>&2
+  exit 1
+}
+
+###############################################################################
+# function :  for processing error cases, clear all the temporary files
+###############################################################################
+error_exit() {
+  echo
+  print_msg ERROR_EXIT
+  rm .result.tmp
+  echo
+  exit 1
+}
+
+###############################################################################
+# trying to get root
+###############################################################################
+rootdir="$CUBRID"
+
+lang="$CUBRID_LANG"
+if [ -z "$lang" ]
+then
+  lang="en_US"
+fi
+
+kor_yn="no"
+if [ ! -z "$lang" ] && [ "$lang" = "ko_KR.euckr" ]
+then
+  kor_yn="yes"
+fi
+
+print_msg START
+
+CurDir=`eval pwd`
+
+###############################################################################
+# STEP 0 : read the parameters 
+###############################################################################
+servers_file="$1"
+
+if [ -z "$servers_file" ]
+then
+  usage
+fi
+
+###############################################################################
+# STEP 1 : get master lsa using cubrid unload
+###############################################################################
+print_msg STEP1
+
+master_name=""
+master_hostname=""
+while read master_name_old master_host_old master_name_new master_host_new
+do
+    break
+done < $servers_file
+
+if [ -z "$master_name_old" ] || [ -z "$master_host_old" ]
+then
+  print_msg E_CONFIG_FILE "$servers_file"
+  error_exit
+fi
+
+if [ -z "$master_name_new" ] || [ -z "$master_host_new" ]
+then
+  print_msg E_CONFIG_FILE "$servers_file"
+  error_exit
+fi
+
+# unload classes
+echo "" > .switch.tmp
+echo "$rootdir/bin/cubrid unloaddb -C -i .switch.tmp $master_name_new@$master_host_new > .result.tmp"
+$rootdir/bin/cubrid unloaddb -C -i .switch.tmp $master_name_new@$master_host_new > .result.tmp
+# error check
+if [ $? -ne 0 ]
+then
+  cat .result.tmp
+  error_exit
+fi
+
+pageid=-1
+offset=-1
+while read name dum2 pageid offset
+do
+  if [ "$name" = "LSA" ]
+  then
+    pageid=$pageid
+    offset=$offset
+    break;
+  fi 
+done < unload.log
+
+# check Log LSA
+if [ "$pageid" -lt 0 ] || [ "$offset" -lt 0 ]
+then
+  print_msg E_LSA "$pageid" "$offset"
+  error_exit
+fi
+
+###############################################################################
+# STEP 2 : update distdb info 
+###############################################################################
+print_msg STEP2
+
+count=1
+while read dist_name dist_host dist_passwd
+do
+    if [ $count -ne 1 ]
+    then
+        sql="update trail_info set final_pageid=$pageid,
+                                   final_offset=$offset
+             where master_dbid=(select dbid
+                         from master_info
+                         where dbname='$master_name_old' 
+                               and master_ip='$master_host_old');
+             update master_info set dbname='$master_name_new', 
+                                    master_ip='$master_host_new' 
+             where dbname='$master_name_old' 
+                   and master_ip='$master_host_old';"
+        sql="$sql commit;"
+        passwd="-p $dist_passwd"
+        if [ -z $dist_passwd ]
+        then
+            passwd=""
+        fi
+        $rootdir/bin/csql --no-auto-commit $dist_name@$dist_host -u dba $passwd -c "$sql" > .result.tmp
+        if [ $? -ne 0 ]
+        then
+            cat .result.tmp
+            error_exit
+        fi
+    fi
+    (( count=count+1 ))
+done < $servers_file
+
+print_msg END

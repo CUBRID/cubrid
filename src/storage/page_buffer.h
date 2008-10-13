@@ -1,0 +1,128 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ *
+ * pb.h - PAGE BUFFER MANAGMENT MODULE (AT SERVER)
+ */
+
+#ifndef _PAGE_BUFFER_H_
+#define _PAGE_BUFFER_H_
+
+#ident "$Id$"
+
+#include "config.h"
+
+#include "error_manager.h"
+#include "common.h"
+#include "disk_manager.h"
+#include "lock.h"
+
+#define NEW_PAGE		true	/* New page constant for page fetch */
+#define OLD_PAGE		false	/* Old page constant for page fetch */
+#define FREE			true	/* Free page buffer */
+#define DONT_FREE		false	/* Don't free the page buffer */
+
+/* Set a vpid with values of volid and pageid */
+#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
+  do {							      \
+    (vpid_ptr)->volid  = (volid_value);			      \
+    (vpid_ptr)->pageid = (pageid_value);		      \
+  } while(0)
+
+/* Set the vpid to an invalid one */
+#define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
+
+/* vpid1 == vpid2 ? */
+#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
+  ((vpid_ptr1) == (vpid_ptr2) ||                              \
+   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
+    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
+
+/* Is vpid NULL ? */
+#define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
+
+/* public page latch mode */
+enum
+{
+  PGBUF_NO_LATCH = 10,
+  PGBUF_LATCH_READ,
+  PGBUF_LATCH_WRITE,
+  PGBUF_LATCH_FLUSH,
+  PGBUF_LATCH_VICTIM,
+  PGBUF_LATCH_INVALID,
+  PGBUF_LATCH_FLUSH_INVALID,
+  PGBUF_LATCH_VICTIM_INVALID
+};
+
+typedef enum
+{
+  PGBUF_UNCONDITIONAL_LATCH,
+  PGBUF_CONDITIONAL_LATCH
+} PGBUF_LATCH_CONDITION;
+
+extern unsigned int pgbuf_hash_vpid (const void *key_vpid,
+				     unsigned int htsize);
+extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
+extern int pgbuf_initialize (void);
+extern void pgbuf_finalize (void);
+extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p,
+				      const VPID * vpid, int newpg, int mode,
+				      int retry);
+extern PAGE_PTR pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+			     int free_page);
+extern PAGE_PTR pgbuf_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
+			   int newpg, int requestmode,
+			   PGBUF_LATCH_CONDITION condition);
+extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
+extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p,
+				      PAGE_PTR pgptr);
+extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
+extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
+extern int pgbuf_flush_all_unfixed_and_set_las_as_null (THREAD_ENTRY *
+							thread_p,
+							VOLID volid);
+extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p);
+extern void pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
+				     const LOG_LSA * last_chkpt_lsa,
+				     LOG_LSA * smallest_lsa);
+extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
+				 int start_offset, int length, void *area,
+				 bool do_fetch);
+extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
+				   int start_offset, int length, void *area,
+				   bool do_fetch);
+extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+			     int free_page);
+extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
+extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				     const LOG_LSA * lsa_ptr);
+extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
+extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
+extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
+extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
+extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
+extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
+extern void pgbuf_refresh_max_permanent_volume_id (VOLID volid);
+extern void pgbuf_cache_permanent_volume_for_temporary (VOLID volid);
+extern void pgbuf_force_to_check_for_interrupts (void);
+extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
+extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
+extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p,
+					PAGE_PTR pgptr);
+extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p,
+					PAGE_PTR pgptr);
+extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
+extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
+					     DKNPAGES npages);
+#if defined(SERVER_MODE)
+extern int pgbuf_lock_save_mutex (PAGE_PTR pgptr);
+extern int pgbuf_unlock_save_mutex (PAGE_PTR pgptr);
+#endif /* SERVER_MODE */
+
+#if defined(CUBRID_DEBUG)
+extern void pgbuf_dump_if_any_fixed (void);
+#endif
+
+#endif /* _PAGE_BUFFER_H_ */

@@ -1,0 +1,1061 @@
+#!/bin/ksh
+###############################################################################
+#  Script Name : repl_make_slavedb
+#
+#  Overview 
+#     This script provides the simple interface to construct of slave db
+#     Following jobs are executed step by step.
+#    
+#     STEP 0 : read the parameters
+#     STEP 1 : add db info to $CUBRID_DATABASES/databases.txt
+#     STEP 2 : restore the master db
+#     STEP 3 : connect to the slave db
+#     STEP 4 : rename the master db 
+#     STEP 5 : Start the slave db server
+#     STEP 6 : get the password of DBA 
+#     STEP 7 : add the replication user
+#     STEP 8 : change owner for the all classes
+#     STEP 9 : drop user defined triggers
+#     STEP 10: set the parameters
+#
+###############################################################################
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+usage() {
+  exec_name=`basename $0`
+  echo "usage: $exec_name master_db_name slave_db_name -u userid -p passwd" 1>&2
+  echo "       userid & passwd would be added for replication process "
+  exit 1
+}
+
+###############################################################################
+# function : print message
+###############################################################################
+print_mes_h() {
+   case $1 in
+    STEP1)
+      echo "  STEP 1 : 마스터 DB의 백업본을 복구하기 위한 사전 작업을 진행합니다."
+      ;;
+    STEP11)
+      echo "       a. 구축할 슬레이브 DB의 볼륨이 저장될 디렉토리 경로를 입력하시오."
+      printf "           $CurDir이면 엔터 키를 입력하시오. >> "
+      ;;
+    STEP12)
+      echo "       b. 구축할 슬레이브 DB의 로그 볼륨이 저장될 디렉토리 경로를 입력하시오."
+      printf "           $CurDir이면 엔터 키를 입력하시오. >> "
+      ;;
+    STEP2)
+      echo "  STEP 2 : 슬레이브 DB 백업본을 복구합니다."
+      echo "          - 백업 파일과 백업볼륨 정보 파일이 반드시 현재 디렉토리에 존재해야 합니다."
+      ;;
+    PROG21)
+      echo "          - 슬레이브 DB를 복구하고 있습니다. 잠시만 기다려 주시기 바랍니다..."
+      ;;
+    PROG22)
+      echo "          - 슬레이브 DB 가 복구되었습니다."
+      ;;
+    STEP3)
+      echo "  STEP 3 : 복구된 최종 로그 번호와 슬레이브 DB 정보를 배포 DB에 기록합니다."
+      ;;
+    STEP31)
+      printf "       a. 배포 DB 이름을 입력하시오. >> "
+      ;;
+    STEP311)
+      echo "           - 배포 DB가 같은 호스트에 없습니다. "
+      printf "           -  배포 DB가 위치한 호스트의 IP 주소를 입력하시오. >>  "
+      ;;
+    STEP32)
+      printf "       b. 배포 DB에 접속하기 위한 DBA 계정의 암호를 입력하시오. >> "
+      ;;
+    STEP4)
+      echo "  STEP 4 : 슬레이브 DB를 생성하고 구동합니다." 
+      ;;
+    STEP5)
+      echo "  STEP 5 : 슬레이브 DB 구축 후 사후 처리 단계"
+      echo "          - 이 작업을 위해서는 마스터 DB의 DBA 계정이 필요합니다."
+      ;;
+    STEP51)
+      printf "          - 마스터 DB의 DBA 계정을 입력하시오. >> "
+      ;;
+    WARN1)
+      echo  "  WARNING: '$userid' 이미 '$slave_db_name'에 등록되어 있습니다."
+      ;;
+    REPL_ID_USE)
+      printf  "   이 ID를 복제용으로 계속 사용하시겠습니까? (y/n) >> "
+      ;;
+    REPL_CHANGE_PW)
+      echo "   '$userid'의 암호는 입력하신 '$passwd'로 변경됩니다." 
+      ;;
+    INPUT_ID)
+      printf "   새로운 사용자 계정을 입력하시오. >> "
+      ;;
+    INPUT_PW)
+      printf "   새로운 암호를 입력하시오. >> "
+      ;;
+    STEP6)
+      echo "  STEP 6 :  파라미터 설정 단계"
+      ;;
+    STEP7)
+      echo "  STEP 7 : 복제 그룹 설정 단계"
+      echo "         - 복제 대상 클래스를 선정합니다. "
+      ;;
+  esac
+}
+
+print_mes_e() {
+   case $1 in
+    STEP1)
+      echo "  STEP 1 : Preprocess to restore the master database..."
+      ;;
+    STEP11)
+      echo "       a. Please provide the directory path of data volume. "
+      printf "           Just enter if the target directory is $CurDir >> "
+      ;;
+    STEP12)
+      echo "       b. Please provide the directory path of log volume. "
+      printf "           Just enter if the target directory is $CurDir >> "
+      ;;
+    STEP2)
+      echo "  STEP 2 : Restore the master database backup to make the slave database..."
+      echo "          - Backup files and volume information file should be"
+      echo "            in the current directory."
+      ;;
+    PROG21)
+      echo "          - Now, restoring the master database backup, please wait a moment..."
+      ;;
+    PROG22)
+      echo "          - Slave database is created."
+      ;;
+    STEP3)
+      echo "  STEP 3 :  Insert the necessary information into the distributor database..."
+      ;;
+    STEP31)
+      printf "       a. Provide the name of the distributor database. >> "
+      ;;
+    STEP311)
+      echo "           - The target distributor database does not exists in the host."
+      printf "           -  Please provide the IP address of the distributor database. >> "
+      ;;
+    STEP32)
+      printf "       b. Provide the password of the DBA of distributor database. >> "
+      ;;
+    STEP4)
+      echo "  STEP 4 : Start the slave database ..."
+      ;;
+    STEP5)
+      echo "  STEP 5 : Post process after starting up the slave database..."
+      echo "          - the DBA password of the master database is needed.."
+      ;;
+    STEP51)
+      printf "          - Provide the DBA password of the master database. >> "
+      ;;
+    WARN1)
+      echo  "  WARNING: '$userid' is already exists in '$slave_db_name'."
+      ;;
+    REPL_ID_USE)
+      printf  "   Do you want to use this ID for the replication? (y/n) >> "
+      ;;
+    REPL_CHANGE_PW)
+      echo "   The password of '$userid' would be set as '$passwd'."
+      ;;
+    INPUT_ID)
+      printf "   Please provide the new user id. >> "
+      ;;
+    INPUT_PW)
+      printf "   Please provide the new passwor.d >> "
+      ;;
+    STEP6)
+      echo "  STEP 6 : Set the replication parameters..."
+      ;;
+    STEP7)
+      echo "  STEP 7 : Set the replication group ..."
+      ;;
+  esac
+}
+
+print_mes() {
+  if [ "$kor_yn" = "yes" ]
+  then
+    print_mes_h $1 $2
+  else
+    print_mes_e $1 $2
+  fi
+}
+
+match_string ()
+{
+  MATCH=0
+  NOMATCH=90
+  PARAMS=2
+  BAD_PARAMS=91
+
+  [ $# -eq $PARAMS ] || return $BAD_PARAMS
+
+  _PARAM1=`eval echo "$1" | tr a-z A-Z`
+  _PARAM2=`eval echo "$2" | tr a-z A-Z`
+  case "$_PARAM1" in
+  "$_PARAM2") return $MATCH;;
+  *   ) return $NOMATCH;;
+  esac
+
+}
+
+###############################################################################
+# function :  for processing error cases, clear all the temporary files
+###############################################################################
+print_error_h() {
+  case $1 in
+    no_msg)
+      ;;
+    err_check_env)
+      printf " << ERROR >> 환경 변수 설정을 확인하시기 바랍니다."
+      echo "$2"
+      ;;
+    err_db_exists)
+      echo " << ERROR >> $2 이 이미 $3/databases.txt 에 있습니다."
+      ;;
+    err_directory_error)
+      echo " << ERROR >> 입력하신 디렉토리가 존재하지 않습니다."
+      ;;
+    err_file_error)
+      echo " << ERROR >> $2 이 존재하지 않습니다."
+      ;;
+    err_write_auth)
+      echo " << ERROR >> 디렉토리에 쓰기 권한이 없습니다 - $2"
+      ;;
+    err_restore)
+      echo " << ERROR >> 슬레이브 DB 복구 중 다음과 같은 오류가 발생하였습니다."
+      echo $2
+      ;;
+    err_cant_find_port)
+      echo " << ERROR >> 현재 이 호스트에서 수행되는 마스터의 포트 번호를 찾을 수 없습니다."
+      echo "       $rootdir/conf/cubrid.conf 파일의 cubrid_port_id를 확인하시기 바랍니다."
+      ;;
+    err_passwd)
+      echo " << ERROR >> 암호가 맞지 않습니다. "
+      ;;
+    err_connect_dist)
+      echo " << ERROR >> 배포 DB에 접속할 수 없습니다."
+      ;;
+    err_no_distdb_name)
+      echo " << ERROR >> 배포 DB명이 입력되지 않았습니다."
+      ;;
+    err_ip_addr)
+      echo " << ERROR >> IP 주소가 입력되지 않았습니다."
+      ;;
+    err_master_info)
+      echo " << ERROR >> '$distdb_name' DB의 MASTER_INFO 테이블에 필요한 정보가 없습니다."
+      echo "              배포 DB 상태를 점검하시기 바랍니다."
+      ;;
+    err_update_dist)
+      echo " << ERROR >> 배포 DB에 필요한 정보를 갱신하지 못했습니다."
+      echo "              입력값을 확인하시기 바랍니다."
+      ;;
+    err_add_user)
+      echo " << ERROR >> 암호 변경이 실패했습니다."
+      ;;
+  esac
+}
+
+print_error_e() {
+  case $1 in
+    no_msg)
+      ;;
+    err_check_env)
+      printf " << ERROR >> Check the environment variable."
+      echo "$2"
+      ;;
+    err_db_exists)
+      echo " << ERROR >> $2 is already exists in $3/databases.txt." 
+      ;;
+    err_directory_error)
+      echo " << ERROR >> Directory does not exists."
+      ;;
+    err_file_error)
+      echo " << ERROR >> $2 does not exists."
+      ;;
+    err_write_auth)
+      echo " << ERROR >> Write permission error for $2."
+      ;;
+    err_restore)
+      echo " << ERROR >> During restoring the slave databases.. "
+      echo $2
+      ;;
+    err_cant_find_port)
+      echo " << ERROR >> Can't find the TCP port number for the master process."
+      echo "             Please check 'cubrid_port_id' of $rootdir/conf/cubrid.conf"
+      ;;
+    err_passwd)
+      echo " << ERROR>> Invalid Password.."
+      ;;
+    err_connect_dist)
+      echo " << ERROR >> Can't connect to the distributor database."
+      ;;
+    err_no_distdb_name)
+      echo " << ERROR >> Invalid distributor database name."
+      ;;
+    err_ip_addr)
+      echo " << ERROR >> IP address should be provided."
+      ;;
+    err_master_info)
+      echo " << ERROR >> No information in MASTER_INFO table of '$distdb_name'" 
+      ;;
+    err_update_dist)
+      echo " << ERROR >> Can't update distributor database."
+      echo "             Please check input values.. "
+      ;;
+    err_add_user)
+      echo " << ERROR >> Can't add the target user. "
+      ;;
+  esac
+}
+
+error_exit() {
+
+  if [ "$kor_yn" = "yes" ]
+  then
+    print_error_h $2 $3 $4
+  else
+    print_error_e $2 $3 $4
+  fi
+
+  if [ $1 -eq 0 ]
+  then
+    exit 1
+  fi
+
+  if [ $1 -eq 1 ]
+  then
+     mv $rootdir_db/.slavedb.databases.txt $rootdir_db/databases.txt 
+     exit 1
+  fi
+
+  if [ $1 -eq 2 ]
+  then
+    $rootdir/bin/cubrid deletedb $master_db_name > /dev/null
+    exit 1
+  fi
+
+  if [ $1 -gt 2 ]
+  then
+    $rootdir/bin/cubrid server stop $slave_db_name > /dev/null
+    $rootdir/bin/cubrid deletedb $slave_db_name > /dev/null
+
+    exit 1
+  fi
+}
+
+debug_msg() {
+  if [ $debug = 'y' ]
+  then
+    case $2 in
+      sql)
+        echo "############## DEBUG INFO #################"
+        echo "$1 SQL : $3"
+        echo "###########################################"
+        ;;
+      *)
+        echo "############## DEBUG INFO #################"
+        echo "$1 : $2"
+        echo "###########################################"
+        ;;
+    esac
+  fi
+}
+
+CurDir=`eval pwd`
+
+###############################################################################
+# STEP 0 : read the parameters 
+###############################################################################
+master_db_name=$1
+slave_db_name=$2
+debug='n'
+
+while [ $# -ne 0 ]
+do
+  case $3 in 
+     -u) 
+        shift
+        userid=$3
+        ;;
+     -p)
+        shift
+        passwd=$3
+        ;;
+     -debug)
+        debug='y'
+        ;;
+     *)
+        ;;
+  esac
+  shift
+done
+
+#check inputs
+if [ -z "$master_db_name" ]
+then
+  usage
+fi
+if [ -z "$slave_db_name" ]
+then
+  usage
+fi
+if [ -z "$userid" ]
+then
+  usage
+fi
+
+###############################################################################
+# trying to get root
+###############################################################################
+RootDir="CUBRID"
+
+for i in $RootDir
+do
+  seevar="echo \$$i"
+  rootdir=`eval $seevar`
+  if [ -n "$rootdir" ]
+  then
+    break;
+  fi
+done
+
+if [ -z "$rootdir" ]
+then
+  error_exit 0 err_check_env "- CUBRID" 
+fi
+
+RootDir="CUBRID_DATABASES"
+
+for i in $RootDir
+do
+  seevar="echo \$$i"
+  rootdir_db=`eval $seevar`
+  if [ -n "$rootdir_db" ]
+  then
+    break;
+  fi
+done
+
+if [ -z "$rootdir_db" ]
+then
+  error_exit 0 err_check_env "- CUBRID_DATABASES" 
+fi
+
+lang="$CUBRID_LANG"
+if [ -z "$lang" ]
+then
+  lang="en_US"
+fi
+
+kor_yn="no"
+if [ ! -z "$lang" ] && [ "$lang" = "ko_KR.euckr" ]
+then
+  kor_yn="yes"
+fi
+
+
+if [ "$kor_yn" = "yes" ]
+then
+echo "#########################################################################"
+echo "#                                                                       #"
+echo "#                CUBRID 복제 환경 구성 : 슬레이브 DB   구성             #"
+echo "#                                                                       #"
+echo "#   복제 환경을 구성하는 작업은 다음과 같은 순서로 진행되어야 합니다.   #"
+echo "#        1. 복제에이전트 구성 (make_distdb 스크립트 구동)               #"
+echo "#        2. 마스터 DB 전체 백업 (cubrid backup 유틸리티구동)            #"
+echo "#        3. 마스터 DB 백업본 복사 (마스터 DB 호스트->슬레이브 DB 호스트)#"
+echo "#        4. 슬레이브 DB 구축 (make_slavedb 스크립트 구동)               #"
+echo "#        5. 복제서버 구동 (repl_server 유틸리티 구동)                   #"
+echo "#        6. 복제에이전트 구동 (repl_agent 유틸리티 구동)                #"
+echo "#                                                                       #"
+echo "#     NOTE1: 슬레이브 DB 구성 전에 반드시 make_distdb 스크립트를        #"
+echo "#            이용하여 배포DB를 생성해야 합니다.                         #"
+echo "#     NOTE2: 마스터 DB에 대하여 전체 백업을 수행해야 합니다.            #"
+echo "#            백업받는 시점은 슬레이브 DB 구축시점 이전이면 언제든       #"
+echo "#            상관없으나, 온라인백업을 하는 경우 가급적 슬레이브 DB를    #"
+echo "#            구축하기 바로 전에 수행하시면 초기 복제에  소요되는        #"
+echo "#            시간을 절약할 수 있습니다.                                 #"
+echo "#            필요한 백업 파일은 다음과 같습니다.                        #"
+echo "#               -  master_db_name.bk_vinf                               #"
+echo "#               -  master_db_name.bk0v???                               #"
+echo "#     NOTE3: 현재 이 스크립트는 반드시 가져온 백업 파일이 있는          #"
+echo "#            디렉토리에서 수행되어야 합니다.                            #"
+echo "#                                                                       #"
+echo "#   Ctr-C 등으로 비정상적으로 스크립트를 중단하는 경우에는              #"
+echo "#   cubrid server stop/cubrid delete 등의 유틸리티를 이용하여           #"
+echo "# 슬레이브 DB를 삭제한  후 다시 수행하십시오.                           #"
+echo "#########################################################################"
+else
+echo "#########################################################################"
+echo "#                                                                       #"
+echo "#                    Constructing the slave database                    #"
+echo "#                                                                       #"
+echo "#   To configure the replication environment,                           #"
+echo "#        1. Configure the replication agent (using make_distdb script)  #"
+echo "#        2. Back up the master database (using cubrid backup)           #"
+echo "#        3. Copy the backup files to the slave site                     #"
+echo "#        4. Construct the slave database (using make_slavedb script)    #"
+echo "#        5. Start the repl_server at the master site                    #"
+echo "#        6. Start the repl_agent at the slave site                      #"
+echo "#                                                                       #"
+echo "#   NOTE1: Please create and configure the distributor database         #"
+echo "#          using make_distdb script before executing this script.       #"
+echo "#   NOTE2: Please back up the master database before constructing       #"
+echo "#          the slave databases. If you back up the master database just #"
+echo "#          before constructing the slave database, you can save the     #"
+echo "#          time to synchronize the master database and slave database.  #"
+echo "#          Following files should be copied to the slave site..         #"
+echo "#                          -  master_db_name.bk_vinf                    #"
+echo "#                          -  master_db_name.bk0v???                    #"
+echo "#   NOTE3: It's necessary to execute this script at the directory       #"
+echo "#          in which the backup files locate.                            #"
+echo "#                                                                       #"
+echo "#   When you stop this script using Ctrl-C, please retry again after    #"
+echo "#   deleting the distributor database using cubrid server stop and      #"
+echo "#   then cubrid delete.                                                 #"
+echo "#########################################################################"
+fi
+
+###############################################################################
+# STEP 1 : add db info to $CUBRID_DATABASES/databases.txt
+###############################################################################
+print_mes STEP1   # prepare to restore the master database
+#check the databases.txt 
+if [ ! -f $rootdir_db/databases.txt ]
+then
+  touch $rootdir_db/databases.txt
+fi
+
+exec 5< $rootdir_db/databases.txt
+
+while read -u5 db_name etc
+do
+ if [ "$db_name" = "$master_db_name" ]
+ then
+   error_exit 0 err_db_exists $master_db_name $rootdir_db  
+ fi
+done
+
+exec 5<&-
+
+exec 5< $rootdir_db/databases.txt
+
+while read -u5 db_name etc
+do
+ if [ "$db_name" = "$slave_db_name" ]
+ then
+   error_exit 0 err_db_exists $slave_db_name $rootdir_db
+ fi
+done
+
+exec 5<&-
+
+#Now, append a row to the $CUBRID_DATABASES/databases.txt
+
+print_mes STEP11       # read the directory path of the slave data volume
+read db_vol_path
+if [ -z "$db_vol_path" ]
+then
+db_vol_path=$CurDir
+echo "                 $db_vol_path" # notify default dir
+fi
+
+if [ ! -d $db_vol_path ]
+then
+  error_exit 0 err_directory_error 
+fi
+
+print_mes STEP12      # read the directory path of the slave log volume
+read log_vol_path
+if [ -z "$log_vol_path" ]
+then
+log_vol_path=$CurDir
+echo "                 $log_vol_path" # notify default dir
+fi
+
+if [ ! -d $log_vol_path ]
+then
+  error_exit 0 err_directory_error 
+fi
+
+if [ ! -f $rootdir_db/databases.txt ]
+then
+  touch $rootdir_db/databases.txt
+fi
+
+host=`eval hostname`
+cp $rootdir_db/databases.txt $rootdir_db/.slavedb.databases.txt
+echo "$master_db_name $db_vol_path $host $log_vol_path" >> $rootdir_db/databases.txt
+
+
+###############################################################################
+# STEP 2 : restore the master db 
+###############################################################################
+# Check if exists the backup volume info
+print_mes STEP2    # restore the master database to make the slave slave
+
+file="$master_db_name"_bkvinf
+if [ ! -f "$file" ]
+then
+  error_exit 1 err_file_error $file    # no file error
+fi
+
+mv $file $file.ori        # save original _bkvinf
+
+touch $log_vol_path/$file # make temporary _bkvinf to the log_vol_path
+if [ ! -f $log_vol_path/$file ]
+then
+  mv $file.ori $file      # restore original _bkvinf
+  error_exit 1 err_write_auth $log_vol_path   # write authorization failure
+fi
+
+exec 5< $file.ori
+while read -u5 dum1 dum2 vol_path
+do
+  cur_bkfile=$CurDir/${vol_path##*/}
+  if [ ! -f $cur_bkfile ]
+  then
+    rm $log_vol_path/$file  # remove temporary _bkvinf in the log_vol_path
+    mv $file.ori $file      # restore original _bkvinf
+    error_exit 1 err_file_error $cur_bkfile 
+  fi
+  # replace bk_vol path as log_vol_path
+  echo "$dum1 $dum2 $cur_bkfile" >> $log_vol_path/$file
+done
+
+exec 5<&-
+
+# restore the master db
+print_mes PROG21    # restoring the slave database.. wait a moment
+$rootdir/bin/cubrid restoredb -p -r $master_db_name -u 2> .slave.tmp 1> .slave.tmp2
+result=`eval cat .slave.tmp | grep ERROR`
+
+if [ -n "$result" ]
+then
+  rm $log_vol_path/$file  # remove temporary _bkvinf in the log_vol_path
+  mv $file.ori $file      # restore original _bkvinf
+  err_msg=`eval cat .slave.tmp`
+  error_exit 1 err_restore $err_msg 
+fi
+
+rm $log_vol_path/$file  # remove temporary _bkvinf in the log_vol_path
+mv $file.ori $file      # restore original _bkvinf
+
+result=`cat .slave.tmp2 | grep Last_lsa > .slave.tmp`
+
+# get the last lsa applied
+pageid=`eval cat .slave.tmp | cut -f 2 -d ':' | cut -f 1 -d '|'`
+offset=`eval cat .slave.tmp | cut -f 2 -d ':' | cut -f 2 -d '|'`
+
+if [ -z "$pageid" ] || [ -z "$offset" ]
+then
+  error_exit 1 err_restore 
+fi
+
+print_mes PROG22   # restoring the slave db is finished
+
+###############################################################################
+# STEP 3 : 배포 DB에 필요한 정보 기록
+###############################################################################
+print_mes STEP3    # insert the necessary data into the distributor db
+host=`eval hostname`
+eval cat $rootdir/conf/cubrid.conf | grep cubrid_port_id > .slave.tmp
+portnum=""
+while read line
+do
+  cubrid_port_id=`eval echo "$line" | cut -c1-14`
+  if [ "$cubrid_port_id" = "cubrid_port_id" ]
+  then
+    portnum=`eval echo "$line" | cut -c16-26`
+  fi
+done < .slave.tmp
+
+if [ -z "$portnum" ]
+then
+  error_exit 2 err_cant_find_port $rootdir
+fi
+
+count=1
+
+while [ $count -lt 3 ]
+do
+  print_mes STEP31    # enter the name of the distributor database
+  read distdb_name 
+  if [ -z "$distdb_name" ]
+  then
+    error_exit -1 err_no_distdb_name
+  else
+    break;
+  fi
+  count=$(($count+1))
+done
+
+if [ $count -eq 3 ]
+then
+  error_exit 2 no_msg
+fi
+
+exec 5< $rootdir_db/databases.txt
+
+while read -u5 db_name etc
+do
+ if [ "$db_name" = "$distdb_name" ]
+ then
+  result=$db_name
+  break
+ fi
+done
+
+exec 5<&-
+
+if [ -z "$result" ] 
+then
+  print_mes STEP311   # enter the ip address of the distributor database
+  read distip
+
+  if [ -z "$distip" ]
+  then
+    error_exit 2 err_ip_addr
+  fi
+  echo "$distdb_name na $distip na" >> $rootdir_db/databases.txt
+fi
+
+
+count=1
+while [ $count -lt  3  ]
+do
+  print_mes STEP32   # enter the password of the distributor db
+  read distpw
+  $rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "commit" 2> .slave.tmp 
+  result=`eval cat .slave.tmp | egrep "Incorrect or missing password"`
+
+  if [ -n "$result" ]
+  then
+    count=$(($count+1))
+    error_exit -1 err_passwd
+  else 
+    result=`eval cat .slave.tmp | grep "Failed to connect"`
+    if [ -n "$result" ]
+    then
+      error_exit 2 err_connect_dist  # can't connect to dist db
+    fi
+    break;
+  fi
+done
+
+if [ $count -eq 3 ]
+then
+  error_exit 2 err_connect_dist # can't connect to dist db
+fi
+
+sql="select * from master_info where dbname = '$master_db_name'"
+debug_msg $LINENO sql "$sql"
+$rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql" > .slave.tmp
+
+result=`eval cat .slave.tmp | egrep "no results"`
+
+if [ -n "$result" ]
+then
+  error_exit 2 err_master_info
+fi
+
+sql="delete from slave_info;
+     insert into slave_info(dbid, dbname, master_ip, portnum, userid, 
+            passwd, trails)
+     values (
+       select decode(max(dbid), 1, max(dbid)+1) from db_info,
+       '$slave_db_name', '$host', $portnum, '$userid', '$passwd', NULL);
+     delete from trail_info;
+     insert into trail_info(master_dbid, slave_dbid, final_pageid,
+            final_offset, all_repl, repl_count, status, error_msg, 
+            stop_time, perf_poll_interval, log_apply_interval, 
+            for_recovery, index_replication, restart_interval)
+     values (
+       select dbid from master_info 
+          where dbname = '$master_db_name', 
+       select dbid from slave_info 
+          where dbname = '$slave_db_name', 
+       $pageid, $offset, 'y', 0, 'f', NULL, NULL, 10, 0, 'n', 'n', 100); 
+     update slave_info set trails = 
+        set(select trail_info from trail_info 
+           where slave_dbid = (select dbid from slave_info 
+                                   where dbname = '$slave_db_name') 
+        ) where dbname = '$slave_db_name'"
+
+debug_msg $LINENO sql "$sql"
+$rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql"  2> .dist.tmp
+
+result=`eval cat .dist.tmp | grep ERROR`
+
+if [ -n "$result" ]
+then
+  error_exit 2 err_update_dist
+fi
+
+
+###############################################################################
+# STEP 4 : Rename the master db & Start the slave server
+###############################################################################
+print_mes STEP4       # start the slave database
+# rename 
+result=`eval $rootdir/bin/cubrid renamedb $master_db_name $slave_db_name`
+
+
+#start the slave db server
+`eval $rootdir/bin/cubrid server start $slave_db_name > /dev/null `
+
+#make history file
+sql="select e_value from env_info where e_name='trail_log'"
+debug_msg $LINENO sql "$sql"
+$rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql"  > .dist.tmp
+
+exec 5< .dist.tmp
+
+dist_log_path=""
+count=1
+while read -u5 e_value
+do
+  if [ $count -gt 5 ]
+  then
+     if [ -n "$e_value" ]
+     then
+       dist_log_path=$e_value
+       break;
+     fi
+  fi
+  (( count=count+1 ))
+done
+
+if [ -z "$dist_log_path" ]
+then
+  error_exit 3 no_mes    # exit without any message
+fi
+
+$rootdir/bin/cubrid unloaddb -C -s $slave_db_name 1> /dev/null 2> /dev/null
+if [ -f "$distdb_name"_schema ]
+then
+  user_shcema=""
+  while read line
+  do
+    is_add=`echo "$line" | grep "^call change_owner"`
+    if [ -n "$is_add" ]
+    then
+      user_schema=$user_schema"$line
+"
+    fi
+    is_add=`echo "$line" | grep "^GRANT "`
+    if [ -n "$is_add" ]
+    then
+      user_schema=$user_schema"$line
+"
+    fi
+  done < "$distdb_name"_schema
+
+  debug_msg $LINENO "$user_schema"
+
+  echo "$user_schema" > "$dist_log_path"/"$distdb_name".hist
+  rm "$slave_db_name"_schema > /dev/null
+fi
+
+if [ -f "distdb_name"_trigger ]
+then
+  cat "$slave_db_name"_trigger >> "$dist_log_path"/"$distdb_name".hist 
+  rm "$slave_db_name"_trigger > /dev/null
+fi
+
+
+###############################################################################
+# STEP 5 : 사후 처리 진행 
+###############################################################################
+print_mes STEP5      # post process after strating the slave db
+#check the DBA password
+count=0
+while [ $count -lt  3  ]
+do
+  print_mes STEP51
+  read dba_pass
+  $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "commit" 2> .slave.tmp
+  result=`eval cat .slave.tmp | grep Incorrect`
+  if [ -n "$result" ]
+  then
+    error_exit -1 err_passwd
+    count=$(($count+1))
+  else
+    break;
+  fi
+done
+
+if [ $count -eq 3 ]
+then
+  error_exit 3 no_mes    # exit without any message
+fi
+
+# add replication user
+count=1
+while [ $count -lt 3 ]
+do 
+  sql="select name from db_user where name = upper('$userid')"
+  debug_msg $LINENO sql "$sql"
+  $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 1> .slave.tmp
+  result=`eval cat .slave.tmp | egrep "no results"`
+
+  if [ -n "$result" ]
+  then
+    result=`eval echo add`
+    break;
+  else
+    print_mes WARN1              # already existing user id
+  fi
+
+  print_mes REPL_ID_USE          # want to use this id for replication ?
+  read useyn
+
+  if [ "$useyn" =  "y" ]
+  then
+    print_mes REPL_CHANGE_PW    # change password ... 
+    result=`eval echo change`
+    break;
+  else
+    print_mes INPUT_ID
+    read userid
+    print_mes INPUT_PW
+    read passwd
+    useyn=n
+  fi
+  count=$(($count+1))
+done
+
+if [ "$result" = "add" ]
+then
+  sql="call add_user ('$userid', '$passwd') on class db_user to repl_user;
+       call find_user('dba') on class db_user to dba;
+       call add_member (repl_user) on dba;
+       commit;"
+  debug_msg $LINENO sql "$sql"
+  $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 1> .slave.tmp
+  result=`eval cat .slave.tmp | grep ERROR`
+  if [ -n "$result" ]
+  then
+    error_exit 3 err_add_user
+    final
+    error_exit 3
+  fi
+else 
+  if [ "$result" = "change" ]
+  then
+    sql="SELECT name 
+         FROM  (SELECT u.name
+                FROM db_user u, TABLE(groups) AS t(g)
+                WHERE t.g.name = 'DBA'
+                UNION
+                SELECT u.name 
+                FROM db_user u
+                WHERE u.name = 'DBA') AS dba_t(name)
+         WHERE dba_t.name = upper('$userid');"
+    debug_msg $LINENO sql "$sql"
+    $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 1> .slave.tmp
+    result=`eval cat .slave.tmp | egrep "no results"`
+    if [ -n "$result" ]
+    then
+      sql="call find_user (upper('$userid')) on class db_user to repl_user; 
+           call set_password('$passwd') on repl_user;
+           call find_user('dba') on class db_user to dba;
+           call add_member (repl_user) on dba;
+           commit;"
+    else
+      sql="call find_user (upper('$userid')) on class db_user to repl_user; 
+           call set_password('$passwd') on repl_user;
+           commit;"
+    fi
+    debug_msg $LINENO sql "$sql"
+    $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 1> .slave.tmp
+    result=`eval cat .slave.tmp | grep ERROR`
+    if [ -n "$result" ]
+    then
+      error_exit 3 err_add_user
+    fi
+  else
+    error_exit 3 err_add_user
+  fi
+fi
+
+# change owner for the all classes
+sql="select class_name from db_class where is_system_class = 'NO' difference select partition_class_name from db_partition"
+debug_msg $LINENO sql "$sql"
+$rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" > .class.tmp
+
+exec 5< .class.tmp
+
+count=1
+while read -u5 class_name
+do
+  if [ $count -gt 5 ]
+  then
+     if [ -n "$class_name" ]
+     then
+       sql="call change_owner($class_name, '$userid') on class db_authorizations"
+       debug_msg $LINENO sql "$sql"
+       $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" > /dev/null
+     fi
+  fi
+  (( count=count+1 ))
+done
+
+# drop user defined triggers
+sql="select trigger_name from db_trig where trigger_name <> 'glo_delete_contents'"
+debug_msg $LINENO sql "$sql"
+$rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" > .slave.tmp
+
+exec 5< .slave.tmp
+
+count=1
+while read -u5 trigger_name
+do
+  if [ $count -gt 5 ]
+  then
+     if [ -n "$trigger_name" ]
+     then
+       trigger_name=`eval expr $trigger_name`
+       sql="drop trigger $trigger_name"
+       debug_msg $LINENO sql "$sql"
+       $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 
+     fi
+  fi
+  (( count=count+1 ))
+done
+
+if [ "$kor_yn" = "yes" ]
+then
+  CUBRID_LANG=ko_KR
+  export CUBRID_LANG
+else
+  CUBRID_LANG=en_US
+  export CUBRID_LANG
+fi
+print_mes STEP6
+$rootdir/bin/repl_change_param $master_db_name $distdb_name
+
+print_mes STEP7    # set the replication group 
+exec 5< .class.tmp
+
+$rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "delete from class_info" > .slave.tmp
+count=1
+while read -u5 class_name
+do
+  if [ $count -gt 5 ]
+  then
+     if [ -n "$class_name" ]
+     then
+       sql="insert into class_info values (select dbid from master_info where dbname = '$master_db_name',  $class_name)"
+       debug_msg $LINENO sql "$sql"
+       $rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql" > .slave.tmp
+     fi
+  fi
+  (( count=count+1 ))
+done
+
+$rootdir/bin/repl_make_group "$master_db_name" "$distdb_name" -p "$distpw"

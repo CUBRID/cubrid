@@ -1,0 +1,160 @@
+#!/bin/ksh
+###############################################################################
+#  Script Name : check_repl_sync
+#
+#  Overview 
+#    
+#
+###############################################################################
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+print_msg() {
+  if [ "$kor_yn" = "yes" ]
+  then
+    case $1 in 
+       ERROR_EXIT) 
+         echo "################################################################"
+         echo " ERROR : 오류로 인하여 복제 상태 검사를 종료 합니다."
+         echo "################################################################"
+          ;;
+       *)
+          ;;
+    esac
+  else
+    case $1 in 
+       ERROR_EXIT) 
+         echo "################################################################"
+         echo " ERROR : Be finished Replication status check because of ERROR. "
+         echo "################################################################"
+          ;;
+       *)
+          ;;
+    esac
+  fi
+}
+
+###############################################################################
+# function : print out usage info
+###############################################################################
+usage() {
+  exec_name=`basename $0`
+  echo "usage: $exec_name dist_db_name.config [-p password]" 1>&2
+  echo "       <dist_db_name.config format>" 1>&2
+  echo "       hostname port_id" 1>&2
+  echo "       hostname port_id" 1>&2
+  exit 1
+}
+
+###############################################################################
+# function :  for processing error cases, clear all the temporary files
+###############################################################################
+error_exit() {
+  echo
+  print_msg ERROR_EXIT
+  rm .result.tmp
+  echo
+  exit 1
+}
+
+###############################################################################
+# trying to get root
+###############################################################################
+CurDir=`eval pwd`
+
+###############################################################################
+# STEP 0 : read the parameters 
+###############################################################################
+distpw=""
+
+config_file=$1
+
+lang="$CUBRID_LANG"
+if [ -z "$lang" ]
+then
+  lang="en_US"
+fi
+
+kor_yn="no"
+if [ ! -z "$lang" ] && [ "$lang" = "ko_KR.euckr" ]
+then
+  kor_yn="yes"
+fi
+
+
+while [ $# -ne 0 ]
+do
+  case $1 in 
+     -p)
+        shift
+        passwd=$1
+        ;;
+     *)
+        ;;
+  esac
+  shift
+done
+
+#check inputs
+if [ -z "$config_file" ]
+then
+  usage
+fi
+
+###############################################################################
+# STEP 1 : get host ip & port number
+###############################################################################
+agent_ips=""
+agent_ports=""
+while read ip port
+do
+    if [ -n "$ip" ]
+    then
+        agent_ips="$agent_ips $ip"
+        agent_ports="$agent_ports $port"
+    fi
+done < $config_file
+
+if [ "$agent_ips" = "" ]
+then
+  echo "can not read repl_agent ip from $config_file"
+  exit 1
+fi
+
+if [ "$agent_ports" = "" ]
+then
+  echo "can not read repl_agent port from $config_file"
+  exit 1
+fi
+
+###############################################################################
+# STEP 2 : repl_agent status prints
+###############################################################################
+echo "    IP   MasterID SlaveID ForRecovery Status FinalLSA ReplCnt CurRepl SafePageID"
+echo "" > .tmp.out
+echo "" > .result.out
+
+count=2
+for ip in $agent_ips
+do
+    port=`echo "$agent_ports" | cut -d" " -f $count`
+    telnet $ip $port 2> .tmp.out > .result.out
+    linecount=1
+    while read line
+    do
+        if [ "$linecount" -gt 4 ]
+        then
+            echo "$ip $line"
+        fi
+        (( linecount=linecount+1 ))
+    done < .result.out
+    if [ "$linecount" -lt 4 ]
+    then
+      echo "can not connect repl_agent($ip, $port)"
+      break
+    fi
+    (( count=count+1 ))
+done
+rm .tmp.out
+rm .result.out

@@ -1,0 +1,23 @@
+Microsoft Visual Studio Solution File, Format Version 8.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xmlrpcepi", "xmlrpcepi.vcproj", "{4FDE609B-963E-457C-89F8-1BED842DBFFB}"
+	ProjectSection(ProjectDependencies) = postProject
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		Debug = Debug
+		MinSize = MinSize
+		Release = Release
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{4FDE609B-963E-457C-89F8-1BED842DBFFB}.Debug.ActiveCfg = Debug|Win32
+		{4FDE609B-963E-457C-89F8-1BED842DBFFB}.Debug.Build.0 = Debug|Win32
+		{4FDE609B-963E-457C-89F8-1BED842DBFFB}.MinSize.ActiveCfg = Debug|Win32
+		{4FDE609B-963E-457C-89F8-1BED842DBFFB}.Release.ActiveCfg = Release|Win32
+		{4FDE609B-963E-457C-89F8-1BED842DBFFB}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

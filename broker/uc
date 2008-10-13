@@ -1,0 +1,3 @@
+#!/bin/sh
+export CUBRID_BROKER=$CUBRID
+exec $CUBRID/bin/cubrid_broker $*

@@ -1,0 +1,3 @@
+To display your license agreement, replace the License.txt file currently located in the Language Independent\Operating System Independent folder of the Setup Files pane.
+
+NOTE: The text in your license file should contain hard returns after lines with more than 1,024 characters.

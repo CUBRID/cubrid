@@ -1,0 +1,414 @@
+2008-04-16  Robin Cornelius <robin.cornelius@gmail.com>
+	Use only shared libexpat
+	Applied Jeff Lawson's patches to fix bugs #629254,#621435
+ 	Removed libxml2 for the moment as the compatability headers are a licence
+   	 nightmare as they drag in php code and thats GPL incompatable and could be
+   	 nasty shock for an unsuspecting user, following advice from debian packaging
+ 	Cleaned up the --with-expat=[location] option, default is now to use shared libexpat
+   	 if its not in /usr/lib and /usr/include override with command line option.
+ 	Remove expat from source tree.
+	Update visual studio files for this build
+	Bump to version 0.54
+
+2008-04-02  Robin Cornelius <robin.cornelius@gmail.com>
+	
+	Fix some more gcc 4.X warnings
+	Update windows project files
+	Bump to version 0.53
+
+2008-03-25  Robin Cornelius <robin.cornelius@gmail.com>
+
+	Fix gcc 4.x warnings as some are portability issues
+	Update autotools to new version
+	Add configure option to use shared libexpat
+	Add #ifdefs to include correct header file if using shared libexpat
+	Bump version to 0.52
+	Update COPYING to include the libexpat licence and specific which files
+	 are under which licence.
+
+2005-03-16  Seth Nickell  <seth@gnome.org>
+
+        Make 64-bit clean.
+	
+	* src/encodings.c: (convert):
+
+	iconv() takes size_t elements, which can potentially vary
+	by platform relative to int. Use size_t instead of int
+	(since the pointers won't be compatible on what's passed back).
+	
+	* src/xml_element.c: (xml_elem_parse_buf):
+	* src/xmlrpc.c: (date_from_ISO8601), (map_expat_errors):
+
+	Use %li on printf instead of %i when passing in a long.
+	
+2002-06-23 23:25  danda
+
+	* src/xml_to_xmlrpc.c (1.8): remove commentary
+
+2002-05-23 17:46  danda
+
+	* src/xml_element.c (1.8): patch from mukund - fix non utf-8
+	encoding conversions
+
+2002-03-22 06:02  danda
+
+	* src/xmlrpc.h (1.14): specify enum's explicitly to minimize
+	compiler differences
+
+2002-03-22 06:01  danda
+
+	* sample/hello_server.c (1.2): reply in like manner
+
+2002-03-12 18:08  danda
+
+	* src/: encodings.c (1.3), queue.c (1.4): fix compiler warnings
+
+2002-03-09 23:15  danda
+
+	* src/: xmlrpc.c (1.22), xmlrpc.def (1.2), xmlrpc.h (1.13): add
+	fault interrogation funcs
+
+2002-03-09 22:27  danda
+
+	* xmlrpcepi.dsp (1.1), src/xmlrpc.c (1.21), src/xmlrpc.def (1.1):
+	win32 build patches contributed by Jeff Lawson
+
+2002-02-13 20:58  danda
+
+	* src/: base64.c (1.4), simplestring.c (1.4), simplestring.h (1.2),
+	xml_element.c (1.7), xmlrpc.c (1.20), xmlrpc.h (1.12): patch to
+	make source more windows friendly, contributed by Jeff Lawson
+
+2002-01-08 01:06  danda
+
+	* src/xml_element.c (1.6): enable <?xml version="1.0"?> format for
+	parsers that are very picky.
+
+2002-01-07 17:58  danda
+
+	* src/xml_to_xmlrpc.c (1.7): fix faults to return a single struct
+	instead of an array of 1 struct
+
+2001-12-19 21:04  danda
+
+	* Makefile.in (1.3), aclocal.m4 (1.2), config.guess (1.3),
+	config.sub (1.3), configure (1.3), configure.in (1.4), install-sh
+	(1.2), ltmain.sh (1.3): use libtool 1.4
+
+2001-10-12 23:32  danda
+
+	* sample/hello_client.c (1.2): demonstrate output versions
+
+2001-10-12 23:25  danda
+
+	* src/xmlrpc.c (1.19): default to writing xmlrpc
+
+2001-09-29 21:58  danda
+
+	* src/: Makefile.in (1.7), simplestring.c (1.3), system_methods.c
+	(1.7), xml_element.c (1.5), xmlrpc.c (1.18), xmlrpc_introspection.c
+	(1.9): adding cvs log to history section
+
+2001-09-29 21:46  danda
+
+	* src/xml_to_soap.c (1.6): make robodoc friendly
+
+2001-09-22 23:38  danda
+
+	* src/xml_to_soap.c (1.4): remove some debug logging
+
+2001-09-22 23:35  danda
+
+	* src/xml_to_soap.c (1.3): various fixes to enable
+	interop-client.php, interop-server.php to pass all tests
+
+2001-09-22 23:34  danda
+
+	* src/xmlrpc.c (1.17): XMLRPC_SetIsVector can now change type of
+	pre-existing vector, provided vector contains no elements
+
+2001-09-22 19:20  danda
+
+	* src/xml_to_soap.c (1.2): display date in yyyy-mm-dd:hh:mmZ format
+
+2001-09-22 18:52  danda
+
+	* src/xml_to_xmlrpc.c (1.6): never return methodname in a
+	methodResponse. treat xmlrpc_empty (null) as empty string <string/>
+
+2001-09-16 20:33  danda
+
+	* sample/sample.c (1.9): add soap version argument
+
+2001-09-16 20:32  danda
+
+	* sample/memtest.c (1.4): add dupped value test
+
+2001-09-16 20:31  danda
+
+	* src/xmlrpc.h (1.11): fix syntax error
+
+2001-09-16 20:29  danda
+
+	* src/xmlrpc.h (1.10): modified iso_8601 functions to handle dashes
+	for soap.  added XMLRPC_RequestGet/SetError added SOAP plugin added
+	XMLRPC_DupValueNew added XMLRPC_GetValueTypeEasy beautified code. 
+	spaces -> tabs, etc.
+
+2001-09-16 20:29  danda
+
+	* src/xmlrpc_private.h (1.5): removed unused id attr from vector
+	struct
+
+2001-09-16 20:26  danda
+
+	* src/: xml_to_soap.c (1.1), xml_to_soap.h (1.1), Makefile.am
+	(1.5), Makefile.in (1.6): adding prelim SOAP support
+
+2001-09-16 20:25  danda
+
+	* src/xmlrpc.c (1.16): modified iso_8601 functions to handle dashes
+	for soap.  added XMLRPC_RequestGet/SetError added SOAP plugin added
+	XMLRPC_DupValueNew added XMLRPC_GetValueTypeEasy beautified code. 
+	spaces -> tabs, etc.
+
+2001-09-16 20:07  danda
+
+	* src/xml_to_xmlrpc.c (1.5): code beautification
+
+2001-09-16 20:05  danda
+
+	* src/xml_to_dandarpc.c (1.2): bug fix: set array type instead of
+	mixed
+
+2001-08-31 17:14  danda
+
+	* sample/server.c (1.6): fix bug 457010: bus error
+
+2001-08-31 17:13  danda
+
+	* sample/: hello_client.c (1.1), hello_server.c (1.1): adding very
+	simple hello client/server examples
+
+2001-07-23 19:24  danda
+
+	* src/system_methods.c (1.6): return something useful from
+	system.multiCall
+
+2001-07-23 19:15  danda
+
+	* src/base64.c (1.3): fix junk in empty base64 elements problem
+
+2001-07-23 19:14  danda
+
+	* sample/server.c (1.5): add method to echo any value
+
+2001-07-23 07:29  danda
+
+	* src/system_methods.c (1.5): fix endless loop in system.multiCall
+
+2001-07-22 05:04  danda
+
+	* src/: xmlrpc.c (1.15), xmlrpc.h (1.9): add
+	XMLRPC_GetVersionString
+
+2001-07-22 04:47  danda
+
+	* src/: Makefile.in (1.5), base64.c (1.2), simplestring.c (1.2),
+	xmlrpc_introspection.c (1.8), xmlrpc_introspection_private.h (1.5):
+	fix system.methodSignature and system.methodHelp which were broken
+	by introspection rewrite
+
+2001-07-15 05:19  danda
+
+	* src/xmlrpc.c (1.14): fix bug 440087, possible memory corruption
+	if null is passed to XMLRPC_SetValueBase64.  Also, clear a couple
+	strings before adding to them.
+
+2001-07-01 07:05  danda
+
+	* configure.in (1.2): fix version
+
+2001-06-29 23:22  danda
+
+	* config.guess (1.2), config.sub (1.2), ltconfig (1.2), ltmain.sh
+	(1.2): upgrading libtool to version 1.3.5.  Enables building of
+	static library on linux and probably fixes a bunch of other things
+
+2001-06-15 02:29  danda
+
+	* src/xml_to_xmlrpc.c (1.4): fix bug 433302. extra <param> in
+	<fault>.  Submitted by boykin@pobox.com
+
+2001-05-19 04:35  danda
+
+	* sample/sample.c (1.6): cleanup. improve teststruct example.  add
+	introspection example
+
+2001-05-19 03:54  danda
+
+	* src/: system_methods.c (1.4), xmlrpc_introspection.c (1.7),
+	xmlrpc_introspection.h (1.5): add XMLRPC_ERROR to
+	XMLRPC_IntrospectionCreateDescription() for better error handling
+
+2001-05-18 17:33  danda
+
+	* sample/: sample.c (1.5), server.c (1.4): still ugly, but at least
+	now sample and server should be doing basically the right thing. 
+	before, they were expecting the parameters vector as a struct,
+	which is ok in simplerpc vocab, but is not valid xmlrpc
+
+2001-05-18 17:29  danda
+
+	* src/queue.h (1.4): yet another c++ patch, since I screwed up the
+	first one
+
+2001-05-16 16:35  danda
+
+	* src/queue.h (1.3): re-arrange typedef order cuz it was breaking
+	some c++ compiler(s)
+
+2001-05-16 06:25  danda
+
+	* sample/: server_compliance_test.c (1.3),
+	server_compliance_test.php (1.2): validates again, minor mods
+	required for params library fix
+
+2001-05-16 06:12  danda
+
+	* sample/: memtest.c (1.2), sample.c (1.4), server.c (1.3),
+	server_compliance_test.c (1.2): all samples should be working now
+
+2001-05-16 05:43  danda
+
+	* src/xml_to_xmlrpc.c (1.3): switch to single valued response
+	params.  breaks some legacy apps, but it is the 'right thing' (tm)
+	and must be done.  Anyway, this means apps don't have to create an
+	extra array around return values
+
+2001-05-16 05:18  danda
+
+	* src/xml_to_xmlrpc.c (single_valued_response_param_branch.2): fix
+	ordering problem with methodcall not being determined in time
+
+2001-05-14 18:31  danda
+
+	* src/: queue.c (1.2), queue.h (1.2), system_methods.c (1.3),
+	system_methods_private.h (1.3), xml_element.c (1.4), xmlrpc.c
+	(1.12), xmlrpc.h (1.6), xmlrpc_introspection.c (1.6),
+	xmlrpc_introspection.h (1.4), xmlrpc_introspection_private.h (1.4),
+	xmlrpc_private.h (1.4): Rewrote the introspection stuff: - modified
+	xml_element api to return parser error codes in a struct - added
+	Q_Iter_Del for deletion of queue iterator value - got rid of old
+	introspection API's - removed various introspection defines - added
+	new method/type descriptions via xml - added
+	XMLRPC_VectorRemoveValue (experimental) - removed
+	XMLRPC_ServerSetMethodDescription - added versioning typedefs to
+	xmlrpc.h - new xml based public introspection API: -  -
+	XMLRPC_IntrospectionCreateDescription()    -
+	XMLRPC_ServerAddIntrospectionData()    -
+	XMLRPC_ServerRegisterIntrospectionCallback()
+
+2001-05-14 17:44  danda
+
+	* src/xml_to_xmlrpc.c (single_valued_response_param_branch.1):
+	first cut at ensuring response params are single valued.  breaks
+	legacy apps, so putting it on a branch
+
+2001-05-07 06:47  danda
+
+	* src/: system_methods.c (1.2), system_methods_private.h (1.2),
+	xmlrpc.c (1.11): add system.interopFaultsVersion
+
+2001-05-07 06:10  danda
+
+	* src/xmlrpc.c (1.10): fix request io cleanup.	caught an error
+	using memtest
+
+2001-05-07 05:57  danda
+
+	* src/: xml_element.c (1.3), xml_element.h (1.2), xmlrpc.c (1.9),
+	xmlrpc.h (1.5), xmlrpc_introspection_private.h (1.3),
+	xmlrpc_private.h (1.3): supporting new interop faults spec
+
+2001-04-29 08:31  danda
+
+	* src/: system_methods.c (1.1), system_methods_private.h (1.1),
+	xmlrpc.c (1.8), xmlrpc_introspection.c (1.5), xmlrpc.h (1.4):
+	adding system.multiCall method.  prelim support
+
+2001-04-29 06:57  danda
+
+	* src/: xmlrpc.c (1.7), xmlrpc_introspection.c (1.4): bug fix. make
+	copy in the correct place, or will have a mem leak in some
+	situations
+
+2001-04-26 04:36  danda
+
+	* src/xml_to_xmlrpc.c (1.2): send empty <param/> element even if no
+	parameter passed, for interop reasons
+
+2001-04-26 04:35  danda
+
+	* src/xml_element.c (1.2): use abbreviated form for empty elements
+	<foo></foo>  ---> <foo/>
+
+2001-04-24 19:45  danda
+
+	* src/encodings.c (1.2): fix double-byte to single byte encoding
+	problem.  improper length was being used
+
+2001-04-20 23:21  danda
+
+	* src/xmlrpc_introspection.h (1.3): build on older GCC that do not
+	support __VA_ARGS__ macros
+
+2001-04-16 20:42  danda
+
+	* src/: Makefile.am (1.3), Makefile.in (1.3), xmlrpc.c (1.5),
+	xmlrpc_introspection.c (1.2), xmlrpc_introspection_private.h (1.2),
+	xmlrpc_private.h (1.2): support for introspection, including new
+	system.describeMethods
+
+2001-04-16 20:30  danda
+
+	* sample/sample.c (1.3): support for introspection, including new
+	system.describeMethods
+
+2001-04-13 06:44  danda
+
+	* src/: Makefile.am (1.2), Makefile.in (1.2), xmlrpc.c (1.4),
+	xmlrpc.h (1.3), xmlrpc_introspection.c (1.1),
+	xmlrpc_introspection.h (1.1), xmlrpc_introspection_private.h (1.1),
+	xmlrpc_private.h (1.1): introspection support, fault util, and
+	begin code re-org
+
+2001-04-10 01:01  danda
+
+	* sample/sample.c (1.2), sample/server.c (1.2), src/xmlrpc.c (1.3),
+	src/xmlrpc.h (1.2): adding API utility support for xmlrpc specified
+	'Fault'
+
+2001-04-09 17:57  danda
+
+	* sample/: Makefile.am (1.2), Makefile.in (1.2): adding memory
+	(refcount) test case
+
+2001-03-22 14:48  danda
+
+	* src/xmlrpc.c (1.2): proper refcounting when adding values to
+	vectors
+
+2001-03-22 14:47  danda
+
+	* sample/memtest.c (1.1): adding mem refcounts tests
+
+2001-03-20 danda
+
+	* open-sourced xmlrpc-epi. imported to sourceforge cvs repository.
+
+2000-10-20 danda
+
+	* completed re-write of xmlrpc based on prior proprietary format
+	and API's.  This is a ground up re-write.
+

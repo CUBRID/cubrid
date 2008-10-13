@@ -1,0 +1,182 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ * 
+ */
+
+#ifndef _QP_XDATA_H_
+#define _QP_XDATA_H_
+
+#ident "$Id$"
+
+#include "oid.h"
+#include "dbtype.h"
+#include "memory_manager_2.h"
+#include "common.h"
+#include "heap_file.h"
+#include "query_evaluator.h"
+
+#define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
+
+#define BOUND(x) (! UNBOUND(x))
+
+/*
+ * Note there is a dependency in intsr.h for this enum.
+ */
+typedef enum
+{
+  VACOMM_BUFFER_SEND = 1,
+  VACOMM_BUFFER_ABORT
+} VACOMM_BUFFER_CLIENT_ACTION;
+
+/*
+ * This structure should really be a generic net_callback type deal.
+ * This module should then use only those values that it needs and then
+ * other modules would be better able to use the net request with callback.
+ * I am not sure where to put it though to be in client, server, and 
+ * standalone.  Perhaps net.h?
+ */
+typedef enum
+{				/* Responses to a query */
+  QUERY_END = 1,		/* Normal end of query */
+  METHOD_CALL,			/* Invoke methods */
+  ASYNC_OBTAIN_USER_INPUT,	/* server needs info from operator */
+  END_CALLBACK			/* normal end of non-query callback */
+} QUERY_SERVER_REQUEST;
+
+typedef enum
+{
+  METHOD_SUCCESS = 1,
+  METHOD_EOF,
+  METHOD_ERROR
+} METHOD_CALL_STATUS;
+
+#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
+#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
+#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
+#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
+#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
+
+typedef enum
+{
+  METHOD_IS_INSTANCE_METHOD = 1,
+  METHOD_IS_CLASS_METHOD
+} METHOD_TYPE;
+
+typedef struct method_sig_node METHOD_SIG;
+struct method_sig_node
+{				/* method signature */
+  struct method_sig_node *next;
+  char *method_name;	        /* method name */
+  char *class_name;	        /* class for the method */
+  METHOD_TYPE method_type;	/* instance or class method */
+  int no_method_args;		/* number of arguments */
+  int *method_arg_pos;		/* arg position in list file */
+};
+
+typedef struct method_sig_list METHOD_SIG_LIST;
+struct method_sig_list
+{				/* signature for methods */
+  int no_methods;		/* number of signatures */
+  METHOD_SIG *method_sig;	/* one method signature */
+};
+
+typedef enum
+{
+  SEQUENTIAL,			/* sequential scan access */
+  INDEX				/* indexed access */
+} ACCESS_METHOD;
+
+typedef enum
+{
+  QPROC_QUALIFIED = 0,		/* fetch a qualified item; default */
+  QPROC_NOT_QUALIFIED,		/* fetch a not-qualified item */
+  QPROC_QUALIFIED_OR_NOT	/* fetch either a qualified or not-qualified item */
+} QPROC_QUALIFICATION;
+
+typedef enum
+{
+  QPROC_TPLDESCR_SUCCESS = 1,	/* success generating tuple descriptor */
+  QPROC_TPLDESCR_FAILURE = 0,	/* error, give up */
+  QPROC_TPLDESCR_RETRY_SET_TYPE = -1,	/* error, retry for SET data-type */
+  QPROC_TPLDESCR_RETRY_BIG_REC = -2	/* error, retry for BIG RECORD */
+} QPROC_TPLDESCR_STATUS;
+
+extern void qdata_set_value_list_to_null (VAL_LIST * val_list);
+extern int qdata_copy_db_value (DB_VALUE * dbval1, DB_VALUE * dbval2);
+
+extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, char *tvalp,
+					       int *tval_size);
+extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
+					    VALPTR_LIST * valptr_list,
+					    VAL_DESCR * vd,
+					    QFILE_TUPLE_RECORD * tplrec);
+extern QPROC_TPLDESCR_STATUS
+qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
+					   VALPTR_LIST * valptr_list,
+					   VAL_DESCR * vd,
+					   QFILE_TUPLE_DESCRIPTOR * tdp);
+extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p,
+					  VALPTR_LIST * valptr_list,
+					  VAL_DESCR * vd);
+
+extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+			    DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res,
+				  int incval);
+extern int qdata_subtract_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+				 DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_multiply_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+				 DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+			       DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
+extern int qdata_extract_dbval (const MISC_OPERAND extr_operand,
+				DB_VALUE * dbval, DB_VALUE * res,
+				TP_DOMAIN * domain);
+extern int qdata_strcat_dbval (DB_VALUE * dbval1,
+			       DB_VALUE * dbval2,
+			       DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p,
+					    AGGREGATE_TYPE * agg_list,
+					    int query_id);
+extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
+					  AGGREGATE_TYPE * agg_list,
+					  VAL_DESCR * vd);
+extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
+					      AGGREGATE_TYPE * agg_ptr,
+					      HFID * hfid);
+extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
+					  AGGREGATE_TYPE * agg_list);
+extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p,
+						QFILE_LIST_ID * list_id,
+						VAL_LIST * single_tuple);
+extern int qdata_get_valptr_type_list (VALPTR_LIST * valptr_list,
+				       QFILE_TUPLE_VALUE_TYPE_LIST *
+				       type_list);
+extern int qdata_evaluate_function (THREAD_ENTRY * thread_p,
+				    REGU_VARIABLE * func, VAL_DESCR * vd,
+				    OID * obj_oid, QFILE_TUPLE tpl);
+
+/* for qp_regu */
+extern void regu_set_error_with_zero_args (int err_type);
+extern void regu_set_error_with_one_args (int err_type, const char *infor);
+extern void regu_set_global_error (void);
+
+/* for qp_qmain */
+extern int query_prepare (const char *qstr,
+			  const char *stream, int size, XASL_ID ** xasl_idp);
+extern int query_execute (const XASL_ID * xasl_id, int *query_idp,
+			  int var_cnt, const DB_VALUE * varptr,
+			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
+			  CACHE_TIME * clt_cache_time,
+			  CACHE_TIME * srv_cache_time);
+extern int query_prepare_and_execute (char *stream,
+				      int size,
+				      int *query_id,
+				      int var_cnt,
+				      DB_VALUE * varptr,
+				      QFILE_LIST_ID ** result,
+				      QUERY_FLAG flag);
+
+#endif /* _QP_XDATA_H_ */

@@ -1,0 +1,26 @@
+JDBC_SRC_DIR = .
+
+include $(JDBC_SRC_DIR)/mk_def_jspserver
+include $(JDBC_SRC_DIR)/make_common
+include $(JDBC_SRC_DIR)/make_jspserver
+
+SRCS =	$(JDBC_SRCS)
+SRCS +=	$(JSPSERVER_SRCS)
+
+all:	$(CLASS_DIR)/$(OUTPUT) properties
+
+#DEBUG_FLAG =
+
+$(CLASS_DIR)/$(OUTPUT):	$(SRCS)
+	mkdir -p $(CLASS_DIR)
+	$(JAVAC) $(DEBUG_FLAG) -d $(CLASS_DIR) $(SRCS)
+	$(MAKE_JAR)
+
+properties:
+	cp -f $(LOGGING_PROPERTIES) $(CLASS_DIR)
+
+include obj_rule
+
+clean:
+	/bin/rm -rf $(CLASS_DIR)
+	touch $(JDBC_SRC_DIR)/*.pjava $(JDBC_SRC_DIR)/*.pjava

@@ -1,0 +1,16 @@
+$(JCI_CLASS_DIR)/%.class: $(JCI_SRC_DIR)/%.java
+	$(JAVAC) -d $(CLASS_DIR) -classpath $(CLASS_DIR) $<
+
+$(DRIVER_CLASS_DIR)/%.class: $(DRIVER_SRC_DIR)/%.java
+	$(JAVAC) -d $(CLASS_DIR) -classpath $(CLASS_DIR) $<
+
+$(JDBC_SRC_DIR)/%.java: $(JDBC_SRC_DIR)/%.pjava
+	@rm -f $@
+	cpp $(CPP_OPT) $< $@
+	@chmod 400 $@
+
+$(JDBC_SRC_DIR)/%.java: $(JDBC_SRC_DIR)/%.pjava
+	@rm -f $@
+	cpp $(CPP_OPT) $< $@
+	@chmod 400 $@
+

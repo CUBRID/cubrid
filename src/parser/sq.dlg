@@ -1,0 +1,484 @@
+<<
+/* ../src/parser/sq.dlg -- DLG Description of scanner
+ *
+ * Generated from: ../src/parser/sqlx_grammar.g
+ *
+ * Terence Parr, Hank Dietz and Will Cohen: 1989, 1990, 1991
+ * Purdue University Electrical Engineering
+ * ANTLR Version 1.00
+ */
+#include "portable.h"
+#ident "$Id: sq.g,v 1.54 2008/03/26 05:16:40 rokmcssu Exp $"
+#define ZZLEXBUFSIZE        17000
+#define ZZERRSTD_SUPPLIED   1
+#define ZZRDFUNC_SUPPLIED   1
+#define ZZRDSTREAM_SUPPLIED 1
+#define ZZSYNSUPPLIED       1
+#define ZZRESYNCHSUPPLIED   1
+#define ZZ_PREFIX gr_
+#define ZZ_MAX_SYNTAX_ERRORS 40
+#define D_TextSize 255
+#include <ctype.h>
+#include <math.h>
+#include "charbuf.h"
+#include "parse_tree_3.h"
+#include "dbdef.h"
+#include "language_support.h"
+#include "ugetenv.h"
+#include "transaction_cl.h"
+#define JP_MAXNAME 256
+#if defined(WINDOWS)
+#define snprintf _snprintf
+#endif /* WINDOWS */
+#include "memory_manager_2.h"
+#define LL_K 2
+#include "zzpref.h"
+#include "antlr.h"
+#define INSIDE_SCAN_DOT_C 1
+#include "../src/parser/sqtokens.h"
+#include "dlgdef.h"
+  LOOKAHEAD void
+zzerraction ()
+{
+  (*zzerr) ("invalid token");
+  zzadvance ();
+  zzskip ();
+}
+
+>><<
+#include "system.h"
+#define IS_WHITE_CHAR(c) \
+((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\0')
+  PT_HINT hint_table[] =
+{
+  {
+  "ORDERED", PT_HINT_ORDERED, NULL},
+  {
+  "USE_NL", PT_HINT_USE_NL, NULL},
+  {
+  "USE_IDX", PT_HINT_USE_IDX, NULL},
+  {
+  "USE_MERGE", PT_HINT_USE_MERGE, NULL},
+  {
+  "RECOMPILE", PT_HINT_RECOMPILE, NULL},
+  {
+  "LOCK_TIMEOUT", PT_HINT_LK_TIMEOUT, NULL},
+  {
+  "NO_LOGGING", PT_HINT_NO_LOGGING, NULL},
+  {
+  "RELEASE_LOCK", PT_HINT_REL_LOCK, NULL},
+  {
+  "QUERY_CACHE", PT_HINT_QUERY_CACHE, NULL},
+  {
+  "REEXECUTE", PT_HINT_REEXECUTE, NULL},
+  {
+  "JDBC_CACHE", PT_HINT_JDBC_CACHE, NULL},
+  {
+  NULL, -1, NULL}		/* mark as end */
+};
+bool is_hint_comment = false, prev_is_white_char = false;
+PT_HINT_ENUM hint;
+char *hint_p, hint_str[JP_MAXNAME];
+>>%%START @ <<LA (1) = 1;
+>>[\/][\/] ~[\n \ r] * <<LA (1) = 2;
+hint = PT_HINT_NONE;		/* init */
+if (zzlextext[2] == '+')
+  {				/* read hint info */
+    (void) pt_check_hint (zzlextext, hint_table, &hint, false);
+  }
+if (hint != PT_HINT_NONE)
+  {				/* C++-style hint */
+    /* convert to hint token */
+    int i, l;
+    strcpy (hint_str, "//+ ");
+    l = strlen (hint_str);
+    for (i = 0; hint_table[i].tokens; i++)
+      {
+	if ((hint & hint_table[i].hint) && l < JP_MAXNAME)
+	  {
+	    l += strlen (hint_table[i].tokens) + 1;
+	    if (l < JP_MAXNAME)
+	      strcat (strcat (hint_str, hint_table[i].tokens), " ");
+	  }
+      }
+    zzreplstr (hint_str);
+    LA (1) = CPP_STYLE_HINT;
+  }
+else
+  {
+    zzskip ();			/* C++ comment */
+  }
+
+>>[\-][\-] ~[\n \ r] * <<LA (1) = 3;
+hint = PT_HINT_NONE;		/* init */
+if (zzlextext[2] == '+')
+  {				/* read hint info */
+    (void) pt_check_hint (zzlextext, hint_table, &hint, false);
+  }
+if (hint != PT_HINT_NONE)
+  {				/* -- sql-style hint */
+    /* convert to hint token */
+    int i, l;
+    strcpy (hint_str, "--+ ");
+    l = strlen (hint_str);
+    for (i = 0; hint_table[i].tokens; i++)
+      {
+	if ((hint & hint_table[i].hint) && l < JP_MAXNAME)
+	  {
+	    l += strlen (hint_table[i].tokens) + 1;
+	    if (l < JP_MAXNAME)
+	      strcat (strcat (hint_str, hint_table[i].tokens), " ");
+	  }
+      }
+    zzreplstr (hint_str);
+    LA (1) = SQL_STYLE_HINT;
+  }
+else
+  {
+    zzskip ();			/* -- sql comment */
+  }
+
+>>/\*<<LA (1) = 4;
+is_hint_comment = false;
+prev_is_white_char = false;
+hint = PT_HINT_NONE;		/* init */
+zzmode (COMMENT);
+zzskip ();
+>>[\']
+	<<
+		LA(1) = Quote;
+		zzmode(SQS); 
+	>>
+
+[nN][\']
+	<<
+		LA(1) = NQuote;
+		zzmode(SQS); 
+	>>
+
+[bB][\']
+	<<
+		LA(1) = BQuote;
+		zzmode(SQS); 
+	>>
+
+[xX][\']
+	<<
+		LA(1) = XQuote;
+		zzmode(SQS); 
+	>>
+
+[\"]
+	<<
+		LA(1) = 469;
+		zzmode(DQS); zzskip(); 
+	>>
+
+[\[]
+	<<
+		LA(1) = 470;
+		zzmode(BQS); zzskip(); 
+	>>
+
+([a-zA-Z_%#]|(\0xa1[\0xa2-\0xee\0xf3-\0xfe])|([\0xa2-\0xfe][\0xa1-\0xfe])|(\0x8e[\0xa1-\0xfe]))([a-zA-Z_%#0-9]|(\0xa1[\0xa2-\0xfe])|([\0xa2-\0xfe][\0xa1-\0xfe])|(\0x8e[\0xa1-\0xfe]))*
+	<<
+		LA(1) = IdName;
+		LA(1) = pt_identifier_or_keyword(zzlextext);
+	>>
+
+[0-9]+
+	<<
+		LA(1) = UNSIGNED_INTEGER;
+	>>
+
+([0-9]+[Ee]{[\+\-]}[0-9]+{[fF]})|([0-9]*.[0-9]+{[Ee]{[\+\-]}[0-9]+}{[fF]})|([0-9]+.[0-9]*{[Ee]{[\+\-]}[0-9]+}{[fF]})
+	<<
+		LA(1) = UNSIGNED_REAL;
+	>>
+
+[\0\t\ ]
+	<<
+		LA(1) = 474;
+		zzskip(); 
+	>>
+
+[\r\n]
+	<<
+		LA(1) = 475;
+		zzskip(); 
+	>>
+
+[\;]
+	<<
+		LA(1) = SEMI_COLON;
+		; 
+	>>
+
+[\+]
+	<<
+		LA(1) = PLUS;
+		; 
+	>>
+
+[\-]
+	<<
+		LA(1) = MINUS;
+		; 
+	>>
+
+[\*]
+	<<
+		LA(1) = STAR;
+		; 
+	>>
+
+[\/]
+	<<
+		LA(1) = SLASH;
+		; 
+	>>
+
+[\{]
+	<<
+		LA(1) = Left_Brace;
+		; 
+	>>
+
+[\}]
+	<<
+		LA(1) = Right_Brace;
+		; 
+	>>
+
+[:]
+	<<
+		LA(1) = COLON_;
+		; 
+	>>
+
+(\0xa1\0xef)
+	<<
+		LA(1) = YEN_SIGN;
+		; 
+	>>
+
+$
+	<<
+		LA(1) = DOLLAR_SIGN;
+		; 
+	>>
+
+\\
+	<<
+		LA(1) = WON_SIGN;
+		; 
+	>>
+
+\(
+	<<
+		LA(1) = 487;
+		pt_fix_left_parens(); zzskip(); 
+	>>
+
+\01
+	<<
+		LA(1) = LEFT_PAREN;
+		zzreplchar(' ('); 
+	>>
+
+\02
+	<<
+		LA(1) = Left_Paren;
+		zzreplchar(' ('); 
+	>>
+
+\)
+	<<
+		LA(1) = Right_Paren;
+		;
+	>>
+
+,
+	<<
+		LA(1) = 491;
+	>>
+
+=
+	<<
+		LA(1) = 493;
+	>>
+
+\.
+	<<
+		LA(1) = 494;
+	>>
+
+?
+	<<
+		LA(1) = 498;
+	>>
+
+\|\|
+	<<
+		LA(1) = 499;
+	>>
+
+<>
+	<<
+		LA(1) = 509;
+	>>
+
+>
+	<<
+		LA(1) = 510;
+	>>
+
+>=
+	<<
+		LA(1) = 511;
+	>>
+
+<
+	<<
+		LA(1) = 512;
+	>>
+
+<=
+	<<
+		LA(1) = 513;
+	>>
+
+\->
+	<<
+		LA(1) = 514;
+	>>
+
+
+%%COMMENT
+
+@
+	<<
+		LA(1) = 1;
+	>>
+
+[\*]+/
+	<<
+		LA(1) = 549;
+		zzmode(START); 
+		if (hint != PT_HINT_NONE) {       /* C-style hint */
+			/* convert to hint token */
+			int i, l;
+			strcpy(hint_str, "/*+ ");
+			l = strlen(hint_str);
+			for (i = 0; hint_table[i].tokens; i++) {
+				if ((hint & hint_table[i].hint) && l < JP_MAXNAME) {
+					l += strlen(hint_table[i].tokens) + 1;
+					if (l < JP_MAXNAME)
+					strcat(strcat(hint_str, hint_table[i].tokens), " ");
+				}
+			}
+			strcat(hint_str, "*/");
+			zzreplstr(hint_str);
+			LA(1) = C_STYLE_HINT;
+		} else {
+			zzskip();                     /* C-style comment */
+		}
+	>>
+
+[\*]+~[/]
+	<<
+		LA(1) = 550;
+		if (IS_WHITE_CHAR(zzlextext[strlen(zzlextext) - 1])) {
+			prev_is_white_char = true;
+		} else {
+			prev_is_white_char = false;
+		}
+		zzskip(); 
+	>>
+
+~[\*]+
+	<<
+		LA(1) = 551;
+		if (zzlextext[0] == ' + ') {
+			is_hint_comment = true;
+			prev_is_white_char = false;
+		}
+		if (is_hint_comment == true) { /* read hint info */
+			(void) pt_check_hint(zzlextext, hint_table, &hint, prev_is_white_char);
+			prev_is_white_char = false;
+		}
+		zzskip();
+	>>
+
+
+%%SQS
+
+@
+	<<
+		LA(1) = 1;
+	>>
+
+\'\'
+	<<
+		LA(1) = 552;
+		zzreplchar( ' \ '');
+																																																																																																																																																																													       zzmore (); >>~[\']
+	<<
+		LA(1) = 553;
+		zzmore(); 
+	>>
+
+\'
+	<<
+		LA(1) = String_Body;
+		zzreplchar( 0 ); zzmode(START); 
+	>>
+
+
+%%DQS
+
+@
+	<<
+		LA(1) = 1;
+	>>
+
+\"\"
+	<<
+		LA(1) = 554;
+		zzreplchar( ' \ "' ); zzmore(); 
+	>>
+
+~[\"]
+	<<
+		LA(1) = 555;
+		zzmore(); 
+	>>
+
+\"
+	<<
+		LA(1) = DelimitedIdName;
+		zzreplchar( 0 ); zzmode(START); 
+	>>
+
+
+%%BQS
+
+@
+	<<
+		LA(1) = 1;
+	>>
+
+~[\]]
+	<<
+		LA(1) = 556;
+		zzmore(); 
+	>>
+
+\]
+	<<
+		LA(1) = BracketDelimitedIdName;
+		zzreplchar( 0 ); zzmode(START); 
+	>>
+
+%%
+

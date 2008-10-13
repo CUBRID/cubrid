@@ -1,0 +1,5079 @@
+/*
+ * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 CUBRID Co., Ltd.
+ *
+ * repl_agent.c - main routine of Transaction Log Receiver
+ *                at the distributor site
+ *
+ * Note:
+ *   repl_agent has two roles, one is to receive the transaction logs from the
+ *   repl_server and write down them to the copy log file. Anther thing is to
+ *   apply the transaction logs to the slave db.
+ *
+ *   repl_agent has 4 kinds of threads.
+ *     - a main thread : initialize and control the other threads
+ *     - log receiver threads : requests the target logs to the repl_server and
+ *                              receives, write to the log buffer.
+ *                              There are as many as the # of masters to be
+ *                              replicated.
+ *     - log flush threads : flushes the log buffers to the disk.
+ *                           Also, the # of flush threads are same as the
+ *                           # of masters.. As a result of each log flush
+ *                           thread job, there would be a copy log file.
+ *     - log apply threads : applies the transaction logs to the slave.
+ *                           Log apply thread is created for each slave db.
+ *                           So, if we have 5 slave to be replicated, then
+ *                           the # of log apply threads would be 5.
+ *
+ *  We have following global variables for communication between threads
+ *
+ *      - MASTER_INFO   *mInfo[]
+ *      - SLAVE_INFO    *sInfo[]
+ */
+
+#ident "$Id$"
+
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <pthread.h>
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
+
+#include "porting.h"
+#include "repl_ag.h"
+#include "repl_comm.h"
+#include "repl_tp.h"
+#include "object_primitive.h"
+#include "db.h"
+#include "schema_manager_3.h"
+#include "transform_sky.h"
+#include "locator_cl.h"
+#include "page_buffer.h"
+#include "file_manager.h"
+#include "slotted_page.h"
+#include "message_catalog.h"
+#include "utility.h"
+#include "object_accessor.h"
+#include "parser.h"
+#include "object_print_1.h"
+#include "log_compress.h"
+#include "environment_variable.h"
+
+MASTER_INFO **mInfo = NULL;	/* master db info. */
+SLAVE_INFO **sInfo = NULL;	/* slave db info. */
+
+int repl_Master_num = 0;	/* the # of master dbs */
+int repl_Slave_num = 0;		/* the # of master dbs */
+int trail_File_vdes = 0;	/* the trail log file descriptor */
+
+FILE *err_Log_fp;		/* error log file */
+FILE *perf_Log_fp = NULL;	/* perf log file */
+int perf_Log_size;		/* perf log file size */
+FILE *history_fp = NULL;	/* user and trigger history file */
+int agent_status_port;		/* agent status port id */
+int perf_Commit_msec = 500;	/* commit interval of apply thread */
+bool is_Debug = false;
+
+#if defined(DEBUG_REPL)
+FILE *debug_Log_fd = NULL;
+#endif
+
+/* Global variables for argument parsing */
+char *dist_LogPath = (char *) "";	/* the distributor log path */
+const char *dist_Dbname = "";	/* the distributor db name */
+const char *dist_Passwd = "";	/* the password to access dist db */
+int create_Arv = false;
+REPL_ERR *err_Head = NULL;
+const char *log_dump_fn = "";	/* file name of replication copy log */
+int log_pagesize = 4096;	/* log page size for log dump */
+
+
+#define REPLAGENT_ARG_DBNAME           1
+#define REPLAGENT_ARG_PASSWD           2
+#define REPLAGENT_ARG_ARV              3
+#define REPLAGENT_ARG_LOG_DUMP         4
+#define REPLAGENT_ARG_LOG_DUMP_PSIZE   5
+
+/*
+ * Following macros are re-defined from the log_prv.h to traverse the log file
+ */
+
+#define REPL_LOGAREA_SIZE(m_idx)                                             \
+        (mInfo[m_idx]->io_pagesize - DB_SIZEOF(LOG_HDRPAGE))
+
+/* macros to process the log record at the edge point of the page */
+/* copied the macros of log_prv.h, and adjusted some logic */
+#define REPL_LOG_READ_ALIGN(offset, pageid, log_pgptr, release, m_idx)        \
+  do {                                                                        \
+    DB_ALIGN((offset), INT_ALIGNMENT);                                        \
+    while ((offset) >= REPL_LOGAREA_SIZE(m_idx)) {                            \
+      if (release == 1) repl_ag_release_page_buffer(pageid, m_idx);           \
+      if (((log_pgptr) = repl_ag_get_page(++(pageid), m_idx)) == NULL) {      \
+        REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
+      }                                                                       \
+      (offset) -= REPL_LOGAREA_SIZE(m_idx);                                   \
+      DB_ALIGN((offset), INT_ALIGNMENT);                                      \
+    }                                                                         \
+  } while(0)
+
+#define REPL_LOG_READ_ADD_ALIGN(add, offset, pageid,                          \
+            log_pgptr, release,  m_idx)                                       \
+  do {                                                                        \
+    (offset) += (add);                                                        \
+    REPL_LOG_READ_ALIGN((offset), (pageid), (log_pgptr), (release), m_idx);   \
+  } while(0)
+
+#define REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT(length, offset, pageid,         \
+              pgptr, release, m_idx)                                          \
+  do {                                                                        \
+    if ((offset)+(length) >= REPL_LOGAREA_SIZE(m_idx)) {                      \
+      if ((release) == 1) repl_ag_release_page_buffer(pageid, m_idx);         \
+      if (((pgptr) = repl_ag_get_page(++(pageid), m_idx)) == NULL)            \
+        REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
+      (offset) = 0;                                                           \
+      DB_ALIGN((offset), INT_ALIGNMENT);                                      \
+    }                                                                         \
+  } while(0)
+
+
+/*
+ * This process should have four arguments when it runs.
+ *    database-name : the target database name to be replicated
+ *    TCP PortNum   : the designated TCP Port number to catch the
+ *                    reqests of the repl_agent
+ *    err log file  : the log file to write down the message from this server.
+ *    # of agents   : the maximum number of agents to be served
+ */
+
+/* followings are copied from the $CUBRID/src/storage/overflow.c
+ * We need to define following structures at the common header file.
+ */
+struct ovf_recv_links
+{
+  VFID ovf_vfid;
+  VPID new_vpid;
+};
+
+struct ovf_first_part
+{
+  VPID next_vpid;
+  int length;
+  char data[1];			/* Really more than one */
+};
+struct ovf_rest_parts
+{
+  VPID next_vpid;
+  char data[1];			/* Really more than one */
+};
+
+/* use overflow page list to reduce memory copy overhead. */
+struct ovf_page_list
+{
+  char *rec_type;		/* record type */
+  char *data;			/* overflow page data: header + real data */
+  int length;			/* total length of data */
+  struct ovf_page_list *next;	/* next page */
+};
+
+/* Functions */
+static int repl_ag_set_copy_log (int m_idx, PAGEID start_pageid,
+				 PAGEID first_pageid, PAGEID last_pageid,
+				 bool flushyn);
+static int repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo);
+static LOG_PAGE *repl_ag_get_page (PAGEID pageid, int m_idx);
+static void repl_log_copy_fromlog (char *rec_type, char *area, int length,
+				   PAGEID log_pageid, PGLENGTH log_offset,
+				   LOG_PAGE * log_pgptr, int m_idx);
+static int repl_ag_get_log_data (struct log_rec *lrec,
+				 LOG_LSA * lsa,
+				 LOG_PAGE * pgptr,
+				 int m_idx, unsigned int match_rcvindex,
+				 unsigned int *rcvindex,
+				 void **logs,
+				 char **rec_type, char **data, int *d_length);
+static int repl_ag_add_repl_item (REPL_APPLY * apply, LOG_LSA lsa);
+static int repl_ag_apply_delete_log (REPL_ITEM * item);
+static int repl_ag_update_query_execute (const char *sql);
+static int repl_ag_apply_schema_log (REPL_ITEM * item);
+static int repl_ag_get_overflow_recdes (struct log_rec *lrec, void *logs,
+					char **area, int *length, int m_idx,
+					unsigned int rcvindex);
+static int repl_ag_get_relocation_recdes (struct log_rec *lrec,
+					  LOG_PAGE * pgptr, int m_idx,
+					  unsigned int match_rcvindex,
+					  void **logs, char **rec_type,
+					  char **data, int *d_length);
+static int repl_ag_get_next_update_log (struct log_rec *prev_lrec,
+					LOG_PAGE * pgptr, int m_idx,
+					void **logs, char **rec_type,
+					char **data, int *d_length);
+static int repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
+			       RECDES * recdes, unsigned int *rcvindex,
+			       char *log_data, char *rec_type, bool * ovfyn);
+static int repl_get_current (OR_BUF * buf, SM_CLASS * class_,
+			     int bound_bit_flag, DB_OTMPL * def,
+			     DB_VALUE * key);
+static int repl_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
+			     DB_VALUE * key);
+static int repl_ag_apply_update_log (REPL_ITEM * item, int m_idx);
+static int repl_ag_log_get_file_line (FILE * fp);
+static REPL_CACHE_PB *repl_init_cache_pb (void);
+static int repl_expand_cache_log_buffer (REPL_CACHE_PB * cache_pb,
+					 int slb_cnt, int slb_size,
+					 int def_buf_size);
+static REPL_CACHE_LOG_BUFFER *repl_cache_buffer_replace (REPL_CACHE_PB *
+							 cache_pb, int fd,
+							 PAGEID phy_pageid,
+							 int io_pagesize,
+							 int def_buf_size);
+static unsigned int repl_ag_pid_hash (const void *key_pid,
+				      unsigned int htsize);
+static int repl_ag_pid_hash_cmpeq (const void *key_pid1,
+				   const void *key_pid2);
+static int repl_ag_add_master_info (int idx);
+static void repl_ag_clear_master_info (int dbid);
+static void repl_ag_clear_master_info_all ();
+static int repl_ag_add_slave_info (int idx);
+static void repl_ag_clear_slave_info (SLAVE_INFO * sinfo);
+static void repl_ag_clear_slave_info_all ();
+static int repl_ag_open_env_file (char *repl_log_path);
+static void repl_ag_shutdown ();
+static int repl_ag_get_env (DB_QUERY_RESULT * result);
+static int repl_ag_get_master (DB_QUERY_RESULT * result);
+static int repl_ag_init_repl_lists (SLAVE_INFO * sinfo, int idx,
+				    bool need_realloc);
+static int repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx);
+static char *repl_ag_get_class_from_repl_group (SLAVE_INFO * sinfo, int m_idx,
+						char *class_name,
+						LOG_LSA * lsa);
+static int repl_ag_get_slave (DB_QUERY_RESULT * result);
+static int repl_ag_get_parameters_internal (int (*func) (DB_QUERY_RESULT *),
+					    const char *query);
+static int repl_ag_get_parameters ();
+static void usage (const char *argv0);
+
+
+
+
+/*
+ * repl_ag_set_copy_log() - Set the end log info
+ *   return: NO_ERROR or REPL_IO_ERROR
+ *    m_idx(in)        : the array index of the target master info
+ *    start_pageid(in) : start page of the log copy
+ *    first_pageid(in) : first page of the active log copy file
+ *    last_pageid(in)  : final page of the log copy
+ *    flushyn(in)      : true if we need flushing
+ *
+ * Note:
+ *
+ *       copy_log is used for marking the last received LSA of TR log.
+ *       So, copy_log is maintained by RECV thread, and it is flushed
+ *       at the end of the copylog file.
+ *       We append copy_log at the end of file to minimize the
+ *       "disk seek overhead".
+ *
+ *      call chain:  repl_ag_get_log_header() <- RECV
+ *
+ *      called by RECV thread
+ *
+ *      the caller should do "mutex lock"
+ */
+static int
+repl_ag_set_copy_log (int m_idx, PAGEID start_pageid, PAGEID first_pageid,
+		      PAGEID last_pageid, bool flushyn)
+{
+  MASTER_INFO *minfo = mInfo[m_idx];
+  int error = NO_ERROR;
+
+  minfo->copy_log.start_pageid = start_pageid;
+  minfo->copy_log.first_pageid = first_pageid;
+  minfo->copy_log.last_pageid = last_pageid;
+
+  if (flushyn == true)
+    error = repl_io_write_copy_log_info (minfo->pb->log_vdes,
+					 &(minfo->copy_log), 0,
+					 minfo->io_pagesize);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
+
+  return error;
+}
+
+/*
+ * repl_ag_adjust_copy_log() - adjust the copy log info
+ *   return: NO_ERROR or REPL_IO_ERROR
+ *   vdes(in): the volume descriptor for the copy log
+ *   minfo(int/out) : the target master info
+ *
+ * Note:
+ *    In case of the repl_agent stops with any reason before flushing the
+ *    copy log, restart of repl_agent would get wrong information which
+ *    record it flushed finally.
+ *
+ *    So, the repl_aegnt reads the readl log page (first & last), when
+ *    it meets the odd copy log info.
+ */
+static int
+repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
+{
+  off64_t offset = 0;
+  int error = NO_ERROR;
+  LOG_PAGE *log_page;
+  int archive_vol;
+  char archive_path[FILE_PATH_LENGTH];
+
+  log_page = malloc (minfo->io_pagesize);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, log_page);
+
+  /* find out the last point of the target copy log */
+  offset = lseek64 (vdes, (off64_t) 0, SEEK_END);
+
+  /* If no data page, just return */
+  if (offset <= DB_SIZEOF (COPY_LOG))
+    return REPL_AGENT_IO_ERROR;
+  offset -= DB_SIZEOF (COPY_LOG);
+
+  /* find out the last page id */
+  error =
+    repl_io_read (vdes, (void *) log_page, offset / minfo->io_pagesize - 1,
+		  minfo->io_pagesize);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  minfo->copy_log.last_pageid = log_page->hdr.logical_pageid;
+
+  /* find out the first page id */
+  error = repl_io_read (vdes, (void *) log_page, 0, minfo->io_pagesize);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  minfo->copy_log.first_pageid = log_page->hdr.logical_pageid;
+
+  /* find out the start page id */
+  sprintf (archive_path, "%s.ar%d", minfo->copylog_path, 0);
+  archive_vol = repl_io_open (archive_path, O_RDONLY, 0);
+
+  if (archive_vol == NULL_VOLDES)
+    minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+  else
+    {
+      error = repl_io_read (archive_vol, (void *) log_page, 0,
+			    minfo->io_pagesize);
+      if (error == NO_ERROR)
+	minfo->copy_log.start_pageid = log_page->hdr.logical_pageid;
+      else			/* if the size of archive is 0 */
+	minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+      close (archive_vol);
+    }
+
+  /* flush the final page info */
+  error = repl_io_write_copy_log_info (vdes, &(minfo->copy_log),
+				       offset / minfo->io_pagesize,
+				       minfo->io_pagesize);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_ag_get_log_header() - get the current log header
+ *   return: NO_ERROR or REPL_IO_ERROR or REPL_AGENT_ERROR
+ *   m_idx(in): the array index of the target master info
+ *   first(in):
+ *
+ * Note:
+ *    Before start the replication, send a request to the repl_server
+ *    to fetch the log header
+ *
+ *    call chain: RECV
+ *
+ *    called by RECV thread
+ *
+ *    caller don't need to process mutex lock
+ */
+int
+repl_ag_get_log_header (int m_idx, bool first)
+{
+  MASTER_INFO *minfo = mInfo[m_idx];
+  REPL_PB *pb = minfo->pb;
+  int error = NO_ERROR;
+
+  /* send the request to the repl_server and get the result */
+  error = repl_ag_sock_request_log_hdr (m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_SOCK_ERROR);
+
+  /* copy the result to the memory buffer area */
+  PTHREAD_MUTEX_LOCK (pb->mutex);
+  memcpy (pb->log_hdr_buffer, minfo->conn.resp_buffer, minfo->io_pagesize);
+  pb->log_hdr = (struct log_header *) (pb->log_hdr_buffer->area);
+  minfo->io_pagesize = pb->log_hdr->db_iopagesize;
+
+  /* If this is the first time, set the start point to copy */
+  if (first == true)
+    {
+      PAGEID temp;
+
+      temp = minfo->copy_log.start_pageid;
+
+      /* flush the trail log - the last point we copied already */
+      if ((error = repl_ag_set_copy_log (m_idx, temp, temp,
+					 temp, true)) != NO_ERROR)
+	{
+	  PTHREAD_MUTEX_UNLOCK (pb->mutex);
+	  return error;
+	}
+    }
+  else
+    {
+#if 0
+      error = repl_io_read (pb->log_vdes, (void *) &(minfo->copy_log), 1,
+			    DB_SIZEOF (COPY_LOG), true, true);
+      if (minfo->copy_log.first_pageid <= 0 ||
+	  minfo->copy_log.start_pageid <= 0 ||
+	  minfo->copy_log.last_pageid <= 0 ||
+	  (minfo->copy_log.last_pageid - minfo->copy_log.first_pageid >
+	   10000))
+	{
+	  repl_ag_adjust_copy_log (pb->log_vdes, minfo);
+	}
+#endif
+      error = repl_ag_adjust_copy_log (pb->log_vdes, minfo);
+      if (error != NO_ERROR)
+	{
+	  PAGEID temp;
+	  temp = minfo->copy_log.start_pageid;
+	  if ((error = repl_ag_set_copy_log (m_idx, temp, temp,
+					     temp, true)) != NO_ERROR)
+	    {
+	      PTHREAD_MUTEX_UNLOCK (pb->mutex);
+	      return error;
+	    }
+	}
+    }
+
+  PTHREAD_COND_BROADCAST (pb->read_cond);
+  PTHREAD_MUTEX_UNLOCK (pb->mutex);
+
+  return error;
+}
+
+/*
+ * repl_ag_does_page_exist() -
+ *   return:
+ *
+ *    pageid(in): the target page id
+ *    m_idx(in): the array index of the target master info
+ *
+ * Note
+ *
+ */
+bool
+repl_ag_does_page_exist (PAGEID pageid, int m_idx)
+{
+  REPL_PB *pb;
+  COPY_LOG *copy_log;
+  REPL_LOG_BUFFER *repl_log_buffer;
+
+  pb = mInfo[m_idx]->pb;
+  copy_log = &mInfo[m_idx]->copy_log;
+
+  if ((pb->min_pageid <= pageid && pageid <= pb->max_pageid)
+      || (copy_log->first_pageid <= pageid
+	  && pageid <= copy_log->last_pageid))
+    {
+      repl_log_buffer = repl_ag_get_page_buffer (pageid, m_idx);
+      if (repl_log_buffer != NULL)
+	{
+	  if (repl_log_buffer->pageid == pageid)
+	    {
+	      repl_ag_release_page_buffer (pageid, m_idx);
+	      return true;
+	    }
+	  repl_ag_release_page_buffer (pageid, m_idx);
+	}
+    }
+
+  return false;
+}
+
+/*
+ * repl_ag_is_in_archive() -
+ *   return:
+ *
+ *    pageid(in): the target page id
+ *    m_idx(in): the array index of the target master info
+ *
+ * Note
+ *
+ */
+bool
+repl_ag_is_in_archive (PAGEID pageid, int m_idx)
+{
+  REPL_LOG_BUFFER *repl_log_buffer;
+  bool in_archive = false;
+
+  repl_log_buffer = repl_ag_get_page_buffer (pageid, m_idx);
+  if (repl_log_buffer != NULL)
+    {
+      if (repl_log_buffer->pageid == pageid)
+	{
+	  in_archive = repl_log_buffer->in_archive;
+	}
+      repl_ag_release_page_buffer (pageid, m_idx);
+    }
+
+  return in_archive;
+}
+
+/*
+ * repl_ag_valid_page() -
+ *   return:
+ *
+ *    log_page(in):
+ *    m_idx(in): the array index of the target master info
+ *
+ * Note
+ *
+ */
+bool
+repl_ag_valid_page (LOG_PAGE * log_page, int m_idx)
+{
+  LOG_LSA lsa;
+  REPL_LOG_BUFFER *prev_page;
+  LOG_PAGE *pg_ptr;
+  struct log_rec *lrec;
+  int pageid;
+
+  if (log_page->hdr.offset < 0)
+    {
+      lsa.pageid = log_page->hdr.logical_pageid - 1;
+      do
+	{
+	  prev_page = repl_ag_get_page_buffer (lsa.pageid, m_idx);
+	  if (prev_page == NULL)
+	    {
+	      return false;
+	    }
+	  pg_ptr = &(prev_page->logpage);
+
+	  lsa.offset = pg_ptr->hdr.offset;
+	}
+      while (lsa.offset < 0);
+
+      pageid = lsa.pageid;
+      while (lsa.pageid == pageid && !LSA_ISNULL (&lsa))
+	{
+	  lrec = (struct log_rec *) ((char *) pg_ptr->area + lsa.offset);
+	  LSA_COPY (&lsa, &lrec->forw_lsa);	/* set the next record */
+	}
+
+      if (LSA_ISNULL (&lsa) || lsa.pageid == log_page->hdr.logical_pageid)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * repl_ag_get_page_buffer() - return the target page buffer
+ *   return: pointer to the target page buffer
+ *    pageid(in): the target page id
+ *    m_idx(in): the array index of the target master info
+ *
+ * Note
+ *    the APPLY thread get the target log page...
+ *         if(the target page is in page buffer area)
+ *            OK... got it !
+ *         else (the target page is the last page from the master)
+ *            read again (the RECV thread continuously fetches the last
+ *                        page)
+ *
+ *    call chain :
+ *      - repl_ag_get_page()
+ *                <- APPLY
+ *      - repl_ag_get_page()
+ *                <- repl_ag_apply_update_log() <- repl_ag_apply_repl_log()
+ *                <- APPLY
+ *      - repl_ag_get_page()
+ *                <- repl_ag_set_repl_log()
+ *                <- APPLY
+ *      -  APPLY
+ *
+ *    called by APPLY thread
+ *    caller (APPLY thread) should do "mutex lock"
+ */
+REPL_LOG_BUFFER *
+repl_ag_get_page_buffer (PAGEID pageid, int m_idx)
+{
+  int gap;
+  REPL_PB *pb = mInfo[m_idx]->pb;
+  REPL_LOG_BUFFER *buf = NULL;
+  PAGEID phy_pageid;
+  SLAVE_INFO *sinfo;
+  MASTER_INFO *minfo;
+  int error = NO_ERROR;
+  REPL_CACHE_PB *cache_pb;
+  REPL_CACHE_LOG_BUFFER *cache_buf = NULL;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+  minfo = mInfo[m_idx];
+  cache_pb = minfo->cache_pb;
+
+  /* if the target page is in the buffer area */
+  if (pageid >= pb->min_pageid && pageid <= pb->max_pageid)
+    {
+      /* the target page is in the page buffer area */
+      gap = pageid - pb->log_buffer[0]->pageid;
+      buf =
+	pb->log_buffer[(gap + minfo->log_buffer_size) %
+		       minfo->log_buffer_size];
+      return buf;
+    }
+
+  /* if the target page is not in the buffer area, and the page id
+   * is greater than the max pageid of buffer, then we have to
+   * wait for RECV thread to fetch the next page
+   */
+  else if (pageid > pb->max_pageid)
+    {
+      pb->read_pageid = pageid;
+      PTHREAD_COND_BROADCAST (pb->end_cond);
+      PTHREAD_MUTEX_UNLOCK (pb->mutex);
+
+      PTHREAD_MUTEX_LOCK (pb->mutex);
+      while (pageid > pb->max_pageid)
+	{
+	  PTHREAD_COND_TIMEDWAIT (pb->read_cond, pb->mutex);
+	  if (pb->need_shutdown)
+	    return NULL;
+	}
+      if (pageid >= pb->min_pageid && pageid <= pb->max_pageid)
+	{
+	  gap = pageid - pb->log_buffer[0]->pageid;
+	  buf =
+	    pb->log_buffer[(gap + minfo->log_buffer_size) %
+			   minfo->log_buffer_size];
+	  return buf;
+	}
+    }
+
+  PTHREAD_MUTEX_LOCK (cache_pb->mutex);
+  /* find the target page in the cache log buffer pool */
+  cache_buf = (REPL_CACHE_LOG_BUFFER *) mht_get (cache_pb->hash_table,
+						 (void *) &pageid);
+  if (cache_buf != NULL)
+    {
+      cache_buf->fix_count++;
+    }
+  else
+    {
+      phy_pageid = pageid - minfo->copy_log.first_pageid;
+      cache_buf =
+	repl_cache_buffer_replace (cache_pb, pb->log_vdes, phy_pageid,
+				   minfo->io_pagesize,
+				   minfo->cache_buffer_size);
+      if (cache_buf == NULL
+	  || cache_buf->log_buffer.logpage.hdr.logical_pageid != pageid)
+	{
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	  PTHREAD_MUTEX_UNLOCK (cache_pb->mutex);
+	  return NULL;
+	}
+      if (cache_buf->log_buffer.pageid != 0)
+	{
+	  (void) mht_rem (cache_pb->hash_table,
+			  &cache_buf->log_buffer.pageid, NULL, NULL);
+	}
+      cache_buf->log_buffer.pageid = pageid;
+      cache_buf->fix_count = 1;
+      cache_buf->log_buffer.phy_pageid = phy_pageid;
+      cache_buf->log_buffer.in_archive = false;
+      if (mht_put (cache_pb->hash_table,
+		   &cache_buf->log_buffer.pageid, cache_buf) == NULL)
+	{
+	  PTHREAD_MUTEX_UNLOCK (cache_pb->mutex);
+	  return NULL;
+	}
+    }
+  PTHREAD_MUTEX_UNLOCK (cache_pb->mutex);
+  buf = &(cache_buf->log_buffer);
+
+  return buf;
+}
+
+/*
+ * repl_ag_release_page_buffer() - decrease the fix_count of the target buffer
+ *   return: none
+ *   pageid(in): the target page id
+ *   m_idx(in): the array index of the target master info
+ *
+ * Note:
+ *    if pageid exist hash table then it is cache buffer's pageid.
+ *
+ *    if ( pageid exist hash table )
+ *         dicrement buffer's fix_count
+ *    else ( pageid is not cach buffer's pageid )
+ *         no op.
+ *
+ *   if cache buffer's fix_count < 0 then programing error.
+ */
+void
+repl_ag_release_page_buffer (PAGEID pageid, int m_idx)
+{
+  REPL_CACHE_PB *cache_pb;
+  REPL_PB *pb;
+  MASTER_INFO *minfo;
+  REPL_CACHE_LOG_BUFFER *cache_buf;
+  int error;
+
+  minfo = mInfo[m_idx];
+  pb = minfo->pb;
+  cache_pb = minfo->cache_pb;
+
+  if (pageid >= pb->min_pageid)
+    return;
+
+  PTHREAD_MUTEX_LOCK (cache_pb->mutex);
+  cache_buf = (REPL_CACHE_LOG_BUFFER *) mht_get (cache_pb->hash_table,
+						 (void *) &pageid);
+  /* if cache_buf == NULL then pageid is not cache buffer's pageid */
+  if (cache_buf != NULL)
+    {
+      cache_buf->fix_count--;
+      cache_buf->recently_freed = true;
+      if (cache_buf->fix_count < 0)
+	{
+	  /* cache buffer's fix_count < 0 : programing error.. */
+	  cache_buf->fix_count = 0;
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	}
+    }
+  PTHREAD_MUTEX_UNLOCK (cache_pb->mutex);
+}
+
+/*
+ * repl_ag_get_page() - return the target page
+ *   return: pointer to the target page
+ *   pageid(in): the target page id
+ *   m_idx(in): the array index of the target master info
+ *
+ * Note:
+ *    call chain :
+ *      - <- APPLY
+ *      - <- repl_ag_apply_update_log() <- repl_ag_apply_repl_log()
+ *                <- APPLY
+ *      - <- repl_ag_set_repl_log()
+ *                <- APPLY
+ *    called by APPLY thread
+ *    caller (APPLY thread) should do "mutex lock"
+ */
+static LOG_PAGE *
+repl_ag_get_page (PAGEID pageid, int m_idx)
+{
+  REPL_LOG_BUFFER *buf = NULL;
+
+  buf = repl_ag_get_page_buffer (pageid, m_idx);
+
+  if (buf == NULL)
+    return NULL;
+
+  return &buf->logpage;
+}
+
+/*
+ * repl_log_copy_frmlog() - copy a portion of the log
+ *   return: none
+ *   rec_type(out)
+ *   area: Area where the portion of the log is copied.
+ *               (Set as a side effect)
+ *   length: the length to copy (type change PGLENGTH -> int)
+ *   log_pageid: log page identifier of the log data to copy
+ *               (May be set as a side effect)
+ *   log_offset: log offset within the log page of the log data to copy
+ *               (May be set as a side effect)
+ *   log_pgptr: the buffer containing the log page
+ *               (May be set as a side effect)
+ *
+ * Note:
+ *   Copy "length" bytes of the log starting at log_pageid,
+ *   log_offset onto the given area.
+ *
+ *   area is set as a side effect.
+ *   log_pageid, log_offset, and log_pgptr are set as a side effect.
+ */
+
+static void
+repl_log_copy_fromlog (char *rec_type, char *area, int length,
+		       PAGEID log_pageid, PGLENGTH log_offset,
+		       LOG_PAGE * log_pgptr, int m_idx)
+{
+  int rec_length = DB_SIZEOF (INT16);
+  int copy_length;		/* Length to copy into area */
+  int t_length;			/* target length  */
+  int area_offset = 0;		/* The area offset */
+  int error = NO_ERROR;
+  LOG_PAGE *pg;
+  int release_yn = 0;
+
+  pg = log_pgptr;
+
+  /* filter the record type */
+  /* NOTES : in case of overflow page, we don't need to fetch the rectype */
+  while (rec_type != NULL && rec_length > 0)
+    {
+      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
+					     pg, release_yn, m_idx);
+      if (pg != log_pgptr)
+	release_yn = 1;
+      copy_length =
+	((log_offset + rec_length <
+	  LOGAREA_SIZE) ? rec_length : LOGAREA_SIZE - log_offset);
+      memcpy (rec_type + area_offset, (char *) (pg)->area + log_offset,
+	      copy_length);
+      rec_length -= copy_length;
+      area_offset += copy_length;
+      log_offset += copy_length;
+      length = length - DB_SIZEOF (INT16);
+    }
+
+  area_offset = 0;
+  t_length = length;
+
+  /* The log data is not contiguous */
+  while (t_length > 0)
+    {
+      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
+					     pg, release_yn, m_idx);
+      if (pg != log_pgptr)
+	release_yn = 1;
+      copy_length = ((log_offset + t_length < LOGAREA_SIZE) ? t_length
+		     : LOGAREA_SIZE - log_offset);
+      memcpy (area + area_offset, (char *) (pg)->area + log_offset,
+	      copy_length);
+      t_length -= copy_length;
+      area_offset += copy_length;
+      log_offset += copy_length;
+    }
+
+  if (release_yn == 1)
+    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+
+}
+
+/*
+ * repl_ag_get_log_data() - get the data area of log record
+ *   return: error code
+ *           *rcvindex : recovery index to be returned
+ *           **logs : the specialized log info
+ *           **rec_type : the type of RECDES
+ *           **data : the log data
+ *           *d_length : the length of data
+ *           *copyyn : true if we alloc area for the data
+ *   lrec : target log record
+ *   lsa : the LSA of the target log record
+ *   pgptr : the start log page pointer
+ *   m_idx : index of the master info array
+ *   match_rcvindex
+ *
+ * Note: get the data area, and rcvindex, length of data for the
+ *              given log record
+ */
+static int
+repl_ag_get_log_data (struct log_rec *lrec,
+		      LOG_LSA * lsa,
+		      LOG_PAGE * pgptr,
+		      int m_idx, unsigned int match_rcvindex,
+		      unsigned int *rcvindex,
+		      void **logs,
+		      char **rec_type, char **data, int *d_length)
+{
+  LOG_PAGE *pg;
+  PGLENGTH offset;
+  int length;			/* type change PGLENGTH -> int */
+  PAGEID pageid;
+  int error = NO_ERROR;
+  struct log_undoredo *undoredo;
+  struct log_undo *undo;
+  struct log_redo *redo;
+  int release_yn = 0;
+
+  bool is_undo_zip = false;
+  bool is_zip = false;
+  int rec_len = 0;
+  int nLength = 0;
+  int undo_length = 0;
+  int redo_length = 0;
+  int temp_length = 0;
+  char *undo_data = NULL;
+
+  PGLENGTH temp_offset;
+  PAGEID temp_pageid;
+  LOG_PAGE *temp_pg;
+  SLAVE_INFO *slave_info_p;
+
+  bool is_overflow = false;
+  bool is_diff = false;
+
+  pg = pgptr;
+  slave_info_p = repl_ag_get_slave_info (NULL);
+
+  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  pageid = lsa->pageid;
+
+  REPL_LOG_READ_ALIGN (offset, pageid, pg, 0, m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  if (pg != pgptr)
+    release_yn = 1;
+
+  switch (lrec->type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      if (lrec->type == LOG_DIFF_UNDOREDO_DATA)
+	is_diff = true;
+      else
+	is_diff = false;
+
+      length = DB_SIZEOF (struct log_undoredo);
+      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset, pageid,
+					     pg, release_yn, m_idx);
+      if (pg != pgptr)
+	release_yn = 1;
+
+      if (error == NO_ERROR)
+	{
+	  undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+
+	  undo_length = undoredo->ulength;	/* redo log length */
+	  temp_length = undoredo->rlength;	/* for the replication, we just need
+						 * the redo data */
+	  length = GET_ZIP_LEN (undoredo->rlength);
+
+	  if (match_rcvindex == 0
+	      || undoredo->data.rcvindex == match_rcvindex)
+	    {
+	      if (rcvindex)
+		*rcvindex = undoredo->data.rcvindex;
+	      if (logs)
+		*logs = (void *) undoredo;
+	    }
+	  else if (logs)
+	    {
+	      *logs = (void *) NULL;
+	    }
+
+	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo), offset,
+				   pageid, pg, release_yn, m_idx);
+
+	  if (pg != pgptr)
+	    release_yn = 1;
+
+	  if (error == NO_ERROR)
+	    {
+	      if (is_diff)
+		{		/* XOR Redo Data */
+		  temp_pg = pg;
+		  temp_pageid = pageid;
+		  temp_offset = offset;
+
+		  if (ZIP_CHECK (undo_length))
+		    {		/* Undo data is Zip Check */
+		      is_undo_zip = true;
+		      undo_length = GET_ZIP_LEN (undo_length);
+		    }
+
+		  undo_data = (char *) malloc (undo_length);
+
+		  /* get undo data for XOR process */
+		  repl_log_copy_fromlog (NULL, undo_data, undo_length,
+					 pageid, offset, pg, m_idx);
+
+		  if (is_undo_zip && undo_length > 0)
+		    {
+		      if (!log_unzip (slave_info_p->undo_unzip_ptr,
+				      undo_length, undo_data))
+			{
+			  if (release_yn == 1)
+			    repl_ag_release_page_buffer (pg->hdr.
+							 logical_pageid,
+							 m_idx);
+			  REPL_ERR_LOG (REPL_FILE_AGENT,
+					REPL_AGENT_UNZIP_ERROR);
+			  if (undo_data)
+			    free_and_init (undo_data);
+			  return REPL_AGENT_UNZIP_ERROR;
+			}
+		    }
+
+		  REPL_LOG_READ_ADD_ALIGN (undo_length, temp_offset,
+					   temp_pageid, temp_pg,
+					   release_yn, m_idx);
+		  pg = temp_pg;
+		  pageid = temp_pageid;
+		  offset = temp_offset;
+		}
+	      else
+		{
+		  REPL_LOG_READ_ADD_ALIGN (GET_ZIP_LEN (undo_length),
+					   offset, pageid, pg,
+					   release_yn, m_idx);
+		}
+
+	      if (pg != pgptr)
+		release_yn = 1;
+	    }
+	}
+      break;
+
+    case LOG_UNDO_DATA:
+      length = DB_SIZEOF (struct log_undo);
+      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
+					     pageid, pg, release_yn, m_idx);
+      if (pg != pgptr)
+	release_yn = 1;
+      if (error == NO_ERROR)
+	{
+	  undo = (struct log_undo *) ((char *) pg->area + offset);
+	  temp_length = undo->length;
+	  length = (int) GET_ZIP_LEN (undo->length);
+
+	  if (match_rcvindex == 0 || undo->data.rcvindex == match_rcvindex)
+	    {
+	      if (logs)
+		*logs = (void *) undo;
+	      if (rcvindex)
+		*rcvindex = undo->data.rcvindex;
+	    }
+	  else if (logs)
+	    {
+	      *logs = (void *) NULL;
+	    }
+	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undo), offset, pageid,
+				   pg, release_yn, m_idx);
+	  if (pg != pgptr)
+	    release_yn = 1;
+	}
+      break;
+
+    case LOG_REDO_DATA:
+      length = DB_SIZEOF (struct log_redo);
+      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
+					     pageid, pg, release_yn, m_idx);
+      if (pg != pgptr)
+	release_yn = 1;
+      if (error == NO_ERROR)
+	{
+	  redo = (struct log_redo *) ((char *) pg->area + offset);
+	  temp_length = redo->length;
+	  length = GET_ZIP_LEN (redo->length);
+
+	  if (match_rcvindex == 0 || redo->data.rcvindex == match_rcvindex)
+	    {
+	      if (logs)
+		*logs = (void *) redo;
+	      if (rcvindex)
+		*rcvindex = redo->data.rcvindex;
+	    }
+	  else if (logs)
+	    {
+	      *logs = (void *) NULL;
+	    }
+	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*redo), offset, pageid,
+				   pg, release_yn, m_idx);
+	  if (pg != pgptr)
+	    release_yn = 1;
+	}
+      break;
+
+    default:
+      if (logs)
+	*logs = NULL;
+      if (release_yn == 1)
+	repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+
+      return error;
+    }
+
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if (ZIP_CHECK (temp_length))
+    {
+      is_zip = true;
+      nLength = GET_ZIP_LEN (temp_length);
+    }
+  else
+    {
+      is_zip = false;
+    }
+
+  if (*data == NULL)
+    {
+      /* general cases, use the pre-allocated buffer */
+
+      *data = malloc (length);
+      is_overflow = true;
+
+      if (*data == NULL)
+	{
+	  *d_length = 0;
+	  if (release_yn == 1)
+	    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	  return REPL_AGENT_MEMORY_ERROR;
+	}
+    }
+
+  if (is_zip)
+    {
+      /* Get Zip Data */
+      repl_log_copy_fromlog (NULL, *data, nLength, pageid, offset, pg, m_idx);
+    }
+  else
+    {
+      /* Get Redo Data */
+      repl_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, length,
+			     pageid, offset, pg, m_idx);
+    }
+
+  if (is_zip && nLength != 0)
+    {
+      if (!log_unzip (slave_info_p->redo_unzip_ptr, nLength, *data))
+	{
+	  if (release_yn == 1)
+	    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_UNZIP_ERROR);
+	  if (undo_data)
+	    free_and_init (undo_data);
+	  return REPL_AGENT_UNZIP_ERROR;
+	}
+    }
+
+  if (is_zip)
+    {
+      if (is_diff)
+	{
+	  if (is_undo_zip)
+	    {
+	      undo_length = (slave_info_p->undo_unzip_ptr)->data_length;
+	      redo_length = (slave_info_p->redo_unzip_ptr)->data_length;
+	      (void) log_diff (undo_length,
+			       (slave_info_p->undo_unzip_ptr)->log_data,
+			       redo_length,
+			       (slave_info_p->redo_unzip_ptr)->log_data);
+	    }
+	  else
+	    {
+	      redo_length = (slave_info_p->redo_unzip_ptr)->data_length;
+	      (void) log_diff (undo_length, undo_data,
+			       redo_length,
+			       (slave_info_p->redo_unzip_ptr)->log_data);
+	    }
+	}
+      else
+	{
+	  redo_length = (slave_info_p->redo_unzip_ptr)->data_length;
+	}
+
+      if (rec_type)
+	{
+	  rec_len = DB_SIZEOF (INT16);
+	  length = redo_length - rec_len;
+	}
+      else
+	{
+	  length = redo_length;
+	}
+
+      if (is_overflow)
+	{
+	  free_and_init (*data);
+	  if ((*data = malloc (length)) == NULL)
+	    {
+	      *d_length = 0;
+	      if (release_yn == 1)
+		repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	      if (undo_data)
+		free_and_init (undo_data);
+	      return REPL_AGENT_MEMORY_ERROR;
+	    }
+	}
+
+      if (rec_type)
+	{
+	  memcpy (*rec_type, (slave_info_p->redo_unzip_ptr)->log_data,
+		  rec_len);
+	  memcpy (*data,
+		  (slave_info_p->redo_unzip_ptr)->log_data + rec_len, length);
+	}
+      else
+	{
+	  memcpy (*data, (slave_info_p->redo_unzip_ptr)->log_data,
+		  redo_length);
+	}
+    }
+
+  *d_length = length;
+
+  if (release_yn == 1)
+    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+
+  if (undo_data)
+    free_and_init (undo_data);
+
+  return error;
+}
+
+/*
+ * repl_ag_get_master_info_index() - return the array index of master
+ *   return: the array index
+ *   dbid(in): unique ID of the master db
+ *
+ * Note:
+ *     We load the master db info to an array - mInfo[]
+ *     This function returns the index of the array matching with the dbid
+ *
+ *     call chain : <- repl_tr_log_apply
+ *
+ *     called by APPLY thread
+ *
+ *     The caller don't need to do "mutex lock", because the mInfo is
+ *     populated once by the main thread before creating threads.
+ */
+int
+repl_ag_get_master_info_index (int dbid)
+{
+  int i;
+
+  for (i = 0; i < repl_Master_num; i++)
+    if (mInfo[i]->dbid == dbid)
+      return i;
+  return -1;
+
+}
+
+/*
+ * repl_ag_is_idle() -
+ *
+ *   return:
+ *
+ *   sinfo(in): the pointer to the target slave info
+ *   idx(in): the index of MASTER_MAP of a slage
+ *
+ * Note:
+ */
+bool
+repl_ag_is_idle (SLAVE_INFO * sinfo, int idx)
+{
+  int i;
+
+  for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
+    {
+      if (sinfo->masters[idx].repl_lists[i]->tranid != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * repl_ag_find_apply_list() - return the apply list for the target
+ *                             transaction id
+ *   return: pointer to the target apply list
+ *   sinfo(in/out): the pointer to the target slave info
+ *   tranid(in): the target transaction id
+ *   idx(in): the index of MASTER_MAP of a slage
+ *
+ * Note:
+ *     When we apply the transaction logs to the slave, we have to take them
+ *     in turns of commit order.
+ *     So, each slave maintains the apply list per transaction.
+ *     And an apply list has one or more replication item.
+ *     When the APPLY thread meets the "LOG COMMIT" record, it finds out
+ *     the apply list of the target transaction, and apply the replication
+ *     items to the slave orderly.
+ *
+ *     call chain :
+ *          <- repl_ag_set_repl_log <- APPLY
+ *              ==> to insert a replication item to the apply list
+ *          <- repl_ag_apply_repl_log <- APPLY
+ *              ==> to apply replication items to the apply list
+ *
+ *     called by APPLY thread
+ *
+ *     The caller don't need to do "mutex lock", because the mInfo is
+ *     populated once by the main thread before creating threads.
+ */
+REPL_APPLY *
+repl_ag_find_apply_list (SLAVE_INFO * sinfo, int tranid, int idx)
+{
+  int i;
+  int free_index = -1;
+
+  /* find out the matched index */
+  for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
+    {
+      if (sinfo->masters[idx].repl_lists[i]->tranid == tranid)
+	return sinfo->masters[idx].repl_lists[i];
+
+      /* retreive the free index  for the laster use */
+      else if ((free_index < 0) &&
+	       (sinfo->masters[idx].repl_lists[i]->tranid == 0))
+	free_index = i;
+    }
+
+  /* not matched, but we have free space */
+  if (free_index >= 0)
+    {
+      sinfo->masters[idx].repl_lists[free_index]->tranid = tranid;
+#if 0
+      if (lsa)
+	LSA_COPY (&sinfo->masters[idx].repl_lists[free_index]->
+		  start_lsa, lsa);
+#endif
+      return sinfo->masters[idx].repl_lists[free_index];
+    }
+
+  /* not matched, no free space */
+  if (sinfo->masters[idx].cur_repl == sinfo->masters[idx].repl_cnt)
+    {
+      /* array is full --> realloc */
+      if (repl_ag_init_repl_lists (sinfo, idx, true) == NO_ERROR)
+	{
+	  sinfo->masters[idx].repl_lists[sinfo->masters[idx].cur_repl]->
+	    tranid = tranid;
+#if 0
+	  if (lsa)
+	    LSA_COPY (&sinfo->masters[idx].
+		      repl_lists[sinfo->masters[idx].cur_repl -
+				 1]->start_lsa, lsa);
+#endif
+	  sinfo->masters[idx].cur_repl++;
+	  return sinfo->masters[idx].repl_lists[sinfo->masters[idx].
+						cur_repl - 1];
+	}
+      return NULL;
+    }
+
+  /* mot matched, no free space, array is not full */
+  sinfo->masters[idx].repl_lists[sinfo->masters[idx].cur_repl]->tranid =
+    tranid;
+  sinfo->masters[idx].cur_repl++;
+#if 0
+  if (lsa)
+    LSA_COPY (&sinfo->masters[idx].
+	      repl_lists[sinfo->masters[idx].cur_repl - 1]->start_lsa, lsa);
+#endif
+  return sinfo->masters[idx].repl_lists[sinfo->masters[idx].cur_repl - 1];
+}
+
+/*
+ * repl_ag_add_repl_item() - add the replication item into the apply list
+ *   return: NO_ERROR or REPL_IO_ERROR or REPL_SOCK_ERROR
+ *   apply(in/out): log apply list
+ *   lsa(in): the target LSA of the log
+ *
+ * Note:
+ *      call chain:  repl_ag_set_repl_log() <- repl_tr_log_apply
+ *
+ *      called by APPLY thread
+ *
+ *      The caller don't need to do "mutex lock", the "log apply lists &
+ *      items" are local resources of the APPLY thread.
+ */
+static int
+repl_ag_add_repl_item (REPL_APPLY * apply, LOG_LSA lsa)
+{
+  REPL_ITEM *item;
+  int error = NO_ERROR;
+
+  item = malloc (DB_SIZEOF (REPL_ITEM));
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, item);
+
+  LSA_COPY (&item->lsa, &lsa);
+  item->next = NULL;
+
+  if (apply->repl_head == NULL)
+    {
+      apply->repl_head = apply->repl_tail = item;
+    }
+  else
+    {
+      apply->repl_tail->next = item;
+      apply->repl_tail = item;
+    }
+  return error;
+}
+
+/*
+ * repl_ag_apply_delete_log() - apply the delete log to the target slave
+ *   return: NO_ERROR or error code
+ *   item(in): replication item
+ *
+ * Note:
+ *      call chain:
+ *          repl_ag_apply_repl_log() <- repl_tr_log_apply() <- RECV
+ *
+ *      called by APPLY thread
+ */
+static int
+repl_ag_apply_delete_log (REPL_ITEM * item)
+{
+  DB_OBJECT *class_obj, *obj;
+  int error = NO_ERROR;
+
+  /* find out class object by class name */
+  class_obj = db_find_class (item->class_name);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, class_obj);
+
+  /* find out object by primary key */
+  obj = obj_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
+
+  /* delete this object */
+  if (obj)
+    {
+      error = db_drop (obj);
+      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	{
+	  return REPL_AGENT_CANT_CONNECT_TO_SLAVE;
+	}
+      REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_update_query_execute()
+ *   return: NO_ERROR or error code
+ *   sql(in)
+ */
+static int
+repl_ag_update_query_execute (const char *sql)
+{
+  int error = NO_ERROR;
+  DB_QUERY_RESULT *result;
+  DB_QUERY_ERROR query_error;
+
+  if (db_execute (sql, &result, &query_error) < 0)
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+      return er_errid ();
+    }
+  error = db_query_end (result);
+  if (error != NO_ERROR)
+    REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  return error;
+}
+
+/*
+ * repl_ag_apply_schema_log() - apply the schema log to the target slave
+ *   return: NO_ERROR or error code
+ *   item(in): replication item
+ *
+ * Note:
+ *      call chain:
+ *          repl_ag_apply_repl_log() <- repl_tr_log_apply() <- RECV
+ *
+ *      called by APPLY thread
+ */
+static int
+repl_ag_apply_schema_log (REPL_ITEM * item)
+{
+  char *ddl;
+  int error = NO_ERROR;
+
+  switch (item->type)
+    {
+    case SQLX_CMD_CREATE_CLASS:
+    case SQLX_CMD_ALTER_CLASS:
+    case SQLX_CMD_RENAME_CLASS:
+    case SQLX_CMD_DROP_CLASS:
+
+    case SQLX_CMD_CREATE_INDEX:
+    case SQLX_CMD_ALTER_INDEX:
+    case SQLX_CMD_DROP_INDEX:
+
+#if 0
+      /* serial replication is not schema replication but data replication */
+    case SQLX_CMD_CREATE_SERIAL:
+    case SQLX_CMD_ALTER_SERIAL:
+    case SQLX_CMD_DROP_SERIAL:
+#endif
+
+    case SQLX_CMD_DROP_DATABASE:
+    case SQLX_CMD_DROP_LABEL:
+
+    case SQLX_CMD_CREATE_STORED_PROCEDURE:
+    case SQLX_CMD_DROP_STORED_PROCEDURE:
+
+      ddl = db_get_string (&item->key);
+      if (repl_ag_update_query_execute (ddl) != NO_ERROR)
+	{
+	  if (er_errid () == ER_NET_CANT_CONNECT_SERVER
+	      || error == ER_OBJ_NO_CONNECT)
+	    {
+	      error = REPL_AGENT_CANT_CONNECT_TO_SLAVE;
+	    }
+	  else
+	    {
+	      error = REPL_AGENT_QUERY_ERROR;
+	    }
+	}
+      break;
+
+    case SQLX_CMD_CREATE_USER:
+    case SQLX_CMD_ALTER_USER:
+    case SQLX_CMD_DROP_USER:
+    case SQLX_CMD_GRANT:
+    case SQLX_CMD_REVOKE:
+
+    case SQLX_CMD_CREATE_TRIGGER:
+    case SQLX_CMD_RENAME_TRIGGER:
+    case SQLX_CMD_DROP_TRIGGER:
+    case SQLX_CMD_REMOVE_TRIGGER:
+    case SQLX_CMD_SET_TRIGGER:
+      ddl = db_get_string (&item->key);
+      if (fprintf (history_fp, "%s\n", ddl) < 0)
+	REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+      else
+	fflush (history_fp);
+      break;
+
+    default:
+      return NO_ERROR;
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_get_overflow_update_recdes() - prepare the overflow page update
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *     For the overflow page udpate, the layout of transaction log is ..
+ *
+ *  1   |LOG_REDO_DATA:RVOVF_PAGE_UPDATE:vfid(2240/0/0):data(2241/0, 8994) |
+ *  2   |LOG_REDO_DATA:RVOVF_PAGE_UPDATE:vfid(2241/0/0):data(-1/-1) |
+ *  3   |LOG_UNDOREDO_DATA:RVOVF_NEWPAGE_LINK:vfid(2241/0/0):data(2242/0) |
+ *  4   |LOG_UNDO_DATA:RVOVF_NEWPAGE_LOGICAL_UNDO:vfid(-1/-1/0):data(2242/0) |
+ *  5   |LOG_REDO_DATA:RVOVF_PAGE_UPDATE:vfid(2242/0/0):data(-1/-1) |
+ *  6|->|LOG_UNDOREDO_DATA:RVOVF_CHANGE_LINK:2242/0/0
+ *   |       ..... (some other logs)
+ *   |
+ *  7---|LOG_REPLICATION_DATA:class_name, key_value, lsa |
+ *
+ *
+ *      we are here .. log #6 -- RVOVF_CHANGE_LINK
+ *
+ *      The first overflow page structure is not same as the rest pages,
+ *      without knowing about that, we can't retrieve the real data..
+ *
+ *      So, we travese the log file backward to find out the first page,
+ *      then we make the log record via forward traversing.
+ *
+ *      vfid = vfid of RVOVF_CHANGE_LINK (2242)
+ *      prev record = NULL;
+ *      get previous record whithin the same transaction boundary;
+ *      while(record) {
+ *         if(record is LOG_REDO_DATA and
+ *            rcvindex is RVOVF_PAGE_UPDATE and
+ *            next vfid of this record == vfid) {
+ *            vfid = current vfid
+ *            prev_record = record
+ *         }
+ *         record = get previous record whithin the same transaction boundary;
+ *      }
+ *
+ *      record = prev_record  -- first page
+ *      first = 1
+ *      while(record) {
+ *         if(record is LOG_REDO_DATA and
+ *            rcvindex is RVOVF_PAGE_UPDATE) {
+ *            if(first) get first page data;
+ *            else      get rest page data;
+ *            add data;
+ *         }
+ *         get next record;
+ *      }
+ *
+ *     For the overflow page insert, the layout of transaction log is ..
+ *
+ *  1   |LOG_UNDO_DATA:RVOVF_NEWPAGE_LOGICAL_UNDO:vfid(454/0):new_vpid(973/0)|
+ *  2      |LOG_REDO_DATA:RVOVF_NEWPAGE_INSERT:P/O/V(973/0/0):length(4088):data|
+ *  3   |LOG_UNDO_DATA:RVOVF_NEWPAGE_LOGICAL_UNDO:vfid(454/0):new_vpid(974/0)|
+ *  4      |LOG_REDO_DATA:RVOVF_NEWPAGE_INSERT:P/O/V(974/0/0):length(4088):data|
+ *  5   |LOG_UNDO_DATA:RVOVF_NEWPAGE_LOGICAL_UNDO:vfid(454/0):new_vpid(975/0)|
+ *  6      |LOG_REDO_DATA:RVOVF_NEWPAGE_INSERT:P/O/V(975/0/0):length(1880):data|
+ *  7|->|LOG_UNDOREDO_DATA:RVHF_INSERT:.... : REC_BIGONE, 973/-1/0
+ *   |       ..... (some other logs)
+ *   |
+ *  8---|LOG_REPLICATION_DATA:class_name, key_value, lsa |
+ *
+ *
+ *      we are here .. log #7 -- RVHF_INSERT
+ *
+ *    The logic is same as update cases except for the target rcvindex
+ *                - RVOVF_NEWPAGE_INSERT
+ *
+ *
+ *    call chain : APPLY thread
+ *
+ *    called by apply thread
+ *
+ *     APPLY thread processes the mutex lock
+ */
+static int
+repl_ag_get_overflow_recdes (struct log_rec *lrec, void *logs,
+			     char **area, int *length, int m_idx,
+			     unsigned int rcvindex)
+{
+  struct log_rec *t_lrec;
+  struct log_redo *redo;
+  void *v_redo;
+  VPID t_vpid;
+  LOG_LSA temp;
+  LOG_PAGE *pg;
+  int error = NO_ERROR;
+  PGLENGTH offset;
+  PGLENGTH t_offset;
+  PAGEID pageid;
+  int t_len = 0;
+  bool first = true;
+  struct ovf_page_list *ovf_page_h = NULL;
+  struct ovf_page_list *ovf_page_t = NULL;
+  struct ovf_page_list *ovf_temp = NULL;
+
+  t_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
+  t_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
+
+  LSA_COPY (&temp, &lrec->prev_tranlsa);
+
+  /* find out the start point of overflow page ..
+   * Traverse the log page inversely
+   */
+  *length = 0;
+  while (!LSA_ISNULL (&temp))
+    {
+      offset = temp.offset;
+      pageid = temp.pageid;
+
+      pg = repl_ag_get_page (pageid, m_idx);
+
+      t_lrec = (struct log_rec *) ((char *) pg->area + offset);
+
+      if (t_lrec->trid != lrec->trid)
+	{
+	  repl_ag_release_page_buffer (pageid, m_idx);
+	  break;
+	}
+      if (t_lrec->type == LOG_REDO_DATA)
+	{
+	  ovf_temp = (struct ovf_page_list *)
+	    malloc (DB_SIZEOF (struct ovf_page_list));
+	  ovf_temp->data = NULL;
+	  ovf_temp->rec_type = NULL;
+	  ovf_temp->length = 0;
+	  error =
+	    repl_ag_get_log_data (t_lrec, &temp, pg, m_idx, rcvindex,
+				  NULL, &v_redo, NULL, &ovf_temp->data,
+				  &ovf_temp->length);
+
+	  if (error == NO_ERROR && v_redo && ovf_temp->data)
+	    {
+	      VPID *t;
+
+	      t = (VPID *) (char *) ovf_temp->data;
+	      redo = (struct log_redo *) v_redo;
+
+	      if (first == true ||
+		  (t_vpid.pageid == t->pageid && t_vpid.volid == t->volid))
+		{
+		  if (ovf_page_t == NULL)
+		    {
+		      ovf_page_t = ovf_page_h = ovf_temp;
+		      ovf_page_h->next = NULL;
+		    }
+		  else
+		    {
+		      ovf_temp->next = ovf_page_h;
+		      ovf_page_h = ovf_temp;
+		    }
+		  t_vpid.pageid = redo->data.pageid;
+		  t_vpid.volid = redo->data.volid;
+		  *length += ovf_temp->length;
+		  first = false;
+		}
+	      else
+		{
+		  free_and_init (ovf_temp->data);
+		  free_and_init (ovf_temp);
+		}
+	    }
+	  else
+	    {
+	      free_and_init (ovf_temp->data);
+	      free_and_init (ovf_temp);
+	    }
+	}
+      LSA_COPY (&temp, &t_lrec->prev_tranlsa);
+      repl_ag_release_page_buffer (pageid, m_idx);
+    }
+
+  if ((*area = malloc (*length)) == NULL)
+    {
+      ovf_temp = ovf_page_h;
+      while (ovf_temp)
+	{
+	  ovf_page_h = ovf_temp->next;
+	  free_and_init (ovf_temp->data);
+	  free_and_init (ovf_temp);
+	  ovf_temp = ovf_page_h;
+	}
+    }
+
+  ovf_temp = ovf_page_h;
+  t_len = 0;
+  first = true;
+  *length = 0;
+  while (ovf_temp)
+    {
+      if (first == true)
+	t_offset = offsetof (struct ovf_first_part, data);
+      else
+	t_offset = offsetof (struct ovf_rest_parts, data);
+      t_len = ovf_temp->length - t_offset;
+      memcpy (*area + *length, ovf_temp->data + t_offset, t_len);
+      *length += t_len;
+      free_and_init (ovf_temp->data);
+      ovf_page_h = ovf_temp->next;
+      free_and_init (ovf_temp);
+      ovf_temp = ovf_page_h;
+      if (first == true)
+	first = false;
+    }
+
+  return error;
+}
+
+static int
+repl_ag_get_relocation_recdes (struct log_rec *lrec,
+			       LOG_PAGE * pgptr,
+			       int m_idx, unsigned int match_rcvindex,
+			       void **logs,
+			       char **rec_type, char **data, int *d_length)
+{
+  struct log_rec *tmp_lrec;
+  unsigned int rcvindex;
+  LOG_PAGE *pg = pgptr;
+  bool release_yn = false;
+  LOG_LSA lsa;
+  int error = NO_ERROR;
+
+  LSA_COPY (&lsa, &lrec->prev_tranlsa);
+  if (!LSA_ISNULL (&lsa))
+    {
+      pg = repl_ag_get_page (lsa.pageid, m_idx);
+      if (pg != pgptr)
+	{
+	  release_yn = true;
+	}
+      tmp_lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
+      if (tmp_lrec->trid != lrec->trid)
+	{
+	  error = REPL_AGENT_GET_LOG_PAGE_FAIL;
+	}
+      else
+	{
+	  error =
+	    repl_ag_get_log_data (tmp_lrec, &lsa, pg, m_idx,
+				  RVHF_INSERT, &rcvindex, logs,
+				  rec_type, data, d_length);
+	}
+    }
+  else
+    {
+      error = REPL_AGENT_GET_LOG_PAGE_FAIL;
+    }
+
+  if (release_yn)
+    {
+      repl_ag_release_page_buffer (lsa.pageid, m_idx);
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_get_next_update_log() - get the right update log
+ *   return: NO_ERROR or error code
+ *   prev_lrec(in):  prev log record
+ *   pgptr(in):  the start log page pointer
+ *   m_idx(in):  index of master info
+ *   logs(out) : the specialized log info
+ *   rec_type(out) : the type of RECDES
+ *   data(out) : the log data
+ *   d_length(out): the length of data
+ *
+ * Note:
+ *      When the repl_agent meets the REC_ASSIGN_ADDRESS or REC_RELOCATION
+ *      record, it should fetch the real UPDATE log record to be processed.
+ */
+static int
+repl_ag_get_next_update_log (struct log_rec *prev_lrec,
+			     LOG_PAGE * pgptr, int m_idx, void **logs,
+			     char **rec_type, char **data, int *d_length)
+{
+  LOG_PAGE *pg;
+  LOG_LSA lsa;
+  PGLENGTH offset;
+  int length;			/* type change PGLENGTH -> int */
+  PAGEID pageid;
+  int error = NO_ERROR;
+  struct log_rec *lrec;
+  struct log_undoredo *undoredo;
+  struct log_undoredo *prev_log;
+  int nLength = 0;
+  int release_yn = 0;
+  int temp_length = 0;
+  int undo_length = 0;
+  int redo_length = 0;
+
+  bool is_zip = false;
+  bool is_undo_zip = false;
+
+  char *undo_data = NULL;
+  LOG_ZIP *log_unzip_data = NULL;
+  LOG_ZIP *log_undo_data = NULL;
+  int rec_len = 0;
+
+  SLAVE_INFO *sInfo;
+
+  bool bIsDiff = false;
+
+  pg = pgptr;
+  LSA_COPY (&lsa, &prev_lrec->forw_lsa);
+  prev_log = *(struct log_undoredo **) logs;
+
+  sInfo = repl_ag_get_slave_info (NULL);
+
+  log_undo_data = sInfo->undo_unzip_ptr;
+  log_unzip_data = sInfo->redo_unzip_ptr;
+
+  while (true)
+    {
+      while (pg && pg->hdr.logical_pageid == lsa.pageid)
+	{
+	  lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
+	  if (lrec->trid == prev_lrec->trid &&
+	      (lrec->type == LOG_UNDOREDO_DATA
+	       || lrec->type == LOG_DIFF_UNDOREDO_DATA))
+	    {
+	      if (lrec->type == LOG_DIFF_UNDOREDO_DATA)
+		bIsDiff = true;
+	      else
+		bIsDiff = false;
+
+	      offset = DB_SIZEOF (struct log_rec) + lsa.offset;
+	      pageid = lsa.pageid;
+	      REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
+	      if (pg != pgptr)
+		release_yn = 1;
+	      length = DB_SIZEOF (struct log_undoredo);
+	      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
+						     pageid, pg,
+						     release_yn, m_idx);
+	      if (pg != pgptr)
+		release_yn = 1;
+	      if (error == NO_ERROR)
+		{
+		  undoredo =
+		    (struct log_undoredo *) ((char *) pg->area + offset);
+		  undo_length = undoredo->ulength;
+		  temp_length = undoredo->rlength;
+		  length = GET_ZIP_LEN (undoredo->rlength);
+
+		  if (undoredo->data.rcvindex == RVHF_UPDATE &&
+		      undoredo->data.pageid == prev_log->data.pageid &&
+		      undoredo->data.offset == prev_log->data.offset &&
+		      undoredo->data.volid == prev_log->data.volid)
+		    {
+		      REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo),
+					       offset, pageid, pg,
+					       release_yn, m_idx);
+		      if (pg != pgptr)
+			release_yn = 1;
+
+		      if (bIsDiff)
+			{
+			  if (ZIP_CHECK (undo_length))
+			    {
+			      is_undo_zip = true;
+			      undo_length = GET_ZIP_LEN (undo_length);
+			    }
+
+			  undo_data = (char *) malloc (undo_length);
+
+			  repl_log_copy_fromlog (NULL, undo_data,
+						 undo_length, pageid,
+						 offset, pg, m_idx);
+
+			  if (is_undo_zip)
+			    {
+			      if (!log_unzip
+				  (log_undo_data, undo_length, undo_data))
+				{
+				  if (release_yn == 1)
+				    repl_ag_release_page_buffer (pg->
+								 hdr.
+								 logical_pageid,
+								 m_idx);
+				  REPL_ERR_LOG (REPL_FILE_AGENT,
+						REPL_AGENT_UNZIP_ERROR);
+				  if (undo_data)
+				    free_and_init (undo_data);
+				  return REPL_AGENT_UNZIP_ERROR;
+				}
+			    }
+			  REPL_LOG_READ_ADD_ALIGN (undo_length, offset,
+						   pageid, pg,
+						   release_yn, m_idx);
+			}
+		      else
+			{
+			  REPL_LOG_READ_ADD_ALIGN (GET_ZIP_LEN
+						   (undo_length),
+						   offset, pageid, pg,
+						   release_yn, m_idx);
+			}
+
+		      if (pg != pgptr)
+			release_yn = 1;
+
+		      if (ZIP_CHECK (temp_length))
+			{
+			  is_zip = true;
+			  nLength = GET_ZIP_LEN (temp_length);
+			  repl_log_copy_fromlog (NULL, *data, nLength,
+						 pageid, offset, pg, m_idx);
+			}
+		      else
+			{
+			  repl_log_copy_fromlog (*rec_type, *data,
+						 length, pageid, offset,
+						 pg, m_idx);
+			  is_zip = false;
+			}
+
+		      if (is_zip && nLength != 0)
+			{
+			  if (!log_unzip (log_unzip_data, nLength, *data))
+			    {
+			      if (release_yn == 1)
+				repl_ag_release_page_buffer (pg->hdr.
+							     logical_pageid,
+							     m_idx);
+			      REPL_ERR_LOG (REPL_FILE_AGENT,
+					    REPL_AGENT_UNZIP_ERROR);
+			      if (undo_data)
+				free_and_init (undo_data);
+			      return REPL_AGENT_UNZIP_ERROR;
+			    }
+			}
+
+		      if (is_zip)
+			{
+			  if (bIsDiff)
+			    {
+			      if (is_undo_zip && log_undo_data != NULL)
+				{
+				  undo_length = log_undo_data->data_length;
+				  redo_length = log_unzip_data->data_length;
+
+				  (void) log_diff (undo_length,
+						   log_undo_data->
+						   log_data,
+						   redo_length,
+						   log_unzip_data->log_data);
+				}
+			      else
+				{
+				  redo_length = log_unzip_data->data_length;
+				  (void) log_diff (undo_length,
+						   undo_data,
+						   redo_length,
+						   log_unzip_data->log_data);
+				}
+			    }
+			  else
+			    {
+			      redo_length = log_unzip_data->data_length;
+			    }
+
+			  if (rec_type)
+			    {
+			      rec_len = DB_SIZEOF (INT16);
+			      memcpy (*rec_type,
+				      log_unzip_data->log_data, rec_len);
+			      memcpy (*data,
+				      log_unzip_data->log_data +
+				      rec_len, redo_length - rec_len);
+			      length = redo_length - rec_len;
+			    }
+			  else
+			    {
+			      memcpy (*data, log_unzip_data->log_data,
+				      redo_length);
+			      length = redo_length;
+			    }
+			}
+
+		      *d_length = length;
+		      if (release_yn == 1)
+			repl_ag_release_page_buffer (pg->hdr.
+						     logical_pageid, m_idx);
+
+		      if (undo_data)
+			free_and_init (undo_data);
+
+		      return error;
+		    }
+		}
+	    }
+	  else if (lrec->trid == prev_lrec->trid &&
+		   (lrec->type == LOG_COMMIT || lrec->type == LOG_ABORT))
+	    {
+	      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	      if (release_yn == 1)
+		repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	      return error;
+	    }
+	  LSA_COPY (&lsa, &lrec->forw_lsa);
+	}
+
+      if (release_yn == 1)
+	repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+      pg = repl_ag_get_page (lsa.pageid, m_idx);
+      release_yn = 1;
+    }
+
+  if (release_yn == 1)
+    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+  return error;
+
+}
+
+/*
+ * repl_ag_get_recdes() - get the record description from the log file
+ *   return: NO_ERROR or error code
+ *    m_idx: the array index of the target master info
+ *    pgptr: point to the target log page
+ *    recdes(out): record description (output)
+ *    rcvindex(out): recovery index (output)
+ *    log_data: log data area
+ *    ovf_yn(out)  : true if the log data is in overflow page
+ *
+ * Note:
+ *     To replicate the data, we have to filter the record descripion
+ *     from the log record. This function retrieves the record description
+ *     for the given lsa.
+ *
+ *      call chain:  <- repl_ag_apply_update_log() <- repl_ag_apply_repl_log()
+ *
+ *      called by APPLY thread
+ */
+static int
+repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
+		    RECDES * recdes, unsigned int *rcvindex,
+		    char *log_data, char *rec_type, bool * ovfyn)
+{
+  struct log_rec *lrec;
+  LOG_PAGE *pg;
+  int length;
+  int error = NO_ERROR;
+  char *area = NULL;
+  void *logs = NULL;
+
+  pg = pgptr;
+  lrec = (struct log_rec *) ((char *) pg->area + lsa->offset);
+
+  error = repl_ag_get_log_data (lrec, lsa, pg, m_idx, 0, rcvindex,
+				&logs, &rec_type, &log_data, &length);
+
+  if (error == NO_ERROR)
+    {
+      recdes->type = *(INT16 *) (rec_type);
+      recdes->data = log_data;
+      recdes->area_size = recdes->length = length;
+    }
+  else
+    REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  /* Now.. we have to process overflow pages */
+  length = 0;
+  if (*rcvindex == RVOVF_CHANGE_LINK)
+    {
+      /* if overflow page update */
+      error = repl_ag_get_overflow_recdes (lrec, logs, &area, &length,
+					   m_idx, RVOVF_PAGE_UPDATE);
+      recdes->type = REC_BIGONE;
+    }
+  else if (recdes->type == REC_BIGONE)
+    {
+      /* if overflow page insert */
+      error = repl_ag_get_overflow_recdes (lrec, logs, &area, &length,
+					   m_idx, RVOVF_NEWPAGE_INSERT);
+    }
+  else if (*rcvindex == RVHF_INSERT && recdes->type == REC_ASSIGN_ADDRESS)
+    {
+      error = repl_ag_get_next_update_log (lrec,
+					   pg, m_idx, &logs, &rec_type,
+					   &log_data, &length);
+      if (error == NO_ERROR)
+	{
+	  recdes->type = *(INT16 *) (rec_type);
+	  recdes->data = log_data;
+	  recdes->area_size = recdes->length = length;
+	}
+      return error;
+    }
+  else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
+    {
+      error = repl_ag_get_relocation_recdes (lrec, pg, m_idx, 0,
+					     &logs, &rec_type,
+					     &log_data, &length);
+      if (error == NO_ERROR)
+	{
+	  recdes->type = *(INT16 *) (rec_type);
+	  recdes->data = log_data;
+	  recdes->area_size = recdes->length = length;
+	}
+      return error;
+    }
+  else
+    {
+      return error;
+    }
+
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  recdes->data = (char *) (area);
+  recdes->area_size = recdes->length = length;
+  *ovfyn = true;
+
+  return error;
+}
+
+/*
+ * repl_get_current()
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *     Analyze the record description, get the value for each attribute,
+ *     call dbt_put_internal() for update...
+ */
+static int
+repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
+		  int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key)
+{
+  SM_ATTRIBUTE *att;
+  int *vars = NULL;
+  int i, j, offset, offset2, pad;
+  char *bits, *start, *v_start;
+  int rc = NO_ERROR;
+  DB_VALUE value;
+  int error = NO_ERROR;
+
+#if 0				/* pk-fk update failure */
+  SM_CLASS_CONSTRAINT *constraint = sm_class->constraints;
+  /* find primary key constraint  */
+  while (constraint != NULL)
+    {
+      if (SM_CONSTRAINT_PRIMARY_KEY == constraint->type)
+	{
+	  break;
+	}
+      constraint = constraint->next;
+    }
+#endif
+
+  if (sm_class->variable_count)
+    {
+      vars = (int *) malloc (DB_SIZEOF (int) * sm_class->variable_count);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, vars);
+      offset = or_get_int (buf, &rc);
+      for (i = 0; i < sm_class->variable_count; i++)
+	{
+	  offset2 = or_get_int (buf, &rc);
+	  vars[i] = offset2 - offset;
+	  offset = offset2;
+	}
+    }
+
+  bits = NULL;
+  if (bound_bit_flag)
+    {
+      /* assume that the buffer is in contiguous memory and that we
+       * can seek ahead to the bound bits.  */
+      bits = (char *) buf->ptr + sm_class->fixed_size;
+    }
+
+  att = sm_class->attributes;
+  start = buf->ptr;
+
+  /* process the fixed length column */
+  for (i = 0; i < sm_class->fixed_count;
+       i++, att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (bits != NULL && !OR_GET_BOUND_BIT (bits, i))
+	{
+	  /* its a NULL value, skip it */
+	  db_make_null (&value);
+	  or_advance (buf, tp_domain_disk_size (att->domain));
+	}
+      else
+	{
+	  /* read the disk value into the db_value */
+	  (*(att->type->readval)) (buf, &value, att->domain, -1, true,
+				   NULL, 0);
+	}
+
+#if 0				/* pk-fk update failure */
+      update = true;
+      /* is existed in primary-key's attributes */
+      for (j = 0; NULL != constraint->attributes[j]; j++)
+	{
+	  if (constraint->attributes[j]->id == att->id)
+	    {
+	      if (key->domain.general_info.type == DB_TYPE_MIDXKEY)
+		{
+		  /* read j-th value in midxkey */
+		  set_midxkey_get_element_nocopy (key, j, &pk);
+		  /* record's value == key's value */
+		  if (true == db_value_equal (&value, &pk))
+		    {
+		      update = false;
+		    }
+		}
+	      else
+		{
+		  if (true == db_value_equal (&value, key))
+		    {
+		      update = false;
+		    }
+		}
+	      break;
+	    }
+	}
+#endif
+
+      /* skip cache object attribute for foreign key */
+      if (att->is_fk_cache_attr)
+	continue;
+
+#if 0				/* pk-fk update failure */
+      /* skip - if record's value and key's value are same */
+      if (false == update)
+	continue;
+#endif
+
+      /* update the column */
+      error = dbt_put_internal (def, att->header.name, &value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* round up to a to the end of the fixed block */
+  pad = (int) (buf->ptr - start);
+  if (pad < sm_class->fixed_size)
+    or_advance (buf, sm_class->fixed_size - pad);
+
+  /* skip over the bound bits */
+  if (bound_bit_flag)
+    or_advance (buf, OR_BOUND_BIT_BYTES (sm_class->fixed_count));
+
+  /* process variable length column */
+  v_start = buf->ptr;
+  for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count;
+       i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      (*(att->type->readval)) (buf, &value, att->domain, vars[j], true,
+			       NULL, 0);
+      v_start += vars[j];
+      buf->ptr = v_start;
+      /* update the column */
+      error = dbt_put_internal (def, att->header.name, &value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (vars != NULL)
+    free_and_init (vars);
+  return error;
+}
+
+/*
+ * repl_disk_to_obj() - same function with tf_disk_to_obj, but always use
+ *                      the current representation.
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *     Analyze the record description, get the value for each attribute,
+ *     call dbt_put_internal() for update...
+ */
+static int
+repl_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
+		  DB_VALUE * key)
+{
+  OR_BUF orep, *buf;
+  int repid, status;
+  SM_CLASS *sm_class;
+  unsigned int repid_bits;
+  int bound_bit_flag;
+  int rc = NO_ERROR;
+  int error = NO_ERROR;
+
+
+  /* Kludge, make sure we don't upgrade objects to OID'd during the reading */
+
+  buf = &orep;
+  or_init (buf, record->data, record->length);
+  buf->error_abort = 1;
+
+  status = setjmp (buf->env);
+  if (status == 0)
+    {
+      sm_class = (SM_CLASS *) classobj;
+      /* Skip over the class OID.  Could be doing a comparison of the class OID
+       * and the expected OID here.  Domain & size arguments aren't necessary
+       * for the object "readval" function.
+       */
+      (*(tp_Object.readval)) (buf, NULL, NULL, -1, true, NULL, 0);
+
+      repid_bits = or_get_int (buf, &rc);
+
+      (void) or_get_int (buf, &rc);	/* skip chn */
+      (void) or_get_int (buf, &rc);	/* skip dummy header word */
+
+      /* mask out the repid & bound bit flag */
+      repid = repid_bits & ~OR_BOUND_BIT_FLAG;
+
+      bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
+
+      error = repl_get_current (buf, sm_class, bound_bit_flag, def, key);
+    }
+  else
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_apply_update_log() - apply the insert/update log to the target slave
+ *   return: NO_ERROR or error code
+ *   item : replication item
+ *   m_idx: the array index of the target master info
+ *
+ * Note:
+ *      Apply the insert/update log to the target slave.
+ *      . get the target log page
+ *      . get the record description
+ *      . fetch the class info
+ *      . if op is INSERT
+ *         - create a new obect template
+ *        else op is UPDATE
+ *         - fetch the target object by pk
+ *         - create an existing object template
+ *      . transform record description to object, and edit the target object
+ *        column by columd.
+ *      . finalize the editing of object template - dbt_finish
+ *
+ *      call chain:  <- repl_ag_apply_repl_log()
+ *
+ *      called by APPLY thread
+ */
+static int
+repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
+{
+  SLAVE_INFO *sinfo;
+  int error = NO_ERROR;
+  DB_OBJECT *class_obj;
+  DB_OBJECT *object;
+  MOBJ mclass;
+  LOG_PAGE *pgptr;
+  unsigned int rcvindex;
+  RECDES recdes;
+  DB_OTMPL *inst_tp = NULL;
+  bool ovfyn = false;
+  PAGEID old_pageid = -1;
+
+  /* who am i ? get the thread specific data */
+  sinfo = repl_ag_get_slave_info (NULL);
+
+  /* get the target log page */
+  pgptr = repl_ag_get_page (item->lsa.pageid, m_idx);
+  old_pageid = item->lsa.pageid;
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, pgptr);
+
+  /* retrieve the target record description */
+  error =
+    repl_ag_get_recdes (&item->lsa, m_idx, pgptr, &recdes, &rcvindex,
+			sinfo->log_data, sinfo->rec_type, &ovfyn);
+  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+    {
+      return REPL_AGENT_CANT_CONNECT_TO_SLAVE;
+    }
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
+    {
+      repl_ag_release_page_buffer (old_pageid, m_idx);
+      return error;
+    }
+
+  /* Now, make the MOBJ from the record description */
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    goto error_rtn;
+
+  /* get class info */
+  if ((mclass =
+       locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD)) == NULL)
+    goto error_rtn;
+
+  if (rcvindex != RVHF_INSERT)
+    {
+      if ((object = obj_find_object_by_pkey (class_obj, &item->key,
+					     AU_FETCH_UPDATE)) == NULL)
+	{
+	  er_clear ();
+	  rcvindex = RVHF_INSERT;
+	}
+    }
+
+  /* start replication */
+  /* NOTE: if the master insert a row, and update it within a transaction,
+   *       the replication record points the RVHF_UPDATE record
+   */
+  if (rcvindex == RVHF_INSERT)
+    {
+      inst_tp = dbt_create_object_internal (class_obj);
+    }
+  else if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+    {
+      inst_tp = dbt_edit_object (object);
+    }
+
+  if (inst_tp == NULL)
+    {
+      error = REPL_AGENT_INTERNAL_ERROR;
+      goto error_rtn;
+    }
+
+  /* make object using the record rescription */
+  if ((error =
+       repl_disk_to_obj (mclass, &recdes, inst_tp, &item->key)) != NO_ERROR)
+    goto error_rtn;
+
+  /* update object */
+  if (dbt_finish_object (inst_tp) == NULL)
+    goto error_rtn;
+
+  if (ovfyn)
+    free_and_init (recdes.data);
+
+  repl_ag_release_page_buffer (old_pageid, m_idx);
+  return error;
+
+  /* error */
+error_rtn:
+  if (ovfyn)
+    {
+      free_and_init (recdes.data);
+    }
+  if (inst_tp)
+    {
+      dbt_abort_object (inst_tp);
+    }
+
+  if (er_errid () == ER_NET_CANT_CONNECT_SERVER
+      || er_errid () == ER_OBJ_NO_CONNECT)
+    {
+      return REPL_AGENT_CANT_CONNECT_TO_SLAVE;
+    }
+
+  if (error > 0)
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, error);
+    }
+  else
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR);
+    }
+  repl_ag_release_page_buffer (old_pageid, m_idx);
+  return error;
+}
+
+/*
+ * repl_ag_set_repl_log() - insert the replication item into the apply list
+ *   return: NO_ERROR or error code
+ *   log_pgptr : pointer to the log page
+ *   tranid: the target transaction id
+ *   lsa  : the target LSA of the log
+ *   m_idx: the array index of the target master info
+ *
+ * Note:
+ *     APPLY thread traverses the transaction log pages, and finds out the
+ *     REPLICATION LOG record. If it meets the REPLICATION LOG record,
+ *     it adds that record to the apply list for later use.
+ *     When the APPLY thread meets the LOG COMMIT record, it applies the
+ *     inserted REPLICAION LOG records to the slave.
+ *
+ *    call chain : APPLY thread
+ *
+ *    called by apply thread
+ *
+ *     APPLY thread processes the mutex lock
+ */
+int
+repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
+		      LOG_LSA * lsa, int idx)
+{
+  SLAVE_INFO *sinfo;
+  struct log_replication *repl_log;
+  LOG_PAGE *log_pgptr2 = log_pgptr;
+  PGLENGTH target_offset;
+  char *ptr;
+  REPL_APPLY *apply;
+  int error = NO_ERROR;
+  int length;			/* type change PGLENGTH -> int */
+  int t_pageid;
+  int m_idx;
+  char *class_name;
+  char *str_value;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+  m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
+
+  target_offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+
+  DB_ALIGN ((target_offset), INT_ALIGNMENT);
+  if (target_offset + DB_SIZEOF (struct log_replication)
+      >= REPL_LOGAREA_SIZE (m_idx))
+    {
+      log_pgptr2 = repl_ag_get_page (lsa->pageid + 1, m_idx);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+			   log_pgptr2);
+      target_offset = 0;
+    }
+  DB_ALIGN (target_offset, INT_ALIGNMENT);
+
+  repl_log =
+    (struct log_replication *) ((char *) log_pgptr2->area + target_offset);
+
+  target_offset += DB_SIZEOF (*repl_log);
+
+  REPL_LOG_READ_ALIGN (target_offset, lsa->pageid, log_pgptr2, 0, m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  length = repl_log->length;
+
+  t_pageid = lsa->pageid;
+  repl_log_copy_fromlog (NULL, sinfo->log_data, length, t_pageid,
+			 target_offset, log_pgptr2, m_idx);
+
+  apply = repl_ag_find_apply_list (sinfo, tranid, idx);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
+
+  switch (log_type)
+    {
+    case LOG_REPLICATION_DATA:
+      {
+	ptr = or_unpack_string (sinfo->log_data, &class_name);
+
+	if (sinfo->masters[idx].all_repl == false &&
+	    repl_ag_get_class_from_repl_group (sinfo, idx, class_name,
+					       lsa) == NULL)
+	  {
+	    /* This class should not be replicated */
+	    db_private_free_and_init (NULL, class_name);
+	  }
+	else
+	  {
+	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
+	    apply->repl_tail->type = PT_UPDATE;
+	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	    ptr = or_unpack_value (ptr, &apply->repl_tail->key);
+	    apply->repl_tail->class_name = class_name;
+	  }
+	break;
+      }
+    case LOG_REPLICATION_SCHEMA:
+      {
+	if (sinfo->masters[idx].all_repl == true ||
+	    sinfo->masters[idx].for_recovery == 1)
+	  {
+	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
+	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	    ptr = or_unpack_int (sinfo->log_data, &apply->repl_tail->type);
+	    ptr = or_unpack_string (ptr, &apply->repl_tail->class_name);
+	    ptr = or_unpack_string (ptr, &str_value);
+	    db_make_string (&apply->repl_tail->key, str_value);
+	    apply->repl_tail->key.need_clear = true;
+	  }
+	break;
+      }
+    default:
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
+
+  if (log_pgptr != log_pgptr2)
+    {
+      repl_ag_release_page_buffer (log_pgptr2->hdr.logical_pageid, m_idx);
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_retrieve_eot_time() - Retrieve the timestamp of End of Transaction
+ *   return: NO_ERROR or error code
+ *   log_pgptr : pointer to the log page
+ *   m_idx: the array index of the target master info
+ *
+ * Note:
+ *
+ *    call chain : APPLY thread
+ *
+ *    called by apply thread
+ *
+ *     APPLY thread processes the mutex lock
+ */
+time_t
+repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
+{
+  int error = NO_ERROR;
+  struct log_donetime *donetime;
+  PAGEID pageid;
+  PGLENGTH offset;
+  LOG_PAGE *pg;
+  int release_yn = 0;
+
+  pageid = lsa->pageid;
+  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+
+  pg = pgptr;
+
+  REPL_LOG_READ_ALIGN (offset, pageid, pg, 0, m_idx);
+  if (pg != pgptr)
+    release_yn = 1;
+
+  REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (DB_SIZEOF (*donetime), offset,
+					 pageid, pg, release_yn, m_idx);
+  donetime = (struct log_donetime *) ((char *) pgptr->area + offset);
+
+  if (release_yn == 1)
+    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+
+  return donetime->at_time;
+
+}
+
+/*
+ * repl_ag_add_unlock_commit_log() - add the unlock_commit log to the
+ *                                   commit list
+ *   return: NO_ERROR or error code
+ *   tranid: the target transaction id
+ *   lsa   : the target LSA of the log
+ *   idx   : the array index of the target master info
+ *
+ * Note:
+ *     APPLY thread traverses the transaction log pages, and finds out the
+ *     REPLICATION LOG record. If it meets the REPLICATION LOG record,
+ *     it adds that record to the apply list for later use.
+ *     When the APPLY thread meets the LOG COMMIT record, it applies the
+ *     inserted REPLICAION LOG records into the slave.
+ *     The APPLY thread applies transaction  not in regular sequence of
+ *     LOG_COMMIT record, but in sequence of  LOG_UNLOCK_COMMIT record.
+ *     When the APPLY thread meet the LOG_UNLOCK_COMMIT record, It doesn't
+ *     apply  REPLICATION LOC record to the slave and insert REPLICATION LOC
+ *     record into commit list.
+ *
+ *    call chain : APPLY thread
+ *
+ *    called by APPLY thread
+ *
+ *    APPLY thread processes the mutex lock
+ */
+int
+repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
+{
+  SLAVE_INFO *sinfo;
+  REPL_APPLY *apply;
+  REPL_COMMIT *commit, *tmp;
+  int error = NO_ERROR;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+
+  apply = repl_ag_find_apply_list (sinfo, tranid, idx);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
+
+  for (tmp = sinfo->masters[idx].commit_head; tmp; tmp = tmp->next)
+    {
+      if (tmp->tranid == tranid)
+	return error;
+    }
+
+  commit = malloc (DB_SIZEOF (REPL_COMMIT));
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, commit);
+  commit->next = NULL;
+  commit->type = LOG_UNLOCK_COMMIT;
+  LSA_COPY (&commit->log_lsa, lsa);
+  commit->tranid = tranid;
+
+  if (sinfo->masters[idx].commit_head == NULL
+      && sinfo->masters[idx].commit_tail == NULL)
+    {
+      sinfo->masters[idx].commit_head = commit;
+      sinfo->masters[idx].commit_tail = commit;
+    }
+  else
+    {
+      sinfo->masters[idx].commit_tail->next = commit;
+      sinfo->masters[idx].commit_tail = commit;
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_set_commit_log() - update the unlock_commit log to the commit list
+ *   return: NO_ERROR or error code
+ *   tranid : the target transaction id
+ *   lsa : the target LSA of the log
+ *   idx : the array index of the target master info
+ *
+ * Note:
+ *     APPLY thread traverses the transaction log pages, and finds out the
+ *     REPLICATION LOG record. If it meets the REPLICATION LOG record,
+ *     it adds that record to the apply list for later use.
+ *     When the APPLY thread meets the LOG COMMIT record, it applies the
+ *     inserted REPLICAION LOG records into the slave.
+ *     The APPLY thread applies transaction  not in sequence of
+ *     LOG_COMMIT record, but in regular sequence of  LOG_UNLOCK_COMMIT record.
+ *     When the APPLY thread meet the LOG_COMMIT record, It applies
+ *     REPLICATION LOC record to the slave in regular sequence of commit list.
+ *
+ * NOTE
+ *
+ *    call chain : APPLY thread
+ *
+ *    called by APPLY thread
+ *
+ *    APPLY thread processes the mutex lock
+ */
+int
+repl_ag_set_commit_log (int tranid, LOG_LSA * lsa, int idx,
+			time_t master_time)
+{
+  SLAVE_INFO *sinfo;
+  REPL_COMMIT *commit;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+
+  commit = sinfo->masters[idx].commit_head;
+  while (commit)
+    {
+      if (commit->tranid == tranid)
+	{
+	  commit->type = LOG_COMMIT;
+	  commit->master_time = master_time;
+	}
+      commit = commit->next;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_ag_log_get_file_line()
+ *   return: line count
+ *   fp(in)
+ */
+static int
+repl_ag_log_get_file_line (FILE * fp)
+{
+  char line[1024];
+  int line_count = 0;
+
+  fseek (fp, 0, SEEK_SET);
+  while (fgets (line, 1024, fp) != NULL)
+    line_count++;
+
+  return line_count;
+}
+
+/*
+ * repl_ag_log_perf_info()
+ *   return:
+ *   master_db_name(in)
+ *   tranid(in)
+ *   master_time(in)
+ *   slave_time(in)
+ */
+int
+repl_ag_log_perf_info (char *master_dbname, int tranid,
+		       const time_t * master_time, const time_t * slave_time)
+{
+  static int line_count = 0;
+  static bool reach_end_of_log = false;
+  struct tm *m_tm_p, *s_tm_p;
+  char m_tm_array[256], s_tm_array[256];
+  char *time_array_m = m_tm_array;
+  char *time_array_s = s_tm_array;
+  char *old_file_path, *new_file_path;
+  int error;
+  int delay_time;
+  bool append_message = false;
+
+  if (perf_Log_fp == NULL)
+    {
+      old_file_path = (char *) malloc (strlen (dist_LogPath)
+				       + strlen (dist_Dbname) + 10);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+			   old_file_path);
+      sprintf (old_file_path, "%s/%s.perf", dist_LogPath, dist_Dbname);
+      perf_Log_fp = fopen (old_file_path, "r+");
+      if (perf_Log_fp != NULL)
+	{
+	  line_count = repl_ag_log_get_file_line (perf_Log_fp);
+	}
+      else
+	{
+	  perf_Log_fp = fopen (old_file_path, "w");
+	  if (perf_Log_fp != NULL)
+	    {
+	      line_count = repl_ag_log_get_file_line (perf_Log_fp);
+	    }
+	  else
+	    {
+	      perf_Log_fp = stdout;
+	    }
+	}
+
+      free_and_init (old_file_path);
+    }
+
+  if (line_count > perf_Log_size)
+    {
+      fclose (perf_Log_fp);
+      old_file_path = (char *) malloc (strlen (dist_LogPath)
+				       + strlen (dist_Dbname) + 10);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+			   old_file_path);
+      sprintf (old_file_path, "%s/%s.perf", dist_LogPath, dist_Dbname);
+      new_file_path = (char *) malloc (strlen (dist_LogPath)
+				       + strlen (dist_Dbname) + 10);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+			   new_file_path);
+      sprintf (new_file_path, "%s/%s.perf.bak", dist_LogPath, dist_Dbname);
+      rename (old_file_path, new_file_path);
+      perf_Log_fp = fopen (old_file_path, "w");
+      if (perf_Log_fp == NULL)
+	perf_Log_fp = stdout;
+      free_and_init (old_file_path);
+      free_and_init (new_file_path);
+      line_count = 0;
+    }
+
+
+  if (line_count == 0)
+    {
+      fprintf (perf_Log_fp,
+	       "--------------------------------------------------------------------------------\n");
+      fprintf (perf_Log_fp,
+	       " No. master_db_name     tran_index        master_time         slave_time     delay\n");
+      fprintf (perf_Log_fp,
+	       "--------------------------------------------------------------------------------\n");
+      line_count++;
+    }
+
+  if (master_time != NULL)
+    {
+      m_tm_p = localtime (master_time);
+      strftime (time_array_m, 256, "%Y/%m/%d %H:%M:%S", m_tm_p);
+    }
+  else
+    {
+      sprintf (time_array_m, "----/--/-- --:--:--");
+    }
+  if (slave_time != NULL)
+    {
+      s_tm_p = localtime (slave_time);
+      strftime (time_array_s, 256, "%Y/%m/%d %H:%M:%S", s_tm_p);
+    }
+  else
+    {
+      sprintf (time_array_s, "----/--/-- --:--:--");
+    }
+
+  if (slave_time != NULL)
+    {
+      if (tranid == -1 || master_time == NULL)
+	{
+	  if (!reach_end_of_log)
+	    {
+	      delay_time = 0;
+	      reach_end_of_log = true;
+	      append_message = true;
+	    }
+	}
+      else
+	{
+	  delay_time = (int) difftime (*slave_time, *master_time);
+	  reach_end_of_log = false;
+	  append_message = true;
+	}
+    }
+
+  if (append_message)
+    {
+      if (fprintf (perf_Log_fp, "%03d %14s %15d %s %s  %d\n",
+		   line_count, master_dbname, tranid, time_array_m,
+		   time_array_s, delay_time) < 0)
+	{
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	  line_count = perf_Log_size + 1;
+	  return NO_ERROR;
+	}
+      line_count++;
+      fflush (perf_Log_fp);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_ag_apply_commit_list() - apply the log to the target slave
+ *   return: NO_ERROR or error code
+ *   lsa  : the target LSA of the log
+ *   idx: the array index of the target master info
+ *
+ * Note:
+ *    This function is called when the APPLY thread meets the LOG_COMMIT
+ *    record.
+ *
+ *      call chain:  repl_tr_log_apply() <- APPLY
+ *
+ *      called by APPLY thread
+ */
+int
+repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time)
+{
+  SLAVE_INFO *sinfo;
+  REPL_COMMIT *commit;
+  int error = NO_ERROR;
+  time_t slave_time;
+  int m_idx;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+  m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
+
+  LSA_SET_NULL (lsa);
+
+  commit = sinfo->masters[idx].commit_head;
+  if (commit && commit->type == LOG_COMMIT)
+    {
+      error =
+	repl_ag_apply_repl_log (commit->tranid, idx,
+				&sinfo->masters[idx].total_rows);
+
+      /* compute the delay time and save it ! */
+      time (&slave_time);
+      if (commit->master_time > 0
+	  && (sinfo->masters[idx].perf_poll_interval <= 0
+	      || (slave_time - (*old_time)) >
+	      sinfo->masters[idx].perf_poll_interval))
+	{
+	  repl_ag_log_perf_info (mInfo[m_idx]->conn.dbname,
+				 commit->tranid,
+				 &commit->master_time, &slave_time);
+	  time (old_time);
+	}
+
+      LSA_COPY (lsa, &commit->log_lsa);
+
+      sinfo->masters[idx].commit_head = commit->next;
+      if (sinfo->masters[idx].commit_head == NULL)
+	sinfo->masters[idx].commit_tail = NULL;
+
+      free_and_init (commit);
+    }
+
+  return error;
+}
+
+/*
+ * repl_ag_apply_abort()
+ *   return: none
+ *   idx(in)
+ *   tranid(in)
+ *   master_time(in)
+ *   old_time(in/out)
+ */
+void
+repl_ag_apply_abort (int idx, int tranid, time_t master_time,
+		     time_t * old_time)
+{
+  SLAVE_INFO *sinfo;
+  time_t slave_time;
+  int m_idx;
+
+  sinfo = repl_ag_get_slave_info (NULL);
+  m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
+
+  time (&slave_time);
+  if (sinfo->masters[idx].perf_poll_interval <= 0 ||
+      (slave_time - (*old_time)) > sinfo->masters[idx].perf_poll_interval)
+    {
+      repl_ag_log_perf_info (mInfo[m_idx]->conn.dbname,
+			     tranid, &master_time, &slave_time);
+      time (old_time);
+    }
+}
+
+/*
+ * repl_ag_apply_repl_log() - apply the log to the target slave
+ *   return: NO_ERROR or error code
+ *   tranid: the target transaction id
+ *   m_idx: the array index of the target master info
+ *
+ * Note:
+ *    This function is called when the APPLY thread meets the LOG_COMMIT
+ *    record.
+ *
+ *      call chain:  repl_tr_log_apply() <- APPLY
+ *
+ *      called by APPLY thread
+ */
+int
+repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
+{
+  SLAVE_INFO *sinfo = repl_ag_get_slave_info (NULL);
+  REPL_ITEM *item;
+  int error = NO_ERROR;
+  REPL_APPLY *apply;
+  int update_cnt = 0;
+  char error_string[1024];
+  PARSER_VARCHAR *buf;
+  PARSER_CONTEXT *parser;
+
+  apply = repl_ag_find_apply_list (sinfo, tranid, idx);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
+
+  if (apply->repl_head == NULL)
+    {
+#if defined(DEBUG_REPL)
+      if (DEBUG_REPL == 2)
+	{
+	  fprintf (debug_Log_fd,
+		   "APPLY TRAN[%10d] : HEADER NULL\n", apply->tranid);
+	  fflush (debug_Log_fd);
+	}
+#endif
+      repl_ag_clear_repl_item (apply);
+      return NO_ERROR;
+    }
+
+#if defined(DEBUG_REPL)
+  if (DEBUG_REPL == 2)
+    {
+      fprintf (debug_Log_fd, "APPLY TRAN[%10d] : ", apply->tranid);
+    }
+#endif
+
+  item = apply->repl_head;
+  while (item && error == NO_ERROR)
+    {
+      switch (item->type)
+	{
+	case PT_INSERT:
+	case PT_UPDATE:
+	  {
+	    if (LSA_ISNULL (&item->lsa))
+	      {
+		error = repl_ag_apply_delete_log (item);
+	      }
+	    else
+	      {
+		error = repl_ag_apply_update_log (item, idx);
+	      }
+	    break;
+	  }
+	default:
+	  {
+	    error = repl_ag_apply_schema_log (item);
+	    break;
+	  }
+	}
+
+#if defined(DEBUG_REPL)
+      if (DEBUG_REPL == 2)
+	{
+	  parser = parser_create_parser ();
+	  buf = describe_value (parser, NULL, &item->key);
+	  switch (item->type)
+	    {
+	    case PT_INSERT:
+	    case PT_UPDATE:
+	      {
+		if (LSA_ISNULL (&item->lsa))
+		  {
+		    fprintf (debug_Log_fd, "DELETE:[%s](%d,%d), ",
+			     pt_get_varchar_bytes (buf),
+			     item->lsa.pageid, item->lsa.offset);
+		  }
+		else
+		  {
+		    fprintf (debug_Log_fd,
+			     "INSERT/UPDATE:[%s](%d,%d), ",
+			     pt_get_varchar_bytes (buf),
+			     item->lsa.pageid, item->lsa.offset);
+		  }
+		break;
+	      }
+	    default:
+	      {
+		fprintf (debug_Log_fd, "SCHEMA:[%s](%d,%d), ",
+			 pt_get_varchar_bytes (buf),
+			 item->lsa.pageid, item->lsa.offset);
+		break;
+	      }
+	    }
+	  parser_free_parser (parser);
+	}
+#endif
+
+      if (error == NO_ERROR)
+	{
+	  update_cnt++;
+	}
+      else
+	{
+	  parser = parser_create_parser ();
+	  buf = describe_value (parser, NULL, &item->key);
+	  sprintf (error_string, "[%s,%s] %s",
+		   item->class_name, pt_get_varchar_bytes (buf),
+		   db_error_string (1));
+	  parser_free_parser (parser);
+	  if (error > 0)
+	    {
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, error, error_string);
+	    }
+	  else
+	    {
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT,
+				    REPL_AGENT_INTERNAL_ERROR, error_string);
+	    }
+	  repl_error_flush (err_Log_fp, false);
+	}
+      item = item->next;
+    }
+
+#if defined(DEBUG_REPL)
+  if (DEBUG_REPL == 2)
+    {
+      fprintf (debug_Log_fd, "END\n");
+      fflush (debug_Log_fd);
+    }
+#endif
+
+  if (error == NO_ERROR)
+    {
+      *total_rows += update_cnt;
+    }
+
+  repl_ag_clear_repl_item (apply);
+
+  return error;
+
+}
+
+/*
+ * repl_init_pb() - initialize the page buffer area
+ *   return: the allocated pointer to a page buffer
+ *
+ * Note:
+ *     called by MAIN thread of repl_agent
+ *       <- repl_ag_add_master_info (repl_agent.c)
+ *     called by MAIN thread of repl_server
+ *       <- repl_init_pb_all (repl_server.c)
+ */
+REPL_PB *
+repl_init_pb (void)
+{
+  REPL_PB *pb;
+
+  pb = (REPL_PB *) malloc (DB_SIZEOF (REPL_PB));
+  if (pb == NULL)
+    REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  pb->log_hdr_buffer = malloc (REPL_DEF_LOG_PAGE_SIZE);
+  if (pb->log_hdr_buffer == NULL)
+    REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  pb->log_hdr = NULL;
+  pb->log_buffer = NULL;
+
+  pb->head = pb->tail = 0;
+  pb->log_vdes = NULL_VOLDES;
+
+  pb->start_pageid = 0;
+  pb->max_pageid = 0;
+  pb->min_pageid = 0;
+  pb->need_shutdown = false;
+  pb->read_pageid = 0;
+  pb->read_invalid_page = false;
+  pb->on_demand = false;
+  pb->start_to_archive = false;
+
+  PTHREAD_MUTEX_INIT (pb->mutex);
+  PTHREAD_COND_INIT (pb->read_cond);
+  PTHREAD_COND_INIT (pb->write_cond);
+  PTHREAD_COND_INIT (pb->end_cond);
+
+  return (pb);
+}
+
+/*
+ * repl_init_cache_pb() - initialize the cache page buffer area
+ *   return: the allocated pointer to a cache page buffer
+ *
+ * Note:
+ *     called by MAIN thread of repl_agent
+ *       <- repl_ag_add_master_info (repl_agent.c)
+ */
+static REPL_CACHE_PB *
+repl_init_cache_pb (void)
+{
+  REPL_CACHE_PB *cache_pb;
+
+  cache_pb = (REPL_CACHE_PB *) malloc (DB_SIZEOF (REPL_CACHE_PB));
+  if (cache_pb == NULL)
+    REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+
+  cache_pb->hash_table = NULL;
+  cache_pb->log_buffer = NULL;
+  cache_pb->num_buffers = 0;
+  cache_pb->clock_hand = 0;
+  cache_pb->buffer_area = NULL;
+
+  PTHREAD_MUTEX_INIT (cache_pb->mutex);
+
+  return (cache_pb);
+}
+
+/*
+ * repl_init_log_buffer() - Initialize the log buffer area of a page buffer
+ *   return: NO_ERROR or REPL_AGENT_MEMORY_ERROR
+ *   pb(out)
+ *   lb_cnt(in): the # of log buffers per page buffer
+ *   lb_size(in)
+ *
+ * Note:
+ *         : allocate the page buffer area
+ *         : the size of page buffer area is determined after reading the
+ *           log header, so we split the "initialize" and "allocate" phase.
+ *
+ *     called by MAIN thread  of repl_server
+ *        <- repl_init_log_buffer_all
+ *     called by RECV thread  of repl_agent
+ *        <- repl_tr_log_recv
+ */
+int
+repl_init_log_buffer (REPL_PB * pb, int lb_cnt, int lb_size)
+{
+  int i, j;
+  int error = NO_ERROR;
+
+  pb->log_buffer = malloc (lb_cnt * DB_SIZEOF (REPL_LOG_BUFFER *));
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+		       pb->log_buffer);
+
+  for (i = 0; (error == NO_ERROR) && (i < lb_cnt); i++)
+    {
+      pb->log_buffer[i] = malloc (lb_size);
+      if (pb->log_buffer[i] == NULL)
+	REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+      pb->log_buffer[i]->pageid = 0;
+      pb->log_buffer[i]->phy_pageid = 0;
+    }
+
+  if (error != NO_ERROR)
+    {
+      if (pb->log_buffer != NULL)
+	{
+	  for (j = 0; j < i; j++)
+	    free_and_init (pb->log_buffer[j]);
+	  free_and_init (pb->log_buffer);
+	}
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_init_cache_log_buffer() - Initialize the cache log buffer area of
+ *                                a cache page buffer
+ *   return: NO_ERROR or REPL_AGENT_MEMORY_ERROR
+ *   cache_pb : cache page buffer pointer
+ *   slb_cnt : the # of cache log buffers per cache page buffer
+ *   slb_size : size of CACHE_LOG_BUFFER
+ *   def_buf_size: default size of cache log buffer
+ *
+ * Note:
+ *         : allocate the cache page buffer area
+ *         : the size of page buffer area is determined after reading the
+ *           log header, so we split the "initialize" and "allocate" phase.
+ *
+ * NOTE
+ *     called by RECV thread  of repl_agent
+ *        <- repl_tr_log_recv
+ */
+int
+repl_init_cache_log_buffer (REPL_CACHE_PB * cache_pb, int slb_cnt,
+			    int slb_size, int def_buf_size)
+{
+  int error = NO_ERROR;
+
+  error = repl_expand_cache_log_buffer (cache_pb, slb_cnt, slb_size,
+					def_buf_size);
+
+  cache_pb->hash_table =
+    mht_create ("Repl agent cache log buffer hash table",
+		cache_pb->num_buffers * 8, repl_ag_pid_hash,
+		repl_ag_pid_hash_cmpeq);
+  if (cache_pb->hash_table == NULL)
+    {
+      error = REPL_AGENT_MEMORY_ERROR;
+    }
+
+  return error;
+}
+
+/*
+ * repl_expand_cache_log_buffer() - expand cache log buffer
+ *   return: NO_ERROR or ER_FAILED
+ *   cache_pb : cache page buffer pointer
+ *   slb_cnt : the # of new cache log buffers (expansion) or -1.
+ *   slb_size : size of CACHE_LOG_BUFFER
+ *   def_buf_size: default size of cache log buffer
+ *
+ * Note:
+ *         : Expand the cache log buffer pool with the given number of buffers.
+ *         : If a zero or a negative value is given, the function expands
+ *           the cache buffer pool with a default porcentage of the currently
+ *           size.
+ */
+static int
+repl_expand_cache_log_buffer (REPL_CACHE_PB * cache_pb, int slb_cnt,
+			      int slb_size, int def_buf_size)
+{
+  int i;
+  int total_buffers;
+  int size;
+  int bufid;
+  REPL_CACHE_BUFFER_AREA *area = NULL;
+  int error = NO_ERROR;
+
+  if (slb_cnt <= 0)
+    {
+      if (cache_pb->num_buffers > 0)
+	{
+	  slb_cnt = ((cache_pb->num_buffers > 100)
+		     ? (int) ((float) cache_pb->num_buffers * 0.10 + 0.9)
+		     : (int) ((float) cache_pb->num_buffers * 0.20 + 0.9));
+	}
+      else
+	{
+	  slb_cnt = def_buf_size;
+	}
+    }
+
+  while (slb_cnt > (int) REPL_MAX_NUM_CONTIGUOS_BUFFERS (slb_size))
+    {
+      if ((error = repl_expand_cache_log_buffer (cache_pb,
+						 REPL_MAX_NUM_CONTIGUOS_BUFFERS
+						 (slb_size), slb_size,
+						 def_buf_size)) != NO_ERROR)
+	{
+	  return error;
+	}
+      slb_cnt -= REPL_MAX_NUM_CONTIGUOS_BUFFERS (slb_size);
+    }
+
+  if (slb_cnt > 0)
+    {
+      total_buffers = cache_pb->num_buffers + slb_cnt;
+
+      cache_pb->log_buffer = realloc (cache_pb->log_buffer,
+				      total_buffers *
+				      DB_SIZEOF (REPL_CACHE_LOG_BUFFER *));
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+			   cache_pb->log_buffer);
+
+      size = ((slb_cnt * slb_size) + DB_SIZEOF (REPL_CACHE_BUFFER_AREA));
+      area = malloc (size);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, area);
+      memset (area, 0, size);
+      area->buffer_area = ((REPL_CACHE_LOG_BUFFER *) ((char *) area
+						      +
+						      DB_SIZEOF
+						      (REPL_CACHE_BUFFER_AREA)));
+      area->next = cache_pb->buffer_area;
+      for (i = 0, bufid = cache_pb->num_buffers; i < slb_cnt; bufid++, i++)
+	{
+	  cache_pb->log_buffer[bufid]
+	    =
+	    (REPL_CACHE_LOG_BUFFER *) ((char *) area->buffer_area +
+				       slb_size * i);
+	}
+      cache_pb->buffer_area = area;
+      cache_pb->num_buffers = total_buffers;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_cache_buffer_replace() - find a page to replace and replace the page
+ *   return: REPL_CACHE_LOG_BUFFER *
+ *    cache_pb : cache page buffer pointer
+ *    fd : page file descriptor
+ *    phy_pageid : page id to read
+ *    io_pagesize : the size of page buffer area
+ *    def_buf_size: the number of pages to be expanded
+ *
+ * Note:
+ *         This function
+ *           - finds an element of the cache buffer which can be replaced
+ *           - replaces the found element of the cache buffer
+ &         If all the elements of the cache buffer cannot be replaced,
+ *         the cache buffer pool is expanded with an additional area of
+ *         contiguous cache buffers. An element of the cache buffer is
+ *         selected for replacement by following the CLOCK algorithm
+ *         among the unfixed cache buffers in the cache buffer pool.
+ *         Replacement is handled
+ *         by maintaining a ring of pointers (the clock) to the page cache
+ *         buffers. A pointer (the clock hand) is maintained to a slot in
+ *         the ring. When a page need to be replaced, the ring pointer is
+ *         used as the starting point for the replacement search. In
+ *         addition to the fixed/unfixed status, a recently-freed flag is
+ *         associated with ever cache buffer. This flag is set whenever
+ *         a cache buffer is reed. This flag when set indicates that a page
+ *         was referenced during a cycle of the clock. The page to replace
+ *         is determined by finding the first unfixed cache buffer whose
+ *         recently-freed flag is not set. If a cache buffer is encountered
+ *         during the search whose recently-freed flag is set, the flag is
+ *         cleared and the clock hand moves to the next buffer. This method
+ *         ensures that a page will always survive replacement if it is
+ *         referenced during a full cycle of the clock.
+ */
+static REPL_CACHE_LOG_BUFFER *
+repl_cache_buffer_replace (REPL_CACHE_PB * cache_pb, int fd,
+			   PAGEID phy_pageid, int io_pagesize,
+			   int def_buf_size)
+{
+  REPL_CACHE_LOG_BUFFER *cache_buffer = NULL;
+  int error = NO_ERROR;
+  int i, num_unfixed = 1;
+
+  while (num_unfixed > 0)
+    {
+      num_unfixed = 0;
+
+      for (i = 0; i < cache_pb->num_buffers; i++)
+	{
+	  cache_buffer = cache_pb->log_buffer[cache_pb->clock_hand];
+	  cache_pb->clock_hand =
+	    (cache_pb->clock_hand + 1) % cache_pb->num_buffers;
+
+	  if (cache_buffer->fix_count <= 0)
+	    {
+	      num_unfixed++;
+	      if (cache_buffer->recently_freed)
+		{
+		  cache_buffer->recently_freed = false;
+		}
+	      else
+		{
+		  error = repl_io_read (fd,
+					(void *)
+					&(cache_buffer->log_buffer.logpage),
+					phy_pageid, io_pagesize);
+		  if (error != NO_ERROR)
+		    {
+		      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
+		      return NULL;
+		    }
+		  cache_buffer->fix_count = 0;
+		  return cache_buffer;
+		}
+	    }
+	}
+    }
+
+  error = repl_expand_cache_log_buffer (cache_pb, -1,
+					SIZEOF_REPL_CACHE_LOG_BUFFER
+					(io_pagesize), def_buf_size);
+  if (error != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return repl_cache_buffer_replace (cache_pb, fd, phy_pageid,
+				    io_pagesize, def_buf_size);
+}
+
+/*
+ * repl_ag_pid_hash() - hash a page identifier
+ *   return: hash value
+ *   key_pid : page id to hash
+ *   htsize: Size of hash table
+ */
+static unsigned int
+repl_ag_pid_hash (const void *key_pid, unsigned int htsize)
+{
+  const PAGEID *pid = (PAGEID *) key_pid;
+
+  return (*pid) % htsize;
+
+}
+
+/*
+ * repl_pid_hash_cmpeq() - Compare two pageid keys for hashing.
+ *   return: int (key_pid1 == ey_vpid2 ?)
+ *   key_pid1: First key
+ *   key_pid2: Second key
+ */
+static int
+repl_ag_pid_hash_cmpeq (const void *key_pid1, const void *key_pid2)
+{
+  const PAGEID *pid1 = key_pid1;
+  const PAGEID *pid2 = key_pid2;
+
+  return ((pid1 == pid2) || (*pid1 == *pid2));
+
+}
+
+/*
+ * repl_ag_add_master_info() - create a master database info, initialize it,
+ *                             add it to the list
+ *   return: NO_ERROR or REPL_AGENT_MEMORY_ERROR
+ *   idx : index of master info array
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static int
+repl_ag_add_master_info (int idx)
+{
+  int i;
+  int error = NO_ERROR;
+
+  /* allocate the memory for the master info array */
+  if (mInfo == NULL)
+    {
+      mInfo = malloc (MAX_NUM_OF_MASTERS * DB_SIZEOF (MASTER_INFO *));
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, mInfo);
+      for (i = 0; i < MAX_NUM_OF_MASTERS; i++)
+	mInfo[i] = NULL;
+    }
+
+  mInfo[idx] = (MASTER_INFO *) malloc (DB_SIZEOF (MASTER_INFO));
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, mInfo[idx]);
+
+  if ((mInfo[idx]->conn.resp_buffer =
+       (char *) malloc (REPL_DEF_LOG_PAGE_SIZE + COMM_RESP_BUF_SIZE)) == NULL)
+    {
+      free_and_init (mInfo[idx]);
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+    }
+
+  mInfo[idx]->io_pagesize = REPL_DEF_LOG_PAGE_SIZE;
+
+  mInfo[idx]->copy_log.start_pageid = 0;
+  mInfo[idx]->copy_log.first_pageid = 0;
+  mInfo[idx]->copy_log.last_pageid = 0;
+
+  mInfo[idx]->pb = repl_init_pb ();
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+		       mInfo[idx]->pb);
+
+  mInfo[idx]->cache_pb = repl_init_cache_pb ();
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+		       mInfo[idx]->cache_pb);
+
+  return error;
+}
+
+/*
+ * repl_ag_clear_master_info() - clear all master database info
+ *   return: none
+ *   dbid : the target database id of master
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static void
+repl_ag_clear_master_info (int dbid)
+{
+  MASTER_INFO *minfo;
+  REPL_CACHE_BUFFER_AREA *buf_area = NULL;
+  REPL_CACHE_BUFFER_AREA *tmp = NULL;
+  int i;
+
+  if (mInfo == NULL)
+    return;
+  minfo = mInfo[dbid];
+  if (minfo == NULL)
+    return;
+
+  if (minfo->pb)
+    {
+      for (i = 0; i < minfo->log_buffer_size; i++)
+	if (minfo->pb->log_buffer && minfo->pb->log_buffer[i])
+	  free_and_init (minfo->pb->log_buffer[i]);
+
+      if (minfo->pb->log_buffer)
+	free_and_init (minfo->pb->log_buffer);
+      if (minfo->pb->log_hdr_buffer)
+	free_and_init (minfo->pb->log_hdr_buffer);
+      if (minfo->conn.resp_buffer)
+	free_and_init (minfo->conn.resp_buffer);
+
+      free_and_init (minfo->pb);
+
+      /* hash table free */
+      if (minfo->cache_pb->hash_table)
+	{
+	  mht_destroy (minfo->cache_pb->hash_table);
+	  minfo->cache_pb->hash_table = NULL;
+	}
+
+      /* cache page buffers */
+      if (minfo->cache_pb->log_buffer)
+	free_and_init (minfo->cache_pb->log_buffer);
+
+      /* buffer area free */
+      buf_area = minfo->cache_pb->buffer_area;
+      while (buf_area)
+	{
+	  tmp = buf_area;
+	  buf_area = buf_area->next;
+	  free_and_init (tmp);
+	}
+      minfo->cache_pb->buffer_area = NULL;
+
+      free_and_init (minfo->cache_pb);
+    }
+
+  free_and_init (minfo);
+  mInfo[dbid] = NULL;
+}
+
+/*
+ * repl_ag_clear_master_info_all()
+ *   return: none
+ */
+static void
+repl_ag_clear_master_info_all ()
+{
+  int i;
+
+  for (i = 0; i < MAX_NUM_OF_MASTERS; i++)
+    {
+      repl_ag_clear_master_info (i);
+    }
+  if (mInfo)
+    {
+      free_and_init (mInfo);
+      mInfo = NULL;
+    }
+}
+
+/*
+ * repl_ag_add_slave_info() - add the slave info
+ *   return: NO_ERROR or error code
+ *   idx : index of slave info array
+ *
+ * Note:
+ *      After the MAIN thread reads the slave info from the distributor
+ *      database, it add the slave info to the array area.
+ *
+ *     called by MAIN thread
+ */
+static int
+repl_ag_add_slave_info (int idx)
+{
+  int i;
+  int error = NO_ERROR;
+
+  /* allocate the memory for the master info array */
+  if (sInfo == NULL)
+    {
+      sInfo = malloc (MAX_NUM_OF_SLAVES * DB_SIZEOF (SLAVE_INFO *));
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, sInfo);
+      for (i = 0; i < MAX_NUM_OF_SLAVES; i++)
+	sInfo[i] = NULL;
+    }
+
+  sInfo[idx] = (SLAVE_INFO *) malloc (DB_SIZEOF (SLAVE_INFO));
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, sInfo[idx]);
+
+  sInfo[idx]->dbid = -1;
+  sInfo[idx]->log_data = NULL;
+  sInfo[idx]->rec_type = NULL;
+  sInfo[idx]->m_cnt = 0;
+  sInfo[idx]->undo_unzip_ptr = NULL;
+  sInfo[idx]->redo_unzip_ptr = NULL;
+  sInfo[idx]->old_time = 0;
+
+  for (i = 0; i < MAX_NUM_OF_MASTERS; i++)
+    {
+      sInfo[idx]->masters[i].m_id = 0;
+      sInfo[idx]->masters[i].s_id = 0;
+      sInfo[idx]->masters[i].repl_lists = NULL;
+      sInfo[idx]->masters[i].repl_cnt = 0;
+      sInfo[idx]->masters[i].cur_repl = 0;
+      sInfo[idx]->masters[i].status = 0;
+      sInfo[idx]->masters[i].commit_head = NULL;
+      sInfo[idx]->masters[i].commit_tail = NULL;
+      LSA_SET_NULL (&sInfo[idx]->masters[i].final_lsa);
+      LSA_SET_NULL (&sInfo[idx]->masters[i].last_committed_lsa);
+    }
+
+
+  return error;
+}
+
+/*
+ * repl_ag_clear_repl_item() - clear replication item
+ *   return: none
+ *   repl_list : the target list already applied.
+ *
+ * Note:
+ *       clear the applied list area after processing ..
+ *
+ *      called by MAIN thread or APPLY thread
+ */
+void
+repl_ag_clear_repl_item (REPL_APPLY * repl_list)
+{
+  REPL_ITEM *repl_item;
+#if defined(DEBUG_REPL)
+  PARSER_VARCHAR *buf;
+  PARSER_CONTEXT *parser;
+#endif
+
+  repl_item = repl_list->repl_head;
+
+#if defined(DEBUG_REPL)
+  if (DEBUG_REPL == 2)
+    {
+      fprintf (debug_Log_fd, "CLEAR TRAN[%10d] : ", repl_list->tranid);
+    }
+#endif
+
+  while (repl_item != NULL)
+    {
+      repl_list->repl_head = repl_item->next;
+#if defined(DEBUG_REPL)
+      if (DEBUG_REPL == 2)
+	{
+	  parser = parser_create_parser ();
+	  buf = describe_value (parser, NULL, &repl_item->key);
+	  fprintf (debug_Log_fd, "[%s](%d,%d), ",
+		   pt_get_varchar_bytes (buf), repl_item->lsa.pageid,
+		   repl_item->lsa.offset);
+	  parser_free_parser (parser);
+	}
+#endif
+      if (repl_item->class_name != NULL)
+	{
+	  db_private_free_and_init (NULL, repl_item->class_name);
+	  pr_clear_value (&repl_item->key);
+	}
+      free_and_init (repl_item);
+      repl_item = repl_list->repl_head;
+    }
+  repl_list->repl_tail = NULL;
+  LSA_SET_NULL (&repl_list->start_lsa);
+
+#if defined(DEBUG_REPL)
+  if (DEBUG_REPL == 2)
+    {
+      fprintf (debug_Log_fd, "END\n");
+      fflush (debug_Log_fd);
+    }
+#endif
+
+  repl_list->tranid = 0;	/* set "free" for the reuse */
+}
+
+/*
+ * repl_ag_clear_repl_item_by_tranid() - clear replication item using tranid
+ *   return: none
+ *   sinfo: slave info
+ *   tranid: transaction id
+ *   idx: index of MASTER_MAP
+ *
+ * Note:
+ *       clear the applied list area after processing ..
+ *       When we meet the LOG_ABORT_TOPOPE or LOG_ABORT record,
+ *       we have to clear the replication items of the target transaction.
+ *       In case of LOG_ABORT_TOPOPE, the apply list should be preserved
+ *       for the later use (so call repl_ag_clear_repl_item() using
+ *       false as the second argument).
+ *
+ *      called by APPLY thread
+ */
+void
+repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx)
+{
+  REPL_APPLY *repl_list;
+  REPL_COMMIT *commit;
+  REPL_COMMIT *tmp;
+  REPL_COMMIT dumy;
+
+  repl_list = repl_ag_find_apply_list (sinfo, tranid, idx);
+  repl_ag_clear_repl_item (repl_list);
+
+  dumy.next = sinfo->masters[idx].commit_head;
+  commit = &dumy;
+  while (commit->next)
+    {
+      if (commit->next->tranid == tranid)
+	{
+	  tmp = commit->next;
+	  if (tmp->next == NULL)
+	    sinfo->masters[idx].commit_tail = commit;
+	  commit->next = tmp->next;
+	  free_and_init (tmp);
+	}
+      else
+	{
+	  commit = commit->next;
+	}
+    }
+  sinfo->masters[idx].commit_head = dumy.next;
+  if (sinfo->masters[idx].commit_head == NULL)
+    sinfo->masters[idx].commit_tail = NULL;
+}
+
+/*
+ * repl_ag_clear_slave_info() - clear slave database info
+ *   return: none
+ *   sinfo : pointer to the slave info to be cleared
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static void
+repl_ag_clear_slave_info (SLAVE_INFO * sinfo)
+{
+  int i, j, k;
+
+  for (j = 0; j < MAX_NUM_OF_MASTERS; j++)
+    {
+      if (sinfo->masters[j].repl_lists)
+	{
+	  for (i = 0; i < sinfo->masters[j].repl_cnt; i++)
+	    {
+	      repl_ag_clear_repl_item (sinfo->masters[j].repl_lists[i]);
+	      free_and_init (sinfo->masters[j].repl_lists[i]);
+	    }
+	  free_and_init (sinfo->masters[j].repl_lists);
+	  sinfo->masters[j].repl_lists = NULL;
+	}
+      if (sinfo->masters[j].class_list)
+	{
+	  for (k = 0; k < sinfo->masters[j].class_count; k++)
+	    free_and_init (sinfo->masters[j].class_list[k].class_name);
+	  free_and_init (sinfo->masters[j].class_list);
+	}
+    }
+
+  if (sinfo->log_data)
+    free_and_init (sinfo->log_data);
+
+  if (sinfo->rec_type)
+    free_and_init (sinfo->rec_type);
+
+  if (sinfo->undo_unzip_ptr)
+    log_zip_free (sinfo->undo_unzip_ptr);
+
+  if (sinfo->redo_unzip_ptr)
+    log_zip_free (sinfo->redo_unzip_ptr);
+
+  free_and_init (sinfo);
+}
+
+/*
+ * repl_ag_clear_slave_info_all() - clear slave database info
+ *   return: none
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static void
+repl_ag_clear_slave_info_all ()
+{
+  int i;
+
+  if (sInfo == NULL)
+    return;
+  for (i = 0; i < MAX_NUM_OF_SLAVES; i++)
+    {
+      if (sInfo[i])
+	{
+	  repl_ag_clear_slave_info (sInfo[i]);
+	  sInfo[i] = NULL;
+	}
+    }
+
+  free_and_init (sInfo);
+  sInfo = NULL;
+}
+
+/*
+ * repl_ag_open_env_file() - open the replication trail file
+ *   return: the result file descriptor
+ *   repl_log_path: full path of trail file
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static int
+repl_ag_open_env_file (char *repl_log_path)
+{
+  umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  return (repl_io_open (repl_log_path, O_RDWR | O_CREAT, FILE_CREATE_MODE));
+
+}
+
+/*
+ * repl_ag_shutdown() - Shutdown process of repl_agent
+ *   return: none
+ *
+ * Note:
+ *     all resources are released
+ *
+ *     called by MAIN thread or repl_shutdown_thread
+ */
+static void
+repl_ag_shutdown ()
+{
+  repl_ag_clear_master_info_all ();
+  repl_ag_clear_slave_info_all ();
+  repl_error_flush (err_Log_fp, 0);
+}
+
+/*
+ * repl_ag_get_env() - set the parameters of repl_agent
+ *   return: NO_ERROR or error code
+ *   result : we fetch the parameters from the distributor db.
+ *
+ * Note:
+ *         parameter_name  - trail_log
+ *         parameter_value - /home1/cubrid/qadb   (eg)
+ *
+ *         set the replication trail log file.
+ *         The repl_agent has to find out which LSA has been applied to the
+ *         slave.
+ *
+ *         If we have 2 masters and 2 slaves, each master should be replicated
+ *         for each slave. Then we have to maintain 4 trail log...
+ *           (S1, M1)
+ *           (S1, M2)
+ *           (S2, M1)
+ *           (S2, M2)
+ *
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_env (DB_QUERY_RESULT * result)
+{
+  DB_VALUE *value;
+  int col_cnt = db_query_column_count (result);
+  int i;
+  char *env_name, *env_value;
+  char *file_path;
+  int error = NO_ERROR;
+
+  if (col_cnt < 2)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  value = malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
+
+  error = db_query_get_tuple_valuelist (result, col_cnt, value);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  env_name = DB_GET_STRING (&value[0]);
+  env_value = DB_GET_STRING (&value[1]);
+
+  file_path =
+    (char *) malloc (strlen (env_value) + strlen (dist_Dbname) + 10);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, file_path);
+
+  if (env_name != NULL && strcmp (env_name, "trail_log") == 0)
+    {
+      dist_LogPath = (char *) malloc (strlen (env_value) + 1);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+			   dist_LogPath);
+      strcpy (dist_LogPath, env_value);
+      sprintf (file_path, "%s/%s.trail", env_value, dist_Dbname);
+      trail_File_vdes = repl_ag_open_env_file (file_path);
+      if (trail_File_vdes == NULL_VOLDES)
+	REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT,
+			      REPL_AGENT_CANT_READ_TRAIL_LOG, file_path);
+
+      sprintf (file_path, "%s/%s.hist", env_value, dist_Dbname);
+      history_fp = fopen (file_path, "a");
+      if (history_fp == NULL)
+	{
+	  error = REPL_AGENT_IO_ERROR;
+	  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
+	}
+#if defined(DEBUG_REPL)
+      sprintf (file_path, "%s/%s.debug", env_value, dist_Dbname);
+      debug_Log_fd = fopen (file_path, "a");
+      if (debug_Log_fd == NULL)
+	{
+	  debug_Log_fd = stdout;
+	}
+#endif
+    }
+  else if (env_name != NULL && strcmp (env_name, "error_log") == 0)
+    {
+      sprintf (file_path, "%s/%s.err", env_value, dist_Dbname);
+      err_Log_fp = fopen (file_path, "a");
+      if (err_Log_fp == NULL)
+	err_Log_fp = stdout;
+    }
+  else if (env_name != NULL && strcmp (env_name, "agent_port") == 0)
+    {
+      agent_status_port = atoi (env_value);
+      if (agent_status_port <= 0)
+	agent_status_port = 33333;
+    }
+  else if (env_name != NULL && strcmp (env_name, "perf_log_size") == 0)
+    {
+      perf_Log_size = atoi (env_value);
+      if (perf_Log_size <= 0)
+	perf_Log_size = 10000;
+    }
+  else if (env_name != NULL
+	   && strcmp (env_name, "commit_interval_msecs") == 0)
+    {
+      perf_Commit_msec = atoi (env_value);
+      if (perf_Commit_msec < 0)
+	perf_Commit_msec = 10000;
+    }
+
+  for (i = 0; i < col_cnt; i++)
+    db_value_clear (&value[i]);
+
+  free_and_init (value);
+  free_and_init (file_path);
+  return error;
+}
+
+/*
+ * repl_ag_get_master() - set the master info
+ *   return: NO_ERROR or error code
+ *   result : the result of query of getting master db info
+ *
+ * Note:
+ *     get the master database info from the distributor db
+ *
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_master (DB_QUERY_RESULT * result)
+{
+  DB_VALUE *value;
+  int idx = repl_Master_num;
+  int i;
+  int col_cnt = db_query_column_count (result);
+  int error = NO_ERROR;
+
+  if (col_cnt < 11)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if (repl_Master_num > MAX_NUM_OF_MASTERS)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_MASTERS);
+
+  value = (DB_VALUE *) malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
+
+  error = db_query_get_tuple_valuelist (result, col_cnt, value);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if ((error = repl_ag_add_master_info (idx)) != NO_ERROR)
+    return error;
+
+  /* set the ID and agent id
+   * dbid : the unique number which identify the master db within
+   *        distributor system.
+   * agent_id : the unique number which identify the repl_agent process
+   *            within the repl_server.
+   */
+  mInfo[idx]->agentid = -1;
+  mInfo[idx]->dbid = DB_GET_INTEGER (&value[0]);
+
+  /* set the connection info of the master db */
+  strcpy (mInfo[idx]->conn.dbname, DB_GET_STRING (&value[1]));
+  strcpy (mInfo[idx]->conn.master_IP, DB_GET_STRING (&value[2]));
+  mInfo[idx]->conn.portnum = DB_GET_INTEGER (&value[3]);
+  memset (mInfo[idx]->conn.req_buf, 0, COMM_REQ_BUF_SIZE);
+
+  /* set the copy log info */
+  strcpy (mInfo[idx]->copylog_path, DB_GET_STRING (&value[4]));
+  sprintf (mInfo[idx]->copylog_path, "%s/%s.copy",
+	   mInfo[idx]->copylog_path, mInfo[idx]->conn.dbname);
+
+  mInfo[idx]->copy_log.start_pageid = DB_GET_INTEGER (&value[5]);
+  mInfo[idx]->copy_log.first_pageid = DB_GET_INTEGER (&value[6]);
+  mInfo[idx]->copy_log.last_pageid = DB_GET_INTEGER (&value[7]);
+
+  /* set the parameters */
+  mInfo[idx]->log_buffer_size = DB_GET_INTEGER (&value[8]);
+  mInfo[idx]->cache_buffer_size = DB_GET_INTEGER (&value[9]);
+  mInfo[idx]->copylog_size = DB_GET_INTEGER (&value[10]);
+  mInfo[idx]->is_end_of_record = false;
+
+  repl_Master_num++;
+
+  for (i = 0; i < col_cnt; i++)
+    db_value_clear (&value[i]);
+  free_and_init (value);
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_ag_init_repl_lists() - Initialize the replication lists
+ *   return: NO_ERROR or error code
+ *   slave_info : the target slave info
+ *   m_idx : the target master index
+ *   need_realloc : yes when realloc
+ *
+ * Note:
+ *         repl_lists is an array of replication items to be applied.
+ *         We maintain repl_lists for a transaction.
+ *         This function initialize the repl_list.
+ *
+ *     called by MAIN thread(malloc) or APPLY thread (realloc)
+ */
+static int
+repl_ag_init_repl_lists (SLAVE_INFO * sinfo, int idx, bool need_realloc)
+{
+  int i, j;
+  int error = NO_ERROR;
+
+  if (need_realloc == false)
+    {
+      sinfo->masters[idx].repl_lists
+	= malloc (DB_SIZEOF (REPL_APPLY *) * REPL_LIST_CNT);
+      sinfo->masters[idx].repl_cnt = REPL_LIST_CNT;
+      sinfo->masters[idx].cur_repl = 0;
+      j = 0;
+    }
+  else
+    {
+      sinfo->masters[idx].repl_lists
+	= realloc (sinfo->masters[idx].repl_lists,
+		   DB_SIZEOF (REPL_APPLY *) *
+		   (REPL_LIST_CNT + sinfo->masters[idx].repl_cnt));
+      j = sinfo->masters[idx].repl_cnt;
+      sinfo->masters[idx].repl_cnt += REPL_LIST_CNT;
+    }
+
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+		       sinfo->masters[idx].repl_lists);
+
+  for (i = j; i < sinfo->masters[idx].repl_cnt; i++)
+    {
+      sinfo->masters[idx].repl_lists[i] = malloc (DB_SIZEOF (REPL_APPLY));
+      if (sinfo->masters[idx].repl_lists[i] == NULL)
+	{
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+	  break;
+	}
+      sinfo->masters[idx].repl_lists[i]->tranid = 0;
+      LSA_SET_NULL (&sinfo->masters[idx].repl_lists[i]->start_lsa);
+      sinfo->masters[idx].repl_lists[i]->repl_head = NULL;
+      sinfo->masters[idx].repl_lists[i]->repl_tail = NULL;
+    }
+
+  if (error != NO_ERROR)
+    {
+      for (j = 0; j < i; j++)
+	free_and_init (sinfo->masters[idx].repl_lists[i]);
+      free_and_init (sinfo->masters[idx].repl_lists);
+      return error;
+    }
+  return error;
+}
+
+/*
+ * repl_ag_get_repl_group() - get the replication group
+ *   return: NO_ERROR or error code
+ *   sinfo : slave info
+ *   m_idx : master map index
+ *
+ * Note:
+ *     Read the class name to be replicated for the target master from the
+ *     distributor database, and constuct the hash table.
+ *
+ * NOTE
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
+{
+  int error = NO_ERROR;
+  char sql_stmt[1000];
+  DB_QUERY_RESULT *result = NULL;
+  DB_QUERY_ERROR error_stats;
+  DB_VALUE value;
+  int result_count = 0, i, j;
+
+  sprintf (sql_stmt,
+	   "select class_name, start_pageid, start_offset from repl_group where master_dbid = %d and slave_dbid = %d order by class_name",
+	   sinfo->masters[m_idx].m_id, sinfo->masters[m_idx].s_id);
+
+  sinfo->masters[m_idx].class_count = 0;
+
+  if (db_execute (sql_stmt, &result, &error_stats) >= 0)
+    {
+      if ((result_count = db_query_tuple_count (result)) == 0)
+	{
+	  sinfo->masters[m_idx].class_list = NULL;
+	}
+      else
+	{
+	  sinfo->masters[m_idx].class_list
+	    = (REPL_GROUP_INFO *) malloc (DB_SIZEOF (REPL_GROUP_INFO)
+					  * result_count);
+	  if (sinfo->masters[m_idx].class_list == NULL)
+	    {
+	      db_query_end (result);
+	      return REPL_AGENT_GET_PARARMETER_FAIL;
+	    }
+
+	  for (i = 0; i < result_count; i++)
+	    {
+	      sinfo->masters[m_idx].class_list[i].class_name
+		= malloc (DB_NAME_LENGTH);
+	      if (sinfo->masters[m_idx].class_list[i].class_name == NULL)
+		{
+		  for (j = 0; j < i; j++)
+		    free_and_init (sinfo->masters[m_idx].class_list[j].
+				   class_name);
+		  free_and_init (sinfo->masters[m_idx].class_list);
+
+		  db_query_end (result);
+		  return REPL_AGENT_GET_PARARMETER_FAIL;
+		}
+	    }
+	  sinfo->masters[m_idx].class_count = result_count;
+	}
+
+      if (result_count > 0)
+	{
+	  result_count = 0;
+	  error = db_query_first_tuple (result);
+	  if (error == NO_ERROR)
+	    {
+	      error = db_query_get_tuple_value (result, 0, &value);
+	      strcpy (sinfo->masters[m_idx].class_list[result_count].
+		      class_name, DB_GET_STRING (&value));
+	      db_value_clear (&value);
+
+	      error = db_query_get_tuple_value (result, 1, &value);
+	      if (DB_IS_NULL (&value))
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.pageid = -1;
+	      else
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.pageid = DB_GET_INT (&value);
+	      error = db_query_get_tuple_value (result, 2, &value);
+	      if (DB_IS_NULL (&value))
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.offset = -1;
+	      else
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.offset = DB_GET_INT (&value);
+
+	      result_count++;
+	    }
+	  while (error == NO_ERROR)
+	    {
+	      if (db_query_next_tuple (result) != DB_CURSOR_SUCCESS)
+		break;
+	      error = db_query_get_tuple_value (result, 0, &value);
+	      strcpy (sinfo->masters[m_idx].class_list[result_count].
+		      class_name, DB_GET_STRING (&value));
+	      db_value_clear (&value);
+
+	      error = db_query_get_tuple_value (result, 1, &value);
+	      if (DB_IS_NULL (&value))
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.pageid = -1;
+	      else
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.pageid = DB_GET_INT (&value);
+	      error = db_query_get_tuple_value (result, 2, &value);
+	      if (DB_IS_NULL (&value))
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.offset = -1;
+	      else
+		sinfo->masters[m_idx].class_list[result_count].
+		  start_lsa.offset = DB_GET_INT (&value);
+
+	      result_count++;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result);
+	      return REPL_AGENT_GET_PARARMETER_FAIL;
+	    }
+	}
+      db_query_end (result);
+    }
+  else
+    {
+      return REPL_AGENT_GET_PARARMETER_FAIL;
+    }
+  return error;
+
+}
+
+#if 0
+static int
+repl_ag_dump_group_class_list (SLAVE_INFO * sinfo, int m_idx)
+{
+  int i, class_count;
+
+  class_count = sinfo->masters[m_idx].class_count;
+  for (i = 0; i < class_count; i++)
+    {
+      printf ("ClassName : %s, LSA(%d,%d)\n",
+	      sinfo->masters[m_idx].class_list[i].class_name,
+	      sinfo->masters[m_idx].class_list[i].start_lsa.pageid,
+	      sinfo->masters[m_idx].class_list[i].start_lsa.offset);
+    }
+
+  return NO_ERROR;
+}
+#endif
+
+static char *
+repl_ag_get_class_from_repl_group (SLAVE_INFO * sinfo,
+				   int m_idx, char *class_name, LOG_LSA * lsa)
+{
+  int i, result;
+
+  if (sinfo->masters[m_idx].class_list == NULL ||
+      sinfo->masters[m_idx].class_count == 0)
+    return NULL;
+
+  for (i = 0; i < sinfo->masters[m_idx].class_count; i++)
+    {
+      result =
+	strcmp (sinfo->masters[m_idx].class_list[i].class_name, class_name);
+      if (result == 0)
+	{
+	  if (LSA_LE (lsa, &sinfo->masters[m_idx].class_list[i].start_lsa))
+	    return NULL;
+	  return sinfo->masters[m_idx].class_list[i].class_name;
+	}
+    }
+  return NULL;
+}
+
+#if 0
+static int
+repl_ag_append_class_to_repl_group (SLAVE_INFO * sinfo,
+				    int m_idx, char *class_name)
+{
+  int size;
+
+  size = sinfo->masters[m_idx].class_count;
+
+  sinfo->masters[m_idx].class_list
+    = (REPL_GROUP_INFO *) realloc (sinfo->masters[m_idx].class_list,
+				   DB_SIZEOF (REPL_GROUP_INFO) * (size + 1));
+  if (sinfo->masters[m_idx].class_list == NULL)
+    return ER_FAILED;
+
+  sinfo->masters[m_idx].class_list[size].class_name = malloc (DB_NAME_LENGTH);
+  if (sinfo->masters[m_idx].class_list[size].class_name == NULL)
+    return ER_FAILED;
+
+  strcpy (sinfo->masters[m_idx].class_list[size].class_name, class_name);
+  LSA_SET_NULL (&sinfo->masters[m_idx].class_list[size].start_lsa);
+
+  sinfo->masters[m_idx].class_count++;
+
+  return NO_ERROR;
+}
+#endif
+
+int
+repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
+{
+  int error = NO_ERROR;
+  char sql_stmt[1000];
+  DB_QUERY_RESULT *result = NULL;
+  DB_QUERY_ERROR error_stats;
+  DB_VALUE value;
+  int result_count = 0, i;
+  int sum = 0, class_count, pos;
+
+  class_count = sinfo->masters[m_idx].class_count;
+  for (i = 0; i < class_count; i++)
+    {
+      sprintf (sql_stmt,
+	       "select count(*) from db_partition where class_name = '%s'",
+	       sinfo->masters[m_idx].class_list[i].class_name);
+      if (db_execute (sql_stmt, &result, &error_stats) > 0)
+	{
+	  error = db_query_first_tuple (result);
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result);
+	      return REPL_AGENT_GET_PARARMETER_FAIL;
+	    }
+	  error = db_query_get_tuple_value (result, 0, &value);
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result);
+	      return REPL_AGENT_GET_PARARMETER_FAIL;
+	    }
+	  sum += DB_GET_INT (&value);
+	  db_value_clear (&value);
+	}
+      db_query_end (result);
+    }
+
+  if (sum <= 0)
+    return NO_ERROR;
+
+  sinfo->masters[m_idx].class_list
+    = (REPL_GROUP_INFO *) realloc (sinfo->masters[m_idx].class_list,
+				   DB_SIZEOF (REPL_GROUP_INFO) *
+				   (class_count + sum));
+  if (sinfo->masters[m_idx].class_list == NULL)
+    return REPL_AGENT_GET_PARARMETER_FAIL;
+
+  pos = 0;
+  for (i = 0; i < class_count; i++)
+    {
+      sprintf (sql_stmt,
+	       "select partition_class_name from db_partition where class_name = '%s'",
+	       sinfo->masters[m_idx].class_list[i].class_name);
+      if ((result_count = db_execute (sql_stmt, &result, &error_stats)) > 0)
+	{
+	  result_count = 0;
+	  error = db_query_first_tuple (result);
+	  if (error == NO_ERROR)
+	    {
+	      sinfo->masters[m_idx].class_list[class_count +
+					       pos].class_name =
+		malloc (DB_NAME_LENGTH);
+	      if (sinfo->masters[m_idx].class_list[class_count + pos].
+		  class_name == NULL)
+		{
+		  db_query_end (result);
+		  return REPL_AGENT_GET_PARARMETER_FAIL;
+		}
+
+	      error = db_query_get_tuple_value (result, 0, &value);
+	      strcpy (sinfo->masters[m_idx].
+		      class_list[class_count + pos].class_name,
+		      DB_GET_STRING (&value));
+	      db_value_clear (&value);
+	      LSA_COPY (&sinfo->masters[m_idx].
+			class_list[class_count + pos].start_lsa,
+			&sinfo->masters[m_idx].class_list[i].start_lsa);
+	      pos++;
+	    }
+	  while (error == NO_ERROR)
+	    {
+	      if (db_query_next_tuple (result) != DB_CURSOR_SUCCESS)
+		break;
+	      sinfo->masters[m_idx].class_list[class_count +
+					       pos].class_name =
+		malloc (DB_NAME_LENGTH);
+	      if (sinfo->masters[m_idx].class_list[class_count + pos].
+		  class_name == NULL)
+		{
+		  db_query_end (result);
+		  return REPL_AGENT_GET_PARARMETER_FAIL;
+		}
+
+	      error = db_query_get_tuple_value (result, 0, &value);
+	      strcpy (sinfo->masters[m_idx].
+		      class_list[class_count + pos].class_name,
+		      DB_GET_STRING (&value));
+	      db_value_clear (&value);
+	      LSA_COPY (&sinfo->masters[m_idx].
+			class_list[class_count + pos].start_lsa,
+			&sinfo->masters[m_idx].class_list[i].start_lsa);
+	      pos++;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result);
+	      return REPL_AGENT_GET_PARARMETER_FAIL;
+	    }
+	}
+      db_query_end (result);
+    }
+  sinfo->masters[m_idx].class_count = class_count + pos;
+
+  return NO_ERROR;
+}
+
+#define REPL_GET_TRAIL_INFO_INT(arg1, arg2)                                   \
+  do {                                                                        \
+    error = db_get(mop, arg1, &mid);                                          \
+    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    if(DB_IS_NULL(&mid))  arg2 = 0;                                           \
+    else arg2 = DB_GET_INTEGER(&mid);                                         \
+    db_value_clear(&mid);                                                     \
+  } while(0)
+
+#define REPL_GET_TRAIL_INFO_CHAR2BOOL(arg1, arg2)                             \
+  do {                                                                        \
+    error = db_get(mop, arg1, &mid);                                          \
+    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    c_bool = DB_GET_CHAR(&mid, &dummy);                                       \
+    arg2 = (c_bool[0] == 'y' || c_bool[0] == 'Y') ? true : false;             \
+    db_value_clear(&mid);                                                     \
+  } while(0)
+#define REPL_GET_TRAIL_INFO_CHAR(arg1, arg2)                                  \
+  do {                                                                        \
+    error = db_get(mop, arg1, &mid);                                          \
+    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    c_bool = DB_GET_CHAR(&mid, &dummy);                                       \
+    arg2 = c_bool[0];                                                         \
+    db_value_clear(&mid);                                                     \
+  } while(0)
+
+/*
+ * repl_ag_get_slave() - Initialize the slave info
+ *   return: NO_ERROR or error code
+ *   result : we fetch the parameters from the distributor db.
+ *
+ * Note:
+ *     get the slave database info from the distributor db
+ *
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_slave (DB_QUERY_RESULT * result)
+{
+  DB_VALUE *value;
+  int idx = repl_Slave_num, i, m_idx, dummy;
+  int col_cnt = db_query_column_count (result);
+  DB_SET *masters;
+  DB_VALUE mid;
+  DB_OBJECT *mop;
+  int error = NO_ERROR;
+  char *c_bool;
+  char sql[1024];
+
+  if (col_cnt < 7)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if (repl_Slave_num > MAX_NUM_OF_SLAVES)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_SLAVES);
+
+  value = malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
+
+  error = db_query_get_tuple_valuelist (result, col_cnt, value);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  if ((error = repl_ag_add_slave_info (idx)) != NO_ERROR)
+    return error;
+
+  /* set the ID
+   * dbid : the unique number which identify the master db within
+   *        distributor system.
+   */
+  sInfo[idx]->dbid = DB_GET_INTEGER (&value[0]);
+
+  /* set the connection info */
+  strcpy (sInfo[idx]->conn.dbname, DB_GET_STRING (&value[1]));
+  strcpy (sInfo[idx]->conn.master_IP, DB_GET_STRING (&value[2]));
+  sInfo[idx]->conn.portnum = DB_GET_INTEGER (&value[3]);
+  strcpy (sInfo[idx]->conn.userid, DB_GET_STRING (&value[4]));
+  strcpy (sInfo[idx]->conn.passwd, DB_GET_STRING (&value[5]));
+
+  /* set the trail info
+   * trail info : the info which should be maintained per each
+   *              master and slave pair.
+   *              For example, if
+   *              M1 is replicated by S1 and S2,
+   *              M2 is replicated by S2..
+   *              The trail info should be maintained for
+   *              {M1, S1}, {M1, S2}, {M2, S2}
+   */
+  masters = DB_GET_SET (&value[6]);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_SLAVE_HAS_NO_MASTER,
+		       masters);
+
+  sInfo[idx]->m_cnt = db_set_cardinality (masters);
+  if (sInfo[idx]->m_cnt == 0)
+    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_SLAVE_HAS_NO_MASTER);
+
+  for (i = 0; i < sInfo[idx]->m_cnt; i++)
+    {
+      sInfo[idx]->masters[i].s_id = sInfo[idx]->dbid;
+
+      error = db_set_get (masters, i, &mid);
+      REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);
+
+      mop = db_get_object (&mid);
+      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT,
+			   REPL_AGENT_INVALID_TRAIL_INFO, mop);
+      db_value_clear (&mid);
+
+      REPL_GET_TRAIL_INFO_INT ("master_dbid", sInfo[idx]->masters[i].m_id);
+
+      REPL_GET_TRAIL_INFO_INT ("final_pageid",
+			       sInfo[idx]->masters[i].final_lsa.pageid);
+      REPL_GET_TRAIL_INFO_INT ("final_offset",
+			       sInfo[idx]->masters[i].final_lsa.offset);
+      REPL_GET_TRAIL_INFO_INT ("perf_poll_interval",
+			       sInfo[idx]->masters[i].perf_poll_interval);
+      REPL_GET_TRAIL_INFO_INT ("log_apply_interval",
+			       sInfo[idx]->masters[i].log_apply_interval);
+      REPL_GET_TRAIL_INFO_INT ("restart_interval",
+			       sInfo[idx]->masters[i].restart_interval);
+
+      REPL_GET_TRAIL_INFO_CHAR2BOOL ("all_repl",
+				     sInfo[idx]->masters[i].all_repl);
+      REPL_GET_TRAIL_INFO_CHAR2BOOL ("index_replication",
+				     sInfo[idx]->masters[i].
+				     index_replication);
+      REPL_GET_TRAIL_INFO_CHAR2BOOL ("for_recovery",
+				     sInfo[idx]->masters[i].for_recovery);
+      REPL_GET_TRAIL_INFO_CHAR ("status", sInfo[idx]->masters[i].status);
+
+      m_idx = repl_ag_get_master_info_index (sInfo[idx]->masters[i].m_id);
+      if (mInfo[m_idx]->copy_log.start_pageid < 0 ||	/* first time to start
+							 * replication */
+	  mInfo[m_idx]->copy_log.start_pageid >
+	  sInfo[idx]->masters[i].final_lsa.pageid ||
+	  sInfo[idx]->masters[i].status == 'F' ||
+	  sInfo[idx]->masters[i].status == 'f')
+	{
+	  mInfo[m_idx]->copy_log.start_pageid =
+	    mInfo[m_idx]->copy_log.first_pageid =
+	    mInfo[m_idx]->copy_log.last_pageid =
+	    sInfo[idx]->masters[i].final_lsa.pageid;
+	  sInfo[idx]->masters[i].total_rows = 0;
+	  sprintf (sql,
+		   "UPDATE master_info SET start_pageid=%d WHERE dbid=%d;"
+		   "UPDATE trail_info SET status='I' WHERE master_dbid=%d and slave_dbid=%d;",
+		   mInfo[m_idx]->copy_log.start_pageid,
+		   mInfo[m_idx]->dbid, sInfo[idx]->masters[i].m_id,
+		   sInfo[idx]->masters[i].s_id);
+	  error = repl_ag_update_query_execute (sql);
+	  if (error == NO_ERROR)
+	    error = db_commit_transaction ();
+	  if (error == NO_ERROR)
+	    {
+	      error =
+		repl_io_write (trail_File_vdes, &sInfo[idx]->masters[i],
+			       sInfo[idx]->masters[i].s_id *
+			       sInfo[idx]->masters[i].m_id,
+			       SIZE_OF_TRAIL_LOG);
+	    }
+	  if (error != NO_ERROR)
+	    return error;
+	}
+      else
+	{			/* set the previous repl_count as the current repl_count */
+	  REPL_GET_TRAIL_INFO_INT ("repl_count",
+				   sInfo[idx]->masters[i].total_rows);
+	}
+
+      if (sInfo[idx]->masters[i].all_repl != true)
+	{
+	  /* We have to maintain the replication group for selective replication */
+	  error = repl_ag_get_repl_group (sInfo[idx], i);
+	  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT,
+				REPL_AGENT_INVALID_TRAIL_INFO);
+	}
+      else
+	{
+	  sInfo[idx]->masters[i].class_list = NULL;
+	  sInfo[idx]->masters[i].class_count = 0;
+	}
+
+      error = repl_ag_init_repl_lists (sInfo[idx], i, false);
+      REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);
+    }
+
+
+  repl_Slave_num++;
+  for (i = 0; i < col_cnt; i++)
+    db_value_clear (&value[i]);
+  free_and_init (value);
+
+  return NO_ERROR;
+}
+
+/*
+ * repl_ag_get_parameters_internal() - The master function to get needed info.
+ *                                     from the distributor db.
+ *   return: NO_ERROR or error code
+ *   func    : the routine to be executed
+ *   query   : the SQL query to get the target info
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_parameters_internal (int (*func) (DB_QUERY_RESULT *),
+				 const char *query)
+{
+  DB_QUERY_RESULT *result = NULL;
+  DB_QUERY_ERROR error_stats;
+  int error = NO_ERROR;
+  int pos;
+
+  error = db_execute (query, &result, &error_stats);
+  if (error <= 0)
+    {
+      error = REPL_AGENT_GET_PARARMETER_FAIL;
+      goto end;
+    }
+  else
+    {
+      pos = db_query_first_tuple (result);
+      while (pos == DB_CURSOR_SUCCESS)
+	{
+	  error = func (result);
+	  if (error != NO_ERROR)
+	    {
+	      error = REPL_AGENT_GET_PARARMETER_FAIL;
+	      goto end;
+	    }
+	  pos = db_query_next_tuple (result);
+	}
+    }
+
+  error = NO_ERROR;
+
+end:
+  db_query_end (result);
+
+  return error;
+}
+
+/*
+ * repl_ag_get_parameters()
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *     called by MAIN thread
+ */
+static int
+repl_ag_get_parameters ()
+{
+  int error = NO_ERROR;
+  bool restarted = false;
+
+  error = db_login ("dba", dist_Passwd);
+  REPL_CHECK_ERR_ERROR_ONE_ARG (REPL_FILE_AGENT,
+				REPL_AGENT_CANT_CONNECT_TO_DIST,
+				(char *) db_error_string (1));
+
+  error = db_restart ("repl_agent", 0, dist_Dbname);
+  REPL_CHECK_ERR_ERROR_ONE_ARG (REPL_FILE_AGENT,
+				REPL_AGENT_CANT_CONNECT_TO_DIST,
+				(char *) db_error_string (1));
+
+  restarted = true;
+  error = repl_ag_get_parameters_internal (repl_ag_get_env,
+					   "select e_name, e_value "
+					   "from env_info;");
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = repl_ag_get_parameters_internal (repl_ag_get_master,
+					   "select dbid, dbname, master_ip, "
+					   "portnum, copylog_path, "
+					   "start_pageid, first_pageid, "
+					   "last_pageid, size_of_log_buffer, "
+					   "size_of_cache_buffer, "
+					   "size_of_copylog from master_info;");
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = repl_ag_get_parameters_internal (repl_ag_get_slave,
+					   "select dbid, dbname, master_ip, "
+					   "portnum, userid, passwd, trails "
+					   "from slave_info;");
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Initialize the trail log, if it's empty */
+  if (lseek64 (trail_File_vdes, 0, SEEK_END) == 0)
+    {
+      int i = 0;
+      error = repl_io_write (trail_File_vdes, (void *) &i,
+			     MAX_PAGE_OF_TRAIL_LOG, SIZE_OF_TRAIL_LOG);
+      if (restarted)
+	{
+	  db_shutdown ();
+	}
+      REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
+    }
+
+end:
+  if (restarted)
+    {
+      db_shutdown ();
+    }
+
+  return error;
+}
+
+static void
+usage (const char *argv0)
+{
+  char *exec_name;
+
+  exec_name = basename ((char *) argv0);
+  msgcat_init ();
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, 1, 29),
+	   VERSION, exec_name, exec_name);
+  msgcat_final ();
+}
+
+/*
+ * main() - Main Routine of repl_agent
+ *   return: int
+ *   argc : the number of arguments
+ *      argv : argument list
+ *
+ * Note:
+ *      The main routine.
+ *         1. Initialize
+ *            . signal process
+ *            . get parameters (dbname, port_num, repl_err_log path)
+ *            . get the log file name & IO page size
+ *            . initialize communication stuff
+ *            . initialize thread pool (daemon thread will work right now..)
+ *         2. body (loop) - process the request
+ *            . catch the request
+ *            . if shutdown request --> process
+ *            . else add the request to the job queue (worker threads will
+ *                                                     catch them..)
+ */
+int
+main (int argc, char **argv)
+{
+  int error = NO_ERROR;
+  int dump_fp;
+  struct option agent_option[] = {
+    {"help", 0, 0, 'h'},
+    {"dist-db", 1, 0, 'd'},
+    {"password", 1, 0, 'p'},
+    {"create-archive", 0, 0, 'a'},
+    {"dump-file", 1, 0, 'f'},
+    {"page-size", 1, 0, 's'},
+    {0, 0, 0, 0}
+  };
+  const char *env;
+
+  /*
+   * reads the replication parameters ..
+   *
+   * how many masters to be replicated ? --> repl_Master_num
+   * for each master, find out connection port, db_name, etc...
+   * etc...
+   */
+
+  err_Log_fp = stdout;
+
+  /*
+   * argument parsing, to get
+   *         - db name               (db_Name)
+   *         - port num              (port_Num)
+   *         - err log file path     (err_Log)
+   */
+
+  env = envvar_get ("DEBUG_REPL");
+  if (env != NULL && strcmp (env, "yes") == 0)
+    {
+      is_Debug = true;
+    }
+  PTHREAD_MUTEX_INIT (file_Mutex);
+
+  /* initialize message catalog for argument parsing and usage() */
+  if (utility_initialize () != NO_ERROR)
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_CANT_OPEN_CATALOG);
+      return (-1);
+    }
+
+  while (1)
+    {
+      int option_index = 0;
+      int option_key;
+
+      option_key = getopt_long (argc, argv, "hd:p:af:s:",
+				agent_option, &option_index);
+      if (option_key == -1)
+	{
+	  break;
+	}
+
+      switch (option_key)
+	{
+	case 'd':
+	  dist_Dbname = strdup (optarg);
+	  break;
+	case 'p':
+	  dist_Passwd = strdup (optarg);
+	  break;
+	case 'a':
+	  create_Arv = true;
+	  break;
+	case 'f':
+	  log_dump_fn = strdup (optarg);
+	  break;
+	case 's':
+	  log_pagesize = atoi (optarg);
+	  break;
+	case 'h':
+	default:
+	  usage (argv[0]);
+	  return -1;
+	}
+    }
+
+  if (strlen (log_dump_fn) > 1)
+    {
+      dump_fp = repl_io_open (log_dump_fn, O_RDONLY, 0);
+      if (dump_fp > 0)
+	{
+	  repl_ag_log_dump (dump_fp, log_pagesize);
+	}
+      error = REPL_AGENT_INTERNAL_ERROR;
+      goto error_exit;
+    }
+
+  if (strlen (dist_Dbname) < 1)
+    {
+      error = REPL_AGENT_INTERNAL_ERROR;
+      usage (argv[0]);
+      goto error_exit;
+    }
+
+  if ((error = repl_ag_get_parameters ()) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (lzo_init () != LZO_E_OK)
+    {
+      /* may be impossible */
+      error = REPL_AGENT_INTERNAL_ERROR;
+      goto error_exit;
+    }
+
+  /* to be a daemon process */
+  env = envvar_get ("NO_DAEMON");
+  if (env == NULL || strcmp (env, "no") == 0)
+    {
+      if (repl_start_daemon () != NO_ERROR)
+	{
+	  exit (-1);
+	}
+    }
+
+  /* repl_agent flag set to 1 */
+  db_Replication_agent_mode = true;
+
+  /* connect to the master */
+  if ((error = repl_connect_to_master (false, dist_Dbname)) != NO_ERROR)
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_CANT_CONNECT_TO_MASTER);
+      goto error_exit;
+    }
+
+  /* signal processing & thread pool init */
+  if (repl_ag_thread_init () != NO_ERROR)
+    {
+      error = REPL_AGENT_INTERNAL_ERROR;
+      goto error_exit;
+    }
+
+  repl_ag_thread_end ();
+
+error_exit:
+  repl_ag_shutdown ();
+  if (err_Log_fp != stdout && err_Log_fp)
+    {
+      fclose (err_Log_fp);
+    }
+  if (perf_Log_fp != stdout && perf_Log_fp)
+    {
+      fclose (perf_Log_fp);
+    }
+
+#if defined(DEBUG_REPL)
+  if (debug_Log_fd != stdout && debug_Log_fd)
+    {
+      fclose (debug_Log_fd);
+    }
+#endif
+
+  msgcat_final ();
+  return error;
+}

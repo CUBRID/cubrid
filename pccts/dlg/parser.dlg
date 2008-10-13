@@ -1,0 +1,239 @@
+<<
+/* parser.dlg -- DLG Description of scanner
+ *
+ * Generated from: dlg_p.g
+ *
+ * Terence Parr, Hank Dietz and Will Cohen: 1989, 1990, 1991
+ * Purdue University Electrical Engineering
+ * ANTLR Version 1.00
+ */
+#include <ctype.h>
+#include "dlg.h"
+#ifdef MEMCHK
+#include "trax.h"
+#endif
+#include "zzpref.h"
+#include "antlr.h"
+#define INSIDE_SCAN_DOT_C 1
+#include "tokens.h"
+#include "dlgdef.h"
+LOOKAHEAD
+void zzerraction()
+{
+	(*zzerr)("invalid token");
+	zzadvance();
+	zzskip();
+}
+>>
+
+<<
+
+>>
+<<
+int	func_action;		/* should actions be turned into functions?*/
+int	lex_mode_counter = 0;	/* keeps track of the number of %%names */
+>>
+
+%%START
+
+@
+	<<
+		LA(1) = 1;
+	>>
+
+[\r\t\ ]+
+	<<
+		LA(1) = 2;
+		zzskip(); 
+	>>
+
+[\n]
+	<<
+		LA(1) = 3;
+		zzline++; zzskip(); 
+	>>
+
+\@
+	<<
+		LA(1) = L_EOF;
+	>>
+
+\%\%
+	<<
+		LA(1) = PER_PER;
+	>>
+
+\%\%[a-zA-Z_][a-zA-Z0-9_]*
+	<<
+		LA(1) = NAME_PER_PER;
+		p_mode_def(&zzlextext[2],lex_mode_counter++); 
+	>>
+
+\<\<
+	<<
+		LA(1) = ACTION;
+		if (func_action)
+		fprintf(OUT,"static void\nact%d()\n{ ", ++action_no);
+		zzmode(ACT); zzskip();
+	>>
+
+\>\>
+	<<
+		LA(1) = GREAT_GREAT;
+	>>
+
+\{
+	<<
+		LA(1) = L_BRACE;
+	>>
+
+\}
+	<<
+		LA(1) = R_BRACE;
+	>>
+
+\(
+	<<
+		LA(1) = L_PAR;
+	>>
+
+\)
+	<<
+		LA(1) = R_PAR;
+	>>
+
+\[
+	<<
+		LA(1) = L_BRACK;
+	>>
+
+\]
+	<<
+		LA(1) = R_BRACK;
+	>>
+
+\*
+	<<
+		LA(1) = ZERO_MORE;
+	>>
+
+\+
+	<<
+		LA(1) = ONE_MORE;
+	>>
+
+\|
+	<<
+		LA(1) = OR;
+	>>
+
+\-
+	<<
+		LA(1) = RANGE;
+	>>
+
+\~
+	<<
+		LA(1) = NOT;
+	>>
+
+\\0[0-7]*
+	<<
+		LA(1) = OCTAL_VALUE;
+		{int t; sscanf(&zzlextext[1],"%o",&t); zzlextext[0] = t;}
+	>>
+
+\\0[Xx][0-9a-fA-F]+
+	<<
+		LA(1) = HEX_VALUE;
+		{int t; sscanf(&zzlextext[3],"%x",&t); zzlextext[0] = t;}
+	>>
+
+\\[1-9][0-9]*
+	<<
+		LA(1) = DEC_VALUE;
+		{int t; sscanf(&zzlextext[1],"%d",&t); zzlextext[0] = t;}
+	>>
+
+\\t
+	<<
+		LA(1) = TAB;
+		zzlextext[0] = '\t';
+	>>
+
+\\n
+	<<
+		LA(1) = NL;
+		zzlextext[0] = '\n';
+	>>
+
+\\r
+	<<
+		LA(1) = CR;
+		zzlextext[0] = '\r';
+	>>
+
+\\b
+	<<
+		LA(1) = BS;
+		zzlextext[0] = '\b';
+	>>
+
+\\~[tnrb]
+	<<
+		LA(1) = LIT;
+		zzlextext[0] = zzlextext[1];
+	>>
+
+~[\\]
+	<<
+		LA(1) = REGCHAR;
+	>>
+
+
+%%ACT
+
+@
+	<<
+		LA(1) = 1;
+		error("unterminated action", zzline); zzmode(START); 
+	>>
+
+\>\>
+	<<
+		LA(1) = ACTION;
+		if (func_action) fprintf(OUT,"}\n\n");
+		zzmode(START);
+	>>
+
+\>
+	<<
+		LA(1) = 29;
+		putc(zzlextext[0], OUT); zzskip(); 
+	>>
+
+\\\>
+	<<
+		LA(1) = 30;
+		putc('>', OUT); zzskip(); 
+	>>
+
+\\
+	<<
+		LA(1) = 31;
+		putc('\\', OUT); zzskip(); 
+	>>
+
+\n
+	<<
+		LA(1) = 32;
+		putc(zzlextext[0], OUT); ++zzline; zzskip(); 
+	>>
+
+~[\>\\@\n]+
+	<<
+		LA(1) = 33;
+		fprintf(OUT, "%s", &(zzlextext[0])); zzskip(); 
+	>>
+
+%%

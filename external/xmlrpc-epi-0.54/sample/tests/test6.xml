@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<methodCall>
+        <methodName>validator1.moderateSizeArrayCheck</methodName>
+        <params>
+                <param>
+                        <value><array>
+                                <data>
+                                        <value>Maine</value>
+                                        <value>Nebraska</value>
+                                        <value>Nebraska</value>
+                                        <value>Kansas</value>
+                                        <value>Tennessee</value>
+                                        <value>Ohio</value>
+                                        <value>Oregon</value>
+                                        <value>Missouri</value>
+                                        <value>Mississippi</value>
+                                        <value>Michigan</value>
+                                        <value>Pennsylvania</value>
+                                        <value>Rhode Island</value>
+                                        <value>Iowa</value>
+                                        <value>Iowa</value>
+                                        <value>Nebraska</value>
+                                        <value>Washington</value>
+                                        <value>Oregon</value>
+                                        <value>Virginia</value>
+                                        <value>Arizona</value>
+                                        <value>Utah</value>
+                                        <value>South Carolina</value>
+                                        <value>Montana</value>
+                                        <value>Tennessee</value>
+                                        <value>Iowa</value>
+                                        <value>Maryland</value>
+                                        <value>Michigan</value>
+                                        <value>Iowa</value>
+                                        <value>Wisconsin</value>
+                                        <value>Delaware</value>
+                                        <value>Kansas</value>
+                                        <value>North Dakota</value>
+                                        <value>Massachusetts</value>
+                                        <value>New Mexico</value>
+                                        <value>Alaska</value>
+                                        <value>Michigan</value>
+                                        <value>Colorado</value>
+                                        <value>Wisconsin</value>
+                                        <value>South Dakota</value>
+                                        <value>Vermont</value>
+                                        <value>Virginia</value>
+                                        <value>Arkansas</value>
+                                        <value>Wisconsin</value>
+                                        <value>Colorado</value>
+                                        <value>Iowa</value>
+                                        <value>Oregon</value>
+                                        <value>Arizona</value>
+                                        <value>Michigan</value>
+                                        <value>Illinois</value>
+                                        <value>Virginia</value>
+                                        <value>Florida</value>
+                                        <value>South Carolina</value>
+                                        <value>Florida</value>
+                                        <value>Arkansas</value>
+                                        <value>Maryland</value>
+                                        <value>Rhode Island</value>
+                                        <value>Washington</value>
+                                        <value>Georgia</value>
+                                        <value>Arizona</value>
+                                        <value>Iowa</value>
+                                        <value>Louisiana</value>
+                                        <value>Washington</value>
+                                        <value>Nevada</value>
+                                        <value>Alaska</value>
+                                        <value>Hawaii</value>
+                                        <value>New Hampshire</value>
+                                        <value>West Virginia</value>
+                                        <value>South Carolina</value>
+                                        <value>Vermont</value>
+                                        <value>Tennessee</value>
+                                        <value>Connecticut</value>
+                                        <value>Maine</value>
+                                        <value>Louisiana</value>
+                                        <value>Alaska</value>
+                                        <value>Maine</value>
+                                        <value>California</value>
+                                        <value>Vermont</value>
+                                        <value>Rhode Island</value>
+                                        <value>West Virginia</value>
+                                        <value>Colorado</value>
+                                        <value>Delaware</value>
+                                        <value>Massachusetts</value>
+                                        <value>Rhode Island</value>
+                                        <value>Nevada</value>
+                                        <value>Oklahoma</value>
+                                        <value>Nebraska</value>
+                                        <value>Ohio</value>
+                                        <value>Indiana</value>
+                                        <value>Mississippi</value>
+                                        <value>Mississippi</value>
+                                        <value>Washington</value>
+                                        <value>Tennessee</value>
+                                        <value>Arkansas</value>
+                                        <value>Alaska</value>
+                                        <value>Rhode Island</value>
+                                        <value>Oklahoma</value>
+                                        <value>Massachusetts</value>
+                                        <value>Connecticut</value>
+                                        <value>Connecticut</value>
+                                        <value>Virginia</value>
+                                        <value>Nebraska</value>
+                                        <value>Alabama</value>
+                                        <value>Louisiana</value>
+                                        <value>Colorado</value>
+                                        <value>Vermont</value>
+                                        <value>New Hampshire</value>
+                                        <value>Ohio</value>
+                                        <value>Nebraska</value>
+                                        <value>Wisconsin</value>
+                                        <value>Kansas</value>
+                                        </data>
+                                </array></value>
+                        </param>
+                </params>
+        </methodCall>

@@ -1,0 +1,94 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//          File: LaunchAppEx.rul                                           	
+//                                                                    	
+//	 Description: This file contains the code for the _LaunchAppEx function
+//
+// Last revision: November 29, 2000
+//
+//     Copyright: (c) 2000 by Dipl.-Ing. Stefan Krueger <skrueger@installsite.org>
+//                You have the non-exclusive royalty-free right to use this code
+//                in your setup prgram. You are not allowed to sell, publish or
+//                redistribute this code in any form except as compiled part of
+//                your setup program.
+//
+//         Notes: This function is based on the HideAppAndWait script by Elihu 
+//                Rozen <Elihu@PSUAlum.com> and the LaunchAppGetExitCode script
+//                by Ed Smiley <esmiley@cruzio.com>.
+//
+//                This code is designed to work with InstallShield Professional 
+//                versions 5 and 6, however 16 bit setups are not supported.
+//                
+////////////////////////////////////////////////////////////////////////////////
+
+#ifndef _LAUNCHAPPEX_RUL
+#define _LAUNCHAPPEX_RUL
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//   Function Name: _LaunchAppEx
+//
+//     Description: Extended version of LaunchAppAndWait
+//
+//      Parameters: This function takes the same parameters as the built in
+//                  LaunchAppAndWait function, plus:
+//           nShow: Use SW_SHOWNORMAL for normal window, SW_HIDE to launch the 
+//                  program invisible, or any other SW_* constant
+//        nTimeOut: Time-out interval, in milliseconds. The function returns 
+//                  if the interval elapses, even if the launched process is 
+//                  not finished (only if WAIT was specified in the third 
+//                  parameter). Use -1 to wait indefinitely.
+//      nvExitCode: Returns the result code of the launched program (only if 
+//                  WAIT was specified in the third parameter). If the function 
+//                  returns before the launched process is finished (because the
+//                  time-out interval has elapsed) STILL_ACTIVE is returned in
+//                  this parameter.
+//
+//   Return values: -1 if the program can't be launched, 0 in all other cases.
+//
+////////////////////////////////////////////////////////////////////////////////
+function _LaunchAppEx(szProgram, szCmdLine, nWait, nShow, nTimeOut, nvExitCode)
+    STARTUPINFO siData;
+    PROCESS_INFORMATION piData;
+
+begin
+
+   	siData.cb = 68;
+	siData.lpReserved = NULL;
+	siData.lpDesktop = NULL;
+	siData.lpTitle = NULL;
+	siData.dwX = 0;
+	siData.dwY = 0;
+	siData.dwXSize = 0;
+	siData.dwYSize = 0;
+	siData.dwXCountChars = 0;
+	siData.dwYCountChars = 0;
+	siData.dwFillAttribute = 0;
+	siData.dwFlags = 1;  //STARTF_USESHOWWINDOW
+	siData.wShowWindow = nShow;
+	siData.lpReserved2 = NULL;
+	siData.hStdInput = NULL;
+	siData.hStdOutput = NULL;
+	siData.hStdError = NULL;
+
+    if (CreateProcessA(NULL, szProgram + " " + szCmdLine, NULL, NULL,
+                       TRUE, 0, NULL, NULL, &siData, &piData) = 0) then
+       return (-1);
+    endif;
+
+	if ( nWait != WAIT ) then
+       nvExitCode = 0;
+       return 0;
+	endif;
+	
+    WaitForSingleObject(piData.hProcess, nTimeOut);
+
+    GetExitCodeProcess(piData.hProcess, &nvExitCode);
+
+    CloseHandle(piData.hProcess);
+    CloseHandle(piData.hThread);    
+
+    return 0;
+end;
+
+#endif
