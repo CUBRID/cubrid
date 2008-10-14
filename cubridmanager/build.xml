@@ -8,7 +8,6 @@
     &buildfile;
 	<property environment="env"/>
 	<property name="cubridmanager.location" value="."/>
-	<property name="cubrid.jdbc.location" value="../src/jdbc/class"/>
 	<!--
 	<property name="eclipse" value="${env.ECLIPSE}"/>
 	<property name="eclipse.launchers" value="${eclipse}/features/org.eclipse.platform.launchers_3.1.0/bin"/>
@@ -42,7 +41,7 @@
         <pathelement location="${cubridmanager.location}/lib/opencsv-1.6.jar"/>
         <pathelement location="${cubridmanager.location}/lib/cubrid_upa.jar"/>
         <pathelement location="${cubridmanager.location}/lib/libgpkiapi_jni.jar"/>
-        <pathelement location="${cubrid.jdbc.location}/cubridjdbc.jar"/>
+        <pathelement location="${cubridmanager.location}/lib/cubrid_jdbc.jar"/>
     </path>
 
     <target name="init">
