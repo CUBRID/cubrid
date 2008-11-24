@@ -19,4 +19,4 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS =  pccts include cas sa cs cubrid util broker cmserver conf msg
+SUBDIRS =  pccts include cas sa cs cubrid util broker cmserver conf msg jdbc java cubridmanager

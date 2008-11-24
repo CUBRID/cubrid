@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE project>
+
+<project default="dist" name="cubridmanager">
+    <property name="basedir" value=""/>
+    <property name="src" value="src/jdbc"/>
+    <property name="build" value="class"/>
+    <property name="version" value=""/>
+    <property name="jar.file" value="jspserver.jar"/>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+    <target name="clean">
+        <delete failonerror="false" includeEmptyDirs="true">
+            <fileset dir="${build}"/>
+            <fileset file="*.jar"/>
+        </delete>
+    </target>
+    <target depends="init" name="compile">
+        <javac destdir="${build}" encoding="EUC-KR">
+            <src path="."/>
+            <src path="${src}"/>
+        </javac>
+    </target>
+    <target depends="compile" name="build">
+    </target>
+    <target depends="build" name="dist">
+        <jar jarfile="${jar.file}" basedir="${build}"/>
+    </target>
+</project>

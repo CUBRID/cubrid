@@ -4,21 +4,19 @@
               Any modifications will be overwritten.
               Please edit build-user.xml instead.
 -->
-<project basedir="." default="dist" name="cubridmanager">
-    &buildfile;
-	<property environment="env"/>
-	<property name="cubridmanager.location" value="."/>
-	<!--
-	<property name="eclipse" value="${env.ECLIPSE}"/>
-	<property name="eclipse.launchers" value="${eclipse}/features/org.eclipse.platform.launchers_3.1.0/bin"/>
-	-->
-	<property name="eclipse.plugins" value="rcpfiles"/>
+<project default="dist" name="cubridmanager">
+    <property environment="env"/>
+    <property name="basedir" value="."/>
+    <property name="cubridmanager.location" value="."/>
+    <property name="eclipse.plugins" value="rcpfiles"/>
+    <property name="src" value="src"/>
+    <property name="jdbc.file" value="${cubridmanager.location}/lib/cubridjdbc.jar"/>
 
-	<path id="project.classpath">
+    <path id="project.classpath">
         <pathelement location="out"/>
         <pathelement location="${eclipse.plugins}/org.eclipse.ui_3.1.2.jar"/>
         <pathelement location="${eclipse.plugins}/org.eclipse.swt_3.1.0.jar"/>
-    	<!-- not support
+        <!-- not support
         <pathelement location="${eclipse.plugins}/org.eclipse.swt.carbon.macosx.ppc_3.1.1.jar"/>
         <pathelement location="${eclipse.plugins}/org.eclipse.swt.gtk.linux.ppc_3.1.1.jar"/>
         <pathelement location="${eclipse.plugins}/org.eclipse.swt.gtk.linux.x86_64_3.1.1.jar"/>
@@ -41,76 +39,79 @@
         <pathelement location="${cubridmanager.location}/lib/opencsv-1.6.jar"/>
         <pathelement location="${cubridmanager.location}/lib/cubrid_upa.jar"/>
         <pathelement location="${cubridmanager.location}/lib/libgpkiapi_jni.jar"/>
-        <pathelement location="${cubridmanager.location}/lib/cubrid_jdbc.jar"/>
+        <pathelement location="${jdbc.file}"/>
     </path>
 
     <target name="init">
         <mkdir dir="out"/>
-    	<mkdir dir="drop/plugins"/>
+        <mkdir dir="drop/plugins"/>
     </target>
     <target name="clean">
         <delete dir="out"/>
-    	<delete dir="drop"/>
+        <delete dir="drop"/>
     </target>
     <target depends="init" name="compile">
         <javac destdir="out">
-            <src path="src"/>
+            <src path="${src}"/>
             <classpath refid="project.classpath"/>
         </javac>
     </target>
     <target depends="compile" name="build">
-    	<copy todir="out/cubridmanager/image">
-    		<fileset dir="src/cubridmanager/image"/>
-   		</copy>
-    	<copy todir="out/lib">
-    		<fileset dir="lib"/>
-   		</copy>
-    	<copy todir="out/icons">
-    		<fileset dir="icons"/>
-   		</copy>
-    	<copy todir="out/disable_icons">
-    		<fileset dir="disable_icons"/>
-   		</copy>
-    	<copy todir="out">
-    		<fileset file=".classpath"/>
-    		<fileset file="cubridmanager.ini"/>
-    		<fileset file="cubridmanager.product"/>
-    		<fileset file="version.properties"/>
-    		<fileset file="messages_en_US.properties"/>
-    		<fileset file="messages_ko_KR.properties"/>
-    		<fileset file="plugin_en_US.properties"/>
-    		<fileset file="plugin_ko_KR.properties"/>
-    		<fileset file="plugin.xml"/>
-    		<fileset file="splash.bmp"/>
-   		</copy>
+        <copy todir="out/cubridmanager/image">
+            <fileset dir="${src}/cubridmanager/image"/>
+        </copy>
+        <copy todir="out/lib">
+            <fileset dir="${cubridmanager.location}/lib"/>
+        </copy>
+        <copy tofile="out/lib/cubridjdbc.jar">
+            <fileset file="${jdbc.file}"/>
+        </copy>
+        <copy todir="out/icons">
+            <fileset dir="${cubridmanager.location}/icons"/>
+        </copy>
+        <copy todir="out/disable_icons">
+            <fileset dir="${cubridmanager.location}/disable_icons"/>
+        </copy>
+        <copy todir="out">
+            <fileset file="${cubridmanager.location}/.classpath"/>
+            <fileset file="${cubridmanager.location}/cubridmanager.ini"/>
+            <fileset file="${cubridmanager.location}/cubridmanager.product"/>
+            <fileset file="${cubridmanager.location}/version.properties"/>
+            <fileset file="${cubridmanager.location}/messages_en_US.properties"/>
+            <fileset file="${cubridmanager.location}/messages_ko_KR.properties"/>
+            <fileset file="${cubridmanager.location}/plugin_en_US.properties"/>
+            <fileset file="${cubridmanager.location}/plugin_ko_KR.properties"/>
+            <fileset file="${cubridmanager.location}/plugin.xml"/>
+            <fileset file="${cubridmanager.location}/splash.bmp"/>
+        </copy>
     </target>
-	<target depends="build" name="dist">
-    	<jar jarfile="drop/plugins/cubridmanager_.jar" basedir="out" manifest="META-INF/MANIFEST.MF"/>
-		<copy todir="drop/plugins">
-	        <fileset file="${eclipse.plugins}/org.eclipse.core.commands_3.1.0.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.core.expressions_3.1.0.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.core.runtime_3.1.2.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.help_3.1.0.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.jface_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.text_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.jface.text_3.1.2.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.osgi_3.1.2.jar"/>
-	    	<!-- not support
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.carbon.macosx.ppc_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.ppc_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.x86_64_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.solaris.sparc_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.aix.ppc_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.hpux.PA_RISC_3.1.1.jar"/>
-	        -->
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.x86_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.linux.x86_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.solaris.sparc_3.1.1.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt.win32.win32.x86_3.1.2.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.swt_3.1.0.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.ui.workbench_3.1.2.jar"/>
-	        <fileset file="${eclipse.plugins}/org.eclipse.ui_3.1.2.jar"/>
-		</copy>
-		<copy tofile="drop/startup.jar" file="${eclipse.plugins}/startup.jar"/>
-	</target>
+    <target depends="build" name="dist">
+        <jar jarfile="drop/plugins/cubridmanager_.jar" basedir="out" manifest="${cubridmanager.location}/META-INF/MANIFEST.MF"/>
+            <copy todir="drop/plugins">
+            <fileset file="${eclipse.plugins}/org.eclipse.core.commands_3.1.0.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.core.expressions_3.1.0.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.core.runtime_3.1.2.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.help_3.1.0.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.jface_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.text_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.jface.text_3.1.2.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.osgi_3.1.2.jar"/>
+            <!-- not support
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.carbon.macosx.ppc_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.ppc_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.x86_64_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.solaris.sparc_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.aix.ppc_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.hpux.PA_RISC_3.1.1.jar"/>
+            -->
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.gtk.linux.x86_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.linux.x86_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.motif.solaris.sparc_3.1.1.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt.win32.win32.x86_3.1.2.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.swt_3.1.0.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.ui.workbench_3.1.2.jar"/>
+            <fileset file="${eclipse.plugins}/org.eclipse.ui_3.1.2.jar"/>
+            </copy>
+            <copy tofile="drop/startup.jar" file="${eclipse.plugins}/startup.jar"/>
+    </target>
 </project>

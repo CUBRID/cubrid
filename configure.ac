@@ -388,6 +388,9 @@ AC_CONFIG_FILES([Makefile
 	msg/ko_KR.euckr/Makefile
 	msg/ko_KR.utf8/Makefile
 	demo/Makefile
+	jdbc/Makefile
+	java/Makefile
+	cubridmanager/Makefile
 	])
 
 AC_OUTPUT
