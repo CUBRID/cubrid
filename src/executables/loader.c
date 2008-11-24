@@ -1,12 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * ldr.c
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note :
- *      Database loader (Optimized version)
- *      Updated using design from fast loaddb prototype
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * loader.c - Database loader (Optimized version)
  */
 
 #ident "$Id$"
@@ -28,13 +39,12 @@
 
 #include "utility.h"
 #include "dbi.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "system_parameter.h"
 #include "network.h"
 #include "authenticate.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "object_accessor.h"
-#include "memory_manager_4.h"
 
 #include "db.h"
 #include "loader_object_table.h"
@@ -45,12 +55,12 @@
 #include "message_catalog.h"
 #include "locator_cl.h"
 #include "elo_class.h"
-#include "intl.h"
+#include "intl_support.h"
 #include "language_support.h"
 #include "environment_variable.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "trigger_manager.h"
-#include "execute_schema_8.h"
+#include "execute_schema.h"
 #include "transaction_cl.h"
 #include "locator_cl.h"
 
@@ -1053,16 +1063,16 @@ ldr_act_start_id (LDR_CONTEXT * context, char *name)
 	context->id_class = class_;
       else
 	{
-          is_ignore_class =
-            ldr_is_ignore_class (name, strlen(name));
-          if (!is_ignore_class) {
-	    display_error (0);
-	    CHECK_CONTEXT_VALIDITY (context, true);
-          }
-          else if (er_errid() == ER_LC_UNKNOWN_CLASSNAME)
-          {
-            er_clear();
-          }
+	  is_ignore_class = ldr_is_ignore_class (name, strlen (name));
+	  if (!is_ignore_class)
+	    {
+	      display_error (0);
+	      CHECK_CONTEXT_VALIDITY (context, true);
+	    }
+	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	    }
 	}
     }
 }
@@ -1385,7 +1395,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
   DB_VALUE curval;
   MOP retobj;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
 
   /* we have reached an invalid state, ignore the tuples */
 
@@ -1662,12 +1672,7 @@ static int
 ldr_generic (LDR_CONTEXT * context, DB_VALUE * value)
 {
   int err;
-  /*
-   * This will, unfortunately, do the au_fetch_instance dance again.  It
-   * would be nice to bypass that, but we don't have a convenient entry
-   * point in obj.c, and it's not worth providing one until someone can
-   * prove that this is a performance-limiting case.
-   */
+
   CHECK_ERR (err, obj_desc_set (context->obj,
 				context->attrs[context->next_attr].attdesc,
 				value));
@@ -2216,8 +2221,10 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
 	  /*
 	   * It's a genuine violation; raise an error.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  CHECK_ERR (err, ER_GENERIC_ERROR);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_VARCHAR));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_VARCHAR,
+			   str);
 	}
     }
 
@@ -2534,51 +2541,6 @@ error_exit:
   return err;
 }
 
-
-/*
- *  REAL SETTERS
- *
- *  A "real" string is known to have an exponent part (e.g., "e+4") following
- *  a mantissa part that may or may not have a decimal point or a sign.  If
- *  know that we're assigning into a float or double attribute, we can
- *  exploit that knowledge by calling atod() and going to PRIM_SETMEM
- *  directly.  If not, we just build a DB_TYPE_DOUBLE DB_VALUE and use the
- *  generic setter.
- *
- *  The parser sees a real literal and passes back the following sub types
- *
- * TYPE     LOADER TYPE   Description
- * ----     -----------   -----------
- *
- * DOUBLE   LDR_DOUBLE    real with exponent part i.e., 'e' or 'E'
- * FLOAT    LDR_FLOAT     real with 'f' or 'F' suffix
- * NUMERIC  LDR_NUMERIC   default if no additional information provided in
- *                        real value.
- *
- * The loader will perform the following conversions based on the source
- * (loader type) and destination (database type) types :
- *
- *         +--------+---------------+-------------+---------------+--------+
- *         |DEFAULT | DB_TYPE_DOUBLE|DB_TYPE_FLOAT|DB_TYPE_NUMERIC|SET ELEM|
- *  -------+--------+---------------+-------------+---------------+--------+
- *  LDR    |real->db| real->db dbl  |real->db flt |real->db       | db dbl |
- *  DOUBLE |generic |               |             |generic        | elem   |
- *  -------+--------+---------------+-------------+---------------+--------+
- *  LDR    |real->db| real->db dbl  |real->db flt |real->db       | db flt |
- *  FLOAT  |generic |               |             |generic        | elem   |
- *  -------+--------+---------------+-------------+---------------+--------+
- *  LDR    |real->db| real->db dbl  |real->db flt |numeric->db    | db     |
- *  NUMERIC|generic |               |             |generic        | numeric|
- *  -------+--------+---------------+-------------+---------------+--------+
- *  LDR    |int->db | real->db dbl  |real->db flt |int->db        | db int |
- *  INT    |generic |               |             |generic        | elem   |
- *  -------+--------+---------------+-------------+---------------+--------+
- *
- *  Notice that because strtod() parses the syntax for both "numeric" and
- *  "real" strings, we only need one converter each for float and double
- *  attributes (i.e., if we had ldr_numeric_db_{float, double} they would be
- *  exactly the same as ldr_real_db_{float, double}).
- */
 
 
 /*
@@ -4058,7 +4020,7 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 {
   int err = NO_ERROR;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   if (context->valid)
     {
       if (context->next_attr < (context->num_attrs + context->arg_count))
@@ -4286,11 +4248,9 @@ void
 ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 {
   int err = NO_ERROR;
-#if !defined(DISABLE_TTA_FIX)
   DB_OBJECT *class_mop;
-#endif /* !DISABLE_TTA_FIX */
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   if ((err = ldr_finish_context (context) != NO_ERROR))
     {
       display_error (-1);
@@ -4298,28 +4258,20 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
     }
   if (class_name)
     {
-#if !defined (DISABLE_TTA_FIX)
-#else /* DISABLE_TTA_FIX */
+      if ((class_mop = ldr_find_class (class_name)) == NULL)
+	{
+	  display_error_line (0);
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_LOADDB,
+					   LOADDB_MSG_UNKNOWN_CLASS),
+		   class_name);
+	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_abort ();
+	  goto error_exit;
+	}
       if (!context->validation_only)
 	{
-#endif /* !DISABLE_TTA_FIX */
-	  if ((class_mop = ldr_find_class (class_name)) == NULL)
-	    {
-	      display_error_line (0);
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_UNKNOWN_CLASS),
-		       class_name);
-	      CHECK_CONTEXT_VALIDITY (context, true);
-	      ldr_abort ();
-	      goto error_exit;
-	    }
-#if !defined (DISABLE_TTA_FIX)
-	  if (!context->validation_only)
-	    {
-	      context->cls = class_mop;
-#else /* DISABLE_TTA_FIX */
-#endif /* !DISABLE_TTA_FIX */
+	  context->cls = class_mop;
 	  /*
 	   * Cache the class name. This will be used if we have a periodic
 	   * commit and need to refresh the class
@@ -4383,6 +4335,91 @@ error_exit:
 }
 
 /*
+ * ldr_act_check_missing_non_null_attrs - xxx
+ *    return:
+ *    context(in): current context
+ * Note:
+ *      xxx
+ */
+int
+ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
+{
+  int err = NO_ERROR;
+  int i;
+  DB_ATTDESC *db_attdesc;
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att;
+
+  CHECK_SKIP ();
+  RETURN_IF_NOT_VALID (context);
+
+  if (context->validation_only)
+    {
+      goto error_exit;
+    }
+
+  err = au_fetch_class (context->cls, &class_, AU_FETCH_READ, AU_SELECT);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  switch (context->attribute_type)
+    {
+    case LDR_ATTRIBUTE_CLASS:
+      att = class_->class_attributes;
+      break;
+    case LDR_ATTRIBUTE_SHARED:
+      att = class_->shared;
+      break;
+    case LDR_ATTRIBUTE_ANY:
+    case LDR_ATTRIBUTE_DEFAULT:
+      att = class_->attributes;
+      break;
+    default:
+      att = NULL;		/* impossible case */
+      break;
+    }
+  if (att == NULL)
+    {
+      goto error_exit;		/* do nothing */
+    }
+
+  for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->flags & SM_ATTFLAG_NON_NULL)
+	{
+	  for (i = 0; i < context->num_attrs; i++)
+	    {
+	      db_attdesc = context->attrs[i].attdesc;
+	      if (db_attdesc->name_space == att->header.name_space
+		  && intl_mbs_casecmp (db_attdesc->name,
+				       att->header.name) == 0)
+		{
+		  break;
+		}
+	    }
+
+	  /* not found */
+	  if (i >= context->num_attrs)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, att->header.name);
+	      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
+	    }
+	}
+    }
+
+error_exit:
+  if (err != NO_ERROR)
+    {
+      CHECK_CONTEXT_VALIDITY (context, true);
+      ldr_abort ();
+    }
+  return err;
+}
+
+/*
  * ldr_act_add_attr - Sets up the appropriate setters for the dealing with the
  * attributes.
  *    return: void
@@ -4401,7 +4438,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   SM_CLASS *class_;
   DB_VALUE ele;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
   if (context->validation_only)
@@ -4707,7 +4744,7 @@ void
 ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type)
 {
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
   context->attribute_type = type;
@@ -4866,14 +4903,10 @@ insert_instance (LDR_CONTEXT * context)
 	  context->status_counter++;
 	  if (context->status_counter >= context->status_count)
 	    {
-#if !defined(DISABLE_TTA_FIX)
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
 					       LOADDB_MSG_INSTANCE_COUNT_EX),
 		       context->inst_total);
-#else /* DISABLE_TTA_FIX */
-	      fprintf (stdout, "%d ", context->inst_total);
-#endif /* !DISABLE_TTA_FIX */
 	      fflush (stdout);
 	      context->status_counter = 0;
 	    }
@@ -4896,7 +4929,7 @@ error_exit:
 void
 ldr_act_start_instance (LDR_CONTEXT * context, int id)
 {
-  CHECK_SKIP();
+  CHECK_SKIP ();
   if (context->valid)
     {
 
@@ -5014,20 +5047,6 @@ insert_meth_instance (LDR_CONTEXT * context)
     {
       if (context->constructor != NULL)
 	{
-	  /*
-	   * Build a real-live instance using a constructor method.
-	   * Since we go through the usual object creation mechanism
-	   * for these, we don't have to register unique values in a separate
-	   * operation.
-	   * We still however must remember the instance OID in the
-	   * class table for later references.
-	   *
-	   * For now, we don't allow forward references to instances that
-	   * have a constructor.  This is because we don't know how
-	   * to pre-create the referenced instance.  Could fix this someday
-	   * but it would require the ability to either "create with oid"
-	   * or something else equally complex.
-	   */
 	  CHECK_PTR (err, real_obj = construct_instance (context));
 	  if (real_obj == NULL)
 	    CHECK_ERR (err, er_errid ());
@@ -5073,14 +5092,10 @@ insert_meth_instance (LDR_CONTEXT * context)
 	  context->status_counter++;
 	  if (context->status_counter >= context->status_count)
 	    {
-#if !defined (DISABLE_TTA_FIX)
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_LOADDB,
 					       LOADDB_MSG_INSTANCE_COUNT_EX),
 		       context->inst_total);
-#else /* DISABLE_TTA_FIX */
-	      fprintf (stdout, "%d ", context->inst_total);
-#endif /* !DISABLE_TTA_FIX */
 	      fflush (stdout);
 	      context->status_counter = 0;
 	    }
@@ -5109,7 +5124,7 @@ ldr_act_set_constructor (LDR_CONTEXT * context, const char *name)
   int err = NO_ERROR;
   SM_METHOD *meth;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   if (context->validation_only)
     {
       context->arg_index = context->num_attrs;
@@ -5235,7 +5250,7 @@ ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
   SM_METHOD_ARGUMENT *arg;
   int index;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   if (context->validation_only)
     {
       context->arg_count += 1;
@@ -5321,7 +5336,7 @@ ldr_act_set_ref_class (LDR_CONTEXT * context, char *name)
 {
   DB_OBJECT *mop;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
   if (!context->validation_only)
@@ -5349,7 +5364,7 @@ ldr_act_set_ref_class (LDR_CONTEXT * context, char *name)
 void
 ldr_act_set_instance_id (LDR_CONTEXT * context, int id)
 {
-  CHECK_SKIP();
+  CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
   if (!context->validation_only)
@@ -5379,7 +5394,7 @@ ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id)
 {
   DB_OBJECT *class_;
 
-  CHECK_SKIP();
+  CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
   if (!context->validation_only)
@@ -5402,9 +5417,9 @@ ldr_act_get_ref_class (LDR_CONTEXT * context)
   RETURN_IF_NOT_VALID (context);
 
   if (!context->validation_only)
-   {
-     return context->attrs[context->next_attr].ref_class;
-   }
+    {
+      return context->attrs[context->next_attr].ref_class;
+    }
 
   return NULL;
 }
@@ -5514,7 +5529,7 @@ ldr_init_loader (LDR_CONTEXT * context)
  *    insertion mode.
  */
 int
-ldr_init (int verbose)
+ldr_init (bool verbose)
 {
   LDR_CONTEXT *context;
 
@@ -5532,21 +5547,14 @@ ldr_init (int verbose)
   if (clist_init ())
     return er_errid ();
 
-  context->validation_only = 1;
+  context->validation_only = true;
   context->verbose = verbose;
 
   context->status_count = 0;
   /* used to monitor the number of insertions performed */
   context->status_counter = 0;
 
-#if !defined (DISABLE_TTA_FIX)
   context->status_count = 10;
-#else /* DISABLE_TTA_FIX */
-  /* hack, let an environment variable determine the status counter */
-  env = envvar_get (ENV_LOADDB_STATUS);
-  if (env != NULL)
-    context->status_count = atol (env);
-#endif /* !DISABLE_TTA_FIX */
 
   (void) tr_set_execution_state (false);
   obt_enable_unique_checking (false);
@@ -5757,12 +5765,14 @@ print_parser_lineno (FILE * fp)
 }
 
 
-void ldr_act_set_skipCurrentclass (char *classname, size_t size)
+void
+ldr_act_set_skipCurrentclass (char *classname, size_t size)
 {
   skipCurrentclass = ldr_is_ignore_class (classname, size);
 }
 
-bool ldr_is_ignore_class (char *classname, size_t size)
+bool
+ldr_is_ignore_class (char *classname, size_t size)
 {
   int i;
   char **p;
@@ -5771,15 +5781,17 @@ bool ldr_is_ignore_class (char *classname, size_t size)
     {
       return false;
     }
-  
-  if (ignoreClasslist != NULL) {
-    for (i=0, p=ignoreClasslist ; i<ignoreClassnum ; i++, p++) {
-      if (strncasecmp(*p, classname, size) == 0) {
-        return true;
-      }
+
+  if (ignoreClasslist != NULL)
+    {
+      for (i = 0, p = ignoreClasslist; i < ignoreClassnum; i++, p++)
+	{
+	  if (strncasecmp (*p, classname, size) == 0)
+	    {
+	      return true;
+	    }
+	}
     }
-  }
 
   return false;
 }
-

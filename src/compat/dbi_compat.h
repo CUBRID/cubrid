@@ -1,8 +1,23 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * dbi.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
- * 
  */
 
 #include <stdio.h>
@@ -1320,7 +1335,7 @@ typedef enum
   DB_AUTH_EXECUTE = 64
 } DB_AUTH;
 
-/* object_id type constants used in a db_register_ldb api call to specify 
+/* object_id type constants used in a db_register_ldb api call to specify
    whether a local database supports intrinsic object identity or user-
    defined object identity. */
 typedef enum
@@ -1348,60 +1363,114 @@ typedef enum
 
 typedef enum
 {
-  SQLX_CMD_ALTER_CLASS,
-  SQLX_CMD_ALTER_SERIAL,
-  SQLX_CMD_COMMIT_WORK,
-  SQLX_CMD_REGISTER_DATABASE,
-  SQLX_CMD_CREATE_CLASS,
-  SQLX_CMD_CREATE_INDEX,
-  SQLX_CMD_CREATE_TRIGGER,
-  SQLX_CMD_CREATE_SERIAL,
-  SQLX_CMD_DROP_DATABASE,
-  SQLX_CMD_DROP_CLASS,
-  SQLX_CMD_DROP_INDEX,
-  SQLX_CMD_DROP_LABEL,
-  SQLX_CMD_DROP_TRIGGER,
-  SQLX_CMD_DROP_SERIAL,
-  SQLX_CMD_EVALUATE,
-  SQLX_CMD_RENAME_CLASS,
-  SQLX_CMD_ROLLBACK_WORK,
-  SQLX_CMD_GRANT,
-  SQLX_CMD_REVOKE,
-  SQLX_CMD_UPDATE_STATS,
-  SQLX_CMD_INSERT,
-  SQLX_CMD_SELECT,
-  SQLX_CMD_UPDATE,
-  SQLX_CMD_DELETE,
-  SQLX_CMD_CALL,
-  SQLX_CMD_GET_ISO_LVL,
-  SQLX_CMD_GET_TIMEOUT,
-  SQLX_CMD_GET_OPT_LVL,
-  SQLX_CMD_SET_OPT_LVL,
-  SQLX_CMD_SCOPE,
-  SQLX_CMD_GET_TRIGGER,
-  SQLX_CMD_SET_TRIGGER,
-  SQLX_CMD_SAVEPOINT,
-  SQLX_CMD_PREPARE,
-  SQLX_CMD_ATTACH,
-  SQLX_CMD_USE,
-  SQLX_CMD_REMOVE_TRIGGER,
-  SQLX_CMD_RENAME_TRIGGER,
-  SQLX_CMD_ON_LDB,
-  SQLX_CMD_GET_LDB,
-  SQLX_CMD_SET_LDB,
-  SQLX_CMD_GET_STATS,
-  SQLX_CMD_CREATE_USER,
-  SQLX_CMD_DROP_USER,
-  SQLX_CMD_ALTER_USER,
-  SQLX_CMD_SET_SYS_PARAMS,
-  SQLX_CMD_ALTER_INDEX,
+  CUBRID_STMT_ALTER_CLASS,
+  CUBRID_STMT_ALTER_SERIAL,
+  CUBRID_STMT_COMMIT_WORK,
+  CUBRID_STMT_REGISTER_DATABASE,
+  CUBRID_STMT_CREATE_CLASS,
+  CUBRID_STMT_CREATE_INDEX,
+  CUBRID_STMT_CREATE_TRIGGER,
+  CUBRID_STMT_CREATE_SERIAL,
+  CUBRID_STMT_DROP_DATABASE,
+  CUBRID_STMT_DROP_CLASS,
+  CUBRID_STMT_DROP_INDEX,
+  CUBRID_STMT_DROP_LABEL,
+  CUBRID_STMT_DROP_TRIGGER,
+  CUBRID_STMT_DROP_SERIAL,
+  CUBRID_STMT_EVALUATE,
+  CUBRID_STMT_RENAME_CLASS,
+  CUBRID_STMT_ROLLBACK_WORK,
+  CUBRID_STMT_GRANT,
+  CUBRID_STMT_REVOKE,
+  CUBRID_STMT_UPDATE_STATS,
+  CUBRID_STMT_INSERT,
+  CUBRID_STMT_SELECT,
+  CUBRID_STMT_UPDATE,
+  CUBRID_STMT_DELETE,
+  CUBRID_STMT_CALL,
+  CUBRID_STMT_GET_ISO_LVL,
+  CUBRID_STMT_GET_TIMEOUT,
+  CUBRID_STMT_GET_OPT_LVL,
+  CUBRID_STMT_SET_OPT_LVL,
+  CUBRID_STMT_SCOPE,
+  CUBRID_STMT_GET_TRIGGER,
+  CUBRID_STMT_SET_TRIGGER,
+  CUBRID_STMT_SAVEPOINT,
+  CUBRID_STMT_PREPARE,
+  CUBRID_STMT_ATTACH,
+  CUBRID_STMT_USE,
+  CUBRID_STMT_REMOVE_TRIGGER,
+  CUBRID_STMT_RENAME_TRIGGER,
+  CUBRID_STMT_ON_LDB,
+  CUBRID_STMT_GET_LDB,
+  CUBRID_STMT_SET_LDB,
+  CUBRID_STMT_GET_STATS,
+  CUBRID_STMT_CREATE_USER,
+  CUBRID_STMT_DROP_USER,
+  CUBRID_STMT_ALTER_USER,
+  CUBRID_STMT_SET_SYS_PARAMS,
+  CUBRID_STMT_ALTER_INDEX,
 
-  SQLX_CMD_CREATE_STORED_PROCEDURE,
-  SQLX_CMD_DROP_STORED_PROCEDURE,
-  SQLX_CMD_SELECT_UPDATE,
+  CUBRID_STMT_CREATE_STORED_PROCEDURE,
+  CUBRID_STMT_DROP_STORED_PROCEDURE,
+  CUBRID_STMT_SELECT_UPDATE,
 
-  SQLX_MAX_CMD_TYPE
-} SQLX_CMD_TYPE;
+  CUBRID_MAX_STMT_TYPE
+} CUBRID_STMT_TYPE;
+
+#define SQLX_CMD_TYPE CUBRID_STMT_TYPE
+
+#define SQLX_CMD_ALTER_CLASS   CUBRID_STMT_ALTER_CLASS
+#define SQLX_CMD_ALTER_SERIAL   CUBRID_STMT_ALTER_SERIAL
+#define SQLX_CMD_COMMIT_WORK   CUBRID_STMT_COMMIT_WORK
+#define SQLX_CMD_REGISTER_DATABASE   CUBRID_STMT_REGISTER_DATABASE
+#define SQLX_CMD_CREATE_CLASS   CUBRID_STMT_CREATE_CLASS
+#define SQLX_CMD_CREATE_INDEX   CUBRID_STMT_CREATE_INDEX
+#define SQLX_CMD_CREATE_TRIGGER   CUBRID_STMT_CREATE_TRIGGER
+#define SQLX_CMD_CREATE_SERIAL   CUBRID_STMT_CREATE_SERIAL
+#define SQLX_CMD_DROP_DATABASE   CUBRID_STMT_DROP_DATABASE
+#define SQLX_CMD_DROP_CLASS   CUBRID_STMT_DROP_CLASS
+#define SQLX_CMD_DROP_INDEX   CUBRID_STMT_DROP_INDEX
+#define SQLX_CMD_DROP_LABEL   CUBRID_STMT_DROP_LABEL
+#define SQLX_CMD_DROP_TRIGGER   CUBRID_STMT_DROP_TRIGGER
+#define SQLX_CMD_DROP_SERIAL   CUBRID_STMT_DROP_SERIAL
+#define SQLX_CMD_EVALUATE   CUBRID_STMT_EVALUATE
+#define SQLX_CMD_RENAME_CLASS   CUBRID_STMT_RENAME_CLASS
+#define SQLX_CMD_ROLLBACK_WORK   CUBRID_STMT_ROLLBACK_WORK
+#define SQLX_CMD_GRANT   CUBRID_STMT_GRANT
+#define SQLX_CMD_REVOKE   CUBRID_STMT_REVOKE
+#define SQLX_CMD_UPDATE_STATS   CUBRID_STMT_UPDATE_STATS
+#define SQLX_CMD_INSERT   CUBRID_STMT_INSERT
+#define SQLX_CMD_SELECT   CUBRID_STMT_SELECT
+#define SQLX_CMD_UPDATE   CUBRID_STMT_UPDATE
+#define SQLX_CMD_DELETE   CUBRID_STMT_DELETE
+#define SQLX_CMD_CALL   CUBRID_STMT_CALL
+#define SQLX_CMD_GET_ISO_LVL   CUBRID_STMT_GET_ISO_LVL
+#define SQLX_CMD_GET_TIMEOUT   CUBRID_STMT_GET_TIMEOUT
+#define SQLX_CMD_GET_OPT_LVL   CUBRID_STMT_GET_OPT_LVL
+#define SQLX_CMD_SET_OPT_LVL   CUBRID_STMT_SET_OPT_LVL
+#define SQLX_CMD_SCOPE   CUBRID_STMT_SCOPE
+#define SQLX_CMD_GET_TRIGGER   CUBRID_STMT_GET_TRIGGER
+#define SQLX_CMD_SET_TRIGGER   CUBRID_STMT_SET_TRIGGER
+#define SQLX_CMD_SAVEPOINT   CUBRID_STMT_SAVEPOINT
+#define SQLX_CMD_PREPARE   CUBRID_STMT_PREPARE
+#define SQLX_CMD_ATTACH   CUBRID_STMT_ATTACH
+#define SQLX_CMD_USE   CUBRID_STMT_USE
+#define SQLX_CMD_REMOVE_TRIGGER   CUBRID_STMT_REMOVE_TRIGGER
+#define SQLX_CMD_RENMAE_TRIGGER   CUBRID_STMT_RENAME_TRIGGER
+#define SQLX_CMD_ON_LDB   CUBRID_STMT_ON_LDB
+#define SQLX_CMD_GET_LDB   CUBRID_STMT_GET_LDB
+#define SQLX_CMD_SET_LDB   CUBRID_STMT_SET_LDB
+#define SQLX_CMD_GET_STATS   CUBRID_STMT_GET_STATS
+#define SQLX_CMD_CREATE_USER   CUBRID_STMT_CREATE_USER
+#define SQLX_CMD_DROP_USER   CUBRID_STMT_DROP_USER
+#define SQLX_CMD_ALTER_USER   CUBRID_STMT_ALTER_USER
+#define SQLX_CMD_SET_SYS_PARAMS   CUBRID_STMT_SET_SYS_PARAMS
+#define SQLX_CMD_ALTER_INDEX   CUBRID_STMT_ALTER_INDEX
+#define SQLX_CMD_CREATE_STORED_PROCEDURE   CUBRID_STMT_CREATE_STORED_PROCEDURE
+#define SQLX_CMD_DROP_STORED_PROCEDURE   CUBRID_STMT_DROP_STORED_PROCEDURE
+#define SQLX_CMD_SELECT_UPDATE   CUBRID_STMT_SELECT_UPDATE
+#define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
 /* Structure used to contain information about the position of
    an error detected while compiling a statement. */
@@ -1413,7 +1482,7 @@ struct db_query_error
   int err_posno;		/* Position number where error occured */
 };
 
-/* ESQLX/ISQLX/API INTERFACE */
+/* ESQL/CSQL/API INTERFACE */
 typedef struct db_session DB_SESSION;
 typedef struct parser_node DB_NODE;
 typedef DB_NODE DB_SESSION_ERROR;
@@ -1440,20 +1509,20 @@ typedef struct tp_domain DB_DOMAIN;
 typedef struct tp_domain SM_DOMAIN;
 typedef struct tp_domain TP_DOMAIN;
 
-/* These are handles to attribute and method descriptors that can 
+/* These are handles to attribute and method descriptors that can
    be used for optimized lookup during repeated operations.
    They are NOT the same as the DB_ATTRIBUTE and DB_METHOD handles. */
 typedef struct sm_descriptor DB_ATTDESC;
 typedef struct sm_descriptor DB_METHDESC;
 
-/* These structures are used for building editing templates on classes     
- * and objects.  Templates allow the specification of multiple 	      
- * operations to the object that are treated as an atomic unit.  If any    
- * of the operations in the template fail, none of the operations	      
- * will be applied to the object.					      
- * They are defined as abstract data types on top of internal              
- * data structures, API programs are not allowed to make assumptions       
- * about the contents of these structures.                                 
+/* These structures are used for building editing templates on classes
+ * and objects.  Templates allow the specification of multiple
+ * operations to the object that are treated as an atomic unit.  If any
+ * of the operations in the template fail, none of the operations
+ * will be applied to the object.
+ * They are defined as abstract data types on top of internal
+ * data structures, API programs are not allowed to make assumptions
+ * about the contents of these structures.
  */
 
 typedef struct sm_template DB_CTMPL;
@@ -1957,7 +2026,7 @@ typedef enum
   DB_TYPE_SHORT = 18,
   DB_TYPE_VOBJ = 19,		/* internal use only */
   DB_TYPE_OID = 20,		/* internal use only */
-  DB_TYPE_DB_VALUE = 21,	/* special for esqlx */
+  DB_TYPE_DB_VALUE = 21,	/* special for esql */
   DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values      */
   DB_TYPE_BIT = 23,		/* SQL BIT(n) values            */
   DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values    */
@@ -2660,7 +2729,7 @@ struct cursor_id
   int *oid_col_no;		/* Column numbers of OID's */
   int oid_col_no_cnt;		/* Number of values in oid_col_no */
   DB_FETCH_MODE prefetch_lock_mode;
-  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default), 
+  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
 				 *               false = peek */
   int current_tuple_value_index;	/* Current tplvalue index within current_tuple_p */
   char *current_tuple_value_p;	/* Current tplvalue pointer within current_tuple_p */
@@ -2730,12 +2799,12 @@ struct db_query_result
 
 extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
 
-extern int db_execute_with_values (const char *SQLX_query,
+extern int db_execute_with_values (const char *CSQL_query,
 				   DB_QUERY_RESULT ** result,
 				   DB_QUERY_ERROR * query_error,
 				   int arg_count, DB_VALUE * vals);
 
-extern int db_query_execute_oid (const char *SQLX_query,
+extern int db_query_execute_oid (const char *CSQL_query,
 				 DB_QUERY_RESULT ** result,
 				 DB_QUERY_ERROR * query_error);
 
@@ -2800,7 +2869,7 @@ extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list,
 					 SM_DOMAIN ** domain_list,
 					 SM_DOMAIN ** src_domain_list,
 					 int cnt, bool oid_included);
-extern int db_query_execute_immediate (const char *SQLX_query,
+extern int db_query_execute_immediate (const char *CSQL_query,
 				       DB_QUERY_RESULT ** result,
 				       DB_QUERY_ERROR * query_error);
 extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list,
@@ -3500,7 +3569,7 @@ extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);
 extern int db_is_updatable_object (DB_OBJECT * obj);
 extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
 /* query pre-processing functions */
-extern int db_get_query_format (const char *SQLX_query,
+extern int db_get_query_format (const char *CSQL_query,
 				DB_QUERY_TYPE ** type_list,
 				DB_QUERY_ERROR * query_error);
 extern DB_QUERY_TYPE *db_query_format_next (DB_QUERY_TYPE * query_type);
@@ -3598,15 +3667,15 @@ extern void db_include_oid (DB_SESSION * session, int include_oid);
 extern void db_push_values (DB_SESSION * session, int count,
 			    DB_VALUE * in_values);
 
-extern int db_execute (const char *SQLX_text,
+extern int db_execute (const char *CSQL_query,
 		       DB_QUERY_RESULT ** result,
 		       DB_QUERY_ERROR * query_error);
 
-extern int db_execute_async (const char *SQLX_text,
+extern int db_execute_async (const char *CSQL_query,
 			     DB_QUERY_RESULT ** result,
 			     DB_QUERY_ERROR * query_error);
 
-extern int db_execute_oid (const char *SQLX_text,
+extern int db_execute_oid (const char *CSQL_query,
 			   DB_QUERY_RESULT ** result,
 			   DB_QUERY_ERROR * query_error);
 
@@ -3651,9 +3720,9 @@ extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
 extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx,
 				  int *life_time);
 
-/* These are used by isqlx but weren't in the 2.0 dbi.h file, added
+/* These are used by csql but weren't in the 2.0 dbi.h file, added
    it for the PC.  If we don't want them here, they should go somewhere
-   else so iqcmd.c doesn't have to have an explicit declaration.
+   else so csql.c doesn't have to have an explicit declaration.
 */
 extern void db_free_query (DB_SESSION * session);
 extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
@@ -3665,7 +3734,7 @@ extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
  * published in the CUBRID Application Program Interface Reference Guide.
  */
 
-extern int db_query_execute (const char *SQLX_query,
+extern int db_query_execute (const char *CSQL_query,
 			     DB_QUERY_RESULT ** result,
 			     DB_QUERY_ERROR * query_error);
 

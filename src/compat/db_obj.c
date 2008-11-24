@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * db_obj.c - API functions for accessing instances.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * db_obj.c - API functions for accessing instances.
  */
 
 #ident "$Id$"
@@ -15,24 +29,24 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
-#include "execute_schema_8.h"
-#include "execute_statement_10.h"
+#include "set_object.h"
+#include "virtual_object.h"
+#include "execute_schema.h"
+#include "execute_statement.h"
 #include "parser.h"
-#include "view_transform_2.h"
-#include "network_interface_sky.h"
+#include "view_transform.h"
+#include "network_interface_cl.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -208,12 +222,12 @@ db_drop (DB_OBJECT * obj)
  *   it is intended only as a convenience feature for users of the functional
  *   interface. Basically the path expression allows value references to follow
  *   hierarchies of objects and sets.
- *   Example path expressions are as follows:                                                                
- *                                                                            
- *    foo.bar           foo is an object that has a bar attribute             
- *    foo.bar.baz       three level indirection through object attributes     
- *    foo[0]            foo is a set, first element is returned               
- *    foo[0].bar        foo is a set of objects, bar attribute of first       
+ *   Example path expressions are as follows:
+ *
+ *    foo.bar           foo is an object that has a bar attribute
+ *    foo.bar.baz       three level indirection through object attributes
+ *    foo[0]            foo is a set, first element is returned
+ *    foo[0].bar        foo is a set of objects, bar attribute of first
  *                      element is returned
  */
 int
@@ -263,10 +277,10 @@ db_get_shared (DB_OBJECT * object, const char *attname, DB_VALUE * value)
  *    the attribute if found is copied into the value container.
  *
  * return : error code
- * object(in): class or instance					      
- * expression(in): a sqlx expression					      
+ * object(in): class or instance
+ * expression(in): a sql expression
  * value(out)    : value container to hold the returned value
- * 
+ *
  * note : Since this is a copy the value must be freed using db_value_clear
  *    or db_value_free when it is no longer required.
  *    In addition to accepting an attribute name, this function will parse
@@ -276,8 +290,8 @@ db_get_shared (DB_OBJECT * object, const char *attname, DB_VALUE * value)
  *    hierarchies of objects and sets.
  *    Example path expressions are as follows:
  *
- *    foo.bar		foo is an object that has a bar attribute	      
- *    foo.bar.baz	three level indirection through object attributes     
+ *    foo.bar		foo is an object that has a bar attribute
+ *    foo.bar.baz	three level indirection through object attributes
  */
 int
 db_get_expression (DB_OBJECT * object, const char *expression,
@@ -354,14 +368,14 @@ db_put_internal (DB_OBJECT * obj, const char *name, DB_VALUE * value)
  * db_send() - This function invokes a method on an object. If the object is an
  *    instance, a normal method is invoked. If the object is a class, a class
  *    method is invoked. The arguments are passed to the method implementation
- *    function in the same order as given here. A maximum of 12 arguments can 
+ *    function in the same order as given here. A maximum of 12 arguments can
  *    be sent with this function.
  * return : error code
  * obj(in): class or instance object
  * name(in): method name
  * returnval(out) : container for user-defined return value.
- * 
- * note : The db_send() function does not automatically place a value in the 
+ *
+ * note : The db_send() function does not automatically place a value in the
  *    returnval container. It is the responsibility of the method to return a
  *    value that is meaningful to the caller. If the caller is not expecting
  *    a return value, this argument can be ignored.
@@ -396,7 +410,7 @@ db_send (MOP obj, const char *name, DB_VALUE * returnval, ...)
  * name(in): method name
  * returnval(out): container for return value
  * args(in): list of arguments
- * 
+ *
  * note :The db_send_arglist() function does not automatically place a value in
  *    the returnval container. It is the responsibility of the method to return
  *    a value that is meaningful to the caller. If the caller is not expecting
@@ -420,11 +434,11 @@ db_send_arglist (MOP obj, const char *name,
  * db_send_argarray() - This function invokes a method on a class or instance
  *    object and passes the arguments to an array.
  * return : error code
- * obj(in): class or instance                                          
- * name(in): method name                                                
- * returnval(out): container for return value                                 
+ * obj(in): class or instance
+ * name(in): method name
+ * returnval(out): container for return value
  * args(in): array of DB_VALUE pointers
- * 
+ *
  * note:The db_send_argarray() function does not automatically place a value in
  *    the returnval container. It is the responsibility of the method to return
  *    a value that is meaningful to the caller. If the caller is not expecting
@@ -450,7 +464,7 @@ db_send_argarray (MOP obj, const char *name,
 
 /*
  * dbt_create_object() - This function creates an object template for a new
- *    instance of a class. Please refer to the dbt_create_object_internal() 
+ *    instance of a class. Please refer to the dbt_create_object_internal()
  * return : object template
  * classobj(in): class object
  *
@@ -476,10 +490,10 @@ dbt_create_object (MOP classobj)
 
 /*
  * dbt_create_object_internal() - This function creates an object template for
- *    a new instance of a class. Initially the template is empty, and it is 
- *    later populated by calling the dbt_put() function. After the object 
+ *    a new instance of a class. Initially the template is empty, and it is
+ *    later populated by calling the dbt_put() function. After the object
  *    template is created and populated, the template can be applied by calling
- *    the dbt_finish_object(function (to create an object), or it can be 
+ *    the dbt_finish_object(function (to create an object), or it can be
  *    destroyed with the dbt_abort_object() function.
  * return : object template
  * classobj(in): class object
@@ -507,7 +521,7 @@ dbt_create_object_internal (MOP classobj)
 /*
  * dbt_edit_object() - This function creates an object template for an existing
  *    object.  The template is initially empty. The template is populated with
- *    the dbt_put function. When finished the template can be applied with the           
+ *    the dbt_put function. When finished the template can be applied with the
  *    dbt_finish_object function or destroyed with the dbt_abort_object
  *    function.
  * return  : object template
@@ -519,7 +533,7 @@ dbt_create_object_internal (MOP classobj)
  *    Therefore, if one of the changes in the template fails, the entire update
  *    fails (none of the changes in the template are applied). Thus, populated
  *    object templates ensure that an object is updated with multiple attribute
- *    values in a single atomic operation. If your attempt to apply the 
+ *    values in a single atomic operation. If your attempt to apply the
  *    template fails for any reason, the underlying object is not modified.
  */
 DB_OTMPL *
@@ -541,9 +555,9 @@ dbt_edit_object (MOP object)
  *    template can be applied without error, a pointer to the object is
  *    returned and the template is freed.  If this is a template for a new
  *    object, a new object pointer is created and returned.  If this is a
- *    template for an old object the returned pointer is the same as that 
- *    passed to dbt_edit_object. If an error is detected, this function 
- *    returns NULL, the global error code is set, and the template is not 
+ *    template for an old object the returned pointer is the same as that
+ *    passed to dbt_edit_object. If an error is detected, this function
+ *    returns NULL, the global error code is set, and the template is not
  *    freed.  In this case, the template can either be corrected and
  *    re-applied or it can be destroyed with dbt_abort_object.
  * return : object pointer
@@ -569,9 +583,9 @@ dbt_finish_object (DB_OTMPL * def)
 /*
  * dbt_abort_object() -
  * return : none
- * def(in): object template						      
+ * def(in): object template
  *
- * description: 							      
+ * description:
  *    This function destroys an object template. All memory allocated for the
  *    template are released. It is only necessary to call this function if a
  *    template was built but could not be applied without error.
@@ -664,8 +678,8 @@ dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value)
  * return: none
  * def(in/out): object template
  * label(in)  : object pointer
- * 
- * note : This is intended to support the use of interpreter variables in a 
+ *
+ * note : This is intended to support the use of interpreter variables in a
  *    nested insert statement.  Since the nested objects are created as a side
  *    effect of applying the top level template there is no way to directly
  *    get their new MOPs when the template is applied, only the MOP for
@@ -692,7 +706,7 @@ dbt_set_label (DB_OTMPL * def, DB_VALUE * label)
 
 /*
  *  DESCRIPTOR FUNCTIONS
- * 
+ *
  *  These provide a faster interface for attribute access and method invocation
  *  during repetetive operations.
  *
@@ -750,7 +764,7 @@ db_get_attribute_descriptor (DB_OBJECT * obj,
  * note : This is intended for use with things like db_col_create which
  *    requires a domain, and which we frequently use to make things associated
  *    with an attribute.  A regular attribute domain can be obtained with a
- *    combination of db_get_attribute and db_attribute_domain.                                                    
+ *    combination of db_get_attribute and db_attribute_domain.
  */
 DB_DOMAIN *
 db_attdesc_domain (DB_ATTDESC * desc)
@@ -812,11 +826,11 @@ db_free_attribute_descriptor (DB_ATTDESC * descriptor)
  *    An error is returned if the object does not have a method with the
  *    given name. If an error is returned, a method descriptor is NOT returned.
  * return : error code
- * obj(in): instance or class                                       
- * methname(in): method name                                             
- * class_method(in): non-zero if class method name is given                  
+ * obj(in): instance or class
+ * methname(in): method name
+ * class_method(in): non-zero if class method name is given
  * descriptor(out): returned method descriptor
- * 
+ *
  * note :The method descriptor must be freed with db_free_method_descriptor.
  */
 int
@@ -850,7 +864,7 @@ db_free_method_descriptor (DB_ATTDESC * descriptor)
  *    is identified through a descriptor rather than by name.
  * return : error code
  * obj(in): instance or class
- * attribute(in): attribute descriptor                                       
+ * attribute(in): attribute descriptor
  * value(out): value container (set on return)
  */
 int
@@ -867,7 +881,7 @@ db_dget (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value)
 
 /*
  * db_dput() - Please refer to the db_dput_internal function.
- * return : error code                                                                 
+ * return : error code
  * obj(in): instance or class
  * attribute(in): attribute descriptor
  * value(in): value container (with value to assign)
@@ -1055,14 +1069,14 @@ db_dsend_quick (DB_OBJECT * obj,
  */
 
 /*
- * db_find_unique() - This function is used to locate the instance whose 
+ * db_find_unique() - This function is used to locate the instance whose
  *    attribute has a particular unique value. This works for attributes
  *    that have been defined with the UNIQUE integrity constraint and for
  *    indexed attributes.
  * return : object with the unique value
- * classop(in): class pointer                                                
- * attname(in): attribute name                                               
- * value(in): value to look for                                            
+ * classop(in): class pointer
+ * attname(in): attribute name
+ * value(in): value to look for
  */
 DB_OBJECT *
 db_find_unique (MOP classmop, const char *attname, DB_VALUE * value)
@@ -1109,7 +1123,7 @@ db_find_unique_write_mode (MOP classmop,
  * classop(in): class pointer
  * values(in): list of value to look for
  * size(in): size of value list
- * purpose(in): Fetch purpose  DB_FETCH_READ or DB_FETCH_WRITE                                
+ * purpose(in): Fetch purpose  DB_FETCH_READ or DB_FETCH_WRITE
  */
 DB_OBJECT *
 db_find_primary_key (MOP classmop,
@@ -1139,12 +1153,12 @@ db_find_primary_key (MOP classmop,
  *    attribute has a particular unique value. This will only work for
  *    attributes that have been defined with the UNIQUE integrity constraint.
  * return : object with the unique value
- * classop(in): class pointer                                                
- * size(in): size of value arrays                                         
- * attr_names(in): array of attribute names                                     
- * values(in): array of values to look for                                  
- * purpose(in): Fetch purpose  DB_FETCH_READ                                 
- *                             DB_FETCH_WRITE                                
+ * classop(in): class pointer
+ * size(in): size of value arrays
+ * attr_names(in): array of attribute names
+ * values(in): array of values to look for
+ * purpose(in): Fetch purpose  DB_FETCH_READ
+ *                             DB_FETCH_WRITE
  *
  */
 DB_OBJECT *
@@ -1322,7 +1336,7 @@ DB_OBJECT *db_create_trigger
  *    The user must have the appropriate authorization on the trigger
  *    in order to delete it.
  * return : error code
- * obj(in): trigger object                                                   
+ * obj(in): trigger object
  */
 int
 db_drop_trigger (DB_OBJECT * obj)
@@ -1389,7 +1403,7 @@ db_find_trigger (const char *name)
  *    which the user has the SELECT authorization.
  * Returns: error code
  * list(out): pointer to the return trigger object list
- * 
+ *
  * note : The returned object list must be freed using db_objlist_free() when
  *    it is no longer needed.
  */
@@ -1410,14 +1424,14 @@ db_find_all_triggers (DB_OBJLIST ** list)
  *    containing all triggers that have the given event type and event target
  *   (class and attribute). These object pointers are returned through the list
  *    argument. The list contains every user trigger that is owned by the user,
- *    and every class trigger for which the user has the SELECT privilege on 
+ *    and every class trigger for which the user has the SELECT privilege on
  *    the class in its event target.
  * Returns: error code
  * event(in): event type
  * class(in): target class
  * attr(in) : target attribute
  * list(out): pointer to the return list of object pointers
- * 
+ *
  * note : The returned object list must be freed by db_objlist_free.
  */
 int
@@ -1492,10 +1506,10 @@ db_alter_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS status)
  *    If the trigger argument is NULL and the target argument is non-NULL,
  *    all deferrec activities associated with the target object are executed
  *    regardless of the trigger that caused the deferred activity.
- * 
+ *
  * return : error code
- * trigger(in): trigger object                                               
- * object(in): associated target instance                                                              
+ * trigger(in): trigger object
+ * object(in): associated target instance
  */
 int
 db_execute_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
@@ -1510,7 +1524,7 @@ db_execute_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
 }
 
 /*
- * db_drop_deferred_activities() - 
+ * db_drop_deferred_activities() -
  *    This function removes deferred activities for a trigger.  This will
  *    prevent the scheduled activities from being executed with either the
  *    transaction commits or when the db_exectue_deferred_activities function
@@ -1522,7 +1536,7 @@ db_execute_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
  *    those activities that were associated with the given target object by the
  *    given trigger are executed. If the trigger argument is NULL and the
  *    target argument is non-NULL, all deferrec activities associated with the
- *    target object are executed regardless of the trigger that caused the 
+ *    target object are executed regardless of the trigger that caused the
  *    deferred activity.
  * return : error code
  * trigger(in): trigger object
@@ -1545,8 +1559,8 @@ db_drop_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
  * return : error code
  * trobj(in): trigger object
  * name(out): trigger name (returned)
- * 
- * note : The string containing the trigger name must be freed with the 
+ *
+ * note : The string containing the trigger name must be freed with the
  *        db_string_free() function.
  */
 int
@@ -1638,7 +1652,7 @@ db_trigger_class (DB_OBJECT * trobj, DB_OBJECT ** class_)
 
 /*
  * db_trigger_attribute() - This function finds the target attribute of the
- *    input trigger. If the trigger does not have a target attribute, 
+ *    input trigger. If the trigger does not have a target attribute,
  *    the attr argument returns NULL.
  * return : error code
  * trobj(in): trigger object
@@ -1697,7 +1711,7 @@ db_trigger_condition_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time)
 }
 
 /*
- * db_trigger_action_type() - This function finds the action type of 
+ * db_trigger_action_type() - This function finds the action type of
  *    the trigger. If the action type specified is TR_ACT_EXPRESSION, then
  *    the db_trigger_action() function can be used to get the source of
  *    the trigger expression. If the action type is TR_ACT_PRINT, then
@@ -1756,7 +1770,7 @@ db_trigger_action (DB_OBJECT * trobj, char **action)
 }
 
 /*
- * db_encode_object() - This function converts an object handle into a 
+ * db_encode_object() - This function converts an object handle into a
  *   null-terminated string-encoded OID. It sets encoded_string to the
  *   null-terminated string form of object, and actual_length to the
  *   length of encoded_string.
@@ -1779,8 +1793,8 @@ db_encode_object (DB_OBJECT * object, char *string,
 }
 
 /*
- * db_decode_object() - This function converts a null-terminated string OID 
- *    into an object handle. It requires that encoded_string come from a 
+ * db_decode_object() - This function converts a null-terminated string OID
+ *    into an object handle. It requires that encoded_string come from a
  *    successful call to db_encode_object(). It modifies the object and sets
  *    it to the memory workspace form of the given encoded_string.
  * returns: error code
@@ -1799,7 +1813,7 @@ db_decode_object (const char *string, DB_OBJECT ** object)
 /*
  * db_get_serial_current_value() -
  * returns: error code
- * serial_name(in): 
+ * serial_name(in):
  * serial_value(out):
  */
 int
@@ -1843,7 +1857,7 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 /*
  * db_get_serial_next_value() -
  * returns: error code
- * serial_name(in): 
+ * serial_name(in):
  * serial_value(out):
  */
 int

@@ -1,59 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qp_eval.c - Predicate evaluator
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * This module is responsible for the evaluation of predicate expressions. The
- * predicate expressions are represented in the form of a predicate expression
- * tree and evaluated against a heap file object instance, a list file tuple
- * or a constant predicate expression tree. The module uses a 3-valued logic
- * with TRUE, FALSE and UNKNOWN values. The non_leaf nodes of the predicate
- * expression tree are evaluated applying a 3-valued logic to the results
- * coming from the subtrees. The leaf_nodes of the predicate expression tree
- * are evaluated considering the type of the predicate involved and the value
- * content of the nodes. The leaf node predicate expression types can be
- * categorized to three groups:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * Group-  i Predicates:    <item> REL_OPR <item>
- * Group- ii Predicates:    <item> ALL/SOME REL_OPR <set>
- * Group-iii Predicates:    NULL, EXISTS, LIKE predicates
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * Group-i Predicates represent the relationship between two value items of
- * same type or comparable types, possibly two item values of
- * set/multi_set/sequence type. The meaning of the relationship operator,
- * which can possibly be one of the R_EQ, R_NE, R_LT, R_GT, R_LE, R_GE, gets
- * its semantics depending on the data type involved. For exmaple, R_LT may
- * define less_than_relationship for a numeric type and subset relationship
- * for sets, or may be meaningless as in the case of sequences. If the value
- * for one of the items is unbound/null, the comparions results in UNKNOWN.
- * If the data types two items are different but comparable, first the values
- * are upgraded to equalize their types, then comparison is attempted.
- *
- * Group-ii Predicates represent the relationship between an item value and a
- * group of values as indicated by a relational operator and an ALL/SOME
- * quantifier. Each comparison between the item value and a group element
- * value uses group-i predicate semantics. The SOME quantifier tries to
- * determine if the indicated relationship is satisfied between the item value
- * and at least one of the group element values, wheras the ALL quantifier
- * tries to determine if the relationship holds between the item value and all
- * of the group element values. If either the item value or the group value is
- * null/unbound, the predicate evalution results in UNKNOWN.
- *
- * Group-iii Predicates represent miscellaneous predicates such as EXISTS,
- * NULL and LIKE predicates. EXISTS predicate is applicable only to
- * set/multi_set values and determines if there are a elements in the set.
- * NULL predicate is a unary predicate which return TRUE for a bound value
- * and FALSE for an unbound value. LIKE predicate is used to determine if
- * a text value satisfies an indicated regular expression pattern.
- *
- * From a predicate evaluation point of view, a NULL/UNBOUND value is NOT
- * comparable to any other value or even to another null/unbound value. That
- * is, comparisons involving unbound values return always UNKNOWN.
- *
- * From a predicate evalution point of view, subquery results which are
- * represented as list files, are supposed to be one column and are treated
- * like multi_sets.
+ */
+
+/*
+ * query_evaluator.c - Predicate evaluator
  */
 
 #ident "$Id$"
@@ -65,7 +29,7 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "object_representation.h"
 #include "heap_file.h"
 #include "slotted_page.h"
@@ -73,7 +37,7 @@
 #include "list_file.h"
 
 #include "object_primitive.h"
-#include "set_object_1.h"
+#include "set_object.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -157,7 +121,7 @@ static DB_LOGICAL eval_set_list_cmp (THREAD_ENTRY * thread_p,
 
 /*
  * eval_negative () - negate the result
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)                 
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   res(in): result
  */
 static DB_LOGICAL
@@ -179,7 +143,7 @@ eval_negative (DB_LOGICAL res)
 
 /*
  * eval_logical_result () - evaluate the given two results
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)                 
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   res1(in): first result
  *   res2(in): second result
  */
@@ -208,7 +172,7 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  */
 
 /*
- * eval_value_rel_cmp () - Compare two db_values according to the given 
+ * eval_value_rel_cmp () - Compare two db_values according to the given
  *                       relational operator
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   dbval1(in): first db_value
@@ -283,32 +247,11 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
 }
 
 /*
- * eval_some_eval () -  							       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)									       
+ * eval_some_eval () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
  *   item(in): db_value item
- *   set(in): collection of elements                                        
- *   rel_operator(in): relational comparison operator                                
- * Note: This routine tries to determine whether a specific relation    
- *              as determined by the relational operator rel_operator holds between     
- *              the given bound item value and at least one member of the      
- *              given set of elements. The set can be a basic set, multi_set   
- *              or sequence. It returns V_TRUE, V_FALSE, V_UNKNOWN using the   
- *              following reasoning:                                           
- *                                                                             
- *              V_TRUE:     - there exists a value in the set that is          
- *                            determined to hold the relationship.             
- *              V_FALSE:    - all the values in the set are determined not     
- *                            to hold the relationship, or                     
- *                          - the set is empty                                 
- *              V_UNKNOWN:  - set is homogeneous and set element type is not   
- *                            comparable with the item type                    
- *                          - set has no value determined to hold the rel.     
- *                            and at least one value which can not be          
- *                            determined to fail to hold the relationship.     
- *              V_ERROR:    - an error occured.                                
- *                                                                             
- *  Note: The IN relationship can be stated as item has the equality rel. with 
- *        one of the set elements.                                             
+ *   set(in): collection of elements
+ *   rel_operator(in): relational comparison operator
  */
 
 static DB_LOGICAL
@@ -345,31 +288,31 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 }
 
 /*
- * eval_all_eval () -  							       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)          
- *   item(in): db_value item 
- *   set(in): collection of elements                                        
- *   rel_operator(in): relational comparison operator                                
- *                                                                             
- * Note: This routine tries to determine whether a specific relation    
- *              as determined by the relational operator rel_operator holds between     
- *              the given bound item value and all the members of the          
- *              given set of elements. The set can be a basic set, multi_set   
- *              or sequence. It returns V_TRUE, V_FALSE, V_UNKNOWN using the   
- *              following reasoning:                                           
- *                                                                             
- *              V_TRUE:     - if all the values in the set are determined      
- *                            to hold the relationship, or                     
- *                          - the set is empty                                 
- *              V_FALSE:    - if there exists a value in the set which is      
- *                            determined not hold the relationship.            
- *              V_UNKNOWN:  - set is homogeneous and set element type is not   
- *                            comparable with the item type                    
- *                          - set has no value determined to fail to hold the  
- *                            rel. and at least one value which can not be     
- *                            determined to hold the relationship.             
- *              V_ERROR:    - an error occured.                                
- *                                                                             
+ * eval_all_eval () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
+ *   item(in): db_value item
+ *   set(in): collection of elements
+ *   rel_operator(in): relational comparison operator
+ *
+ * Note: This routine tries to determine whether a specific relation
+ *              as determined by the relational operator rel_operator holds between
+ *              the given bound item value and all the members of the
+ *              given set of elements. The set can be a basic set, multi_set
+ *              or sequence. It returns V_TRUE, V_FALSE, V_UNKNOWN using the
+ *              following reasoning:
+ *
+ *              V_TRUE:     - if all the values in the set are determined
+ *                            to hold the relationship, or
+ *                          - the set is empty
+ *              V_FALSE:    - if there exists a value in the set which is
+ *                            determined not hold the relationship.
+ *              V_UNKNOWN:  - set is homogeneous and set element type is not
+ *                            comparable with the item type
+ *                          - set has no value determined to fail to hold the
+ *                            rel. and at least one value which can not be
+ *                            determined to hold the relationship.
+ *              V_ERROR:    - an error occured.
+ *
  */
 static DB_LOGICAL
 eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
@@ -417,21 +360,21 @@ eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 }
 
 /*
- * eval_item_card_set () - 							       
- *   return: int (cardinality)                                     
- *           >= 0 : normal cardinality                        
- *           ER_FAILED : ERROR                                     
- *           UNKNOWN_CARD : unknown cardinality value                 
+ * eval_item_card_set () -
+ *   return: int (cardinality)
+ *           >= 0 : normal cardinality
+ *           ER_FAILED : ERROR
+ *           UNKNOWN_CARD : unknown cardinality value
  *   item(in): db_value item
- *   set(in): collection of elements                                        
- *   rel_operator(in): relational comparison operator                                
- *                                                                             
- * Note: This routine returns the number of set elements (cardinality)  
- *              which are determined to hold the given relationship with the   
- *              specified item value. If the relationship is the equality      
- *              relationship, the returned value means the cardinality of the  
- *              given element in the set and must always be less than equal    
- *              to 1 for the case of basic sets.                               
+ *   set(in): collection of elements
+ *   rel_operator(in): relational comparison operator
+ *
+ * Note: This routine returns the number of set elements (cardinality)
+ *              which are determined to hold the given relationship with the
+ *              specified item value. If the relationship is the equality
+ *              relationship, the returned value means the cardinality of the
+ *              given element in the set and must always be less than equal
+ *              to 1 for the case of basic sets.
  */
 static int
 eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
@@ -473,30 +416,30 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
  */
 
 /*
- * eval_some_list_eval () - 							       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)          
+ * eval_some_list_eval () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
  *   item(in): db_value item
- *   list_id(in): list file identifier                                          
- *   rel_operator(in): relational comparison operator                                
- *                                                                             
- * Note: This routine tries to determine whether a specific relation    
- *              as determined by the relational operator rel_operator holds between     
- *              the given bound item value and at least one member of the      
- *              given list of elements. It returns V_TRUE, V_FALSE,            
- *              V_UNKNOWN, V_ERROR using the following reasoning:              
- *                                                                             
- *              V_TRUE:     - there exists a value in the list that is         
- *                            determined to hold the relationship.             
- *              V_FALSE:    - all the values in the list are determined not    
- *                            to hold the relationship, or                     
- *                          - the list is empty                                
- *              V_UNKNOWN:  - list has no value determined to hold the rel.    
- *                            and at least one value which can not be          
- *                            determined to fail to hold the relationship.     
- *              V_ERROR:    - an error occured.                                
- *                                                                             
- *  Note: The IN relationship can be stated as item has the equality rel. with 
- *        one of the list elements.                                            
+ *   list_id(in): list file identifier
+ *   rel_operator(in): relational comparison operator
+ *
+ * Note: This routine tries to determine whether a specific relation
+ *              as determined by the relational operator rel_operator holds between
+ *              the given bound item value and at least one member of the
+ *              given list of elements. It returns V_TRUE, V_FALSE,
+ *              V_UNKNOWN, V_ERROR using the following reasoning:
+ *
+ *              V_TRUE:     - there exists a value in the list that is
+ *                            determined to hold the relationship.
+ *              V_FALSE:    - all the values in the list are determined not
+ *                            to hold the relationship, or
+ *                          - the list is empty
+ *              V_UNKNOWN:  - list has no value determined to hold the rel.
+ *                            and at least one value which can not be
+ *                            determined to fail to hold the relationship.
+ *              V_ERROR:    - an error occured.
+ *
+ *  Note: The IN relationship can be stated as item has the equality rel. with
+ *        one of the list elements.
  */
 static DB_LOGICAL
 eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
@@ -577,14 +520,14 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
 }
 
 /*
- * eval_all_list_eval () - 							       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)          
+ * eval_all_list_eval () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
  *   item(in): db_value
- *   list_id(in): list file identifier                                          
- *   rel_operator(in): relational comparison operator                                
- *                                                                             
- * Note: This routine tries to determine whether a specific relation    
- *              as determined by the relational operator rel_operator holds between     
+ *   list_id(in): list file identifier
+ *   rel_operator(in): relational comparison operator
+ *
+ * Note: This routine tries to determine whether a specific relation
+ *              as determined by the relational operator rel_operator holds between
  *              the given db_value and all the members of the
  *              given list of elements. It returns V_TRUE, V_FALSE, V_UNKNOWN
  *              or V_ERROR using following reasoning:
@@ -638,8 +581,8 @@ eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
 }
 
 /*
- * eval_item_card_sort_list () -                                                         
- *   return: int (cardinality, UNKNOWN_CARD, ER_FAILED for error cases)   
+ * eval_item_card_sort_list () -
+ *   return: int (cardinality, UNKNOWN_CARD, ER_FAILED for error cases)
  *   item(in): db_value item
  *   list_id(in): list file identifier
  *
@@ -722,8 +665,8 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
 }
 
 /*
- * eval_sub_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
+ * eval_sub_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   set1(in): DB_SET representation
  * 	 list_id(in): Sorted LIST FILE identifier
  *
@@ -829,9 +772,9 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1,
 }
 
 /*
- * eval_sub_sort_list_to_multi_set () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- * 	 list_id(in): Sorted LIST FILE identifier				       
+ * eval_sub_sort_list_to_multi_set () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ * 	 list_id(in): Sorted LIST FILE identifier
  * 	 set(in): DB_SETrepresentation
  *
  * Note: Find if the given list file is a subset of the given multi_set
@@ -1020,18 +963,18 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_sub_sort_list_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- * 	 list_id1(in): First Sorted LIST FILE identifier			       
- * 	 list_id2(in): Second Sorted LIST FILE identifier			       
- * 									       
- * Note: Find if the first list file is a subset of the second list     
- *              file. The list files must be of one column and treated like    
- *              a multi_set. The routine uses the same semantics of finding    
- *              subset relationship between two multi_sets.                    
- *                                                                             
- * Note: in a sorted list file of one column , ALL the NULL values, tuples     
- *       appear at the beginning of the list file.                             
+ * eval_sub_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ * 	 list_id1(in): First Sorted LIST FILE identifier
+ * 	 list_id2(in): Second Sorted LIST FILE identifier
+ *
+ * Note: Find if the first list file is a subset of the second list
+ *              file. The list files must be of one column and treated like
+ *              a multi_set. The routine uses the same semantics of finding
+ *              subset relationship between two multi_sets.
+ *
+ * Note: in a sorted list file of one column , ALL the NULL values, tuples
+ *       appear at the beginning of the list file.
  */
 static DB_LOGICAL
 eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1218,8 +1161,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_eq_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
+ * eval_eq_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   set(in): DB_SET representation
  *   list_id(in): Sorted LIST FILE identifier
  *
@@ -1240,8 +1183,8 @@ eval_eq_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
 }
 
 /*
- * eval_ne_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
+ * eval_ne_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   set(in): DB_SET representation
  *   list_id(in): Sorted LIST FILE identifier
  *
@@ -1259,8 +1202,8 @@ eval_ne_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
 }
 
 /*
- * eval_le_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
+ * eval_le_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   set(in): DB_SET representation
  *   list_id(in): Sorted LIST FILE identifier
  *
@@ -1274,8 +1217,8 @@ eval_le_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
 }
 
 /*
- * eval_lt_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
+ * eval_lt_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  *   set(in): DB_SET representation
  *   list_id(in): Sorted LIST FILE identifier
  *
@@ -1294,12 +1237,12 @@ eval_lt_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
 }
 
 /*
- * eval_le_sort_list_to_multi_set () -    					       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id(in): Sorted LIST FILE identifier				       
- *   set(in): Multi_set disk representation				       
- * 									       
- * Note: Find if given list file is a subset of the multi_set.          
+ * eval_le_sort_list_to_multi_set () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id(in): Sorted LIST FILE identifier
+ *   set(in): Multi_set disk representation
+ *
+ * Note: Find if given list file is a subset of the multi_set.
  */
 static DB_LOGICAL
 eval_le_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
@@ -1309,9 +1252,9 @@ eval_le_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_lt_sort_list_to_multi_set () -    					       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id(in): Sorted LIST FILE identifier				       
+ * eval_lt_sort_list_to_multi_set () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id(in): Sorted LIST FILE identifier
  *   set(in): DB_SET representation
  *
  * Note: Find if given list file is a proper subset of the multi_set.
@@ -1329,15 +1272,15 @@ eval_lt_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_eq_sort_list_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id1(in): First Sorted LIST FILE identifier				       
- *   list_id2(in): Second Sorted LIST FILE identifier			       
- * 									       
- * Note: Find if the first list file is equal to the second list file.  
- *              The list files must be of one column and treated like          
- *              multi_sets. The routine uses the same semantics of finding     
- *              equality relationship between two multi_sets.                  
+ * eval_eq_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id1(in): First Sorted LIST FILE identifier
+ *   list_id2(in): Second Sorted LIST FILE identifier
+ *
+ * Note: Find if the first list file is equal to the second list file.
+ *              The list files must be of one column and treated like
+ *              multi_sets. The routine uses the same semantics of finding
+ *              equality relationship between two multi_sets.
  */
 static DB_LOGICAL
 eval_eq_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1353,12 +1296,12 @@ eval_eq_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_ne_sort_list_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id1(in): First Sorted LIST FILE identifier				       
- *   list_id2(in): Second Sorted LIST FILE identifier			       
- * 									       
- * Note: Find if the first list file is not equal to the second one.    
+ * eval_ne_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id1(in): First Sorted LIST FILE identifier
+ *   list_id2(in): Second Sorted LIST FILE identifier
+ *
+ * Note: Find if the first list file is not equal to the second one.
  */
 static DB_LOGICAL
 eval_ne_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1373,12 +1316,12 @@ eval_ne_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_le_sort_list_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id1(in): First Sorted LIST FILE identifier				       
- *   list_id2(in): Second Sorted LIST FILE identifier			       
- * 									       
- * Note: Find if the first list file is a subset if the second one.     
+ * eval_le_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id1(in): First Sorted LIST FILE identifier
+ *   list_id2(in): Second Sorted LIST FILE identifier
+ *
+ * Note: Find if the first list file is a subset if the second one.
  */
 static DB_LOGICAL
 eval_le_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1389,13 +1332,13 @@ eval_le_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_lt_sort_list_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id1(in): First Sorted LIST FILE identifier				       
- *   list_id2(in): Second Sorted LIST FILE identifier			       
- * 									       
- * Note: Find if the first list file is a proper subset if the second   
- *       list file.                                                     
+ * eval_lt_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id1(in): First Sorted LIST FILE identifier
+ *   list_id2(in): Second Sorted LIST FILE identifier
+ *
+ * Note: Find if the first list file is a proper subset if the second
+ *       list file.
  */
 static DB_LOGICAL
 eval_lt_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1411,16 +1354,16 @@ eval_lt_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * eval_multi_set_to_sort_list () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   set(in): DB_SET representation	
- *   list_id(in): Sorted LIST FILE identifier				       
- *   rel_operator(in): Relational Operator                                           
- * 									       
- * Note: Find if given multi_set and the list file satisfy the          
- *              relationship indicated by the relational operator. The list    
- *              file must be of one column, sorted and is treated like a       
- *              multi_set.                                                     
+ * eval_multi_set_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   set(in): DB_SET representation
+ *   list_id(in): Sorted LIST FILE identifier
+ *   rel_operator(in): Relational Operator
+ *
+ * Note: Find if given multi_set and the list file satisfy the
+ *              relationship indicated by the relational operator. The list
+ *              file must be of one column, sorted and is treated like a
+ *              multi_set.
  */
 static DB_LOGICAL
 eval_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
@@ -1446,16 +1389,16 @@ eval_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set,
 }
 
 /*
- * eval_sort_list_to_multi_set () -						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id(in): Sorted LIST FILE identifier				       
- *   set(in): DB_SET representation	
- *   rel_operator(in): Relational Operator                                           
- * 									       
- * Note: Find if given list file and the multi_set satisfy the          
- *              relationship indicated by the relational operator. The list    
- *              file must be of one column, sorted and is treated like a       
- *              multi_set.                                                     
+ * eval_sort_list_to_multi_set () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id(in): Sorted LIST FILE identifier
+ *   set(in): DB_SET representation
+ *   rel_operator(in): Relational Operator
+ *
+ * Note: Find if given list file and the multi_set satisfy the
+ *              relationship indicated by the relational operator. The list
+ *              file must be of one column, sorted and is treated like a
+ *              multi_set.
  */
 static DB_LOGICAL
 eval_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
@@ -1481,16 +1424,16 @@ eval_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 }
 
 /*
- * eval_sort_list_to_sort_list () -   						       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   list_id1(in): First Sorted LIST FILE identifier			       
+ * eval_sort_list_to_sort_list () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   list_id1(in): First Sorted LIST FILE identifier
  *   list_id2(in): Second Sorted LIST FILE identifier
- *   rel_operator(in): Relational Operator                                           
- * 									       
- * Note: Find if first list file and the second list file satisfy the   
- *              relationship indicated by the relational operator. The list    
- *              files must be of one column, sorted and are treated like       
- *              multi_sets.                                                    
+ *   rel_operator(in): Relational Operator
+ *
+ * Note: Find if first list file and the second list file satisfy the
+ *              relationship indicated by the relational operator. The list
+ *              files must be of one column, sorted and are treated like
+ *              multi_sets.
  */
 static DB_LOGICAL
 eval_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
@@ -1650,18 +1593,18 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp,
  */
 
 /*
- * eval_pred () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
- *   obj_oid(in): Object Identifier                                             
- * 									       
- * Note: This is the main predicate expression evalution routine. It    
- *              evaluates the given predicate predicate expression on the      
- *              specified evaluation item to see if the evaluation item        
- *              satisfies the indicate predicate. It uses a 3-valued logic     
- *              and returns V_TRUE, V_FALSE or V_UNKNOWN. If an error occurs,  
- *              necessary error code is set and V_ERROR is returned.           
+ * eval_pred () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
+ *   obj_oid(in): Object Identifier
+ *
+ * Note: This is the main predicate expression evalution routine. It
+ *              evaluates the given predicate predicate expression on the
+ *              specified evaluation item to see if the evaluation item
+ *              satisfies the indicate predicate. It uses a 3-valued logic
+ *              and returns V_TRUE, V_FALSE or V_UNKNOWN. If an error occurs,
+ *              necessary error code is set and V_ERROR is returned.
  */
 DB_LOGICAL
 eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
@@ -1685,7 +1628,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
       switch (pr->pe.pred.bool_op)
 	{
 	case B_AND:
-	  /* 'pt_pred.c:pt_to_pred_expr()' will generate right-linear tree */
+	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_TRUE;
 	  for (t_pr = pr;
 	       result == V_TRUE && t_pr->type == T_PRED
@@ -1721,7 +1664,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  break;
 
 	case B_OR:
-	  /* 'pt_pred.c:pt_to_pred_expr()' will generate right-linear tree */
+	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_FALSE;
 	  for (t_pr = pr;
 	       result == V_FALSE && t_pr->type == T_PRED
@@ -1766,11 +1709,11 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
       switch (pr->pe.eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  /* 
+	  /*
 	   * compound evaluation terms are used to test relationships
-	   * such as equality, greater than etc. between two items 
-	   * Each datatype defines its own meaning of relationship 
-	   * indicated by one of the relational operators. 
+	   * such as equality, greater than etc. between two items
+	   * Each datatype defines its own meaning of relationship
+	   * indicated by one of the relational operators.
 	   */
 	  et_comp = &pr->pe.eval_term.et.et_comp;
 
@@ -1839,7 +1782,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * fetch left hand size and right hand size values, if one of
 	   * values are unbound, result = V_UNKNOWN
 	   */
@@ -1885,7 +1828,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
@@ -1895,20 +1838,9 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  break;
 
 	case T_ALSM_EVAL_TERM:
-	  /* 
-	   * the all/some evaluation terms are used to test the 
-	   * relationship between a single item and the items of a set. 
-	   * This relationship between an item and an item of a set 
-	   * can be any of the above mentioned relations. However, the 
-	   * use of the some/all quantifier forces the relationship to
-	   * hold for at least one item of the set, or for all items 
-	   * of the set, respectively. The IN membership test is
-	   * equal to EQ test with a SOME quantifier, and NOT_IN test 
-	   * is equal to NE test with an ALL quantifier.
-	   */
 	  et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-	  /* 
+	  /*
 	   * Note: According to ANSI, if the set or list file is empty,
 	   * the result of comparison is true/false for ALL/SOME,
 	   * regardless of whether lhs value is bound or not.
@@ -2053,10 +1985,10 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_comp0 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_comp0 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node regular comparison predicate
@@ -2097,7 +2029,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
       return V_UNKNOWN;
     }
 
-  /* 
+  /*
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
@@ -2105,10 +2037,10 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_comp1 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_comp1 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single leaf node NULL predicate
@@ -2146,10 +2078,10 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_comp2 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_comp2 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node EXIST predicate
@@ -2200,10 +2132,10 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_comp3 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_comp3 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node lhs or rhs list file predicate
@@ -2262,10 +2194,10 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_alsm4 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_alsm4 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node all/some predicate with a set
@@ -2328,10 +2260,10 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_alsm5 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_alsm5 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node all/some  predicate with a list file
@@ -2390,10 +2322,10 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_pred_like6 () -								       
- *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)        
- *   pr(in): Predicate Expression Tree       			       
- *   vd(in): Value descriptor for positional values (optional)             
+ * eval_pred_like6 () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   pr(in): Predicate Expression Tree
+ *   vd(in): Value descriptor for positional values (optional)
  *   obj_oid(in): Object Identifier
  *
  * Note: single node like predicate
@@ -2441,10 +2373,10 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 }
 
 /*
- * eval_fnc () -								       
- *   return:         
- *   pr(in): Predicate Expression Tree       			       
- *   single_node_type(in):  
+ * eval_fnc () -
+ *   return:
+ *   pr(in): Predicate Expression Tree
+ *   single_node_type(in):
  */
 PR_EVAL_FNC
 eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
@@ -2557,7 +2489,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
 	   * In the case of class attribute scan, we should fetch regu_list
 	   * before pred evaluation because eval_pred*() functions do not
 	   * know class OID so that TYPE_CLASSOID regu cannot be handled
-	   * correctly. See also pt_xasl2.c:pt_to_class_spec_list().
+	   * correctly.
 	   */
 	  if (fetch_val_list
 	      (thread_p, scan_predp->regu_list, filterp->val_descr,
@@ -2719,11 +2651,6 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		  break;	/* immediately exit inner-loop */
 		}
 
-	      /*
-	       * I don't believe that vtrans2.c:mq_reset_ids_and_references()
-	       * function is right. But, in order to prevent 'derived table
-	       * problem', I choosed this way.
-	       */
 	      if (j >= filterp->btree_num_attrs)
 		{
 		  /*

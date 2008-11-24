@@ -1,5 +1,5 @@
 Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
+# Visual C++ Express 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubridcs", "cubridcs\cubridcs.vcproj", "{1426F074-E2F1-4541-B0FC-9D2A817C40B0}"
 	ProjectSection(ProjectDependencies) = postProject
 		{B8CC0003-ED3F-4287-8DBE-978E00F16EA5} = {B8CC0003-ED3F-4287-8DBE-978E00F16EA5}

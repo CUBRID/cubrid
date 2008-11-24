@@ -1,8 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * api.h - cubrid api header file.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * db_stub.h - cubrid api header file.
  */
 
 #ifndef _DB_STUB_H_
@@ -17,7 +33,7 @@
 #include "dbdef.h"
 #include "error_manager.h"
 #include "transaction_cl.h"
-#include "parse_tree_3.h"	/* TODO: remove */
+#include "parse_tree.h"		/* TODO: remove */
 #include "system_parameter.h"
 #include "api_compat.h"
 
@@ -25,13 +41,13 @@
 #define api_get_errmsg()        er_msg()
 #define api_get_errid           er_errid
 
-#define HAS_RESULT(stmt_type)   (stmt_type == SQLX_CMD_SELECT || \
-                                 stmt_type == SQLX_CMD_CALL   || \
-                                 stmt_type == SQLX_CMD_GET_ISO_LVL || \
-                                 stmt_type == SQLX_CMD_GET_TIMEOUT || \
-                                 stmt_type == SQLX_CMD_GET_OPT_LVL || \
-                                 stmt_type == SQLX_CMD_GET_STATS || \
-                                 stmt_type == SQLX_CMD_EVALUATE)
+#define HAS_RESULT(stmt_type)   (stmt_type == CUBRID_STMT_SELECT || \
+                                 stmt_type == CUBRID_STMT_CALL   || \
+                                 stmt_type == CUBRID_STMT_GET_ISO_LVL || \
+                                 stmt_type == CUBRID_STMT_GET_TIMEOUT || \
+                                 stmt_type == CUBRID_STMT_GET_OPT_LVL || \
+                                 stmt_type == CUBRID_STMT_GET_STATS || \
+                                 stmt_type == CUBRID_STMT_EVALUATE)
 
 
 
@@ -104,7 +120,7 @@ struct ci_conn_s
 
 struct rs_meta_info
 {
-  SQLX_CMD_TYPE sql_type;
+  CUBRID_STMT_TYPE sql_type;
   bool has_result;
   int affected_row;
 };

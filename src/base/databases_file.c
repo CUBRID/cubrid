@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * databases_file.c - Parsing the database directory file
  *
  */
@@ -28,12 +44,12 @@
 #include "chartype.h"
 #include "error_manager.h"
 #include "databases_file.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 
 #if defined(WINDOWS)
-#include "ustring.h"
+#include "misc_string.h"
 #include "wintcp.h"
 #endif /* WINDOWS */
 
@@ -373,15 +389,15 @@ cfg_open_directory_file (bool write_flag)
  *    the file lock is released. The file lock acquired through io_mount()
  *    is released when cfg_read_directory() opens and closes the file.
  */
-bool
+int
 cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 {
   char line[PATH_MAX];
   FILE *file_p = NULL;
   DB_INFO *databases, *last, *db;
   char *str = NULL;
-  int success = false;
   char *primary_host = NULL;
+  int error_code = ER_FAILED;
 
   databases = last = NULL;
 
@@ -403,7 +419,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 			  cfg_free_directory (databases);
 			}
 		      *info_p = NULL;
-		      return false;
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
 
 		  db->next = NULL;
@@ -430,9 +446,9 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		      last->next = db;
 		    }
 		  last = db;
-		  if (db->name == NULL ||
-		      db->pathname == NULL ||
-		      db->hosts == NULL || db->logpath == NULL)
+		  if (db->name == NULL
+		      || db->pathname == NULL
+		      || db->hosts == NULL || db->logpath == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_CFG_INVALID_DATABASES, 1,
@@ -442,16 +458,16 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 			  cfg_free_directory (databases);
 			}
 		      *info_p = NULL;
-		      return false;
+		      return ER_CFG_INVALID_DATABASES;
 		    }
 		}
 	    }
 	  fclose (file_p);
-	  success = true;
+	  error_code = NO_ERROR;
 	}
     }
   *info_p = databases;
-  return (success);
+  return (error_code);
 }
 
 /*
@@ -465,15 +481,15 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
  *    Note: However it does not open/close the file, the file lock is
  *          preserved.
  */
-bool
+int
 cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 {
   char *line = NULL;
   DB_INFO *databases, *last, *db;
   char *str = NULL;
-  int success = false;
   char *primary_host = NULL;
   struct stat stat_buffer;
+  int error_code = ER_FAILED;
 
 #if defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
   return cfg_read_directory (info_p, write_flag);
@@ -488,7 +504,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
       if (line == NULL)
 	{
 	  *info_p = NULL;
-	  return false;
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       read (vdes, line, stat_buffer.st_size);
       line[stat_buffer.st_size] = '\0';
@@ -505,7 +521,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		    }
 		  *info_p = NULL;
 		  free_and_init (line);
-		  return false;
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
 	      db->next = NULL;
@@ -543,17 +559,17 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		    }
 		  *info_p = NULL;
 		  free_and_init (line);
-		  return false;
+		  return ER_CFG_INVALID_DATABASES;
 		}
 	    }
 	  str = cfg_next_line (str);
 	  str = cfg_next_char (str);
 	}
-      success = true;
+      error_code = NO_ERROR;
       free_and_init (line);
     }
   *info_p = databases;
-  return (success);
+  return (error_code);
 }
 
 /*
@@ -579,25 +595,6 @@ cfg_write_directory (const DB_INFO * databases)
   file_p = cfg_open_directory_file (true);
   if (file_p != NULL)
     {
-      /*
-       * This function writes the file from scratch. Its performance is quite
-       * bad and it is prone to problems when a signal is raisen
-       *
-       * For example, what would have happen if ^C is hit in the middle of the
-       * following loop, database.txt will be written completely. database.txt
-       * may end up with fewer entries than when the operation started.
-       *
-       * The main problem is that database.txt is not part of the recovery
-       * process of the database.. This is a bad design.. This file is shared
-       * by different databases. We may need to think this a little more
-       * careful. A release note may be needed.
-       *
-       * For now, I will block signals..Note that this is not enough since
-       * the process may be killed (e.g., with SIGKILL) or the machine may
-       * crash.. However, this fix will improve the problem.
-       * It may be good idea to make a backup of the file just in case
-       * a crash happens.
-       */
 
 #if !defined(WINDOWS)
       sigfillset (&new_mask);
@@ -668,7 +665,8 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 #endif /* !WINDOWS */
 
 #if defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-  return cfg_read_directory (info_p, true);
+  cfg_read_directory (info_p, true);
+  return;
 #endif /* DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
 
 #if !defined(WINDOWS)
@@ -989,7 +987,7 @@ cfg_find_db (const char *name)
 
   db_info_p = NULL;
 
-  if (cfg_read_directory (&dir_info_p, false))
+  if (cfg_read_directory (&dir_info_p, false) == NO_ERROR)
     {
       if (dir_info_p == NULL)
 	{
@@ -1196,8 +1194,8 @@ cfg_pop_host (char *host_list, char *buffer, int *length)
 
   /* Ignore initial spaces/field separators in list */
 
-  while (((char_isspace (*host)) ||
-	  (*host == CFG_HOST_SEPARATOR)) && (*host != '\0'))
+  while (((char_isspace (*host))
+	  || (*host == CFG_HOST_SEPARATOR)) && (*host != '\0'))
     {
       ++host;
     }
@@ -1207,8 +1205,8 @@ cfg_pop_host (char *host_list, char *buffer, int *length)
   start = host;
   current_host_length = 0;
 
-  while ((*host != CFG_HOST_SEPARATOR) &&
-	 (!char_isspace (*host)) && (*host != '\0'))
+  while ((*host != CFG_HOST_SEPARATOR)
+	 && (!char_isspace (*host)) && (*host != '\0'))
     {
       host++;
       current_host_length++;

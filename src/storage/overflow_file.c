@@ -1,14 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * overflow_file.c - Overflow file manager (at server)
- *  
- * This module handles insertions, updates, and deletions of multipage data in
- * overflow pages. It implementation is simple and naive. For example,        
- * insertions, updates, and deletes are all or nothing. For a more            
- * sophisticated implementaion of long data with all kind of functions such as
- * insert, overwrite, append, seek, and so on see the long data manager (LOM).
  */
 
 #ident "$Id$"
@@ -17,13 +26,13 @@
 
 #include <string.h>
 
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "slotted_page.h"
-#include "log.h"
+#include "log_manager.h"
 #include "overflow_file.h"
 
 #define OVERFLOW_ALLOCVPID_ARRAY_SIZE 10
@@ -73,14 +82,14 @@ static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
  *   ovf_vfid(in): File where the overflow data is going to be stored
  *   ovf_vpid(out): Overflow address
  *   recdes(in): Record descriptor
- * 
+ *
  * Note: Data in overflow is composed of several pages. Pages in the overflow
  *       area are not shared among other pieces of overflow data.
  *
  *       --------------------------------         ------------------------
  *       |Next_vpid |Length|... data ...| ... --> |Next_vpid|... data ...|
  *       --------------------------------         ------------------------
- * 
+ *
  *       Single link list of pages.
  *       The length of the multipage data is stored on its first overflow page
  *
@@ -107,10 +116,10 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   LOG_DATA_ADDR logical_undoaddr;
   int ipage, i;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   addr.vfid = ovf_vfid;
@@ -122,10 +131,10 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
   undo_recv.ovf_vfid = *ovf_vfid;
 
-  /* 
+  /*
    * Temporary:
    *   Lock the file header, so I am the only one changing the file table
-   *   of allocated pages. This is needed since this function is using 
+   *   of allocated pages. This is needed since this function is using
    *   file_find_nthpages, which could give me not the expected page, if someone
    *   else remove pages, after the initial allocation.
    */
@@ -140,7 +149,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Guess the number of pages. The total number of pages is found by
    * dividing length by pagesize - the smallest header. Then, we make sure
    * that this estimate is correct.
@@ -312,10 +321,10 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
 end:
 
-  /* 
+  /*
    * Temporary:
    *   Unlock the file header, so I am the only one changing the file table
-   *   of allocated pages. This is needed since curently, I am using 
+   *   of allocated pages. This is needed since curently, I am using
    *   file_find_nthpages, which could give me not the expected page, if someone
    *   else remove pages.
    */
@@ -359,7 +368,7 @@ exit_on_error:
 }
 
 /*
- * overflow_next_vpid () - 
+ * overflow_next_vpid () -
  *   return: ovf_vpid on success or NULL on failure
  *   ovf_vpid(in): Overflow address
  *   vpid(in/out): current/next vpid
@@ -379,7 +388,7 @@ overflow_next_vpid (const VPID * ovf_vpid, VPID * vpid, PAGE_PTR pgptr)
 }
 
 /*
- * overflow_traverse () - 
+ * overflow_traverse () -
  *   return: ovf_vpid on success or NULL on failure
  *   ovf_vfid(in): File where the overflow data is stored
  *                 WARNING: MUST BE THE SAME AS IT WAS GIVEN DURING INSERT
@@ -394,10 +403,10 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   VPID vpid;
   PAGE_PTR pgptr = NULL;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   next_vpid = *ovf_vpid;
@@ -455,11 +464,11 @@ exit_on_error:
  *                 WARNING: MUST BE THE SAME AS IT WAS GIVEN DURING INSERT
  *   ovf_vpid(in): Overflow address
  *   recdes(in): Record descriptor
- * 
+ *
  * Note: The function may allocate or deallocate several overflow pages if
  *       the multipage data increase/decrease in length.
  *
- *       Overflow pages are not locked in any mode since they are not shared 
+ *       Overflow pages are not locked in any mode since they are not shared
  *       by other data and its address is know by accessing the relocation
  *       overflow record which has been appropriately locked.
  */
@@ -483,10 +492,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   LOG_DATA_ADDR logical_undoaddr;
   bool isnewpage = false;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   addr.vfid = ovf_vfid;
@@ -708,12 +717,12 @@ exit_on_error:
 }
 
 /*
- * overflow_delete_internal () - 
+ * overflow_delete_internal () -
  *   return: NO_ERROR
  *   ovf_vfid(in): File where the overflow data is stored
  *                 WARNING: MUST BE THE SAME AS IT WAS GIVEN DURING INSERT
- *   vpid(in): 
- *   pgptr(in): 
+ *   vpid(in):
+ *   pgptr(in):
  */
 static int
 overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
@@ -756,7 +765,7 @@ exit_on_error:
  *   ovf_vfid(in): File where the overflow data is stored
  *                 WARNING: MUST BE THE SAME AS IT WAS GIVEN DURING INSERT
  *   ovf_vpid(in): Overflow address
- * 
+ *
  * Note: The function deallocate the pages composing the overflow record
  */
 const VPID *
@@ -767,9 +776,9 @@ overflow_delete (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 }
 
 /*
- * overflow_flush_internal () - 
+ * overflow_flush_internal () -
  *   return: NO_ERROR
- *   pgptr(in): 
+ *   pgptr(in):
  */
 static int
 overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -813,7 +822,7 @@ overflow_flush (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
  * overflow_get_length () - FIND LENGTH OF OVERFLOW OBJECT
  *   return: length of overflow object, or -1 on error
  *   ovf_vpid(in):
- * 
+ *
  * Note: The length of the content of a multipage object associated with the
  *       given overflow address is returned.
  */
@@ -823,10 +832,10 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
   PAGE_PTR pgptr = NULL;
   int length = -1;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   pgptr = pgbuf_fix (thread_p, ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ,
@@ -865,7 +874,7 @@ exit_on_error:
  *   start_offset(in): Start offset of portion to copy
  *   max_nbytes(in): Maximum number of bytes to retrieve
  *   remaining_length(in): The number of remaining bytes to read
- * 
+ *
  * Note: A portion of the content of the overflow record associated with the
  *       given overflow address(ovf_pid) is placed into the area pointed to by
  *       the record descriptor. If the content of the object does not fit in
@@ -887,10 +896,10 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
   int copy_length;
   char *data;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   next_vpid = *ovf_vpid;
@@ -963,7 +972,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
 	}
 
       /*
-       * Copy as much as you can when you do not need to continue seeking, 
+       * Copy as much as you can when you do not need to continue seeking,
        * and there is something to copy in current page (i.e., not at end
        * of the page) and we are not located at the end of the overflow record.
        */
@@ -1015,8 +1024,8 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
  * overflow_get () - Get the content of a multipage object from overflow
  *   return: scan status
  *   ovf_vpid(in): Overflow address
- *   recdes(in): Record descriptor 
- * 
+ *   recdes(in): Record descriptor
+ *
  * Note: The content of a multipage object associated with the given overflow
  *       address(oid) is placed into the area pointed to by the record
  *       descriptor. If the content of the object does not fit in such an area
@@ -1024,7 +1033,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
  *       length is returned as a negative value in recdes->length. The length
  *       of the retrieved object is set in the the record descriptor
  *       (i.e., recdes->length).
- * 
+ *
  */
 SCAN_CODE
 overflow_get (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * recdes)
@@ -1038,12 +1047,12 @@ overflow_get (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * recdes)
 /*
  * overflow_get_capacity () - Find the current storage facts/capacity of given
  *                   overflow rec
- *   return: NO_ERROR 
+ *   return: NO_ERROR
  *   ovf_vpid(in): Overflow address
  *   ovf_size(out): Length of overflow object
  *   ovf_num_pages(out): Total number of overflow pages
  *   ovf_overhead(out): System overhead for overflow record
- *   ovf_free_space(out): Free space for exapnsion of the overflow rec 
+ *   ovf_free_space(out): Free space for exapnsion of the overflow rec
  */
 int
 overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
@@ -1058,10 +1067,10 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
   int hdr_length;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   next_vpid = *ovf_vpid;
@@ -1174,10 +1183,10 @@ overflow_dump (THREAD_ENTRY * thread_p, VPID * ovf_vpid)
   int i;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock 
+   * know by accessing the relocation-overflow record with the appropiate lock
    */
 
   next_vpid = *ovf_vpid;
@@ -1347,7 +1356,7 @@ overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * overflow_rv_link () - Recover overflow
  *   return: 0 if no error, or error code
  *   rcv(in): Recovery structure
- * 
+ *
  * Note: It can be used for undo a new allocation of overflow page or for redo
  *       deallocation of overflow page
  */

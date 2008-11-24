@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * release_string.c - release related information (at client and server)
  *
  * Note: This file contains some very simple functions related to version and
@@ -14,13 +29,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "config.h"
 #include "release_string.h"
 #include "message_catalog.h"
 #include "chartype.h"
 #include "language_support.h"
 #include "environment_variable.h"
-#include "logcp.h"
-#include "log.h"
+#include "log_comm.h"
+#include "log_manager.h"
 
 
 #define CSQL_NAME_MAX_LENGTH 100
@@ -43,8 +59,7 @@ typedef struct compatibility_rule
  * Copyright Information
  */
 static const char *copyright_header = "\
-Copyright (C) 2008 NHN Corporation\n\
-Copyright (C) 2008 CUBRID Co., Ltd.\n\
+Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n\
 ";
 
 static const char *copyright_body = "\
@@ -54,13 +69,13 @@ Copyright Information\n\
 /*
  * CURRENT VERSIONS
  */
-
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 
 static const char *release_string = makestring (RELEASE_STRING);
 static const char *major_release_string = makestring (MAJOR_RELEASE_STRING);
 static const char *build_number = makestring (BUILD_NUMBER);
+static const char *package_string = PACKAGE_STRING;
 
 /*
  * Disk (database image) Version Compatibility
@@ -74,18 +89,7 @@ static float disk_compatibility_level = 8.0;
 const char *
 rel_name (void)
 {
-  const char *name;
-  static char static_name[CSQL_NAME_MAX_LENGTH + 1];
-
-  lang_init ();
-  name = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
-			 MSGCAT_GENERAL_RELEASE_NAME);
-  if (!name)
-    name = "CUBRID 2008";
-
-  strncpy (static_name, name, CSQL_NAME_MAX_LENGTH);
-
-  return static_name;
+  return package_string;
 }
 
 /*
@@ -217,8 +221,8 @@ rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 	   rule->database_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
 	{
 
-	  if (rule->database_level == db_level &&
-	      rule->system_level == disk_compatibility_level)
+	  if (rule->database_level == db_level
+	      && rule->system_level == disk_compatibility_level)
 	    {
 	      compat = rule->compatibility;
 	      functions = rule->functions;
@@ -291,8 +295,8 @@ rel_compare (const char *rel_a, const char *rel_b)
 	    a_temp++;
 	  while (*b_temp && *b_temp == '.')
 	    b_temp++;
-	  if (*a_temp && *b_temp &&
-	      char_isalpha (*a_temp) && char_isalpha (*b_temp))
+	  if (*a_temp && *b_temp
+	      && char_isalpha (*a_temp) && char_isalpha (*b_temp))
 	    {
 	      if (*a_temp != *b_temp)
 		retval = -1;

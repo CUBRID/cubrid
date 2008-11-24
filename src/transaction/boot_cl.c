@@ -1,53 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * bocl.c - Boot management in the client
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * This module performs general database client session management tasks such
- * as creating a database, restarting and terminating a CUBRID client.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * A CUBRID application must start by creating a database. A database is
- * composed of data volumes, database backup files, and log files. A data
- * volume contains information on attributes, classes, indexes, and database
- * objects. A database backup is a fuzzy snapshot of the entire database. The
- * backup is fuzzy since it can be taken online when other transactions are
- * updating the database. The logs contain records that reflect changes to
- * the database. The log and backup files are used by CUBRID to recover
- * committed and uncommitted transactions in the event of system and media
- * crashes. Logs are also used to support user-initiated rollbacks.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * Once a database is created, the application can restart CUBRID with this
- * database to perform operations on the database. A restart operation must be
- * executed before the application invokes any other database interface
- * function. An application must shutdown the system before the application is
- * terminated. This is important since the application is terminated correctly
- * and any resources allocated on behalf of the client are released in both
- * the CUBRID client and the server.
- *
- * MODULE INTERFACE
- *
- * The following modules are called by the boot manager at the client
- *      Boot Manager at server:     To initialize a database
- *                                  To register/unregister a client
- *      Schema manager:             To create system classes (e.g., root)
- *                                     during initialization.
- *      Authorization manager:      To create authorization classes during
- *                                     database initialization
- *      Transaction Manager at client:
- *                                  To recover loose ends (postpones or
- *                                     undos) during client restarts.
- *                                  To commit / abort transactions during
- *                                     shutdown
- *      Configuration Manager:      To get database location information
- *
- * Some other modules such as workspace manager, dynamic loader, sqlx
- * interpreter are called for initialization purposes.
- *
- * At least the following modules call the boot manager at client:
- *       Createdb utility:          To initialize the database
- *       ISQL/X, SQLX, API::        To restart, and shutdown clients.
- *
+ */
+
+/*
+ * boot_cl.c - Boot management in the client
  */
 
 #ident "$Id$"
@@ -73,13 +43,13 @@
 #include "util_func.h"
 #endif /* !HPUX */
 #include "boot_cl.h"
-#include "memory_manager_2.h"
-#include "memory_manager_1.h"
-#include "common.h"
+#include "memory_alloc.h"
+#include "area_alloc.h"
+#include "storage_common.h"
 #include "oid.h"
 #include "error_manager.h"
 #include "work_space.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "authenticate.h"
 #include "trigger_manager.h"
 #include "db.h"
@@ -87,8 +57,8 @@
 #include "dynamic_load.h"
 #endif /* !WINDOWS */
 #include "transaction_cl.h"
-#include "logcp.h"
-#include "server.h"
+#include "log_comm.h"
+#include "server_interface.h"
 #include "release_string.h"
 #include "system_parameter.h"
 #include "locator_cl.h"
@@ -98,18 +68,17 @@
 #include "message_catalog.h"
 #include "parser.h"
 #include "perf_monitor.h"
-#include "memory_manager_4.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "cnv.h"
 #include "environment_variable.h"
-#include "locator_bt.h"
+#include "locator.h"
 #include "transform.h"
 #include "trigger_manager.h"
-#include "jsp_sky.h"
+#include "jsp_cl.h"
 
 #if !defined(SA_MODE)
 #include "network.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 #endif /* !SA_MODE */
 
 #if defined(WINDOWS)
@@ -120,8 +89,8 @@
 
 /* TODO : Move .h */
 #if defined(SA_MODE)
-extern bool catcls_Enable;	/* ct_class.c */
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);	/* ct_class.c */
+extern bool catcls_Enable;
+extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
 
 extern char *cuserid (char *string);
@@ -339,11 +308,7 @@ boot_initialize_client (const char *program_name, bool print_version,
    * if we can't actually
    * print anything
    */
-  if (!lang_init ())
-    {
-      return ER_INVALID_ENV;
-    }
-
+  (void) lang_init ();
   locator_initialize_areas ();
 
   /* open the system message catalog, before prm_ ?  */
@@ -712,14 +677,7 @@ boot_restart_client (const char *program_name, bool print_restart,
 #endif /* WINDOWS */
 
   /* initialize language parameters */
-  if (!lang_init ())
-    {
-#if defined(WINDOWS)
-      pc_final ();
-#endif /* WINDOWS */
-      return ER_INVALID_ENV;
-    }
-
+  (void) lang_init ();
   locator_initialize_areas ();
 
   /* open the system message catalog, before prm_ ?  */
@@ -950,16 +908,6 @@ boot_restart_client (const char *program_name, bool print_restart,
 	  goto error;
 	}
 
-      /*
-       * If we don't call lang_server_charset_init() here, there's a
-       * possibility of getting into an infinite recursion in certain
-       * standalone situations (e.g., start up, roll back, and then issue a
-       * query) because of a chicken-and-egg problem involving reading the
-       * classname string from the disk rep of a class object.
-       *
-       * This can't precede the call to au_start() because it depends on
-       * the proper initialization of Au_root.
-       */
       lang_server_charset_init ();
 
       tr_init ();		/* initialize trigger manager */

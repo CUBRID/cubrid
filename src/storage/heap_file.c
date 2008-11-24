@@ -1,177 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * heap_file.c - heap file manager
- *
- * The heap file manager provides mechanisms for inserting, deleting, and
- * updating objects within a heap file. One object heap file is assigned to a
- * particular class to hold the instances of the class. The object heap manager
- * provides facilities for efficiently scanning objects (e.g., first, last,
- * next, previous) for use in query processing.
- *
- * A permanent unchangeable object identifier (OID) is assigned to an object
- * when the object is stored on a heap file or when an OID is requested for an
- * object. The OID uniquely identifies the object and directly indicates its
- * physical disk address. The structure of an OID consists of three fields:
- * Volid, Pageid, and Slotid. The volume identifier and page identifier
- * specify a page in a data volume. The slot field identifier identifies the
- * slot in the page where the object's content is stored. Once an OID is
- * assigned to an object, the OID cannot generally be reused even though the
- * object associated with the OID has been removed from the database. If the
- * OID was assigned as part of an aborted transaction, the OID is reused since
- * the associated object was never committed to the database and noone can be
- * pointing to it. OIDs may also be reclaimed during a disk compaction and
- * disk garbage collection. In this case, references to OIDs of deleted
- * objects (i.e., reclaimed OIDs) are changed to NULL references.
- *
- * An object heap file consists of a set of slotted pages with unreusable
- * anchored slots. The slots are unreusable and anchored to support the OID
- * notion. That is, an OID cannot generally be reused or changed. The slotted
- * pages of an object heap are double-linked to provide a fast sequential scan
- * For example, the overhead (e.g. the extra I/O) that the file manager has to
- * find a next or previous page is avoided.
- *
- * An object may be relocated when it grows beyond a point where it can no
- * longer be returned to its home page (OID page). In this case the object is
- * replaced by two records: a relocation record (at the original address) and
- * a relocated record (at a new address). The relocated record holds the
- * contents of the object. The relocation record (marker of new home)
- * indicates where the actual object is stored. When the object is again
- * updated, the heap file manager tries to return the object back to its home
- * page (OID page location). If it can, the relocation record (at original
- * address) is replaced by the new contents of the object and the old
- * relocated record is deleted. The slot of a relocated record can always be
- * reused since it did not identify an object. If the object cannot be
- * returned to original address, the heap manager tries to replace the object
- * where it presently resides (i.e, at the relocated location). However, if
- * the replacement fails due to an increase in the length of the object, the
- * new contents of the object are again relocated to another page that can
- * accommodate the contents of the object. The relocation record (at the
- * original address -- OID --) is updated to point to the new address
- * of the relocated record. The old relocated record is deleted. Note that
- * there is only one indirection in a relocated object. The relocation process
- * is needed since the OID of an object cannot be changed. CUBRID prevents
- * relocations by reserving some free space in each heap file for future
- * updates. The reserved free space is specified by the unfill_factor system
- * parameter. A new object is not inserted on a previously allocated page if
- * the free space on that page would remain below the reserved space.
- *
- * Objects that cannot be inserted in a single page (i.e., they are longer
- * than one page) are stored in an overflow file associated with the object
- * heap file. An overflow file may be shared by several object heap files.
- * However, overflow pages are not shared among overflow objects. The overflow
- * technique employed by the object heap manager is similar to the relocation
- * technique. That is, a relocation-overflow record is created in the object
- * heap file as an address map to the actual location of the contents of the
- * object. When the length of an object in overflow becomes less than one
- * page, the object is returned to its object heap even when it can be
- * relocated at the object heap. Multipage objects are expected to be rare. If
- * multipage objects become common, the database page size should be increased
- * to avoid indirections. This overflow technique was designed to avoid adding
- * overhead to normal processing of the heap module and to avoid using the
- * long data manager. The long data manager is not a good choice since heap
- * objects are retrieved and stored as a whole instead of in parts, this long
- * data overhead is avoided. The object in overflow is stored with the
- * following structure:
- * ----------------------------------         --------------------------
- * |Next_pageid |Length|... data ...| ... --> |Next_pageid|... data ...|
- * ----------------------------------         --------------------------
- * Single link list of pages. The length of multipage object is stored on its
- * first overflow page
- *
- * An object heap file keeps some header information used to speed up
- * insertions and to avoid wasting a lot of space on the heap file. Some of
- * the maintained information is: the overflow file for multipage objects,
- * the second page of the heap file for chaining the heap pages, last page of
- * heap which is used for inserting new objects, a hinted page and its free
- * space, and an unfill space left on each heap page for future updates.
- * The hinted page and space are approximate values to a page, that is
- * believed to have a lot of space for insertions. The hinted page is
- * different from the last page. The hinted page usually becomes the last page
- * when a new last page is allocated. However, this is not always the case.
- * The hinted page and space is only updated when a new page is allocated or
- * when a page has dropped to a good percent of free space.
- *
- * Heap objects are approximately inserted in a physical sequence. The
- * following algorithm is used:
- * 1: If the object cannot be inserted in a single page, it is inserted in
- *    overflow as a multipage object. An overflow relocation record is created
- *    in the heap as an address map to the actual content of the object (the
- *    overflow address).
- * 2: If the object can be inserted in the last allocated page without
- *    overpassing the reserved space on the page, the object is placed on
- *    this page.
- * 3: If the object can be inserted in the hinted page without overpassing
- *    the reserved space on the page, the object is placed on this page.
- * 4: The object is inserted in a newly allocated page. Don't care about
- *    reserve space here.
- *
- * The heap manager provides facilities for scanning objects (first, next,
- * prior, and last) for use mainly by the query evaluator. The scanning of
- * objects can be done by copying or peeking the objects. A scancache
- * structure is used by the heap manager to optimize future scans by caching
- * the latest fetched page and by reusing memory allocated by the heap manager
- * This structure is optional, it must be defined and undefined by the user of
- * scan operations. Using many scancaches at the same time should be avoided
- * since page buffers are fixed and locked for future references and there is
- * a limit of buffers in the page buffer pool. This is analogous to fetching
- * many pages at the same time. The following general restrictions apply when
- * peeking objects:
- * 1: scan_cache is always required when peeking.
- * 2: Update operations should not be made to the page where the object is
- *    stored until the peeking of the object is done. This is important since
- *    the heap manager may decide to move the object around during an update.
- *    The heap manager prevents updates to the page by other transaction by
- *    locking the page in shared mode.
- * 3: A peek is declared done when another scan operation (either peek or
- *    copy) is executed with either the same scan_cache or recdes. If the
- *    caller needs the object for a longer time, the object should be copied
- *    or re_fetched.
- *
- * The heap manager also provides capabilities to scan object by defining
- * scan ranges of set of objects.
- *
- * The design of the object heap manger is an adaptation of the approaches
- * used by System R [ASTR76], Ingres[STON76], and Genesis/Jupiter[GARZ85].
- *
- * MODULE INTERFACE
- *
- * The following modules are called by the heap file object manager:
- *
- *      Page buffer Manager:         To fetch/free/dirty heap pages
- *      Lock Manager:                To latch/unlatch data pages
- *      File Manager:                To allocate/deallocate heap pages
- *                                   To create/destroy heap files
- *      Slotted page manager:        To manage (insertions, deletions, and
- *                                      updates) of heap pages
- *      Disk representation manager: To retrieve attributes such as class_oid,
- *                                      coherence number of disk objects.
- *      Log Manager:                 To log update actions
- *
- * At least the following modules call the heap file object manager:
- *
- *      Transaction object locator at server:
- *                                   To insert, update, retrieve, and prefetch
- *                                      heap objects.
- *      Query evaluator:             To scan heap objects during query
- *                                      evaluation.
- *      Btree Loader:                To populate a B+tree index.
- *      Boot manager at server:      To retrieve and update system parameters.
- *      Transaction object locator at client:
- *                                   To create heap files.
- *
- * REFERENCES:
- *
- * [ASTR76] Astrahan, M., et al., "System R: Relational Approach to Database
- *          Management," ACM Transaction on Database Systems, Vol. 1, No. 2,
- *          June 1976, pp 97-137.
- * [GARZ85] Garza, J. F., "Design and Implementation of Jupiter: A General
- *          File Management System," M. Thesis, Dep. of Computer Science, The
- *          University of Texas at Austin, May 1985.
- * [STON76] Stonebraker, M., et al., "The Design and Implementation of
- *          Ingres," ACM transactions on Database systems, Vol. 1, No. 3,
- *          Sep. 1970, pp. 189-222.
  */
 
 #ident "$Id$"
@@ -183,23 +29,22 @@
 
 #include "porting.h"
 #include "heap_file.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "system_parameter.h"
 #include "oid.h"
 #include "error_manager.h"
-#include "locator_bt.h"
+#include "locator.h"
 #include "file_io.h"
 #include "page_buffer.h"
 #include "file_manager.h"
-#include "fldesc.h"
 #include "disk_manager.h"
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "object_representation.h"
-#include "object_representation_earth.h"
-#include "log.h"
-#include "lock.h"
+#include "object_representation_sr.h"
+#include "log_manager.h"
+#include "lock_manager.h"
 #include "memory_hash.h"
 #include "critical_section.h"
 #include "boot_sr.h"
@@ -211,8 +56,8 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "db.h"
-#include "object_print_1.h"
-#include "xserver.h"
+#include "object_print.h"
+#include "xserver_interface.h"
 #include "boot_sr.h"
 
 #ifdef SERVER_MODE
@@ -223,10 +68,10 @@
 #include "language_support.h"
 
 /* For creating multi-column sequence keys (sets) */
-#include "set_object_1.h"
+#include "set_object.h"
 
 #ifdef SERVER_MODE
-#include "csserror.h"
+#include "connection_error.h"
 #endif
 
 /* this must be the last header file included!!! */
@@ -286,27 +131,6 @@ typedef enum
  * Heap file header
  */
 
-/*
- * The statistics reflects approximate values. There are a set of pages that
- * are remembered for an approximation of the larger free space in the heap.
- * The best_space_vpid[0] is usually the last allocated heap page, but not
- * necessarily since the heap can be recycled to avoid wasting space when
- * there are a bunch of almost empty pages. This page is likely, the page
- * with the most free space.
- * The best_space_vpid[1]....best_space_vpid[NUM_BEST2_SPACE] are probabely
- * the pages with the most free space on the heap.
- * The values of best_space_vpid and their corresponding space are only
- * approximations used during insertions to avoid wasting a lot of space on
- * the heap and to speed up the insertion process (i.e., avoid checking for
- * all heap pages). During the insertion process, an incorrect space free
- * value may be fixed to reflect the current value. During updates and
- * deletions the values are not necessarily put upto date. In general the
- * statistics for space are updated only when an involved page drops to more
- * than EMPTY_PERCENT empty. Note only when the page drops to such percent, not
- * when the page was already at such percent.
- * The set of best pages can also be updated when the heap is scanned, in this
- * case only pages which are very empty are taken in consideration.
- */
 
 #define HEAP_NUM_BEST_SPACESTATS  10
 #define HEAP_BEST1                 0
@@ -2556,17 +2380,6 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ER_FAILED;
     }
 
-  /*
-   * Don't update statistics if the file is new and we are in the middle of
-   * a nested top system operation. This is done since a portion of the
-   * file can be rolled back. And we do not log the statistics.
-   * That is, pages can be deallocated from the new file and we should not
-   * point to those pages in the statistics, otherwise, if we rollabck
-   * we may be using those pages which do not belong to us any longer.
-   *
-   * This should work fine most of the times since the statistics get
-   * refreshed at a later point.
-   */
 
   if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
     {
@@ -2608,8 +2421,8 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   best = heap_hdr->estimates.head;
 
-  if (free_space >= heap_stats_get_min_freespace (heap_hdr) &&
-      !VPID_EQ (lotspace_vpid, &heap_hdr->estimates.best[HEAP_BEST1].vpid))
+  if (free_space >= heap_stats_get_min_freespace (heap_hdr)
+      && !VPID_EQ (lotspace_vpid, &heap_hdr->estimates.best[HEAP_BEST1].vpid))
     {
       /*
        * We do not compare with the current stored values since these values
@@ -2727,17 +2540,6 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ER_FAILED;
     }
 
-  /*
-   * Don't update statistics if the file is new and we are in the middle of
-   * a nested top system operations. This is done since a portion of the
-   * file can be rolled back..and we do not log the statistics.
-   * That is, pages can be deallocated from the new file and we should not
-   * point to those pages in the statistics, otherwise, if we rollabck
-   * we may be using those pages which do not belong to us any longer.
-   *
-   * This should work fine most of the times since the statistics get
-   * refreshed at a later point.
-   */
 
   if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
     {
@@ -2791,8 +2593,8 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
       for (i = 0; i < num_best; i++)
 	{
 	  if (VPID_EQ (&bestspace[i].vpid,
-		       &heap_hdr->estimates.best[HEAP_BEST1].vpid) ||
-	      bestspace[i].freespace < min_freespace)
+		       &heap_hdr->estimates.best[HEAP_BEST1].vpid)
+	      || bestspace[i].freespace < min_freespace)
 	    {
 	      continue;
 	    }
@@ -2957,17 +2759,6 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
   scan_cache->collect_nrecs = 0;
   scan_cache->collect_recs_sumlen = 0;
 
-  /*
-   * Don't update statistics if the file is new and we are in the middle of
-   * a nested top system operations. This is done since a portion of the
-   * file can be rolled back..and we do not log the statistics.
-   * That is, pages can be deallocated from the new file and we should not
-   * point to those pages in the statistics, otherwise, if we rollabck
-   * we may be using those pages which do not belong to us any longer.
-   *
-   * This should work fine most of the times since the statistics get
-   * refreshed at a later point.
-   */
 
   if (new_valid == DISK_INVALID
       || log_is_tran_in_system_op (thread_p) == false)
@@ -3061,8 +2852,8 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
        */
 
       for (i = 0, ncopies = 0;
-	   i < scan_cache->collect_nbest
-	   && ncopies < HEAP_NUM_BEST_SPACESTATS; i++)
+	   (i < scan_cache->collect_nbest
+	    && ncopies < HEAP_NUM_BEST_SPACESTATS); i++)
 	{
 	  for (j = 0, best = i; j < HEAP_NUM_BEST_SPACESTATS; j++)
 	    {
@@ -3259,8 +3050,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		spage_max_space_for_new_record (thread_p, *pgptr);
 	      if (bestspace[*idx_found].freespace >= needed_space)
 		{
-		  if (ishigh_best == true &&
-		      bestspace[*idx_found].freespace < HEAP_DROP_FREE_SPACE)
+		  if (ishigh_best == true
+		      && (bestspace[*idx_found].freespace <
+			  HEAP_DROP_FREE_SPACE))
 		    {
 		      *num_high_best -= 1;
 		      if (*num_high_best < 0)
@@ -3271,8 +3063,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		}
 	      else
 		{
-		  if (ishigh_best == true &&
-		      bestspace[*idx_found].freespace < HEAP_DROP_FREE_SPACE)
+		  if (ishigh_best == true
+		      && (bestspace[*idx_found].freespace <
+			  HEAP_DROP_FREE_SPACE))
 		    {
 		      *num_high_best -= 1;
 		      if (*num_high_best < 0)
@@ -3396,8 +3189,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 		    scan_cache->unfill_space);
 
       if (pgptr == NULL
-	  || (cur_freespace =
-	      spage_max_space_for_new_record (thread_p, pgptr)) < totalspace)
+	  || ((cur_freespace = spage_max_space_for_new_record (thread_p,
+							       pgptr)) <
+	      totalspace))
 	{
 
 	  if (pgptr != NULL)
@@ -3409,9 +3203,8 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      for (idxbadspace = 0;
 		   idxbadspace < scan_cache->collect_nbest; idxbadspace++)
 		{
-		  if (VPID_EQ
-		      (&scan_cache->collect_best[idxbadspace].vpid,
-		       vpid_pgptr))
+		  if (VPID_EQ (&scan_cache->collect_best[idxbadspace].vpid,
+			       vpid_pgptr))
 		    {
 		      scan_cache->collect_best[idxbadspace].freespace =
 			cur_freespace;
@@ -3428,11 +3221,15 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 	  if (scan_cache->collect_nbest > 1)
 	    {
-	      if (heap_stats_find_page_in_bestspace
-		  (thread_p, scan_cache->collect_best,
-		   scan_cache->collect_nbest, &idxbadspace, &ignore2,
-		   &ignore3, totalspace, scan_cache,
-		   &pgptr) == HEAP_FINDSPACE_ERROR)
+	      if (heap_stats_find_page_in_bestspace (thread_p,
+						     scan_cache->collect_best,
+						     scan_cache->
+						     collect_nbest,
+						     &idxbadspace, &ignore2,
+						     &ignore3, totalspace,
+						     scan_cache,
+						     &pgptr) ==
+		  HEAP_FINDSPACE_ERROR)
 		{
 		  return NULL;
 		}
@@ -3488,9 +3285,8 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       return NULL;
     }
 
-  if (spage_get_record
-      (addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes,
-       PEEK) != S_SUCCESS)
+  if (spage_get_record (addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			&hdr_recdes, PEEK) != S_SUCCESS)
     {
       pgbuf_unfix (thread_p, addr_hdr.pgptr);
       addr_hdr.pgptr = NULL;
@@ -3499,19 +3295,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
-  /*
-   * Note that it is OK to update the statistics without logging them since
-   * if the system crashes or transaction rollbacks, the statistics are
-   * refreshed at a later time. Note that pages may be shared by multiple
-   * concurrent transactions, thus the deallocation cannot be undone. In
-   * the case of new files, the file and their pages are deallocated when
-   * the transaction that create the file is aborted.
-   *
-   * If this is a new file and we are in the middle of a top system operation,
-   * it is OK to update the statistics as long as we don't add new page
-   * identifiers to it. If we add new page identifiers, we must add an undo
-   * log, that it is.
-   */
 
   if (scan_cache != NULL && update_bestestimates == true)
     {
@@ -3545,15 +3328,16 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   while (true)
     {
       pgptr = NULL;
-      if (update_bestestimates == false &&
-	  heap_stats_find_page_in_bestspace (thread_p,
-					     heap_hdr->estimates.best,
-					     HEAP_NUM_BEST_SPACESTATS,
-					     &heap_hdr->estimates.head,
-					     &heap_hdr->estimates.
-					     num_high_best, &idx_found,
-					     totalspace, scan_cache,
-					     &pgptr) == HEAP_FINDSPACE_ERROR)
+      if (update_bestestimates == false
+	  && heap_stats_find_page_in_bestspace (thread_p,
+						heap_hdr->estimates.best,
+						HEAP_NUM_BEST_SPACESTATS,
+						&heap_hdr->estimates.head,
+						&heap_hdr->estimates.
+						num_high_best, &idx_found,
+						totalspace, scan_cache,
+						&pgptr) ==
+	  HEAP_FINDSPACE_ERROR)
 	{
 	  pgbuf_unfix (thread_p, addr_hdr.pgptr);
 	  addr_hdr.pgptr = NULL;
@@ -3566,33 +3350,12 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
       else
 	{
-	  if (needed_space < HEAP_DROP_FREE_SPACE &&
-	      heap_hdr->estimates.num_other_high_best > 1)
+	  if (needed_space < HEAP_DROP_FREE_SPACE
+	      && heap_hdr->estimates.num_other_high_best > 1)
 	    {
 
-	      /*
-	       * Synchronizing the space as much as you can.
-	       *
-	       * In general, we do not need to log hints related to best space.
-	       * If there is a system crash, it does not matter since the value
-	       * is only a hint. It is recalculated again. Note that pages may
-	       * be shared by multiple concurrent transactions, thus the
-	       * deallocation cannot be undone. In the case of new files, the
-	       * file and their pages are deallocated when the transaction that
-	       * create the file is aborted.
-	       *
-	       * An undo log is need if the file is a new one and we are in the
-	       * middle of a nested top operation. This is needed since the new
-	       * page can be rolled back by the top operation, and we do not want
-	       * to be pointing to it after the rollback.
-	       *
-	       * In general we do not need the undo log if we are not in a top system
-	       * operation or the file is old since pages may be shared by multiple
-	       * concurrent transactions, thus the deallocation cannot be undone.
-	       */
-
-	      if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID &&
-		  log_is_tran_in_system_op (thread_p) == true)
+	      if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID
+		  && log_is_tran_in_system_op (thread_p) == true)
 		{
 		  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
 					sizeof (*heap_hdr), heap_hdr);
@@ -3637,23 +3400,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
        * be accurate.
        */
 
-      /*
-       * In general, We do not log hints related to best space. If there is a
-       * system crash, it does not matter since the value is only a hint. It is
-       * reclaculated again. Note that pages may be shared by multiple
-       * concurrent transactions, thus the deallocation cannot be undone. In the
-       * case of new files, the file and their pages are deallocated when
-       * the transaction that create the file is aborted.
-       *
-       * An undo log is need if the file is a new one and we are in the middle
-       * of a nested top operation. This is needed since the new page can be
-       * rolled back by the top operation, and we do not want to be pointing to
-       * it after the rollback.
-       *
-       * In general we do not need the undo log if we are not in a top system
-       * operation or the file is old since pages may be shared by multiple
-       * concurrent transactions, thus the deallocation cannot be undone.
-       */
 
       if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID
 	  && log_is_tran_in_system_op (thread_p) == true)
@@ -3807,12 +3553,12 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      pgptr = NULL;
 	      break;
 	    }
-	  num_pages +=
-	    spage_count_pages (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID);
-	  num_recs +=
-	    spage_count_records (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID);
-	  recs_sumlen +=
-	    spage_sum_length_of_records (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID);
+	  num_pages += spage_count_pages (pgptr,
+					  HEAP_HEADER_AND_CHAIN_SLOTID);
+	  num_recs += spage_count_records (pgptr,
+					   HEAP_HEADER_AND_CHAIN_SLOTID);
+	  recs_sumlen += spage_sum_length_of_records (pgptr,
+						      HEAP_HEADER_AND_CHAIN_SLOTID);
 	  free_space = spage_max_space_for_new_record (thread_p, pgptr);
 
 	  if (free_space >= min_freespace
@@ -3821,9 +3567,9 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      if (best < HEAP_NUM_BEST_SPACESTATS)
 		{
 
-		  if (scanall != true && cancycle == true &&
-		      !VPID_EQ (&heap_hdr->estimates.best[HEAP_BEST1].vpid,
-				&last_vpid))
+		  if (scanall != true && cancycle == true
+		      && !VPID_EQ (&heap_hdr->estimates.best[HEAP_BEST1].vpid,
+				   &last_vpid))
 		    {
 		      /*
 		       * Make the current page the last for bestspace purposes. If
@@ -3982,16 +3728,6 @@ heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 
       addr.pgptr = link->hdr_pgptr;
 
-      /*
-       * An undo log is need if the file is a new one and we are in the middle
-       * of a nested top operation. This is needed since the new page can be
-       * rolled back by the top operation, and we do not want to be pointing to
-       * it after the rollback.
-       *
-       * In general we do not need the undo log if we are not in a top system
-       * operation or the file is old since pages may be shared by multiple
-       * concurrent transactions, thus the deallocation cannot be undone.
-       */
 
       if (log_is_tran_in_system_op (thread_p) == true)
 	{
@@ -4027,16 +3763,6 @@ heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  return false;		/* Initialization has failed */
 	}
 
-      /*
-       * An undo log is need if the file is a new one and we are in the middle
-       * of a nested top operation. This is needed since the new page can be
-       * rolled back by the top operation, and we do not want to be pointing to
-       * it after the rollback.
-       *
-       * In general we do not need the undo log if we are not in a top system
-       * operation or the file is old since pages may be shared by multiple
-       * concurrent transactions, thus the deallocation cannot be undone.
-       */
 
       if (log_is_tran_in_system_op (thread_p) == true)
 	{
@@ -4457,23 +4183,6 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
    * automatically sooner or later
    */
 
-  /*
-   * In general, We do not log hints related to best space. If there is a
-   * system crash, it does not matter since the value is only a hint. It is
-   * reclaculated again. Note that pages may be shared by multiple
-   * concurrent transactions, thus the deallocation cannot be undone. In the
-   * case of new files, the file and their pages are deallocated when
-   * the transaction that create the file is aborted.
-   *
-   * An undo log is need if the file is a new one and we are in the middle
-   * of a nested top operation. This is needed since the new page can be
-   * rolled back by the top operation, and we do not want to be pointing to
-   * it after the rollback.
-   *
-   * In general we do not need the undo log if we are not in a top system
-   * operation or the file is old since pages may be shared by multiple
-   * concurrent transactions, thus the deallocation cannot be undone.
-   */
 
   if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID
       && log_is_tran_in_system_op (thread_p) == true)
@@ -4483,8 +4192,8 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
 			    heap_hdr);
     }
 
-  if (scan_cache->collect_nbest > npages ||
-      scan_cache->collect_nbest >= HEAP_NUM_BEST_SPACESTATS)
+  if (scan_cache->collect_nbest > npages
+      || scan_cache->collect_nbest >= HEAP_NUM_BEST_SPACESTATS)
     {
       /*
        * Likely, I started with a copy of the statistics, or we allocated
@@ -4623,10 +4332,10 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 	   * space is at least min free space to add a new record. May be what we
 	   * need here is HEAP_DROP_FREE_SPACE.
 	   */
-	  if (heap_hdr->estimates.best[HEAP_BEST1].freespace >
-	      min_freespace
-	      && heap_hdr->estimates.best[HEAP_BEST1].freespace >
-	      heap_hdr->estimates.best[best].freespace)
+	  if ((heap_hdr->estimates.best[HEAP_BEST1].freespace >
+	       min_freespace)
+	      && (heap_hdr->estimates.best[HEAP_BEST1].freespace >
+		  heap_hdr->estimates.best[best].freespace))
 	    {
 
 	      heap_hdr->estimates.best[best].vpid =
@@ -4650,9 +4359,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    }
 
 	  /* Get the chain record and put it in recdes...which points to chain */
-	  if (spage_get_record
-	      (best_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
-	       PEEK) != S_SUCCESS)
+	  if (spage_get_record (best_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+				&recdes, PEEK) != S_SUCCESS)
 	    {
 	      /* Look like a system error. Unable to obtain chain header record */
 	      pgbuf_unfix (thread_p, best_pgptr);
@@ -5991,15 +5699,14 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
    * of an OID as the length.
    */
 
-  recdes.length = ((expected_length > sizeof (OID) &&
-		    !heap_is_big_length (expected_length))
+  recdes.length = ((expected_length > sizeof (OID)
+		    && !heap_is_big_length (expected_length))
 		   ? expected_length : sizeof (OID));
 
   recdes.data = NULL;
   recdes.type = REC_ASSIGN_ADDRESS;
-  oid =
-    heap_insert_internal (thread_p, hfid, oid, &recdes, NULL, false,
-			  recdes.length);
+  oid = heap_insert_internal (thread_p, hfid, oid, &recdes, NULL, false,
+			      recdes.length);
 
   return oid;
 }
@@ -6040,8 +5747,8 @@ heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
    * of an OID as the length.
    */
 
-  recdes.length = ((expected_length > sizeof (OID) &&
-		    !heap_is_big_length (expected_length))
+  recdes.length = ((expected_length > sizeof (OID)
+		    && !heap_is_big_length (expected_length))
 		   ? expected_length : sizeof (OID));
 
   recdes.data = NULL;
@@ -6134,17 +5841,6 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
       oid->volid = pgbuf_get_volume_id (addr.pgptr);
       oid->pageid = pgbuf_get_page_id (addr.pgptr);
 
-      /*
-       * If this is a REC_ASSIGN_ADDRESS attempt, alter the recdes so that
-       * the information that gets stored in the log is the number of bytes
-       * that we just reserved.  Because we're only reserving the address,
-       * there isn't real data to log, but we need to log the number of
-       * bytes that we reserved so that we'll be sure to reserve the same
-       * number during recovery.
-       *
-       * Note: we may change the value of recdes here, so any use of
-       * that variable after this point had better be double-checked.
-       */
       if (recdes->type == REC_ASSIGN_ADDRESS)
 	{
 	  bytes_reserved = (INT16) recdes->length;
@@ -6174,8 +5870,8 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
    * Cache the page for any future scan modifications
    */
 
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true &&
-      ishome_insert == true)
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
+      && ishome_insert == true)
     {
       scan_cache->pgptr = addr.pgptr;
     }
@@ -6283,17 +5979,6 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  goto unfix_end;
 	}
 
-      /*
-       * If this is a REC_ASSIGN_ADDRESS attempt, alter the recdes so that
-       * the information that gets stored in the log is the number of bytes
-       * that we just reserved.  Because we're only reserving the address,
-       * there isn't real data to log, but we need to log the number of
-       * bytes that we reserved so that we'll be sure to reserve the same
-       * number during recovery.
-       *
-       * Note: we may change the value of recdes here, so any use of
-       * that variable after this point had better be double-checked.
-       */
       if (recdes->type == REC_ASSIGN_ADDRESS)
 	{
 	  bytes_reserved = (INT16) recdes->length;
@@ -6421,8 +6106,8 @@ unfix_end:
   /*
    * Cache the page for any future scan modifications
    */
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true &&
-      ishome_insert == true)
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
+      && ishome_insert == true)
     {
       scan_cache->pgptr = addr.pgptr;
     }
@@ -6525,15 +6210,14 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
   else
     {
       recdes->type = REC_HOME;
-      oid =
-	heap_insert_with_lock_internal (thread_p, hfid, oid, &class_oid,
-					recdes, scan_cache, true,
-					recdes->length);
+      oid = heap_insert_with_lock_internal (thread_p, hfid, oid, &class_oid,
+					    recdes, scan_cache, true,
+					    recdes->length);
     }
 
-  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL &&
-      hfid != NULL && oid != NULL &&
-      HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
+  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
+      && hfid != NULL && oid != NULL
+      && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
 
       if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
@@ -6568,95 +6252,6 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                       between heap changes.
  *
- * Note: The object associated with OID is replaced by the new content
- * specified by the record descriptor. The heap manager follows
- * one of the following algorithms depending upon the type of the
- * current record:
- *              1: CONTENT AT HOME. If the content of the object is currently
- *                 stored at its home address (OID), one of the following
- *                 cases is followed:
- *
- *                 a: If the content of the object does fit at its original
- *                    address (OID page), the object is updated at this
- *                    location.
- *
- *                 b: If the content of the object can be stored in a single
- *                    page, a new home for the object is found at the heap
- *                    file. The contents of the object is stored on this new
- *                    home as a relocated record. A relocation record is
- *                    created at its original home (OID) to map to the new
- *                    home address. The relocation record indicates that the
- *                    object has been relocated and the address of the
- *                    relocated record (content of object).
- *
- *                 c: The object is now a multipage object, its content must
- *                    be stored in overflow. An overflow relocation record is
- *                    created at its original address (OID) to map to the
- *                    overflow home. The relocation record indicates that the
- *                    content of the object is stored in overflow and the
- *                    overflow address.
- *
- *              2: CONTENT HAS BEEN RELOCATED. If the content of the object
- *                 is currently relocated, one of the following cases is
- *                 followed:
- *
- *                 a: If there is space to return the content of the object to
- *                    its home (OID) page, the object is returned to its home
- *                    and the old relocated record (old home) is removed. The
- *                    slotid of the relocated record can be reused since this
- *                    is not part of an OID object.
- *
- *                 b: If there is space to update the object at its new home
- *                    (relocated record), the content of the object is updated
- *                    at this location.
- *
- *                 c: If the content of the object can be stored in a single
- *                    page, a new home for the object is found. The content
- *                    of the object is stored on this new home as a relocated
- *                    record. The relocation record (i.e., at home/OID) is
- *                    updated to map to the new home and the old relocated
- *                    record (i.e., old content/old newhome) is removed.
- *
- *                 d: The object is now a multipage object, its content must
- *                    be stored in overflow. The relocation record (i.e, at
- *                    home/OID) is updated to map to the overflow location and
- *                    the old relocated record (i.e, old content) is removed.
- *                    The relocation record (OID) also indicates that the
- *                    object is a multipage object.
- *
- *              3: CONTENT AT OVERFLOW/MULTIPAGE OBJECT. If the content of the
- *                 object is currently stored in overflow, one of the
- *                 following cases is followed:
- *
- *                 a: If the object is still a multipage object, it is updated
- *                    in overflow.
- *
- *                 b: If there is space to store the object at its home page
- *                    (OID page), the object is stored at the home page and
- *                    the overflow record is removed.
- *
- *                 c: The object is relocated, a new home for the content of
- *                    the object is found. The contents of the object is
- *                    stored on this new home as a relocated record. A
- *                    relocation record (i.e., at home/OID) is created to
- *                    to map to the new home and the old relocated overflow
- *                    record is removed. The relocation record also indicates
- *                    that the content of the object has been relocated at
- *                    another heap page.
- *
- * The relocation process is needed since the OID of an object
- * cannot be changed. CUBRID prevents relocations by reserving
- * some free space in each heap file for future updates. The
- * reserved free space is specified by the unfill_factor system
- * parameter. The overflow relocation process was designed to
- * avoid adding overhead to normal processing of the heap module
- * and to avoid using the long data manager. The long data
- * manager is not a good choice since heap objects are retrieved
- * and stored as a whole instead of in parts, this long data
- * overhead is avoided.
- *
- * The function indicates through the parameter old, if a content
- * of the object was previously stored.
  */
 const OID *
 heap_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
@@ -6824,53 +6419,6 @@ try_again:
   switch (type)
     {
     case REC_RELOCATION:
-      /*
-       * The object stored on the page is a relocation record. The relocation
-       * record is used as a map to find the actual location of the content of
-       * the object.
-       *
-       * We must be careful about a deadlock here since we could have the
-       * following situation:
-       *
-       * Page 100
-       * ---------------------------
-       * | relocation  content     |
-       * |  object 1   of object 2 |
-       * ---------------------------
-       *
-       * Page 101
-       * ---------------------------
-       * | relocation  content     |
-       * |  object 2   of object 1 |
-       * ---------------------------
-       *
-       * Now, assume that one transaction wants to update object 1 while
-       * another transaction wants to update object 2. The following situation
-       * can produce a deadlock:
-       *
-       * a) Tran 1, acquires an X_LOCK on page 100.
-       * b) Tran 2, acquires an X_LOCK on page 101.
-       * c) Tran 1, requests an X_LOCK on page 101;
-       *    must wait on Tran 2.
-       * d) Tran 2, requests an X_LOCK on page 100;
-       *    must wait on Tran 1,
-       *
-       * This is a deadlock caused by the system.
-       *
-       * The solution to this problem is not to acquire locks in pieces. We
-       * should acquire all needed locks at once, instead of one at a time.
-       * Unfortunately, we are unable to know the second page before the
-       * relocation record is read. To avoid, a deadlock, we must release
-       * the acquired lock and then request the two locks at once.
-       *
-       * For performance reasons, the above algorithm is changed as follow:
-       * While holding an X_LOCK lock on home page (OID page), we try to get
-       * an X_LOCK lock on new home page (content page) without waiting. If
-       * we cannot obtain the lock, someone else has acquired an incompatible
-       * lock on this page. To avoid the deadlock, we release the lock on home
-       * page, and request locks on both pages at once.
-       *
-       */
       forward_recdes.data = (char *) &forward_oid;
       forward_recdes.length = sizeof (forward_oid);
       forward_recdes.area_size = sizeof (forward_oid);
@@ -6975,21 +6523,6 @@ try_again:
 	      || spage_is_updatable (thread_p, forward_addr.pgptr,
 				     forward_oid.slotid, recdes) == false)
 	    {
-	      /*
-	       * DOES NOT FIT ON RELOCATED HOME PAGE (content page) ANY LONGER.
-	       *
-	       * It must be stored on another place (either another heap page or
-	       * overflow).
-	       *
-	       * To avoid a possible deadlock, make sure that you do not wait on
-	       * a exclusive lock on header page while finding heap space,
-	       * otherwise, we can end up with a deadlock. If we need to wait,
-	       * release locks and request them in one operation. In case of
-	       * failure, the already released locks have been freed.
-	       *
-	       * Note: that we have not peeked, so we do not need to fix anything
-	       *       at this moment.
-	       */
 
 	      /* Header of heap */
 	      vpid.volid = hfid->vfid.volid;
@@ -7259,21 +6792,6 @@ try_again:
 	  goto error;
 	}
 
-      /*
-       * We are going to read the heap header (e.g., to find out ovf_vfid)
-       * while holding to exclusive locks on other pages. The following
-       * deadlock must be avoided: If add.pgptr is last heap page and another
-       * transaction is allocating new heap page, we could be in trouble
-       * since heap pages are doubled linked.
-       *
-       * To avoid the deadlock, make sure that you do not wait on an exclusive
-       * lock on header page while having an exclusive lock on current page.
-       * If we need to wait, release locks and request them in one operation.
-       * In case of failure, the already released locks have been freed.
-       *
-       * Note: that we have not peeked, so we do not need to fix anything
-       *       at this moment.
-       */
 
       /* Header of heap */
       vpid.volid = hfid->vfid.volid;
@@ -7433,26 +6951,6 @@ try_again:
 	   * a new home must be found.
 	   */
 
-	  /*
-	   * We must avoid possible deadlocks while holding exclusive locks and
-	   * requesting more exclusive locks on the heap.
-	   *
-	   * We are going to read/write the heap header:
-	   * - Find out ovf_vfid from header.
-	   * - Create a new ovf_vfid file and store identifier on header.
-	   * - Find space while updating heap space statistics to relocate the
-	   *   object. We may even need to allocate a new heap last page which
-	   *   must be double linked with previous last heap page.
-	   *
-	   * To avoid the deadlock, make sure that you do not wait on an
-	   * exclusive lock on header page while having an exclusive lock on
-	   * current page. If we need to wait, release locks and request them
-	   * in one operation.
-	   * In case of failure, the already released locks have been freed.
-	   *
-	   * Note: that we have not peeked, so we do not need to fix anything
-	   *       at this moment.
-	   */
 
 	  /* Header of heap */
 	  vpid.volid = hfid->vfid.volid;
@@ -7774,9 +7272,9 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
 	    }
 	}
     }
-  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL &&
-      hfid != NULL && oid != NULL &&
-      HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
+  if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
+      && hfid != NULL && oid != NULL
+      && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
 
       if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
@@ -8082,21 +7580,6 @@ try_again:
        * get the overflow address of the object
        */
 
-      /*
-       * We are going to read the heap header (e.g., to find out ovf_vfid)
-       * while holding to exclusive locks on other pages. The following
-       * deadlock must be avoided: If add.pgptr is last heap page and another
-       * transaction is allocating new heap page, we could be in trouble
-       * since heap pages are doubled linked.
-       *
-       * To avoid the deadlock, make sure that you do not wait on an exclusive
-       * lock on header page while having an exclusive lock on current page.
-       * If we need to wait, release locks and request them in one operation.
-       * In case of failure, the already released locks have been freed.
-       *
-       * Note: that we have not peeked, so we do not need to fix anything
-       *       at this moment.
-       */
 
       /* Header of heap */
       vpid.volid = hfid->vfid.volid;
@@ -8492,8 +7975,8 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
        * (heap header or chain).
        */
 
-      if (spage_number_of_records (pgptr) > 1 ||
-	  (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid))
+      if (spage_number_of_records (pgptr) > 1
+	  || (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid))
 	{
 	  if (spage_reclaim (thread_p, pgptr) == true)
 	    {
@@ -8508,8 +7991,8 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
        * heap cannot be thrown
        */
 
-      if (!(vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid) &&
-	  spage_number_of_records (pgptr) <= 1)
+      if (!(vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid)
+	  && spage_number_of_records (pgptr) <= 1)
 	{
 	  /*
 	   * This page can be thrown away
@@ -8918,9 +8401,8 @@ heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes,
        * when failures (it should be OK since the overflow page should be
        * already in the page buffer pool.
        */
-      scan =
-	overflow_get_nbytes (thread_p, &ovf_vpid, recdes, 0, OR_HEADER_SIZE,
-			     &rest_length);
+      scan = overflow_get_nbytes (thread_p, &ovf_vpid, recdes, 0,
+				  OR_HEADER_SIZE, &rest_length);
       if (scan == S_SUCCESS && chn == or_chn (recdes))
 	{
 	  return S_SUCCESS_CHN_UPTODATE;
@@ -8971,34 +8453,6 @@ heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid,
  *   is_indexscan(in):
  *   lock_hint(in):
  *
- * Note: A scancache structure is initialized. The scancache structure
- * is used to scan objects of a heap using the heap_next, heap_prev,
- * heap_first, heap_last, and optionally heap_get). By specific
- * request the scan cache structure can also be used to cache
- * information about the latest fetched page and memory allocated
- * by the above scan functions. This information is used in
- * future scans, for example, to avoid hashing for the same page
- * in the page buffer pool or defining another allocation area.
- * The caller is responsible for declaring the end of a scan, so
- * that the fixed pages and allocated memory is freed by the heap
- * manager. The above scan function can be executed using either
- * the PEEK or COPY options. When the PEEK option is used the
- * scancache structure must be initialized with the cached_fix
- * page option. On the other hand, the COPY option is used the
- * scancache structure can be initialized with or without the
- * the cached_fix option.
- *
- * Note: Using many scancaches with the cached_fix page option at the
- * same time should be avoided since page buffers are fixed and
- * locked for future references and there is a limit of buffers
- * in the page buffer pool. This is analogous to fetching many
- * pages at the same time. The page buffer pool is expanded when
- * needed, however, developers must pay special attention to
- * avoid this situation.
- *
- * Note: if hfid == NULL && class_oid == NULL, the scancache can be
- * used to fetch several objects of possible different classes
- * through heap_get.
  */
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p,
@@ -9114,8 +8568,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 
   if (is_queryscan == true)
     {
-      if (scan_cache->known_nbest < HEAP_NUM_BEST_SPACESTATS &&
-	  scan_cache->known_nother_best > HEAP_NUM_BEST_SPACESTATS)
+      if (scan_cache->known_nbest < HEAP_NUM_BEST_SPACESTATS
+	  && scan_cache->known_nother_best > HEAP_NUM_BEST_SPACESTATS)
 	{
 	  scan_cache->collect_maxbest = (HEAP_NUM_BEST_SPACESTATS
 					 - scan_cache->known_nbest);
@@ -9208,33 +8662,6 @@ exit_on_error:
  *   is_indexscan(in):
  *   lock_hint(in):
  *
- * Note: A scancache structure is initialized. The scancache structure
- * is used to scan objects of a heap using the heap_next, heap_prev,
- * heap_first, heap_last, and optionally heap_get). By specific
- * request the scan cache structure can also be used to cache
- * information about the latest fetched page and memory allocated
- * by the above scan functions. This information is used in
- * future scans, for example, to avoid hashing for the same page
- * in the page buffer pool or defining another allocation area.
- * The caller is responsible for declaring the end of a scan, so
- * that the fixed pages and allocated memory is freed by the heap
- * manager. The above scan function can be executed using either
- * the PEEK or COPY options. When the PEEK option is used the
- * scancache structure must be initialized with the cached_fix
- * page option. On the other hand, the COPY option is used the
- * scancache structure can be initialized with or without the
- * the cached_fix option.
- *
- * Note: Using many scancaches with the cached_fix page option at the
- * same time should be avoided since page buffers are fixed and
- * locked for future references and there is a limit of buffers
- * in the page buffer pool. This is analogous to fetching many
- * pages at the same time. The page buffer pool is expanded when
- * needed, however, developers must pay special attention to
- * avoid this situation.
- *
- * Note: if hfid == NULL && class_oid == NULL, the scancache can be
- * used to fetch several objects of possible different classes through heap_get.
  */
 int
 heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
@@ -9409,24 +8836,12 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
       scan_cache->pgptr = NULL;
     }
 
-  /*
-   * Don't update statistics if the file is new and we are in the middle of
-   * a nested top system operations. This is done since a portion of the
-   * file can be rolled back..and we do not log the statistics.
-   * That is, pages can be deallocated from the new file and we should not
-   * point to those pages in the statistics, otherwise, if we rollabck
-   * we may be using those pages which do not belong to us any longer.
-   *
-   * This should work fine most of the times since the statistics get
-   * refreshed at a later point.
-   */
 
-  if (scan_cache->collect_nbest > 0 &&
-      scan_cache->collect_recs_sumlen > 0.0 &&
-      (file_new_isvalid (thread_p, &scan_cache->hfid.vfid) != DISK_VALID ||
-       log_is_tran_in_system_op (thread_p) != true))
+  if (scan_cache->collect_nbest > 0
+      && scan_cache->collect_recs_sumlen > 0.0
+      && (file_new_isvalid (thread_p, &scan_cache->hfid.vfid) != DISK_VALID
+	  || log_is_tran_in_system_op (thread_p) != true))
     {
-
       /* Retrieve the header of heap */
       vpid.volid = scan_cache->hfid.vfid.volid;
       vpid.pageid = scan_cache->hfid.hpgid;
@@ -9718,8 +9133,8 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  if (scan_cache->known_nrecs <= scan_cache->collect_nrecs &&
-	      scan_cache->collect_nbest <= 0)
+	  if (scan_cache->known_nrecs <= scan_cache->collect_nrecs
+	      && scan_cache->collect_nbest <= 0)
 	    {
 	      num_best = 0;
 	      num_other_best = 0;
@@ -9957,8 +9372,10 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
    */
 
   if (nobjs > 0 && heap_hdr->estimates.num_other_high_best > 0)
-    nobjs -= ((HEAP_DROP_FREE_SPACE / avg_objsize) *
-	      heap_hdr->estimates.num_other_high_best);
+    {
+      nobjs -= ((HEAP_DROP_FREE_SPACE / avg_objsize) *
+		heap_hdr->estimates.num_other_high_best);
+    }
 
   if (nobjs > 0)
     {
@@ -9996,8 +9413,8 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
       /*
        * Growth the collect_best array if needed, but don't let it too large.
        */
-      if (npages > scan_cache->collect_maxbest &&
-	  scan_cache->collect_maxbest < 400)
+      if (npages > scan_cache->collect_maxbest
+	  && scan_cache->collect_maxbest < 400)
 	{
 	  if (npages > 400)
 	    {
@@ -10008,12 +9425,11 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
 	      nobj_page = npages;
 	    }
 
-	  ptr =
-	    (HEAP_BESTSPACE *) db_private_realloc (thread_p,
-						   scan_cache->collect_best,
-						   sizeof (*scan_cache->
-							   collect_best) *
-						   nobj_page);
+	  ptr = (HEAP_BESTSPACE *)
+	    db_private_realloc (thread_p,
+				scan_cache->collect_best,
+				(sizeof (*scan_cache->collect_best) *
+				 nobj_page));
 	  if (ptr == NULL)
 	    {
 	      goto exit_on_error;
@@ -10032,16 +9448,16 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      new_pgptr =
-	heap_vpid_prealloc_set (thread_p, &scan_cache->hfid, hdr_pgptr,
-				heap_hdr, npages, scan_cache);
+      new_pgptr = heap_vpid_prealloc_set (thread_p, &scan_cache->hfid,
+					  hdr_pgptr, heap_hdr, npages,
+					  scan_cache);
       if (new_pgptr == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      if (scan_cache->pgptr == NULL &&
-	  scan_cache->cache_last_fix_page == true)
+      if (scan_cache->pgptr == NULL
+	  && scan_cache->cache_last_fix_page == true)
 	{
 	  scan_cache->pgptr = new_pgptr;
 	}
@@ -10202,43 +9618,6 @@ heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid)
  *                  COPY when the object is copied
  *   chn(in):
  *
- * Note: When the value of is_peeking is PEEK, the object associated
- * with the given OID is peeked into the page buffer where the
- * object resides, or into a memory area allocated by the heap
- * manager to keep the object. A memory area is used instead of a
- * page buffer when the desired object is a multipage object. The
- * data address in the record descriptor is set to either the
- * portion of the page buffer where the object is stored or the
- * area where the object is glued in one piece, so that the
- * caller does not have to be aware of implementation issues. The
- * length of the object is set in the record descriptor
- * (i.e., recdes->length). The following restrictions apply:
- *
- *              1: scan_cache must be always initialized with the fixed page
- *                 option when peeking.
- *
- *              2: Update operations should not be made to the page where the
- *                 object is stored until the peeking of the object is done.
- *                 This is important since the heap manager may decide to
- *                 move the object around during an update. The heap manager
- *                 prevents updates to the page by other transaction by
- *                 locking the page in shared mode.
- *
- *              3: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the object for a longer
- *                 time, the object should be copied or re_fetched.
- *
- * When the value of is_peeking is COPY, the object associated
- * with the given OID is copied into the data area pointed to by
- * the record descriptor. The length of the object is set in the
- * record descriptor (i.e., recdes->length). If the object does
- * not fit in such an area (i.e, recdes->area_size), the length
- * of the object is returned as a negative value in
- * recdes->length and an error condition is returned. A
- * scan_cache with the fixed page option is not required when
- * copying. However, it can be initialized with the above option
- * for performance considerations.
  */
 SCAN_CODE
 heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
@@ -10263,8 +9642,8 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
       return S_ERROR;
     }
 
-  if (scan_cache != NULL &&
-      scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
+  if (scan_cache != NULL
+      && scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "heap_get: Your scancache is not initialized");
@@ -10305,8 +9684,8 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
    * page
    */
 
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true &&
-      scan_cache->pgptr != NULL)
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true
+      && scan_cache->pgptr != NULL)
     {
       vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
       if (VPID_EQ (&vpid, vpidptr_incache))
@@ -10446,9 +9825,8 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	  /* The allocated space is enough to save  the instance. */
 	}
 
-      scan =
-	heap_get_if_diff_chn (pgptr, forward_oid.slotid, recdes, ispeeking,
-			      chn);
+      scan = heap_get_if_diff_chn (pgptr, forward_oid.slotid, recdes,
+				   ispeeking, chn);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
 	  /* Save the page for a future scan */
@@ -10514,8 +9892,9 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	  recdes->area_size = scan_cache->area_size;
 	  /* The allocated space is enough to save the instance. */
 	}
-      scan =
-	heap_get_if_diff_chn (pgptr, oid->slotid, recdes, ispeeking, chn);
+
+      scan = heap_get_if_diff_chn (pgptr, oid->slotid, recdes, ispeeking,
+				   chn);
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
 	  /* Save the page for a future scan */
@@ -10676,52 +10055,6 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, const OID * oid,
  *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peeking is PEEK, the next available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), to the one associated with
- * the given OID is peeked into the page buffer where the next
- * object resides, or into a memory area allocated by the heap
- * manager to keep the object. A memory area is used instead of a
- * page buffer when the desired object is a multipage object. The
- * data address in the record descriptor is set to either the
- * portion of the page buffer where the next object is stored or
- * the area where the next object is glued in one piece, so that
- * the caller does not have to be aware of implementation issues.
- * The length of the next object is set in the record descriptor
- * (i.e., recdes->length). The identifier of the object is
- * indicated in next_oid. If there is not an available object, a
- * NULL_OID is stored as the value of next_oid.
- * The following restrictions apply:
- *
- *              1: scan_cache must be always initialized with the fixed page
- *                 option when peeking.
- *
- *              2: Update operations should not be made to the page where the
- *                 next object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 next object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *
- *              3: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the next object for a longer
- *                 time, the object should be copied or re_fetched.
- *
- * When the value of is_peeking is COPY, the next available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), to the one associated with
- * the given OID is copied into the data area pointed to by the
- * record descriptor. The length of the object is set in the
- * record descriptor (i.e., recdes->length). If the next object
- * does not fit in such an area (i.e, recdes->area_size), the
- * length of the object is returned as a negative value in
- * recdes->length and an error condition is returned. The
- * identifier of the next object is indicated in next_oid. If
- * there is not an available object, a NULL_OID is stored as the
- * value of next_oid. A scan_cache value with the fixed page
- * option is not required when copying. However, it can be
- * initialized with the above option for performance considerations.
  */
 SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
@@ -10747,8 +10080,8 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return S_ERROR;
     }
-  if (scan_cache != NULL &&
-      scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
+  if (scan_cache != NULL
+      && scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "heap_next: Your scancache is not initialized");
@@ -10818,8 +10151,8 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (scan_cache != NULL)
 	    {
 	      pgptr = NULL;
-	      if (scan_cache->cache_last_fix_page == true &&
-		  scan_cache->pgptr != NULL)
+	      if (scan_cache->cache_last_fix_page == true
+		  && scan_cache->pgptr != NULL)
 		{
 		  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
 		  if (VPID_EQ (&vpid, vpidptr_incache))
@@ -10887,13 +10220,13 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	   * (i.e., the object).
 	   */
 
-	  while ((scan =
-		  spage_next_record (pgptr, &oid.slotid, &forward_recdes,
-				     PEEK)) == S_SUCCESS
+	  while (((scan = spage_next_record (pgptr, &oid.slotid,
+					     &forward_recdes,
+					     PEEK)) == S_SUCCESS)
 		 && (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID
-		     || (type =
-			 spage_get_record_type (pgptr,
-						oid.slotid)) == REC_NEWHOME
+		     || ((type = spage_get_record_type (pgptr,
+							oid.slotid)) ==
+			 REC_NEWHOME)
 		     || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN))
 	    {
 	      ;			/* Nothing */
@@ -11007,23 +10340,21 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    {
 	      if (ispeeking == true)
 		{
-		  scan =
-		    spage_get_record (pgptr, forward_oid.slotid, recdes,
-				      PEEK);
+		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+					   PEEK);
 		}
 	      else
 		{
-		  scan =
-		    spage_get_record (pgptr, forward_oid.slotid, recdes,
-				      COPY);
+		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+					   COPY);
 		}
 	      /* Save the page for a future scan */
 	      scan_cache->pgptr = pgptr;
 	    }
 	  else
 	    {
-	      scan =
-		spage_get_record (pgptr, forward_oid.slotid, recdes, COPY);
+	      scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+				       COPY);
 	      pgbuf_unfix (thread_p, pgptr);
 	      pgptr = NULL;
 	    }
@@ -11193,52 +10524,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peeking is PEEK, the previous available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), to the one associated with
- * the given OID is peeked into the page buffer where the
- * previous object resides or into a memory area allocated by the
- * heap manager to keep the object. A memory area is used instead
- * of a page buffer when the previous object is a multipage
- * object. The data address in the record descriptor is set to
- * either the portion of the page buffer where the previous
- * object is stored or the area where the previous object is
- * glued in one piece, so that the caller does not have to be
- * aware of implementation issues. The length of the previous
- * object is set in the record descriptor (i.e., recdes->length).
- * The identifier of the object is indicated in prev_oid. If
- * there is not an available object, a NULL_OID is stored as the
- * value of prev_oid. The following restrictions apply:
- *
- *              1: scan_cache must be always initialized with the fixed page
- *                 option when peeking.
-
- *              2: Update operations should not be made to the page where the
- *                 previous object is stored until the peeking is done. This
- *                 is important since the heap manager may decide to move the
- *                 previous object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *
- *              3: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the previous object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peeking is COPY, the next available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), to the one associated with
- * the given OID is copied into the data area pointed to by the
- * record descriptor. The length of the object is set in the
- * record descriptor (i.e., recdes->length). If the previous
- * object does not fit in such an area (i.e, recdes->area_size),
- * the length of the object is returned as a negative value in
- * recdes->length and an error condition is returned. The
- * identifier of the previous object is indicated in prev_oid. If
- * there is not an available object, a NULL_OID is stored as the
- * value of prev_oid. A scan_cache value with the fixed page
- * option is not required when copying. However, it can be
- * initialized with the above option for performance considerations.
  */
 SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
@@ -11264,8 +10549,8 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return S_ERROR;
     }
-  if (scan_cache != NULL &&
-      scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
+  if (scan_cache != NULL
+      && scan_cache->debug_initpatter != HEAP_DEBUG_SCANCACHE_INITPATTER)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "heap_prev: Your scancache is not initialized");
@@ -11342,8 +10627,8 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (scan_cache != NULL)
 	    {
 	      pgptr = NULL;
-	      if (scan_cache->cache_last_fix_page == true &&
-		  scan_cache->pgptr != NULL)
+	      if (scan_cache->cache_last_fix_page == true
+		  && scan_cache->pgptr != NULL)
 		{
 		  vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->pgptr);
 		  if (VPID_EQ (&vpid, vpidptr_incache))
@@ -11409,13 +10694,13 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	   * Find the prev record. Skip relocated records. This records must be
 	   * accessed through the relocation record.
 	   */
-	  while ((scan =
-		  spage_previous_record (pgptr, &oid.slotid, &forward_recdes,
-					 PEEK)) == S_SUCCESS
+	  while ((scan = spage_previous_record (pgptr, &oid.slotid,
+						&forward_recdes,
+						PEEK)) == S_SUCCESS
 		 && (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID
-		     || (type =
-			 spage_get_record_type (pgptr,
-						oid.slotid)) == REC_NEWHOME
+		     || ((type = spage_get_record_type (pgptr,
+							oid.slotid)) ==
+			 REC_NEWHOME)
 		     || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN))
 	    {
 	      ;			/* Nothing */
@@ -11526,23 +10811,21 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    {
 	      if (ispeeking == true)
 		{
-		  scan =
-		    spage_get_record (pgptr, forward_oid.slotid, recdes,
-				      PEEK);
+		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+					   PEEK);
 		}
 	      else
 		{
-		  scan =
-		    spage_get_record (pgptr, forward_oid.slotid, recdes,
-				      COPY);
+		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+					   COPY);
 		}
 	      /* Save the page for a future scan */
 	      scan_cache->pgptr = pgptr;
 	    }
 	  else
 	    {
-	      scan =
-		spage_get_record (pgptr, forward_oid.slotid, recdes, COPY);
+	      scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
+				       COPY);
 	      pgbuf_unfix (thread_p, pgptr);
 	      pgptr = NULL;
 	    }
@@ -11586,18 +10869,19 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      recdes->data = scan_cache->area;
 	      recdes->area_size = scan_cache->area_size;
 
-	      while ((scan =
-		      heap_ovf_get (thread_p, &forward_oid, recdes,
-				    NULL_CHN)) == S_DOESNT_FIT)
+	      while ((scan = heap_ovf_get (thread_p, &forward_oid, recdes,
+					   NULL_CHN)) == S_DOESNT_FIT)
 		{
 		  /*
 		   * The object did not fit into such an area, reallocate a new
 		   * area
 		   */
 		  recdes->area_size = -recdes->length;
-		  recdes->data =
-		    (char *) db_private_realloc (thread_p, scan_cache->area,
-						 recdes->area_size);
+		  recdes->data = (char *) db_private_realloc (thread_p,
+							      scan_cache->
+							      area,
+							      recdes->
+							      area_size);
 		  if (recdes->data == NULL)
 		    {
 		      return S_ERROR;
@@ -11715,50 +10999,6 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peeking is PEEK, the first available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), is peeked into the page
- * buffer where the first object resides, or into a memory area
- * allocated by the heap manager to keep the object. A memory
- * area is used instead of a page buffer when the first object is
- * a multipage object. The data address in the record descriptor
- * is set to either the portion of the page buffer where the
- * first object is stored or the area where the first object is
- * glued in one piece, so that the caller does not have to be
- * aware of implementation issues. The length of the first object
- * is set in the record descriptor (i.e., recdes->length). The
- * identifier of the object is indicated in oid. If there is not
- * an available object, a NULL_OID is stored as the value of oid.
- * The following restrictions apply:
- *
- *              1: scan_cache must be always initialized with the fixed page
- *                 option when peeking.
- *
- *              2: Update operations should not be made to the page where the
- *                 first object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 first object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *
- *              3: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the first object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peeking is COPY, the first available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), is copied into the data
- * area pointed to by the record descriptor. The length of the
- * object is set in the record descriptor (i.e., recdes->length).
- * If the first object does not fit in such an area (i.e,
- * recdes->area_size), the length of the object is returned as a
- * negative value in recdes->length and an error condition is
- * returned. The identifier of the first object is indicated in
- * oid. If there is not an available object, a NULL_OID is stored
- * as the value of oid. A scan_cache value with the fixed page
- * option is not required when copying. However, it can be
- * initialized with the above option for performance considerations.
  */
 SCAN_CODE
 heap_first (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
@@ -11789,51 +11029,6 @@ heap_first (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peeking is PEEK, the last available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), is peeked into the page
- * buffer where the last object resides, or into a memory area
- * allocated by the heap manager to keep the object. A memory
- * area is used instead of a page buffer when the last object is
- * a multipage object. The data address in the record descriptor
- * is set to either the portion of the page buffer where the last
- * object is stored or the area where the last object is glued in
- * one piece, so that the caller does not have to be aware of
- * implementation issues. The length of the last object is set in
- * the record descriptor. The identifier of the object is
- * indicated in oid. If there is not an available object, a
- * NULL_OID is stored as the value of oid.
- * The following restrictions apply:
- *
- *              1: scan_cache must be always initialized with the fixed page
- *                 option when peeking.
- *
- *              2: Update operations should not be made to the page where the
- *                 last object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 last object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *
- *              3: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the last object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peeking is COPY, the last available
- * object, of the given scan class_oid -or of any class when is
- * NULL_OID- (scan_cache->class_oid), is copied into the data
- * area pointed to by the record descriptor. The length of the
- * The length of the object is set in the record descriptor
- * (i.e., recdes->length). If the last object does not fit in
- * such an area (i.e, recdes->area_size), the length of the
- * object is returned as a negative value in recdes->length and
- * an error condition is returned. The identifier of the last
- * object is indicated in oid. If there is not an available
- * object, a NULL_OID is stored as the value of oid. A scan_cache
- * value with the fixed page option is not required when copying.
- * However, it can be initialized with the above option for
- * performance considerations.
  */
 SCAN_CODE
 heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
@@ -12140,31 +11335,20 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /*
-   * Now define the last object for the scan range. A scanrange range is
-   * terminated when a relocated or multipage object is found or when the
-   * last object is the page is found.
-   *
-   * Be careful here: if the record we just looked at via heap_next was
-   * actually a REC_NEWHOME record, the pgptr that we have actually
-   * points at the destination page, *NOT* the page indicated by the oid.
-   * The pageid and volid tests in the following code guard against this.
-   */
 
   scan_range->last_oid = scan_range->first_oid;
-  if (scan_range->scan_cache.pgptr != NULL &&
-      (vpid = pgbuf_get_vpid_ptr (scan_range->scan_cache.pgptr)) != NULL &&
-      (vpid->pageid == scan_range->last_oid.pageid) &&
-      (vpid->volid == scan_range->last_oid.volid) &&
-      spage_get_record_type (scan_range->scan_cache.pgptr,
-			     scan_range->last_oid.slotid) == REC_HOME)
+  if (scan_range->scan_cache.pgptr != NULL
+      && (vpid = pgbuf_get_vpid_ptr (scan_range->scan_cache.pgptr)) != NULL
+      && (vpid->pageid == scan_range->last_oid.pageid)
+      && (vpid->volid == scan_range->last_oid.volid)
+      && spage_get_record_type (scan_range->scan_cache.pgptr,
+				scan_range->last_oid.slotid) == REC_HOME)
     {
       slotid = scan_range->last_oid.slotid;
       while (true)
 	{
-	  if (spage_next_record
-	      (scan_range->scan_cache.pgptr, &slotid, &recdes,
-	       PEEK) != S_SUCCESS
+	  if (spage_next_record (scan_range->scan_cache.pgptr, &slotid,
+				 &recdes, PEEK) != S_SUCCESS
 	      || spage_get_record_type (scan_range->scan_cache.pgptr,
 					slotid) != REC_HOME)
 	    {
@@ -12309,49 +11493,6 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range,
  *   ispeeking(in): PEEK when the object is peeked,
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peek is PEEK, the next available object
- * in the scanrange to the one associated with the given OID is
- * peeked into the page buffer where the next object resides, or
- * into a memory area allocated by the heap manager to keep the
- * object. A memory area is used instead of a page buffer when
- * the desired object is a multipage object. The data address in
- * the record descriptor is set to either the portion of the page
- * where the next object is stored or the area where the next
- * object is glued in one piece, so that the caller does not have
- * to be aware of implementation issues. The length of the next
- * object is set in the record descriptor (i.e., recdes->length).
- * The identifier of the object is indicated in next_oid. If
- * there is not an available object in the scan range, a NULL_OID
- * is stored as the value of next_oid. A new scanrange is never
- * defined by this function.
- * The following restrictions apply:
- *              1: Update operations should not be made to the page where the
- *                 next object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 next object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *              2: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the next object for a longer
- *                 time, the object should be copied or re_fetched.
- *
- * When the value of is_peek is COPY, the next available object
- * in the scanrange to the one associated with the given OID is
- * copied into the data area pointed to by the record descriptor.
- * The length of the object is set in the record descriptor
- * (i.e., recdes->length). If the next object does not fit in
- * such an area (i.e, recdes->area_size), the length of the
- * object is returned as a negative value in recdes->length and
- * an error condition is returned. The identifier of the next
- * object is indicated in next_oid. If there is not an available
- * object in the scan range, a NULL_OID is stored as the value of
- * next_oid. A new scanrange is never defined by this function.
- *
- * Using many scan_ranges at the same time should be avoided
- * since page buffers are fixed and locked for future references
- * and there is a limit of buffers in the page buffer pool. This
- * is analogous to fetching many pages at the same time.
  */
 SCAN_CODE
 heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
@@ -12373,9 +11514,8 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
     {
       /* Retrieve the first object in the scanrange */
       *next_oid = scan_range->first_oid;
-      scan =
-	heap_get (thread_p, next_oid, recdes, &scan_range->scan_cache,
-		  ispeeking, NULL_CHN);
+      scan = heap_get (thread_p, next_oid, recdes, &scan_range->scan_cache,
+		       ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST)
 	{
 	  scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
@@ -12430,51 +11570,6 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
  *   ispeeking(in): PEEK when the object is peeked,
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peek is PEEK, the previous available
- * object in the scanrange to the one associated with the given
- * OID is peeked into the page buffer where the previous object
- * resides, or into a memory area allocated by the heap manager
- * to keep the object. A memory area is used instead of a page
- * buffer when the desired object is a multipage object. The data
- * address in the record descriptor is set to either the portion
- * of the page where the previous object is stored or the area
- * where the previous object is glued in one piece, so that the
- * caller does not have to be aware of implementation issues. The
- * length of the previous object is set in the record descriptor
- * (i.e., recdes->length). The identifier of the object is
- * indicated in prev_oid. If there is not an available object in
- * the scan range, a NULL_OID is stored as the value of prev_oid.
- * A new scanrange is never defined by this function.
- * The following restrictions apply:
- *              1: Update operations should not be made to the page where the
- *                 previous object is stored until the peeking is done. This
- *                 is important since the heap manager may decide to move the
- *                 previous object around during an update. The heap manager
- *                 prevents updates to the page by other transactions by
- *                 locking the page in shared mode.
- *              2: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the previous object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peek is COPY, the previous available
- * object in the scanrange to the one associated with the given
- * OID is copied into the data area pointed to by the record
- * descriptor. The length of the object is set in the record
- * descriptor (i.e., recdes->length). If the previous object does
- * not fit in such an area (i.e, recdes->area_size), the length
- * of the object is returned as a negative value in
- * recdes->length and an error condition is returned. The
- * identifier of the object is indicated in prev_oid. If there is
- * not an available object in the scan range, a NULL_OID is
- * stored as the value of prev_oid. A new scanrange is never
- * defined by this function.
- *
- * Using many scan_ranges at the same time should be avoided
- * since page buffers are fixed and locked for future references
- * and there is a limit of buffers in the page buffer pool. This
- * is analogous to fetching many pages at the same time.
- *
  */
 SCAN_CODE
 heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
@@ -12491,15 +11586,13 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
     {
       /* Retrieve the last object in the scanrange */
       *prev_oid = scan_range->last_oid;
-      scan =
-	heap_get (thread_p, prev_oid, recdes, &scan_range->scan_cache,
-		  ispeeking, NULL_CHN);
+      scan = heap_get (thread_p, prev_oid, recdes, &scan_range->scan_cache,
+		       ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST)
 	{
-	  scan =
-	    heap_prev (thread_p, &scan_range->scan_cache.hfid,
-		       &scan_range->scan_cache.class_oid, prev_oid, recdes,
-		       &scan_range->scan_cache, ispeeking);
+	  scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
+			    &scan_range->scan_cache.class_oid, prev_oid,
+			    recdes, &scan_range->scan_cache, ispeeking);
 	}
       /* Make sure that we did not go underboard */
       if (scan == S_SUCCESS && OID_LT (prev_oid, &scan_range->last_oid))
@@ -12546,49 +11639,6 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
  *   ispeeking(in): PEEK when the object is peeked,
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peek is PEEK, the first available object
- * in the scanrange to the one associated with the given OID is
- * peeked into the page buffer where the first object resides, or
- * into a memory area allocated by the heap manager to keep the
- * object. A memory area is used instead of a page buffer when
- * the desired object is a multipage object. The data address in
- * the record descriptor is set to either the portion of the page
- * where the first object is stored or the area where the first
- * object is glued in one piece, so that the caller does not have
- * to be aware of implementation issues. The length of the first
- * object is set in the record descriptor (i.e., recdes->length).
- * The identifier of the object is indicated in first_oid. If
- * there is not an available object in the scan range, a NULL_OID
- * is stored as the value of first_oid. A new scanrange is never
- * defined by this function.
- * The following restrictions apply:
- *              1: Update operations should not be made to the page where the
- *                 first object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 first object around during an update. The heap manager
- *                 first updates to the page by other transactions by locking
- *                 the page in shared mode.
- *              2: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the first object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peek is COPY, the first available object
- * in the scanrange to the one associated with the given OID is
- * copied into the data area pointed to by the record descriptor.
- * The length of the object is set in the record descriptor
- * (i.e., recdes->length). If the first object does not fit in
- * such an area (i.e, recdes->area_size), the length of the
- * object is returned as a negative value in recdes->length and
- * an error condition is returned. The identifier of the object
- * is indicated in first_oid. If there is not an available object
- * in the scan range, a NULL_OID is stored as the value of
- * first_oid. A new scanrange is never defined by this function.
- *
- * Using many scan_ranges at the same time should be avoided
- * since page buffers are fixed and locked for future references
- * and there is a limit of buffers in the page buffer pool. This
- * is analogous to fetching many pages at the same time.
  */
 SCAN_CODE
 heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid,
@@ -12604,9 +11654,8 @@ heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid,
 
   /* Retrieve the first object in the scanrange */
   *first_oid = scan_range->first_oid;
-  scan =
-    heap_get (thread_p, first_oid, recdes, &scan_range->scan_cache, ispeeking,
-	      NULL_CHN);
+  scan = heap_get (thread_p, first_oid, recdes, &scan_range->scan_cache,
+		   ispeeking, NULL_CHN);
   if (scan == S_DOESNT_EXIST)
     {
       scan = heap_next (thread_p, &scan_range->scan_cache.hfid,
@@ -12637,49 +11686,6 @@ heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid,
  *   ispeeking(in): PEEK when the object is peeked,
  *                  COPY when the object is copied
  *
- * Note: When the value of is_peek is PEEK, the last available object
- * in the scanrange to the one associated with the given OID is
- * peeked into the page buffer where the last object resides, or
- * into a memory area allocated by the heap manager to keep the
- * object. A memory area is used instead of a page buffer when
- * the desired object is a multipage object. The data address in
- * the record descriptor is set to either the portion of the page
- * where the last object is stored or the area where the last
- * object is glued in one piece, so that the caller does not have
- * to be aware of implementation issues. The length of the last
- * object is set in the record descriptor (i.e., recdes->length).
- * The identifier of the object is indicated in last_oid. If
- * there is not an available object in the scan range, a NULL_OID
- * is stored as the value of last_oid. A new scanrange is never
- * defined by this function.
- * The following restrictions apply:
- *              1: Update operations should not be made to the page where the
- *                 last object is stored until the peeking is done. This is
- *                 important since the heap manager may decide to move the
- *                 last object around during an update. The heap manager
- *                 last updates to the page by other transactions by locking
- *                 the page in shared mode.
- *              2: A peek is declared done when another scan operation (either
- *                 peek or copy) is executed with either the same scan_cache
- *                 or recdes. If the caller needs the last object for a
- *                 longer time, the object should be copied or re_fetched.
- *
- * When the value of is_peek is COPY, the last available object
- * in the scanrange to the one associated with the given OID is
- * copied into the data area pointed to by the record descriptor.
- * The length of the object is set in the record descriptor
- * (i.e., recdes->length). If the last object does not fit in
- * such an area (i.e, recdes->area_size), the length of the
- * object is returned as a negative value in recdes->length and
- * an error condition is returned. The identifier of the object
- * is indicated in last_oid. If there is not an available object
- * in the scan range, a NULL_OID is stored as the value of
- * last_oid. A new scanrange is never defined by this function.
- *
- * Using many scan_ranges at the same time should be avoided
- * since page buffers are fixed and locked for future references
- * and there is a limit of buffers in the page buffer pool. This
- * is analogous to fetching many pages at the same time.
  */
 SCAN_CODE
 heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes,
@@ -12694,9 +11700,8 @@ heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes,
 
   /* Retrieve the last object in the scanrange */
   *last_oid = scan_range->last_oid;
-  scan =
-    heap_get (thread_p, last_oid, recdes, &scan_range->scan_cache, ispeeking,
-	      NULL_CHN);
+  scan = heap_get (thread_p, last_oid, recdes, &scan_range->scan_cache,
+		   ispeeking, NULL_CHN);
   if (scan == S_DOESNT_EXIST)
     {
       scan = heap_prev (thread_p, &scan_range->scan_cache.hfid,
@@ -12724,13 +11729,13 @@ heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes,
  * exist either. If the class is not given or a NULL_OID is
  * passed, the function finds the class oid.
  */
-int
+bool
 heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
   VPID vpid;
   OID tmp_oid;
   PAGE_PTR pgptr = NULL;
-  int doesexist = true;
+  bool doesexist = true;
   INT16 rectype;
 
   if (HEAP_ISVALID_OID (oid) != DISK_VALID)
@@ -12743,16 +11748,16 @@ heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
    * make sure that it exist. Rootclass always exist.. not need to check
    * for it
    */
-  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid) &&
-      HEAP_ISVALID_OID (class_oid) != DISK_VALID)
+  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
+      && HEAP_ISVALID_OID (class_oid) != DISK_VALID)
     {
       return false;
     }
 
-  while (doesexist == true)
+  while (doesexist)
     {
-      if (oid->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || oid->slotid < 0 ||
-	  oid->pageid < 0 || oid->volid < 0)
+      if (oid->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || oid->slotid < 0
+	  || oid->pageid < 0 || oid->volid < 0)
 	{
 	  return false;
 	}
@@ -12786,7 +11791,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
        * Check the class
        */
 
-      if (doesexist == true && rectype != REC_ASSIGN_ADDRESS)
+      if (doesexist && rectype != REC_ASSIGN_ADDRESS)
 	{
 	  if (class_oid == NULL)
 	    {
@@ -12847,9 +11852,8 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages,
 {
   VPID vpid;			/* Page-volume identifier            */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data           */
-  RECDES hdr_recdes;		/* Record descriptor to poDB_INT32 to space
-				 * statistics
-				 */
+  RECDES hdr_recdes;		/* Record descriptor to point to space
+				 * statistics */
   HEAP_HDR_STATS *heap_hdr;	/* Heap header                         */
 
   /*
@@ -14452,8 +13456,8 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid,
     {
       reprid = or_rep_id (recdes);
 
-      if (attr_info->read_classrepr == NULL ||
-	  attr_info->read_classrepr->id != reprid)
+      if (attr_info->read_classrepr == NULL
+	  || attr_info->read_classrepr->id != reprid)
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
@@ -15308,18 +14312,6 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (num_found_attrs >= max_attr_refoids)
 	{
-	  /*
-	   * Sigh, our guess wasn't good enough.  At this point we just
-	   * shrug our shoulders and assume that we'll need enough extra
-	   * space for the remaining attributes that we haven't yet
-	   * examined.  This should always be a relatively small number
-	   * anyway (after all, who builds classes with thousands of
-	   * attributes?).
-	   *
-	   * Because of the adjustment to max_attr_refoids below, it should
-	   * be impossible to enter this code more than once per invocation
-	   * of this routine.
-	   */
 	  int remaining = classrepr->n_attributes - i;
 
 	  max_attr_refoids = num_found_attrs + remaining;
@@ -15471,18 +14463,6 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (num_found_attrs >= max_attr_refoids)
 	{
-	  /*
-	   * We've encountered more attributes than we expected with our
-	   * initial guess. At this point we just assume that we'll need
-	   * enough extra space for the remaining attributes that we haven't
-	   * yet examined. This should always be a relatively small number
-	   * anyway (after all, who builds classes with thousands of
-	   * attributes?).
-	   *
-	   * Because of the adjustment to max_attr_refoids below, it should
-	   * be impossible to enter this code more than once per invocation
-	   * of this routine.
-	   */
 	  int remaining = classrepr->n_attributes - i;
 
 	  max_attr_refoids = num_found_attrs + remaining;
@@ -16249,9 +15229,8 @@ heap_get_attrids_of_btid_key (THREAD_ENTRY * thread_p, OID * class_oid,
   *attr_ids = NULL;
 
   /* get the class representation so that we can access the indexes */
-  classrepp =
-    heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
-			&idx_in_cache);
+  classrepp = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
+				  &idx_in_cache);
   if (classrepp == NULL)
     {
       goto exit_on_error;
@@ -16370,8 +15349,8 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, const OID * obj_oid,
       return 0;
     }
 
-  if (heap_attrinfo_start_refoids (thread_p, &class_oid, &attr_info) !=
-      NO_ERROR
+  if ((heap_attrinfo_start_refoids (thread_p, &class_oid, &attr_info) !=
+       NO_ERROR)
       || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes,
 				      &attr_info) != NO_ERROR)
     {
@@ -16435,8 +15414,8 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, const OID * obj_oid,
 		  new_max_oid = 10;
 		}
 
-	      oid_ptr =
-		(OID *) realloc (*oid_list, new_max_oid * sizeof (OID));
+	      oid_ptr = (OID *) realloc (*oid_list,
+					 new_max_oid * sizeof (OID));
 	      if (oid_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -16567,36 +15546,11 @@ error:
  *   class_oid(in): Class identifier for the instance oid
  *   prefetch(in): Prefetch structure
  *
- * Note: Neighbor instances of the given class that are stored in the
- * the page of the given oid (i.e., those that are not stored in
- * overflow or relocated to another page) are prefetched. The
- * function assumes that the caller is scanning instances, thus,
- * instances located at the right of the current oid object have
- * preference for prefetching over the instances to the left. The
- * objects are placed in the copy area in a structure like the
- * following one:
- *
- * --------------------------------------------------------------------------
- * | Obj1 | ... | Objn|xxjunkxx|OID len offset|...| OID len offset| Num objs|
- * --------------------------------------------------------------------------
- *    ^            ^		    |		         |
- *    |            |		    |   		 |
- *    |            ------------------		         |
- *    ----------------------------------------------------
- *
- * Fetch_area is set to NULL when there is an error or when
- * there is not a need to send the object back since the cache
- * coherent number was the same than the one on disk. The caller
- * must check the return value of the function to find out if
- * there was an error or not.
- *
- * Note: The returned fetch area should be freed by the caller.
  */
 int
 heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 	       LC_COPYAREA_DESC * prefetch)
 {
-
   VPID vpid;
   PAGE_PTR pgptr = NULL;
   int round_length;
@@ -16647,8 +15601,8 @@ heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
       if (direction == HEAP_DIRECTION_RIGHT
 	  || direction == HEAP_DIRECTION_BOTH)
 	{
-	  scan =
-	    spage_next_record (pgptr, &right_slotid, prefetch->recdes, COPY);
+	  scan = spage_next_record (pgptr, &right_slotid, prefetch->recdes,
+				    COPY);
 	  if (scan == S_SUCCESS
 	      && spage_get_record_type (pgptr, right_slotid) == REC_HOME
 	      && (class_oid == NULL
@@ -16682,9 +15636,8 @@ heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
       if (direction == HEAP_DIRECTION_LEFT
 	  || direction == HEAP_DIRECTION_BOTH)
 	{
-	  scan =
-	    spage_previous_record (pgptr, &left_slotid, prefetch->recdes,
-				   COPY);
+	  scan = spage_previous_record (pgptr, &left_slotid, prefetch->recdes,
+					COPY);
 	  if (scan == S_SUCCESS && left_slotid != HEAP_HEADER_AND_CHAIN_SLOTID
 	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME
 	      && (class_oid == NULL
@@ -16713,7 +15666,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 			   ? HEAP_DIRECTION_RIGHT : HEAP_DIRECTION_NONE);
 	    }
 	}
-    }				/* end-while */
+    }
 
   pgbuf_unfix (thread_p, pgptr);
   pgptr = NULL;
@@ -16955,8 +15908,8 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
 	{
 	  hfid.hpgid = vpid.pageid;
 
-	  if (file_get_descriptor (thread_p, &hfid.vfid, &hfdes,
-				   sizeof (FILE_HEAP_DES)) > 0
+	  if ((file_get_descriptor (thread_p, &hfid.vfid, &hfdes,
+				    sizeof (FILE_HEAP_DES)) > 0)
 	      && !OID_ISNULL (&hfdes.class_oid))
 	    {
 
@@ -17002,37 +15955,37 @@ heap_dump_hdr (HEAP_HDR_STATS * heap_hdr)
 		? (int) ((heap_hdr->estimates.recs_sumlen /
 			  (float) heap_hdr->estimates.num_recs) + 0.9) : 0);
 
-  (void) fprintf (stdout, "unfill_space = %4d\n", heap_hdr->unfill_space);
-  (void) fprintf (stdout, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d,\n",
-		  heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid,
-		  heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
-  (void) fprintf (stdout, "Estimated: num_pages = %d, num_recs = %d, "
-		  " avg reclength = %d\n",
-		  heap_hdr->estimates.num_pages,
-		  heap_hdr->estimates.num_recs, avg_length);
-  (void) fprintf (stdout, "Estimated: num high best = %d, "
-		  "num others(not in array) high best = %d\n",
-		  heap_hdr->estimates.num_high_best,
-		  heap_hdr->estimates.num_other_high_best);
-  (void) fprintf (stdout, "BEST1_SPACE_VPID = %4d|%4d %4d\n",
-		  heap_hdr->estimates.best[HEAP_BEST1].vpid.volid,
-		  heap_hdr->estimates.best[HEAP_BEST1].vpid.pageid,
-		  heap_hdr->estimates.best[HEAP_BEST1].freespace);
-  (void) fprintf (stdout, "Hint of best set of vpids with head = %d\n",
-		  heap_hdr->estimates.head);
+  fprintf (stdout, "unfill_space = %4d\n", heap_hdr->unfill_space);
+  fprintf (stdout, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d,\n",
+	   heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid,
+	   heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
+  fprintf (stdout, "Estimated: num_pages = %d, num_recs = %d, "
+	   " avg reclength = %d\n",
+	   heap_hdr->estimates.num_pages,
+	   heap_hdr->estimates.num_recs, avg_length);
+  fprintf (stdout, "Estimated: num high best = %d, "
+	   "num others(not in array) high best = %d\n",
+	   heap_hdr->estimates.num_high_best,
+	   heap_hdr->estimates.num_other_high_best);
+  fprintf (stdout, "BEST1_SPACE_VPID = %4d|%4d %4d\n",
+	   heap_hdr->estimates.best[HEAP_BEST1].vpid.volid,
+	   heap_hdr->estimates.best[HEAP_BEST1].vpid.pageid,
+	   heap_hdr->estimates.best[HEAP_BEST1].freespace);
+  fprintf (stdout, "Hint of best set of vpids with head = %d\n",
+	   heap_hdr->estimates.head);
 
   for (j = 0, i = HEAP_BEST2_START; i < HEAP_NUM_BEST_SPACESTATS; j++, i++)
     {
       if (j != 0 && j % 5 == 0)
 	{
-	  (void) fprintf (stdout, "\n");
+	  fprintf (stdout, "\n");
 	}
-      (void) fprintf (stdout, "%4d|%4d %4d,",
-		      heap_hdr->estimates.best[i].vpid.volid,
-		      heap_hdr->estimates.best[i].vpid.pageid,
-		      heap_hdr->estimates.best[i].freespace);
+      fprintf (stdout, "%4d|%4d %4d,",
+	       heap_hdr->estimates.best[i].vpid.volid,
+	       heap_hdr->estimates.best[i].vpid.pageid,
+	       heap_hdr->estimates.best[i].freespace);
     }
-  (void) fprintf (stdout, "\n");
+  fprintf (stdout, "\n");
 
   return ret;
 }
@@ -17063,9 +16016,9 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
   FILE_HEAP_DES hfdes;
   int ret = NO_ERROR;
 
-  (void) fprintf (stdout, "\n\n*** DUMPING HEAP FILE: ");
-  (void) fprintf (stdout, "volid = %d, Fileid = %d, Header-pageid = %d ***\n",
-		  hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+  fprintf (stdout, "\n\n*** DUMPING HEAP FILE: ");
+  fprintf (stdout, "volid = %d, Fileid = %d, Header-pageid = %d ***\n",
+	   hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
   (void) file_dump_descriptor (thread_p, &hfid->vfid);
 
   /* Fetch the header page of the heap file */
@@ -17082,8 +16035,8 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
 
   /* Peek the header record to dump the estadistics */
 
-  if (spage_get_record
-      (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+  if (spage_get_record (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes,
+			PEEK) != S_SUCCESS)
     {
       /* Unable to peek heap header record */
       pgbuf_unfix (thread_p, pgptr);
@@ -17131,8 +16084,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
   if (!VFID_ISNULL (&ovf_vfid))
     {
       /* There is an overflow file for this heap file */
-      (void) fprintf (stdout,
-		      "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
+      fprintf (stdout, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
       if (file_dump (thread_p, &ovf_vfid) != NO_ERROR)
 	{
 	  return;
@@ -17165,7 +16117,6 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
       /* Dump individual Objects */
       if (rec_p == true)
 	{
-
 	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true,
 				    false, LOCKHINT_NONE) != NO_ERROR)
 	    {
@@ -17201,8 +16152,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
       heap_attrinfo_end (thread_p, &attr_info);
     }
 
-  (void) fprintf (stdout, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
-
+  fprintf (stdout, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
 
 /*
@@ -17245,7 +16195,6 @@ heap_dump_all (THREAD_ENTRY * thread_p, bool rec_p)
 	  heap_dump (thread_p, &hfid, rec_p);
 	}
     }
-
 }
 
 /*
@@ -17296,11 +16245,11 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
       if (file_find_nthpages (thread_p, &hfid.vfid, &vpid, 0, 1) == 1)
 	{
 	  hfid.hpgid = vpid.pageid;
-	  if (heap_get_capacity
-	      (thread_p, &hfid, &num_recs, &num_recs_relocated,
-	       &num_recs_inovf, &num_pages, &avg_freespace,
-	       &avg_freespace_nolast, &avg_reclength,
-	       &avg_overhead) == NO_ERROR)
+	  if (heap_get_capacity (thread_p, &hfid, &num_recs,
+				 &num_recs_relocated, &num_recs_inovf,
+				 &num_pages, &avg_freespace,
+				 &avg_freespace_nolast, &avg_reclength,
+				 &avg_overhead) == NO_ERROR)
 	    {
 	      fprintf (stdout,
 		       "HFID:%d|%d|%d, Num_recs = %d, Num_reloc_recs = %d,\n"
@@ -17329,7 +16278,6 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-
 }
 
 /*
@@ -17341,36 +16289,6 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
  *   num_attrs(in): Number of attributes
  *   num_var_attrs(in): Number of variable attributes
  *
- * Note: Guess the number of pages needed to insert a set of objects.
- *
- *  AVG_OBJ_SIZE = AVG_OBJ_SIZE + OID_SIZE + REPRID_SIZE + CHN_SIZE +
- *                 FLAGS + BOUND_BIT_SIZE + OFFSET_VAR_SIZE + VAR_ALIGN_PAD
- *      Where:
- *          OID_SIZE: Size of OID (12 bytes)
- *       REPRID_SIZE: An integer 4 bytes
- *          CHN_SIZE: An integer 4 bytes
- *             FLAGS: An integer 4 bytes
- *
- *     Note: OR_HEADER_SIZE = OID_SIZE + REPRID_SIZE + CHN_SIZE + FLAGS
- *
- *    BOUND_BIT_SIZE: An integer (4 bytes) per each 32 attrs
- *                    (i.e., ceil(Nattrs/32) integers (4 bytes)
- *   OFFSET_VAR_SIZE: An integer (4 bytes) per each variable attr +
- *                    one integer (indicate how many)
- *     VAR_ALIGN_PAD: Every variable attribute must be align to four bytes.
- *                    Assume max padding of 3 bytes per each variable
- *                    attribute
- * ALIGN_AVG_OBJ_SIZE = MUST BE ALIGN to double...
- *
- * SPACE_IN_PAGES_FOR_USER_RECS = DB_PAGESIZE * (1 - unfill_factor) -
- *                                overhead of slotted header size (36 bytes) -
- *                                overhead for link chain size (16 bytes)  -
- *                                overhead for slot of link chain (6 bytes)
- *
- * NOBJ_PAGE = floor(SPACE_IN_PAGES_FOR_USER_RECS /
- *                   (ALIGN_AVG_OBJ_SIZE + overhead of slot - 6 bytes -)
- * NPAGES = ceil(total_num_objs / NOBJ_PAGE)
- * NPAGES = NPAGES + FILE_OVERHEAD (overhead of file pages map -- file mgr --)
  */
 INT32
 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
@@ -17380,17 +16298,6 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
   int nobj_page;
   INT32 npages;
 
-  /*
-   * Object_overhead: CLASS_OID + REPR_ID + CHN + FLAGS + BOUND_BITS +
-   *                  OFFSET TO VAR ATTRS + VAR PADDING
-   * BOUND_BITS: For each 32 attrs, add an int field (4 bytes)
-   *             (i.e., ceiling(32/num_attrs) * sizeof(int)
-   * OFFSET TO VAR ATTRS: Add an int field for each var attr. Then, add one int
-   *                      fields to indicate end of var offset array
-   * VAR PADDING: Assume 3 bytes of padding per each variable attribute
-   *
-   * Note: OR_HEADER_SIZE = OID_SIZE + REPRID_SIZE + CHN_SIZE + FLAGS
-   */
 
   avg_obj_size += OR_HEADER_SIZE;
 
@@ -17438,8 +16345,8 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
       /*
        * Overflow insertion
        */
-      npages =
-	overflow_estimate_npages_needed (thread_p, total_nobjs, avg_obj_size);
+      npages = overflow_estimate_npages_needed (thread_p, total_nobjs,
+						avg_obj_size);
 
       /*
        * Find number of pages for the indirect record references (OIDs) to
@@ -17473,30 +16380,6 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
  *   return: DISK_VALID, DISK_INVALID, DISK_ERROR
  *   chk(in): Structure for checking relocation objects
  *
- * Note: Initialize the structure for checking relocation objects.
- * The main supporting structures are a hash table and a memory array.
- * The hash table contains entries from relocated-oid to real oid
- * and the array from While scanning the heap:
- *              1: if a relocation record is found, we check if that record
- *                 has already been seen (i.e., if it is in unfound_relc
- *                 list),
- *                 if it has been seen, we remove the entry from the
- *                 unfound_relc_oid list.
- *                 if it has not been seen, we add an entry to hash table
- *                 from reloc_oid to real_oid
- *                 Note: for optimization reasons, we may not scan the
- *                 unfound_reloc if it is too long, in this case the entry is
- *                 added to hash table.
- *              2: if a newhome (relocated) record is found, we check if the
- *                 real record has already been seen (i.e., check hash table),
- *                 if it has been seen, we remove the entry from hash table
- *                 otherwise, we add an entry into the unfound_reloc list
- *
- * At the end of the scan, we check for any unfound_reloc entries
- * in hash table, when an entry is found, we remove the entry
- * from hash table and unfound_rel list. If at the end we have
- * any entries in either hash table or unfound_rel, the heap
- * is inconsistent/corrupted.
  */
 static DISK_ISVALID
 heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
@@ -17571,9 +16454,9 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
     {
       for (i = 0; i < chk->num_unfound_reloc; i++)
 	{
-	  forward =
-	    (HEAP_CHK_RELOCOID *) mht_get (chk->ht,
-					   &chk->unfound_reloc_oids[i]);
+	  forward = (HEAP_CHK_RELOCOID *) mht_get (chk->ht,
+						   &chk->
+						   unfound_reloc_oids[i]);
 	  if (forward != NULL)
 	    {
 	      /*
@@ -17631,7 +16514,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 
 /*
  * heap_chkreloc_print_notfound () - Print entry that does not have a relocated entry
- *   return: true
+ *   return: NO_ERROR
  *   ignore_reloc_oid(in): Key (relocated entry to real entry) of hash table
  *   ent(in): The entry associated with key (real oid)
  *   xchk(in): Structure for checking relocation objects
@@ -17665,7 +16548,7 @@ heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent,
   (void) mht_rem (chk->ht, &forward->reloc_oid, NULL, NULL);
   free_and_init (forward);
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -17824,9 +16707,9 @@ heap_chkreloc_next (HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr)
 		  /*
 		   * Need to realloc the area. Add 100 OIDs to it
 		   */
-		  i = sizeof (*chk->unfound_reloc_oids)
-		    * (chk->max_unfound_reloc +
-		       HEAP_CHK_ADD_UNFOUND_RELOCOIDS);
+		  i = (sizeof (*chk->unfound_reloc_oids)
+		       * (chk->max_unfound_reloc +
+			  HEAP_CHK_ADD_UNFOUND_RELOCOIDS));
 
 		  ptr = realloc (chk->unfound_reloc_oids, i);
 		  if (ptr == NULL)
@@ -17846,6 +16729,7 @@ heap_chkreloc_next (HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr)
 	      chk->unfound_reloc_oids[i] = oid;
 	    }
 	  break;
+
 	case REC_MARKDELETED:
 	default:
 	  break;
@@ -18160,7 +17044,7 @@ heap_chnguess_decache (const OID * oid)
 
 /*
  * heap_chnguess_remove_entry () - Remove an entry from chnguess hash table
- *   return: true
+ *   return: NO_ERROR
  *   oid_key(in): Key (oid) of chnguess table
  *   ent(in): The entry of hash table
  *   xignore(in): Extra arguments (currently ignored)
@@ -18184,7 +17068,7 @@ heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore)
   entry->recently_accessed = false;
   heap_Guesschn_area.clock_hand = entry->idx;
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -18230,17 +17114,16 @@ heap_chnguess_dump (void)
 		{
 		  if (tran_index % 40 == 0)
 		    {
-		      (void) fprintf (stdout, "\n ");
+		      fprintf (stdout, "\n ");
 		    }
 		  else if (tran_index % 10 == 0)
 		    {
-		      (void) fprintf (stdout, " ");
+		      fprintf (stdout, " ");
 		    }
-		  (void) fprintf (stdout, "%d",
-				  HEAP_BIT_GET (entry->bits,
-						tran_index) ? 1 : 0);
+		  fprintf (stdout, "%d",
+			   HEAP_BIT_GET (entry->bits, tran_index) ? 1 : 0);
 		}
-	      (void) fprintf (stdout, "\n");
+	      fprintf (stdout, "\n");
 	    }
 	}
     }
@@ -18507,9 +17390,8 @@ heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   recdes.type = REC_HOME;
   recdes.data = (char *) rcv->data;
 
-  sp_success =
-    spage_update (thread_p, rcv->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-		  &recdes);
+  sp_success = spage_update (thread_p, rcv->pgptr,
+			     HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   if (sp_success != SP_SUCCESS)
@@ -18558,9 +17440,9 @@ heap_rv_dump_chain (int ignore_length, void *data)
   HEAP_CHAIN *chain;
 
   chain = (HEAP_CHAIN *) data;
-  (void) fprintf (stdout, "NEXT_VPID = %4d|%4d, PREV_VPID = %4d|%4d,\n",
-		  chain->next_vpid.volid, chain->next_vpid.pageid,
-		  chain->prev_vpid.volid, chain->prev_vpid.pageid);
+  fprintf (stdout, "NEXT_VPID = %4d|%4d, PREV_VPID = %4d|%4d,\n",
+	   chain->next_vpid.volid, chain->next_vpid.pageid,
+	   chain->prev_vpid.volid, chain->prev_vpid.pageid);
 }
 
 /*
@@ -18595,8 +17477,8 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       recdes.data = NULL;
     }
 
-  sp_success =
-    spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
+  sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid,
+					  &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   if (sp_success != SP_SUCCESS)
@@ -18766,9 +17648,8 @@ heap_rv_redo_reuse (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    */
   do
     {
-      while ((scan =
-	      spage_next_record (rcv->pgptr, &oid.slotid, &recdes,
-				 PEEK)) == S_SUCCESS
+      while ((scan = spage_next_record (rcv->pgptr, &oid.slotid, &recdes,
+					PEEK)) == S_SUCCESS
 	     && (oid.slotid != HEAP_HEADER_AND_CHAIN_SLOTID))
 	{
 	  (void) spage_delete (thread_p, rcv->pgptr, oid.slotid);
@@ -18857,15 +17738,14 @@ xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   OID_SET_NULL (&oid);
 
-  if (heap_scancache_start
-      (thread_p, &scan_cache, hfid, class_oid, true, false,
-       LOCKHINT_NONE) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true,
+			    false, LOCKHINT_NONE) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  r =
-    heap_first (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, true);
+  r = heap_first (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache,
+		  true);
   heap_scancache_end (thread_p, &scan_cache);
 
   if (r == S_ERROR)
@@ -18899,8 +17779,8 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
       return 0;
     }
 
-  rep =
-    heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
+			    &idx_incache);
   if (rep == NULL)
     {
       return 0;
@@ -18988,18 +17868,17 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		  goto error;
 		}
 
-	      status =
-		xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
-					 &serial_class_oid, NULL_LOCK);
-	      if ((status == LC_CLASSNAME_ERROR)
-		  || (status == LC_CLASSNAME_DELETED))
+	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
+						&serial_class_oid, NULL_LOCK);
+	      if (status == LC_CLASSNAME_ERROR
+		  || status == LC_CLASSNAME_DELETED)
 		{
 		  return ER_FAILED;
 		}
 
-	      classrep =
-		heap_classrepr_get (thread_p, &serial_class_oid, NULL,
-				    NULL_REPRID, &idx_in_cache);
+	      classrep = heap_classrepr_get (thread_p, &serial_class_oid,
+					     NULL, NULL_REPRID,
+					     &idx_in_cache);
 
 	      if (classrep == NULL)
 		{
@@ -19009,6 +17888,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      if (classrep->indexes)
 		{
 		  BTREE_SEARCH ret;
+
 		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
 		  ret = xbtree_find_unique (thread_p, &serial_btid, &key_val,
 					    &serial_class_oid,
@@ -19036,8 +17916,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER))
 	    {
-	      if (xqp_get_serial_next_value
-		  (thread_p, &oid_str_val, &dbvalue_numeric) != NO_ERROR)
+	      if (xqp_get_serial_next_value (thread_p, &oid_str_val,
+					     &dbvalue_numeric) != NO_ERROR)
 		{
 		  goto error;
 		}

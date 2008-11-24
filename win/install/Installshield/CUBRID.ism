@@ -105,7 +105,7 @@
 		<row><td>CCI</td><td>{440ABDB2-587F-4261-B99D-2768A5DCF866}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>CUBRID</td><td>{85896AE4-B3E5-4527-8261-69CF2D1AD85B}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>CUBRIDMANAGER</td><td>{BECB83A4-D54B-4F09-B9B4-86F22C62068A}</td><td>CUBRIDMANAGER</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>Document</td><td>{915FB46B-0977-4064-A2B9-F7AF2359DFA4}</td><td>DOCUMENTS</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>Document</td><td>{915FB46B-0977-4064-A2B9-F7AF2359DFA4}</td><td>DOC</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>JDBC</td><td>{3FEA98F1-15E1-4EE9-9136-38FC7B4D3EC4}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>ODBC</td><td>{D45A36B4-979F-4B9C-9767-C1E72D348F26}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>OLEDB</td><td>{A3D79762-A93D-4F9E-9C3F-7FF94196A120}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
@@ -174,6 +174,7 @@
 		<row><td>COMMONFILES</td><td>PROGRAMFILES</td><td>Common Files</td><td/><td>0</td><td/></row>
 		<row><td>COMMONFILES64</td><td>PROGRAMFILES64</td><td>Common Files (64-bit)</td><td/><td>0</td><td/></row>
 		<row><td>CUBRIDMANAGER</td><td>TARGETDIR</td><td>cubridmanager</td><td/><td>0</td><td/></row>
+		<row><td>DOC</td><td>TARGETDIR</td><td>doc</td><td/><td>0</td><td/></row>
 		<row><td>DOCUMENTS</td><td>TARGETDIR</td><td>Documents</td><td/><td>0</td><td/></row>
 		<row><td>DesktopFolder</td><td/><td>Desktop</td><td/><td>3</td><td/></row>
 		<row><td>FOLDER_FONTS</td><td>WINDIR</td><td>Fonts Folder</td><td/><td>0</td><td/></row>
@@ -282,6 +283,7 @@
 		<row><td>cubrid_broker.conf</td><td>CUBRID</td><td>cubrid_broker.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cubrid_broker.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_broker.exe</td><td>CUBRID</td><td>cubrid_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_broker.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid_esql.exe</td><td>CUBRID</td><td>cubrid_esql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_esql.exe</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>cubrid_jdbc.jar</td><td>JDBC</td><td>cubrid_jdbc.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JDBC_FILES&gt;\cubrid_jdbc.jar</td><td>1</td><td/></row>
 		<row><td>cubrid_odbc.dll</td><td>ODBC</td><td>cubrid_odbc.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_odbc.dll</td><td>1</td><td/></row>
 		<row><td>cubrid_rel.exe</td><td>CUBRID</td><td>cubrid_rel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_rel.exe</td><td>1</td><td>NewSubFolder4</td></row>
@@ -303,10 +305,10 @@
 		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMODB_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>dwmapi.dll</td><td>CUBRID</td><td>dwmapi.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\dwmapi.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>emgr.conf</td><td>CUBRID</td><td>emgr.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>emgr.pass</td><td>CUBRID</td><td>emgr.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr.pass</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>emgr_db.pass</td><td>CUBRID</td><td>emgr_db.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr_db.pass</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>jspserver.jar</td><td>CUBRID</td><td>jspserver.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\jspserver.jar</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\libcubrid.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>libesql.dll</td><td>CUBRID</td><td>libesql.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\libesql.dll</td><td>1</td><td>NewSubFolder4</td></row>
@@ -317,7 +319,6 @@
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\logging.properties</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>msvcr90.dll</td><td>CUBRID</td><td>msvcr90.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>dwmapi.dll</td><td>CUBRID</td><td>dwmapi.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\dwmapi.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>msvcr90d.dll</td><td>CUBRID</td><td>msvcr90d.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90d.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>msvcrt.dll</td><td>CUBRID</td><td>msvcrt.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcrt.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>org.eclipse.core.commands_3.</td><td>CUBRIDMANAGER</td><td>org.eclipse.core.commands_3.1.0.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.core.commands_3.1.0.jar</td><td>1</td><td>NewSubFolder3</td></row>
@@ -1077,11 +1078,11 @@
 		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191057747</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191061971</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
 		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191081907</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191049555</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
 		<row><td>TITLE_CAPTIONBAR</td><td>1033</td><td>CUBRID 2008 ??</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1285339632</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,``@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-727959406</td></row>
+		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,0`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838965902</td></row>
 		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 	</table>

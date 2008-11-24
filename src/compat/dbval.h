@@ -1,16 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * dbval.h - redefines key db_value macros for performance reasons.
- * This file should NEVER be included by any customer level header file
- * (like dbi.h).
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * note : This must be the last include file for any module that includes it.
- * Things will not be pretty if dbtype.h is included after this file.
- * DB_MAKE_xxx macro for time, date sets, multisets, sequences, monetary,
- * and numeric is complex so not done here
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
+
+
+
 
 #ifndef _DBVAL_H_
 #define _DBVAL_H_

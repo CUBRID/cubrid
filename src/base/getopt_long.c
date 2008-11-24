@@ -505,8 +505,8 @@ start:
    *  2) the arg is not just "-"
    *  3) either the arg starts with -- we are getopt_long_only()
    */
-  if (long_options != NULL && place != nargv[optind] &&
-      (*place == '-' || (flags & FLAG_LONGONLY)))
+  if (long_options != NULL && place != nargv[optind]
+      && (*place == '-' || (flags & FLAG_LONGONLY)))
     {
       short_too = 0;
 #ifdef GNU_COMPATIBLE

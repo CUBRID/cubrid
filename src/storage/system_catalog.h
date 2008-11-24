@@ -1,24 +1,40 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * cat.h : Catalog manager interface header file
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _CAT_H_
-#define _CAT_H_
+
+/*
+ * system_catalog.h : Catalog manager interface header file
+ */
+
+#ifndef _SYSTEM_CATALOG_H_
+#define _SYSTEM_CATALOG_H_
 
 #ident "$Id$"
 
 #include "config.h"
 
 #include "error_manager.h"
-#include "log.h"
-#include "memory_manager_2.h"
+#include "log_manager.h"
+#include "memory_alloc.h"
 #include "statistics.h"
 #include "disk_manager.h"
 #include "object_representation.h"
-#include "common.h"
+#include "storage_common.h"
 
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
@@ -35,11 +51,11 @@ typedef int REPR_ID;		/* representation identifier */
 typedef int ATTR_ID;		/* attribute identifier */
 
 /*
- * disk_representation                                                
- *                                                                          
- * This is the primary communication structure between the schema manager   
- * and the catalog manager.   It contains information on the order and      
- * location of attributes for a particular class of object.		    
+ * disk_representation
+ *
+ * This is the primary communication structure between the schema manager
+ * and the catalog manager.   It contains information on the order and
+ * location of attributes for a particular class of object.
  */
 
 typedef struct disk_representation DISK_REPR;
@@ -55,16 +71,7 @@ struct disk_representation
 };				/* object disk representation */
 
 
-/*
- * disk_attribute                                                     
- *                                                                          
- * This contains information about attributes as the exist on disk.	    
- * This is one of the communication structures between the schema manager   
- * and the catalog manager.					  	    
- * For fixed field attributes, the location field will contain a byte       
- * offset.  For variable field attributes, the location field will contain  
- * an index into the variable field information block in the disk object.   
- */
+
 
 typedef struct disk_attribute DISK_ATTR;
 struct disk_attribute
@@ -97,7 +104,7 @@ struct cls_info
 extern CTID catalog_Id;		/* global catalog identifier */
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern int xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
 						      OID * class_id,
 						      HFID * hfid,
@@ -160,4 +167,4 @@ extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
 						    LOG_RCV * recv);
 
-#endif /* _CAT_H_ */
+#endif /* _SYSTEM_CATALOG_H_ */

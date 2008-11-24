@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * db_info.c - API functions for accessing database information
  *             and browsing classes.
  */
@@ -16,21 +31,21 @@
 #include <ctype.h>
 
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
 #include "authenticate.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 /*
  *  CLASS LOCATION
@@ -285,9 +300,9 @@ db_is_class (MOP obj)
 
 /*
  * db_is_any_class() - This function is used to test if a particular object
- *    pointer (MOP) actually is a reference to a {class|ldbvclass|vclass|view}
+ *    pointer (MOP) actually is a reference to a {class|vclass|view}
  *    object.
- * return : non-zero if object is a {class|ldbvclass|vclass|view}
+ * return : non-zero if object is a {class|vclass|view}
  * obj(in): a pointer to a class or instance
  * note : If it can be detected that the MOP has been deleted, this will return
  *    zero as well.  Note that this means that you can't simply use this to see
@@ -1074,8 +1089,8 @@ db_attribute_is_unique (DB_ATTRIBUTE * attribute)
       for (con = attribute->constraints;
 	   con != NULL && !status; con = con->next)
 	{
-	  if (con->type == SM_CONSTRAINT_UNIQUE ||
-	      con->type == SM_CONSTRAINT_PRIMARY_KEY)
+	  if (con->type == SM_CONSTRAINT_UNIQUE
+	      || con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	    {
 	      status = 1;
 	    }
@@ -1198,8 +1213,8 @@ db_attribute_is_indexed (DB_ATTRIBUTE * attribute)
       for (con = attribute->constraints;
 	   con != NULL && !status; con = con->next)
 	{
-	  if (con->type == SM_CONSTRAINT_INDEX ||
-	      con->type == SM_CONSTRAINT_REVERSE_INDEX)
+	  if (con->type == SM_CONSTRAINT_INDEX
+	      || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
 	      status = 1;
 	    }

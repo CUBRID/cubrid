@@ -175,11 +175,11 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\..\src\executables\dbu_misc.c"
+					RelativePath="..\..\src\executables\util_admin.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\util_admin.c"
+					RelativePath="..\..\src\executables\util_support.c"
 					>
 				</File>
 			</Filter>

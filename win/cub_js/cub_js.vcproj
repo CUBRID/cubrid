@@ -174,42 +174,42 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<Filter
-				Name="dbmt"
+				Name="cmserver"
 				>
 				<File
-					RelativePath="..\..\src\dbmt\cmd_exec.c"
+					RelativePath="..\..\src\cmserver\cm_command_execute.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dbmt_config.c"
+					RelativePath="..\..\src\cmserver\cm_config.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dbmt_user.c"
+					RelativePath="..\..\src\cmserver\cm_dstring.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dstring.c"
+					RelativePath="..\..\src\cmserver\cm_job_server.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\fserver.c"
+					RelativePath="..\..\src\cmserver\cm_nameval.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\nameval.c"
+					RelativePath="..\..\src\cmserver\cm_server_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\server_util.c"
+					RelativePath="..\..\src\cmserver\cm_text_encryption.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\tea.c"
+					RelativePath="..\..\src\cmserver\cm_user.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\wsa_init.c"
+					RelativePath="..\..\src\cmserver\cm_wsa_init.c"
 					>
 				</File>
 			</Filter>

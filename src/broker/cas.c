@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * cas.c -
  */
 
@@ -26,25 +42,24 @@
 
 #include "cas_common.h"
 #include "cas.h"
-#include "net_cas.h"
-#include "func.h"
-#include "net_buf.h"
+#include "cas_network.h"
+#include "cas_function.h"
+#include "cas_net_buf.h"
 #include "cas_log.h"
 #include "cas_util.h"
-#include "file_name.h"
-#include "exec_db.h"
+#include "broker_filename.h"
+#include "cas_execute.h"
 #ifndef WIN32
-#include "recv_fd.h"
+#include "broker_recv_fd.h"
 #endif
 #ifdef DIAG_DEVEL
 #include "perf_monitor.h"
 #endif
 
-#include "shm.h"
-#include "env_str_def.h"
-#include "getsize.h"
-#include "as_util.h"
-#include "sql_log2.h"
+#include "broker_shm.h"
+#include "broker_env_def.h"
+#include "broker_process_size.h"
+#include "cas_sql_log2.h"
 
 
 
@@ -54,7 +69,7 @@ static int process_request (int sock_fd, T_NET_BUF * net_buf,
 
 #if defined(WINDOWS)
 #define EXECUTABLE_BIN_DIR "bin"
-LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException);
+LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif
 
 #ifndef LIBCAS_FOR_JSP
@@ -62,8 +77,11 @@ static void cleanup (int signo);
 static int cas_init (void);
 static void query_cancel (int signo);
 static int net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size);
-#endif
-
+#else /* !LIBCAS_FOR_JSP */
+extern int libcas_main (int jsp_sock_fd);
+extern void *libcas_get_db_result_set (int h_id);
+extern void libcas_srv_handle_free (int h_id);
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
 char broker_name[32];
@@ -77,7 +95,7 @@ char stripped_column_name;
 char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
-int need_auto_commit = FALSE;
+int need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 int new_req_sock_fd = 0;
 #endif
 int cas_default_isolation_level = 0;
@@ -276,232 +294,240 @@ main (int argc, char *argv[])
   stripped_column_name = shm_appl->stripped_column_name;
 
 #if defined(WINDOWS)
-  __try{
+  __try
+  {
 #endif
 
-  for (;;)
-    {
-      br_sock_fd = net_connect_client (srv_sock_fd);
-      if (br_sock_fd < 0)
-	{
+    for (;;)
+      {
+	br_sock_fd = net_connect_client (srv_sock_fd);
+	if (br_sock_fd < 0)
+	  {
+	    goto error1;
+	  }
+
+#ifdef WIN32
+	shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_BUSY;
+#endif
+	shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
+
+	net_timeout_set (NET_DEFAULT_TIMEOUT);
+	TIMEVAL_MAKE (&tran_start_time);
+	client_ip_addr = 0;
+
+#ifdef WIN32
+	client_sock_fd = br_sock_fd;
+	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
 	  goto error1;
-	}
-
-#ifdef WIN32
-      shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_BUSY;
-#endif
-      shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
-
-      net_timeout_set (NET_DEFAULT_TIMEOUT);
-      TIMEVAL_MAKE (&tran_start_time);
-      client_ip_addr = 0;
-
-#ifdef WIN32
-      client_sock_fd = br_sock_fd;
-      if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
-	goto error1;
-      memcpy (&client_ip_addr, shm_appl->as_info[shm_as_index].cas_clt_ip, 4);
+	memcpy (&client_ip_addr, shm_appl->as_info[shm_as_index].cas_clt_ip,
+		4);
 #else
-      client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
-      net_write_stream (br_sock_fd, "OK", 2);
-      CLOSE_SOCKET (br_sock_fd);
+	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
+	net_write_stream (br_sock_fd, "OK", 2);
+	CLOSE_SOCKET (br_sock_fd);
 #endif
 
-      sql_log_mode = shm_appl->sql_log_mode;
-      if (!(sql_log_mode & SQL_LOG_MODE_ON))
-	{
-	  sql_log_mode = SQL_LOG_MODE_OFF;
-	}
+	sql_log_mode = shm_appl->sql_log_mode;
+	if (!(sql_log_mode & SQL_LOG_MODE_ON))
+	  {
+	    sql_log_mode = SQL_LOG_MODE_OFF;
+	  }
 
-      cas_log_open (broker_name, shm_as_index);
-      shm_appl->as_info[shm_as_index].cur_sql_log2 = shm_appl->sql_log2;
-      sql_log2_init (broker_name, shm_as_index,
-		     shm_appl->as_info[shm_as_index].cur_sql_log2, FALSE);
+	cas_log_open (broker_name, shm_as_index);
+	shm_appl->as_info[shm_as_index].cur_sql_log2 = shm_appl->sql_log2;
+	sql_log2_init (broker_name, shm_as_index,
+		       shm_appl->as_info[shm_as_index].cur_sql_log2, FALSE);
 
-      if (print_cas_pid)
-	{
-	  cas_log_write (0, TRUE, "CAS_STARTED pid:%d", getpid ());
-	  print_cas_pid = FALSE;
-	}
-      cas_log_write (0, TRUE,
-		     "connect %s",
-		     ut_uchar2ipstr ((unsigned char *) (&client_ip_addr)));
-      setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-		  sizeof (one));
+	if (print_cas_pid)
+	  {
+	    cas_log_write (0, TRUE, "CAS_STARTED pid:%d", getpid ());
+	    print_cas_pid = FALSE;
+	  }
+	cas_log_write (0, TRUE,
+		       "connect %s",
+		       ut_uchar2ipstr ((unsigned char *) (&client_ip_addr)));
+	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
+		    sizeof (one));
 
-      if (client_sock_fd < 0)
-	{
-	  goto error1;
-	}
-
-
-      req_info.client_version =
-	CAS_MAKE_VER (shm_appl->as_info[shm_as_index].clt_major_version,
-		      shm_appl->as_info[shm_as_index].clt_minor_version,
-		      shm_appl->as_info[shm_as_index].clt_patch_version);
-      cas_client_type = shm_appl->as_info[shm_as_index].cas_client_type;
-
-      if (net_read_stream (client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) <
-	  0)
-	{
-	  NET_WRITE_ERROR_CODE (client_sock_fd, CAS_ER_COMMUNICATION);
-	}
-      else
-	{
-	  char *db_err_msg = NULL;
+	if (client_sock_fd < 0)
+	  {
+	    goto error1;
+	  }
 
 
-	  db_name = read_buf;
+	req_info.client_version =
+	  CAS_MAKE_VER (shm_appl->as_info[shm_as_index].clt_major_version,
+			shm_appl->as_info[shm_as_index].clt_minor_version,
+			shm_appl->as_info[shm_as_index].clt_patch_version);
+	cas_client_type = shm_appl->as_info[shm_as_index].cas_client_type;
 
-	  db_user = db_name + SRV_CON_DBNAME_SIZE;
-	  db_passwd = db_user + SRV_CON_DBUSER_SIZE;
-	  db_name[SRV_CON_DBNAME_SIZE - 1] =
-	    db_user[SRV_CON_DBUSER_SIZE - 1] =
-	    db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-	  if (db_user[0] == '\0')
-	    strcpy (db_user, "public");
+	if (net_read_stream (client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) <
+	    0)
+	  {
+	    NET_WRITE_ERROR_CODE (client_sock_fd, CAS_ER_COMMUNICATION);
+	  }
+	else
+	  {
+	    char *db_err_msg = NULL;
 
-	  cas_log_write (0, TRUE, "connect %s %s", db_name, db_user);
 
-	  err_code =
-	    UX_DATABASE_CONNECT (db_name, db_user, db_passwd, &db_err_msg,
-				 req_info.isql);
-	  if (err_code < 0)
-	    {
-	      if (db_err_msg == NULL)
-		{
-		  NET_WRITE_ERROR_CODE (client_sock_fd, err_code);
-		}
-	      else
-		{
-		  net_write_int (client_sock_fd, strlen (db_err_msg) + 5);
-		  net_write_int (client_sock_fd, err_code);
-		  net_write_stream (client_sock_fd, db_err_msg,
-				    strlen (db_err_msg) + 1);
-		}
-	      CLOSE_SOCKET (client_sock_fd);
-	      FREE_MEM (db_err_msg);
+	    db_name = read_buf;
 
-	      goto error1;
-	    }
+	    db_user = db_name + SRV_CON_DBNAME_SIZE;
+	    db_passwd = db_user + SRV_CON_DBUSER_SIZE;
+	    db_name[SRV_CON_DBNAME_SIZE - 1] =
+	      db_user[SRV_CON_DBUSER_SIZE - 1] =
+	      db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
+	    if (db_user[0] == '\0')
+	      strcpy (db_user, "public");
 
-	  UX_SET_DEFAULT_SETTING ();
+	    cas_log_write (0, TRUE, "connect %s %s", db_name, db_user);
 
-	  shm_appl->as_info[shm_as_index].auto_commit_mode = FALSE;
-	  cas_log_write (0, TRUE,
-			 "isolation level : %d, lock timeout : %d, auto_commit : %s",
-			 cas_default_isolation_level,
-			 cas_default_lock_timeout,
-			 shm_appl->as_info[shm_as_index].
-			 auto_commit_mode ? "true" : "false");
-
-	  shm_appl->as_info[shm_as_index].cur_keep_con = KEEP_CON_OFF;
-	  BROKER_INFO_KEEP_CONNECTION (broker_info) = CAS_KEEP_CONNECTION_OFF;
-
-	  if (shm_appl->statement_pooling)
-	    {
-	      BROKER_INFO_STATEMENT_POOLING (broker_info) =
-		CAS_STATEMENT_POOLING_ON;
-	      shm_appl->as_info[shm_as_index].cur_statement_pooling = ON;
-	    }
-	  else
-	    {
-	      BROKER_INFO_STATEMENT_POOLING (broker_info) =
-		CAS_STATEMENT_POOLING_OFF;
-	      shm_appl->as_info[shm_as_index].cur_statement_pooling = OFF;
-	    }
-
-	  do
-	    {
-	      char msgbuf[4 + BROKER_INFO_SIZE];
-	      int tmpint = htonl (getpid ());
-
-	      shm_appl->as_info[shm_as_index].cur_keep_con =
-		shm_appl->keep_connection;
-	      if (shm_appl->as_info[shm_as_index].cur_keep_con !=
-		  KEEP_CON_OFF)
-		{
-		  BROKER_INFO_KEEP_CONNECTION (broker_info) =
-		    CAS_KEEP_CONNECTION_ON;
-		}
-	      net_write_int (client_sock_fd, 4 + BROKER_INFO_SIZE);
-	      memcpy (msgbuf, &tmpint, 4);
-	      memcpy (msgbuf + 4, broker_info, BROKER_INFO_SIZE);
-	      net_write_stream (client_sock_fd, msgbuf, 4 + BROKER_INFO_SIZE);
-	    }
-	  while (0);
-
-	  req_info.need_rollback = TRUE;
-
-	  while (1)
-	    {
-#ifndef WIN32
-	      signal (SIGUSR1, query_cancel);
-#endif
-	      err_code =
-		process_request (client_sock_fd, &net_buf, &req_info);
-#ifndef WIN32
-	      signal (SIGUSR1, SIG_IGN);
-#endif
-#ifdef WIN32
-	      if (shm_appl->as_info[shm_as_index].glo_read_size < 0)
-		shm_appl->as_info[shm_as_index].glo_read_size = 0;
-	      if (shm_appl->as_info[shm_as_index].glo_write_size < 0)
-		shm_appl->as_info[shm_as_index].glo_write_size = 0;
-	      shm_appl->as_info[shm_as_index].glo_flag = 0;
-#endif
-	      shm_appl->as_info[shm_as_index].last_access_time = time (NULL);
-	      if (err_code < 0)
-		break;
-	    }
-
-	  if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
-	    hm_srv_handle_free_all ();
-
-	  if (xa_prepare_flag)
-	    {
-	      UX_DATABASE_SHUTDOWN (req_info.isql);
-	      UX_DATABASE_CONNECT (db_name, db_user, db_passwd, NULL,
+	    err_code =
+	      UX_DATABASE_CONNECT (db_name, db_user, db_passwd, &db_err_msg,
 				   req_info.isql);
-	    }
-	  else
-	    {
-	      ux_end_tran (CCI_TRAN_ROLLBACK, FALSE);
-	    }
+	    if (err_code < 0)
+	      {
+		if (db_err_msg == NULL)
+		  {
+		    NET_WRITE_ERROR_CODE (client_sock_fd, err_code);
+		  }
+		else
+		  {
+		    net_write_int (client_sock_fd, strlen (db_err_msg) + 5);
+		    net_write_int (client_sock_fd, err_code);
+		    net_write_stream (client_sock_fd, db_err_msg,
+				      strlen (db_err_msg) + 1);
+		  }
+		CLOSE_SOCKET (client_sock_fd);
+		FREE_MEM (db_err_msg);
 
-	  if (shm_appl->access_log == ON)
-	    cas_access_log (&tran_start_time, shm_as_index, client_ip_addr);
+		goto error1;
+	      }
 
-	}
+	    UX_SET_DEFAULT_SETTING ();
 
-      CLOSE_SOCKET (client_sock_fd);
+	    shm_appl->as_info[shm_as_index].auto_commit_mode = FALSE;
+	    cas_log_write (0, TRUE,
+			   "isolation level : %d, lock timeout : %d, auto_commit : %s",
+			   cas_default_isolation_level,
+			   cas_default_lock_timeout,
+			   shm_appl->as_info[shm_as_index].
+			   auto_commit_mode ? "true" : "false");
 
-    error1:
+	    shm_appl->as_info[shm_as_index].cur_keep_con = KEEP_CON_OFF;
+	    BROKER_INFO_KEEP_CONNECTION (broker_info) =
+	      CAS_KEEP_CONNECTION_OFF;
+
+	    if (shm_appl->statement_pooling)
+	      {
+		BROKER_INFO_STATEMENT_POOLING (broker_info) =
+		  CAS_STATEMENT_POOLING_ON;
+		shm_appl->as_info[shm_as_index].cur_statement_pooling = ON;
+	      }
+	    else
+	      {
+		BROKER_INFO_STATEMENT_POOLING (broker_info) =
+		  CAS_STATEMENT_POOLING_OFF;
+		shm_appl->as_info[shm_as_index].cur_statement_pooling = OFF;
+	      }
+
+	    do
+	      {
+		char msgbuf[4 + BROKER_INFO_SIZE];
+		int tmpint = htonl (getpid ());
+
+		shm_appl->as_info[shm_as_index].cur_keep_con =
+		  shm_appl->keep_connection;
+		if (shm_appl->as_info[shm_as_index].cur_keep_con !=
+		    KEEP_CON_OFF)
+		  {
+		    BROKER_INFO_KEEP_CONNECTION (broker_info) =
+		      CAS_KEEP_CONNECTION_ON;
+		  }
+		net_write_int (client_sock_fd, 4 + BROKER_INFO_SIZE);
+		memcpy (msgbuf, &tmpint, 4);
+		memcpy (msgbuf + 4, broker_info, BROKER_INFO_SIZE);
+		net_write_stream (client_sock_fd, msgbuf,
+				  4 + BROKER_INFO_SIZE);
+	      }
+	    while (0);
+
+	    req_info.need_rollback = TRUE;
+
+	    while (1)
+	      {
+#ifndef WIN32
+		signal (SIGUSR1, query_cancel);
+#endif
+		err_code =
+		  process_request (client_sock_fd, &net_buf, &req_info);
+#ifndef WIN32
+		signal (SIGUSR1, SIG_IGN);
+#endif
 #ifdef WIN32
-      shm_appl->as_info[shm_as_index].close_flag = 1;
+		if (shm_appl->as_info[shm_as_index].glo_read_size < 0)
+		  shm_appl->as_info[shm_as_index].glo_read_size = 0;
+		if (shm_appl->as_info[shm_as_index].glo_write_size < 0)
+		  shm_appl->as_info[shm_as_index].glo_write_size = 0;
+		shm_appl->as_info[shm_as_index].glo_flag = 0;
+#endif
+		shm_appl->as_info[shm_as_index].last_access_time =
+		  time (NULL);
+		if (err_code < 0)
+		  break;
+	      }
+
+	    if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
+	      hm_srv_handle_free_all ();
+
+	    if (xa_prepare_flag)
+	      {
+		UX_DATABASE_SHUTDOWN (req_info.isql);
+		UX_DATABASE_CONNECT (db_name, db_user, db_passwd, NULL,
+				     req_info.isql);
+	      }
+	    else
+	      {
+		ux_end_tran (CCI_TRAN_ROLLBACK, FALSE);
+	      }
+
+	    if (shm_appl->access_log == ON)
+	      cas_access_log (&tran_start_time, shm_as_index, client_ip_addr);
+
+	  }
+
+	CLOSE_SOCKET (client_sock_fd);
+
+      error1:
+#ifdef WIN32
+	shm_appl->as_info[shm_as_index].close_flag = 1;
 #endif
 
-      cas_log_write (0, TRUE, "disconnect");
+	cas_log_write (0, TRUE, "disconnect");
 
-      cas_log_end (&tran_start_time, broker_name, shm_as_index,
-		   shm_appl->sql_log_time, sql_log2_get_filename (),
-		   shm_appl->sql_log_max_size, TRUE);
-      sql_log2_end (TRUE);
+	cas_log_end (&tran_start_time, broker_name, shm_as_index,
+		     shm_appl->sql_log_time, sql_log2_get_filename (),
+		     shm_appl->sql_log_max_size, TRUE);
+	sql_log2_end (TRUE);
 
-      if (!(shm_appl->as_info[shm_as_index].cur_keep_con == KEEP_CON_AUTO &&
-	    shm_appl->as_info[shm_as_index].con_status ==
-	    CON_STATUS_CLOSE_AND_CONNECT))
-	{
-	  if (restart_is_needed ())
-	    shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_RESTART;
-	  else
-	    shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_IDLE;
-	}
-      cas_req_count++;
-    }
+	if (!(shm_appl->as_info[shm_as_index].cur_keep_con == KEEP_CON_AUTO
+	      && shm_appl->as_info[shm_as_index].con_status ==
+	      CON_STATUS_CLOSE_AND_CONNECT))
+	  {
+	    if (restart_is_needed ())
+	      shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_RESTART;
+	    else
+	      shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_IDLE;
+	  }
+	cas_req_count++;
+      }
 #if defined(WINDOWS)
-  }__except(CreateMiniDump(GetExceptionInformation())){}
-#endif	
+  }
+  __except (CreateMiniDump (GetExceptionInformation ()))
+  {
+  }
+#endif
 
   return 0;
 }
@@ -520,7 +546,9 @@ libcas_main (int jsp_sock_fd)
   req_info.client_version = CAS_CUR_VERSION;
   BROKER_INFO_DBMS_TYPE (broker_info) = CCI_DBMS_CUBRID;
   client_sock_fd = jsp_sock_fd;
-/*  net_write_int(client_sock_fd, 1);
+
+#if 0 
+  net_write_int(client_sock_fd, 1);
 
   req_info.client_version = CAS_CUR_VERSION;
   if (net_read_stream(client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) < 0) {
@@ -538,7 +566,8 @@ libcas_main (int jsp_sock_fd)
       memcpy(msgbuf+4, broker_info, BROKER_INFO_SIZE);
       net_write_stream(client_sock_fd, msgbuf, 4 + BROKER_INFO_SIZE);
     }
-*/
+#endif
+
   net_buf_init (&net_buf);
   if ((net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE)) == NULL)
     {
@@ -721,17 +750,18 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   server_fn = server_fn_table[func_code - 1];
 
 #ifndef LIBCAS_FOR_JSP
-  need_auto_commit = FALSE;
+  need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 #endif
   cas_send_result_flag = TRUE;
 
   err_code = (*server_fn) (clt_sock_fd, argc, argv, net_buf, req_info);
+
 #ifndef LIBCAS_FOR_JSP
-  if (err_code == 0 && net_buf->err_code == 0 && need_auto_commit == TRUE)
+  if (err_code == 0 && net_buf->err_code == 0
+      && need_auto_commit != TRAN_NOT_AUTOCOMMIT)
     {
       /* no error and auto commit is needed */
-
-      err_code = fn_auto_commit (clt_sock_fd, 0, NULL, net_buf, req_info);
+      err_code = ux_auto_commit (net_buf, req_info);
 
 #ifdef DIAG_DEVEL
       shm_appl->as_info[shm_as_index].num_transactions_processed %=
@@ -819,7 +849,6 @@ static int
 cas_init ()
 {
   char *tmp_p;
-  char buf[PATH_MAX];
 
   if (as_get_my_as_info (broker_name, &shm_as_index) < 0)
     return -1;
@@ -833,9 +862,8 @@ cas_init ()
   if (shm_appl == NULL)
     return -1;
 
-  sprintf (buf, "%s/%s", shm_appl->log_dir, CUBRID_SQL_LOG_DIR);
-  set_cubrid_file (FID_SQL_LOG_DIR, buf);
-  set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
   as_pid_file_create (broker_name, shm_as_index);
   as_db_err_log_set (broker_name, shm_as_index);
@@ -866,9 +894,9 @@ net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
 	  cas_log_reset (broker_name, shm_as_index);
 	}
 
-      if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE ||
-	  shm_appl->as_info[shm_as_index].con_status ==
-	  CON_STATUS_CLOSE_AND_CONNECT)
+      if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE
+	  || (shm_appl->as_info[shm_as_index].con_status ==
+	      CON_STATUS_CLOSE_AND_CONNECT))
 	{
 	  break;
 	}
@@ -905,14 +933,16 @@ net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
       TIMEVAL_MAKE (&tran_start_time);
     }
 
-  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE ||
-      shm_appl->as_info[shm_as_index].con_status ==
-      CON_STATUS_CLOSE_AND_CONNECT)
+  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE
+      || (shm_appl->as_info[shm_as_index].con_status ==
+	  CON_STATUS_CLOSE_AND_CONNECT))
     {
       ret_value = -1;
     }
   else
-    shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
+    {
+      shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
+    }
 
   CON_STATUS_UNLOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
 
@@ -956,61 +986,55 @@ restart_is_needed (void)
 
 #if defined(WINDOWS)
 
-LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException)
+LONG WINAPI
+CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 {
-	STARTUPINFO si;
-	PROCESS_INFORMATION pi;
-	BOOL fSuccess;
-	char cmd_line[PATH_MAX];
-    TCHAR        DumpPath[MAX_PATH] = {0,};
-    SYSTEMTIME    SystemTime;
-	HANDLE FileHandle ;
-	char * cubid_env;
+  STARTUPINFO si;
+  PROCESS_INFORMATION pi;
+  BOOL fSuccess;
+  char cmd_line[PATH_MAX];
+  TCHAR DumpPath[MAX_PATH] = { 0, };
+  SYSTEMTIME SystemTime;
+  HANDLE FileHandle;
+  char *cubid_env;
 
-    GetLocalTime(&SystemTime);
+  GetLocalTime (&SystemTime);
 
-    sprintf(DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp", 
-		get_cubrid_home(),
-		EXECUTABLE_BIN_DIR,
-        SystemTime.wYear,
-        SystemTime.wMonth,
-        SystemTime.wDay,
-        SystemTime.wHour,
-        SystemTime.wMinute,
-        SystemTime.wSecond);
-    
-    FileHandle = CreateFile(
-        DumpPath, 
-        GENERIC_WRITE, 
-        FILE_SHARE_WRITE, 
-        NULL, CREATE_ALWAYS, 
-        FILE_ATTRIBUTE_NORMAL, 
-        NULL);
+  sprintf (DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
+	   get_cubrid_home (),
+	   EXECUTABLE_BIN_DIR,
+	   SystemTime.wYear,
+	   SystemTime.wMonth,
+	   SystemTime.wDay,
+	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
 
-    if (FileHandle != INVALID_HANDLE_VALUE)
+  FileHandle = CreateFile (DumpPath,
+			   GENERIC_WRITE,
+			   FILE_SHARE_WRITE,
+			   NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  if (FileHandle != INVALID_HANDLE_VALUE)
     {
-        MINIDUMP_EXCEPTION_INFORMATION MiniDumpExceptionInfo;
-		BOOL Success ;
-        
-        MiniDumpExceptionInfo.ThreadId            = GetCurrentThreadId();
-        MiniDumpExceptionInfo.ExceptionPointers    = pException;
-        MiniDumpExceptionInfo.ClientPointers    = FALSE;
+      MINIDUMP_EXCEPTION_INFORMATION MiniDumpExceptionInfo;
+      BOOL Success;
 
-        Success = MiniDumpWriteDump(
-            GetCurrentProcess(), 
-            GetCurrentProcessId(), 
-            FileHandle, 
-            MiniDumpNormal, 
-			(pException) ? &MiniDumpExceptionInfo : NULL, 
-            NULL, 
-            NULL);
+      MiniDumpExceptionInfo.ThreadId = GetCurrentThreadId ();
+      MiniDumpExceptionInfo.ExceptionPointers = pException;
+      MiniDumpExceptionInfo.ClientPointers = FALSE;
+
+      Success = MiniDumpWriteDump (GetCurrentProcess (),
+				   GetCurrentProcessId (),
+				   FileHandle,
+				   MiniDumpNormal,
+				   (pException) ? &MiniDumpExceptionInfo :
+				   NULL, NULL, NULL);
     }
 
-    CloseHandle(FileHandle);
+  CloseHandle (FileHandle);
 
-	UX_DATABASE_SHUTDOWN (req_info.isql);
+  UX_DATABASE_SHUTDOWN (req_info.isql);
 
-	return EXCEPTION_EXECUTE_HANDLER;
+  return EXCEPTION_EXECUTE_HANDLER;
 }
 #endif
 #endif

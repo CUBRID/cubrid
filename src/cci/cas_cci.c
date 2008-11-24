@@ -1,7 +1,35 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
+
+/*
  * cas_cci.c -
  */
 
@@ -53,7 +81,7 @@
 #include "cci_util.h"
 
 #ifdef WIN32
-#include "wsa_init.h"
+#include "cm_wsa_init.h"
 #endif
 
 #ifdef CCI_XA
@@ -563,7 +591,7 @@ cci_is_updatable (int req_h_id)
 }
 
 T_CCI_COL_INFO *
-cci_get_result_info (int req_h_id, T_CCI_SQLX_CMD * cmd_type, int *num)
+cci_get_result_info (int req_h_id, T_CCI_CUBRID_STMT * cmd_type, int *num)
 {
   T_REQ_HANDLE *req_handle;
   T_CCI_COL_INFO *col_info;
@@ -573,7 +601,7 @@ cci_get_result_info (int req_h_id, T_CCI_SQLX_CMD * cmd_type, int *num)
 #endif
 
   if (cmd_type)
-    *cmd_type = (T_CCI_SQLX_CMD) - 1;
+    *cmd_type = (T_CCI_CUBRID_STMT) - 1;
   if (num)
     *num = 0;
   col_info = NULL;
@@ -584,19 +612,23 @@ cci_get_result_info (int req_h_id, T_CCI_SQLX_CMD * cmd_type, int *num)
   if (req_handle != NULL)
     {
       if (cmd_type)
-	*cmd_type = req_handle->stmt_type;
+	{
+	  *cmd_type = req_handle->stmt_type;
+	}
 
       switch (req_handle->handle_type)
 	{
 	case HANDLE_PREPARE:
-	  if (req_handle->stmt_type == SQLX_CMD_SELECT ||
-	      req_handle->stmt_type == SQLX_CMD_GET_STATS ||
-	      req_handle->stmt_type == SQLX_CMD_EVALUATE ||
-	      req_handle->stmt_type == SQLX_CMD_CALL ||
-	      req_handle->stmt_type == SQLX_CMD_CALL_SP)
+	  if (req_handle->stmt_type == CUBRID_STMT_SELECT
+	      || req_handle->stmt_type == CUBRID_STMT_GET_STATS
+	      || req_handle->stmt_type == CUBRID_STMT_EVALUATE
+	      || req_handle->stmt_type == CUBRID_STMT_CALL
+	      || req_handle->stmt_type == CUBRID_STMT_CALL_SP)
 	    {
 	      if (num)
-		*num = req_handle->num_col_info;
+		{
+		  *num = req_handle->num_col_info;
+		}
 	      col_info = req_handle->col_info;
 	    }
 	  break;
@@ -604,7 +636,9 @@ cci_get_result_info (int req_h_id, T_CCI_SQLX_CMD * cmd_type, int *num)
 	case HANDLE_SCHEMA_INFO:
 	case HANDLE_COL_GET:
 	  if (num)
-	    *num = req_handle->num_col_info;
+	    {
+	      *num = req_handle->num_col_info;
+	    }
 	  col_info = req_handle->col_info;
 	  break;
 	default:
@@ -1194,8 +1228,8 @@ cci_close_req_handle (int req_h_id)
 	}
     }
 
-  if (req_handle->handle_type == HANDLE_PREPARE ||
-      req_handle->handle_type == HANDLE_SCHEMA_INFO)
+  if (req_handle->handle_type == HANDLE_PREPARE
+      || req_handle->handle_type == HANDLE_SCHEMA_INFO)
     {
       err_code = qe_close_req_handle (req_handle, con_handle->sock_fd);
     }

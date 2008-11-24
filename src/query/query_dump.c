@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * query_dump.c - Query processor printer
- *
  */
 
 #ident "$Id$"
@@ -13,7 +27,7 @@
 
 #include "error_manager.h"
 #include "object_representation.h"
-#include "qp_xasl.h"
+#include "query_executor.h"
 #include "class_object.h"
 
 #define foutput stdout
@@ -101,8 +115,8 @@ static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE *
 					chk_nodes[HASH_NUMBER]);
 
 /*
- * qdump_print_xasl_type () - 
- *   return: 
+ * qdump_print_xasl_type () -
+ *   return:
  *   xasl(in):
  */
 static bool
@@ -157,7 +171,7 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
 }
 
 /*
- * qdump_print_db_value_array () - 
+ * qdump_print_db_value_array () -
  *   return:
  *   array(in)  :
  *   int cnt(in):
@@ -201,8 +215,8 @@ qdump_print_column (const char *title_p, int col_count, int *column_p)
 }
 
 /*
- * qdump_print_list_merge_info () - 
- *   return: 
+ * qdump_print_list_merge_info () -
+ *   return:
  *   ptr(in):
  */
 static bool
@@ -236,8 +250,8 @@ qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * merge_info_p)
 }
 
 /*
- * qdump_print_merge_list_proc_node () - 
- *   return: 
+ * qdump_print_merge_list_proc_node () -
+ *   return:
  *   ptr(in):
  */
 static bool
@@ -298,8 +312,8 @@ qdump_print_attribute (const char *action_p, int attr_count, int *attr_ids_p)
 }
 
 /*
- * qdump_print_update_proc_node () - 
- *   return: 
+ * qdump_print_update_proc_node () -
+ *   return:
  *   ptr(in):
  */
 static bool
@@ -330,8 +344,8 @@ qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
 }
 
 /*
- * qdump_print_delete_proc_node () - 
- *   return: 
+ * qdump_print_delete_proc_node () -
+ *   return:
  *   ptr(in):
  */
 static bool
@@ -355,8 +369,8 @@ qdump_print_delete_proc_node (DELETE_PROC_NODE * node_p)
 }
 
 /*
- * qdump_print_insert_proc_node () - 
- *   return: 
+ * qdump_print_insert_proc_node () -
+ *   return:
  *   ptr(in):
  */
 static bool
@@ -373,8 +387,8 @@ qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
 }
 
 /*
- * qdump_target_type_string () - 
- *   return: 
+ * qdump_target_type_string () -
+ *   return:
  *   type(in):
  */
 static const char *
@@ -399,7 +413,7 @@ qdump_target_type_string (TARGET_TYPE type)
 
 /*
  * qdump_access_method_string () -
- *   return: 
+ *   return:
  *   access(in):
  */
 static const char *
@@ -417,8 +431,8 @@ qdump_access_method_string (ACCESS_METHOD access)
 }
 
 /*
- * qdump_print_access_spec () - 
- *   return: 
+ * qdump_print_access_spec () -
+ *   return:
  *   spec_list(in):
  */
 static bool
@@ -490,8 +504,8 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 }
 
 /*
- * qdump_print_start_proc () - 
- *   return: 
+ * qdump_print_start_proc () -
+ *   return:
  *   start_proc(in):
  */
 static bool
@@ -517,8 +531,8 @@ qdump_print_start_proc (START_PROC * start_proc_p)
 	       start_proc_p->comp_dbid, start_proc_p->ldb);
     }
 
-  if (start_proc_p->input_vals && start_proc_p->vals_len &&
-      start_proc_p->vals_cnt > 0)
+  if (start_proc_p->input_vals && start_proc_p->vals_len
+      && start_proc_p->vals_cnt > 0)
     {
       fprintf (foutput, "\tinput vals:(%d)%*s\n",
 	       start_proc_p->vals_cnt,
@@ -571,8 +585,8 @@ qdump_key_range_string (RANGE range)
 }
 
 /*
- * qdump_print_key_info () - 
- *   return: 
+ * qdump_print_key_info () -
+ *   return:
  *   key_info(in):
  */
 static bool
@@ -625,7 +639,7 @@ qdump_range_type_string (RANGE_TYPE range_type)
 }
 
 /*
- * qdump_print_index () - 
+ * qdump_print_index () -
  *   return:
  *   index_ptr(in):
  */
@@ -657,7 +671,7 @@ qdump_print_index (INDX_INFO * index_p)
 }
 
 /*
- * qdump_print_index_id () - 
+ * qdump_print_index_id () -
  *   return:
  *   id(in):
  */
@@ -681,7 +695,7 @@ qdump_print_index_id (INDX_ID id)
 }
 
 /*
- * qdump_print_btid () - 
+ * qdump_print_btid () -
  *   return:
  *   id(in):
  */
@@ -694,7 +708,7 @@ qdump_print_btid (BTID id)
 }
 
 /*
- * qdump_print_class () - 
+ * qdump_print_class () -
  *   return:
  *   ptr(in):
  */
@@ -715,7 +729,7 @@ qdump_print_class (CLS_SPEC_TYPE * class_p)
 }
 
 /*
- * qdump_print_hfid () - 
+ * qdump_print_hfid () -
  *   return:
  *   id(in):
  */
@@ -729,7 +743,7 @@ qdump_print_hfid (HFID id)
 }
 
 /*
- * qdump_print_vfid () - 
+ * qdump_print_vfid () -
  *   return:
  *   id(in):
  */
@@ -741,7 +755,7 @@ qdump_print_vfid (VFID id)
 }
 
 /*
- * qdump_print_list () - 
+ * qdump_print_list () -
  *   return:
  *   ptr(in):
  */
@@ -758,7 +772,7 @@ qdump_print_list (LIST_SPEC_TYPE * list_p)
 }
 
 /*
- * qdump_print_outlist () - 
+ * qdump_print_outlist () -
  *   return:
  *   title(in):
  *   outlist(in):
@@ -793,7 +807,7 @@ qdump_print_outlist (const char *title_p, OUTPTR_LIST * outlist_p)
 }
 
 /*
- * qdump_print_listi_d () - 
+ * qdump_print_listi_d () -
  *   return:
  *   idptr(in):
  */
@@ -818,7 +832,7 @@ qdump_print_listi_d (QFILE_LIST_ID * list_id_p)
 }
 
 /*
- * qdump_print_type_list () - 
+ * qdump_print_type_list () -
  *   return:
  *   typeptr(in):
  */
@@ -834,7 +848,7 @@ qdump_print_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p)
 }
 
 /*
- * qdump_print_domain_list () - 
+ * qdump_print_domain_list () -
  *   return:
  *   cnt(in):
  *   ptr(in):
@@ -859,7 +873,7 @@ qdump_print_domain_list (int cnt, TP_DOMAIN ** domains_p)
 }
 
 /*
- * qdump_print_sort_list () - 
+ * qdump_print_sort_list () -
  *   return:
  *   sorting_list(in):
  */
@@ -896,7 +910,7 @@ qdump_print_sort_list (SORT_LIST * sort_list_p)
 }
 
 /*
- * qdump_print_attribute_id () - 
+ * qdump_print_attribute_id () -
  *   return:
  *   attr(in):
  */
@@ -910,7 +924,7 @@ qdump_print_attribute_id (ATTR_DESCR attr)
 }
 
 /*
- * qdump_print_tuple_value_position () - 
+ * qdump_print_tuple_value_position () -
  *   return:
  *   pos(in):
  */
@@ -925,7 +939,7 @@ qdump_print_tuple_value_position (QFILE_TUPLE_VALUE_POSITION pos)
 }
 
 /*
- * qdump_print_value_list () - 
+ * qdump_print_value_list () -
  *   return:
  *   vallist(in):
  */
@@ -964,7 +978,7 @@ qdump_print_value_list (VAL_LIST * value_list_p)
 }
 
 /*
- * qdump_print_regu_variable_list () - 
+ * qdump_print_regu_variable_list () -
  *   return:
  *   varlist(in):
  */
@@ -991,7 +1005,7 @@ qdump_print_regu_variable_list (REGU_VARIABLE_LIST var_list)
 }
 
 /*
- * qdump_option_string () - 
+ * qdump_option_string () -
  *   return:
  *   option(in):
  */
@@ -1010,7 +1024,7 @@ qdump_option_string (int option)
 }
 
 /*
- * qdump_print_db_value () - 
+ * qdump_print_db_value () -
  *   return:
  *   value(in):
  */
@@ -1062,7 +1076,7 @@ qdump_regu_type_string (REGU_DATATYPE type)
 }
 
 /*
- * qdump_print_regu_type () - 
+ * qdump_print_regu_type () -
  *   return:
  *   value(in):
  */
@@ -1085,7 +1099,7 @@ qdump_print_regu_type (REGU_VARIABLE * value_p)
 }
 
 /*
- * qdump_data_type_string () - 
+ * qdump_data_type_string () -
  *   return:
  *   type(in):
  */
@@ -1163,7 +1177,7 @@ qdump_data_type_string (DB_TYPE type)
 }
 
 /*
- * qdump_print_value () - 
+ * qdump_print_value () -
  *   return:
  *   value(in):
  */
@@ -1314,7 +1328,7 @@ qdump_function_type_string (FUNC_TYPE ftype)
 }
 
 /*
- * qdump_print_function_value () - 
+ * qdump_print_function_value () -
  *   return:
  *   regu(in):
  */
@@ -1342,7 +1356,7 @@ qdump_print_function_value (REGU_VARIABLE * regu_var_p)
 }
 
 /*
- * qdump_print_value_type_addr () - 
+ * qdump_print_value_type_addr () -
  *   return:
  *   value(in):
  */
@@ -1407,7 +1421,7 @@ qdump_print_value_type_addr (REGU_VARIABLE * regu_var_p)
 
 
 /*
- * qdump_print_oid () - 
+ * qdump_print_oid () -
  *   return:
  *   id(in):
  */
@@ -1511,7 +1525,7 @@ qdump_print_eval_term (PRED_EXPR * pred_p)
 }
 
 /*
- * qdump_print_term () - 
+ * qdump_print_term () -
  *   return:
  *   term(in):
  */
@@ -1578,7 +1592,7 @@ qdump_print_lhs_predicate (PRED_EXPR * pred_p)
 }
 
 /*
- * qdump_print_predicate () - 
+ * qdump_print_predicate () -
  *   return:
  *   predptr(in):
  */
@@ -1646,7 +1660,7 @@ qdump_print_predicate (PRED_EXPR * pred_p)
 }
 
 /*
- * qdump_relation_operator_string () - 
+ * qdump_relation_operator_string () -
  *   return:
  *   op(in):
  */
@@ -1793,7 +1807,7 @@ qdump_print_aggregate_expression (int type, AGGREGATE_TYPE * aggptr)
 }
 
 /*
- * qdump_print_arith () - 
+ * qdump_print_arith () -
  *   return:
  *   type(in):
  *   ptr(in):
@@ -1819,7 +1833,7 @@ qdump_print_arith (int type, void *ptr)
 }
 
 /*
- * qdump_check_xasl_tree () - 
+ * qdump_check_xasl_tree () -
  *   return:
  *   xasl(in):
  */
@@ -1841,7 +1855,7 @@ qdump_check_xasl_tree (XASL_NODE * xasl_p)
 }
 
 /*
- * qdump_find_check_node_for () - 
+ * qdump_find_check_node_for () -
  *   return:
  *   xasl(in):
  *   chk_nodes(in):
@@ -1885,7 +1899,7 @@ qdump_find_check_node_for (XASL_NODE * xasl_p,
 }
 
 /*
- * qdump_check_node () - 
+ * qdump_check_node () -
  *   return:
  *   xasl(in):
  *   chk_nodes(in):
@@ -1919,9 +1933,9 @@ qdump_check_node (XASL_NODE * xasl_p,
 
   check_node_p->reachable = 1;
 
-  /* 
+  /*
    * Mark the node its access spec references.  You may need to create
-   * it if it is a forward reference. 
+   * it if it is a forward reference.
    */
   for (spec_p = xasl_p->spec_list; spec_p; spec_p = spec_p->next)
     {
@@ -1993,7 +2007,7 @@ qdump_check_node (XASL_NODE * xasl_p,
 }
 
 /*
- * qdump_print_inconsistencies () - 
+ * qdump_print_inconsistencies () -
  *   return:
  *   chk_nodes(in):
  */
@@ -2052,7 +2066,7 @@ qdump_print_fetch_node (XASL_NODE * xasl_p)
   fprintf (foutput, "-->fetch  <addr:%x><type:", (int) node_p->arg);
   fprintf (foutput, "%s",
 	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->arg)));
-  fprintf (foutput, ">\n fetch_res (%d)\n", node_p->fetch_res);
+  fprintf (foutput, ">\n fetch_res (%d)\n", (int) node_p->fetch_res);
 
   if (node_p->set_pred)
     {
@@ -2203,7 +2217,7 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
 
 /*
  * qdump_print_xasl () -
- *   return: 
+ *   return:
  *   xasl(in):
  */
 bool

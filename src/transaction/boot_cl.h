@@ -1,15 +1,31 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * bocl.h - Boot managment in the client (interface)
- * 						       
- * Note: See .c file for overview and description of the interface functions.
- * 									       
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _BOCL_H_
-#define _BOCL_H_
+
+/*
+ * boot_cl.h - Boot managment in the client (interface)
+ *
+ * Note: See .c file for overview and description of the interface functions.
+ *
+ */
+
+#ifndef _BOOT_CL_H_
+#define _BOOT_CL_H_
 
 #ident "$Id$"
 
@@ -18,7 +34,7 @@
 #endif /* !WINDOWS */
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "transaction_cl.h"
 
 #define BOOT_IS_CLIENT_RESTARTED() (tm_Tran_index != NULL_TRAN_INDEX)
@@ -53,4 +69,4 @@ extern int boot_destroy_catalog_classes (void);
 extern int boot_rebuild_catalog_classes (const char *dbname);
 #endif /* SA_MODE */
 
-#endif /* _BOCL_H_ */
+#endif /* _BOOT_CL_H_ */

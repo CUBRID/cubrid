@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * log_pb.c -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * log_page_buffer.c -
  */
 
 #ident "$Id$"
@@ -38,12 +51,12 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "defs.h"
+#include "connection_defs.h"
 #include "thread_impl.h"
-#include "log_prv.h"
-#include "log.h"
-#include "logcp.h"
-#include "lock.h"
+#include "log_impl.h"
+#include "log_manager.h"
+#include "log_comm.h"
+#include "lock_manager.h"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
@@ -53,11 +66,11 @@
 #include "file_io.h"
 #include "disk_manager.h"
 #include "error_manager.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 #include "perf_monitor.h"
-#include "common.h"
+#include "storage_common.h"
 #include "system_parameter.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "memory_hash.h"
 #include "release_string.h"
 #include "message_catalog.h"
@@ -66,7 +79,7 @@
 #include "errno.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
-#include "csserror.h"
+#include "connection_error.h"
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
@@ -134,9 +147,9 @@ struct log_buffer
   PAGEID pageid;		/* Logical page of the log. (Page identifier of
 				 * the infinite log)
 				 */
-  PAGEID phy_pageid;		/* Physical pageid for the active log portion     */
-  int fcnt;			/* Fix count                                      */
-  int dirty;			/* Is page dirty                                  */
+  PAGEID phy_pageid;		/* Physical pageid for the active log portion */
+  int fcnt;			/* Fix count */
+  int dirty;			/* Is page dirty */
   int recently_freed;		/* Reference value 0/1 used by the clock
 				 * algorithm
 				 */
@@ -147,7 +160,7 @@ struct log_buffer
 
   bool flush_running;		/* Is page beging flushed ? */
 
-  LOG_PAGE logpage;		/* The actual buffered log page                   */
+  LOG_PAGE logpage;		/* The actual buffered log page */
 };
 
 struct log_bufarea
@@ -754,27 +767,6 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
  *
  *   retry(in/out): true if need to retry, false if not
  *
- * NOTE:This function finds a buffer which can be replaced. If a
- *              buffer cannot be replaced, the log buffer pool is expanded
- *              with an additional area of contiguous buffers.
- *              A buffer is selected for replacement by following the CLOCK
- *              algorithm among the unfixed buffers in the buffer pool.
- *              Replacement is handled by maintaining a ring of pointers (the
- *              clock) to the page buffers. A pointer (the clock hand) is
- *              maintained to a slot in the ring. When a page need to be
- *              replaced, the ring pointer is used as the starting point for
- *              the replacement search. In addition to the fixed/unfixed
- *              status, a recently-freed flag is associated with ever buffer.
- *              This flag is set whenever a buffer is freed. This flag when
- *              set indicates that a page was referenced during a cycle of the
- *              clock. The page to replace is determined by finding the first
- *              unfixed buffer whose recently-freed flag is not set. If a
- *              buffer is encountered during the search whose recently-freed
- *              flag is set, the flag is cleared and the clock hand moves to
- *              the next buffer. This method ensures that a page will always
- *              survive replacement if it is referenced during a full cycle of
- *              the clock.
- *              Lpb_mutex can be released and always acquired again.
  */
 static struct log_buffer *
 logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
@@ -1104,7 +1096,7 @@ logpb_is_dirty (LOG_PAGE * log_pgptr)
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
-  is_dirty = bufptr->dirty;
+  is_dirty = (bool) bufptr->dirty;
 
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
 
@@ -1209,9 +1201,9 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
 #if defined(CUBRID_DEBUG)
-  if (bufptr->pageid != LOGPB_HEADER_PAGE_ID &&
-      (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID ||
-       bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
+  if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
+      && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID
+	  || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE,
 	      1, bufptr->pageid);
@@ -1478,16 +1470,18 @@ logpb_dump_pages (FILE * out_fp)
 	  continue;
 	}
       else
-	(void) fprintf (out_fp, "%3d %10d %10d %3d %3d %4d  %p %p-%p"
-			" %4s %5d %5d\n",
-			i, log_bufptr->pageid, log_bufptr->phy_pageid,
-			log_bufptr->dirty, log_bufptr->recently_freed,
-			log_bufptr->fcnt, (void *) log_bufptr,
-			(void *) (&log_bufptr->logpage),
-			(void *) (&log_bufptr->logpage.
-				  area[LOGAREA_SIZE - 1]), "",
-			log_bufptr->logpage.hdr.logical_pageid,
-			log_bufptr->logpage.hdr.offset);
+	{
+	  fprintf (out_fp, "%3d %10d %10d %3d %3d %4d  %p %p-%p"
+		   " %4s %5d %5d\n",
+		   i, log_bufptr->pageid, log_bufptr->phy_pageid,
+		   log_bufptr->dirty, log_bufptr->recently_freed,
+		   log_bufptr->fcnt, (void *) log_bufptr,
+		   (void *) (&log_bufptr->logpage),
+		   (void *) (&log_bufptr->logpage.
+			     area[LOGAREA_SIZE - 1]), "",
+		   log_bufptr->logpage.hdr.logical_pageid,
+		   log_bufptr->logpage.hdr.offset);
+	}
     }
   (void) fprintf (out_fp, "\n");
 }
@@ -1824,17 +1818,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, PAGEID pageid,
   assert (pageid != NULL_PAGEID);
   assert (LOG_CS_OWN ());
 
-  /*
-   * NOW get the desired page
-   *
-   * If the logical pageid is smaller than the first active log page,
-   * the logical page has been archived. We may avoid reading a page from
-   * the archive if the corresponding physical page has not been
-   * overwritten by another logical append page, in this case the page can
-   * be read from the active log. We cannot use this trick in the analysis
-   * phase since we do not know the end of the log, and thus if the page
-   * has been overwritten.
-   */
 
   if (logpb_is_page_in_archive (pageid)
       && (LOG_ISRESTARTED () == false
@@ -2480,38 +2463,6 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
  *
  *   from_commit(in):
  *
- * NOTE: Flush all log dirty append pages including any delayed append
- *              page. The first logical dirty append page (i.e., lowest pageid
- *              is flushed after the other dirty append pages (i.e., higher
- *              pageids) to avoid problems detecting the end of the log.
- *              That is, log record appends to the log buffers must be flushed
- *              (arrive) to disk in very much the same order as they were
- *              written. We cannot allow the operating system to force log
- *              pages as it pleaces, that it is, the flushing ordering of a
- *              page must be preserved with respect to previous and future
- *              flushes. To do this, we force the operating system to
- *              synchronize writes of the log. However, the synchronization
- *              need only to be done with one page against a set of pages.
- *              That is, we do not need to synchronize one page at a time.
- *
- *              For example, if the following log append pages are dirty
- *              (i.e., they contain log records that have not been forced and
- *              synchronized to disk):
- *                    Log Page 10
- *                    Log Page 11
- *                        xx
- *                        xx
- *                        xx
- *                    Log Page 40
- *              and we want to force all of these pages to disk, we could
- *              force and synchronize the pages in the following way:
- *
- *                  1) Write pages 11-40 in parallel (e.g., writev)
- *                  2) Sync the log to make sure that these pages arrived to
- *                     physical disk before the next page is written.
- *                  3) Write page 10
- *                  4) Sync the log to make sure that it would not be any
- *                     problems with furture forces.
  */
 int
 logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
@@ -2639,21 +2590,6 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
 
-  /*
-   * Find all dirty pages. The first dirty append log page (i.e., the one
-   * with lowest pageid) is flushed at the end to avoid problems detecting
-   * the end of the log. The flush and sync process is as follow:
-   *
-   * 1) Add and End of log record to last append page, so we can recognize the
-   *    end of the log.
-   * 2) Write all but the first append page (i.e., the lowest dirty append
-   *    page-id) in parallel
-   * 3) Sync the above write
-   * 4) Write the first append page.
-   * 5) Sync the above write so that the log gets synchronize with previous
-   *    log append pages. Once this page reached to disk, the end of the log
-   *    will be recognized at the last append page.
-   */
 
 
   /*
@@ -3260,8 +3196,8 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
 
 #if defined(CUBRID_DEBUG)
-      if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr) &&
-	  !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
+      if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr)
+	  && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"log_wal: SYSTEM ERROR.. DUMP LOG BUFFER\n");
@@ -3551,16 +3487,6 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_FLUSH flush, bool force_flush)
   struct log_rec *log_rec;	/* The log record */
   PAGEID initial_pageid;	/* remember starting log page */
 
-  /*
-   * Record the forward address into the append record to allow fast forward
-   * of the log during restart.
-   *
-   * To record the forward address into the append record, we need to find out
-   * where the next log record is going to be appended. It is likely that a
-   * new log record is appended at the current append location, but not
-   * necessarily if the log_rec portion does not fit in the current append
-   * page
-   */
   assert (LOG_CS_OWN ());
 
   initial_pageid = log_Gl.hdr.append_lsa.pageid;
@@ -3877,9 +3803,8 @@ logpb_get_guess_archive_num (PAGEID pageid)
 	  arv_num = 0;
 	}
     }
-  else
-    if (isfound == false && last_arvnum == arv_num &&
-	log_Gl.append.vdes != NULL_VOLDES)
+  else if (isfound == false && last_arvnum == arv_num
+	   && log_Gl.append.vdes != NULL_VOLDES)
     {
       /*
        * The log archive was chopped somehow.
@@ -4458,9 +4383,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
       if (logpb_is_archive_available (*arv_num) == true
 	  && fileio_is_volume_exist (arv_name) == true)
 	{
-	  vdes =
-	    fileio_mount (log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID,
-			  false, false);
+	  vdes = fileio_mount (log_Db_fullname, arv_name,
+			       LOG_DBLOG_ARCHIVE_VOLID, false, false);
 	  if (vdes != NULL_VOLDES)
 	    {
 	      if (fileio_read (vdes, arv_hdr_pgptr, 0) == NULL)
@@ -5007,8 +4931,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	    }
 #endif /* !SERVER_MODE */
 
-	  if (!LSA_ISNULL (&newsmallest_lsa) &&
-	      LSA_LT (&newsmallest_lsa, &smallest_lsa))
+	  if (!LSA_ISNULL (&newsmallest_lsa)
+	      && LSA_LT (&newsmallest_lsa, &smallest_lsa))
 	    {
 	      if (newsmallest_lsa.pageid < log_Gl.hdr.nxarv_pageid)
 		{
@@ -5031,17 +4955,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      log_Gl.hdr.nxarv_phy_pageid =
 		logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 
-	      /*
-	       * Make sure that we do not have a checkpoint log record that could
-	       * reference pages that are not archived. That is, forward the location
-	       * of a possible checkpoint log record to the first active log record.
-	       * This is OK, since we have flushed up to such point.
-	       *
-	       * NOTE that we reset the checkpoint address, this is OK since it is
-	       *      reset to the first active log record, note that the frequency
-	       *      of checkpoints are not altered since it is based upon another
-	       *      variable (i.e., log_Gl.run_nxchkpt_atpageid)
-	       */
 
 	      if (!LSA_ISNULL (&newsmallest_lsa)
 		  && LSA_LT (&newsmallest_lsa, &smallest_lsa))
@@ -5291,16 +5204,6 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
 #if defined(SERVER_MODE)
   LSA_COPY (&newflush_upto_lsa, &log_Gl.flushed_lsa_lower_bound);
 #else /* SERVER_MODE */
-  /*
-   * Make sure that everything that it is referenced by the archives is
-   * on disk. If it is not we cannot remove the archives. We must also
-   * make sure that we do not reference a checkpoint log record in an
-   * archive log. If we do, forward the location of a possible checkpoint
-   * log record to the first log record in the active log.
-   *
-   * This is not really needed since this function is called from logpb_checkpoint,
-   * but we are doing it just in case.
-   */
 
   flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
   flush_upto_lsa.offset = NULL_OFFSET;
@@ -5393,9 +5296,9 @@ logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num)
       /* open the archive file */
       if (logpb_is_archive_available (archive_num) == true
 	  && fileio_is_volume_exist (arv_name) == true
-	  && (vdes = fileio_mount (log_Db_fullname, arv_name,
-				   LOG_DBLOG_ARCHIVE_VOLID, false, false))
-	  != NULL_VOLDES)
+	  && ((vdes = fileio_mount (log_Db_fullname, arv_name,
+				    LOG_DBLOG_ARCHIVE_VOLID, false, false))
+	      != NULL_VOLDES))
 	{
 	  if (fileio_read (vdes, arv_hdr_pgptr, 0) == NULL)
 	    {
@@ -5455,8 +5358,8 @@ logpb_remove_archive_logs_internal (int first, int last,
   for (i = first; i <= last; i++)
     {
       if (check_backup
-	  && (log_Gl.hdr.lowest_arv_num_for_backup <= i
-	      && i <= log_Gl.hdr.highest_arv_num_for_backup))
+	  && log_Gl.hdr.lowest_arv_num_for_backup <= i
+	  && i <= log_Gl.hdr.highest_arv_num_for_backup)
 	{
 
 	  /* mark the previous range (if any) deleted */
@@ -5480,7 +5383,7 @@ logpb_remove_archive_logs_internal (int first, int last,
 				    i);
       fileio_unformat (logarv_name);
       deleted_one = true;
-    }				/* for */
+    }
 
   if (deleted_one)
     {
@@ -5588,7 +5491,6 @@ logpb_append_archives_delete_pend_to_log_info (int first, int last)
       return;
     }
 }
-
 
 /*
  *
@@ -5896,53 +5798,6 @@ logpb_do_checkpoint (void)
  *
  * return: pageid where a redo will start
  *
- * NOTE: A fuzzy checkpoint (i.e., an asynchronously checkpoint) is
- *              taken while normal database activity is going on without
- *              preventing access to any data. The purpose of a fuzzy
- *              checkpoint is to limit the amount of log which must be scanned
- *              and the amount of work that must be redone during restart
- *              recovery. The fuzzy checkpoint mechanism flushes dirty data
- *              pages that have been dirty since the previous checkpoint and
- *              also logs the state of each active transaction (i.e.,tran
- *              table) and the smallest LSA of the dirty pages that remain in
- *              the page buffer pool after the above flushes. Note that high
- *              traffic, dirty pages are not allowed to remain indefinitely in
- *              the buffer pool without being forced to disk. Otherwise, the
- *              restart recovery process might have to start from a very old
- *              location of the log (probably an archive log) to recover
- *              changes to unforced dirty pages.
- *              A fuzzy checkpoint consists of log_start_chkpt record, several
- *              log_chkpt_trans checkpoint records, and a log_end_chkpt
- *              record. Once the log_end_chkpt record is forced/flushed, the
- *              address of the log_start record (i.e., its LSA) is recorded in
- *              the header of the log for future restarts. If the
- *              log_end_chkpt record is never logged (or forced to disk), for
- *              example because of a failure, the checkpoint is considered an
- *              incomplete checkpoint and it is ignored during restart
- *              recovery.
- *
- *              The checkpoint process is as follows:
- *              1) Log a start of checkpoint record
- *              2) Find all active transactions
- *              3) Flush very old dirty pages
- *              4) Log all active transactions and the oldest LSA address of
- *                 data pages (i.e., the address where the recovery_redo
- *                 process will start).
- *              5) Log an end of checkpoint record
- *              6) Remember the checkpoint address (start checkpoint) in the
- *                 log header.
- *
- *        Between a log_start_chkpt and a log_end_chkpt many log records
- *              of active transactions could have been written.
- *              A checkpoint is taken when a fraction of the active log is
- *              used. The value of this factor should be set with caution
- *              since if a very large factor is used, the recovery process may
- *              take a long time. On the other hand, if the value is very
- *              small, some performance problems will be experienced due to
- *              the frequent flushing of dirty pages and gathering and
- *              recording information since the previous checkpoint. A value
- *              between 15-30% is recommended. See DBA manual for how to set
- *              this factor.
  */
 PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
@@ -6157,12 +6012,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  *(chkpt_one->user_name) = *(act_tdes->client.user_name);
 	  ntrans++;
 	  if (act_tdes->topops.last >= 0
-	      && (act_tdes->state ==
-		  TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
-		  || act_tdes->state ==
-		  TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS
-		  || act_tdes->state ==
-		  TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS))
+	      && ((act_tdes->state ==
+		   TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
+		  || (act_tdes->state ==
+		      TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+		  || (act_tdes->state ==
+		      TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)))
 	    {
 	      ntops += act_tdes->topops.last + 1;
 	    }
@@ -6222,20 +6077,18 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
 		    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
 		    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
-		      {
-			chkpt_topone = &chkpt_topops[ntops];
-			chkpt_topone->trid = act_tdes->trid;
-			LSA_COPY (&chkpt_topone->lastparent_lsa,
-				  &act_tdes->topops.stack[j].lastparent_lsa);
-			LSA_COPY (&chkpt_topone->posp_lsa,
-				  &act_tdes->topops.stack[j].posp_lsa);
-			LSA_COPY (&chkpt_topone->client_posp_lsa,
-				  &act_tdes->topops.stack[j].client_posp_lsa);
-			LSA_COPY (&chkpt_topone->client_undo_lsa,
-				  &act_tdes->topops.stack[j].client_undo_lsa);
-			ntops++;
-			break;
-		      }
+		      chkpt_topone = &chkpt_topops[ntops];
+		      chkpt_topone->trid = act_tdes->trid;
+		      LSA_COPY (&chkpt_topone->lastparent_lsa,
+				&act_tdes->topops.stack[j].lastparent_lsa);
+		      LSA_COPY (&chkpt_topone->posp_lsa,
+				&act_tdes->topops.stack[j].posp_lsa);
+		      LSA_COPY (&chkpt_topone->client_posp_lsa,
+				&act_tdes->topops.stack[j].client_posp_lsa);
+		      LSA_COPY (&chkpt_topone->client_undo_lsa,
+				&act_tdes->topops.stack[j].client_undo_lsa);
+		      ntops++;
+		      break;
 		    default:
 		      continue;
 		    }
@@ -6668,35 +6521,11 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
  *   skip_activelog(in):
  *   safe_pageid(in):
  *
- * NOTE: A full backup of the database is taken to the location
- *              indicated by the system parameters.
- *              A database backup is a fuzzy snapshot because it can be taken
- *              online when other transactions are updating the database.
- *              Thus, the backup may contain some uncommitted updates. Even
- *              worse, the backup is performed without using the page buffer
- *              pool. Thus, some more recent version of some of the copied
- *              pages may be present in the page buffer pool. We copy the
- *              database without going through the page buffer pool to avoid
- *              disrupting the locality of the page buffers (i.e., disrupting
- *              ongoing operations. When a fuzzy backup is initiated, the
- *              location of the last checkpoint record is remembered along
- *              with the backup. This checkpoint location is stored on every
- *              volume to indicate the logical start location of a media crash
- *              process. All updates with LSAs smaller than the minimum of the
- *              LSA of the checkpoint record and the smallest LSA of the dirty
- *              pages are written out to disk before a disk volume is backed
- *              up.
- *
- *              Database backups should be taken at specific intervals. The
- *              frequency with which you make these backups depends on the
- *              activity level of updates to the database.
- *
- *       This function is run without recovery.
  */
 int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 	      const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
-	      int delete_unneeded_logarchives,
+	      bool delete_unneeded_logarchives,
 	      const char *backup_verbose_file, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
 	      int skip_activelog, PAGEID safe_pageid)
@@ -7338,8 +7167,8 @@ loop:
 	      LOG_CS_EXIT ();
 	      goto error;
 	    }
-	}			/* else */
-    }				/* if */
+	}
+    }
 
   log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
@@ -8048,9 +7877,10 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      /*
 		       * strcpy(db_fullname, to_volname);
 		       */
-		      error_code =
-			logpb_initialize_log_names (thread_p, db_fullname,
-						    logpath, prefix_logname);
+		      error_code = logpb_initialize_log_names (thread_p,
+							       db_fullname,
+							       logpath,
+							       prefix_logname);
 		      if (error_code != NO_ERROR)
 			{
 			  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
@@ -8060,10 +7890,9 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		    }
 		}
 
-	      success =
-		fileio_restore_volume (thread_p, session, to_volname,
-				       prev_volname, &pages_cache,
-				       remember_pages);
+	      success = fileio_restore_volume (thread_p, session, to_volname,
+					       prev_volname, &pages_cache,
+					       remember_pages);
 	    }
 	  else if (another_vol == 0)
 	    {
@@ -8405,7 +8234,7 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path,
       if (volid == LOG_DBFIRST_VOLID
 	  && strcmp (to_volname, to_db_fullname) != 0)
 	{
-/* by kskim */
+
 #if defined(WINDOWS)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_USER_FILE_INCORRECT_PRIMARY_VOLNAME, 8,
@@ -8440,7 +8269,6 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path,
 	      return ER_LOG_USER_FILE_UNORDERED_ENTRIES;
 	    }
 
-/* by kskim */
 #if !defined(WINDOWS)
 	  if (stat (to_volname, &stat_buf) != -1)
 	    {
@@ -9693,8 +9521,8 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
    */
 
   /* If there is any archive current mounted, dismount the archive */
-  if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL &&
-      log_Gl.archive.vdes != NULL_VOLDES)
+  if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL
+      && log_Gl.archive.vdes != NULL_VOLDES)
     {
       fileio_dismount (log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
@@ -10109,7 +9937,7 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
   PAGE_PTR pgptr;
 
   vpid.volid = volid;
-  vpid.pageid = 0;		/* DISK_VOLHEADER_PAGE : definition is in dk.c */
+  vpid.pageid = 0;
   pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		     PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
@@ -10278,6 +10106,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
       assert (bufptr->dirty && bufptr->fcnt == 0);
       assert (!bufptr->flush_running);
+
       /* loop = log_Gl.flush_info.num_toflush - 1 is possible.
        * Last log page is not fixed between freeing current log page and
        * allocation of new page

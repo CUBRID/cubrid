@@ -1,115 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qstcl.c - STATISTICS MANAGER (CLIENT)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *              This module maintains statistical information about the
- * contents of the database and provides routines to make them available on
- * the client side. These statistics enable the query optimizer to determine
- * efficient strategies for processing queries. The statistics are maintained
- * and updated on the server side, but used on the client side. Thus, this
- * module consist of two files; one for the server side, and one for the
- * client side.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * Interface:
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * The server side component of this module provides the functionality to
- * update statistics and send them to the client side, and the client side
- * component provides the interface functionality to the users of this module
- * (to reach to the server side and retrieve, or update the statistics).
- *
- * a) Callers of the module:
- * On the server side no modules calls this one. On the client side the
- * Schema Manager calls this module to obtain a cache of the statistics (or,
- * to update them). Query optimizer deals with the schema manager to utilize
- * the statistics.
- *
- * b) Callees of the module:
- *    On the server side, this module calls the following modules:
- *	Catalog Manager;           for maintaining the statistics
- *	                           (retrieving &updating them)
- *      Btree Manager;             for obtaining statistics about the indexes
- *      Extendible Hash Manager;   for obtaining the OID's of existing classes
- *	Heap Manager;              for reading the instance objects
- *	Error Manager;             for setting up the error conditions
- *
- *   On the client side, this module calls the following modules:
- *      Workspace Manager;         for allocating main memory area for the
- *	                           statistics.
- *
- *	Data structures:
- *	----------------
- *
- *      Among these statistics kept for each class are :
- *
- *      a) Class cardinality (i.e, total number of instance objects
- *	   belonging to the class).
- *
- *	b) Class size (i.e., the number of physical disk pages occupied by
- *	   these instances).
- *
- *      c) For each attribute of the class
- *
- *	   i)  Attribute value ranges (i.e, the minimum and maximum values
- *	       of each attribute of the class). This statistic is kept only
- *	       for the numeric attributes (specifically, for the following
- *	       data types: T_integer, T_float, T_double, T_date, T_time,
- *	       T_monetary).
- *
- *	   ii) If the attribute is indexed with a Btree, statistics about
- *	       the tree:
- *
- *	       1) Index cardinality (i.e., number of keys the tree has),
- *	       2) Total pages tree occupies,
- *	       3) Number of the leaf pages of the tree,
- *	       4) Height of the tree.
- *
- *	d) For each representation of the class: representation cardinality
- *	   (i.e., the number of instance objects stored with this
- *	   representation).
- *
- *		  The statistics are kept in the system catalog (See, catalog
- * manager). The statictics about the class (i.e. class cardinality, and class
- * size) are kept on the class information part of the catalog (in the
- * CLS_INFO structure), and attribute specific statistics  (i.e., the btree
- * statistics & attribute value ranges) are kept on the DISK_ATTR parts of the
- * disk representation structure of the catalog.
- * If a class has more than one disk representation the statistics about the
- * attributes of the class  are kept on the last (i.e., the current)
- * representation structure.
- *
- *	Timestamps: This module does not provide automatic updates to
- * statistics. The updates are initiated only by the end-user requests.
- * However, with the anticipation of future enhancement of providing automatic
- * updates to the statistics, an extra field is kept on the CLS_INFO structure
- * defined in the catalog manager. This extra field is intended to be used to
- * maintain a timestamp of creation or last update of the statistics of the
- * class. The convention will be that if this timestamp is -1 then it will
- * mean that this class has no statistics.
- *
- * Algorithms:
- *
- * a) Collection of attribute range values:
- *        The range values of numeric attributes are obtained by making a
- *    complete pass on the class instances, reading them from the class
- *    heap one after other. During this pass, the first value encountered
- *    for each attribute value is taken as the initial range of the attribute.
- *    Then, any successive value encountered for that attribute is checked if
- *    it fits into the range; if not the range is expanded up the new value.
- *
- * b) Obtaining class OID's
- *          If the statistics for all of the classes needs to be updated, then
- *    this module collects the OID's of all existing classes in the database  
- *    from the system's catalog, and then it updates the statictics of each   
- *    class one after other.						      
- *     									      
- * c) Concurrency control while obtaining statistics			      
- *          Since obtaining statistics is a read-only operation and the       
- *    statistics to be produced need not be precisely correct, there is no    
- *    need to use any concurrency control measures (such as locking) on the   
- *    class or instance objects or on the pages read while obtaining	      
- *    statistics. 							      
+ */
+
+/*
+ * statistics_cl.c - statistics manager (client)
  */
 
 #ident "$Id$"
@@ -121,10 +29,10 @@
 #include "object_representation.h"
 #include "statistics.h"
 #include "object_primitive.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "work_space.h"
-#include "schema_manager_3.h"
-#include "network_interface_sky.h"
+#include "schema_manager.h"
+#include "network_interface_cl.h"
 #include "db_date.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);

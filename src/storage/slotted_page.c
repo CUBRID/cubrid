@@ -1,214 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * slotted_page.c - SLOTTED PAGE MANAGEMENT MODULE (AT THE SERVER)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * The slotted page manager manages insertions, deletions, and modifications  
- * of records on pages. The length of a record must be smaller than the size  
- * of a page minus a few bytes for header information. Each record in a       
- * slotted page has an associated slot identifier which can be thought of as  
- * an indirect pointer to the actual location of the record. Since references 
- * to records are always made through their slot identifier, this module is   
- * free to move the record within the page when either the record is updated  
- * (grows in size), or when the page is compacted. The following figure shows 
- * the format of a slotted page:                                              
- *                                                                            
- * --------------------------------------------------------------             
- * |Header| R0 | R1| ... | Rn | Free space | Sn | ... | S1 | S0 |             
- * --------------------------------------------------------------             
- *          ^    ^         ^                 |          |    |                
- *          |    |         |                 |          |    |                
- *          |    |         +-----------------+          |    |                
- *          |    +--------------------------------------+    |                
- *          +------------------------------------------------+                
- *                                                                            
- * NOTE: The records may not be physically ordered as it is presented above.  
- *                                                                              
- * The header of a slotted page contains information such as the number of    
- * records and slots, the amount of total and contiguous free space, and the  
- * type of slot management. Ro through Rn are data records, and S0 through Sn 
- * are the corresponding slots. Slots are stored from the end of the page     
- * toward the beginning of the page, and the data records are stored from the 
- * beginning to the end of the page. This layout eliminates shifting          
- * operations as much as possible during additions, deletions, and updates.   
- * When a data record is inserted, a slot identifier which describes the      
- * location of the record is allocated and returned.                          
- *                                                                            
- * There are several methods that control the way records and slots are       
- * maintained during insertion and deletion operations. In the simple case,   
- * records are either anchored or unanchored.                                 
- *                                                                            
- * The slot identifier of an anchored record cannot be changed. When an       
- * anchored record is deleted, there are two methods for handling the slots.  
- * In the first case, the slot identifier is marked for reuse; in the second  
- * case, the slot identifier remains unused unless the reuse is forced by the 
- * caller. The last technique can be used to store objects since they are     
- * anchored and its OIDs cannot be reused once the object is committed (i.e., 
- * heap management implementation). An OID can be reused if the object was    
- * created by an aborted transaction.                                         
- *                                                                            
- * If a record is unanchored, the slot identifiers can be changed. In this    
- * case there are two slot management schemes available.  In the first        
- * unanchored slot management scheme, slotids of records can be automatically 
- * changed during deletion of records or can be manually changed during       
- * insertion of records. When a record other than the last record on the page 
- * is deleted, the last record of the page is given the slot identifier of the
- * deleted record. When a record is inserted into an already occupied slot,   
- * the current record at the occupied slot is moved to the highest available  
- * slot. This method avoids the copy and shift operations required in         
- * traditional compression techniques. This method is good for the layout of 
- * extendible hash pages.                                                     
- *                                                                            
- * Example 1: Assume a page with the records A(slot 0), D(slot 1), E(slot 2), 
- *            and F(slot 3). When record A is removed, the slotids of the     
- *            records are changed as follow: F(slot 0), D(slot 1), and        
- *            E(slot 2).                                                      
- * Example 2: Assume a page with the records A(slot 0), D(slot 1), E(slot 2), 
- *            and F(slot 3). When record B is inserted at slot 1, the slotids 
- *            of the records are changed as follow: A(slot 0), B(slot 1),    
- *            E(slot 2), F(slot 3), and D(slot 4).                            
- *                                                                            
- * In the second unanchored scheme, slotids of records can be automatically   
- * changed during deletion of records or can be manually changed during       
- * insertion of records. However, the ordering of slots is preserved. A small 
- * performance penalty is incurred for compressing and expanding the slot     
- * pointer/offset array. The method is good for the layout of B+tree pages    
- * which need ordering of records.                                            
- *                                                                            
- * Example 1: Assume a page with the records A(slot 0), D(slot 1), E(slot 2), 
- *            and F(slot 3). When record A is removed, the slotids of the     
- *            records are changed as follow: D(slot 0), E(slot 1), and        
- *            F(slot 2).                                                      
- * Example 2: Assume a page with the records A(slot 0), D(slot 1), E(slot 2), 
- *            and F(slot 3). When record B is inserted at slot 1, the slotids 
- *            of the records are changed as follow: A(slot 0), B(slot 1),     
- *            C(slot 2), F(slot 3), and D (slot 4).                           
- *                                                                            
- * In short the slot types are:                                               
- *                                                                            
- * ANCHORED: The slotid of a record cannot be changed. Slot-ids of deleted    
- *           records are reused.                                              
- *                                                                            
- * ANCHORED_DONT_REUSE_SLOTS: Same as ANCHORED, however slotids of deleted    
- *           records are not reused, unless a deletion is forced by the an    
- *           caller. Heap implementation.                                     
- *                                                                            
- * UNANCHORED_ANY_SEQUENCE: Slotids of records can be automatically changed by
- *           this module during deletion of records or can be manually changed
- *           by caller request during insertions of records. The records may  
- *           not be kept in the same sequence. Extendible hash implementation.
- *                                                                            
- * UNANCHORED_KEEP_SEQUENCE: Same as UNANCHORED_ANY_SEQUENCE except the       
- *           original ordering of records is preserved. B+tree implementation.
- *                                                                            
- *                                                                            
- * This module provides a flexible facility to deal with space released by a  
- * transaction during deletions or updates on slotted pages. For example, the 
- * the space released by a transaction during deletions or updates of objects 
- * should not be used by another transaction until the space-releasing        
- * transaction is committed. However, for indices or hash entries we do not   
- * want to prevent the space released by one transaction from being consumed  
- * by another transaction before the commit of the first transaction. The     
- * slotted page module provides the flexibility for both needs. The following 
- * technique is used when deleted space is saved until the end of the         
- * transaction.                                                               
- * A memory hash table is used to keep saved space of several transactions:   
- *                                                                            
- * VPID | header + entries                                                    
- * -----|------------------                                                   
- *      |                                                                     
- *      |                                                                     
- *      |                                                                     
- *                                                                            
- * The header contains information of returned space from already finished    
- * transactions, and the header to entries. Each entry contains the           
- * transaction saving space and the amount of saved space by the transaction. 
- * The entry of the last transaction saving space is kept on the actual header
- * of the slotted page to avoid hashing as much as possible and larger hash   
- * tables. This entry is not replicated on the hash table. The following tasks
- * are done for the page operations.                                          
- *                                                                            
- * Note that if only one transaction is updating the page, there is not a hash
- * table entry for the page... We only have overhead when there are multiple  
- * concurrent transactions updating the page.                                 
- *                                                                            
- * For DELETIONS AND UPDATE SHRINKS                                           
- * 1. Delete: Space_to_save = old_length                                      
- *    Shrink: Space_to_save = old_length - new_length                         
- * 2. Execute normal operation                                                
- * 3. Execute saving operation.. Give space_to_save                           
- *                                                                            
- * For INSERTIONS AND EXPANSIONS                                              
- * 1. Insert: Needed_space = New_length                                       
- *    Expand: Needed_space = New_length - old_length                          
- * 2. If needed_space < total_free_space - total_saved_space_by_others        
- *       THEN                                                                 
- *         Execute Normal Operation                                           
- *       ELSE                                                                 
- *         Does not fit                                                       
- *                                                                            
- * For UNDO/REDOS,                                                            
- *     Execute the operation there is always space.                           
- * For COMMIT/ABORT                                                           
- *     Scan the transaction saving space table removing reclaiming the saved  
- *     space and removing the entries.                                        
- *     Header of hash entry.. Space_reclaimed  += saved_space                 
- *     NOTE: We don't fetch the page to fix the total_space_saved. This value 
- *           is fixed next time the saving or save_space_by_other function is 
- *           invoked on the page.                                             
- *                                                                            
- * SAVING OPERATION (Need pageptr and space to save/expend)                   
- *    1. For crash recovery:                                                  
- *       Do nothing.. initialize last transaction information with            
- *                Last TRANID = NULL_TRANID                                   
- *                   Last SAVED_SPACE = 0                                     
- *                    TOTAL SAVED_SPACE = 0                                   
- *                                                                            
- *     2. IF TRANID != Last TRANID                                            
- *           THEN                                                             
- *            2.1 Swap them...                                                
- *              a) If Last TRANID is still running (including during abort    
- *                 or commit)                                                 
- *                    THEN                                                    
- *                     Define its hash entry from page header information and 
- *                            add it onto the table                           
- *                    ELSE                                                    
- *                     Last TRANID has already finished. (Its saved_space has 
- *                            already being returned/spent)                   
- *                          TOTAL_SAVED_SPACE -= LAST SAVED_SPACE             
- *              b) Last TRANID = TRANID                                       
- *                 If current TRANID is stored on header table                
- *                    THEN                                                    
- *                      Last SAVED_SPACE = Saved_space value entry of TRANID  
- *                      Remove hash table entry                               
- *                    ELSE                                                    
- *                      Last SAVED_SPACE = 0                                  
- *            2.2 Fix total saved space...                                    
- *                TOTAL_SAVED_SPACE -= Header space_returned ... hash entry   
- *                Header space_returned = 0                                   
- *                                                                            
- *     3. Last SAVED_SPACE += space to save                                   
- *        TOTAL SAVED_SPACE += space to save                                  
- *                                                                            
- * FIND SAVE_SPACE_BY_OTHERS                                                  
- * -------------------------                                                  
- * 1. Step 1 of saving operation                                              
- * 2. Step 2 of saving operation                                              
- * 3. Total Saved_space - Last Saved space                                    
- *                                                                            
- *                                                                            
- * MODULE INTERFACE                                                           
- *                                                                            
- * At least the following modules are called by the slotted page module:      
- *                                                                            
- *      Page buffer Manager:         To dirty pages                           
- *      Log Manager:                 To find state of transactions and        
- *                                      transaction identifiers               
- *                                                                            
- * At least the following modules call the slotted page module:               
- *      B+tree, extendible hash, catalog manager, heap file object manager,   
- *        long data manager, query file manager to manage slotted pages       
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * slotted_page.c - slotted page management module (at the server)
  */
 
 #ident "$Id$"
@@ -221,16 +30,16 @@
 #include <assert.h>
 
 #include "slotted_page.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
 #include "memory_hash.h"
 #include "page_buffer.h"
-#include "log.h"
+#include "log_manager.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "thread_impl.h"
-#include "csserror.h"
+#include "connection_error.h"
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
@@ -388,7 +197,7 @@ static void spage_reduce_contiguous_free_space (SPAGE_HEADER * sphdr,
  *   return: void
  *   tranid(in): Transaction from where the savings are release
  *
- * Note: This function could be called once a tranid has finished. 
+ * Note: This function could be called once a tranid has finished.
  *       This is optional, it does not need to be done.
  */
 void
@@ -410,11 +219,11 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, TRANID tranid)
 /*
  * spage_free_saved_spaces_helper () - Remove the entries associated with the given
  *                      transaction identifier
- *   return: true
+ *   return: NO_ERROR
  *   vpid_key(in):  Volume and page identifier
  *   ent(in): Head entry information
- *   tid(in): Transaction identifier or NULL_TRANID 
- * 
+ *   tid(in): Transaction identifier or NULL_TRANID
+ *
  * Note: All entries are removed if the transaction identifier is NULL_TRANID.
  */
 static int
@@ -467,16 +276,16 @@ spage_free_saved_spaces_helper (const void *vpid_key, void *ent, void *tid)
       free_and_init (ent);
     }
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
  * spage_save_space () - Save some space for recovery (undo) purposes
- *   return: 
- *   sphdr(in): Pointer to header of slotted page 
+ *   return:
+ *   sphdr(in): Pointer to header of slotted page
  *   pgptr(in): Pointer to slotted page
  *   space(in): Amount of space to save
- * 
+ *
  * Note: The current transaction saving information is kept on the page and
  *       whatever was on the page is stored on the saving space hash table.
  *
@@ -493,7 +302,7 @@ spage_free_saved_spaces_helper (const void *vpid_key, void *ent, void *tid)
  *       We cannot go negative during normal process since we must make sure
  *       that there is space for undoes..even under the following situation:
  *
- *         a) new object of 100 bytes 
+ *         a) new object of 100 bytes
  *         b) reduce length of object to 50 bytes
  *            Need to save 50 bytes for undo purposes. Nobody else but the
  *            current transaction should use those 50 bytes.
@@ -553,7 +362,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 	{
 	  /*
 	   * Current transaction is the last one saving space
-	   * 
+	   *
 	   * We cannot go over current savings, otherwise, someone can use
 	   * the space that it is needed for undo. Use all savings.
 	   */
@@ -673,7 +482,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 	{
 	  /*
 	   * The transaction was found
-	   * 
+	   *
 	   * We cannot over current savings, otherwise, someone can use
 	   * the space that it is needed for undo. Use all savings.
 	   */
@@ -777,9 +586,9 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 }
 
 /*
- * spage_get_saved_spaces_by_other_trans () - Find the total saved space by 
+ * spage_get_saved_spaces_by_other_trans () - Find the total saved space by
  *                                            other transactions
- *   return: 
+ *   return:
  *   sphdr(in): Pointer to header of slotted page
  *   pgptr(in): Pointer to slotted page
  */
@@ -957,7 +766,7 @@ spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 }
 
 /*
- * spage_dump_saved_spaces_by_other_trans () - Dump the savings associated with 
+ * spage_dump_saved_spaces_by_other_trans () - Dump the savings associated with
  *                                             the given page that are part of
  *                                             the hash table
  *   return: void
@@ -1003,7 +812,7 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 /*
  * spage_boot () - Initialize the slotted page module. The save_space hash table
  *              is initialized
- *   return: 
+ *   return:
  */
 int
 spage_boot (THREAD_ENTRY * thread_p)
@@ -1038,7 +847,7 @@ spage_boot (THREAD_ENTRY * thread_p)
 /*
  * spage_finalize () - Terminate the slotted page module
  *   return: void
- * 
+ *
  * Note: Any memory allocated for the page space saving hash table is
  *       deallocated.
  */
@@ -1088,7 +897,7 @@ spage_header_size (void)
 /*
  * spage_max_record_size () - Find the maximum record length that can be stored in
  *                       a slotted page
- *   return: Max length for a new record 
+ *   return: Max length for a new record
  */
 int
 spage_max_record_size (void)
@@ -1132,7 +941,7 @@ spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
  *                                     insertion
  *   return: Maximum free length for an insertion
  *   pgptr(in): Pointer to slotted page
- * 
+ *
  * Note: The function subtract any pointer array information that may be
  *       needed for a new insertion.
  */
@@ -1288,14 +1097,14 @@ spage_sum_length_of_records (PAGE_PTR page_p,
  *   slots_type(in): Flag which indicates the type of slots
  *   alignment(in): page alignment type
  *   safeguard_rvspace(in): Save space during updates. for transaction recovery
- * 
+ *
  * Note: A slotted page must be initialized before records are inserted on the
  *       page. The alignment indicates the valid offset where the records
  *       should be stored. This is a requirement for peeking records on pages
  *       according to alignment restrictions.
  *       A slotted page can optionally be initialized with recovery safeguard
  *       space in mind. In this case when records are removed or shrunk, the
- *       space is saved for possible undoes. 
+ *       space is saved for possible undoes.
  */
 void
 spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
@@ -1333,7 +1142,7 @@ spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
 }
 
 /*
- * sp_offcmp () - Compare the location (offset) of slots 
+ * sp_offcmp () - Compare the location (offset) of slots
  *   return: s1 - s2
  *   s1(in): slot 1
  *   s2(in): slot 2
@@ -1354,9 +1163,9 @@ spage_compare_slot_offset (const void *arg1, const void *arg2)
 
 /*
  * sp_compact () -  Compact an slotted page
- *   return: 
+ *   return:
  *   pgptr(in): Pointer to slotted page
- * 
+ *
  * Note: Only the records are compacted, the slots are not compacted.
  */
 static int
@@ -1494,12 +1303,12 @@ spage_set_slot (SPAGE_SLOT * slot_p, int offset, int length, INT16 type)
  *               be inserted onto the given slotted page
  *   return: either SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   sptr(out): Pointer to slotted page array pointer 
+ *   sptr(out): Pointer to slotted page array pointer
  *   length(in): Length of area/record
  *   type(in): Type of record to be inserted
  *   space(out): Space used/defined
  *   slotid(out): Allocated slot or NULL_SLOTID
- * 
+ *
  * Note: If there is not enough space on the page, an error condition is
  *       returned and slotid is set to NULL_SLOTID.
  */
@@ -1752,28 +1561,7 @@ spage_take_slot_in_use (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   length(in): Length of area/record
  *   type(in): Type of record to be inserted
  *   space(out): Space used/defined
- * 
- * Note: The record is inserted using the given slotid. If the slotid is
- *       currently being used by another record, the following scheme is used
- *       depending upon the page type:
- *  
- *       1) UNANCHORED_ANY_SEQUENCE:                                   
- *          A new slot is defined at the end of the pointer array. The
- *          record currently being held by slotid is moved to the new  
- *          slot (i.e., the address of the record is modified). Then,  
- *          the desired record is stored as part of the given slotid.  
- *       2) UNANCHORED_KEEP_SEQUENCE:                                  
- *          A new slot is defined at the end of the pointer array.     
- *          Then, the slots starting at slotid are shifted by one slot 
- *          (i.e., the addresses of the records being referenced by    
- *          these slots are modified). Then, the desired record is     
- *          stored as part of the given slotid.                        
- *       3) ANCHORED or ANCHORED_DONT_REUSE_SLOTS:                     
- *          Operation fails since the address of the record cannot be  
- *          modified. An error condition is and NULL_SLOTID is returned.
- * 
- *       If there is not enough space on the page, an error condition is
- *       returned and slotid is set to NULL_SLOTID.
+ *
  */
 static int
 spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
@@ -1886,13 +1674,13 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 }
 
 /*
- * spage_find_slot_for_insert () - Find a slot id and related information in the 
+ * spage_find_slot_for_insert () - Find a slot id and related information in the
  *                          given page
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
  *   recdes(in): Pointer to a record descriptor
  *   slotid(out): Slot identifier
- *   slotptr(out): Pointer to slotted array 
+ *   slotptr(out): Pointer to slotted array
  *   used_space(out): Pointer to int
  */
 int
@@ -1936,7 +1724,7 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   pgptr(in): Pointer to slotted page
  *   recdes(in): Pointer to a record descriptor
  *   slotptr(in): Slot identifier
- *   used_space(in):  Pointer to slotted array 
+ *   used_space(in):  Pointer to slotted array
  */
 int
 spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
@@ -1984,9 +1772,9 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *                  slotid
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slotid for newly inserted record 
+ *   slotid(in): Slotid for newly inserted record
  *   recdes(in): Pointer to a record descriptor
- * 
+ *
  * Note: The records on this page must be UNANCHORED, otherwise, an error is
  *       set and an indication of an error is returned. If the record does not
  *       fit on the page, such effect is returned.
@@ -2011,8 +1799,8 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 
   page_header_p = (SPAGE_HEADER *) page_p;
 
-  assert (page_header_p->anchor_type != ANCHORED &&
-	  page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS);
+  assert (page_header_p->anchor_type != ANCHORED
+	  && page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS);
 
   if (slot_id > page_header_p->num_slots)
     {
@@ -2022,11 +1810,10 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       return SP_ERROR;
     }
 
-  status =
-    spage_find_empty_slot_at (thread_p, page_p, slot_id,
-			      record_descriptor_p->length,
-			      record_descriptor_p->type, &slot_p,
-			      &used_space);
+  status = spage_find_empty_slot_at (thread_p, page_p, slot_id,
+				     record_descriptor_p->length,
+				     record_descriptor_p->type, &slot_p,
+				     &used_space);
   if (status == SP_SUCCESS)
     {
       memcpy (((char *) page_p + slot_p->offset_to_record),
@@ -2056,7 +1843,7 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slotid for insertion
  *   recdes(in): Pointer to a record descriptor
- * 
+ *
  * Note: If there is a record located at this slot and the page type of the
  *       page is anchored the slot record will be replaced by the new record.
  *       Otherwise, the slots will be moved.
@@ -2076,8 +1863,8 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   assert (record_descriptor_p != NULL);
 
   page_header_p = (SPAGE_HEADER *) page_p;
-  if (page_header_p->anchor_type != ANCHORED &&
-      page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS)
+  if (page_header_p->anchor_type != ANCHORED
+      && page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS)
     {
       return spage_insert_at (thread_p, page_p, slot_id, record_descriptor_p);
     }
@@ -2105,11 +1892,10 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       slot_p->record_type = REC_DELETED_WILL_REUSE;
     }
 
-  status =
-    spage_find_empty_slot_at (thread_p, page_p, slot_id,
-			      record_descriptor_p->length,
-			      record_descriptor_p->type, &slot_p,
-			      &used_space);
+  status = spage_find_empty_slot_at (thread_p, page_p, slot_id,
+				     record_descriptor_p->length,
+				     record_descriptor_p->type, &slot_p,
+				     &used_space);
   if (status == SP_SUCCESS)
     {
       if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
@@ -2158,7 +1944,7 @@ spage_reduce_a_slot (SPAGE_HEADER * page_header_p)
 /*
  * spage_delete () - Delete the record located at given slot on the given page
  *   return: slotid on success and NULL_SLOTID on failure
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of record to delete
  */
 PGSLOTID
@@ -2172,6 +1958,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
   assert (page_p != NULL);
 
   page_header_p = (SPAGE_HEADER *) page_p;
+
   assert (page_header_p->anchor_type == ANCHORED
 	  || page_header_p->anchor_type == ANCHORED_DONT_REUSE_SLOTS
 	  || page_header_p->anchor_type == UNANCHORED_ANY_SEQUENCE
@@ -2186,8 +1973,8 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
       return NULL_SLOTID;
     }
 
-  if (page_header_p->num_records == 1 && page_header_p->is_saving != true &&
-      page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS)
+  if (page_header_p->num_records == 1 && page_header_p->is_saving != true
+      && page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS)
     {
       /* Initialize the page to avoid future compactions */
       spage_initialize (thread_p, page_p, page_header_p->anchor_type,
@@ -2211,8 +1998,8 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
 
       /* If this is the last slotid, it can be removed. Otherwise, leave it as
          unused, it will be reused when a new record is inserted */
-      if (page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS &&
-	  (slot_id + 1) == page_header_p->num_slots)
+      if (page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS
+	  && (slot_id + 1) == page_header_p->num_slots)
 	{
 	  spage_reduce_a_slot (page_header_p);
 	  free_space += sizeof (SPAGE_SLOT);
@@ -2265,7 +2052,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
  *   return: slotid on success and NULL_SLOTID on failure
  *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of record to delete
- * 
+ *
  * Note: The slot is always reused even in anchored_dont_reuse_slots pages
  *       since the record was never made permanent.
  */
@@ -2424,13 +2211,13 @@ spage_update_record_after_compact (PAGE_PTR page_p,
   /*
    * If record does not fit in the contiguous free area, compress the page
    * leaving the desired record at the end of the free area.
-   * 
+   *
    * If the record is at the end and there is free space. Do a simple
    * compaction
    */
-  if (spage_is_record_located_at_end (page_header_p, slot_p) &&
-      (record_descriptor_p->length - slot_p->record_length - old_waste) <=
-      page_header_p->cont_free)
+  if (spage_is_record_located_at_end (page_header_p, slot_p)
+      && ((record_descriptor_p->length - slot_p->record_length - old_waste) <=
+	  page_header_p->cont_free))
     {
       old_waste += slot_p->record_length;
       spage_add_contiguous_free_space (page_header_p, old_waste);
@@ -2480,7 +2267,7 @@ spage_update_record_after_compact (PAGE_PTR page_p,
  * spage_update () - Update the record located at the given slot with the data
  *                described by the given record descriptor
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of record to update
  *   recdes(in): Pointer to a record descriptor
  */
@@ -2501,9 +2288,9 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
   page_header_p = (SPAGE_HEADER *) page_p;
   total_free_save = page_header_p->total_free;
 
-  status =
-    spage_check_updatable (thread_p, page_p, slot_id, record_descriptor_p,
-			   &slot_p, &space, &old_waste, &new_waste);
+  status = spage_check_updatable (thread_p, page_p, slot_id,
+				  record_descriptor_p, &slot_p, &space,
+				  &old_waste, &new_waste);
   if (status != SP_SUCCESS)
     {
       return status;
@@ -2514,16 +2301,15 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 
   if (record_descriptor_p->length <= slot_p->record_length)
     {
-      status =
-	spage_update_record_in_place (page_p, page_header_p, slot_p,
-				      record_descriptor_p, space);
+      status = spage_update_record_in_place (page_p, page_header_p, slot_p,
+					     record_descriptor_p, space);
     }
   else
     {
-      status =
-	spage_update_record_after_compact (page_p, page_header_p, slot_p,
-					   record_descriptor_p, space,
-					   old_waste, new_waste);
+      status = spage_update_record_after_compact (page_p, page_header_p,
+						  slot_p, record_descriptor_p,
+						  space, old_waste,
+						  new_waste);
     }
 
   if (status != SP_SUCCESS)
@@ -2570,7 +2356,7 @@ spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 }
 
 /*
- * spage_update_record_type () - Update the type of the record located at the 
+ * spage_update_record_type () - Update the type of the record located at the
  *                               given slot
  *   return: void
  *   pgptr(in): Pointer to slotted page
@@ -2603,7 +2389,7 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *                 don't resuse slots pages
  *   return: true if anything was reclaimed and false if nothing was reclaimed
  *   pgptr(in): Pointer to slotted page
- * 
+ *
  * Note: This function is intended to be run when there are no more references
  *       of the marked deleted slots, and thus they can be reused.
  */
@@ -2628,9 +2414,9 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       for (slot_id = page_header_p->num_slots - 1; slot_id >= 0; slot_id--)
 	{
 	  slot_p = first_slot_p - slot_id;
-	  if (slot_p->offset_to_record == NULL_OFFSET &&
-	      (slot_p->record_type == REC_MARKDELETED ||
-	       slot_p->record_type == REC_DELETED_WILL_REUSE))
+	  if (slot_p->offset_to_record == NULL_OFFSET
+	      && (slot_p->record_type == REC_MARKDELETED
+		  || slot_p->record_type == REC_DELETED_WILL_REUSE))
 	    {
 	      if ((slot_id + 1) == page_header_p->num_slots)
 		{
@@ -2667,7 +2453,7 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 /*
  * spage_split () - Split the record stored at given slotid at offset location
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of record to update
  *   offset(in): Location of split must be > 0 and smaller than record length
  *   new_slotid(out): new slot id
@@ -2765,7 +2551,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  /*
 	   * Need to compact the page, before the second part is moved
 	   * to an alignment position.
-	   * 
+	   *
 	   * Save the second portion
 	   */
 	  copyarea = (char *) malloc (remain_length);
@@ -2849,7 +2635,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  * spage_take_out () - REMOVE A PORTION OF A RECORD
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slot identifier of desired record 
+ *   slotid(in): Slot identifier of desired record
  *   takeout_offset(in): Location where to remove a portion of the data
  *   takeout_length(in): Length of data to rmove starting at takeout_offset
  */
@@ -2902,7 +2688,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 		   page_header_p->alignment, mayshift_left);
   if (mayshift_left == 0
       && (takeout_offset <
-	  slot_p->record_length - takeout_offset - takeout_length))
+	  (slot_p->record_length - takeout_offset - takeout_length)))
     {
       /*
        * Move left part to right since we can achive alignment by moving left
@@ -2979,7 +2765,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  *                into the record located at the given slot
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slot identifier of desired record 
+ *   slotid(in): Slot identifier of desired record
  *   recdes(in): Pointer to a record descriptor
  */
 int
@@ -2995,7 +2781,7 @@ spage_append (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  *               the given offset of the record located at the given slot
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slot identifier of desired record 
+ *   slotid(in): Slot identifier of desired record
  *   offset(in): Location where to add the portion of the data
  *   recdes(in): Pointer to a record descriptor
  */
@@ -3052,16 +2838,6 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       return SP_DOESNT_FIT;
     }
 
-  /*
-   * How to append:
-   * 1) If the record is located at the end of the page and there is free
-   *    space to append the new data,  do it.
-   * 2) If there is space on the contiguous area to hold the old data and
-   *    the new data to append. The old data is moved to the end, and the
-   *    new data is appended.
-   * 3) Compress the page leaving the desired record at the end of the free
-   *    area and then append new data.
-   */
 
   if (spage_is_record_located_at_end (page_header_p, slot_p)
       && space <= page_header_p->cont_free)
@@ -3187,9 +2963,9 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				      record_descriptor_p->length +
 				      new_waste);
   if (page_header_p->is_saving
-      && spage_save_space (thread_p, page_header_p, page_p,
-			   page_header_p->total_free - total_free_save) !=
-      NO_ERROR)
+      && (spage_save_space (thread_p, page_header_p, page_p,
+			    page_header_p->total_free - total_free_save) !=
+	  NO_ERROR))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return SP_ERROR;
@@ -3205,10 +2981,10 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  * spage_overwrite () - Overwrite a portion of the record stored at given slotid
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slot identifier of record to overwrite 
+ *   slotid(in): Slot identifier of record to overwrite
  *   overwrite_offset(in): Offset on the record to start the overwrite process
  *   recdes(in): New replacement data
- * 
+ *
  * Note: overwrite_offset + recdes->length must be <= length of record stored
  *       on slot.
  *       If this is not the case, you must use a combination of overwrite and
@@ -3255,13 +3031,13 @@ spage_overwrite (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 }
 
 /*
- * spage_merge () - Merge the record of the second slot onto the record of the 
+ * spage_merge () - Merge the record of the second slot onto the record of the
  *               first slot
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
  *   pgptr(in): Pointer to slotted page
  *   slotid1(in): Slot identifier of first slot
  *   slotid2(in): Slot identifier of second slot
- * 
+ *
  * Note: Then the second slot is removed.
  */
 int
@@ -3307,18 +3083,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 		   second_old_waste);
   DB_WASTED_ALIGN (first_slot_p->record_length + second_slot_p->record_length,
 		   page_header_p->alignment, new_waste);
-  /*
-   * How to append:
-   * 1) If the record one is located at the end of the page and there is free
-   *    space to append the second record,  do it.
-   * 2) If there is space on the contiguous area to hold the first and second
-   *    record. The first record is moved to the end, and then the second
-   *    record is appended to it.
-   * 3) Compress the page leaving the first record at the end of the free
-   *    area and then append the new record.
-   */
-  if (spage_is_record_located_at_end (page_header_p, first_slot_p) &&
-      second_slot_p->record_length <= page_header_p->cont_free)
+  if (spage_is_record_located_at_end (page_header_p, first_slot_p)
+      && second_slot_p->record_length <= page_header_p->cont_free)
     {
       /*
        * The first record is at the end of the page (just before contiguous free
@@ -3502,12 +3268,12 @@ spage_search_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 /*
  * spage_next_record () - Get next record
  *   return: Either of S_SUCCESS, S_DOESNT_FIT, S_END
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(in/out): Slot identifier of current record
  *   recdes(out): Pointer to a record descriptor
  *   ispeeking(in): Indicates whether the record is going to be copied
  *                  (like a copy) or peeked (read at the buffer)
- * 
+ *
  * Note: When ispeeking is PEEK, the next available record is peeked onto the
  *       page. The address of the record descriptor is set to the portion of
  *       the buffer where the record is stored. Peeking a record should be
@@ -3516,14 +3282,14 @@ spage_search_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       on the page until the peeking of the record is done. The page should
  *       be fixed and locked to avoid any funny behavior. RECORD should NEVER
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
- *       header information and other records may be corrupted. 
+ *       header information and other records may be corrupted.
  *
  *       When ispeeking is DONT_PEEK (COPY), the next available record is read
  *       onto the area pointed by the record descriptor. If the record does not
  *       fit in such an area, the length of the record is returned as a
  *       negative value in recdes->length and an error is indicated in the
- *       return value. 
- * 
+ *       return value.
+ *
  *       If the current value of slotid is negative, the first record on the
  *       page is retrieved.
  */
@@ -3538,12 +3304,12 @@ spage_next_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 /*
  * spage_previous_record () - Get previous record
  *   return: Either of S_SUCCESS, S_DOESNT_FIT, S_END
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(out): Slot identifier of current record
  *   recdes(out): Pointer to a record descriptor
  *   ispeeking(in): Indicates whether the record is going to be copied
  *                  (like a copy) or peeked (read at the buffer)
- * 
+ *
  * Note: When ispeeking is PEEK, the previous available record is peeked onto
  *       the page. The address of the record descriptor is set to the portion
  *       of the buffer where the record is stored. Peeking a record should be
@@ -3552,14 +3318,14 @@ spage_next_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       on the page until the peeking of the record is done. The page should
  *       be fixed and locked to avoid any funny behavior. RECORD should NEVER
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
- *       header information and other records may be corrupted. 
+ *       header information and other records may be corrupted.
  *
  *       When ispeeking is DONT_PEEK (COPY), the previous available record is
  *       read onto the area pointed by the record descriptor. If the record
  *       does not fit in such an area, the length of the record is returned
  *       as a negative value in recdes->length and an error is indicated in the
- *       return value. 
- * 
+ *       return value.
+ *
  *       If the current value of slotid is negative, the first record on the
  *       page is retrieved.
  */
@@ -3574,12 +3340,12 @@ spage_previous_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 /*
  * spage_get_record () - Get specified record
  *   return: Either of S_SUCCESS, S_DOESNT_FIT, S_END
- *   pgptr(in): Pointer to slotted page 
+ *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of current record
  *   recdes(out): Pointer to a record descriptor
  *   ispeeking(in): Indicates whether the record is going to be copied
  *                  (like a copy) or peeked (read at the buffer)
- * 
+ *
  * Note: When ispeeking is PEEK, the desired available record is peeked onto
  *       the page. The address of the record descriptor is set to the portion
  *       of the buffer where the record is stored. Peeking a record should be
@@ -3588,13 +3354,13 @@ spage_previous_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       on the page until the peeking of the record is done. The page should
  *       be fixed and locked to avoid any funny behavior. RECORD should NEVER
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
- *       header information and other records may be corrupted. 
+ *       header information and other records may be corrupted.
  *
  *       When ispeeking is DONT_PEEK (COPY), the desired available record is
  *       read onto the area pointed by the record descriptor. If the record
  *       does not fit in such an area, the length of the record is returned
  *       as a negative value in recdes->length and an error is indicated in the
- *       return value. 
+ *       return value.
  */
 SCAN_CODE
 spage_get_record (PAGE_PTR page_p, PGSLOTID slot_id,
@@ -3663,7 +3429,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
 }
 
 /*
- * spage_get_record_length () - Find the length of the record associated with 
+ * spage_get_record_length () - Find the length of the record associated with
  *                              the given slot on the given page
  *   return: Length of the record or -1 in case of error
  *   pgptr(in): Pointer to slotted page
@@ -3693,7 +3459,7 @@ spage_get_record_length (PAGE_PTR page_p, PGSLOTID slot_id)
  *                 on the given page
  *   return: record type, or -1 if the given slot is invalid
  *   pgptr(in): Pointer to slotted page
- *   slotid(in): Slot identifier of record 
+ *   slotid(in): Slot identifier of record
  */
 INT16
 spage_get_record_type (PAGE_PTR page_p, PGSLOTID slot_id)
@@ -3792,9 +3558,9 @@ spage_alignment_string (unsigned short alignment)
 /*
  * sp_dump_hdr () - Dump an slotted page header
  *   return: void
- *   sphdr(in): Pointer to header of slotted page 
- * 
- * Note: This function is used for debugging purposes. 
+ *   sphdr(in): Pointer to header of slotted page
+ *
+ * Note: This function is used for debugging purposes.
  */
 static void
 spage_dump_header (const SPAGE_HEADER * page_header_p)
@@ -3829,7 +3595,7 @@ spage_dump_header (const SPAGE_HEADER * page_header_p)
  *   sptr(in): Pointer to slotted page pointer array
  *   nslots(in): Number of slots
  *   alignment(in): Alignment for records
- * 
+ *
  * Note: The content of the record is not dumped by this function.
  *       This function is used for debugging purposes.
  */
@@ -3902,8 +3668,8 @@ spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * slot_p)
  *   pgptr(in): Pointer to slotted page
  *   isrecord_printed(in): If true, records are printed in ascii format,
  *                         otherwise, the records are not printed.
- * 
- * Note: The records are printed only when the value of isrecord_printed is 
+ *
+ * Note: The records are printed only when the value of isrecord_printed is
  *       true. This function is used for debugging purposes.
  */
 void
@@ -4041,7 +3807,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
 /*
  * spage_check_slot_owner () -
- *   return: 
+ *   return:
  *   pgptr(in):
  *   slotid(in):
  */
@@ -4103,11 +3869,11 @@ spage_is_not_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   assert (page_p != NULL);
   assert (page_header_p != NULL);
 
-  return ((space > page_header_p->total_free - page_header_p->total_saved) &&
-	  (space >
-	   page_header_p->total_free -
-	   SPAGE_GET_SAVED_SPACES_BY_OTHER_TRANS (thread_p, page_header_p,
-						  page_p)));
+  return ((space > page_header_p->total_free - page_header_p->total_saved)
+	  && (space > (page_header_p->total_free -
+		       SPAGE_GET_SAVED_SPACES_BY_OTHER_TRANS (thread_p,
+							      page_header_p,
+							      page_p))));
 }
 
 static bool

@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * daemon.c : daemonize a process for master
- *
  */
 
 #ident "$Id$"
@@ -135,19 +149,6 @@ out:
 
   errno = 0;			/* Reset errno from last close */
 
-  /*
-   * Change the current directory to the root directory. the current working
-   * directory inherited from the parent could be on a mounted filesystem, 
-   * Since we normally never exit, if the daemon stays on a mounted filesystem,
-   * that filesystem cannot be unmounted.
-   *
-   * For now, we do not change to the root directory since we may not 
-   * have permission to write in such directory and we may want to capture
-   * coredumps of the master process. If a file system needs to be unmounted,
-   * we need to terminate the master.
-   * 
-   * Another alternative is to change to tmp.
-   */
 
 #if 0
   chdir ("/");

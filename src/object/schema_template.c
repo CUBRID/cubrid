@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * schema_template.c - Schema manager templates
  */
 
@@ -20,17 +35,17 @@
 #include "work_space.h"
 #include "object_primitive.h"
 #include "class_object.h"
-#include "schema_manager_3.h"
-#include "set_object_1.h"
+#include "schema_manager.h"
+#include "set_object.h"
 #include "locator_cl.h"
 #include "authenticate.h"
-#include "transform_sky.h"
+#include "transform_cl.h"
 #include "statistics.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "db.h"
 #include "release_string.h"
 #if defined(WINDOWS)
-#include "ustring.h"
+#include "misc_string.h"
 #endif
 
 /* Shorthand for simple warnings and errors */
@@ -67,7 +82,7 @@
     ws_free_string(a); \
     a = ws_copy_string(b); \
   } while(0)
-/* Currently, ldb names are case sensitive */
+
 #define COMPARE_LDB_NAMES strcmp
 
 static int find_method (SM_TEMPLATE * template_, const char *name,
@@ -545,9 +560,11 @@ find_alias (SM_RESOLUTION * reslist, const char *name,
   for (res = reslist, found = NULL; res != NULL && found == NULL;
        res = res->next)
     {
-      if ((name_space == res->name_space) &&
-	  (res->alias != NULL) && (SM_COMPARE_NAMES (res->alias, name) == 0))
-	found = res;
+      if (name_space == res->name_space
+	  && res->alias != NULL && (SM_COMPARE_NAMES (res->alias, name) == 0))
+	{
+	  found = res;
+	}
     }
   return (found);
 }
@@ -557,42 +574,6 @@ find_alias (SM_RESOLUTION * reslist, const char *name,
  * resolve_class_domain()
  * get_domain_internal()
  * get_domain() - Maps a domain string into a domain structure.
- *    NOTE: There are a few primivite types that are not allowed as
- *    attriute domains in "normal" classes.  These include *elo*, *pointer*,
- *    *substructure*, etc.  Unexported domain names will all have '*' as
- *    their first character which will be caught by the interpreter.
- *    For the API, we have to check here.  Unfortunately, the system
- *    defined "Glo" class is allowed to defined an *elo* attribute.
- *    For the time being, allow the internal domains at the API level,
- *    we need to change this so there is a non-documented API function
- *    just for the multimedia classes that defines *elo* attributes.
- *    KLUDGE:  We need to allow self references within a class definition.
- *    That is, a newly defined class should be able to define an attribute
- *    whose domain is an instance of that class.  Unfortunately, the class
- *    has not yet been created so it is impossible to build a domain
- *    structure with an appropriate class pointer in it.  Since the template
- *    really wants to use TP_DOMAIN structures for the domains in progress,
- *    we have to somehow make one of these that means "pointer to the
- *    class being defined".  When the template is flattened and the
- *    class is created, we must go through and convert domains of this
- *    form to actually point to the new class object.  Domains of this
- *    form will be indicated with the self_ref flag set.
- *    See the function fixup_self_referencing_domains() in smu.c for more
- *    information.
- *    In order that later domain checking can handle the special
- *    self referencing domain, it will need to look at the template
- *    defined for the new class.  Rather than pass the template
- *    everywhere, place a pointer to it in the domain structure.
- *    The domain checker can then assume that when a TP_DOMAIN
- *    is encountered with the self_ref flag set, the class pointer will
- *    actually point to a template. Would be nicer if we could
- *    have a specialized domain structure for use in templates.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   tmp(in): template
- *   domain(in/out): returned pointer to domain structure
- *   domain_string(in): domain name
- *   domainp(out): domain structure
- *   check_internal(in): non-zero to error on internal domain names
  */
 
 static int
@@ -712,52 +693,59 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
   /* If its a class, the domain can only be "object" or another class */
   if (template_->class_type == SM_CLASS_CT)
     {
-      if (domain_classobj != NULL &&
-	  !(error =
-	    au_fetch_class_force (domain_classobj, &class_, AU_FETCH_READ))
+      if (domain_classobj != NULL
+	  && !(error = au_fetch_class_force (domain_classobj, &class_,
+					     AU_FETCH_READ))
 	  && template_->class_type != class_->class_type)
-	ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE,
-		class_->header.name);
+	{
+	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE,
+		  class_->header.name);
+	}
     }
-
   /* If its a proxy, the domain can only be another proxy on the same ldb */
   else if (template_->class_type == SM_LDBVCLASS_CT)
     {
       if (domain_classobj == NULL)
-	/* can't have a proxy domain of type "object" */
-	ERROR (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN);
-
-      else
-	if (!
-	    (error =
-	     au_fetch_class_force (domain_classobj, &class_, AU_FETCH_READ)))
+	{
+	  /* can't have a proxy domain of type "object" */
+	  ERROR (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN);
+	}
+      else if (!(error = au_fetch_class_force (domain_classobj, &class_,
+					       AU_FETCH_READ)))
 	{
 	  if (template_->class_type != class_->class_type)
-	    ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN_NAME,
-		    class_->header.name);
+	    {
+	      ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN_NAME,
+		      class_->header.name);
+	    }
 	  else
 	    {
 	      /* make sure they're on the same ldb */
 	      same_ldb = 0;
-	      if (classobj_get_prop
-		  (template_->properties, SM_PROPERTY_LDB_NAME, &ldb1) > 0)
+	      if (classobj_get_prop (template_->properties,
+				     SM_PROPERTY_LDB_NAME, &ldb1) > 0)
 		{
-		  if (classobj_get_prop
-		      (class_->properties, SM_PROPERTY_LDB_NAME, &ldb2) > 0)
+		  if (classobj_get_prop (class_->properties,
+					 SM_PROPERTY_LDB_NAME, &ldb2) > 0)
 		    {
 		      /* is it appropriate to use case insensitive comparison here ? */
-		      if (DB_GET_STRING (&ldb1) != NULL &&
-			  DB_GET_STRING (&ldb2) != NULL &&
-			  COMPARE_LDB_NAMES (DB_GET_STRING (&ldb1),
-					     DB_GET_STRING (&ldb2)) == 0)
-			same_ldb = 1;
+		      if (DB_GET_STRING (&ldb1) != NULL
+			  && DB_GET_STRING (&ldb2) != NULL
+			  && COMPARE_LDB_NAMES (DB_GET_STRING (&ldb1),
+						DB_GET_STRING (&ldb2)) == 0)
+			{
+			  same_ldb = 1;
+			}
 		      pr_clear_value (&ldb2);
 		    }
 		  pr_clear_value (&ldb1);
 		}
+
 	      if (!same_ldb)
-		ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DIFF_LDBS,
-			class_->header.name);
+		{
+		  ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DIFF_LDBS,
+			  class_->header.name);
+		}
 	    }
 	}
     }
@@ -1815,8 +1803,8 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 		{
 		  ERROR (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
 		}
-	      else if ((template_->class_type != SM_CLASS_CT) &&
-		       (atts[0]->header.name_space == ID_ATTRIBUTE))
+	      else if (template_->class_type != SM_CLASS_CT
+		       && atts[0]->header.name_space == ID_ATTRIBUTE)
 		{
 		  ERROR (error, ER_SM_NOT_NULL_ON_VCLASS);
 		}
@@ -2997,9 +2985,9 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
   else
     {
       ct = template_->class_type;
-      if ((ct == SM_VCLASS_CT)
-	  || ((ct == SM_LDBVCLASS_CT) &&
-	      (WS_LIST_LENGTH (template_->query_spec) == 0)))
+      if (ct == SM_VCLASS_CT
+	  || (ct == SM_LDBVCLASS_CT
+	      && WS_LIST_LENGTH (template_->query_spec) == 0))
 	{
 	  WS_LIST_APPEND (&template_->query_spec, query_spec);
 	  if (ct == SM_LDBVCLASS_CT)
@@ -3055,6 +3043,7 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
       else
 	prev = file;
     }
+
   if (found == NULL)
     {
       error = ER_SM_QUERY_SPEC_NOT_FOUND;

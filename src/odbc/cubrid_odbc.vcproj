@@ -172,11 +172,11 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/VERBOSE:LIB "
-				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib cas_cci.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib wsock32.lib  cas_cci.lib"
 				OutputFile=".\Debug/cubrid_odbc.dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
-				ModuleDefinitionFile=".\odbc.def"
+				ModuleDefinitionFile=".\cubrid_odbc.def"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile=".\Debug/cubrid_odbc.pdb"
 				RandomizedBaseAddress="1"
@@ -307,404 +307,52 @@
 			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 			>
 			<File
-				RelativePath="catalog.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="conn.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="desc.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="diag.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="env.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="number.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="odbc.c"
-				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="odbc.def"
+				RelativePath=".\odbc.c"
 				>
 			</File>
 			<File
-				RelativePath="odbc_type.c"
+				RelativePath=".\odbc_catalog.c"
 				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="result.c"
+				RelativePath=".\odbc_connection.c"
 				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="setup.c"
+				RelativePath=".\odbc_descriptor.c"
 				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="stmt.c"
+				RelativePath=".\odbc_diag_record.c"
 				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="util.c"
+				RelativePath=".\odbc_env.c"
 				>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						Optimization="0"
-						PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;__DEBUG_LOG;$(NoInherit)"
-						BasicRuntimeChecks="3"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="ReleaseForDelphi|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_MBCS;_USRDLL;CUBRID_ODBC_EXPORTS;DELPHI;$(NoInherit)"
-						BrowseInformation="1"
-					/>
-				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\odbc_interface.c"
+				>
+			</File>
+			<File
+				RelativePath=".\odbc_number.c"
+				>
+			</File>
+			<File
+				RelativePath=".\odbc_result.c"
+				>
+			</File>
+			<File
+				RelativePath=".\odbc_statement.c"
+				>
+			</File>
+			<File
+				RelativePath=".\odbc_type.c"
+				>
+			</File>
+			<File
+				RelativePath=".\odbc_util.c"
+				>
 			</File>
 		</Filter>
 		<Filter
@@ -712,59 +360,51 @@
 			Filter="h;hpp;hxx;hm;inl"
 			>
 			<File
-				RelativePath="cas_cci.h"
+				RelativePath=".\odbc_catalog.h"
 				>
 			</File>
 			<File
-				RelativePath="catalog.h"
+				RelativePath=".\odbc_connection.h"
 				>
 			</File>
 			<File
-				RelativePath="conn.h"
+				RelativePath=".\odbc_descriptor.h"
 				>
 			</File>
 			<File
-				RelativePath="desc.h"
+				RelativePath=".\odbc_diag_record.h"
 				>
 			</File>
 			<File
-				RelativePath="diag.h"
+				RelativePath=".\odbc_env.h"
 				>
 			</File>
 			<File
-				RelativePath="env.h"
+				RelativePath=".\odbc_number.h"
 				>
 			</File>
 			<File
-				RelativePath="number.h"
+				RelativePath=".\odbc_portable.h"
 				>
 			</File>
 			<File
-				RelativePath="odbc_type.h"
+				RelativePath=".\odbc_resource.h"
 				>
 			</File>
 			<File
-				RelativePath="portable.h"
+				RelativePath=".\odbc_result.h"
 				>
 			</File>
 			<File
-				RelativePath="resource.h"
+				RelativePath=".\odbc_statement.h"
 				>
 			</File>
 			<File
-				RelativePath="result.h"
+				RelativePath=".\odbc_type.h"
 				>
 			</File>
 			<File
-				RelativePath="setup.h"
-				>
-			</File>
-			<File
-				RelativePath="stmt.h"
-				>
-			</File>
-			<File
-				RelativePath="util.h"
+				RelativePath=".\odbc_util.h"
 				>
 			</File>
 		</Filter>
@@ -773,7 +413,7 @@
 			Filter="ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
 			>
 			<File
-				RelativePath="ODBC.rc"
+				RelativePath=".\cubrid_odbc.rc"
 				>
 			</File>
 		</Filter>

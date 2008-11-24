@@ -1,8 +1,36 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * cci_query_execute.c - 
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
+
+/*
+ * cci_query_execute.c -
  */
 
 #ident "$Id$"
@@ -428,7 +456,7 @@ qe_execute (T_REQ_HANDLE * req_handle, int sock_fd, char flag,
   ADD_ARG_BYTES (&net_buf, &flag, 1);
   ADD_ARG_INT (&net_buf, max_col_size);
   ADD_ARG_INT (&net_buf, req_handle->max_row);
-  if (req_handle->stmt_type == SQLX_CMD_CALL_SP)
+  if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {
       ADD_ARG_BYTES (&net_buf, req_handle->bind_mode, req_handle->num_bind);
     }
@@ -437,7 +465,7 @@ qe_execute (T_REQ_HANDLE * req_handle, int sock_fd, char flag,
       ADD_ARG_BYTES (&net_buf, NULL, 0);
     }
 
-  if (req_handle->stmt_type == SQLX_CMD_SELECT)
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       fetch_flag = 1;
     }
@@ -483,9 +511,8 @@ qe_execute (T_REQ_HANDLE * req_handle, int sock_fd, char flag,
       goto execute_error;
     }
 
-  err_code =
-    execute_array_info_decode (result_msg + 4, result_msg_size - 4,
-			       EXECUTE_EXEC, &qr, &remain_msg_size);
+  err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
+					EXECUTE_EXEC, &qr, &remain_msg_size);
   if (err_code < 0)
     {
       req_handle->num_query_res = 0;
@@ -497,20 +524,24 @@ qe_execute (T_REQ_HANDLE * req_handle, int sock_fd, char flag,
       req_handle->qr = qr;
     }
 
-  if (req_handle->stmt_type == SQLX_CMD_SELECT ||
-      req_handle->stmt_type == SQLX_CMD_GET_STATS ||
-      req_handle->stmt_type == SQLX_CMD_CALL ||
-      req_handle->stmt_type == SQLX_CMD_EVALUATE)
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT
+      || req_handle->stmt_type == CUBRID_STMT_GET_STATS
+      || req_handle->stmt_type == CUBRID_STMT_CALL
+      || req_handle->stmt_type == CUBRID_STMT_EVALUATE)
     {
       if (flag & CCI_EXEC_ASYNC)
 	req_handle->num_tuple = -1;
       else
 	req_handle->num_tuple = res_count;
     }
-  else if (req_handle->stmt_type == SQLX_CMD_CALL_SP)
-    req_handle->num_tuple = res_count;
+  else if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
+    {
+      req_handle->num_tuple = res_count;
+    }
   else
-    req_handle->num_tuple = -1;
+    {
+      req_handle->num_tuple = -1;
+    }
 
   req_handle->execute_flag = flag;
 
@@ -736,11 +767,11 @@ qe_cursor (T_REQ_HANDLE * req_handle, int sock_fd, int offset, char origin,
 
   if (req_handle->handle_type == HANDLE_PREPARE)
     {
-      if (req_handle->stmt_type == SQLX_CMD_SELECT ||
-	  req_handle->stmt_type == SQLX_CMD_GET_STATS ||
-	  req_handle->stmt_type == SQLX_CMD_CALL ||
-	  req_handle->stmt_type == SQLX_CMD_CALL_SP ||
-	  req_handle->stmt_type == SQLX_CMD_EVALUATE)
+      if (req_handle->stmt_type == CUBRID_STMT_SELECT ||
+	  req_handle->stmt_type == CUBRID_STMT_GET_STATS ||
+	  req_handle->stmt_type == CUBRID_STMT_CALL ||
+	  req_handle->stmt_type == CUBRID_STMT_CALL_SP ||
+	  req_handle->stmt_type == CUBRID_STMT_EVALUATE)
 	{
 	  if (req_handle->num_tuple >= 0)
 	    {
@@ -968,7 +999,7 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
   int err_code;
   int num_cols;
 
-  if (req_handle->stmt_type == SQLX_CMD_CALL_SP)
+  if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {
       num_cols = req_handle->num_bind + 1;
       col_no++;
@@ -988,7 +1019,7 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
     req_handle->tuple_value[req_handle->cur_fetch_tuple_index].
     column_ptr[col_no - 1];
 
-  if (req_handle->stmt_type == SQLX_CMD_CALL_SP)
+  if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     u_type = CCI_U_TYPE_NULL;
   else
     u_type = CCI_GET_RESULT_INFO_TYPE (req_handle->col_info, col_no);
@@ -2958,7 +2989,7 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   req_handle->num_bind = num_bind_info;
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
-  req_handle->stmt_type = (T_CCI_SQLX_CMD) stmt_type;
+  req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
 
   return 0;
@@ -3444,9 +3475,9 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   req_handle_col_info_free (req_handle);
 
   req_handle->num_tuple = result_count;
-  if (stmt_type == SQLX_CMD_SELECT ||
-      stmt_type == SQLX_CMD_GET_STATS ||
-      stmt_type == SQLX_CMD_CALL || stmt_type == SQLX_CMD_EVALUATE)
+  if (stmt_type == CUBRID_STMT_SELECT ||
+      stmt_type == CUBRID_STMT_GET_STATS ||
+      stmt_type == CUBRID_STMT_CALL || stmt_type == CUBRID_STMT_EVALUATE)
     {
       if (req_handle->execute_flag & CCI_EXEC_ASYNC)
 	req_handle->num_tuple = -1;
@@ -3454,7 +3485,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
 
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
-  req_handle->stmt_type = (T_CCI_SQLX_CMD) stmt_type;
+  req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
   req_handle->updatable_flag = updatable_flag;
 
   return result_count;
@@ -4071,7 +4102,7 @@ decode_fetch_result (T_REQ_HANDLE * req_handle, char *result_msg_org,
   int num_cols;
   int num_tuple;
 
-  if (req_handle->stmt_type == SQLX_CMD_CALL_SP)
+  if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     num_cols = req_handle->num_bind + 1;
   else
     num_cols = req_handle->num_col_info;

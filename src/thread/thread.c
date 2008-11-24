@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * thrd.c - Thread management module at the server
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * thread.c - Thread management module at the server
  */
 
 #ident "$Id$"
@@ -27,24 +40,24 @@
 #endif /* WINDOWS */
 
 #include "porting.h"
-#include "csserror.h"
-#include "jobqueue.h"
+#include "connection_error.h"
+#include "job_queue.h"
 #include "thread_impl.h"
 #include "critical_section.h"
 #include "system_parameter.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
-#include "defs.h"
-#include "common.h"
+#include "connection_defs.h"
+#include "storage_common.h"
 #include "page_buffer.h"
-#include "lock.h"
-#include "log_prv.h"
-#include "log.h"
+#include "lock_manager.h"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "boot_sr.h"
 #include "transaction_sr.h"
 #include "boot_sr.h"
-#include "conn.h"
-#include "srv_new.h"
+#include "connection_sr.h"
+#include "server_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -141,8 +154,8 @@ static int thread_get_LFT_min_wait_time ();
  * Thread Specific Data management
  *
  * All kind of thread has it's own information like request id, error code,
- * synchronization informations, etc. We use THREAD_ENTRY structure 
- * which saved as TSD(thread specific data) to manage these informations. 
+ * synchronization informations, etc. We use THREAD_ENTRY structure
+ * which saved as TSD(thread specific data) to manage these informations.
  * Global thread manager(thread_mgr) has an array of these entries which is
  * initialized by the 'thread_mgr'.
  * Each worker thread picks one up from this array.
@@ -267,7 +280,7 @@ thread_get_thread_entry_info (void)
  */
 
 /*
- * thread_is_manager_initialized() - 
+ * thread_is_manager_initialized() -
  *   return:
  */
 int
@@ -327,7 +340,7 @@ thread_initialize_manager (int nthreads)
       free_and_init (css_Thread_manager.thread_array);
       css_Thread_manager.thread_array = NULL;
     }
-  
+
   css_Thread_manager.nthreads = nthreads;
 
   /* main thread + nthreads * service thread + deadlock detector
@@ -346,7 +359,7 @@ thread_initialize_manager (int nthreads)
     {
       return r;
     }
-  
+
   tsd_ptr->index = 0;
   tsd_ptr->tid = THREAD_ID ();
   tsd_ptr->status = TS_RUN;
@@ -364,7 +377,7 @@ thread_initialize_manager (int nthreads)
         {
           return r;
         }
-      
+
       css_Thread_manager.thread_array[i].index = i;
     }
 
@@ -567,8 +580,8 @@ loop:
   return NO_ERROR;
 }
 
-/* 
- * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads 
+/*
+ * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
  *   return: 0 if no error, or error code
  */
 int
@@ -673,7 +686,7 @@ loop:
 }
 
 /*
- * thread_final_manager() - 
+ * thread_final_manager() -
  *   return: void
  */
 void
@@ -698,8 +711,6 @@ thread_final_manager (void)
  * thread_initialize_entry() - Initialize thread entry
  *   return: void
  *   entry_ptr(in): thread entry to initialize
- *
- * Note: invoked from init_thread_mgr()
  */
 static int
 thread_initialize_entry (THREAD_ENTRY * entry_p)
@@ -712,7 +723,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_index = -1;
   r = MUTEX_INIT (entry_p->tran_index_lock);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
-  
+
   entry_p->rid = 0;
   entry_p->status = TS_DEAD;
   entry_p->interrupted = false;
@@ -732,7 +743,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   r = COND_INIT (entry_p->wakeup_cond);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  
+
   entry_p->resume_status = RESUME_OK;
   entry_p->er_Msg = NULL;
   entry_p->victim_request_fail = false;
@@ -745,19 +756,19 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->check_interrupt = true;
   entry_p->type = TT_WORKER;	/* init */
-  
+
   entry_p->private_heap_id = db_create_private_heap ();
   if (entry_p->private_heap_id == 0)
     {
       return ER_CSS_ALLOC;
     }
-  
+
   return NO_ERROR;
 }
 
 /*
- * thread_finalize_entry() - 
- *   return: 
+ * thread_finalize_entry() -
+ *   return:
  *   entry_p(in):
  */
 static int
@@ -773,7 +784,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   entry_p->status = TS_DEAD;
   entry_p->interrupted = false;
   entry_p->shutdown = false;
-  
+
   for (i = 0; i < 3; i++)
     {
       if (entry_p->cnv_adj_buffer[i] != NULL)
@@ -795,7 +806,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->check_interrupt = true;
   db_destroy_private_heap (entry_p, entry_p->private_heap_id);
-  
+
   return NO_ERROR;
 }
 
@@ -825,8 +836,8 @@ thread_print_entry_info (THREAD_ENTRY * thread_p)
  */
 
 /*
- * thread_find_entry_by_tran_index_except_me() - 
- *   return: 
+ * thread_find_entry_by_tran_index_except_me() -
+ *   return:
  *   tran_index(in):
  */
 static THREAD_ENTRY *
@@ -849,8 +860,8 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
 }
 
 /*
- * thread_find_entry_by_tran_index() - 
- *   return: 
+ * thread_find_entry_by_tran_index() -
+ *   return:
  *   tran_index(in):
  */
 static THREAD_ENTRY *
@@ -1129,8 +1140,8 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
 }
 
 /*
- * thread_wakeup() - 
- *   return: 
+ * thread_wakeup() -
+ *   return:
  *   thread_p(in):
  */
 int
@@ -1151,8 +1162,8 @@ thread_wakeup (THREAD_ENTRY * thread_p)
 }
 
 /*
- * thread_wakeup_with_tran_index() - 
- *   return: 
+ * thread_wakeup_with_tran_index() -
+ *   return:
  *   tran_index(in):
  */
 int
@@ -1340,8 +1351,8 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
  * thread_set_comm_request_id() - sets the comm system request id to the client request
   *                     that started the thread
  *   return: void
- *   request_id(in): the comm request id to save for thread_get_comm_request_id 
- * 	 
+ *   request_id(in): the comm request id to save for thread_get_comm_request_id
+ *
  * Note: WARN: this function doesn't lock on thread_entry
  */
 void
@@ -1453,7 +1464,7 @@ thread_dump_threads (void)
 }
 
 /*
- * thread_get_default_memory_manager() - 
+ * thread_get_default_memory_manager() -
  *   return:
  */
 unsigned int
@@ -1470,7 +1481,7 @@ css_get_private_heap (THREAD_ENTRY * thread_p)
 }
 
 /*
- * css_set_private_heap() - 
+ * css_set_private_heap() -
  *   return:
  *   heap_id(in):
  */
@@ -1526,8 +1537,8 @@ css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
 }
 
 /*
- * thread_set_check_interrupt() - 
- *   return: 
+ * thread_set_check_interrupt() -
+ *   return:
  *   flag(in):
  */
 bool
@@ -1550,8 +1561,8 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 }
 
 /*
- * thread_get_check_interrupt() - 
- *   return: 
+ * thread_get_check_interrupt() -
+ *   return:
  */
 bool
 thread_get_check_interrupt (THREAD_ENTRY * thread_p)
@@ -1678,12 +1689,12 @@ css_initialize_sync_object (void)
 
   r = COND_INIT (css_Checkpoint_thread.cond);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Checkpoint_thread.is_running);
+  r = MUTEX_INIT (css_Checkpoint_thread.lock);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
 
   r = COND_INIT (css_Oob_thread.cond);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Oob_thread.is_running);
+  r = MUTEX_INIT (css_Oob_thread.lock);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
 
   r = COND_INIT (css_Page_flush_thread.cond);
@@ -1701,7 +1712,7 @@ css_initialize_sync_object (void)
 #endif /* WINDOWS */
 
 /*
- * thread_deadlock_detect_thread() - 
+ * thread_deadlock_detect_thread() -
  *   return:
  */
 #if defined(WINDOWS)
@@ -1718,7 +1729,7 @@ thread_deadlock_detect_thread (void *arg_p)
   int rv;
   THREAD_ENTRY *thread_p;
   int thrd_index;
-  int state;
+  bool state;
   int lockwait_count;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -1760,7 +1771,7 @@ thread_deadlock_detect_thread (void *arg_p)
 	  /*
 	   * The transaction, for which the current thread is working,
 	   * might be interrupted. The interrupt checking is also performed
-	   * within lock_force_timeout_expired_wait_transactions().  
+	   * within lock_force_timeout_expired_wait_transactions().
 	   */
 	  state = lock_force_timeout_expired_wait_transactions (thread_p);
 	  if (state == false)
@@ -1788,8 +1799,8 @@ thread_deadlock_detect_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_deadlock_detect_thread() - 
- *   return: 
+ * thread_wakeup_deadlock_detect_thread() -
+ *   return:
  */
 void
 thread_wakeup_deadlock_detect_thread (void)
@@ -1874,7 +1885,7 @@ thread_checkpoint_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_checkpoint_thread() - 
+ * thread_wakeup_checkpoint_thread() -
  *   return:
  */
 void
@@ -1888,7 +1899,7 @@ thread_wakeup_checkpoint_thread (void)
 }
 
 /*
- * thread_wakeup_oob_handler_thread() - 
+ * thread_wakeup_oob_handler_thread() -
  *  return:
  */
 void
@@ -1903,8 +1914,8 @@ thread_wakeup_oob_handler_thread (void)
 }
 
 /*
- * css_page_flush_thread() - 
- *   return: 
+ * css_page_flush_thread() -
+ *   return:
  *   arg_p(in):
  */
 #if defined(WINDOWS)
@@ -1967,8 +1978,8 @@ thread_page_flush_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_page_flush_thread() - 
- *   return: 
+ * thread_wakeup_page_flush_thread() -
+ *   return:
  */
 void
 thread_wakeup_page_flush_thread (void)
@@ -2029,33 +2040,6 @@ thread_get_LFT_min_wait_time ()
  *   return:
  *   arg(in) : thread entry information
  *
- * Note: There are 3 types of flushing by LFT.
- *       (background flush, log hdr, group commit)
- *       If group commit is on, LFT wakes up periodically and flushes all
- *       log pages and sends signal for waiting threads.
- *       If only async commit is on, LFT doesn't have to wake threads up,
- *       becuase threads which request flushing are already returned.
- *       <bg wait time <= gc wait time <= log hdr wait time>
- *
- *       wait(LFT_mutex)
- *       LOG_CS enter
- *       if(time out)
- *           if(gc on)
- *               if(wait time < total time)
- *                   flush_all
- *           if(repl on)
- *               if(repl time < total time)
- *                   log hdr flush
- *           if(flush type is nothing)
- *               background flush
- *       else
- *          flush_all
- *
- *       LOG_CS exit
- *       GC mutex get
- *       for(waiters)
- *           send signal
- *       GC mutex release
  */
 #if defined(WINDOWS)
 static unsigned __stdcall
@@ -2287,8 +2271,8 @@ thread_log_flush_thread (void *arg_p)
 
 
 /*
- * thread_wakeup_log_flush_thread() - 
- *   return: 
+ * thread_wakeup_log_flush_thread() -
+ *   return:
  */
 void
 thread_wakeup_log_flush_thread (void)
@@ -2309,8 +2293,8 @@ thread_wakeup_log_flush_thread (void)
 }
 
 /*
- * thread_slam_tran_index() - 
- *   return: 
+ * thread_slam_tran_index() -
+ *   return:
  *   tran_index(in):
  */
 static int
@@ -2415,8 +2399,8 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
 }
 
 /*
- * thread_find_first_lockwait_entry() - 
- *   return: 
+ * thread_find_first_lockwait_entry() -
+ *   return:
  *   thread_index_p(in):
  */
 THREAD_ENTRY *
@@ -2443,8 +2427,8 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 }
 
 /*
- * thread_find_next_lockwait_entry() - 
- *   return: 
+ * thread_find_next_lockwait_entry() -
+ *   return:
  *   thread_index_p(in):
  */
 THREAD_ENTRY *
@@ -2471,8 +2455,8 @@ thread_find_next_lockwait_entry (int *thread_index_p)
 }
 
 /*
- * thread_find_entry_by_index() - 
- *   return: 
+ * thread_find_entry_by_index() -
+ *   return:
  *   thread_index(in):
  */
 THREAD_ENTRY *
@@ -2482,8 +2466,8 @@ thread_find_entry_by_index (int thread_index)
 }
 
 /*
- * thread_get_lockwait_entry() - 
- *   return: 
+ * thread_get_lockwait_entry() -
+ *   return:
  *   tran_index(in):
  *   thread_array_p(in):
  */

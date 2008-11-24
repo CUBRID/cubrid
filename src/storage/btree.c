@@ -1,270 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * btree.c - B+-Tree mananger
- *
- * The Btree manager manages the creation, destruction, insertion, deletion,
- * and search operations on Btree indices. The basic data structure is a
- * special Btree called a prefix Btree [BAYE77]. Unlike a regular Btree
- * structures, in prefix Btrees, non leaf nodes do not contain complete keys
- * but instead only prefixes of the keys that are adequate to guide the search
- * on down the tree.  The basic idea is to improve the storage utilization in
- * non leaf nodes, thus decreasing the height of the tree and increasing the
- * performance of the search operations by reducing I/O operations.
- *
- * Btrees are used to implement indexes and to enforce unique constraints
- * on attributes.  Btrees can be created on an empty class which results
- * in the creation of an empty Btree.  Btrees may also be created on classes
- * with existing objects.  In this case, it is necessary to pre-load the
- * index with the initial objects.  An efficient load algorithm is used
- * to cut down on the logging and tree balancing overhead of simply adding
- * the existing objects one by one.
- *
- * An index may be created on any CUBRID type except for the collection
- * types and ELOs.  There is really no reason (in theory) why the collection
- * types could not be indexed.
- *
- * Prefix keys are only used on the variable length types (currently only
- * the six string types).  When multi-column indexes/uniques are
- * implemented, they could also use prefix keys, but this must be done
- * carefully because of the special ordering semantics for collections.
- *
- * For each key, a set of values is stored in the leaf nodes of the
- * Btree. Each value is an object identifier which consists of a volume
- * identifier, a page identifier and a page slot identifier. There is
- * virtually no limit to the number of OIDs that can be entered for a
- * key.
- *
- * The Page Buffer Manager, the Slotted Page Manager, the File Manager,
- * the Lock Manager and the Log Manager are all called by the Btree Manager.
- * The Schema Manager, the Transaction Locator, the Query Processor,
- * the Statistics Manager, and the Recovery Manager all call the Btree
- * Manager.
- *
- * ARCHITECTURE
- *
- * The index manager is built on top of the slotted page manager (sp_).
- * Each node of the Btree is physically represented as a slotted page in
- * which the order of the records (slots) is preserved.  The user creates
- * the index by specifying only the domain of the key for the index and
- * the volume in which the index is going to reside. The user is then given
- * a unique Btree index identifier, which is used as the basic interface
- * parameter by the index management routines for insertion, deletion, and
- * search operations. When the user destroys the index, all the pages that
- * form the tree are deallocated and the Btree index identifier becomes
- * invalid.
- *
- * NON LEAF NODES
- *
- * There are two different types of nodes: leaf nodes and non leaf nodes.
- * Leaf nodes are where the keys and their OIDs are actually stored.
- * Non leaf nodes form the actual index to be used to access a key and
- * its OIDs quickly. The basic lay-out of a non leaf node is:
- * ___________________________________________________________________________
- * | Node Header || Child Ptr | Key_Len | Key || ...        ... || Child Ptr |
- * ---------------------------------------------------------------------------
- * <-   Header ->  <-------- Record 1 ------->                 <- Rec n+1 ->
- *
- * The node header for a non leaf node contains the key count and maximum key
- * length information as well as a pointer to the next page on that level
- * of the Btree (known as the next sibling page).  For historical reasons,
- * key count is one less than the number of records on the page.  This is
- * because the last record on the page does not contain a valid key, only
- * a valid page pointer.  Thus, if there are n keys in the node, there are
- * n+1 child page pointers (page identifiers).  The maximum key length is
- * the length of the longest key in the subtree rooted at that node. This
- * information is used by node splitting routines during insertion operations.
- *
- * Although it seems counter intuitive, there is a case where a non leaf node
- * can have only one child page pointer and no keys, i.e. n = 0. This happens
- * when a non leaf node has only two child pages and these pages are
- * merged during deletion operations. These kind of non leaf pages are
- * eliminated during subsequent deletion or insertion operations, when the
- * page is merged with one of it's sibling pages, or is supplied with a key
- * when it's child page is split. If there are k records (slots) in a non leaf
- * node, the node contains k-2 keys. Because, the first record contains the
- * header information, and the last record contains only a child page
- * identifier.
- *
- * OVERFLOW KEYS
- *
- * If a key is too large to fit on a page, it is stored using the Overflow
- * Manager (ovf_).  In this case, the key length will be -1 (to indicate that
- * it is an overflow key) and the overflow page ptr returned by the Overflow
- * Manger is stored in the key's place.
- *
- * If overflow keys are necessary, the Btree Manager creates a new overflow
- * file for the overflow keys.  This overflow file is used exclusively by
- * the Btree that it was created for.  This allows the overflow file to be
- * deleted when the Btree is destroyed without having to worry if keys from
- * other Btrees are stored in that overflow file.
- *
- * LEAF NODES
- *
- * The basic layout of a leaf node is as follows:
- * _________________________________________________________________________
- * |Node Header|| Ovfl_Pg | Key_Len| Key| OIDs || ...    ||                 |
- * -------------------------------------------------------------------------
- * <-  Header  -> <------------- Record 1 --------------->        <- Rec n ->
- *
- * The node header for a leaf node contains the key count and maximum key
- * length information as well as a pointer to the next page on that level
- * of the Btree (known as the next sibling page).  In the case of leaf pages,
- * the key count is the actual number of records on the page.
- *
- * A leaf node record contains an OID overflow page pointer, a key length,
- * the key, and a list of OIDs.  As with non leaf pages, if the key length
- * is -1, the key is stored by the overflow manager in the overflow key file.
- *
- * OID OVERFLOW PAGES
- *
- * The OID list is the set of OIDs that correspond to the record's key.
- * This OID list can be arbitrarily long.  If it becomes longer than the
- * number that will fit on one Btree page, the excess OIDs are stored in a
- * new Btree page, called an OID overflow page and the pointer to this page
- * is stored in the OID overflow page pointer for this record.  If a key has
- * overflow OIDs it will be the only record on that leaf page.  No other keys
- * can share the page with a record that contains overflow OIDs.
- *
- * An OID overflow page consists of two records; a header record and a list
- * of OIDs.  The OID overflow header contains a pointer to the next OID
- * overflow page in this chain.  The rest of the page consists of a single
- * record of OIDs.
- *
- * ROOT NODE
- *
- * The root node is a special node with special header information. It is a
- * leaf node when the tree contains only one node, and a non leaf node
- * otherwise. The root page always remains the same page, the first page
- * allocated by the File Manager during Btree index creation. This enables
- * access to the root page of the tree by requesting the first allocated page
- * from the File Manager. The fact that the root page is always the same page
- * brings about slightly different split and merge operations when the root
- * page is involved in these operations (see below).
- *
- * In addition to the regular node header information, the root header
- * contains the domain for the key values, the VFID for the overflow key
- * file, and the unique statistics.  Only Btrees that implement unique
- * constraints maintain the unique statistics.  Btrees for indexes leave
- * these statistics empty.
- *
- * UNIQUE STATISTICS
- *
- * When a Btree is used to enforce a unique constraint, it is necessary to
- * maintain statistics on the number of keys in the Btree, the number of OIDs
- * in the Btree, and the number of NULLs for the constrained attribute(s).
- * Using these statistics the unique constraint check becomes simply:
- *
- *      unique = ((# NULLs + # keys) == # OIDs)
- *
- * These statistics are maintained during Btree insertions and deletions.
- *
- * CONCURRENCY ISSUES
- *
- * Like all CUBRID page locks, Btree page locks are not held to the end
- * of the transaction.  Due to page splitting/merging a Btree may be
- * substantially altered by a transaction that will later abort.  These
- * page splits/merges are not undone since other transactions may have inserted
- * or deleted keys using the new Btree structure.  This raises interesting
- * logging and recovery issues for the Btree manager.
- *
- * The locking technique employed by the index manager [GARZ88] can be
- * summarized as follows :
- *
- *  i - For a read-only access, acquire a page-lock in Share (S) mode on the
- *      index page.  While descending the tree, at most two pages are locked
- *      at a time.  At any given page (call it the parent page), its lock is
- *      held only long enough to determine the correct child page to follow.
- *
- * ii - For insertion, deletion, or update operations, acquire a page-lock
- *      in Exclusive (X) mode on the index page
- *
- * ii - In the case of an index-page split, acquire an X lock on the
- *      old index page,the newly allocated index page, and the parent of
- *      the two pages.
- *
- * iv - In the case of a page merging, acquire an X lock on both index
- *      pages that are merged as well as their common parent.
- *
- *  v - Release all locks on index pages as soon as the pages are no longer
- *      needed.
- *
- * NODE SPLITS AND MERGES
- *
- * During insertions (deletions), the node split (merge) operations are done
- * while traversing the tree from top to bottom. This eliminates the upward
- * propagation of split (merge) operations which may cause deadlocks. During
- * insertion, while accessing an index page P, the index manager determines
- * if the insertion may result in the split of the page Q, the child page of
- * P to be next accessed. If so, it will split page Q into two pages, Q and R
- * and insert an entry in P that will point to the newly allocated page R.
- * Similarly, during deletion, while accessing an index page P, the index
- * manager determines if a pair of child pages can be merged. If so, it moves
- * entries from one to the other and updates the parent page P, while the page
- * is locked in X mode.
- *
- * It is during splitting that prefix keys are generated.  This is only done
- * while splitting a leaf page.  More plainly, we will not generate a prefix
- * key when splitting a non leaf page.  The reason for this is that when
- * splitting a non leaf page you know nothing about the distribution of the
- * keys of adjacent child pages.  You simply know that all of the keys on
- * a child page are smaller than its non leaf key.  This is not enough
- * information to construct a prefix key for a non leaf split.  The
- * information required resides in the leaves of the tree and is too
- * expensive to locate during node splitting.  In reality, this is not much
- * of a problem since keys in non leaf pages were ultimately a prefix key
- * generated from a previous leaf page split.
- *
- * ROOT SPLITS AND MERGES
- *
- * The fact that the root page is always the same page brings about slightly
- * different split and merge operations when the root page is involved in
- * these operations. When the root page is to be split, its content is moved
- * to two new child pages, and similarly, when the last two child pages of the
- * root page are to be merged, their contents are moved to the root page.
- *
- * BTREE LOADING (see btree_load.c)
- *
- * When a Btree is created on a class that contains existing instances, it
- * is necessary to load the index with the attribute values/OIDs for those
- * instances.
- *
- * The Btree load operation is performed in two stages. In the first stage,
- * the leaf pages of the tree are created. This is done by using the Sort
- * Manager.  The pairs of (key, OID) values extracted from the instances of
- * the class are provided to the sorting process as input. Once the sorting
- * process is finished, the sorted (key, OID) pairs are used to build the leaf
- * pages (including the OID overflow pages if there are too many OIDs
- * associated with a key to fit onto a single page) of the index.
- *
- * In the second stage the non leaf pages of the tree are constructed in a
- * bottom-up fashion one level at a time. For the first non leaf level of
- * the tree the prefixes of keys (if the key is one of the six string types)
- * residing in the leaf level pages are used. For upper levels, the key values
- * of the previous level are used without considering the prefixes. Once the
- * highest level of the tree is constructed, the one and only page at this
- * highest level is declared as the root of the tree and this page identifier
- * is used for the Btree identifier.
- *
- * OTHER REFERENCES
- *
- * Relevant literature includes:
- *
- * [GARZ88] Garza, J.F., and Kim, W., "Transaction Management in an Object
- * Oriented Database System", Proc. ACM-SIGMOD Conf. on the Management of
- * Data, June 1988.
- *
- * [KIM89] Kim, W., Kim, K.C., and Dale, A., "Indexing Techniques for
- * Object-Oriented Databases", in Object-Oriented Concepts, Databases and
- * Applications, ed. by W. Kim and F. Lochovsky, Addison-Wesley, 1989.
- *
- * [BAYE77] Bayer, R., and Unterauer, K., "Prefix B-Trees", ACM Transactions
- * on Database Systems, Vol. 2, No. 1, March 1977.
- *
- * [COME79] Comer, D., "The Ubiquitous B-Tree", Computing Surveys, Vol. 11,
- * No. 2, June 1979.
- *
  */
 
 #ident "$Id$"
@@ -275,19 +28,18 @@
 #include <string.h>
 
 #include "btree_load.h"
-#include "common.h"
+#include "storage_common.h"
 #include "error_manager.h"
 #include "page_buffer.h"
 #include "file_io.h"
 #include "file_manager.h"
-#include "fldesc.h"
 #include "slotted_page.h"
 #include "oid.h"
-#include "log.h"
-#include "memory_manager_2.h"
+#include "log_manager.h"
+#include "memory_alloc.h"
 #include "overflow_file.h"
-#include "xserver.h"
-#include "set_object_1.h"
+#include "xserver_interface.h"
+#include "set_object.h"
 #include "btree.h"
 #include "scan_manager.h"
 #if defined(SERVER_MODE)
@@ -1419,8 +1171,8 @@ exit_on_error:
 
 /*
  * btree_get_key_length () -
- *   return: 
- *   key(in): 
+ *   return:
+ *   key(in):
  */
 int
 btree_get_key_length (DB_VALUE * key)
@@ -2625,11 +2377,11 @@ btree_generate_prefix_domain (BTID_INT * btid)
 }
 
 /*
- * btree_glean_root_header_info () - 
- *   return: 
- *   root_header(in): 
- *   btid(in): 
- * 
+ * btree_glean_root_header_info () -
+ *   return:
+ *   root_header(in):
+ *   btid(in):
+ *
  * Note: This captures the interesting header info into the BTID_INT structure.
  */
 int
@@ -5090,29 +4842,6 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
  *   oid(in):
  *   del_key(in):
  *
- * Note: Deletes the OID of the specified key from the leaf page
- * If the key or the OID doesn't exist, the corresponding
- * error codes are raised. Deletion of the last OID for the
- * key results also in the deletion of the key. Deletion of the
- * last key from the leaf page causes that page to be empty,
- * however the page is not deallocated. The removal of such an
- * empty page is done during merge operations in the later
- * deletions. When an OID is the deleted, it is actually
- * replaced by the last OID of the key, in order to avoid
- * expensive shift operations.  When the last OID is removed,
- * it may be the last OID on an overflow OID page.  This causes
- * the overflow page to be deleted and the overflow OID page
- * ptr chain to be updated appropriately.
- *
- * LOGGING Note: When the btree is new, splits and merges will
- * not be committed, but will be attached.  If the transaction
- * is rolled back, the merge and split actions will be rolled
- * back as well.  The undo (and redo) logging for splits and
- * merges are page based (physical) logs, thus the rest of the
- * logs for the undo session must be page based as well.  When
- * the btree is old, splits and merges are committed and all
- * the rest of the logging must be logical (non page based)
- * since pages may change as splits and merges are performed.
  */
 static int
 btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
@@ -5170,20 +4899,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       /* key does not exist */
 
-      /* We can get this situation in the following senario:
-       * We are recovering from a crash of a btree_insert() where
-       * the key/value insert undo log was written and flushed to disk
-       * but the OID insertion redo log was not flushed to disk.
-       * This is the logging undo/redo coupling problem.  For now,
-       * we will make this a warning severity.
-       *
-       * When this logging hole gets filled, we should remove the
-       * warning severity.
-       *
-       * We put a NOOP redo log here, which does NOTHING, this is used
-       * to accompany the corresponding logical undo log, if there is
-       * any, which caused this routine to be called.
-       */
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
 			     leaf_pg, -1, 0, NULL);
       pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
@@ -5621,20 +5336,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       /* OID does not exist */
 
-      /* We can get this situation in the following senario:
-       * We are recovering from a crash of a btree_insert() where
-       * the key/value insert undo log was written and flushed to disk
-       * but the OID insertion redo log was not flushed to disk.
-       * This is the logging undo/redo coupling problem.  For now,
-       * we will make this a warning severity.
-       *
-       * When this logging hole gets filled, we should remove the
-       * warning severity.
-       *
-       * We put a NOOP redo log here, which does NOTHING, this is used
-       * to accompany the corresponding logical undo log, if there is
-       * any, which caused this routine to be called.
-       */
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
 			     leaf_pg, -1, 0, NULL);
       pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
@@ -6683,30 +6384,6 @@ exit_on_error:
  *   unique_stat_info(in):
  *
  *
- * Note: Deletes the value 'oid' from the specified key 'key' in the
- * B+tree index structure. If the deletion results in the
- * removal of the last value of the key, then the key itself is
- * deleted. If the specified key or the value does not exist in
- * the index, then corresponding error codes are set.
- *
- * The page merge operations are done while traversing the tree
- * from top to bottom to eliminate the upward propagation of the
- * page merge operations that may cause deadlocks. While
- * accessing an index page P (holding an exclusive X lock on it)
- * the index manager determines if a pair of child pages of P,
- * the next page to be accessed and its left or right sibling,
- * can be merged. If so, it moves entries from one to another.
- * The page that becomes empty is deallocated and parent page P
- * is updated. If a non_leaf page has only two child pages that
- * can be merged, the merge operation results in a non_leaf page
- * which has no keys and only one child page pointer. On the
- * other hand, if the last key from a leaf page is deleted, the
- * page becomes empty, too. Both type of pages are removed in
- * subsequent deletion and insertion operations. The leaf pages
- * that contain one "big" record, possibly with several overflow
- * pages, cannot be merged with their sibling pages until the
- * "big" record that they contain becomes a "small" record with
- * successive delete operations.
  */
 DB_VALUE *
 btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
@@ -6801,8 +6478,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        * find out if we have deleted a key or not.  */
       if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
 	{
-	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE ||
-	      op_type == SINGLE_ROW_MODIFY)
+	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
+	      || op_type == SINGLE_ROW_MODIFY)
 	    {
 	      /* single instance will be deleted. Update global statistics directly. */
 	      root_header.num_nulls--;
@@ -7130,8 +6807,8 @@ start_point:
 	  R_Used = DB_PAGESIZE - spage_get_free_space (thread_p, Right);
 	  rEmpty = (spage_number_of_records (Right) == 1);
 
-	  if (((Q_Used + R_Used + FIXED_EMPTY) < DB_PAGESIZE) ||
-	      (leaf_page && (qEmpty || rEmpty)))
+	  if (((Q_Used + R_Used + FIXED_EMPTY) < DB_PAGESIZE)
+	      || (leaf_page && (qEmpty || rEmpty)))
 	    {			/* right merge possible */
 
 	      /* start system permanent operation */
@@ -7263,18 +6940,18 @@ start_point:
 	  L_Used = DB_PAGESIZE - spage_get_free_space (thread_p, Left);
 	  lEmpty = (spage_number_of_records (Left) == 1);
 
-	  if (((Q_Used + L_Used + FIXED_EMPTY) < DB_PAGESIZE) ||
-	      (leaf_page && (qEmpty || lEmpty)))
+	  if (((Q_Used + L_Used + FIXED_EMPTY) < DB_PAGESIZE)
+	      || (leaf_page && (qEmpty || lEmpty)))
 	    {			/* left merge possible */
 
 	      /* Start system permanent operation */
 	      log_start_system_op (thread_p);
 	      top_op_active = 1;
 
-	      if (btree_merge_node
-		  (thread_p, &btid_int, P, Q, Left, &P_vpid, &Q_vpid,
-		   &Left_vpid, p_slot_id, leaf_page, LEFT_MERGE,
-		   &child_vpid) != NO_ERROR)
+	      if (btree_merge_node (thread_p, &btid_int, P, Q, Left,
+				    &P_vpid, &Q_vpid, &Left_vpid, p_slot_id,
+				    leaf_page, LEFT_MERGE,
+				    &child_vpid) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -7366,8 +7043,8 @@ start_point:
       goto key_deletion;
     }
 
-  /* save node info. of the leaf page 
-   * Header must be calculated again. 
+  /* save node info. of the leaf page
+   * Header must be calculated again.
    * because, SMO might have been occurred.
    */
   btree_get_header_ptr (P, &header_ptr);
@@ -7390,21 +7067,6 @@ start_point:
     }
   else
     {
-      /* key has not been found
-       * we can get this situation in the following senario:
-       * We are recovering from a crash of a btree_insert() where
-       * the key/value insert undo log was written and flushed to disk
-       * but the OID insertion redo log was not flushed to disk.
-       * this is the logging undo/redo coupling problem.  for now,
-       * we will make this a warning severity.
-       *
-       * when this logging hole gets filled, we should remove the
-       * warning severity.
-       *
-       * we put a NOOP redo log here, which does NOTHING, this is used
-       * to accompany the corresponding logical undo log, if there is
-       * any, which caused this routine to be called.
-       */
       log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->vfid, P, -1, 0,
 			     NULL);
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
@@ -7687,8 +7349,8 @@ key_deletion:
    */
   if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
     {
-      if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE ||
-	  op_type == SINGLE_ROW_MODIFY)
+      if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
+	  || op_type == SINGLE_ROW_MODIFY)
 	{
 	  /* single instance will be deleted.
 	   * therefore, update global statistical information directly.
@@ -8126,18 +7788,6 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				     0, NULL);
 	      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
-	      /* We can get duplicate OIDs in the following senario:
-	       * We are recovering from a crash of a btree_delete() where
-	       * the key/value delete undo log was written and flushed to disk
-	       * but the OID removal redo log was not flushed to disk.
-	       * In this case, we will make this a warning severity.
-	       *
-	       * When this logging hole gets filled, we should remove the
-	       * warning severity.  Actually, I'd argue that we should remove
-	       * the duplicate OID check altogether, since in a healthy btree
-	       * this should never happen.  If we do this, we need to beef up
-	       * checkdb to check for duplicate btree OIDs.
-	       */
 	      er_set ((log_is_in_crash_recovery ())? ER_WARNING_SEVERITY :
 		      ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_BTREE_DUPLICATE_OID, 3, oid->volid, oid->pageid,
@@ -8319,18 +7969,6 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 					     &btid->sys_btid->vfid, ovfp, 1,
 					     0, NULL);
 
-		      /* We can get duplicate OIDs in the following senario:
-		       * We are recovering from a crash of a btree_delete() where
-		       * the key/value delete undo log was written and flushed to disk
-		       * but the OID removal redo log was not flushed to disk.
-		       * In this case, we will make this a warning severity.
-		       *
-		       * When this logging hole gets filled, we should remove the
-		       * warning severity.  Actually, I'd argue that we should remove
-		       * the duplicate OID check altogether, since in a healthy btree
-		       * this should never happen.  If we do this, we need to beef up
-		       * checkdb to check for duplicate btree OIDs.
-		       */
 		      er_set ((log_is_in_crash_recovery ())?
 			      ER_WARNING_SEVERITY : ER_ERROR_SEVERITY,
 			      ARG_FILE_LINE, ER_BTREE_DUPLICATE_OID, 3,
@@ -8651,9 +8289,9 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid,
    *    3) we are splitting a leaf page (there may be an arbitrary number
    *       of OIDs associated with this key).
    */
-  if (!(pr_is_variable_type (btid->key_type->type->id) ||
-	(pr_is_string_type (btid->key_type->type->id) && !leaf_page) ||
-	leaf_page))
+  if (!(pr_is_variable_type (btid->key_type->type->id)
+	|| (pr_is_string_type (btid->key_type->type->id) && !leaf_page)
+	|| leaf_page))
     {
       /* records are of fixed size */
       *mid_slot = CEIL_PTVDIV (n, 2);
@@ -8772,16 +8410,6 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
   db_make_null (next_key);
 
-  /* I think that this determination of the next key being the new key
-   * is wrong!!!!  Can't the next key be the new key and not be the last
-   * key??  I think it ought to be something like:
-   *       if (*mid_slot == (slot_id + 1))
-   *
-   * there may also be something having to do with key_read, but I don't
-   * know.
-   *
-   * CHECK THIS OUT!!!!!! -- TODO:
-   */
   if (*mid_slot == n && slot_id == (n + 1))
     {
       /* the next key is the new key, we don't have to read it */
@@ -9156,7 +8784,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   BTREE_PUT_NODE_KEY_CNT (peek_rec.data, keys_cnt);
 
   /* We may need to update the max_key length if the mid key is larger than
-   * the max key length. This can happen due to disk padding when the 
+   * the max key length. This can happen due to disk padding when the
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
@@ -9353,7 +8981,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   BTREE_PUT_NODE_KEY_CNT (peek_rec.data, 1);
 
   /* We may need to update the max_key length if the mid key is larger than
-   * the max key length. This can happen due to disk padding when the 
+   * the max key length. This can happen due to disk padding when the
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
@@ -9619,38 +9247,6 @@ exit_on_error:
  *            would be reflected into global information saved in root page.
  *   unique(in):
  *
- * Note: If the key is new, the < key, oid > pair is inserted into
- * the B+tree index structure, otherwise the value oid is added
- * to the existing set of values for the key. The key must be
- * of type DB_TYPE_STRING, DB_TYPE_SHORT, DB_TYPE_INTEGER,
- * DB_TYPE_DOUBLE, DB_TYPE_OBJECT, DB_TYPE_FLOAT, DB_TYPE_TIME,
- * DB_TYPE_UTIME, DB_TYPE_DATE or DB_TYPE_MONETARY.
- * If  the key is of type DB_TYPE_STRING, it should be supplied
- * with a terminating null character. The string(character-based)
- * keys are handled in a case-sensitive manner.
- * There is virtually no limit to the number of values that can
- * be stored for a key.
- *
- * The node split operations are done while traversing the tree
- * from top to bottom to eliminate the upward propagation of node
- * split operations that may cause deadlocks. While accessing an
- * index page P (holding an exclusive X lock on it), if the
- * insertion may result in the split of page Q, the child page of
- * P which is to be accessed next. If so, the page Q is split
- * into two pages: Q and R, a newly allocated page, and an entry
- * is inserted into parent page P to point to the page R. Both
- * pages Q and R are kept in exculsive X lock mode. The split
- * point of the page is found by considering the length of the
- * records it contains and the length of the key to be inserted.
- * If a leaf page is split and it is realized that the key can
- * not fit into the page it is to be inserted, a new page is
- * allocated for the key and an entry is inserted to the parent
- * page P to point to the newly allocated page. Each leaf page
- * record contains a key and a set of values. If a leaf page
- * record  becomes too big to fit into a page, then overflow
- * pages are used to store the record. In the non_leaf pages part
- * of the index, only key separators (prefixes) that are adequate
- * to guide the search are stored for performance reasons.
  */
 DB_VALUE *
 btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
@@ -9806,8 +9402,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        */
       if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
 	{
-	  if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE ||
-	      op_type == SINGLE_ROW_MODIFY)
+	  if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
+	      || op_type == SINGLE_ROW_MODIFY)
 	    {
 	      root_header.num_nulls++;
 	      root_header.num_oids++;
@@ -9963,7 +9559,7 @@ start_point:
       else
 	{
 	  leaf_page = false;
-	  /* if root is a non leaf node, 
+	  /* if root is a non leaf node,
 	   * the number of keys is actually one greater
 	   */
 	  keys += 1;
@@ -10591,8 +10187,8 @@ key_insertion:
 
   if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
     {
-      if (op_type == SINGLE_ROW_INSERT || op_type == MULTI_ROW_INSERT ||
-	  op_type == SINGLE_ROW_UPDATE)
+      if (op_type == SINGLE_ROW_INSERT || op_type == MULTI_ROW_INSERT
+	  || op_type == SINGLE_ROW_UPDATE)
 	{
 	  do_unique_check = true;
 	}
@@ -10622,8 +10218,8 @@ key_insertion:
    */
   if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
     {
-      if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE ||
-	  op_type == SINGLE_ROW_MODIFY)
+      if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
+	  || op_type == SINGLE_ROW_MODIFY)
 	{
 	  copy_rec.area_size = DB_PAGESIZE;
 	  copy_rec1.area_size = DB_PAGESIZE;
@@ -11418,32 +11014,6 @@ btree_coerce_key (DB_VALUE * src_keyp, DB_VALUE * dest_keyp, int keysize,
 	      DB_TYPE type = (dp->type->id == DB_TYPE_OBJECT) ? DB_TYPE_OID
 		: dp->type->id;
 
-	      /* set minmax accoring to the asc/desc info;
-
-	         +- part_key_desc
-	         |
-	         |    +- dp->is_desc
-	         |    |
-	         \|/  \|/
-	         CASE 1: (Asc, Asc)
-	         (1 1) (1 2) (2 1) (2 2) (3 1) (3 2)
-	         MIN_VALUE -> min, MAX_VALUE -> max
-
-	         CASE 2: (Asc, Desc)
-	         (1 2) (1 1) (2 2) (2 1) (3 2) (3 1)
-	         MIN_VALUE -> max, MAX_VALUE -> min
-
-	         CASE 3: (Desc, Asc)
-	         (3 1) (3 2) (2 1) (2 2) (1 1) (1 2)
-	         MIN_VALUE -> max, MAX_VALUE -> min
-
-	         CASE 4: (Desc, Desc) <-- include reverse index
-	         (3 2) (3 1) (2 2) (2 1) (1 2) (1 1)
-	         MIN_VALUE -> min, MAX_VALUE -> max
-
-	         if partial-key is desc(i.e., CASE 3, 4),
-	         swap lower value and upper value in btree_range_search()
-	       */
 	      minmax = key_minmax;	/* init */
 	      if (minmax == BTREE_COERCE_KEY_WITH_MIN_VALUE)
 		{
@@ -11550,28 +11120,26 @@ btree_coerce_key (DB_VALUE * src_keyp, DB_VALUE * dest_keyp, int keysize,
   else if (
 	    /* check if they are string or bit type */
 	    /* compatible if two types are same (except for sequence type) */
-	    (stype == dtype) ||
+	    (stype == dtype)
 	    /* CHAR type and VARCHAR type are compatible with each other */
-	    ((stype == DB_TYPE_CHAR || stype == DB_TYPE_VARCHAR) &&
-	     (dtype == DB_TYPE_CHAR || dtype == DB_TYPE_VARCHAR)) ||
+	    || ((stype == DB_TYPE_CHAR || stype == DB_TYPE_VARCHAR)
+		&& (dtype == DB_TYPE_CHAR || dtype == DB_TYPE_VARCHAR))
 	    /* NCHAR type and VARNCHAR type are compatible with each other */
-	    ((stype == DB_TYPE_NCHAR || stype == DB_TYPE_VARNCHAR) &&
-	     (dtype == DB_TYPE_NCHAR || dtype == DB_TYPE_VARNCHAR)) ||
+	    || ((stype == DB_TYPE_NCHAR || stype == DB_TYPE_VARNCHAR)
+		&& (dtype == DB_TYPE_NCHAR || dtype == DB_TYPE_VARNCHAR))
 	    /* BIT type and VARBIT type are compatible with each other */
-	    ((stype == DB_TYPE_BIT || stype == DB_TYPE_VARBIT) &&
-	     (dtype == DB_TYPE_BIT || dtype == DB_TYPE_VARBIT)) ||
+	    || ((stype == DB_TYPE_BIT || stype == DB_TYPE_VARBIT)
+		&& (dtype == DB_TYPE_BIT || dtype == DB_TYPE_VARBIT))
 	    /* OID type and OBJECT type are compatible with each other */
 	    /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain
 	       itself will always be a DB_TYPE_OBJECT. The comparison routines
 	       can handle OID and OBJECT as compatible type with each other . */
-	    (stype == DB_TYPE_OID || stype == DB_TYPE_OBJECT))
+	    || (stype == DB_TYPE_OID || stype == DB_TYPE_OBJECT))
     {
-
       /* direct bitwise copying */
       *dest_keyp = *src_keyp;
       *clear = false;		/* the caller not need to clear(free) 'dest_key' */
       err = 0;			/* no error */
-
     }
   else
     {
@@ -11839,16 +11407,6 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
   /* cache class OID and memory address to class lock mode */
   if (BTREE_IS_UNIQUE (&(bts->btid_int)))
     {
-	/****** UNIQUE INDEX CLASSIFICATION ****************************
-         * the unique index can be classified into following two types
-         * according to the class hierarchy on which the unique index based:
-         * (1) single class index and (2) class hierarchy index.
-         * if the given unique index has single class index type,
-         * bts->cls_oid might have the corresponding class OID information and
-         * bts->cls_lock_ptr might have memory address to the class lock mode.
-         * currently, the type of an unique index is not identified.
-         * so, bts->cls_oid has NULL_OID and bts->cls_lock_ptr has NULL.
-         */
       OID_SET_NULL (&bts->cls_oid);
       bts->cls_lock_ptr = NULL;
     }
@@ -11898,22 +11456,6 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid,
   /* initialize bts->class_lock_map_count */
   bts->class_lock_map_count = 0;
 
-  /****** INDEX SCAN PURPOSE and INSTANCE LOCK MODE ******************
-   * During an index scan, the lock mode of instance locks that are
-   * to be held is different according to the purpose of the index scan.
-   * The relationship between the scan purpose and instance lock mode
-   * is like followings. (default: S_LOCK)
-   * - read-only scan :
-   *      all isolation levels       : S_LOCK
-   * - updatable scan (for DELETE or UPDATE)
-   *      all isolation levels       : U_LOCK
-   * If the purpose of an index scan is given through an argument,
-   * bts->lock_mode can be set according to the given purpose.
-   * bts->escalated_mode represents the class lock mode
-   * when many instance locks are escalated to a class lock.
-   * bts->escalated_mode is used to find out if instance level locking
-   * is really needed at each instance lock request time.
-   */
   if (readonly_purpose)
     {
       bts->lock_mode = S_LOCK;
@@ -12057,17 +11599,6 @@ again:
 	}
     }
 
-  /*
-   * ABOUT FIXED INDEX PAGES
-   *
-   * the fixed index leaf pages are like the followings.
-   * 1) If the next index record is found in the current leaf page,
-   *    bts->C_page != NULL.
-   * 2) If the next index record is found in the next leaf page,
-   *    bts->P_page == NULL && bts->C_page != NULL.
-   * 3) If the next index record does not exist,
-   *    bts->P_page != NULL.
-   */
 
 end:
   return ret;
@@ -12845,18 +12376,6 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	  return ret;		/* NO_ERROR */
 	}
 
-      /*
-       * !LSA_EQ(&bts->cur_leaf_lsa, pgbuf_get_lsa(bts->C_page))
-       * (bts->oid_pos + oid_idx) == 0
-       * That is, the current leaf page has been changed.
-       * However, the previous leaf page has not been changed.
-       * From above facts, we can deduce following facts.
-       * 1. The current leaf page cannot be deallocated.
-       * 2. Overflow pages cannot be added into the previous slot.
-       *    => The previous slot has not been changed.
-       * The locked OID must be checked again.
-       * The previous leaf page have to be prserved.
-       */
       *which_action = BTREE_GETOID_AGAIN_WITH_CHECK;
 
       return ret;		/* NO_ERROR */
@@ -13204,18 +12723,6 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
    */
   if ((bts->oid_pos + oid_idx) > 0)
     {
-      /*
-       * One or more OIDs have already been locked correctly.
-       * Hence, the set of locked OIDs could not be changed.
-       * This means following two things.
-       * 1) Any OID contained in the OID set could not be deleted.
-       * 2) Any new OID could not be inserted in the OID set.
-       * Only the currently locked OID and the remaining OIDs
-       * could be deleted and also any new OID could be inserted in
-       * the OID set of the currently locked OID and remaining OIDs.
-       * Therefore, there is no possibility that the current
-       * overflow page has been freed during the lock acquisition.
-       */
       /* The locked OID must be checked again. */
       *which_action = BTREE_GETOID_AGAIN_WITH_CHECK;
 
@@ -13643,7 +13150,7 @@ get_oidcnt_and_oidptr:
 #if defined(SERVER_MODE)
 	  /* save the result of key filtering on the previous key value */
 	  if (saved_inst_oid.pageid == NULL_PAGEID)
-	    bts->prev_KF_satisfied = is_key_filter_satisfied;
+	    bts->prev_KF_satisfied = (int) is_key_filter_satisfied;
 #endif /* SERVER_MODE */
 
 	  /* apply key range and key filter to the new key value */
@@ -13711,16 +13218,6 @@ start_locking:
 #if defined(SERVER_MODE)
   if (bts->read_uncommitted)
     {
-      /*
-       * NOTE) In Uncommitted Read transation isolation level,
-       * even if the oids contained in one index entry is so many,
-       * all of the oids must be copied in one btree_range_search() execution.
-       * The reason is caused from the key deletion operation of CUBRID.
-       * After deleting one OID in an index entry in key deletion operation,
-       * CUBRID moves the last OID of the index entry into the position
-       * on which the deleted OID was existent. Therefore,
-       * the range search without locking might not copy the OID.
-       */
 
       if (keep_on_copying)
 	{
@@ -13874,16 +13371,6 @@ start_locking:
       goto locking_done;
     }
 
-  /*
-   * General method of next-key locking is used in the current code.
-   * Both unique index and non-unique index are concerned.
-   * In case of non-unique index,
-   * the class OID information may not be included in bts structure.
-   * In this case, class OID information can be gotten from
-   * the first found key and the memory address of the class lock mode
-   * can be gotten through the class OID information.
-   * After getting the information, save the information in bts structure.
-   */
   if (!BTREE_IS_UNIQUE (&(bts->btid_int)) && OID_ISNULL (&bts->cls_oid))
     {
       OR_GET_OID (rec_oid_ptr, &temp_oid);
@@ -14420,9 +13907,10 @@ start_locking:
       if (bts->P_vpid.pageid != NULL_PAGEID)
 	{
 	  /* The previous leaf page does exist. */
-	  if (btree_handle_prev_leaf_after_locking
-	      (thread_p, bts, i, &prev_leaf_lsa, &prev_key,
-	       &which_action) != NO_ERROR)
+	  if (btree_handle_prev_leaf_after_locking (thread_p, bts, i,
+						    &prev_leaf_lsa, &prev_key,
+						    &which_action) !=
+	      NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -14430,9 +13918,11 @@ start_locking:
       else
 	{
 	  /* The previous leaf page does not exist. */
-	  if (btree_handle_curr_leaf_after_locking
-	      (thread_p, bts, i, &ovfl_page_lsa, &prev_key, &saved_inst_oid,
-	       &which_action) != NO_ERROR)
+	  if (btree_handle_curr_leaf_after_locking (thread_p, bts, i,
+						    &ovfl_page_lsa, &prev_key,
+						    &saved_inst_oid,
+						    &which_action) !=
+	      NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -14482,31 +13972,6 @@ start_locking:
 
       if (which_action == BTREE_CONTINUE)
 	{
-	  /*
-	   * The variable 'rec_oid_ptr' must be re-computed.
-	   * The variable 'rec_oid_ptr' is pointing to some position
-	   * within page image that is fixed in the buffer space.
-	   * That is, PEEK method is used in getting an index record.
-	   * By using PEEK method, the index page image might
-	   * be moved to another buffer space even if it has not been
-	   * changed during the unconditional instance locking.
-	   * Therefore, rec_oid_ptr must be re-computed.
-	   * If COPY method is used in getting an index record,
-	   * 'rec_oid_ptr' cannot be re-computed.
-	   *
-	   * The variable 'rec_oid_cnt' is still correct
-	   * if the index page image has not been changed.
-	   *
-	   * 3 cases are possible.
-	   * 1) bts->P_page != NULL && bts->C_page == NULL
-	   *    : the end of index scan (no OID copy)
-	   * 2) bts->P_page != NULL && bts->C_page != NULL
-	   *    : rec_oid_ptr must be re-computed
-	   *    : bts->slot_id = 1
-	   * 3) bts->P_page == NULL && bts->C_page != NULL
-	   *    : rec_oid_ptr must be re-computed
-	   *    : bts->slot_id = (??)
-	   */
 	  if (bts->O_page != NULL)
 	    {
 	      if (spage_get_record (bts->O_page, 1, &rec, PEEK) != S_SUCCESS)
@@ -16363,10 +15828,10 @@ btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Check the multi-column key for a NULL value. In terms of the B-tree,
  * a NULL multi-column key is a sequence in which each element is NULL.
  */
-int
+bool
 btree_multicol_key_is_null (DB_VALUE * key)
 {
-  int status = 0;
+  bool status = false;
   DB_MIDXKEY *midxkey;
   unsigned int *bits;
   int nwords, i;
@@ -16383,11 +15848,11 @@ btree_multicol_key_is_null (DB_VALUE * key)
 	    {
 	      if (bits[i] != 0)
 		{
-		  return 0;
+		  return false;
 		}
 	    }
 
-	  status = 1;
+	  status = true;
 	}
     }
 

@@ -1,9 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * db.h - Stubs for the SQLX interface layer.
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
  *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * db.h - Stubs for the SQL interface layer.
  */
 
 #ifndef _DB_H_
@@ -18,7 +33,7 @@
 #include "dbi.h"
 #include "dbtype.h"
 #include "dbdef.h"
-#include "intl.h"
+#include "intl_support.h"
 #include "db_date.h"
 #include "db_query.h"
 #include "object_representation.h"
@@ -27,7 +42,7 @@
 #include "authenticate.h"
 #include "trigger_manager.h"
 #endif
-#include "logcp.h"
+#include "log_comm.h"
 #include "parser.h"
 
 #define db_locate_numeric(value) ((value)->data.num.d.buf)
@@ -183,11 +198,10 @@ extern int db_init (const char *program, int print_version,
 		    const char *dbname, const char *db_path,
 		    const char *vol_path,
 		    const char *log_path, const char *host_name,
-		    const int overwrite, const char *comments,
+		    const bool overwrite, const char *comments,
 		    int npages, const char *addmore_vols_file,
 		    int desired_pagesize, int log_npages);
 
-/* functions from db_vdb.c */
 extern int db_check_single_query (DB_SESSION * session, int stmt_no);
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus
@@ -207,16 +221,12 @@ extern void db_drop_all_statements (DB_SESSION * session);
 extern PARSER_CONTEXT *db_get_parser (DB_SESSION * session);
 extern DB_NODE *db_get_statement (DB_SESSION * session, int id);
 extern DB_SESSION *db_make_session_for_one_statement_execution (FILE * file);
-/* in db_admin.c */
 extern int db_abort_to_savepoint_internal (const char *savepoint_name);
-
-/* used by the api tester */
 
 extern int db_error_code_test (void);
 
 extern const char *db_error_string_test (int level);
 
-/* in db_macro.c */
 extern int db_make_oid (DB_VALUE * value, const OID * oid);
 extern OID *db_get_oid (const DB_VALUE * value);
 extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
@@ -232,7 +242,6 @@ extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset,
 			    const char *str, const int size);
 extern INTL_CODESET db_get_string_codeset (const DB_VALUE * value);
 
-/* in db_obj.c */
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);
 extern int db_put_internal (DB_OBJECT * obj, const char *name,
@@ -246,7 +255,6 @@ extern int dbt_dput_internal (DB_OTMPL * def,
 			      DB_ATTDESC * attribute, DB_VALUE * value);
 extern DB_DOMAIN *db_attdesc_domain (DB_ATTDESC * desc);
 
-/* in db_class.c */
 extern int db_add_super_internal (DB_OBJECT * classobj, DB_OBJECT * super);
 extern int db_add_attribute_internal (MOP class_, const char *name,
 				      const char *domain,
@@ -268,9 +276,7 @@ extern int db_drop_set_attribute_domain (MOP class_,
 					 const char *name,
 					 int class_attribute,
 					 const char *domain);
-/* db_info.c */
 extern BTID *db_constraint_index (DB_CONSTRAINT * constraint, BTID * index);
 
-/* db_set.c */
 extern int db_col_optimize (DB_COLLECTION * col);
 #endif /* _DB_H_ */

@@ -34,8 +34,8 @@ copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\external\dll\*.dll %DEST_DIR%\bin
 
 copy %SRC_DIR%\..\..\conf\*.conf %DEST_DIR%\conf
-copy %SRC_DIR%\..\..\dbmt\conf\*.conf %DEST_DIR%\conf
-copy %SRC_DIR%\..\..\dbmt\conf\*.pass %DEST_DIR%\conf
+copy %SRC_DIR%\..\..\cmserver\conf\*.conf %DEST_DIR%\conf
+copy %SRC_DIR%\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 
 copy %SRC_DIR%\..\..\src\cci\cas_cci.h %DEST_DIR%\include
 copy %SRC_DIR%\..\..\src\executables\cubrid_esql.h %DEST_DIR%\include\cubrid_esql.h

@@ -1,14 +1,30 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * elo_recover.h - external definitions for FBO recovery functions
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * elo_recovery.h - external definitions for FBO recovery functions
  *
  * Note: 
  */
 
-#ifndef _ELO_RECOVER_H_
-#define _ELO_RECOVER_H_
+#ifndef _ELO_RECOVERY_H_
+#define _ELO_RECOVERY_H_
 
 #ident "$Id$"
 
@@ -25,4 +41,4 @@ extern int esm_get_shadow_file_name (DB_OBJECT * glo_p, char **path);
 extern void esm_process_savepoint (void);
 extern void esm_process_system_savepoint (void);
 
-#endif /* _ELO_RECOVER_H_ */
+#endif /* _ELO_RECOVERY_H_ */

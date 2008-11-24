@@ -1,8 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * mtrans.c - Rewrite queries that contain method calls
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * method_transform.c - Rewrite queries that contain method calls
  */
 
 #ident "$Id$"
@@ -12,8 +27,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "parser.h"
-#include "msgexec.h"
-#include "view_transform_2.h"
+#include "parser_message.h"
+#include "view_transform.h"
 
 typedef struct meth_lambda METH_LAMBDA;
 struct meth_lambda
@@ -506,9 +521,9 @@ meth_create_method_list (PARSER_CONTEXT * parser, PT_NODE * node,
   *continue_walk = PT_CONTINUE_WALK;
 
   /* don't walk CSELECT lists */
-  if ((node->node_type == PT_SPEC) &&
-      (node->info.spec.derived_table) &&
-      (node->info.spec.derived_table_type == PT_IS_CSELECT))
+  if (node->node_type == PT_SPEC
+      && node->info.spec.derived_table
+      && node->info.spec.derived_table_type == PT_IS_CSELECT)
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -532,16 +547,6 @@ meth_create_method_list (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
-  /* Find where to hang this method.  We use the following rules:
-   *    1) If the method has any non-translated nested method calls as
-   *       arguments/target, then we don't hang it on any entity spec since
-   *       it will be handled in a later recursion.
-   *    2) Otherwise, a method is put on the method list of the deepest
-   *       entity spec to which any argument or target resolves.
-
-   * Using the second rule, the method will not be evaluated until all of
-   * its parameters are available.
-   */
 
   /* check for nested method calls */
   nested_methods = 0;
@@ -581,17 +586,6 @@ meth_create_method_list (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (!info.entity_for_method)
     {
-      /*  If we still don't have an entity, then that means that none of
-       *  the parameters or target resolve to an entity in our statement.
-       *  In this case, the method just has parameters, constants
-       *  and host variables. It may be evaluated once, as it is not
-       *  a function of the row it is being evaluated on.
-
-       *  However, it may change on a subsequent execuition, since the
-       *  parameters or host variables could change. We need to
-       *  simply preserve the tree as is, and mark the method
-       *  as one to be converted to a value when xasl is generated.
-       */
       node->info.method_call.call_or_expr = PT_PARAMETER;
       if (new_method)
 	{
@@ -693,8 +687,8 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* newly create additional dummy_set_tbl as derived1 for instance method
      and stored precdure. check for path-expr. */
-  if (spec->info.spec.meta_class == PT_CLASS &&
-      spec->info.spec.path_entities == NULL)
+  if (spec->info.spec.meta_class == PT_CLASS
+      && spec->info.spec.path_entities == NULL)
     {				/* can't handle path-expr */
       DB_VALUE val;
       PT_NODE *arg, *set;
@@ -918,22 +912,6 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
   merge->info.query.is_subquery = PT_IS_SUBQUERY;
   merge->info.query.q.select.from = table1;
 
-  /* put table2's as_attr_list (of course, as usual, we use the referenced
-   * attrs list instead of the as_attr_list because it has the resolved field
-   * filled in) on select list first so that meth_replace_method_calls() will
-   * know where to find the derived attributes for the method calls in the
-   * new_spec's as_attr_list.  After the method calls, we put the referenced
-   * attrs of the original spec.  Some of these original referenced
-   * attrs could be needed only for method calls, but we pass them
-   * outside for safety since they may be needed.  We skip over those
-   * attrs of table1 that were either expressions or references to other
-   * specs at the enclosing scope since these will never be referenced
-   * at an outer level.
-
-   * This process is highly positional and very tricky, but
-   * without the ability to compare pt trees for equality, this is
-   * the cleanest we can do.
-   */
   merge->info.query.q.select.list =
     parser_copy_tree_list (parser, table2->info.spec.referenced_attrs);
   tmp = table1->info.spec.referenced_attrs;
@@ -1210,10 +1188,10 @@ meth_get_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id,
 	}
 
       /* don't forget the method's target */
-      if (method->info.method_call.on_call_target != NULL &&
-	  ((method->info.method_call.on_call_target->node_type != PT_NAME) ||
-	   (method->info.method_call.on_call_target->info.name.spec_id
-	    != spec_id)))
+      if (method->info.method_call.on_call_target != NULL
+	  && ((method->info.method_call.on_call_target->node_type != PT_NAME)
+	      || (method->info.method_call.on_call_target->info.name.spec_id
+		  != spec_id)))
 	{
 	  params = parser_append_node (parser_copy_tree (parser,
 							 method->info.
@@ -1347,10 +1325,10 @@ meth_replace_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id,
 	}
 
       /* don't forget the method's target */
-      if (method->info.method_call.on_call_target != NULL &&
-	  ((method->info.method_call.on_call_target->node_type != PT_NAME) ||
-	   (method->info.method_call.on_call_target->info.name.spec_id
-	    != spec_id)))
+      if (method->info.method_call.on_call_target != NULL
+	  && ((method->info.method_call.on_call_target->node_type != PT_NAME)
+	      || (method->info.method_call.on_call_target->info.name.spec_id
+		  != spec_id)))
 	{
 	  /* replace with copy of next node on as_attr_list */
 	  tmp = parser_copy_tree (parser, attr_list);
@@ -1533,9 +1511,9 @@ meth_find_last_entity (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   /* don't walk into the method you're checking with */
-  if ((node->node_type == PT_METHOD_CALL) &&
-      (node->info.method_call.method_id ==
-       info->method->info.method_call.method_id))
+  if (node->node_type == PT_METHOD_CALL
+      && (node->info.method_call.method_id ==
+	  info->method->info.method_call.method_id))
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -1563,9 +1541,10 @@ meth_find_last_entity (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   /* don't walk down if this is a translated method call spec (a MERGE) */
-  if (node->info.spec.derived_table &&
-      (node->info.spec.derived_table_type == PT_IS_SUBQUERY) &&
-      (node->info.spec.derived_table->info.query.q.select.flavor == PT_MERGE))
+  if (node->info.spec.derived_table
+      && node->info.spec.derived_table_type == PT_IS_SUBQUERY
+      && (node->info.spec.derived_table->info.query.q.select.flavor ==
+	  PT_MERGE))
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -1618,8 +1597,8 @@ meth_match_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 
   /* check to see if we want to dive into nested method calls.
      don't dive into data type nodes */
-  if ((!info7->check_method_calls && (node->node_type == PT_METHOD_CALL)) ||
-      (node->node_type == PT_DATA_TYPE))
+  if ((!info7->check_method_calls && (node->node_type == PT_METHOD_CALL))
+      || (node->node_type == PT_DATA_TYPE))
     {
       *continue_walk = PT_LIST_WALK;
       return node;
@@ -1682,21 +1661,6 @@ meth_find_outside_refs (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  ;			/* purposely blank */
 	}
-      /* see if the root is a correlated name.
-       * Parameters, non-names, methods, etc. fall
-       * into this category.
-       * NOTE & Bug alert, a subquery root would
-       * not be handled here. However, I think the
-       * view translation will eliminate that case.
-       * Also, a mthod call root will only show up
-       * if its a constant (non-correlated) method call,
-       * so no further checking is needed.
-
-       * In general, we should probably rediscover correlation
-       * level just before generating xasl. Maintaining
-       * it during the various transformations is proving to be
-       * more expensive and error prone.
-       */
       *continue_walk = PT_LIST_WALK;
       if (root->node_type != PT_NAME
 	  || root->info.name.meta_class == PT_PARAMETER
@@ -1958,8 +1922,8 @@ meth_find_merge (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 {
   int *hand_rewritten = (int *) void_arg;
 
-  if ((node->node_type == PT_SELECT) &&
-      (node->info.query.q.select.flavor == PT_MERGE))
+  if (node->node_type == PT_SELECT
+      && node->info.query.q.select.flavor == PT_MERGE)
     {
       *hand_rewritten = 1;
     }
@@ -1993,8 +1957,8 @@ meth_is_method (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
   /* we don't want to look for methods that have already been translated.
    * they will be found in the leaves of merge nodes.
    */
-  if ((node->node_type == PT_SELECT) &&
-      (node->info.query.q.select.flavor == PT_MERGE))
+  if (node->node_type == PT_SELECT
+      && node->info.query.q.select.flavor == PT_MERGE)
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -2073,7 +2037,7 @@ meth_find_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 {
   METH_INFO3 *info3 = (METH_INFO3 *) void_arg;
 
-  if ((node->node_type == PT_SPEC) && (node->info.spec.id == info3->id))
+  if (node->node_type == PT_SPEC && node->info.spec.id == info3->id)
     {
       info3->entity = node;
     }
@@ -2103,14 +2067,14 @@ meth_find_method (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if ((node->node_type == PT_METHOD_CALL) &&
-      ((info->id == 0) || (node->info.method_call.method_id == info->id)))
+  if (node->node_type == PT_METHOD_CALL
+      && (info->id == 0 || node->info.method_call.method_id == info->id))
     {
       info->found = 1;
     }
 
   /* prune walk at selects */
-  if ((node->node_type == PT_SELECT) && (info->id != 0))
+  if (node->node_type == PT_SELECT && info->id != 0)
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -2154,7 +2118,7 @@ meth_find_outside_refs_subquery (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       *continue_walk = PT_LIST_WALK;
       if (!pt_find_entity (parser, info4->spec_list, root->info.name.spec_id)
-	  && (root->info.name.spec_id != info4->id))
+	  && root->info.name.spec_id != info4->id)
 	{
 	  info4->found = 1;
 	  /* immediately, stop walking
@@ -2182,10 +2146,10 @@ meth_find_outside_refs_subquery (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
   /* don't look at class attributes, their spec ids are not real */
-  if ((node->info.name.meta_class != PT_META_CLASS)
-      && (node->info.name.meta_class != PT_META_ATTR)
-      && (!pt_find_entity (parser, info4->spec_list, node->info.name.spec_id))
-      && (node->info.name.spec_id != info4->id))
+  if (node->info.name.meta_class != PT_META_CLASS
+      && node->info.name.meta_class != PT_META_ATTR
+      && !pt_find_entity (parser, info4->spec_list, node->info.name.spec_id)
+      && node->info.name.spec_id != info4->id)
     {
       info4->found = 1;
       /* immediately, stop walking
@@ -2226,18 +2190,16 @@ meth_push_conjuncts (PARSER_CONTEXT * parser, UINTPTR spec_id,
   sc_info.top_node = *where;
   sc_info.donot_fold = false;
 
-  if (((*where)->node_type == PT_EXPR) && ((*where)->info.expr.op == PT_AND))
+  if ((*where)->node_type == PT_EXPR && (*where)->info.expr.op == PT_AND)
     {
-
-      *where =
-	parser_walk_tree (parser, *where, NULL, NULL, meth_grab_conj, &info5);
+      *where = parser_walk_tree (parser, *where, NULL, NULL,
+				 meth_grab_conj, &info5);
 
       /* check top conjunct */
-      if (((*where)->node_type == PT_EXPR) &&
-	  ((*where)->info.expr.op != PT_AND) &&
-	  ((*where)->spec_ident == spec_id))
+      if ((*where)->node_type == PT_EXPR
+	  && (*where)->info.expr.op != PT_AND
+	  && (*where)->spec_ident == spec_id)
 	{
-
 	  /* we can't push if there are outside refs */
 	  info1.id = spec_id;
 	  info1.found = 0;
@@ -2254,8 +2216,8 @@ meth_push_conjuncts (PARSER_CONTEXT * parser, UINTPTR spec_id,
 
 	  if (!outside_refs && !nested_meths)
 	    {
-	      info5.new_where =
-		meth_add_conj (parser, info5.new_where, *where);
+	      info5.new_where = meth_add_conj (parser, info5.new_where,
+					       *where);
 	      *where = NULL;
 	    }
 	}
@@ -2330,15 +2292,15 @@ meth_grab_conj (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 			   meth_find_method, &info1, NULL, NULL);
   arg2_nested_meths = info1.found;
 
-  if ((node->info.expr.arg1->spec_ident == info5->spec_id) &&
-      (node->info.expr.arg2->spec_ident == info5->spec_id) &&
-      !arg1_outside_refs && !arg2_outside_refs &&
-      !arg1_nested_meths && !arg2_nested_meths)
+  if (node->info.expr.arg1->spec_ident == info5->spec_id
+      && node->info.expr.arg2->spec_ident == info5->spec_id
+      && !arg1_outside_refs && !arg2_outside_refs
+      && !arg1_nested_meths && !arg2_nested_meths)
     {
-      info5->new_where =
-	meth_add_conj (parser, info5->new_where, node->info.expr.arg1);
-      info5->new_where =
-	meth_add_conj (parser, info5->new_where, node->info.expr.arg2);
+      info5->new_where = meth_add_conj (parser, info5->new_where,
+					node->info.expr.arg1);
+      info5->new_where = meth_add_conj (parser, info5->new_where,
+					node->info.expr.arg2);
 
       /* create a true node to replace the current node */
       true_node = parser_new_node (parser, PT_VALUE);
@@ -2348,17 +2310,17 @@ meth_grab_conj (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       return true_node;		/* AND node collapses */
     }
 
-  if ((node->info.expr.arg1->spec_ident == info5->spec_id) &&
-      !arg1_outside_refs && !arg1_nested_meths)
+  if (node->info.expr.arg1->spec_ident == info5->spec_id
+      && !arg1_outside_refs && !arg1_nested_meths)
     {
-      info5->new_where =
-	meth_add_conj (parser, info5->new_where, node->info.expr.arg1);
+      info5->new_where = meth_add_conj (parser, info5->new_where,
+					node->info.expr.arg1);
 
       return node->info.expr.arg2;	/* AND node collapses */
     }
 
-  if ((node->info.expr.arg2->spec_ident == info5->spec_id) &&
-      !arg2_outside_refs && !arg2_nested_meths)
+  if (node->info.expr.arg2->spec_ident == info5->spec_id
+      && !arg2_outside_refs && !arg2_nested_meths)
     {
       info5->new_where =
 	meth_add_conj (parser, info5->new_where, node->info.expr.arg2);
@@ -2478,9 +2440,9 @@ meth_replace_id_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   METH_INFO6 *info6 = (METH_INFO6 *) void_arg;
 
-  if ((node->node_type == PT_METHOD_CALL) &&
-      (node->info.method_call.method_name->info.name.spec_id
-       == info6->old_id))
+  if (node->node_type == PT_METHOD_CALL
+      && (node->info.method_call.method_name->info.name.spec_id
+	  == info6->old_id))
     {
       node->info.method_call.method_name->info.name.spec_id = info6->new_id;
     }

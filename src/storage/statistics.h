@@ -1,18 +1,34 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qst.h -  
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _QST_H_
-#define _QST_H_
+
+/*
+ * STATISTICS.h -
+ */
+
+#ifndef _STATISTICS_H_
+#define _STATISTICS_H_
 
 #ident "$Id$"
 
 #include <stdio.h>
 #include "dbtype.h"
-#include "common.h"
+#include "storage_common.h"
 #include "object_domain.h"
 
 /* disk-resident elements of pkeys[] field */
@@ -66,9 +82,9 @@ struct class_stats
   int num_objects;		/* cardinality of the class;
 				   number of instances the class has */
   int heap_size;		/* number of pages the class occupy */
-  int n_attrs;			/* number of attributes; size of the 
+  int n_attrs;			/* number of attributes; size of the
 				   attr_stats[] */
-  ATTR_STATS *attr_stats;	/* pointer to the array of attribute 
+  ATTR_STATS *attr_stats;	/* pointer to the array of attribute
 				   statistics */
 };
 
@@ -79,4 +95,4 @@ extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 #endif /* !SERVER_MODE */
 
-#endif /* _QST_H_ */
+#endif /* _STATISTICS_H_ */

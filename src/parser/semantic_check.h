@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * pt_seman.h - contains semantic check prototypes
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _PT_SEMAN_H_
-#define _PT_SEMAN_H_
+
+/*
+ * semantic_check.h - contains semantic check prototypes
+ */
+
+#ifndef _SEMANTIC_CHECK_H_
+#define _SEMANTIC_CHECK_H_
 
 #ident "$Id$"
 
@@ -46,4 +62,4 @@ extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser,
 					     const PT_NODE * sort_value,
 					     const PT_NODE * order_list);
 
-#endif /* _PT_SEMAN_H_ */
+#endif /* _SEMANTIC_CHECK_H_ */

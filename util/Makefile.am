@@ -1,4 +1,22 @@
 
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+#
+#   This program is free software; you can redistribute it and/or modify 
+#   it under the terms of the GNU General Public License as published by 
+#   the Free Software Foundation; version 2 of the License. 
+#
+#  This program is distributed in the hope that it will be useful, 
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+#  GNU General Public License for more details. 
+#
+#  You should have received a copy of the GNU General Public License 
+#  along with this program; if not, write to the Free Software 
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+#
+
+
 compatdir = @prefix@/compat
 
 SRC = $(top_srcdir)/src
@@ -19,7 +37,6 @@ EXECUTABLE_DIR = $(SRC)/executables
 BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
-QATOOLS_DIR = $(SRC)/qatools
 
 ANTLR = $(top_builddir)/pccts/antlrd/antlr
 DLG = $(top_builddir)/pccts/dlg/dlg
@@ -28,20 +45,20 @@ INCLUDES = @SRC_INC@ -I$(top_srcdir)/pccts/h @EXT_INC@
 DEFS += @SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ -DZZCOL -DLL_K=1 -DYY_CHAR=char -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
 LIBS += @SYS_LIBS@
 
-BUILT_SOURCES = es.c eserr.c es.dlg estokens.h esmode.h esscan.c \
-		lo.c loerr.c lo.dlg lotokens.h lomode.h loscan.c
-CLEANFILES = es.c eserr.c es.dlg estokens.h esmode.h esscan.c \
-		lo.c loerr.c lo.dlg lotokens.h lomode.h loscan.c
+BUILT_SOURCES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
+		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
+CLEANFILES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
+		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
 
-lo.c loerr.c lo.dlg: $(EXECUTABLE_DIR)/lo.g
-	$(ANTLR) -ga -k 1 -fe loerr.c -fl lo.dlg -ft lotokens.h -fm lomode.h $<
-loscan.c lomode.h: lo.dlg
-	$(DLG) -C2 -ga -m lomode.h $< loscan.c
+loader_grammar.c loader_grammar_err.c loader_grammar.dlg: $(EXECUTABLE_DIR)/loader_grammar.g
+	$(ANTLR) -ga -k 1 -fe loader_grammar_err.c -fl loader_grammar.dlg -ft loader_grammar_tokens.h -fm loader_grammar_mode.h $<
+loader_grammar_scan.c loader_grammar_mode.h: loader_grammar.dlg
+	$(DLG) -C2 -ga -m loader_grammar_mode.h $< loader_grammar_scan.c
 
-es.c eserr.c es.dlg: $(EXECUTABLE_DIR)/es.g
-	$(ANTLR) -ga -k 1 -fe eserr.c -fl es.dlg -ft estokens.h -fm esmode.h $<
-esscan.c esmode.h: es.dlg
-	$(DLG) -C2 -ga -m esmode.h $< esscan.c
+esql_grammar.c esql_grammar_err.c esql_grammar.dlg: $(EXECUTABLE_DIR)/esql_grammar.g
+	$(ANTLR) -ga -k 1 -fe esql_grammar_err.c -fl esql_grammar.dlg -ft esql_grammar_tokens.h -fm esql_grammar_mode.h $<
+esql_grammar_scan.c esql_grammar_mode.h: esql_grammar.dlg
+	$(DLG) -C2 -ga -m esql_grammar_mode.h $< esql_grammar_scan.c
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
@@ -76,16 +93,16 @@ get_disk_compat_LDFLAGS = @SA_LIB@
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDFLAGS = @SA_LIB@
 
-load_noopt_SOURCES = lo.c loerr.c loscan.c \
-		$(EXECUTABLE_DIR)/ldr_o.c \
+load_noopt_SOURCES = loader_grammar.c loader_grammar_err.c loader_grammar_scan.c \
+		$(EXECUTABLE_DIR)/loader_old.c \
 		$(EXECUTABLE_DIR)/loader_object_table.c \
-		$(EXECUTABLE_DIR)/ldr_act.c \
+		$(EXECUTABLE_DIR)/loader_action.c \
 		$(EXECUTABLE_DIR)/loader_disk.c \
 		$(EXECUTABLE_DIR)/load_object.c \
 		$(EXECUTABLE_DIR)/loaddb.c \
-		$(EXECUTABLE_DIR)/dbu_misc.c \
-		$(EXECUTABLE_DIR)/migdb.c
-dist_load_noopt_SOURCES=$(EXECUTABLE_DIR)/lo.g
+		$(EXECUTABLE_DIR)/util_support.c \
+		$(EXECUTABLE_DIR)/loader_noopt.c
+dist_load_noopt_SOURCES=$(EXECUTABLE_DIR)/loader_grammar.g
 load_noopt_CFLAGS = $(AM_CFLAGS) -DLDR_OLD_LOADDB
 load_noopt_LDFLAGS = @SA_LIB@
 
@@ -119,7 +136,7 @@ install-exec-hook:
 	cd $(compatdir) && $(LN_S) -f stop_cubrid stop_server
 
 lib_LTLIBRARIES = libcubridesql.la
-libcubridesql_la_SOURCES = $(EXECUTABLE_DIR)/esql_gadget.c $(EXECUTABLE_DIR)/unici.c
+libcubridesql_la_SOURCES = $(EXECUTABLE_DIR)/esql_gadget.c $(EXECUTABLE_DIR)/esql_cli.c
 libcubridesql_la_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY -DYY_CHAR=char
 libcubridesql_la_LDFLAGS = -version-number @LT_VERSION@
 
@@ -128,7 +145,7 @@ cub_server_LDFLAGS = @CUBRID_LIB@
 
 cub_commdb_SOURCES = \
 	$(EXECUTABLE_DIR)/commdb.c \
-	$(EXECUTABLE_DIR)/dbu_misc.c \
+	$(EXECUTABLE_DIR)/util_support.c \
 	$(EXECUTABLE_DIR)/master_util.c
 cub_commdb_LDFLAGS = @CS_LIB@
 
@@ -143,18 +160,18 @@ repl_server_SOURCES = \
 	$(EXECUTABLE_DIR)/repl_server.c \
 	$(EXECUTABLE_DIR)/repl_svr_sock.c \
 	$(EXECUTABLE_DIR)/repl_svr_tp.c \
-	$(EXECUTABLE_DIR)/repl_comm.c
+	$(EXECUTABLE_DIR)/repl_support.c
 repl_server_LDFLAGS = @SA_LIB@
 
 repl_agent_SOURCES = \
 	$(EXECUTABLE_DIR)/repl_agent.c \
 	$(EXECUTABLE_DIR)/repl_ag_sock.c \
 	$(EXECUTABLE_DIR)/repl_ag_tp.c \
-	$(EXECUTABLE_DIR)/repl_comm.c
+	$(EXECUTABLE_DIR)/repl_support.c
 repl_agent_LDFLAGS = @CS_LIB@
 
 cubrid_rel_SOURCES = \
-	$(EXECUTABLE_DIR)/cosmos_version.c
+	$(EXECUTABLE_DIR)/cubrid_version.c
 cubrid_rel_LDFLAGS = @SA_LIB@
 
 loadjava_SOURCES = \
@@ -163,26 +180,26 @@ loadjava_LDFLAGS = @SA_LIB@
 
 cubrid_SOURCES = \
 	$(EXECUTABLE_DIR)/util_service.c \
-	$(EXECUTABLE_DIR)/dbu_misc.c
+	$(EXECUTABLE_DIR)/util_support.c
 cubrid_LDFLAGS = @SA_LIB@
 
 cub_admin_SOURCES = \
 	$(EXECUTABLE_DIR)/util_admin.c \
-	$(EXECUTABLE_DIR)/dbu_misc.c
+	$(EXECUTABLE_DIR)/util_support.c
 
-csql_SOURCES = $(EXECUTABLE_DIR)/sqlx_launcher.c $(EXECUTABLE_DIR)/dbu_misc.c
+csql_SOURCES = $(EXECUTABLE_DIR)/csql_launcher.c $(EXECUTABLE_DIR)/util_support.c
 
 cubrid_esql_SOURCES = \
 	$(EXECUTABLE_DIR)/esql_symbol_table.c \
 	$(EXECUTABLE_DIR)/esql_declare.c \
 	$(EXECUTABLE_DIR)/esql_cursor.c	\
 	$(EXECUTABLE_DIR)/esql_misc.c \
-	$(EXECUTABLE_DIR)/whenever.c \
+	$(EXECUTABLE_DIR)/esql_whenever.c \
 	$(EXECUTABLE_DIR)/esql_hash.c \
 	$(EXECUTABLE_DIR)/esql_translate.c \
 	$(EXECUTABLE_DIR)/esql_host_variable.c \
-	es.c esscan.c eserr.c
-dist_cubrid_esql_SOURCES = $(EXECUTABLE_DIR)/es.g
+	esql_grammar.c esql_grammar_scan.c esql_grammar_err.c
+dist_cubrid_esql_SOURCES = $(EXECUTABLE_DIR)/esql_grammar.g
 cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY -DYY_CHAR=char
 cubrid_esql_LDFLAGS = @CS_LIB@
 

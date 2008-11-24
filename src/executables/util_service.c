@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * util_service.c - a front end of service utilities
- *
- * Note: draft version
  */
 
 #ident "$Id$"
@@ -26,8 +39,8 @@
 #include "utility.h"
 #include "error_code.h"
 #include "system_parameter.h"
-#include "general.h"
-#include "dbmt_config.h"
+#include "connection_cl.h"
+#include "cm_config.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif
@@ -162,8 +175,8 @@ static int process_service (int command_type);
 static int process_server (int command_type, char *name);
 static int process_broker (int command_type, int argc, const char **argv);
 static int process_manager (int command_type);
-static int process_repl_server (int command_type, char *name,
-				char *repl_port, char *agent_num);
+static int process_repl_server (int command_type, char *name, char *repl_port,
+				int argc, const char **argv);
 static int process_repl_agent (int command_type, char *name, char *password);
 static int proc_execute (const char *file, const char *args[],
 			 bool wait_child, bool close_output, int *pid);
@@ -344,7 +357,7 @@ main (int argc, const char **argv)
       break;
     case REPL_SERVER:
       status = process_repl_server (command_type, (char *) argv[3],
-				    (char *) argv[4], (char *) argv[5]);
+				    (char *) argv[4], argc, argv);
       break;
     case REPL_AGENT:
       status = process_repl_agent (command_type, (char *) argv[3],
@@ -636,7 +649,7 @@ process_service (int command_type)
 	}
       if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON) == 0)
 	{
-	  status = process_repl_server (command_type, NULL, 0, 0);
+	  status = process_repl_server (command_type, NULL, 0, 0, 0);
 	}
       if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) == 0)
 	{
@@ -660,7 +673,7 @@ process_service (int command_type)
 	if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON) ==
 	    0)
 	  {
-	    status = process_repl_server (command_type, NULL, 0, 0);
+	    status = process_repl_server (command_type, NULL, 0, 0, 0);
 	  }
 	if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
 	    0)
@@ -693,7 +706,7 @@ process_service (int command_type)
 	status = process_server (command_type, NULL);
 	status = process_broker (command_type, 1, args);
 	status = process_manager (command_type);
-	status = process_repl_server (command_type, NULL, 0, 0);
+	status = process_repl_server (command_type, NULL, 0, 0, 0);
       }
       break;
     default:
@@ -1159,13 +1172,20 @@ process_manager (int command_type)
  */
 static int
 process_repl_server (int command_type, char *name, char *repl_port,
-		     char *agent_num)
+		     int argc, const char **argv)
 {
   int status;
+  int count;
 
   switch (command_type)
     {
     case START:
+      count = argc - 5;
+      if (count > 4 || count % 2 != 0)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  return ER_GENERIC_ERROR;
+	}
       if (name == NULL || repl_port == NULL)
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
@@ -1182,8 +1202,18 @@ process_repl_server (int command_type, char *name, char *repl_port,
       else
 	{
 	  const char *args[] = { UTIL_REPL_SERVER_NAME, "-d", name,
-	    "-p", repl_port, agent_num ? "-a" : NULL, agent_num, NULL
+	    "-p", repl_port, NULL, NULL, NULL, NULL, NULL
 	  };
+	  if (count >= 2)
+	    {
+	      args[5] = argv[5];
+	      args[6] = argv[6];
+	    }
+	  if (count == 4)
+	    {
+	      args[7] = argv[7];
+	      args[8] = argv[8];
+	    }
 	  status = proc_execute (UTIL_REPL_SERVER_NAME, args, true, false,
 				 NULL);
 	  print_result (PRINT_REPL_SERVER_NAME, status, command_type);

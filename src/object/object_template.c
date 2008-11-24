@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * object_template.c - Object accessor module
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * object_template.c - Object template module
+ *
  *      This contains code for attribute and method access, instance creation
  *      and deletion, and misc utilitities related to instances.
  *
@@ -24,25 +38,25 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "server.h"
+#include "server_interface.h"
 #include "work_space.h"
 #include "object_domain.h"
 #include "object_primitive.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "class_object.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "object_accessor.h"
-#include "view_transform_2.h"
+#include "view_transform.h"
 #include "authenticate.h"
 #include "locator_cl.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "parser.h"
 #include "transaction_cl.h"
 #include "trigger_manager.h"
 #include "environment_variable.h"
 #include "transform.h"
-#include "execute_statement_10.h"
-#include "network_interface_sky.h"
+#include "execute_statement.h"
+#include "network_interface_cl.h"
 
 /* Include this last; it redefines some macros! */
 #include "dbval.h"
@@ -87,29 +101,6 @@ static AREA *Assignment_area = NULL;
 /*
  * obj_Template_traversal
  *
- *
- * Note :
- *    Object templates can be constructed in a cyclic graph so we have to
- *    be careful when walking over them to avoid infinite loops.
- *    Unfortunately, a simple "visited" flag isn't very convenient as we
- *    have to walk over the template at least twice, and if an error occurs,
- *    the traversal flags are in a random state.  This is further complicated
- *    by the fact that if a template is applied, but gets an error, the
- *    template is still valid, and the application can in theory attempt
- *    to correct something and re-apply the template.  Though not impossible
- *    its error prone to try to use a single bit field for this.  It is
- *    much more straightforward to use a traversal "counter" that is
- *    incremented each time a traversal begins.  With this approach, we never
- *    have to worry about the current state of the traversal "flags" are,
- *    we only need to know if they are different than the current
- *    traversal counter value.  This also makes it easier to add code
- *    that performs additional walks over the template or re-order the
- *    existing template walking operations.  It unfortunately adds another
- *    global variable so something will have to be done here to protect this
- *    in a multi-threaded client environment.
- *
- *    Zero is the "uninitialized" state, always call obj_begin_traversal
- *    to set this to the "next" value.
  *
  */
 
@@ -356,11 +347,10 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
   MOP mop;
 
   /* check NOT NULL constraint */
-  if (value == NULL || DB_IS_NULL (value) ||
-      (att->domain->type == tp_Type_object &&
-       (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop)))
+  if (value == NULL || DB_IS_NULL (value)
+      || (att->domain->type == tp_Type_object
+	  && (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop)))
     {
-
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
 	  ERROR1 (error, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, att->header.name);
@@ -387,13 +377,6 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
  *      returns: non-zero if the value is known to be valid
  *      valid(in): validation cache
  *      value(in): value to ponder
- *
- * Note :
- *    This really belongs in tp.c with the other big type oriented switch
- *    statements.  The SM_VALIDATION wart probably should be a TP_ thing
- *    as well, but its a little easier to deal with it as part of the
- *    SM_DESCRIPTOR structure.
- *
  */
 
 static int
@@ -459,8 +442,8 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
       {
-	if (type == valid->last_type &&
-	    DB_GET_STRING_PRECISION (value) == valid->last_precision)
+	if (type == valid->last_type
+	    && DB_GET_STRING_PRECISION (value) == valid->last_precision)
 	  {
 	    is_valid = 1;
 	  }
@@ -470,8 +453,8 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {
-	if (type == valid->last_type &&
-	    DB_GET_BIT_PRECISION (value) == valid->last_precision)
+	if (type == valid->last_type
+	    && DB_GET_BIT_PRECISION (value) == valid->last_precision)
 	  {
 	    is_valid = 1;
 	  }
@@ -480,9 +463,9 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
 
     case DB_TYPE_NUMERIC:
       {
-	if (type == valid->last_type &&
-	    DB_GET_NUMERIC_PRECISION (value) == valid->last_precision &&
-	    DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
+	if (type == valid->last_type
+	    && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
+	    && DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
 	  {
 	    is_valid = 1;
 	  }
@@ -796,17 +779,6 @@ make_template (MOP object, MOP classobj)
 	  return NULL;
 	}
 
-      /*
-       * Need to get the associated base class from the virtual class.
-       * I believe this function picks the first one in the query spec.
-       * I think in order for the virtual class to be updatable, there
-       * can only be one class in the spec anyway.
-       * NOTE: I think we can use this function to perform the
-       * updatability test that would normally be done by mq_is_updatable.
-       * The comments indicate that this will return NULL if the class
-       * is not updatable.  If this turns out to be true, delete the
-       * section that is commented out above.
-       */
 
       base_classobj = mq_fetch_one_real_class (classobj);
       if (base_classobj == NULL)
@@ -912,36 +884,6 @@ make_template (MOP object, MOP classobj)
  *      return: error code
  *      temp(in): template to validate
  *
- * Note :
- *    We make sure that the current transaction id is the same as it was
- *    when the template was created.  Templates are not allowed to cross
- *    transaction boundaries.
- *    We also check the class pointer with the one currently attached
- *    to the class MOP.  This will detect flushes of the class structure
- *    (in practice this won't happen because classes are always pinned
- *    for the duration of the transaction).
- *    We need to have a way to detect modifications to the class that
- *    happen while the template is being defined.  Saving the repid
- *    will detect structural changes but not other kinds of changes like
- *    adding a method.  Since all schema changes re-flatten, any change
- *    will invalidate any cached pointers to class structures.
- *    Checking the CHN will detect updates but not local workspace changes
- *    that haven't been flushed.
- *    The best solution is to maintain a counter in the class that gets
- *    incremented after each update.  The sm_bump_schema_version() counter
- *    can also be used but it gets incremented when ANY class is modified
- *    not just the class we're interested in.
- *    For now, we use the global schema counter.  This means that object
- *    templates cannot be used accross schema changes which is different
- *    than the releases prior to 2.0 but shouldn't really hurt anyone.
- *    NOTE: Now that we cache two classes in the template, the "outer"
- *    class and the "inner" base class if the outer class was a virtual
- *    class, we can't rely on just the representation id from the outer
- *    class for template validity.  We have to check the representation
- *    of the inner class as well.  Because of this, don't bother
- *    trying to store the class specific edit flags, just use the global
- *    schema version counter.
- *
  */
 
 static int
@@ -949,14 +891,15 @@ validate_template (OBJ_TEMPLATE * temp)
 {
   int error = NO_ERROR;
 
-  if (temp != NULL &&
-      (temp->tran_id != tm_Tran_index
-       || temp->schema_id != sm_schema_version ()))
+  if (temp != NULL
+      && (temp->tran_id != tm_Tran_index
+	  || temp->schema_id != sm_schema_version ()))
     {
       error = ER_OBJ_INVALID_TEMPLATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -1039,8 +982,8 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 				 DB_GET_POINTER (assign->variable));
 	      DB_MAKE_POINTER (assign->variable, NULL);
 	    }
-	  else if (TP_IS_SET_TYPE (av_type) &&
-		   DB_GET_SET (assign->variable) != NULL)
+	  else if (TP_IS_SET_TYPE (av_type)
+		   && DB_GET_SET (assign->variable) != NULL)
 	    {
 	      /* must go through and free any elements that may be template pointers */
 	      setref = DB_GET_SET (assign->variable);
@@ -1292,9 +1235,9 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		 * default override it to NULL
 		 */
 
-		if (exists == NULL &&
-		    (!DB_IS_NULL (&base_value) ||
-		     !DB_IS_NULL (&base_att->value)))
+		if (exists == NULL
+		    && (!DB_IS_NULL (&base_value)
+			|| !DB_IS_NULL (&base_att->value)))
 		  {
 		    /* who owns base_value ? */
 		    a = obt_make_assignment (template_ptr, base_att);
@@ -1573,18 +1516,6 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	}
     }
 
-  /*
-   *
-   * We may be reusing this assignment gadget, in which case
-   * assign->variable will be non-null.  We'll try to reuse it if
-   * possible to avoid a needless free and allocate cycle for the
-   * DB_VALUE container itself, but we have to remember to free any
-   * contents of the container to avoid a leak.
-   *
-   * If the value was coerced, simply use it; otherwise copy the supplied
-   * value.  If we use the supplied value, we have to remember to return
-   * any DB_VALUE container that we were hoping to recycle.
-   */
   if (actual != value)
     {
       if (assign->variable)
@@ -1659,17 +1590,6 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   if (!base_assignment && template_ptr->base_class != NULL)
     {
-      /*
-       * Its virtual, we could check for assignment valiidity before calling
-       * the value translator.  Unlike obt_assign() we don't transform
-       * the value here 1) because object values can't be transformed
-       * in any meaningful way and 2) because we have a template rather
-       * than a real object pointer.  If transformation is someday allowed,
-       * it will have to be deferred until the template is converted.
-       * We still however need to map the supplied name into the base
-       * class name.  Since there doesn't seem to be a function to do just
-       * this, call mq_update_attribute with a NULL value.
-       */
       DB_MAKE_NULL (&dummy_value);
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
       if (mq_update_attribute (template_ptr->classobj, att->header.name,
@@ -2224,31 +2144,6 @@ check_fk_cache_assignments (OBJ_TEMPLATE * template_ptr)
  *    check_non_null(in):
  *    has_uniques(in):
  *
- * Note:
- *    This is called after a template has been built but before the objects
- *    have been created to make a final pass over the template looking
- *    for problems that couldn't be detected as the template was built.
- *    Included here are attribute with the NOT NULL constraint that don't
- *    have default values and don't have an assignment in the template.
- *    These must be caught as errors but we don't know this until the caller
- *    has had a chance to put all of the assignments in the template.
- *    We also need to check for attributes with the UNIQUE constraint and
- *    either error or warn if there is no assignment since this will take
- *    the default value which is very likely to be non-unique.  It has been
- *    suggested that in this case, the value should become NULL since this
- *    won't break the unique constraint.  This does however make default
- *    values for unique attributes rather meaningless except for the
- *    very first instance created.
- *
- *    Now that all INSERTS use the template mechanism, we flesh out the
- *    template with assignments for any default values in the class that
- *    do not already have assignments in the template.
- *    See the discussion under obt_final_check for more information on
- *    the meaning of check_non_null.
- *
- *    The last check is to batch up the values for the unique constrained
- *    attributes and send them to the server to check for unique violations.
- *    This is done last since it must make a server call.
  */
 
 static int
@@ -2286,8 +2181,8 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
        */
       if (template_ptr->object == NULL)
 	{
-	  if ((obt_Enable_autoincrement == true) &&
-	      populate_auto_increment (template_ptr))
+	  if (obt_Enable_autoincrement == true
+	      && populate_auto_increment (template_ptr))
 	    {
 	      return er_errid ();
 	    }
@@ -2594,19 +2489,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }
 	}
     }
-  /*
-   *
-   * Make sure the object is marked dirty now that the values have been
-   * assigned.  We used to rely on the dirty bit set when the template
-   * was created but that isn't reliable because other operations, like
-   * nested selects, or things in the triggers can cause this object to
-   * be flushed which will clear the dirty bit.  Must remember to set it
-   * AFTER the assignments have been performed.  Technically, we should
-   * be using locator_update_class or lc_upd_object but I don't want the overhead
-   * of doing another locator_fetch_class since that has already been done to
-   * get us to this point.  Might want to have an lc_ interface function
-   * for this.
-   */
   if ((error == NO_ERROR) && (object != NULL))
     ws_dirty (object);
 
@@ -2651,13 +2533,13 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    * under what conditions we can safely delay flushing of nested proxy
    * inserts, so we don't.
    */
-  if (level > 0 && error == NO_ERROR && object &&
-      object->is_vid && vid_is_base_instance (object))
+  if (level > 0 && error == NO_ERROR && object
+      && object->is_vid && vid_is_base_instance (object))
     {
       error = vid_flush_and_rehash (object);
     }
-  else if (error != NO_ERROR && object &&
-	   object->is_vid && vid_is_base_instance (object))
+  else if (error != NO_ERROR && object
+	   && object->is_vid && vid_is_base_instance (object))
     {
       /*
        * if an error occurred in a nested proxy insert such as this
@@ -2845,8 +2727,8 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
    * do we need to rollback due to failure?  We don't rollback if the
    * trans has already been aborted.
    */
-  if (error != NO_ERROR && savepoint_used &&
-      error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != NO_ERROR && savepoint_used
+      && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_savepoint (savepoint_name);
     }

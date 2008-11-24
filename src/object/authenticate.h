@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * authenticate.h - Authorization manager
  *
  */
@@ -69,22 +85,7 @@ extern const char *AU_DBA_USER_NAME;
 
 #define AU_CACHE_INVALID        0x80000000
 
-/*
- * AU_DISABLE, AU_ENABLE
- *
- * Note:
- *    The exported interface functions must operate on internal authorization
- *    objects without checking for their own authorization.  If this is not
- *    done, we get into endless recursion as we try to update the class
- *    cache for the authorization objects.
- *    This is ONLY used internally by the authorization system and a few
- *    well behaved modules that need to diable authorization.
- *
- *    NOTE!  If the lower level code starts doing longjmps around the
- *    authorization manager, it may leave authorization disabled.  Will have
- *    to set up some kind of unwind protect if this ever happens.
- *
- */
+
 
 #define AU_DISABLE(save) \
   do \
@@ -120,80 +121,17 @@ extern const char *AU_DBA_USER_NAME;
     } \
   while (0)
 
-/*
- * AU_DISABLE_PASSWORDS
- *
- * Note:
- *    This macro calls the function to disable password checking.
- *    The function to do this has a meaningless name to make it harder
- *    for hackers to look at the symbol table of the executable and find
- *    functions that control authorization.  Because the name is nonsense,
- *    the macro has a more meaningful name.
- *
- */
-
-#define AU_DISABLE_PASSWORDS    au_vlist_entry_randomize
-
-/*
- * AU_SET_USER
- *
- * Note:
- *    This is a macro around the internal function to change the
- *    active user.
- *    It is a macro so we can name the internal function something obscure
- *    that won't be obvious to someone looking in the symbol table of
- *    the library.
- *
- */
-
-#define AU_SET_USER     au_calc_page_boundary
-
-/*
- * MAX_PASSWORD_CHARS
- *
- * Note:
- *    This is the maximum number of characters allowed in a password.
- *    For all normal purposes, this should be the same length as the
- *    password accepted by the getpass library function since that
- *    is what we use to read passwords.  Currently, the maximum
- *    is 8 characters.
- *    This may need to be doubled for Japanization if wide chars are used?
- *
- */
+#define AU_DISABLE_PASSWORDS    au_disable_passwords
+#define AU_SET_USER     au_set_user
 
 #define AU_MAX_PASSWORD_CHARS   8
-
-/*
- * AU_MAX_PASSWORD_BUF
- *
- * Note :
- *    This is the size for internal working buffers that deal with
- *    passwords.  It just needs to be suitable large to handle the
- *    largest encrypted password.
- *    It should be at least twice as long as AU_MAX_PASSWORD_CHARS plus
- *    some extra for prefixes.
- *
- */
-
 #define AU_MAX_PASSWORD_BUF     128
-
-
-/*
- * AU_FETCHMODE
- *
- * Note:
- *    The calls to the lc_ routines have been centralized into a
- *    few au_ functions.  In order to get the proper combinations of
- *    fetch mode and dirty marking, these fetch mode constants are used
- *    in the au_ interface.
- *
- */
 
 typedef enum au_fetchmode
 {
-  AU_FETCH_READ,		/* locator_fetch with DB_FETCH_READ */
-  AU_FETCH_WRITE,		/* locator_fetch with DB_FETCH_WRITE */
-  AU_FETCH_UPDATE		/* lc_upd with implied DB_FETCH_WRITE */
+  AU_FETCH_READ,
+  AU_FETCH_WRITE,
+  AU_FETCH_UPDATE
 } AU_FETCHMODE;
 
 
@@ -218,11 +156,8 @@ extern int au_add_method_check_authorization (void);
 extern int au_start (void);
 extern int au_login (const char *name, const char *password);
 
-/* password disable */
-extern void au_vlist_entry_randomize (void);
-
-/* authorization disable */
-extern int au_calc_page_boundary (MOP newuser);
+extern void au_disable_passwords (void);
+extern int au_set_user (MOP newuser);
 
 /* user/group hierarchy maintenance */
 extern MOP au_find_user (const char *user_name);
@@ -233,10 +168,7 @@ extern int au_drop_user (MOP user);
 extern int au_set_password (MOP user, const char *password);
 
 extern const char *au_user_name (void);
-
-/* mangle the name so it isn't so obvious in nm */
-extern int io_relseek_temp (char *buffer);
-#define au_user_password        io_relseek_temp
+extern int au_user_password (char *buffer);
 
 /* grant/revoke */
 extern int au_grant (MOP user, MOP class_mop, DB_AUTH type,
@@ -281,7 +213,8 @@ extern void au_link_static_methods (void);
 /* migration utilities */
 
 extern int au_export_users (FILE * outfp);
-extern int au_export_grants (FILE * outfp, MOP class_mop, int quoted_id_flag);
+extern int au_export_grants (FILE * outfp, MOP class_mop,
+			     bool quoted_id_flag);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 

@@ -1,53 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * page_buffer.c - Page buffer management module (at the server)
- *
- * The precise description about page buffer manager can be found in [PAPA01].
- * So, the researcher who have to have enough knowledge about the page buffer
- * manager of CUBRID 5.0 should read the document [PAPA01] carefully.
- *
- * There are another references. FIX/UNFIX protocal is explained in
- * [TRAI82, LANG77] and LRU replacement algorithm is explained in [EFFE84].
- *
- * MODULE INTERFACE
- *
- * At least the following modules are called by the page buffer manager:
- *
- *      input/output module:         To read and write data pages
- *      Log Manager:                 To follow WAL rule.
- *
- * At least the following modules call the page buffer manager:
- *      B+tree, extendible hash, catalog manager, disk manager, file manager,
- *        heap file object manager, long data manager, query file manager
- *        to fetch, free, and setdirty pages.
- *      Log Manager:                To initialize and terminate page buffer
- *                                     manager.
- *                                  To flush dirty pages
- *                                     To set LSA on data pages.
- *                                  To fetch data pages during restart
- *                                     recovery
- *
- * REFERENCES:
- *
- * [PAPA01] Young Chul Park, Jun Hyun Park, "The Development of Page Buffer
- *          Management Module based on Latch in order to Enhance Concurrency
- *          in CUBRID 5.0," 2001-CUBRID-TM-4, 2001. 3.
- *
- * OLD REFERENCES:
- *
- * [EFFE84] Effelsberg, W. T. Haerder. "Principles of Database Buffer
- *          Management," ACM. Trans on Database Systems, Vol. 9, No. 4,
- *          December 1984, pp. 560-595.
- *
- * [LANG77] Lang, T., C. Wood, E. Fernandez, "Database Buffer Paging in
- *          Virtual Storage Systems," ACM Transactions on Database Systems,
- *          Vol.2, No. 4, December 1977, pp. 339-351.
- *
- * [TRAI82] Traiger, I. "Virtual Memory Management for Database Systems,"
- *          ACM Operating Systems Reviews, Vol. 16, No. 4, pp. 26-48., October
- *          1982.
  */
 
 #ident "$Id$"
@@ -60,13 +30,13 @@
 #include <assert.h>
 
 #include "page_buffer.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "file_io.h"
-#include "log.h"
-#include "log_prv.h"
+#include "log_manager.h"
+#include "log_impl.h"
 #include "transaction_sr.h"
 #include "memory_hash.h"
 #include "critical_section.h"
@@ -79,7 +49,7 @@
 #endif /* CUBRID_DEBUG */
 
 #if defined(SERVER_MODE)
-#include "csserror.h"
+#include "connection_error.h"
 
 #endif /* SERVER_MODE */
 
@@ -314,7 +284,7 @@ struct pgbuf_holder
   PGBUF_BUFFER *bufptr;		/* pointer to BCB */
   PGBUF_HOLDER *next_holder;	/* the next BCB holder entry in the holder list
 				   of BCB or free BCB holder list of tran. */
-  PGBUF_HOLDER *tran_link;	/* the next BCB holder entry in the BCB holder 
+  PGBUF_HOLDER *tran_link;	/* the next BCB holder entry in the BCB holder
 				   list of tran. */
 };
 
@@ -461,26 +431,6 @@ struct pgbuf_buffer_pool
      Log manager set and clears this value while holding TR_TABLE_CS. */
   bool check_for_interrupts;
 
-  /*
-   * The following structures maintain information
-   * for identifying volumes that have temporary purpose.
-   * This information is used for identifying the purpose of each page and
-   * the pageLSA of each page are set according to the purpose of the page.
-   * Volumes are classified as the following three different types.
-   * The permanent volumes have volume ids in increasing order from 0.
-   * The temporary volumes have volume ids in decreasing order from (2^16)-1.
-   * The permanent volumes might have general purpose or temporary purpose.
-   * The permanent volumes with general purpose have only persistent data.
-   * Meanwhile, the permanent volumes with temporary purpose have only
-   * temporary data. (Is this comment right ?)
-   * The common feature of the permanent volumes is the permanent !!.
-   * 'last_perm_volid' is the volume id of the last permanent volume.
-   * 'permvols_tmparea_volids' is the memory space for keeping
-   * volume ids of permanent volumes with temporaty volumes and
-   * 'size_permvols_tmparea_volids' means the size of the memory space.
-   * 'num_permvols_tmparea' means the actual number of volumes ids
-   * contained in the memory space.
-   */
 #if defined(SERVER_MODE)
   MUTEX_T volinfo_mutex;
 #endif				/* SERVER_MODE */
@@ -634,7 +584,7 @@ static void pgbuf_dump_statistics (FILE * ps_log);
 
 /*
  * pgbuf_hash_vpid () - Hash a volume_page identifier
- *   return: hash value 
+ *   return: hash value
  *   key_vpid(in): VPID to hash
  *   htsize(in): Size of hash table
  */
@@ -685,62 +635,6 @@ pgbuf_initialize (void)
 
 #if defined(CUBRID_DEBUG)
   {
-    /*
-       pgbuf_Expensive_debug_free : Indicate if expensive debugging
-       is required on frees.
-       0: Don't do expensive debugging on frees.
-       1: Do expensive debugging on frees.
-       pgbuf_Expensive_debug_fetch : Indicate if expensive debugging
-       is required on fetches.
-       0: Don't do expensive debugging on fetches.
-       1: Do expensive debugging on fetches.
-
-       To prevent some miuses of the page buffer pool and to detect
-       access of invalid disk pages, the page buffer manager executes
-       moderate and expensive debugging blocks, such as the following
-       described below:
-
-       When a page is freed or invalidated, the following debugging
-       blocks are executed:
-       1) Moderate/cheap checks
-       a) Make sure that the given page buffer pointer is valid
-       (i.e., pointer is a page buffer) and that the buffer is
-       pinned (fetched).
-       b) logging to page, if page is dirty.
-       c) check for page over runs.
-       2) Expensive checks
-       a) page content consistency.
-       b) scramble the content of the buffer to detect illegal
-       accesses to the buffer in the short future. If the page
-       is dirty, it is flushed before the buffer is scrambled.
-
-       When a page is fetched, the following debugging blocks are executed:
-       1) Expensive checks
-       a) Make sure the requested page is valid (allocated).
-
-       When a page is set dirty, the following debugging blocks are executed:
-       1) Moderate/cheap checks
-       a) Make sure that the given page buffer pointer is valid
-       (i.e., pointer is a page buffer) and that the buffer is
-       pinned (fetched).
-
-       When a page is flushed, the following debugging blocks are executed:
-       1) Moderate/cheap checks
-       a) Make sure that the given page buffer pointer is valid
-       (i.e., pointer is a page buffer).
-
-       There are more debugging blocks that are not mentioned in this
-       description. Most of these debugging blocks are related to
-       checks for valid buffer pointers when information related to
-       a particular buffer (e.g, what page is contained in the buffer,
-       if the buffer is dirty, the LSA of the page) is requested.
-
-       The expensive checks for frees and fetches can be disabled
-       using the present function.
-
-       NOTE: The above described checks exist only when the page buffer
-       manager is compiled in debugging mode.
-     */
     const char *env_value;
 
     env_value = envvar_get ("PB_EXPENSIVE_DEBUG_FREE");
@@ -1322,8 +1216,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 /*
  * pgbuf_unfix_all () - Unfixes all the buffers that have been fixed by current
  *                  transaction at the time of transaction termination
- *   return: void 
- * 
+ *   return: void
+ *
  * Note: At the time of transaction termination(commit or abort), there must
  *       be no buffers that were fixed by the transaction. In current CUBRID
  *       system, however, above situation has occured. In some later time, our
@@ -1358,8 +1252,8 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  pgbuf_unfix (thread_p, pgptr);
 
 	  /* Within the execution of pgbuf_unfix(), the BCB holder entry is
-	   * moved from the holder list of BCB to the free holder list of 
-	   * transaction, and the BCB holder entry is removed from the holder 
+	   * moved from the holder list of BCB to the free holder list of
+	   * transaction, and the BCB holder entry is removed from the holder
 	   * list of the transaction
 	   */
 #else /* NDEBUG */
@@ -1482,11 +1376,11 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	{
 	  return ER_FAILED;
 	}
-      /* 
+      /*
        * In case of success, bufptr->BCB_mutex is still held by the caller.
        * In case of failure, the cause is the write() system call error.
        * The write() system call can be invoked without holding BCB_mutex
-       * in pb_wal_and_flush_with_BCB() and when the invocation of the 
+       * in pb_wal_and_flush_with_BCB() and when the invocation of the
        * system call turns out as failure, ER_FAILED is returned
        * immediately. So, in case of failure, do not need to release the
        * BCB_mutex.
@@ -1582,11 +1476,11 @@ pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
 }
 
 /*
- * pgbuf_invalidate_all () - Invalidate all unfixed buffers corresponding to 
+ * pgbuf_invalidate_all () - Invalidate all unfixed buffers corresponding to
  *                           the given volume
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
- * 
+ *
  * Note: The pages in these buffers are disassociated from the buffers. If a
  *       page was dirty, it is flushed before the buffer is invalidated.
  */
@@ -1663,7 +1557,7 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
- * pgbuf_flush () - Flush a page out to disk 
+ * pgbuf_flush () - Flush a page out to disk
  *   return: pgptr on success, NULL on failure
  *   pgptr(in): Page pointer
  *   free_page(in): Free the page too ?
@@ -1817,7 +1711,7 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid,
 }
 
 /*
- * pgbuf_flush_all () - Flush all dirty pages out to disk 
+ * pgbuf_flush_all () - Flush all dirty pages out to disk
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
  *
@@ -1833,10 +1727,10 @@ pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
- * pgbuf_flush_all_unfixed () - Flush all unfixed dirty pages out to disk 
+ * pgbuf_flush_all_unfixed () - Flush all unfixed dirty pages out to disk
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
- * 
+ *
  * Note: Every dirty page of the specified volume which is unfixed is written
  *       out to disk. If volid is equal to NULL_VOLID, all dirty pages of all
  *       volumes that are unfixed are written out to disk.
@@ -1849,7 +1743,7 @@ pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
- * pgbuf_flush_all_unfixed_and_set_las_as_null () - Set lsa to null and flush 
+ * pgbuf_flush_all_unfixed_and_set_las_as_null () - Set lsa to null and flush
  *                                     all unfixed dirty pages out to disk
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
@@ -1988,8 +1882,8 @@ try_again:
 	  return NO_ERROR;
 	}
 
-      if ((bufptr->fcnt == 0) && (bufptr->dirty == true) &&
-	  (bufptr->latch_mode != PGBUF_LATCH_FLUSH))
+      if ((bufptr->fcnt == 0) && (bufptr->dirty == true)
+	  && (bufptr->latch_mode != PGBUF_LATCH_FLUSH))
 	{
 	  goto try_again;
 	}
@@ -2041,10 +1935,10 @@ pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
 	}
 
       /* flush when buffer is not fixed or was fixed by reader */
-      if (LSA_LE (&bufptr->oldest_unflush_lsa, last_chkpt_lsa) &&
-	  (bufptr->latch_mode == PGBUF_NO_LATCH ||
-	   bufptr->latch_mode == PGBUF_LATCH_READ ||
-	   bufptr->latch_mode == PGBUF_LATCH_FLUSH))
+      if (LSA_LE (&bufptr->oldest_unflush_lsa, last_chkpt_lsa)
+	  && (bufptr->latch_mode == PGBUF_NO_LATCH
+	      || bufptr->latch_mode == PGBUF_LATCH_READ
+	      || bufptr->latch_mode == PGBUF_LATCH_FLUSH))
 	{
 	  (void) pgbuf_flush_bcb (thread_p, bufptr, true);
 	}
@@ -2276,7 +2170,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 }
 
 /*
- * pgbuf_set_dirty () - Mark as modified the buffer associated with pgptr and 
+ * pgbuf_set_dirty () - Mark as modified the buffer associated with pgptr and
  *                  optionally free the page
  *   return: void
  *   pgptr(in): Pointer to page
@@ -2433,7 +2327,7 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 }
 
 /*
- * pgbuf_get_vpid_ptr () - Find the volume and page identifier associated 
+ * pgbuf_get_vpid_ptr () - Find the volume and page identifier associated
  *                         with the passed buffer
  *   return: pointer to vpid
  *   pgptr(in): Page pointer
@@ -2458,7 +2352,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_get_page_id () - Find the page identifier associated with the 
+ * pgbuf_get_page_id () - Find the page identifier associated with the
  *                        passed buffer
  *   return: PAGEID
  *   pgptr(in): Page pointer
@@ -2656,8 +2550,8 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
 /*
  * pgbuf_set_lsa_as_permanent () - The log sequence address of the page
- *                                        is set to permanent lsa address 
- *   return: void 
+ *                                        is set to permanent lsa address
+ *   return: void
  *   pgptr(in): Pointer to page
  *
  * Note: Set the log sequence address of the page to a permananet LSA address.
@@ -2964,7 +2858,7 @@ pgbuf_initialize_tran_holder (void)
 
   /* phase 2: initialize all the BCB holder entries */
 
-  /* 
+  /*
    * Each transaction has both free holder list and used(held) holder list.
    * The free holder list of each transaction is initialized to
    * have PGBUF_DEFAULT_FIX_COUNT entries and the used holder list of
@@ -3012,7 +2906,7 @@ pgbuf_initialize_tran_holder (void)
  *                            holder list of given transaction
  *   return: pointer to holder entry or NULL
  *   tidx(in): transaction entry index
- * 
+ *
  * Note: If tidx is -1, then allocate the buffer holder entry from the free
  *       holder list of current transaction. If the free holder list is empty,
  *       allocate it from the list of free holder arrays that is shared.
@@ -3249,7 +3143,7 @@ pgbuf_remove_tran_holder (PGBUF_BUFFER * bufptr, PGBUF_HOLDER * holder)
 #if defined(SERVER_MODE)
 /*
  * pb_wait_for_tranusers_string () -
- *   return: 
+ *   return:
  *   holder_list(in):
  */
 static char *
@@ -3851,9 +3745,9 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 	  thread_lock_entry (curr_thrd_entry);
 	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
 	    {
-	      holder =
-		pgbuf_allocate_tran_holder_entry (thread_p, curr_thrd_entry->
-						  tran_index);
+	      holder = pgbuf_allocate_tran_holder_entry (thread_p,
+							 curr_thrd_entry->
+							 tran_index);
 	      if (holder == NULL)
 		{
 		  MUTEX_UNLOCK ((bufptr->BCB_mutex));
@@ -3888,7 +3782,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 
 /*
  * pb_timed_sleep () -
- *   return: NO_ERROR, or ER_code 
+ *   return: NO_ERROR, or ER_code
  *   bufptr(in):
  *   thrd_entry(in):
  */
@@ -4120,9 +4014,9 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BUFFER * bufptr)
 	      continue;
 	    }
 
-	  if ((bufptr->latch_mode == PGBUF_NO_LATCH) ||
-	      (bufptr->latch_mode == PGBUF_LATCH_READ &&
-	       thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
+	  if ((bufptr->latch_mode == PGBUF_NO_LATCH)
+	      || (bufptr->latch_mode == PGBUF_LATCH_READ
+		  && thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
 	    {
 
 	      (void) thread_lock_entry (thrd_entry);
@@ -4815,7 +4709,7 @@ hash_chain_deletion_pass:
 
 /*
  * pb_invalidate_BCB () - Invalidates BCB
- *   return: NO_ERROR, or ER_code 
+ *   return: NO_ERROR, or ER_code
  *   bufptr(in): pointer to buffer page
  */
 static int
@@ -4879,7 +4773,7 @@ pgbuf_invalidate_bcb (PGBUF_BUFFER * bufptr)
 
 /*
  * pb_flush_BCB () - Flushes the buffer
- *   return: NO_ERROR, or ER_code 
+ *   return: NO_ERROR, or ER_code
  *   bufptr(in): pointer to buffer page
  *   synchronous(in): synchronous flush or asynchronous flush
  *
@@ -5327,8 +5221,8 @@ pgbuf_relocate_top_lru (PGBUF_BUFFER * bufptr)
       PGBUF_BUFFER *temp_bufptr;
 
       temp_bufptr = pb_Pool.buf_LRU_list[lru_idx].LRU_middle;
-      while (temp_bufptr != NULL &&
-	     pb_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > 0)
+      while (temp_bufptr != NULL
+	     && pb_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > 0)
 	{
 	  temp_bufptr->zone = PGBUF_LRU_2_ZONE;
 	  pb_Pool.buf_LRU_list[lru_idx].LRU_middle = temp_bufptr->prev_BCB;
@@ -5540,8 +5434,8 @@ pgbuf_unlock_save_mutex (PAGE_PTR pgptr)
  * pgbuf_scramble () - Scramble the content of the buffer
  *   return: void
  *   iopage(in): Pointer to page portion
- * 
- * Note: This is done for debugging reasons to make sure that a user of a 
+ *
+ * Note: This is done for debugging reasons to make sure that a user of a
  *       buffer does not assume that buffers are initialized to zero. For safty
  *       reasons, the buffers are initialized to zero, instead of scrambled,
  *       when running in production mode.
@@ -5556,16 +5450,16 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
 /*
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
- *   vpid(in): Complete Page identifier 
+ *   vpid(in): Complete Page identifier
  *   fun(in): A second function to call to verify if the above page is valid
  *            The function is called on vpid, and arguments
  *   args(in): Additional argument for fun
- * 
+ *
  * Note: Verify that the given page is valid according to functions:
- *         1) disk_isvalid_page 
+ *         1) disk_isvalid_page
  *         2) given fun2 is any
  *       The function is a NOOP if we are not running with full debugging
- *       capacbilities. 
+ *       capacbilities.
  */
 static DISK_ISVALID
 pgbuf_is_valid_page (const VPID * vpid,
@@ -5582,8 +5476,8 @@ pgbuf_is_valid_page (const VPID * vpid,
 	}
 
       valid = disk_isvalid_page (vpid->volid, vpid->pageid);
-      if (valid != DISK_VALID ||
-	  (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
+      if (valid != DISK_VALID
+	  || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
 	{
 	  if (valid != DISK_ERROR)
 	    {
@@ -5608,11 +5502,11 @@ pgbuf_is_valid_page (const VPID * vpid,
 }
 
 /*
- * pgbuf_is_valid_page_ptr () - Validate an in-memory page pointer 
+ * pgbuf_is_valid_page_ptr () - Validate an in-memory page pointer
  *   return: true/false
  *   pgptr(in): Pointer to page
- * 
- * Note: Verify if the given page pointer points to the beginning of a 
+ *
+ * Note: Verify if the given page pointer points to the beginning of a
  *       in-memory page pointer. This function is used for debugging purposes.
  */
 static bool
@@ -5659,12 +5553,12 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 /*
  * pgbuf_dump_if_any_fixed () - Dump buffer pool if any page buffer is fixed
  *   return: void
- * 
+ *
  * Note: This is a debugging function that can be used to verify if buffers
  *       were freed after a set of operations (e.g., a transaction or a API
  *       function).
  *       This function will not give you good results when there are multiple
- *       users in the system (multiprocessing)    
+ *       users in the system (multiprocessing)
  */
 void
 pgbuf_dump_if_any_fixed (void)
@@ -5707,11 +5601,9 @@ pgbuf_dump_if_any_fixed (void)
 
 /*
  * pgbuf_dump () - Dump the system area of each buffer
- *   return: void 
- * 
- * Note: This function is used for debugging purposes, for example after a
- *       basic Unistore operation is executed the fix count of buffer must be
- *       zero; otherwise, some function did not free a buffer. 
+ *   return: void
+ *
+ * Note: This function is used for debugging purposes
  */
 static void
 pgbuf_dump (void)
@@ -5820,22 +5712,22 @@ pgbuf_dump (void)
 
 /*
  * pb_isconsistent () - Check if a page is consistent
- *   return: 
- *   bufptr(in): Pointer to buffer 
- *   likely_bad_after_fixcnt(in): Don't tell me that he page is bad if 
+ *   return:
+ *   bufptr(in): Pointer to buffer
+ *   likely_bad_after_fixcnt(in): Don't tell me that he page is bad if
  *                                fixcnt is greater that this
- * 
+ *
  * Note: Consistency rule:
  *         If memory page is dirty, the content of page should be different to
  *         the content of the page on disk, otherwise, page is considered
  *         inconsistent. That is, someone set a page dirty without updating
  *         the page. This rule may fail since a page can be updated with the
- *         same content that the page on disk, however, this is a remote case.  
- * 
+ *         same content that the page on disk, however, this is a remote case.
+ *
  *         If memory page is not dirty, the content of page should be identical
  *         to the content of the page on disk, otherwise, page is considered
  *         inconsistent. This is the case that someone updates the page without
- *         setting it dirty. 
+ *         setting it dirty.
  */
 static int
 pgbuf_is_consistent (const PGBUF_BUFFER * bufptr, int likely_bad_after_fixcnt)
@@ -5921,8 +5813,8 @@ pgbuf_is_consistent (const PGBUF_BUFFER * bufptr, int likely_bad_after_fixcnt)
 
 #if defined(PAGE_STATISTICS)
 /*
- * pgbuf_initialize_statistics () - 
- *   return: 
+ * pgbuf_initialize_statistics () -
+ *   return:
  *   void(in):
  */
 static int
@@ -5982,7 +5874,7 @@ pgbuf_initialize_statistics (void)
 
 /*
  * pgbuf_finalize_statistics () -
- *   return: 
+ *   return:
  */
 static int
 pgbuf_finalize_statistics (void)
@@ -6047,7 +5939,7 @@ pgbuf_finalize_statistics (void)
 
 /*
  * pgbuf_dump_statistics () -
- *   return: 
+ *   return:
  *   ps_log(in):
  */
 static void

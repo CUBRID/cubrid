@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *      fh.c: file hashing implementation
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * file_hash.c: file hashing implementation
  */
 
 #ident "$Id$"
@@ -19,7 +32,7 @@
 #include "utility.h"
 #include "error_manager.h"
 #include "file_hash.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "object_representation.h"
 
 #include "message_catalog.h"
@@ -41,7 +54,7 @@ static int null_int;
  * smaller prime numbers. For example, between 1000 and 2000, we include
  * only prime numbers that are farther than 50 units. And above 2000, we
  * include prime numbers that are farther in 100 units.
- * 
+ *
  * NOTE: if x is a prime number, the n is prime if
  *       X**(n-1) mod n == 1
  */

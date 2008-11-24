@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * dbi.h - Definitions and function prototypes for the CUBRID
  *         Application Program Interface (API).
  */
@@ -665,7 +681,7 @@ extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);
 extern int db_is_updatable_object (DB_OBJECT * obj);
 extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
 /* query pre-processing functions */
-extern int db_get_query_format (const char *SQLX_query,
+extern int db_get_query_format (const char *CSQL_query,
 				DB_QUERY_TYPE ** type_list,
 				DB_QUERY_ERROR * query_error);
 extern DB_QUERY_TYPE *db_query_format_next (DB_QUERY_TYPE * query_type);
@@ -763,15 +779,15 @@ extern void db_include_oid (DB_SESSION * session, int include_oid);
 extern void db_push_values (DB_SESSION * session, int count,
 			    DB_VALUE * in_values);
 
-extern int db_execute (const char *SQLX_text,
+extern int db_execute (const char *CSQL_query,
 		       DB_QUERY_RESULT ** result,
 		       DB_QUERY_ERROR * query_error);
 
-extern int db_execute_async (const char *SQLX_text,
+extern int db_execute_async (const char *CSQL_query,
 			     DB_QUERY_RESULT ** result,
 			     DB_QUERY_ERROR * query_error);
 
-extern int db_execute_oid (const char *SQLX_text,
+extern int db_execute_oid (const char *CSQL_query,
 			   DB_QUERY_RESULT ** result,
 			   DB_QUERY_ERROR * query_error);
 
@@ -816,9 +832,9 @@ extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
 extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx,
 				  int *life_time);
 
-/* These are used by isqlx but weren't in the 2.0 dbi.h file, added
+/* These are used by csql but weren't in the 2.0 dbi.h file, added
    it for the PC.  If we don't want them here, they should go somewhere
-   else so iqcmd.c doesn't have to have an explicit declaration.
+   else so csql.c doesn't have to have an explicit declaration.
 */
 extern void db_free_query (DB_SESSION * session);
 extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
@@ -830,7 +846,7 @@ extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
  * published in the CUBRID Application Program Interface Reference Guide.
  */
 
-extern int db_query_execute (const char *SQLX_query,
+extern int db_query_execute (const char *CSQL_query,
 			     DB_QUERY_RESULT ** result,
 			     DB_QUERY_ERROR * query_error);
 

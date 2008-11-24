@@ -1,13 +1,29 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- *      tf.h: Definitions for the transformer shared between the client and 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * transform.h: Definitions for the transformer shared between the client and 
  *            server.
  */
 
-#ifndef _TF_H_
-#define _TF_H_
+#ifndef _TRANSFORM_H_
+#define _TRANSFORM_H_
 
 #ident "$Id$"
 
@@ -181,4 +197,4 @@ extern void tf_compile_meta_classes (void);
 extern int tf_install_meta_classes (void);
 #endif /* !CS_MODE */
 
-#endif /* _TF_H_ */
+#endif /* _TRANSFORM_H_ */

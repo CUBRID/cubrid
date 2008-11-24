@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * object_accessor.c - Object accessor module.
  *
- * Note:
  *    This contains code for attribute and method access, instance creation
  *    and deletion, and misc utilitities related to instances.
  */
@@ -21,24 +35,24 @@
 #include "chartype.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "server.h"
+#include "server_interface.h"
 #include "dbtype.h"
 #include "work_space.h"
 #include "object_domain.h"
 #include "object_primitive.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "class_object.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "object_accessor.h"
 #include "authenticate.h"
 #include "db.h"
 #include "locator_cl.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "parser.h"
 #include "transaction_cl.h"
 #include "trigger_manager.h"
-#include "view_transform_2.h"
-#include "network_interface_sky.h"
+#include "view_transform.h"
+#include "network_interface_cl.h"
 
 /* Include this last; it redefines some macros! */
 #include "dbval.h"
@@ -423,17 +437,6 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 
 		  if (found != NULL)
 		    {
-		      /*
-		       * sigh, we didn't know that this was going to be
-		       * a shared attribute when we checked class authorization
-		       * above, we must now upgrade the lock and check
-		       * for alter access.
-		       *
-		       * Since this is logically in the name_space of
-		       * the instance, should we use simple AU_UPDATE
-		       * authorization rather than AU_ALTER even though
-		       * we're technically modifying the class ?
-		       */
 
 		      if (for_write)
 			{
@@ -575,11 +578,6 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 
 	  if (error == NO_ERROR)
 	    {
-	      /*
-	       * if this was a copy of the original set, free the new handle so
-	       * it isn't a gc root until we reference the new set,
-	       * ugly, this kind of operation belongs in prim.c
-	       */
 	      if (new_set != NULL && new_set != setref)
 		{
 		  set_free (new_set);
@@ -625,16 +623,6 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 		  DB_MAKE_NULL (&att->value);
 		}
 
-	      /*
-	       * KLUDGE: For class/shared attributes,
-	       * assuming this is a new incomming set, the reference
-	       * count is 1.  When we get around to freeing the template, it
-	       * decrements the reference count and frees the set out from
-	       * under us.  Since we are establishing a reference here,
-	       * we need to bump the reference count.  This REALLY needs
-	       * to be handled with set MOPs so we can ditch
-	       * the reference count stuff since it is so fragile.
-	       */
 	      if (new_set != NULL)
 		new_set->ref_count++;
 	    }
@@ -1541,29 +1529,6 @@ obj_get_shared (MOP op, const char *name, DB_VALUE * value)
  *    attpath(in): a simple attribute name or path expression
  *    value(out): value container to hold the returned value
  *
- * Note :
- *    This is the basic function for retrieving the value of an
- *    attribute.  This is typically called with just an attribute name.
- *    If the supplied object is an instance, this will look for and return
- *    the values of attributes or shared attributes.  If the supplied object
- *    is a class, this will only look for clas attributes.  The value of
- *    the attribute if found is copied into the value container.  Since this
- *    is a copy the value must be freed using db_value_clear or db_value_free
- *    when it is no longer required.
- *    In addition to accepting an attribute name, this function will parse
- *    a simplified form of path expression.  This is NOT the same as the
- *    full path expressions defined in the SQLX language, it is intended
- *    only as a convenience feature for users of the functional interface.
- *    Basically the path expression allows value references to follow
- *    hierarchies of objects and sets.  Example path expressions are as
- *    follows:
- *
- *    foo.bar		foo is an object that has a bar attribute
- *    foo.bar.baz	three level indirection through object attributes
- *    foo[0]		foo is a set, first element is returned
- *    foo[0].bar	foo is a set of objects, bar attribute of first
- *    			element is returned
- *
  */
 
 int
@@ -1690,32 +1655,6 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
  *
  */
 
-/*
- * In order to support the "old" and "new" objects that are accessible
- * in a trigger, we need to provide a nice MOP based interface for
- * accessing objects which really aren't persistent objects, they just
- * contain values.  For the "new" object, this will be an object template
- * that is about to be applied.  For the "old" object, this will be an object
- * template that contains old values for any attributes that were
- * modified.
- * We build a special MOP with the "is_temp" flag set to indicate that
- * this is a "temporary" or "template" object.  The object accessor functions
- * obj_get, obj_set, obj_is_instance, obj_lock, and obt_edit_object contain
- * logic to handle these types of objects.  All other access functions that
- * fetch the contents of the instance will fail because au_fetch_instance
- * will check for is_temp and return an error.  Functions that require the
- * class without fetching the instance will still work because the temp MOPs
- * will be given a valid class pointer.  This is necessary in order for
- * the obj_send_ family of functions to work.
- * It is also necessary for the new descriptor access functions since
- * we will be passing the temporary MOPs to sm_get_descriptor_component()
- * to fetch the class.
- *
- * obj_copy will fail on the fetch_instance request.
- * obj_delete will fail on the fetch_instance request.
- * obj_send_ functions are ok since we only access the class.
- *
- */
 
 /*
  * obj_get_temp - This is called by obj_get() after it is determined
@@ -2158,11 +2097,10 @@ obj_delete (MOP op)
   else
     {
       if (((error = au_fetch_class (op, &class_, AU_FETCH_READ,
-				    AU_DELETE)) == NO_ERROR) &&
-	  ((error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-				       AU_DELETE)) == NO_ERROR))
+				    AU_DELETE)) == NO_ERROR)
+	  && ((error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
+					  AU_DELETE)) == NO_ERROR))
 	{
-
 	  /* Note that if "op" is a VMOP, au_fetch_instance will have returned
 	   * "obj" as a pointer to the BASE INSTANCE memory which is not the
 	   * instance associated with "op".  When this happens, we need to get
@@ -2821,19 +2759,6 @@ check_args (SM_METHOD * method, ARGSTATE * state)
 					  TP_STR_MATCH);
 		  if (dom)
 		    {
-		      /* Yup, that worked.  At this point we know we have a
-		       * string-y thing (e.g., CHAR, VARCHAR) and a domain that we
-		       * can get to just by changing domain info in the value
-		       * (i.e., we do *not* need to copy the string).
-		       *
-		       * This assumes that tp_value_coerce will reach the same
-		       * conclusion and do the right thing...
-		       *
-		       * we do *NOT* want to clear the string when we finish the method.
-		       * It is actually shared between the incoming value and the
-		       * temp value we've put together, and we want the incoming
-		       * value to retain ownership of the string.
-		       */
 		      *value = *state->values[i];
 		      value->need_clear = false;
 		      status = tp_value_coerce (value, value, arg->domain);
@@ -3895,8 +3820,8 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[],
 	    }
 
 	  i = 0;
-	  while (i < size && *attp && *namep &&
-		 !SM_COMPARE_NAMES ((*attp)->header.name, *namep))
+	  while (i < size && *attp && *namep
+		 && !SM_COMPARE_NAMES ((*attp)->header.name, *namep))
 	    {
 	      attp++;
 	      namep++;
@@ -4313,16 +4238,6 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
     }
   else if (value_type == DB_TYPE_OBJECT)
     {
-      /*
-       * If the OID is temporary, we have something of a dilemma.  It can't
-       * possibly be in the index since it's never been flushed to the server.
-       * That makes the index lookup useless, however, we could still have an
-       * object in the workspace with an attribute pointing to this object.
-       * The only reliable way to use the index is to first flush the class.
-       * This is what a SELECT statement would do anyway so its no big deal.
-       * If after flushing, the referenced object is still temporary, then it
-       * can't possibly be referenced by this class.
-       */
       mop = DB_GET_OBJECT (key);
       if (mop == NULL || WS_ISVID (mop))
 	{

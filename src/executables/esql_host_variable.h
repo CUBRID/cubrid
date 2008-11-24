@@ -1,13 +1,29 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * pp.h - Generic definitions and prototypes for the parser
- *        component of the embedded SQL/X preprocessor.
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
 
-#ifndef _PP_H_
-#define _PP_H_
+
+/*
+ * esql_host_variable.h - Generic definitions and prototypes for the parser
+ *        component of the esql preprocessor.
+ */
+
+#ifndef _ESQL_HOST_VARIABLE_H_
+#define _ESQL_HOST_VARIABLE_H_
 
 #ident "$Id$"
 
@@ -15,23 +31,13 @@
 
 #include <stdio.h>
 #include "esql_hash.h"
-#include "vstr.h"
+#include "variable_string.h"
 
 #define PTR_VEC_CHUNK_SIZE      4
 /* The first C_TYPE that is NOT a valid host variable type */
 #define NUM_C_VARIABLE_TYPES    C_TYPE_SQLDA
 
-/* c_type : data types which is supported for Embbed SQL/X C programs.
- *
- * translator function implementation is highly dependent on this
- * data structure. The followings are should be preserved.
- *       1. First enum value should be 0.
- *       2. C_TYPE_STRING_CONST should come at the last of allowable
- *          C host variable types to be used for count # of allowable types.
- *       3. Additional data types should comes;
- *          right before C_TYPE_STRING_CONST, if it is C host variable type,
- *          at the last, otherwise. trans.c is dependent on this order.
- */
+
 typedef enum c_pype
 {
   C_TYPE_SHORT = 0,		/* should start from 0 */
@@ -152,18 +158,7 @@ struct structdef
   int by_name;			/* See note below                       */
   STRUCTDEF *next;		/* Link to next structdef at this level */
 
-  /*
-   * The by_name field is a bit sleazy: it gets set to 1 in the parser
-   * if we looked up the structdef by its name, rather than by giving
-   * its full elaboration.  It gets cleared in pp_add_struct_spec()
-   * immediately after being transferred to the by_name field in the
-   * specifier.  It is therefore valid only during that period where a
-   * struct_specifier production is returning its result back up to the
-   * type_specifier production.  Thus, even though only one structdef
-   * structure is shared among all specifiers that refer to that
-   * struct, we can get away with storing a piece of information there
-   * that is really unique to each specifier.
-   */
+  
 };
 
 struct ptr_vec
@@ -293,16 +288,7 @@ struct cursor
   int level;			/* The nesting level of the declaration */
   CURSOR *next;			/* A pointer to the next cursor at the  */
   /* same nesting level                   */
-  /*
-   * These two groups ({static_stmt, host_refs} and {dynamic_stmt}) are
-   * actually something of a union, but it is convenient to leave them
-   * broken out separately because of the way we interface with the
-   * translation routines.  The translation routines want both sets of
-   * information: they examine one set to see whether it is valid, and
-   * then use either that set or the other.  We simply maintain both
-   * sets here.  Thus, when static_stmt is non-NULL, dynamic_stmt is
-   * NULL, and vice versa.
-   */
+  
   YY_CHAR *static_stmt;		/* The prepared SELECT statement */
   int stmtLength;
   HOST_LOD *host_refs;		/* The host variables           */
@@ -325,4 +311,4 @@ extern char *pp_get_ind_expr (HOST_REF * ref);
 extern char *pp_get_ind_addr_expr (HOST_REF * ref);
 extern void pp_print_host_ref (HOST_REF * ref, FILE * fp);
 
-#endif /* _PP_H_ */
+#endif /* _ESQL_HOST_VARIABLE_H_ */

@@ -1,12 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * compctdb.c: utility that compacts a database
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * If an object's representation is out of date, it is brought up to date.
- * If an object is referenced, but the object has been deleted, or the
- * object's class has been dropped, the reference is set to null.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * compactdb.c: utility that compacts a database
  */
 
 #ident "$Id$"
@@ -22,14 +33,14 @@
 #include "db.h"
 #include "locator_cl.h"
 #include "locator_sr.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "heap_file.h"
 #include "system_catalog.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "btree.h"
 #include "message_catalog.h"
-#include "server.h"
+#include "server_interface.h"
 #include "system_parameter.h"
 #include "utility.h"
 #include "authenticate.h"
@@ -101,8 +112,8 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     }
 
   AU_DISABLE_PASSWORDS ();
-  if ((error = db_login ("dba", NULL)) ||
-      (error = db_restart (arg->argv0, true, database_name)))
+  if ((error = db_login ("dba", NULL))
+      || (error = db_restart (arg->argv0, true, database_name)))
     {
       fprintf (stderr, "%s: %s.\n\n", exec_name, db_error_string (3));
       status = error;
@@ -465,7 +476,7 @@ process_value (DB_VALUE * value)
 		ref_class_oid.slotid);
 #endif
 
-	if (heap_does_exist (NULL, ref_oid, &ref_class_oid) == false)
+	if (!heap_does_exist (NULL, ref_oid, &ref_class_oid))
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -544,8 +555,8 @@ static int
 disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 {
   HFID *hfid;
-  int has_indexes, save_newsize;
-  bool oldflag;
+  int save_newsize;
+  bool has_indexes, oldflag;
 
   assert (oid != NULL);
 

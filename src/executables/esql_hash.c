@@ -1,19 +1,36 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * hash.c - Generic hash table implementation.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
+
+
+/*
+ * esql_hash.c - Generic hash table implementation.
+ */
+
 #ident "$Id$"
 
 #include "config.h"
 
 #include <stdlib.h>
 #include "util_func.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "esql_hash.h"
 #include "esql_misc.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 
 typedef struct bucket BUCKET;
 struct bucket
@@ -56,7 +73,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort);
 static int es_ht_get_symbol_count (HASH_TAB * table);
 
 /*
- * es_write_log() - write log message to file 
+ * es_write_log() - write log message to file
  * return: void
  * fname(in) : log file name to write
  * msg(in) : message string
@@ -204,7 +221,7 @@ es_ht_find_symbol (HASH_TAB * table, void *sym)
 /*
  * es_ht_next_symbol() - Return a pointer to the next node in the current
  *   chain that has the same key as the last node found (or NULL if there is
- *   no such node). 
+ *   no such node).
  * return : void *
  * table: The table to be searched.
  * last_sym: pointer returned from a previous es_ht_find_symbol() or

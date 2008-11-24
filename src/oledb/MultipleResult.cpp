@@ -1,3 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
 // MultipleResult.cpp : Implementation of CMultipleResult
 
 #include "stdafx.h"
@@ -51,7 +81,7 @@ HRESULT CMultipleResult::GetResult(IUnknown *pUnkOuter, DBRESULTFLAG lResultFlag
 	CCUBRIDCommand* cmd = NULL;
 	CCUBRIDRowset* pRowset = NULL;
 	int result_count = 0, rc;
-	T_CCI_SQLX_CMD cmd_type;
+	T_CCI_CUBRID_STMT cmd_type;
 	T_CCI_ERROR error;
 
 	ClearError();
@@ -134,7 +164,7 @@ HRESULT CMultipleResult::GetResult(IUnknown *pUnkOuter, DBRESULTFLAG lResultFlag
 	}
 
 	result_count = CCI_QUERY_RESULT_RESULT(m_qr, m_resultIndex);
-	cmd_type = (T_CCI_SQLX_CMD)CCI_QUERY_RESULT_STMT_TYPE(m_qr, m_resultIndex);
+	cmd_type = (T_CCI_CUBRID_STMT)CCI_QUERY_RESULT_STMT_TYPE(m_qr, m_resultIndex);
 	//쿼리 인덱스 증가
 	m_resultIndex++;
 
@@ -143,10 +173,10 @@ HRESULT CMultipleResult::GetResult(IUnknown *pUnkOuter, DBRESULTFLAG lResultFlag
 
 	if (riid == IID_IRow)
 	{	
-		if (ppRowset && (cmd_type==SQLX_CMD_SELECT ||
-		   cmd_type==SQLX_CMD_GET_STATS ||
-		   cmd_type==SQLX_CMD_CALL ||
-		   cmd_type==SQLX_CMD_EVALUATE))
+		if (ppRowset && (cmd_type==CUBRID_STMT_SELECT ||
+		   cmd_type==CUBRID_STMT_GET_STATS ||
+		   cmd_type==CUBRID_STMT_CALL ||
+		   cmd_type==CUBRID_STMT_EVALUATE))
 		{
 			CComPolyObject<CCUBRIDRow> *pRow;
 			HRESULT hr = CComPolyObject<CCUBRIDRow>::CreateInstance(pUnkOuter, &pRow);
@@ -185,7 +215,7 @@ HRESULT CMultipleResult::GetResult(IUnknown *pUnkOuter, DBRESULTFLAG lResultFlag
 			//	return DB_S_NOTSINGLETON;
 		} else
 		{
-			if (cmd_type == SQLX_CMD_SELECT)
+			if (cmd_type == CUBRID_STMT_SELECT)
 			{
 				if (pcRowsAffected)
 					*pcRowsAffected = -1;
@@ -211,10 +241,10 @@ HRESULT CMultipleResult::GetResult(IUnknown *pUnkOuter, DBRESULTFLAG lResultFlag
 	//IID_IRow 처럼 다르게 처리해 주어야 하는 경우가 또 있을까?
 	else
 	{	
-		if(cmd_type==SQLX_CMD_SELECT ||
-		   cmd_type==SQLX_CMD_GET_STATS ||
-		   cmd_type==SQLX_CMD_CALL ||
-		   cmd_type==SQLX_CMD_EVALUATE)
+		if(cmd_type==CUBRID_STMT_SELECT ||
+		   cmd_type==CUBRID_STMT_GET_STATS ||
+		   cmd_type==CUBRID_STMT_CALL ||
+		   cmd_type==CUBRID_STMT_EVALUATE)
 		{
 			if (ppRowset)
 			{

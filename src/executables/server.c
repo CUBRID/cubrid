@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * server.c - server main
- *
  */
 
 #ident "$Id$"
@@ -27,7 +41,7 @@
 
 #include "porting.h"
 #include "system_parameter.h"
-#include "csserror.h"
+#include "connection_error.h"
 #include "network.h"
 #include "environment_variable.h"
 #include "boot_sr.h"
@@ -102,7 +116,7 @@ LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_nam
 
     GetLocalTime(&SystemTime);
 
-    sprintf(DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp", 
+    sprintf(DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
 		envvar_root(),
 		EXECUTABLE_BIN_DIR,
         SystemTime.wYear,
@@ -111,31 +125,31 @@ LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_nam
         SystemTime.wHour,
         SystemTime.wMinute,
         SystemTime.wSecond);
-    
+
     FileHandle = CreateFile(
-        DumpPath, 
-        GENERIC_WRITE, 
-        FILE_SHARE_WRITE, 
-        NULL, CREATE_ALWAYS, 
-        FILE_ATTRIBUTE_NORMAL, 
+        DumpPath,
+        GENERIC_WRITE,
+        FILE_SHARE_WRITE,
+        NULL, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
         NULL);
 
     if (FileHandle != INVALID_HANDLE_VALUE)
     {
         MINIDUMP_EXCEPTION_INFORMATION MiniDumpExceptionInfo;
 		BOOL Success ;
-        
+
         MiniDumpExceptionInfo.ThreadId            = GetCurrentThreadId();
         MiniDumpExceptionInfo.ExceptionPointers    = pException;
         MiniDumpExceptionInfo.ClientPointers    = FALSE;
 
         Success = MiniDumpWriteDump(
-            GetCurrentProcess(), 
-            GetCurrentProcessId(), 
-            FileHandle, 
-            MiniDumpNormal, 
-			(pException) ? &MiniDumpExceptionInfo : NULL, 
-            NULL, 
+            GetCurrentProcess(),
+            GetCurrentProcessId(),
+            FileHandle,
+            MiniDumpNormal,
+			(pException) ? &MiniDumpExceptionInfo : NULL,
+            NULL,
             NULL);
     }
 
@@ -143,7 +157,7 @@ LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_nam
 
 	/* restart cub_server.exe */
 	GetStartupInfo (&si);
-	
+
 	snprintf (cmd_line, PATH_MAX, "\"%s\" \"%s\"", executable_path,
 	    db_name);
 

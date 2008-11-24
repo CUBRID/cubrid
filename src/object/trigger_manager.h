@@ -1,16 +1,19 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * trigger_manager.h - Trigger Manager Definitions
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
  *
- * Note:
- *    The following definitions have been moved to dbdef.h.
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
  *
- *    DB_TRIGGER_STATUS
- *    DB_TRIGGER_EVENT
- *    DB_TRIGGER_TIME
- *    DB_TRIGGER_ACTION
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
 
 #ifndef _TRIGGER_MANAGER_H_
@@ -18,7 +21,7 @@
 
 #ident "$Id$"
 
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "class_object.h"
@@ -53,37 +56,12 @@
 
 #define TR_MAX_PRINT_STRING 2048
 
-/*
- * TR_MAX_ATTRIBUTE_TRIGGERS
- * TR_MAX_CLASS_TRIGGERS
- *
- * Note:
- *    These are constants based on the definition of DB_TRIGGER_EVENT
- *    which is now defined in dbdef.h.
- *    They are used to determine the ranges of the class & attribute
- *    trigger caches.
- *    The definition of DB_TRIGGER_EVENT is very important since the
- *    numeric constants are used directly as array indexes.
- *    If the DB_TRIGGER_EVENT enumeration changes, these constants
- *    and code in tr.c will also have to be changed.
- *
- */
+
 
 #define TR_MAX_ATTRIBUTE_TRIGGERS (int)TR_EVENT_STATEMENT_UPDATE + 1
 #define TR_MAX_CLASS_TRIGGERS     (int)TR_EVENT_DROP + 1
 
-/*
- * TR_TRIGGER
- *
- * Note:
- *    This is the primary in memory structure used for representint
- *    triggers.  Though triggers are stored in the database as normal
- *    instances of the db_trigger class, when they are cached, they are
- *    converted to one of these structures for fast access.
- *    A table that MAPs trigger MOPs into the corresponding trigger
- *    structure is maintained.
- *
- */
+
 
 typedef struct tr_trigger
 {
@@ -111,16 +89,7 @@ typedef struct tr_trigger
   int chn;
 } TR_TRIGGER;
 
-/*
- * TR_TRIGLIST
- *
- * Note:
- *    This is used to maintain lists of trigger structures.
- *    It is doubly linked so removals are fast.
- *    In hindsight, this probably doesn't need to be doubly linked but
- *    it doesn't hurt anything right now.
- *
- */
+
 
 typedef struct tr_triglist
 {
@@ -134,26 +103,7 @@ typedef struct tr_triglist
   int recursion_level;
 } TR_TRIGLIST;
 
-/*
- * TR_DEFERRED_CONTEXT
- *
- * Note:
- *    This is used to maintain lists of deferred activities.
- *    As trigger activities are deferred, a TR_TRIGLIST is build containing
- *    the necessary information.  These TR_TRIGLISTs are concatenated
- *    with the "triglist" field of the active tr_deferred_context structure
- *    The reason we have another level of indirection with the deferred
- *    activity lists is because they must be grouped according to
- *    savepoint boundaries.  If the user rolls back to a specific savepoint,
- *    all deferred triggers that occurred between now and the selected
- *    savepoint must be removed.  This process is simplified if we maintain
- *    a stack of tr_deferred_context structures for each savepoint.
- *    Each stack entry contains the list of deferred triggers that
- *    were scheduled durint that savepoint.
- *    For transactions without savepoints, there will be only one
- *    element on the tr_deferred_context list.
- *
- */
+
 
 typedef struct tr_deferred_context
 {
@@ -200,21 +150,7 @@ typedef struct tr_state
   TR_TRIGLIST *triggers;
 } TR_STATE;
 
-/*
- * TR_SCHEMA_CACHE
- *
- * Note:
- *    This structure is attached to class and attribute structures so that
- *    the triggers defined for a class can be quickly determined.
- *    The structure will be allocated of variable length depending on
- *    whether this will be attached to the class or an attribute.
- *    If it is attached to an attribute, we only allocate space for
- *    TR_MAX_ATTRIBUTE_TRIGGERS in the trigger array, otherwise we
- *    allocate TR_MAX_CLASS_TRIGGERS.
- *    Doing it this way simplifies the code because we don't have to
- *    duplicate everything just to handle two different array lengths.
- *
- */
+
 
 typedef struct tr_schema_cache
 {
@@ -335,7 +271,7 @@ extern int tr_set_priority (DB_OBJECT * trigger_object, double priority,
 extern int tr_get_depth (void);
 extern int tr_set_depth (int depth);
 extern int tr_get_trace (void);
-extern int tr_set_trace (int trace);
+extern int tr_set_trace (bool trace);
 
 /* Signaling */
 
@@ -438,9 +374,9 @@ extern const char *tr_time_as_string (DB_TRIGGER_TIME time);
 extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
 extern int tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp,
-			    int quoted_id_flag);
-extern int tr_dump_all_triggers (FILE * fp, int quoted_id_flag);
-extern int tr_dump_selective_triggers (FILE * fp, int quoted_id_flag,
+			    bool quoted_id_flag);
+extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
+extern int tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 				       DB_OBJLIST * classes);
 
 extern void tr_free_trigger_list (TR_TRIGLIST * list);

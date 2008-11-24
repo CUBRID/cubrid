@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * db_admin.c - CUBRID Application Program Interface.
  *      Functions related to database creation and administration.
  */
@@ -17,26 +33,26 @@
 
 #include "porting.h"
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "environment_variable.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
-#include "memory_manager_2.h"
-#include "execute_schema_8.h"
-#include "jsp_earth.h"
-#include "execute_statement_11.h"
+#include "memory_alloc.h"
+#include "execute_schema.h"
+#include "jsp_cl.h"
+#include "execute_statement.h"
 #include "glo_class.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -96,7 +112,7 @@ int
 db_init (const char *program, int print_version,
 	 const char *dbname, const char *db_path, const char *vol_path,
 	 const char *log_path, const char *host_name,
-	 const int overwrite, const char *comments, int npages,
+	 const bool overwrite, const char *comments, int npages,
 	 const char *addmore_vols_file, int desired_pagesize, int log_npages)
 {
   int value;
@@ -169,7 +185,7 @@ db_init (const char *program, int print_version,
 
   error =
     boot_initialize_client (program, (bool) print_version, dbname, db_path,
-			    vol_path, log_path, host_name, (bool) overwrite,
+			    vol_path, log_path, host_name, overwrite,
 			    comments, (DKNPAGES) npages, addmore_vols_file,
 			    (PGLENGTH) desired_pagesize, log_npages);
 
@@ -336,33 +352,11 @@ db_get_database_comments (void)
  */
 
 /*
- * db_login() - see the note below.
+ * db_login() -
  * return      : Error code.
  * name(in)    : user name
  * password(in): optional password
  *
- * note:
- *    Logs in a user in preparation for database access.
- *    There are two times that login can occur.  First, it should be called
- *    before any database is restarted in order to "register" the user and
- *    make sure that there is even fundamental access to a particular database
- *    before restarting.  After a database has been successfully restarted,
- *    the logged in user can be changed provided that the new user has
- *    access to the database.  If the new user would not have access, the
- *    original user remains logged in.  In order to get the database open
- *    there must have been at least one valid user logged in.
- *
- *    If there is no password defined for the given user, the password
- *    argument may be NULL.  If there is a defined password, the argument
- *    must exactly match the stored password string.  The comparison
- *    is CASE SENSITIVE.  Basically it uses strcmp so imbedded spaces and
- *    control characters are allowed.
- *
- *    If the database has not yet been opened (restarted) this won't return
- *    an error but will rather just record the name and password.  The actual
- *    authorization error will ocurr on the db_restart when the user object
- *    is consulted.  If a database is already opened, the error will be
- *    returned directly from this function.
  */
 int
 db_login (const char *name, const char *password)
@@ -563,7 +557,7 @@ db_commit_is_needed (void)
 
   CHECK_CONNECT_FALSE ();
 
-  retval = tran_has_updated ();
+  retval = (tran_has_updated ())? 1 : 0;
 
   return (retval);
 }
@@ -1715,23 +1709,6 @@ db_fetch_seq (DB_SEQ * seq, DB_FETCH_MODE purpose, int quit_on_error)
  * db_fetch_composition() -
  *    This function locks and fetches a composition hierarchy in a single
  *    call to the server.  It is provided for performance only.
- *    The object parameter is the root of the composition hierarchy.
- *    The purpose argument specifies for what type of operation the objects
- *    in the hhierarchy are needed. Depending upon the operation the system
- *    will decide on the needed lock. The max_level has the maximum number of
- *    levels to traverse in the hierarchy before stopping.  Proper setting
- *    of the max_level parameter is necesary to avoid fetching large numbers
- *    of objects.  The caller of this function should have a detailed
- *    understanding of the composition hierarchy being fetched so that
- *    the max_level can be set to an appropriate value.
- *    If quit_on_error is zero, an attempt will be made to fetch all of
- *    the objects in the hiararchy.  If any of the objects cannot be fetched
- *    with the indicated lock, it will be ignored.  In this case, an error
- *    code will be returned only if there was another system error such
- *    as unilateral abort due to a deadlock detection.
- *    If quit_on_error is non-zero, the operation will stop the first
- *    time a lock cannot be obtained on any object.  The lock error
- *    will then be returned by this function.
  * return : error code
  * object(in/out)    : object that is the root of a composition hierarchy
  * purpose(in)       : fetch purpose

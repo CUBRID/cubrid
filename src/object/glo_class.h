@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * glo_class.h - Attribute names for the Glo class
  *
  */
@@ -102,7 +118,7 @@
 
 /*
  * IS_STRING() - Macro to determine if a dbvalue is a character strign type
- *   
+ *
  */
 
 #define IS_STRING(n)     (db_value_type(n) == DB_TYPE_VARCHAR  || \
@@ -111,7 +127,6 @@
                           db_value_type(n) == DB_TYPE_NCHAR)
 
 
-/* function body in glo.c */
 extern void esm_set_error (const int error);
 extern void esm_Glo_read (DB_OBJECT * esm_glo_object_p,
 			  DB_VALUE * return_argument_p,
@@ -183,7 +198,6 @@ extern void esm_Glo_create_fbo (DB_OBJECT * esm_glo_class_p,
 				DB_VALUE * return_argument_p,
 				DB_VALUE * path_name_p);
 
-/* function body in script.c */
 extern void esm_load_esm_classes (void);
 
 extern void
@@ -203,8 +217,6 @@ def_class_signature (DB_OBJECT * class_obj, const char *method_name,
 extern void esm_define_esm_classes (void);
 extern void esm_add_method (char *class_name, char *method_name,
 			    char *implementation_name);
-
-/* function body in query.c */
 
 extern DB_OBJECT *esm_find_holder_object (const char *pathname);
 extern int esm_find_glo_count (DB_OBJECT * holder_p, int *object_count);

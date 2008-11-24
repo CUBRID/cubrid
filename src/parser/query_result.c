@@ -1,33 +1,45 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * pt_qres.c - Helper functions to allocate, initialize query result
- *    descriptor for select expressions.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note : Placed these functions in a separate file because some of them need
- *    to include qp_list.h without conflicting with dbi.h
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * query_result.c - Helper functions to allocate, initialize query result
+ *                  descriptor for select expressions.
  */
 
 #ident "$Id$"
 
 #include "config.h"
 
-#include "ustring.h"
+#include "misc_string.h"
 #include "error_manager.h"
 #include "parser.h"
-#include "msgexec.h"
-#include "server.h"
+#include "parser_message.h"
+#include "server_interface.h"
 #include "db_query.h"
-#include "qp_mem.h"
+#include "xasl_support.h"
 #include "object_accessor.h"
-#include "schema_manager_3.h"
-#include "memory_manager_2.h"
-#include "execute_statement_11.h"
-#include "xasl_generation_2.h"
+#include "schema_manager.h"
+#include "memory_alloc.h"
+#include "execute_statement.h"
+#include "xasl_generation.h"
 #include "object_primitive.h"
 #include "db.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 static size_t pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
@@ -103,22 +115,30 @@ pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node)
   unsigned int save_custom = parser->custom_print;
 
   while (node && node->node_type == PT_DOT_)
-    node = node->info.dot.arg2;
+    {
+      node = node->info.dot.arg2;
+    }
 
   if (!node)
-    return NULL;
+    {
+      return NULL;
+    }
   if (node->node_type != PT_NAME)
-    return NULL;
+    {
+      return NULL;
+    }
 
-  parser->custom_print = parser->custom_print |
-    PT_SUPPRESS_RESOLVED | PT_SUPPRESS_SELECTOR;
+  parser->custom_print = (parser->custom_print
+			  | PT_SUPPRESS_RESOLVED | PT_SUPPRESS_SELECTOR);
 
   nam = parser_print_tree (parser, node);
   parser->custom_print = save_custom;
 
   res = (char *) malloc (1 + strlen (nam));
   if (res)
-    strcpy (res, nam);
+    {
+      strcpy (res, nam);
+    }
 
   return res;
 }
@@ -244,8 +264,10 @@ pt_get_src_domain (PARSER_CONTEXT * parser, const PT_NODE * s,
       && (spec_id = leaf->info.name.spec_id)
       && (spec = pt_find_entity (parser, specs, spec_id))
       && (entity_names = spec->info.spec.flat_entity_list))
-    pt_set_domain_class_list (result, entity_names,
-			      entity_names->info.name.virt_object);
+    {
+      pt_set_domain_class_list (result, entity_names,
+				entity_names->info.name.virt_object);
+    }
 
   return result;
 }
@@ -435,9 +457,9 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	  if (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL)
 	    db_make_null (&col->info.value.db_value);
 
-	  if ((attr2->type_enum == PT_TYPE_NONE) ||
-	      (attr2->type_enum == PT_TYPE_NA) ||
-	      (attr2->type_enum == PT_TYPE_NULL))
+	  if ((attr2->type_enum == PT_TYPE_NONE)
+	      || (attr2->type_enum == PT_TYPE_NA)
+	      || (attr2->type_enum == PT_TYPE_NULL))
 	    {
 
 	      /* convert type to that of non-null */
@@ -457,9 +479,9 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 		parser_copy_tree_list (parser, attr1->data_type);
 
 	    }
-	  else if ((attr1->type_enum == PT_TYPE_NONE) ||
-		   (attr1->type_enum == PT_TYPE_NA) ||
-		   (attr1->type_enum == PT_TYPE_NULL))
+	  else if ((attr1->type_enum == PT_TYPE_NONE)
+		   || (attr1->type_enum == PT_TYPE_NA)
+		   || (attr1->type_enum == PT_TYPE_NULL))
 	    {
 	      /* convert type to that of non-null */
 	      if (col->type_enum == PT_TYPE_NA && col->alias_print == NULL)
@@ -476,12 +498,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 		{
 		  parser_free_tree (parser, col->data_type);
 		}
-	      col->data_type =
-		parser_copy_tree_list (parser, attr2->data_type);
+	      col->data_type = parser_copy_tree_list (parser,
+						      attr2->data_type);
 	    }
-	  else if (common_type == PT_TYPE_NUMERIC ||
-		   (common_type != PT_TYPE_NONE &&
-		    col->type_enum != common_type))
+	  else if (common_type == PT_TYPE_NUMERIC
+		   || (common_type != PT_TYPE_NONE
+		       && col->type_enum != common_type))
 	    {
 	      col->type_enum = common_type;
 
@@ -489,8 +511,8 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 		{
 		  parser_free_tree (parser, col->data_type);
 		}
-	      col->data_type =
-		parser_copy_tree_list (parser, attr2->data_type);
+	      col->data_type = parser_copy_tree_list (parser,
+						      attr2->data_type);
 
 	    }
 	}
@@ -584,27 +606,6 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
  *   col(in): column to create the query type node from.
  *   from_list(in):
  *
- * Note :
- * allocates a new query type node and uses col to initialize the fields.
- * +========================================================+
- * |                | before resolution | after resolution  |
- * |                |---------+---------+---------+---------|
- * | col->node_type | PT_NAME | PT_DOT_ | PT_NAME | PT_DOT_ |
- * |========================================================|
- * | name           |    PA   |  PA,DS  |       SR,PA       |
- * |----------------+---------+---------+---------+---------|
- * | spec_name      |                 NULL                  |
- * |                |   assigned in pt_fillin_type_size()   |
- * |----------------+---------+---------+---------+---------|
- * | attr_name      |  SR,P   |  SR,PR  |   SR,P  |  SR,PR  |
- * |----------------+---------+---------+---------+---------|
- * | original_name  |         PA        |       SR,PA       |
- * +========================================================+
- * P : parser_print_tree()
- * PR: parser_print_tree(rightmost_attr)
- * PA: pt_print_alias()
- * SR: set PT_SUPPRESS_RESOLVED
- * DS: if (col->alias_print == NULL) do_strip
  */
 
 static DB_QUERY_TYPE *
@@ -682,21 +683,6 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
 	    }
 	  break;
 	case PT_DOT_:
-	  /*
-	   * PT_DOT_ node consists of left skewed tree
-	   * for example) x.y.z
-	   *                  PT_DOT_
-	   *                  /     \
-	   *        info.dot.arg1  info.dot.arg2
-	   *                /         \
-	   *               V           V
-	   *            PT_DOT_      PT_NAME(Z)
-	   *            /     \
-	   *  info.dot.arg1  info.dot.arg2
-	   *          /         \
-	   *         V           V
-	   *     PT_NAME(x)    PT_NAME(y)
-	   */
 
 	  /* traverse left node */
 	  node = (PT_NODE *) col;
@@ -880,10 +866,10 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 	    {
 	      node = node->info.dot.arg1;	/* root node for path expression */
 	    }
-	  if (node->node_type == PT_NAME &&
-	      (spec_id = node->info.name.spec_id) &&
-	      (spec = pt_find_entity (parser, from_list, spec_id)) &&
-	      spec->info.spec.range_var)
+	  if (node->node_type == PT_NAME
+	      && (spec_id = node->info.name.spec_id)
+	      && (spec = pt_find_entity (parser, from_list, spec_id))
+	      && spec->info.spec.range_var)
 	    {
 	      spec_name = spec->info.spec.range_var->info.name.original;
 	    }
@@ -897,10 +883,10 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 	      node = node->info.dot.arg2;	/* leaf node for qualified method */
 	    }
 	  node = node->info.method_call.method_name;
-	  if (node->node_type == PT_NAME &&
-	      (spec_id = node->info.name.spec_id) &&
-	      (spec = pt_find_entity (parser, from_list, spec_id)) &&
-	      spec->info.spec.range_var)
+	  if (node->node_type == PT_NAME
+	      && (spec_id = node->info.name.spec_id)
+	      && (spec = pt_find_entity (parser, from_list, spec_id))
+	      && spec->info.spec.range_var)
 	    {
 	      spec_name = spec->info.spec.range_var->info.name.original;
 	    }
@@ -920,10 +906,12 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 	  else
 	    {
 	      /* there are plural class specs */
-	      original_name = pt_append_string
-		(parser,
-		 pt_append_string (parser,
-				   (char *) t->spec_name, "."), t->name);
+	      original_name = pt_append_string (parser,
+						pt_append_string (parser,
+								  (char *) t->
+								  spec_name,
+								  "."),
+						t->name);
 	      t->original_name = (char *) malloc (strlen (original_name) + 1);
 	    }
 	  if (!t->original_name)
@@ -953,7 +941,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
   DB_QUERY_RESULT *r = NULL;
   QFILE_LIST_ID *list_id;
   int oids_included = 0;
-  int failure = false;
+  bool failure = false;
 
   if (query)
     oids_included = query->info.query.oids_included;
@@ -982,7 +970,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
       r->oid_included = oids_included == 1;
       r->res.s.query_id = parser->query_id;
       r->res.s.stmt_id = 0;
-      r->res.s.stmt_type = SQLX_CMD_SELECT;
+      r->res.s.stmt_type = CUBRID_STMT_SELECT;
       r->res.s.cache_time = query->cache_time;
 
       /* the following is for clean up when the query fails */
@@ -1047,12 +1035,14 @@ void
 pt_free_query_etc_area (PT_NODE * query)
 {
 
-  if (query->etc &&
-      (query->node_type == PT_SELECT ||
-       query->node_type == PT_DIFFERENCE ||
-       query->node_type == PT_INTERSECTION || query->node_type == PT_UNION))
-    regu_free_listid ((QFILE_LIST_ID *) query->etc);
-
+  if (query->etc
+      && (query->node_type == PT_SELECT
+	  || query->node_type == PT_DIFFERENCE
+	  || query->node_type == PT_INTERSECTION
+	  || query->node_type == PT_UNION))
+    {
+      regu_free_listid ((QFILE_LIST_ID *) query->etc);
+    }
 }
 
 
@@ -1067,7 +1057,9 @@ pt_end_query (PARSER_CONTEXT * parser)
   if (parser->query_id > 0)
     {
       if (er_errid () != ER_LK_UNILATERALLY_ABORTED)
-	qmgr_end_query (parser->query_id);
+	{
+	  qmgr_end_query (parser->query_id);
+	}
       parser->query_id = -1;
     }
 }

@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * db_set.c - API functions for manipulating sets & sequences.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * db_set.c - API functions for manipulating sets & sequences.
  */
 
 #ident "$Id$"
@@ -17,20 +31,20 @@
 #include <string.h>
 
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "server.h"
-#include "set_object_1.h"
+#include "server_interface.h"
+#include "set_object.h"
 
 #if !defined(SERVER_MODE)
-#include "object_print_1.h"
+#include "object_print.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #endif
 
 #include "parser.h"
@@ -60,7 +74,7 @@
  * return : set descriptor
  * classop(in): class or instance pointer
  * name(in): attribute name
- * 
+ *
  * note : The returned set is not immediately given to the attribute
  *   it must be given to an attribute later using a db_put() call
  */
@@ -123,7 +137,7 @@ db_set_create (MOP classop, const char *name)
  * return : set descriptor
  * classop(in): class or instance
  * name(in): attribute name
- * 
+ *
  * note : The new set will not be attached to any object, so you must use the
  *   db_put() function to assign it as the value of an attribute.
  */
@@ -182,7 +196,7 @@ db_set_create_basic (MOP classop, const char *name)
  * return : set descriptor
  * classop(in): class or instance
  * name(in): attribute name
- * 
+ *
  * note : The new set will not be attached to any object, so you must use the
  *    db_put() function to assign it as the value of an attribute.
  */
@@ -242,7 +256,7 @@ db_set_create_multi (MOP classop, const char *name)
  * classop(in): class or instance
  * name(in): attribute name
  * size(in): initial size
- * 
+ *
  * note : The new set will not be attached to any object, so you must use the
  *    db_put( ) function to assign it as the value of an attribute. If the size
  *    is not known, it is permissible to pass zero.
@@ -296,10 +310,10 @@ db_seq_create (MOP classop, const char *name, int size)
 
 /*
  * db_set_free() - This function frees a set handle. If the set is owned by an
- *    object, the contents of the set are not freed, only the set handle is 
+ *    object, the contents of the set are not freed, only the set handle is
  *    freed. If the set is not owned by an object, the handle and all of the
  *    elements are freed.
- * return : error code									      
+ * return : error code
  * set(in): set descriptor
  */
 int
@@ -316,7 +330,7 @@ db_set_free (DB_SET * set)
 
 /*
  * db_seq_free() -
- * return : error code                                                                        
+ * return : error code
  * seq(in): set descriptor
  */
 int
@@ -393,7 +407,7 @@ db_seq_filter (DB_SET * set)
  *    persistent in the database.
  * return : a new set
  * source(in): a set to copy
- * 
+ *
  * note : To make the set persistent, you must assign it as the value of an
  *   object attribute. If you do not assign the set to an attribute, it must be
  *   freed manually with db_set_free function
@@ -419,7 +433,7 @@ db_set_copy (DB_SET * source)
  *    be persistent in the database.
  * return : a new sequence
  * source(in): a sequence to copy
- * 
+ *
  * note : To make the sequence persistent, you must assign it as the value of
  *   an object attribute. If you do not assign the sequence to an attribute,
  *   it must be freed manually with db_seq_free function
@@ -454,7 +468,7 @@ db_seq_copy (DB_SEQ * source)
  * return : error code
  * set(in): set descriptor
  * value(in): value to add
- * 
+ *
  * note : you may not make any assumptions about the position of the value
  *    within the set; it will be added wherever the system determines is most
  *    convenient. If you need to have sets with ordered elements, you must use
@@ -490,7 +504,7 @@ db_set_add (DB_SET * set, DB_VALUE * value)
 /*
  * db_set_get() - This function gets the value of an element of a set or
  *    multiset. This is the only set or multiset function that accepts an
- *    index. The first element of the set is accessed with an index of 0 
+ *    index. The first element of the set is accessed with an index of 0
  *    (zero). The index is used to sequentially retrieve elements and assumes
  *    that the set will not be modified for the duration of the set iteration
  *    loop. You cannot assume that the elements of the set remain in any
@@ -499,10 +513,10 @@ db_set_add (DB_SET * set, DB_VALUE * value)
  * set(in): set descriptor
  * index(in) : element index
  * value(out): value container to be filled in with element value
- * 
+ *
  * note : The supplied value container is filled in with a copy of the set
  *    element contents and must be freed with db_value_clear or db_value_free
- *    when the value is no longer required.				      
+ *    when the value is no longer required.
  */
 int
 db_set_get (DB_SET * set, int index, DB_VALUE * value)
@@ -522,9 +536,9 @@ db_set_get (DB_SET * set, int index, DB_VALUE * value)
  *    or multiset. If no element matches the supplied value, a zero is
  *    returned, indicating no error occurred. If more than one element matches,
  *    only the first one is removed.
- * return : error code                                                
- * set(in): set descriptor						      
- * value(in): value to drop from the set				      
+ * return : error code
+ * set(in): set descriptor
+ * value(in): value to drop from the set
  */
 int
 db_set_drop (DB_SET * set, DB_VALUE * value)
@@ -603,7 +617,7 @@ db_set_ismember (DB_SET * set, DB_VALUE * value)
   CHECK_1ARG_FALSE (set);
 
   /* allow all types */
-  retval = (set_ismember (set, value));
+  retval = (set_ismember (set, value)) ? 1 : 0;
 
   return (retval);
 }
@@ -626,7 +640,7 @@ db_set_isempty (DB_SET * set)
   CHECK_1ARG_FALSE (set);
 
   /* allow all types */
-  retval = (set_isempty (set));
+  retval = (set_isempty (set)) ? 1 : 0;
 
   return (retval);
 }
@@ -652,7 +666,7 @@ db_set_print (DB_SET * set)
 /*
  * db_set_type() - This function returns the type identifier for a set. This
  *    can be used in places where it is not known if a set descriptor is for
- *    a set, multi-set or sequence.									      
+ *    a set, multi-set or sequence.
  * return : set type identifier
  * set(in): set descriptor
  */
@@ -680,7 +694,7 @@ db_set_type (DB_SET * set)
  * set(in): sequence identifier
  * index(in): element index
  * value(out): value to be filled in with element contents
- * 
+ *
  * note : The value will be copied from the sequence, so it must be released
  *    using either function db_value_clear() or db_value_free() when it is
  *    no longer needed.
@@ -703,7 +717,7 @@ db_seq_get (DB_SET * set, int index, DB_VALUE * value)
 /*
  * db_seq_put() - This function puts a value in a sequence at a fixed position.
  *    The value will always remain in the specified position so you can use
- *    db_seq_get() with the same index to retrieve it at a later time. 
+ *    db_seq_get() with the same index to retrieve it at a later time.
  *    This will overwrite the current value at that position if one exists. The
  *    value can be of type DB_TYPE_NULL, in which case the current element will
  *    be cleared and set to NULL.
@@ -745,7 +759,7 @@ db_seq_put (DB_SET * set, int index, DB_VALUE * value)
 }
 
 /*
- * db_seq_insert() - This function inserts a value into a sequence at the 
+ * db_seq_insert() - This function inserts a value into a sequence at the
  *    specified position. All elements starting from that position will be
  *    shifted down to make room for the new element. As with other sequence
  *    building functions, the domain of the value must be compatible with the
@@ -753,11 +767,11 @@ db_seq_put (DB_SET * set, int index, DB_VALUE * value)
  *    for the new value. Any existing slots that contain NULL will not be
  *    reused because NULL is a valid sequence element. If the index is beyond
  *    the length of the sequence, the sequence will grow and the value is
- *    appended.							      
+ *    appended.
  * return : error code
- * set(in): sequence descriptor					      
- * index(in): element index						      
- * value(in): value to insert						      
+ * set(in): sequence descriptor
+ * index(in): element index
+ * value(in): value to insert
  */
 int
 db_seq_insert (DB_SET * set, int index, DB_VALUE * value)
@@ -790,7 +804,7 @@ db_seq_insert (DB_SET * set, int index, DB_VALUE * value)
  *    elements following the indexed element will be shifted up to take up
  *    the space. The length of the set will be decreased by one.
  * return : error code
- * set(in): sequence descriptor					      
+ * set(in): sequence descriptor
  * index(in): element index
  *
  * note : If you want to clear an element without shifting subsequent elements
@@ -855,9 +869,9 @@ db_seq_cardinality (DB_SET * set)
 
 /*
  * db_seq_print() - This is debug function to print out a simple description of
- *    a sequence. 
- * return : error code									      
- * set(in): sequence descriptor		      
+ *    a sequence.
+ * return : error code
+ * set(in): sequence descriptor
  */
 int
 db_seq_print (DB_SET * set)
@@ -871,14 +885,14 @@ db_seq_print (DB_SET * set)
 }
 
 /*
- * db_seq_find() - This function can be used to sequentially search for 
+ * db_seq_find() - This function can be used to sequentially search for
  *    elements in a sequence that match a particular value. To search
  *    for duplicate elements in a sequence, you can call this function multiple
  *    times and set the index parameter to one greater than the number returned
  *    by the previous call to this function.
- * return: the index of the element or error code if not found									      
- * set(in): sequence descriptor					      
- * value(in): value to search for					      
+ * return: the index of the element or error code if not found
+ * set(in): sequence descriptor
+ * value(in): value to search for
  * index(in): starting index (zero if starting from the beginning)
  */
 int
@@ -902,7 +916,7 @@ db_seq_find (DB_SET * set, DB_VALUE * value, int index)
  * The new DB_COLLECTION style of collection maintenance is preferred over
  * the old SET/MULTISET/SEQUENCE distinction.  Its easier to code against
  * and makes switching between collection types easier.
- * 
+ *
  */
 
 /*
@@ -915,8 +929,8 @@ db_seq_find (DB_SET * set, DB_VALUE * value, int index)
  *    The elements already existing in the collection should be within the
  *    supplied domain.If a domain is supplied, the type argument is ignored.
  * return : collection (NULL if error)
- * type(in): one of the DB_TYPE_ collection types                          
- * size(in): initial size to preallocate (zero if unknown)                 
+ * type(in): one of the DB_TYPE_ collection types
+ * size(in): initial size to preallocate (zero if unknown)
  * domain(in): fully specified domain (optional)
  *
  * note : The collection handle returned must be freed using the db_col_free()
@@ -991,11 +1005,11 @@ db_col_free (DB_COLLECTION * col)
  *   the elements containing deleted object references will be changed to have
  *   a DB_TYPE_NULL value. DB_TYPE_MULTISET or DB_TYPE_SET, elements containing
  *   deleted object references are first converted to elements containing a
- *   DB_TYPE_NULL value. After all deleted object references have been 
+ *   DB_TYPE_NULL value. After all deleted object references have been
  *   converted to null values, all but one of the null values are then removed
  *   from the collection.
  * return : error status
- * col(in): collection to filter                                                                            
+ * col(in): collection to filter
  */
 int
 db_col_filter (DB_COLLECTION * col)
@@ -1017,35 +1031,17 @@ db_col_filter (DB_COLLECTION * col)
 }
 
 /*
- * db_col_add() -  This is used to add new elements to a collection.                       
- *    The behavior of the addition is dependent on the type of the collection.
- *                                                                            
- *    If the collection type is DB_TYPE_SET, the value will be added to the   
- *    collection only if there are no other elements whose value is equal     
- *    to the given value.  If the value is of type DB_TYPE_NULL, it will      
- *    be added only if there is no value in the set that is already           
- *    of type DB_TYPE_NULL.                                                   
- *    The position of the new value within the collection is undefined.       
- *                                                                            
- *    If the collection type is DB_TYPE_MULTISET, and the type of the value   
- *    is not DB_TYPE_NULL, the value will be added to the collection.         
- *    If the type of the value is DB_TYPE_NULL, the value will be added       
- *    to the collection only if there is no other value in the collection     
- *    that is of type DB_TYPE_NULL.                                           
- *    The position of the new value within the collection is undefined.       
- *                                                                            
- *    If the collection type is DB_TYPE_SEQUENCE, the value will always       
- *    be added to the end of the collection.  The collection will always      
- *    become one element larger.
+ * db_col_add() -  This is used to add new elements to a collection.
+ *
  * return : error status
- * col(in): collection to extend                                           
- * value(in): value to add                                                   
- *                                             
+ * col(in): collection to extend
+ * value(in): value to add
+ *
  * note : db_col_add is normally used only with collections of type DB_TYPE_SET
  *   and DB_TYPE_MULTISET.  It can be used with collections of type
  *   DB_TYPE_SEQUENCE but the new elements will always be appended to the end
  *   of the sequence.  If you need more control over the positioning of
- *   elements in a sequence, you may use the db_col_put or db_col_insert  
+ *   elements in a sequence, you may use the db_col_put or db_col_insert
  *   functions.
  */
 int
@@ -1069,19 +1065,11 @@ db_col_add (DB_COLLECTION * col, DB_VALUE * value)
 
 /*
  * db_col_drop() - This function is used to remove a value from a collection.
- *    For collections of type DB_TYPE_SET, if the value exists within the
- *    collection it is removed. For collections of type DB_TYPE_MULTISET, if
- *    there are any elements with this value in the collection, the first
- *    occurrence of that element will be removed if the all flag is 0. If the
- *    all flag is non-zero, all occurrences of the value in the multiset are
- *    removed. For collections of type DB_TYPE_SEQUENCE, if there are any
- *    elements with this value in the sequence, the first occurrence of the
- *    value is changed to a NULL value. If the all flag is non-zero, all
- *    occurrences of the value in the sequence is set to NULL.
  * return : error code
  * col(in): collection
  * value(in): value to drop
  * all(in): non-zero to drop all occurrences of the value
+ *
  */
 int
 db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all)
@@ -1103,11 +1091,11 @@ db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all)
 }
 
 /*
- * db_col_drop_element() - The element with the given index will be removed 
+ * db_col_drop_element() - The element with the given index will be removed
  *    from the collection and all subsequent elements in the collection will
  *    be moved up. The sequence size will be reduced by one. If the sequence
  *    has no elements at the given index, an error is returned.
- * return : error code                                         
+ * return : error code
  * col(in): collection
  * element_index(in): index of element to drop
  */
@@ -1184,12 +1172,12 @@ db_col_size (DB_COLLECTION * col)
 /*
  * db_col_cardinality() - This function returns the number of elements in the
  *    collection that have non-NULL values.
- * return: the cardinality of the collection                                                                            
+ * return: the cardinality of the collection
  * col(in): collection
- * 
+ *
  * note : This is different than db_col_size which returns the total
  *    number of elements in the collection, including those with NULL
- *    values. Use of db_col_cardinality is discouraged since it is 
+ *    values. Use of db_col_cardinality is discouraged since it is
  *    almost always the case that the API programmer really should be
  *    using db_col_size.
  */
@@ -1213,7 +1201,7 @@ db_col_cardinality (DB_COLLECTION * col)
  * col(in): collection
  * element_index(in): index of element to access
  * value(in): container in which to store value
- *                                                                            
+ *
  * note : The insertion order of elements in a collection of type DB_TYPE_SET
  *    or DB_TYPE_MULTISET is undefined, but the collection is guaranteed to
  *    retain its current order as long as no modifications are made to the
@@ -1240,7 +1228,7 @@ db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value)
  * db_col_put() - This function assigns the given value to the element of the
  *    collection with the given index. The previous contents of the element are
  *    freed. This function is normally used with collections of type
- *    DB_TYPE_SEQUENCE. This function is normally used to populate 
+ *    DB_TYPE_SEQUENCE. This function is normally used to populate
  *    DB_TYPE_SEQUENCE collections since it allows more control over the
  *    positioning of the values within the collection. If the given collection
  *    is of type DB_TYPE_SET or DB_TYPE_MULTISET, the index argument is ignored
@@ -1287,7 +1275,7 @@ db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value)
  *    The sequence increases in size by one element.
  * return : error status
  * col(in): collection
- * element_index(in): index of new element                                   
+ * element_index(in): index of new element
  * value(in): value to insert
  */
 int
@@ -1321,10 +1309,10 @@ db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value)
 /*
  * db_col_ismember() - This function can be used to determine if a particular
  *    value is found within a collection.
- * return : 
+ * return :
  *      0 = the value was not found within the collection
  *     >0 = the value was found within the collection
- *     <0 = an error was detected.                                       
+ *     <0 = an error was detected.
  * col(in): collection
  * value(in): value to search for
  */
@@ -1336,7 +1324,7 @@ db_col_ismember (DB_COLLECTION * col, DB_VALUE * value)
   CHECK_CONNECT_MINUSONE ();
   CHECK_1ARG_MINUSONE (col);
 
-  member = set_ismember (col, value);
+  member = set_ismember (col, value) ? 1 : 0;
 
   return member;
 }

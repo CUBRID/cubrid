@@ -1,31 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * rv.c - 
- *           RECOVERY FUNCTIONS (AT SERVER)
- * 
- * This module lists all undo and recovery functions available to the log and  
- * recovery manager in the server. The actual implementation of the functions  
- * is located somewhere else. The name of a recovery function follows the      
- * module prefix conventions where the function is located and it should also  
- * include the "rv" prefix to indicate that this is a recovery function.       
- * Example: foo_rv_hello ...> function hello in module foo		       
- * The log manager provides interfaces using constants instead of the recovery 
- * function. The recovery functions are registered into an array of recovery   
- * functions. The index of the array is used to interact with the log and      
- * recovery manager. Every element of the array contains the following 	       
- * structure.								       
- * 									       
- * rvfun_array:								       
- *   recv_index   -->> Used for debugging purposes			       
- *   undo_fun     -->> Undo function associated with the action		       
- *   redo_fun     -->> Redo function associated with the action		       
- *   dump_undofun -->> Function to dump undo information (for debugging)       
- *   dump_redofun -->> Function to dump redo information (for debugging)       
- * 									       
- * A similar array of recovery functions available for client actions such as  
- * multimedia resides in the client (see rvcl.c)			       
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * recovery.c -
  */
 
 #ident "$Id$"
@@ -35,7 +27,7 @@
 #include <stdio.h>
 
 #include "recovery.h"
-#include "log.h"
+#include "log_manager.h"
 #include "replication.h"
 #include "btree.h"
 #include "btree_load.h"
@@ -43,16 +35,16 @@
 #include "disk_manager.h"
 #include "extendible_hash.h"
 #include "file_manager.h"
-#include "lodir.h"
+#include "large_object_directory.h"
 #include "large_object.h"
 #include "overflow_file.h"
 
 /*
- *                                                                             
- *    		 THE ARRAY OF SERVER RECOVERY FUNCTIONS                        
- *                                                                             
- * Note: When adding new entries, be sure to add the an entry to print it as   
- * a string in rv_rcvindex_string().                                           
+ *
+ *    		 THE ARRAY OF SERVER RECOVERY FUNCTIONS
+ *
+ * Note: When adding new entries, be sure to add the an entry to print it as
+ * a string in rv_rcvindex_string().
  */
 struct rvfun RV_fun[] = {
   {RVDK_NEWVOL,
@@ -679,7 +671,7 @@ struct rvfun RV_fun[] = {
 /*
  * rv_rcvindex_string - RETURN STRING ASSOCIATED WITH GIVEN LOG_RCVINDEX
  *
- * return: 
+ * return:
  *
  *   rcvindex(in): Numeric recovery index
  *
@@ -695,7 +687,7 @@ rv_rcvindex_string (LOG_RCVINDEX rcvindex)
 /*
  * rv_check_rvfuns - CHECK ORDERING OF RECOVERY FUNCTIONS
  *
- * return: 
+ * return:
  *
  * NOTE:Check the ordering of recovery functions.
  *              This is a debugging function.

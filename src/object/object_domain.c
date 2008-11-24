@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * object_domain.c: type, domain and value operations.
  * This module primarily defines support for domain structures.
  */
@@ -17,8 +32,8 @@
 #include <float.h>
 #include <math.h>
 
-#include "memory_manager_2.h"
-#include "memory_manager_1.h"
+#include "memory_alloc.h"
+#include "area_alloc.h"
 
 #include "object_representation.h"
 #include "db.h"
@@ -28,28 +43,28 @@
 
 #include "work_space.h"
 #if !defined (SERVER_MODE)
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "object_accessor.h"
 #else /* SERVER_MODE */
 #include "object_accessor.h"
 #endif /* !SERVER_MODE */
-#include "set_object_1.h"
+#include "set_object.h"
 
-#include "qp_str.h"
+#include "string_opfunc.h"
 #include "cnv.h"
 #include "cnverr.h"
 
 #if !defined (SERVER_MODE)
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "locator_cl.h"
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
-#include "csserror.h"
+#include "connection_error.h"
 #include "language_support.h"
 #endif /* SERVER_MODE */
 
-#include "server.h"
+#include "server_interface.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -126,66 +141,8 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   (DB_TYPE) (DB_TYPE_LAST + 1)
 };
 
-/*
- * DOMAIN ALLOCATION
- *
- * Domains are used frequently in classes which are not normally
- * freed when the database shuts down.  Class structures are stored
- * in larger workspace blocks that are freed.
- * If we use malloc for domain structures, we get tons of allocation
- * warnings when shutting down because the domains used in classes
- * don't get explicitly freed.
- *
- * To avoid this, use areas.  Areas for these aren't a bad idea anyway
- * since they can potentially be allocated and freed quickly during
- * loads that result in domain caching.
- *
- * This will mean that domains will serve as a root for the garabage
- * collector.  In practice this isn't much of a problem because
- * the objects pointed to by the domain structures are always class objects
- * and these are generally pinned anyway.
- *
- * Note that the tp_ module is shut down AFTER the workspace manager (and
- * initialized before) so we can't be dependent on the workspace for
- * anything in here.
- */
 AREA *tp_Domain_area = NULL;
 
-/*
- * tp_Domains
- *    These are the built in domains that map directly to the primitive
- *    data types.
- *
- *    The function of this array has grown since its inception.  It started
- *    being a way to map a DB_TYPE_ constant into a corresponding default
- *    domain.  It is still used for this purpose and the first n elements
- *    of the array must correspond to the default domaims for each of the
- *    basic types.
- *    After the basic type domains however, there can be any number of
- *    additional built-in domains of arbitrary complexity.  These domains
- *    will all be tagged with an integer domain "index" so that references
- *    to these domains in the database can be stored in a single word,
- *    even if the domain is very complex.  Note that because the domain
- *    indexes can be stored in the database, and passed between the client
- *    and the server, the positions of the domains in this array NOT change
- *    unless we're in a position to perform a database migration.  You can
- *    always add new domains to the end of the array but changing the order
- *    of existing domains will invalidate any stored domain indexes.
- *    Note that there is some empty "space" between the last basic type
- *    domain and the first of the built-in domains to make adding new
- *    data types easier.
- *
- *    The domains at the front of the array, which correspond to each of
- *    the basic data types, serve as the root of a linked list of
- *    other domains related to this type.  For non-parameterized types,
- *    such as DB_TYPE_INteger, there will be only one domain in the list.
- *    For others, such as DB_TYPE_NUMERIC, there can be many domains in
- *    the list, each with a different combination of parameters.
- *    The built-in domains that are defined statically in this file, will
- *    be stiched in to their appropriate list during tp_init so that
- *    tp_domain_cache() will be able to find them.
- *
- */
 
 /*
  * Shorthand to initialize a bunch of fields without duplication.
@@ -367,34 +324,6 @@ TP_DOMAIN *tp_Domains[] = {
   NULL
 };
 
-/*
- * These define conversion rules for coercing a value into a domain
- * of multiple types.  For each value that is defined to support coercion,
- * an array of domains is created indicating the priority of that domain.
- * The domain in the destination list that is highest in the conversion
- * array will be selected.
- *
- * The idea is to select a coercion that preserves the data as much as
- * possible.
- *
- * The straightforward conversions are:
- *
- * 	integer 	=> integer (short) float double monetary time
- * 	short   	=> short integer float double monetary time
- * 	float   	=> float double integer short monetary time
- * 	double  	=> double float integer short monetary time
- * 	monetary  	=> monetary double float integer short time
- * 	string		=> string utime time date
- *
- *
- * The set conversions are mostly for completeness.  The ultimate selection
- * will depend on the subdomains as well as the outer set type.  Of course
- * this assumes that we eventually have support for nested sets.
- *
- * 	set		=> set multiset sequence
- * 	multiset	=> multiset sequence
- * 	sequence	=> sequence multiset
- */
 
 static TP_DOMAIN *tp_Integer_conv[] = {
   &tp_Integer_domain, &tp_Short_domain, &tp_Float_domain, &tp_Double_domain,
@@ -942,52 +871,6 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
  *    dom1(in): first domain
  *    dom2(in): second domain
  *    exact(in): how tolerant we are of mismatches
- * Note:
- *    This is a helper function used by tp_domain_cache and elsewhere.
- *    The "root" of any domain hierarchy must match exactly.
- *    For domains with sub-domains, (sets, unions), the sub-domains
- *    in the list can appear in any order.
- *
- *    This should be the only place where we have to worry about the
- *    various type specific domain extensions and how thay are compared.
- *
- *    Note, this was written after the tp_domain_find, tp_domain_match
- *    pair and is written with the assumption that top-level domains
- *    are not allowed to have "next" pointers which is the direction
- *    we're heading.
- *
- *    We could potentially replace tp_domain_equal with this function
- *    but note that tp_domain_equal has some stuff in it about ignoreing
- *    precision on things inside sets.  Until its clear what that
- *    is for, keep these separate.
- *
- *    The "exact" flag is set to ensure that the domains are exactly the
- *    same, all parameters must be exact matches.
- *
- *    If "exact" is zero, it is considered a match if dom2 is within the
- *    "tolerance" of dom1.  The exact meaning of tolerance is type dependent
- *    but the most common interpretation is that dom1 has a precision that
- *    is greater than or equal to the precision of dom2.  That means that
- *    any value from dom2 will logically "fit" within dom1 after.
- *    The exact flag should be turned off only if the caller is sure that
- *    the value associated with the domain being checked can be coerced
- *    later by the receiver.  This is intended primarily for check_att_value
- *    in obj.c because the various "setmem" functions are able to perform
- *    coercion on the fly and we can eliminate yet another string copy
- *    if we defer the coercion until the last moment of assignment.
- *    This function should therefore only allow a non-exact match if
- *    the setmem function associated with the type is able to perform this
- *    delayed coercion.
- *
- *    Note that we can't use this for set elements because we use the
- *    "setval" function to assign set values.  As "setval" doesn't take
- *    a TP_DOMAIN structure yet, we have no way of knowing what the real
- *    domain is supposed to be.  This is a problem primarily for the
- *    "floating" domain CHAR types.  Because of this, set_check_domain will
- *    always request exact matches on the domain checks and will perform
- *    always perform coercion up front.  When the dust settles, we need
- *    to sit down and trace the life of strings & sets from language to disk
- *    and try to reduce the amount of times these get copied.
  */
 int
 tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
@@ -1089,7 +972,7 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 #if 1
       /* >>>>> NEED MORE CONSIDERATION <<<<<
        * do not check order
-       * must be rollback with tp_domain_add() 
+       * must be rollback with tp_domain_add()
        */
       if (dom1->setdomain == dom2->setdomain)
 	{
@@ -1123,9 +1006,9 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 			  match = 0;
 			  break;	/* immediately exit for loop */
 			}
-		    }		/* for */
+		    }
 		}
-	    }			/* if (dsize == tp_domain_size(dom2->setdomain)) */
+	    }
 	}
 #else /* 0 */
       if (dom1->setdomain == dom2->setdomain)
@@ -1179,7 +1062,9 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 
     case DB_TYPE_MIDXKEY:
       if (dom1->setdomain == dom2->setdomain)
-	match = 1;
+	{
+	  match = 1;
+	}
       else
 	{
 	  int i, dsize1, dsize2;
@@ -1210,14 +1095,16 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARBIT:
       if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
-	match = dom1->precision == dom2->precision;
+	{
+	  match = dom1->precision == dom2->precision;
+	}
       else if (exact == TP_STR_MATCH)
 	{
 	  /*
 	   * Allow the match if the precisions would allow us to reuse the
 	   * string without modification.
 	   */
-	  match = dom1->precision >= dom2->precision;
+	  match = (dom1->precision >= dom2->precision);
 	}
       else
 	{
@@ -1240,9 +1127,11 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
        * fixed width char.  Not as much of a problem since these won't be
        * used for literal strings.
        */
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH ||
-	  exact == TP_SET_MATCH)
-	match = dom1->precision == dom2->precision;
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
+	  || exact == TP_SET_MATCH)
+	{
+	  match = (dom1->precision == dom2->precision);
+	}
       else
 	{
 	  /* Recognize a precision of TP_FLOATING_PRECISION_VALUE to indicate
@@ -1253,39 +1142,45 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 	   * Accept zero here too since it seems to creep into domains
 	   * sometimes.
 	   */
-	  match = dom2->precision == 0
-	    || dom2->precision == TP_FLOATING_PRECISION_VALUE
-	    || dom1->precision >= dom2->precision;
+	  match = (dom2->precision == 0
+		   || dom2->precision == TP_FLOATING_PRECISION_VALUE
+		   || dom1->precision >= dom2->precision);
 	}
       break;
 
     case DB_TYPE_NCHAR:
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH ||
-	  exact == TP_SET_MATCH)
-	match = (dom1->precision == dom2->precision) &&
-	  (dom1->codeset == dom2->codeset);
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
+	  || exact == TP_SET_MATCH)
+	{
+	  match = ((dom1->precision == dom2->precision)
+		   && (dom1->codeset == dom2->codeset));
+	}
       else
 	{
 	  /*
 	   * see discussion of special domain precision values in the
 	   * DB_TYPE_CHAR case above.
 	   */
-	  match = (dom1->codeset == dom2->codeset) &&
-	    (dom2->precision == 0
-	     || dom2->precision == TP_FLOATING_PRECISION_VALUE
-	     || dom1->precision >= dom2->precision);
+	  match = ((dom1->codeset == dom2->codeset)
+		   && (dom2->precision == 0
+		       || dom2->precision == TP_FLOATING_PRECISION_VALUE
+		       || dom1->precision >= dom2->precision));
 	}
 
       break;
 
     case DB_TYPE_VARNCHAR:
-      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH ||
-	  exact == TP_SET_MATCH)
-	match = (dom1->precision == dom2->precision) &&
-	  (dom1->codeset == dom2->codeset);
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
+	  || exact == TP_SET_MATCH)
+	{
+	  match = ((dom1->precision == dom2->precision)
+		   && (dom1->codeset == dom2->codeset));
+	}
       else
-	/* see notes above under the DB_TYPE_VARCHAR clause */
-	match = dom1->codeset == dom2->codeset;
+	{
+	  /* see notes above under the DB_TYPE_VARCHAR clause */
+	  match = dom1->codeset == dom2->codeset;
+	}
       break;
 
     case DB_TYPE_NUMERIC:
@@ -1294,8 +1189,8 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
        * mr_setmem_numeric function is not currently able to perform the
        * defered coercion.
        */
-      match = (dom1->precision == dom2->precision) &&
-	(dom1->scale == dom2->scale);
+      match = ((dom1->precision == dom2->precision)
+	       && (dom1->scale == dom2->scale));
       break;
 
     case DB_TYPE_POINTER:
@@ -1338,12 +1233,16 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
   /* in the case where their both cached */
   if (domain == transient)
-    return domain;
+    {
+      return domain;
+    }
 
-  if ((domain->type->id != transient->type->id) &&
-      (exact != TP_STR_MATCH
-       || !TP_NEAR_MATCH (domain->type->id, transient->type->id)))
-    return NULL;
+  if ((domain->type->id != transient->type->id)
+      && (exact != TP_STR_MATCH
+	  || !TP_NEAR_MATCH (domain->type->id, transient->type->id)))
+    {
+      return NULL;
+    }
 
   *ins_pos = domain;
 
@@ -1451,7 +1350,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 #if 1
 	    /* >>>>> NEED MORE CONSIDERATION <<<<<
 	     * do not check order
-	     * must be rollback with tp_domain_add() 
+	     * must be rollback with tp_domain_add()
 	     */
 	    if (domain->setdomain == transient->setdomain)
 	      {
@@ -1666,7 +1565,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	    {
 	      if (domain->precision > transient->precision)
 		break;
-	      match = domain->precision == transient->precision;
+	      match = (domain->precision == transient->precision);
 	    }
 	  else
 	    {
@@ -1679,9 +1578,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       * Accept zero here too since it seems to creep into domains
 	       * sometimes.
 	       */
-	      match = transient->precision == 0 ||
-		transient->precision == TP_FLOATING_PRECISION_VALUE ||
-		domain->precision >= transient->precision;
+	      match = (transient->precision == 0
+		       || transient->precision == TP_FLOATING_PRECISION_VALUE
+		       || domain->precision >= transient->precision);
 	    }
 
 	  /* check for asc/desc */
@@ -1709,8 +1608,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	    {
 	      if (domain->precision > transient->precision)
 		break;
-	      match = (domain->precision == transient->precision) &&
-		(domain->codeset == transient->codeset);
+	      match = ((domain->precision == transient->precision)
+		       && (domain->codeset == transient->codeset));
 	    }
 	  else
 	    {
@@ -1718,10 +1617,11 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       * see discussion of special domain precision values
 	       * in the DB_TYPE_CHAR case above.
 	       */
-	      match = (domain->codeset == transient->codeset) &&
-		(transient->precision == 0 ||
-		 transient->precision == TP_FLOATING_PRECISION_VALUE ||
-		 domain->precision >= transient->precision);
+	      match = ((domain->codeset == transient->codeset)
+		       && (transient->precision == 0
+			   || (transient->precision ==
+			       TP_FLOATING_PRECISION_VALUE)
+			   || domain->precision >= transient->precision));
 	    }
 
 	  /* check for asc/desc */
@@ -1745,18 +1645,20 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
     case DB_TYPE_VARNCHAR:
       while (domain)
 	{
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH ||
-	      exact == TP_SET_MATCH)
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH
+	      || exact == TP_SET_MATCH)
 	    {
 	      /* check for descending order */
 	      if (domain->precision < transient->precision)
 		break;
-	      match = (domain->precision == transient->precision) &&
-		(domain->codeset == transient->codeset);
+	      match = ((domain->precision == transient->precision)
+		       && (domain->codeset == transient->codeset));
 	    }
 	  else
-	    /* see notes above under the DB_TYPE_VARCHAR clause */
-	    match = domain->codeset == transient->codeset;
+	    {
+	      /* see notes above under the DB_TYPE_VARCHAR clause */
+	      match = domain->codeset == transient->codeset;
+	    }
 
 	  /* check for asc/desc */
 	  if (match)
@@ -1783,8 +1685,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	   * the mr_setmem_numeric function is not currently able
 	   * to perform the defered coercion.
 	   */
-	  match = (domain->precision == transient->precision) &&
-	    (domain->scale == transient->scale);
+	  match = ((domain->precision == transient->precision)
+		   && (domain->scale == transient->scale));
 
 	  /* check for asc/desc */
 	  if (match)
@@ -2328,30 +2230,6 @@ tp_domain_resolve_default (DB_TYPE type)
  *    return: domain found
  *    val(in): A DB_VALUE for which we need to obtain a domain
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
- * Note:
- *
- *    For "atomic" types, it synthesizes the domain structure, if necessary,
- *    and then returns it.  For more complex things, like objects and sets,
- *    it just goes to the object and retrieves the domain from there.
- *
- *    NOTE: Eventually, we should be storing a pointer to the domain
- *    directly in the DB_VALUE, eliminiating the need to perform this
- *    synthesis.
- *
- *    Hack, tp_domain_resolve_value can be called with an optional domain
- *    structure to use as a template for domains that have to be constructed.
- *    This can be used in places where we need to briefly synthesize a domain
- *    to associate with a DB_VALUE but we want to avoid the overhead of
- *    allocating a domain structure and caching it.
- *    If the domain required is one of the builtins, we just return a pointer
- *    to it, otherwise we put the necessary information in the supplied buffer.
- *    and return it as the value of the function.
- *    Do NOT call tp_domain_free on the return value!
- *    If the value of this buffer is NULL, we allocate and cache a buffer
- *    as usual.
- *
- *    TODO !! Clean this up, examine callers and try to remove some of the
- *    various band-aids we have in here.
  */
 TP_DOMAIN *
 tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
@@ -2432,16 +2310,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  break;
 
 	case DB_TYPE_OID:
-	  /*
-	   * Rather than try to synthesize a domain that is specific to the
-	   * class of the object in the value, just return the wildcard
-	   * object domain.  This is probably the right thing and is especially
-	   * convenient if we're on the server where its harder to deal with
-	   * objects.
-	   * Also note that there is no "OID" domain, from a domain perspective
-	   * an "object" and an "oid" are the same thing, the only difference
-	   * is in physical representation.
-	   */
 	  domain = &tp_Object_domain;
 	  break;
 
@@ -2647,7 +2515,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 #if 1
       /* >>>>> NEED MORE CONSIDERATION <<<<<
        * do not check duplication
-       * must be rollback with tp_domain_match() 
+       * must be rollback with tp_domain_match()
        */
 #else /* 0 */
       if (d->type->id == type_id)
@@ -2681,8 +2549,8 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      if ((d->precision == domain->precision) &&
-		  (d->scale == domain->scale))
+	      if ((d->precision == domain->precision)
+		  && (d->scale == domain->scale))
 		found = d;
 	      break;
 
@@ -2808,19 +2676,19 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      if ((d->precision == domain->precision) &&
-		  (d->scale == domain->scale))
+	      if ((d->precision == domain->precision)
+		  && (d->scale == domain->scale))
 		found = d;
 	      break;
 
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_BIT:
-	      /* PR)  1.deficient character related with CHAR & VARCHAR in set.
-	         ==> distinguishing VARCHAR from CHAR.
-	         2. core dumped & deficient character related with
-	         CONST CHAR & CHAR in set.
-	         ==> In case of CHAR,NCHAR,BIT,  cosidering precision.
+	      /* 1.deficient character related with CHAR & VARCHAR in set.
+	       * ==> distinguishing VARCHAR from CHAR.
+	       * 2. core dumped & deficient character related with
+	       *    CONST CHAR & CHAR in set.
+	       * ==> In case of CHAR,NCHAR,BIT,  cosidering precision.
 	       */
 	      if (d->precision == domain->precision)
 		found = d;
@@ -2833,8 +2701,8 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 
 	    default:
 	      break;
-	    }			/* switch (type_id) */
-	}			/* if (d->type->id == type_id) */
+	    }
+	}
 
       if (found == NULL)
 	prev = d;
@@ -3038,8 +2906,8 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
     {
       for (d = dest; d != NULL && found == NULL; d = d->next)
 	{
-	  if (src->type->id == d->type->id &&
-	      tp_domain_compatible (src->setdomain, dest->setdomain))
+	  if (src->type->id == d->type->id
+	      && tp_domain_compatible (src->setdomain, dest->setdomain))
 	    {
 	      found = d;
 	    }
@@ -3047,19 +2915,6 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
     }
   else
     {
-      /*
-       * Wasn't a hiearchical domain, check for exact match on the type
-       * and any parameters.  Note that we could in theory allow "superset"
-       * matches for parameters here too, e.g. numeric(12,2) could be said
-       * to be compatible with numeric(10,2) since the precision is higher.
-       * In practice though, these domain parameters have implications for
-       * the physical storage of the value so it isn't in general allowable
-       * to just slam a more lenient domain on top of a particular value.
-       * NOTE, tp_domain_match has grown pretty general, it may not be
-       * an especially effecient thing to be calling here, particularly
-       * since this function is going to be called for every set attribute
-       * assignment.  Consider optimizing some of the common tests.
-       */
 
       for (d = dest; d != NULL && found == NULL; d = d->next)
 	{
@@ -3071,18 +2926,6 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 	    }
 	}
 
-      /*
-       * NOTE: tp_domain_match is not going to properly detect if the source
-       * domain class is a subset of the destination domain class, which
-       * would mean that they are in fact compatible domains.  We could
-       * extend tp_domain_match (with exact flag off of course) to allow
-       * this but that's a rather risky change to make right now.  We could
-       * also stop and test for this here but it doesn't really matter.
-       * This function will give a false negative on the domain which is
-       * ok for its current use of trying to avoid a full set coercion
-       * operation.  The bug that prompted this rewrite was that we were
-       * giving a false positive which we must not do.
-       */
     }
 
   return found;
@@ -3165,18 +3008,6 @@ tp_domain_select (const TP_DOMAIN * domain_list,
       (vtype = DB_VALUE_TYPE (value)) == DB_TYPE_NULL)
     return (TP_DOMAIN *) domain_list;
 
-  /*
-   * If we've been given a value containing an OID, swizzle it into
-   * an object if we're on the client.  If we're on the server,
-   * we'll trust it for now under the assumption that the appropriate
-   * domain check has already been made at a higher level.  We could
-   * check it again here but following OIDs on the server should be
-   * avoided if possible to reduce hits on the page buffer pool.
-   * Note that we swizzle into a temporary value to keep the input value
-   * constant.  On the client, we may want to be trusting here too since
-   * OIDs can't come in through the API from the user.
-   * Need a more generally accessible swizzling function, like the one in set.c
-   */
 
   if (vtype == DB_TYPE_OID)
     {
@@ -3243,7 +3074,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	       d = d->next)
 	    {
 	      if (d->type->id == DB_TYPE_OBJECT)
-		best = d;
+		{
+		  best = d;
+		}
 	    }
 	  return best;
 	}
@@ -3260,9 +3093,11 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT &&
-		  sm_check_object_domain (d, obj))
-		best = d;
+	      if (d->type->id == DB_TYPE_OBJECT
+		  && sm_check_object_domain (d, obj))
+		{
+		  best = d;
+		}
 	    }
 	}
 #endif /* !SERVER_MODE */
@@ -3287,7 +3122,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	{
 	  if (d->type->id == DB_TYPE_OBJECT
 	      && sm_check_class_domain (d, (DB_OBJECT *) otmpl))
-	    best = d;
+	    {
+	      best = d;
+	    }
 	}
     }
 #endif /* !SERVER_MODE */
@@ -3307,7 +3144,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  if (d->type->id == vtype)
 	    {
 	      if (set_check_domain (set, d) == DOMAIN_COMPATIBLE)
-		best = d;
+		{
+		  best = d;
+		}
 	    }
 	}
     }
@@ -3330,24 +3169,12 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	{
 	  /* hack, try allowing "tolerance" matches of the domain ! */
 	  if (tp_domain_match (d, val_domain, exact_match))
-	    best = d;
+	    {
+	      best = d;
+	    }
 	}
     }
 
-  /*
-   * If we have not found an exact match, and we're allowing coercion,
-   * Try to select the domain in the list that is most appropriate, if possible.
-   * The domains in the conversion matrix are really only used for their
-   * basic type id.  We may need to be smarter about selecting
-   * from among multiple parameterized domains of the same type, for example
-   * if there is a NUMERIC(12, 2) and a NUMERIC(4, 0) and a value with the
-   * effect domain of NUMERIC(5, 0), we should make sure we select the larger
-   * of the two available domains.  In practice, this can't happen now because
-   * we don't allow explicitly specified or union domains to include
-   * multiple element domains for any particular basic type.
-   *
-   * THIS LOGIC IS BROKEN FOR NESTED SETS !
-   */
   if (best == NULL && allow_coercion)
     {
       others = tp_Domain_conversion_matrix[vtype];
@@ -3359,7 +3186,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 		   d = d->next)
 		{
 		  if (d->type == others[i]->type)
-		    best = d;
+		    {
+		      best = d;
+		    }
 		}
 	    }
 	}
@@ -3379,10 +3208,6 @@ tp_domain_select (const TP_DOMAIN * domain_list,
  *    allow_coercion(in): flag to enable coercions
  * Note:
  *    this cannot be used for checking set domains.
- *
- *    Called by ldr.c, think about trying to convert ldr.c
- *    to use the function above or else come up with a common implemenation
- *    for both cases.
  */
 TP_DOMAIN *
 tp_domain_select_type (const TP_DOMAIN * domain_list,
@@ -3398,8 +3223,9 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
    * is allowed, return the first thing on the list
    */
   if (type == DB_TYPE_NULL || domain_list == NULL)
-    best = domain_list;
-
+    {
+      best = domain_list;
+    }
   else
     {
       best = NULL;
@@ -3413,9 +3239,11 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	{
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
-	      if (d->type->id == DB_TYPE_OBJECT &&
-		  sm_check_class_domain ((TP_DOMAIN *) d, class_mop))
-		best = d;
+	      if (d->type->id == DB_TYPE_OBJECT
+		  && sm_check_class_domain ((TP_DOMAIN *) d, class_mop))
+		{
+		  best = d;
+		}
 	    }
 	}
       else if (TP_IS_SET_TYPE (type))
@@ -3423,8 +3251,10 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
 	      if (d->type->id == type)
-		/* can't check the actual set domain here, assume its ok */
-		best = d;
+		{
+		  /* can't check the actual set domain here, assume its ok */
+		  best = d;
+		}
 	    }
 	}
       else
@@ -3432,7 +3262,9 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 	  for (d = domain_list; d != NULL && best == NULL; d = d->next)
 	    {
 	      if (d->type->id == type || d->type->id == DB_TYPE_VARIABLE)
-		best = d;
+		{
+		  best = d;
+		}
 	    }
 	}
 
@@ -3453,7 +3285,9 @@ tp_domain_select_type (const TP_DOMAIN * domain_list,
 		       d = d->next)
 		    {
 		      if (d->type == others[i]->type)
-			best = d;
+			{
+			  best = d;
+			}
 		    }
 		}
 	    }
@@ -3490,14 +3324,20 @@ tp_domain_check (const TP_DOMAIN * domain,
   TP_DOMAIN *d;
 
   if (domain == NULL)
-    status = DOMAIN_COMPATIBLE;
+    {
+      status = DOMAIN_COMPATIBLE;
+    }
   else
     {
       d = tp_domain_select (domain, value, 0, exact_match);
       if (d == NULL)
-	status = DOMAIN_INCOMPATIBLE;
+	{
+	  status = DOMAIN_INCOMPATIBLE;
+	}
       else
-	status = DOMAIN_COMPATIBLE;
+	{
+	  status = DOMAIN_COMPATIBLE;
+	}
     }
 
   return (status);
@@ -3541,29 +3381,29 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      return (desired_precision == original_length &&
-	      (original_type == DB_TYPE_CHAR ||
-	       original_type == DB_TYPE_VARCHAR));
+      return (desired_precision == original_length
+	      && (original_type == DB_TYPE_CHAR
+		  || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
-      return (desired_precision >= original_length &&
-	      (original_type == DB_TYPE_CHAR ||
-	       original_type == DB_TYPE_VARCHAR));
+      return (desired_precision >= original_length
+	      && (original_type == DB_TYPE_CHAR
+		  || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_NCHAR:
-      return (desired_precision == original_length &&
-	      (original_type == DB_TYPE_NCHAR ||
-	       original_type == DB_TYPE_VARNCHAR));
+      return (desired_precision == original_length
+	      && (original_type == DB_TYPE_NCHAR
+		  || original_type == DB_TYPE_VARNCHAR));
     case DB_TYPE_VARNCHAR:
-      return (desired_precision >= original_length &&
-	      (original_type == DB_TYPE_NCHAR ||
-	       original_type == DB_TYPE_VARNCHAR));
+      return (desired_precision >= original_length
+	      && (original_type == DB_TYPE_NCHAR
+		  || original_type == DB_TYPE_VARNCHAR));
     case DB_TYPE_BIT:
-      return (desired_precision == original_length &&
-	      (original_type == DB_TYPE_BIT ||
-	       original_type == DB_TYPE_VARBIT));
+      return (desired_precision == original_length
+	      && (original_type == DB_TYPE_BIT
+		  || original_type == DB_TYPE_VARBIT));
     case DB_TYPE_VARBIT:
-      return (desired_precision >= original_length &&
-	      (original_type == DB_TYPE_BIT ||
-	       original_type == DB_TYPE_VARBIT));
+      return (desired_precision >= original_length
+	      && (original_type == DB_TYPE_BIT
+		  || original_type == DB_TYPE_VARBIT));
     default:
       return 0;
     }
@@ -3822,9 +3662,6 @@ tp_itoa (int value, char *string, int radix)
   return string;
 }
 
-/*
- * import from bfmt_print() in cnv.c
- */
 #define BITS_IN_BYTE            8
 #define HEX_IN_BYTE             2
 #define BITS_IN_HEX             4
@@ -4037,8 +3874,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  switch (desired_type)
 	    {
 	    case DB_TYPE_NUMERIC:
-	      if (desired_domain->precision == DB_VALUE_PRECISION (src) &&
-		  desired_domain->scale == DB_VALUE_SCALE (src))
+	      if (desired_domain->precision == DB_VALUE_PRECISION (src)
+		  && desired_domain->scale == DB_VALUE_SCALE (src))
 		{
 		  if (src != dest)
 		    pr_clone_value ((DB_VALUE *) src, dest);
@@ -4054,8 +3891,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
 	      break;
-	    }			/* switch (desired_type) */
-	}			/* else */
+	    }
+	}
     }
 
   /*
@@ -4079,9 +3916,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
    * handle the conversion before returning.
    */
   if (src == dest)
-    target = &temp;
+    {
+      target = &temp;
+    }
   else
-    target = dest;
+    {
+      target = dest;
+    }
 
   /*
    * Initialize the destination domain, important for the
@@ -4562,19 +4403,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      status = DOMAIN_INCOMPATIBLE;
 	    break;
 	  case DB_TYPE_POINTER:
-	    /*
-	     * This is for nested inserts of the form:
-	     * insert into torihikisaki values('0000001', 't_saki1',
-	     * {(insert into tokuisaki values('01','tk_sak1')),
-	     * (insert into tokuisaki values('02','tk_sak2')),
-	     * (insert into tokuisaki values('03','tk_sak3'))});
-	     * The set elements will be templates at this point rather
-	     * than objects.  tp_value_cast() will be called as part of
-	     * domain checking when adding the set attribute to the
-	     * template.  We must return a DB_TYPE_POINTER rather than
-	     * an object so that the nested inserts will be performed
-	     * when the template is finished.
-	     */
 	    if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain,
 					((DB_OTMPL *) DB_GET_POINTER (src))->
 					classobj))
@@ -5594,12 +5422,6 @@ tp_domain_disk_size (TP_DOMAIN * domain)
  * to hold a value for a particular domain.
  *    return: bytes size
  *    domain(in): domain to consider
- * Note:
- *    This is here because it takes a domain handle, could go in prim.c
- *    but its becoming unclear where the dividing line is anymore.
- *    Compare this with tp_domain_disk_size which calculates the disk size.
- *
- *    The disk size and instance size are often the same but not always.
  */
 int
 tp_domain_memory_size (TP_DOMAIN * domain)
@@ -5663,9 +5485,6 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
  *    in the value.
  *    This is used primarily for character data that is allowed to fit
  *    within a domain if the byte size is within tolerance.
- *
- *    This really should be a new type of prim.c vector function as it
- *    is type specific.
  */
 TP_DOMAIN_STATUS
 tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)

@@ -1,5 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$
+$   This program is free software; you can redistribute it and/or modify 
+$   it under the terms of the GNU General Public License as published by 
+$   the Free Software Foundation; version 2 of the License. 
+$
+$  This program is distributed in the hope that it will be useful, 
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+$  GNU General Public License for more details. 
+$
+$  You should have received a copy of the GNU General Public License 
+$  along with this program; if not, write to the Free Software 
+$  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+$
+
 $
 $ $Id$
 $
@@ -10,7 +26,6 @@ $set 1 MSGCAT_SET_GENERAL
 1 \n%s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 3 Copyright Information\n
-4 CUBRID 2008 R1.0
 5 Non integer argument value `%s'
 6 Non floating argument value `%s'
 7 Missing argument `%s'
@@ -47,9 +62,8 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Keyword = '%s'    Value = %f    Default Value = %f\n
 
 $set 5 MSGCAT_SET_ERROR
-1 Internal system failure:  no more specific information is available.
-2 Out of virtual memory:  unable to allocate %1$d memory bytes.
-3 Undefined environment variable "%1$s".
+2 Internal system failure:  no more specific information is available.
+3 Out of virtual memory:  unable to allocate %1$d memory bytes.
 4 Interrupt.
 5 Key = "%1$s" was not found in hash table "%2$s".
 6 A NULL memory hash table was supplied to a hash table function.

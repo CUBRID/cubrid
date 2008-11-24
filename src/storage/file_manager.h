@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * file_manager.h - interface for file manager
  */
 
@@ -12,9 +28,10 @@
 
 #include "config.h"
 
-#include "common.h"
+#include "storage_common.h"
 #include "disk_manager.h"
-#include "log.h"
+#include "log_manager.h"
+#include "oid.h"
 
 typedef enum
 {
@@ -53,6 +70,50 @@ typedef enum
   ((vfid_ptr1) == (vfid_ptr2) || \
    ((vfid_ptr1)->fileid == (vfid_ptr2)->fileid && \
     (vfid_ptr1)->volid  == (vfid_ptr2)->volid))
+
+/* Heap file descriptor */
+typedef struct file_heap_des FILE_HEAP_DES;
+struct file_heap_des
+{
+  OID class_oid;
+};
+
+/* Overflow heap file descriptor */
+typedef struct file_ovf_heap_des FILE_OVF_HEAP_DES;
+struct file_ovf_heap_des
+{
+  HFID hfid;
+};
+
+/* Btree file descriptor */
+typedef struct file_btree_des FILE_BTREE_DES;
+struct file_btree_des
+{
+  OID class_oid;
+  int attr_id;
+};
+
+/* Overflow key file descriptor */
+typedef struct file_ovf_btree_des FILE_OVF_BTREE_DES;
+struct file_ovf_btree_des
+{
+  BTID btid;
+};
+
+/* Extendible Hash file descriptor */
+typedef struct file_ehash_des FILE_EHASH_DES;
+struct file_ehash_des
+{
+  OID class_oid;
+  int attr_id;
+};
+
+/* LO file descriptor */
+typedef struct file_lo_des FILE_LO_DES;
+struct file_lo_des
+{
+  OID oid;
+};
 
 extern int file_manager_initialize (THREAD_ENTRY * thread_p);
 extern int file_manager_finalize (THREAD_ENTRY * thread_p);

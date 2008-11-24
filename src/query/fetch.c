@@ -1,39 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * fetch.c - Object/Tuple value fetch routines
- *
- * These routines are used by the XASL interpreter to fetch values either
- * from heap file object instances or LIST file tuples during query evlaution.
- * The values in the heap file object instances and the list file tuple values
- * are represented in disk representation form. The fetched values may wanted
- * to be either in disk representation form or XASL tree main memory
- * representation form in which case the fetched disk value is transformed.
- *
- * In order to fetch values from heap file object instances, the catalog
- * information is used. The catalog information tells how to interpret the
- * object disk representation to fetch an attribute value. Basically, the
- * following semantics are used to fetch values from object instances:
- *
- * get object disk representation from the catalog
- * if ( attribute belongs to the current disk representation ) {
- *      if ( object has a bound value )
- *           fetch the value using catalog information
- *      else
- *           value is unbound
- * } else {
- *      get most recent representation from the catalog
- *      if ( attribute has default value )
- *           fetch the default value
- *      else
- *            value is unbound
- * }
- *
- * The value fetch operations on list file tuples uses a type list which
- * indicates the data type of each successive value in the tuple and the
- * value headers for each tuple value which indicates whether tuple value is
- * bound or not, in order to interpret a tuple and fetch values.
  */
 
 #ident "$Id$"
@@ -43,13 +27,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#if !defined(WINDOWS)
+#include <sys/time.h>
+#endif
 
 #include "porting.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "db.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "oid.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -69,13 +56,13 @@ static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 QFILE_TUPLE * next_tpl);
 
 /*
- * fetch_peek_arith () -                                                               
+ * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
- *   regu_var(in/out): Regulator Variable of an ARITH node.                     
- *   vd(in): Value Descriptor                                         
- *   obj_oid(in): Object Identifier                                        
- *   tpl(in): Tuple                                                    
- *   peek_dbval(out): Set to the value resulting from the fetch operation     
+ *   regu_var(in/out): Regulator Variable of an ARITH node.
+ *   vd(in): Value Descriptor
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
+ *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
 static int
 fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
@@ -153,16 +140,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       if (PRIM_IS_NULL (peek_left))
 	{
-	  /*
-	   * ORACLE7 ServerSQL Language Reference Manual 3-4;
-	   * Although ORACLE treats zero-length character strings as
-	   * nulls, concatenating a zero-length character string with
-	   * another operand always results in the other operand,
-	   * rather than a null. However, this may not continue to be
-	   * true in future versions of ORACLE. To concatenate an
-	   * expression that might be null, use the NVL function to
-	   * explicitly convert the expression to a zero-length string.
-	   */
 	  if (PRM_ORACLE_STYLE_EMPTY_STRING
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
@@ -273,16 +250,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	bool check_empty_string;
 
-	/*
-	 * ORACLE7 ServerSQL Language Reference Manual 3-4;
-	 * Although ORACLE treats zero-length character strings as
-	 * nulls, concatenating a zero-length character string with
-	 * another operand always results in the other operand,
-	 * rather than a null. However, this may not continue to be
-	 * true in future versions of ORACLE. To concatenate an
-	 * expression that might be null, use the NVL function to
-	 * explicitly convert the expression to a zero-length string.
-	 */
 	check_empty_string = (PRM_ORACLE_STYLE_EMPTY_STRING ? true : false);
 
 	/* check for result type. */
@@ -1057,37 +1024,15 @@ error:
 }
 
 /*
- * fetch_peek_dbval () - returns a POINTER to an existing db_value 
+ * fetch_peek_dbval () - returns a POINTER to an existing db_value
  *   return: NO_ERROR or ER_code
- *   regu_var(in/out): Regulator Variable                     
- *   vd(in): Value Descriptor                                         
- *   cls_oid(in): Class Identifier                                        
- *   obj_oid(in): Object Identifier                                        
- *   tpl(in): Tuple                                                    
- *   peek_dbval(out): Set to the value ref resulting from the fetch operation     
+ *   regu_var(in/out): Regulator Variable
+ *   vd(in): Value Descriptor
+ *   cls_oid(in): Class Identifier
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
+ *   peek_dbval(out): Set to the value ref resulting from the fetch operation
  *
- * This routine uses the value description indicated by the regulator varible
- * to fetch the indicated value and store it in the dbval parameter.
- * The value may be fetched from either a heap file object instance,
- * or from a list file tuple, or from an all constants regulator variable
- * content. If the value is fetched from a heap file object instance,
- * then tpl parameter should be given NULL. Likewise, if the value is fetched
- * from a list file tuple, then obj_oid parameter should be given NULL.
- * If the value is fetched from all constant values referred to
- * by the regulator variable, then all of the parameters obj_oid,
- * tpl should be given NULL values.
- *
- * If the value description in the regulator variable refers other cases
- * such as constant value, arithmetic expression, the resultant value
- * is computed and stored in the db_value.
- *
- * since the POINTER return will be to a shared DB_VALUE,
- * it may NOT be written to or used across any boundary which may fetch
- * another row (object). It exists primarily to avoid gratuitous copying
- * in places such as predicate evaluation where it is known the value
- * will be immediately used in a readonly manner and then discarded.
- *
- * see fetch_copy_dbval().
  */
 int
 fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
@@ -1228,9 +1173,9 @@ error:
 }
 
 /*
- * fetch_peek_dbval_pos () -  
+ * fetch_peek_dbval_pos () -
  *   return: NO_ERROR or ER_code
- *   regu_var(in/out): Regulator Variable                     
+ *   regu_var(in/out): Regulator Variable
  *   tpl(in): Tuple
  *   pos(in):
  *   peek_dbval(out): Set to the value ref resulting from the fetch operation
@@ -1282,13 +1227,13 @@ error:
 
 /*
  * fetch_copy_dbval () - returns a COPY of a db_value which the caller
- *                    must clear                                                              
+ *                    must clear
  *   return: NO_ERROR or ER_code
- *   regu_var(in/out): Regulator Variable                     
- *   vd(in): Value Descriptor                                         
- *   cls_oid(in): Class Identifier                                        
- *   obj_oid(in): Object Identifier                                        
- *   tpl(in): Tuple                                                    
+ *   regu_var(in/out): Regulator Variable
+ *   vd(in): Value Descriptor
+ *   cls_oid(in): Class Identifier
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
  *   dbval(out): Set to the value resulting from the fetch operation
  *
  * This routine uses the value description indicated by the regulator varible
@@ -1363,12 +1308,12 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 /*
  * fetch_val_list () - fetches all the values for the given regu variable list
  *   return: NO_ERROR or ER_code
- *   regu_list(in/out): Regulator Variable list                     
- *   vd(in): Value Descriptor                                         
- *   class_oid(in): Class Identifier                                        
- *   obj_oid(in): Object Identifier                                        
- *   tpl(in): Tuple                                                    
- *   peek(int):      
+ *   regu_list(in/out): Regulator Variable list
+ *   vd(in): Value Descriptor
+ *   class_oid(in): Class Identifier
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
+ *   peek(int):
  */
 int
 fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list,
@@ -1450,9 +1395,9 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list,
 }
 
 /*
- * fetch_init_val_list () - 
- *   return:                         
- *   regu_list(in/out): Regulator Variable list                     
+ * fetch_init_val_list () -
+ *   return:
+ *   regu_list(in/out): Regulator Variable list
  */
 void
 fetch_init_val_list (REGU_VARIABLE_LIST regu_list)

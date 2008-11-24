@@ -1,4 +1,22 @@
 
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+#
+#   This program is free software; you can redistribute it and/or modify 
+#   it under the terms of the GNU General Public License as published by 
+#   the Free Software Foundation; version 2 of the License. 
+#
+#  This program is distributed in the hope that it will be useful, 
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+#  GNU General Public License for more details. 
+#
+#  You should have received a copy of the GNU General Public License 
+#  along with this program; if not, write to the Free Software 
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+#
+
+
 compatdir = @prefix@/compat
 
 SRC = $(top_srcdir)/src
@@ -34,84 +52,82 @@ compat_SCRIPTS = uc
 
 cub_broker_SOURCES = \
 	$(BROKER_DIR)/broker.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/max_heap.c \
-	$(BROKER_DIR)/uw_acl.c \
-	$(BROKER_DIR)/send_fd.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_max_heap.c \
+	$(BROKER_DIR)/broker_access_list.c \
+	$(BROKER_DIR)/broker_send_fd.c \
+	$(BROKER_DIR)/broker_filename.c
 
 broker_monitor_SOURCES = \
-	$(BROKER_DIR)/monitor.c \
-	$(BROKER_DIR)/br_config.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/max_heap.c \
-	$(BROKER_DIR)/get_psinfo.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/broker_monitor.c \
+	$(BROKER_DIR)/broker_config.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_max_heap.c \
+	$(BROKER_DIR)/broker_process_info.c \
+	$(BROKER_DIR)/broker_filename.c
 
 broker_changer_SOURCES = \
-	$(BROKER_DIR)/changer.c \
-	$(BROKER_DIR)/admin_pub.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/br_config.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/max_heap.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/broker_changer.c \
+	$(BROKER_DIR)/broker_admin_pub.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_config.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/broker_max_heap.c \
+	$(BROKER_DIR)/broker_filename.c
 
 cubrid_broker_SOURCES = \
-	$(BROKER_DIR)/br_config.c \
-	$(BROKER_DIR)/admin.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/admin_pub.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/max_heap.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/broker_config.c \
+	$(BROKER_DIR)/broker_admin.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/broker_admin_pub.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_max_heap.c \
+	$(BROKER_DIR)/broker_filename.c
 
 cub_cas_SOURCES = \
 	$(BROKER_DIR)/cas.c \
-	$(BROKER_DIR)/net_cas.c \
-	$(BROKER_DIR)/net_buf.c \
-	$(BROKER_DIR)/func.c \
-	$(BROKER_DIR)/exec_db.c \
-	$(BROKER_DIR)/handle_mng.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/str_like.c \
-	$(BROKER_DIR)/recv_fd.c \
+	$(BROKER_DIR)/cas_network.c \
+	$(BROKER_DIR)/cas_net_buf.c \
+	$(BROKER_DIR)/cas_function.c \
+	$(BROKER_DIR)/cas_execute.c \
+	$(BROKER_DIR)/cas_handle.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/cas_str_like.c \
+	$(BROKER_DIR)/broker_recv_fd.c \
 	$(BROKER_DIR)/cas_xa.c \
-	$(BROKER_DIR)/schema_info.c \
+	$(BROKER_DIR)/cas_schema_info.c \
 	$(BROKER_DIR)/cas_log.c \
-	$(BROKER_DIR)/as_util.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/sql_log2.c \
-	$(BROKER_DIR)/file_name.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/setup.c
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/cas_sql_log2.c \
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/broker_error.c
 
 broker_log_converter_SOURCES = \
-	$(BROKER_DIR)/log_converter.c \
-	$(BROKER_DIR)/log_util.c \
-	$(BROKER_DIR)/t_string.c
+	$(BROKER_DIR)/broker_log_converter.c \
+	$(BROKER_DIR)/broker_log_util.c \
+	$(BROKER_DIR)/log_top_string.c
 
 broker_log_runner_SOURCES = \
 	$(BROKER_DIR)/cas_runner.c \
-	$(BROKER_DIR)/log_util.c \
-	$(BROKER_DIR)/t_string.c
+	$(BROKER_DIR)/broker_log_util.c \
+	$(BROKER_DIR)/log_top_string.c
 
 broker_log_top_SOURCES = \
-	$(BROKER_DIR)/log_top.c \
-	$(BROKER_DIR)/query_info.c \
-	$(BROKER_DIR)/log_time.c \
-	$(BROKER_DIR)/sql_list.c \
-	$(BROKER_DIR)/log_util.c \
-	$(BROKER_DIR)/t_string.c \
-	$(BROKER_DIR)/log_top_tran.c
+	$(BROKER_DIR)/broker_log_top.c \
+	$(BROKER_DIR)/cas_query_info.c \
+	$(BROKER_DIR)/broker_log_time.c \
+	$(BROKER_DIR)/broker_log_sql_list.c \
+	$(BROKER_DIR)/broker_log_util.c \
+	$(BROKER_DIR)/log_top_string.c \
+	$(BROKER_DIR)/broker_log_top_tran.c

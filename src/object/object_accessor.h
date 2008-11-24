@@ -1,18 +1,34 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * obj.h - Definitions for the object manager
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
  *
  */
 
-#ifndef _OBJ_H_
-#define _OBJ_H_
+
+/*
+ * object_accessor.h - Definitions for the object manager
+ *
+ */
+
+#ifndef _OBJECT_ACCESSOR_H_
+#define _OBJECT_ACCESSOR_H_
 
 #ident "$Id$"
 
 #include <stdarg.h>
-#include "memory_manager_1.h"
+#include "area_alloc.h"
 #include "object_representation.h"
 #include "class_object.h"
 #include "object_template.h"
@@ -40,16 +56,7 @@
        (DB_GET_ELO(dbvalue) == NULL)) ) \
   DB_MAKE_NULL(dbvalue);
 
-/*
- * OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND
- * 
- * Note:
- *    Like above but only handles the "simple" types.
- *    This is used in cases where prcoessing of the other types has been
- *    broken out and there is no need to perform the
- *    extra type comparisons.
- * 
- */
+
 
 #define OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND(dbvalue) \
   if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING) && \
@@ -217,4 +224,4 @@ extern int obj_find_unique_id (MOP op, const char *att_name,
 			       int *total_ids);
 
 
-#endif /* _OBJ_H_ */
+#endif /* _OBJECT_ACCESSOR_H_ */

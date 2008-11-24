@@ -1,14 +1,30 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * lccl.h - Transaction object locator interfacee (at client)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * locator_cl.h - Transaction object locator interfacee (at client)
  *
  * Note: See .c file for overview and description of the interface functions.
  */
 
-#ifndef _LCCL_H_
-#define _LCCL_H_
+#ifndef _LOCATOR_CL_H_
+#define _LOCATOR_CL_H_
 
 #ident "$Id$"
 
@@ -16,8 +32,8 @@
 
 #include "error_manager.h"
 #include "work_space.h"
-#include "common.h"
-#include "locator_bt.h"
+#include "storage_common.h"
+#include "locator.h"
 #include "dbdef.h"
 #include "replication.h"
 
@@ -113,4 +129,4 @@ extern int locator_decache_all_lock_instances (MOP class_mop);
 extern int locator_get_append_lsa (LOG_LSA * lsa);
 extern int locator_flush_replication_info (REPL_INFO * repl_info);
 
-#endif /* _LCCL_H_ */
+#endif /* _LOCATOR_CL_H_ */

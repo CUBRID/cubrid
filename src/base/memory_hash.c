@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * memory_hash.c - memory hash table
  */
 
@@ -31,14 +46,13 @@
 
 #include "memory_hash.h"
 #include "chartype.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
-#include "memory_manager_4.h"
-#include "set_object_1.h"
-#include "intl.h"
+#include "set_object.h"
+#include "intl_support.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 
@@ -528,8 +542,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
 		hash = mht_valhash (&t_val, ht_size);
 		(void) pr_clear_value (&t_val);
 		t_n = set_size (set);
-		if ((t_n > 0) &&
-		    set_get_element (set, t_n - 1, &t_val) == NO_ERROR)
+		if ((t_n > 0)
+		    && set_get_element (set, t_n - 1, &t_val) == NO_ERROR)
 		  {
 		    hash += mht_valhash (&t_val, ht_size);
 		    (void) pr_clear_value (&t_val);
@@ -553,9 +567,10 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	      {
 		hash = mht_valhash (&t_val, ht_size);
 		t_n = midxkey->size;
-		if (t_n > 0 &&
-		    set_midxkey_get_element_nocopy (midxkey, t_n - 1, &t_val,
-						    NULL, NULL) == NO_ERROR)
+		if (t_n > 0
+		    && set_midxkey_get_element_nocopy (midxkey, t_n - 1,
+						       &t_val, NULL,
+						       NULL) == NO_ERROR)
 		  {
 		    hash += mht_valhash (&t_val, ht_size);
 		  }
@@ -1455,6 +1470,7 @@ mht_rem (MHT_TABLE * ht, const void *key,
   unsigned int hash;
   HENTRY_PTR prev_hentry;
   HENTRY_PTR hentry;
+  int error_code = NO_ERROR;
 
   assert (ht != NULL && key != NULL);
 
@@ -1483,10 +1499,10 @@ mht_rem (MHT_TABLE * ht, const void *key,
 
 	  if (rem_func)
 	    {
-	      if (((*rem_func) (hentry->key, hentry->data, func_args)) !=
-		  true)
+	      error_code = (*rem_func) (hentry->key, hentry->data, func_args);
+	      if (error_code != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  return error_code;
 		}
 	    }
 
@@ -1558,6 +1574,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
   unsigned int hash;
   HENTRY_PTR prev_hentry;
   HENTRY_PTR hentry;
+  int error_code = NO_ERROR;
 
   assert (ht != NULL && key != NULL);
 
@@ -1582,10 +1599,13 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
 	   * Delete the node from the double link list of active entries.
 	   * Then delete the node from the hash table.
 	   */
-	  if (rem_func
-	      && ((*rem_func) (hentry->key, hentry->data, func_args) != true))
+	  if (rem_func)
 	    {
-	      return ER_FAILED;
+	      error_code = (*rem_func) (hentry->key, hentry->data, func_args);
+	      if (error_code != NO_ERROR)
+		{
+		  return error_code;
+		}
 	    }
 
 	  /* remove from double link list of active entries */
@@ -1633,7 +1653,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
 
 /*
  * mht_map - map over hash entries
- *   return: TRUE(1) or FALSE(0) - the result of user supplied "map_func"
+ *   return: NO_ERROR or error code - the result of user supplied "map_func"
  *   ht(in): hash table
  *   map_func(in): user supplied mapping function
  *   func_args(in): arguments to be passed to rem_func
@@ -1654,26 +1674,29 @@ mht_map (const MHT_TABLE * ht,
 {
   HENTRY_PTR hentry;
   HENTRY_PTR next;
-  bool ok;
+  int error_code = NO_ERROR;
 
   assert (ht != NULL);
 
-  for (hentry = ht->act_head, ok = true;
-       hentry != NULL && ok == true; hentry = next)
+  for (hentry = ht->act_head; hentry != NULL; hentry = next)
     {
       /* Just in case the hentry is removed using mht_rem save the next entry */
       next = hentry->act_next;
-      ok = (*map_func) (hentry->key, hentry->data, func_args);
+      error_code = (*map_func) (hentry->key, hentry->data, func_args);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
     }
 
-  return (ok);
+  return (error_code);
 }
 
 /*
  * mht_map_no_key - map over hash entries;
  *                  Same as mht_map, but "map_func" is called on two arguments:
  *                  data and  arguments.
- *   return: TRUE(1) or FALSE(0) - the result of user supplied "map_func"
+ *   return: NO_ERROR or error code - the result of user supplied "map_func"
  *   ht(in): hash table
  *   map_func(in): user supplied mapping function
  *   func_args(in): arguments to be passed to rem_func
@@ -1685,19 +1708,22 @@ mht_map_no_key (THREAD_ENTRY * thread_p, const MHT_TABLE * ht,
 {
   HENTRY_PTR hentry;
   HENTRY_PTR next;
-  int ok;
+  int error_code = NO_ERROR;
 
   assert (ht != NULL);
 
-  for (hentry = ht->act_head, ok = true;
-       hentry != NULL && ok == true; hentry = next)
+  for (hentry = ht->act_head; hentry != NULL; hentry = next)
     {
       /* Just in case the hentry is removed using mht_rem save the next entry */
       next = hentry->act_next;
-      ok = (*map_func) (thread_p, hentry->data, func_args);
+      error_code = (*map_func) (thread_p, hentry->data, func_args);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
     }
 
-  return (ok);
+  return (error_code);
 }
 
 /*

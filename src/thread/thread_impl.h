@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * thrd.h - Thread manager module at server
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
 
-#ifndef _THRD_H_
-#define _THRD_H_
+
+/*
+ * thread_impl.h - Thread manager module at server
+ */
+
+#ifndef _THREAD_IMPL_H_
+#define _THREAD_IMPL_H_
 
 #ident "$Id$"
 
@@ -21,7 +37,7 @@
 
 #include "thread.h"
 #include "error_manager.h"
-#include "adj_ar.h"
+#include "adjustable_array.h"
 #include "system_parameter.h"
 #endif /* SERVER_MODE */
 
@@ -224,4 +240,4 @@ extern void *thread_worker (void *);
 #endif /* WINDOWS */
 #endif /* SERVER_MODE */
 
-#endif /* _THRD_H_ */
+#endif /* _THREAD_IMPL_H_ */

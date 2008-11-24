@@ -1,15 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- *      transform.c: Definition of the meta-class information for class storage 
- *                   and catalog entries.
- * 
- * Note:
- *      This is used in conjunction with hand coded class transformation
- *      functions in tfcl.c.  If is EXTREMELY IMPORTANT that the order
- *      of the attributes in these definitions matches the code that
- *      does the class transformation.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * transform.c: Definition of the meta-class information for class storage
+ *              and catalog entries.
  */
 
 #ident "$Id$"
@@ -24,21 +33,21 @@
 
 /* server side only */
 #if !defined(CS_MODE)
-#include "intl.h"
+#include "intl_support.h"
 #include "language_support.h"
 #include "system_catalog.h"
 #endif /* !CS_MODE */
 
 /*
  * These define the structure of the meta class objects
- * 
+ *
  * IMPORTANT
  * If you modify either the META_ATTRIBUTE or META_CLASS definitions
  * here, make sure you adjust the associated ORC_ constants in or.h.
- * Of particular importance are ORC_CLASS_VAR_ATT_COUNT and 
+ * Of particular importance are ORC_CLASS_VAR_ATT_COUNT and
  * ORC_ATT_VAR_ATT_COUNT.
  * If you don't know what these are, you shouldn't be making this change.
- * 
+ *
  */
 /* DOMAIN */
 static META_ATTRIBUTE domain_atts[] = {
@@ -447,13 +456,13 @@ CT_CLASS *ct_Classes[] = {
 
 
 /*
- * tf_compile_meta_classes - passes over the static meta class definitions 
- * and fills in the missing fields that are too error prone to keep 
+ * tf_compile_meta_classes - passes over the static meta class definitions
+ * and fills in the missing fields that are too error prone to keep
  * calculating by hand.
  *    return: void
  * Note:
  *   Once this becomes reasonably static, this could be statically coded again.
- *   This is only used on the client but it won't hurt anything to have it on 
+ *   This is only used on the client but it won't hurt anything to have it on
  *   the server as well.
  */
 void
@@ -490,7 +499,7 @@ tf_compile_meta_classes ()
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * need a domain for size calculations, since we don't use
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().

@@ -1,8 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * cas_runner.c - 
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * cas_runner.c -
  */
 
 #ident "$Id$"
@@ -25,10 +41,10 @@
 
 #include "cas_common.h"
 #include "cas_cci.h"
-#include "log_util.h"
+#include "broker_log_util.h"
 
 #ifdef WIN32
-#include "getopt.h"
+#include "broker_getopt.h"
 #endif
 
 #define PRINT_CCI_ERROR(ERRCODE, CCI_ERROR)	\
@@ -1013,7 +1029,7 @@ print_result (int cci_res, int req_id, FILE * fp)
   char *buffer;
   T_CCI_ERROR cci_error;
   int num_tuple = 0;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_CUBRID_STMT cmd_type;
   char *plan;
 
   if (fp == NULL)
@@ -1035,7 +1051,7 @@ print_result (int cci_res, int req_id, FILE * fp)
   cci_get_result_info (req_id, &cmd_type, &column_count);
 
 /*
-  if (cmd_type == SQLX_CMD_CALL_SP) {
+  if (cmd_type == CUBRID_STMT_CALL_SP) {
     column_count = cci_get_bind_num(req_id);
     printf("col cnt = %d\n", column_count);
   }
@@ -1076,7 +1092,7 @@ print_result (int cci_res, int req_id, FILE * fp)
       fprintf (fp, "\n");
       num_tuple++;
 
-      if (cmd_type == SQLX_CMD_CALL_SP)
+      if (cmd_type == CUBRID_STMT_CALL_SP)
 	{
 	  break;
 	}
@@ -1145,9 +1161,9 @@ make_node_info (T_NODE_INFO * node, char *node_name, char *info_str)
   node->dbuser = strdup (token[3]);
   node->dbpasswd = strdup (token[4]);
 
-  if (node->node_name == NULL ||
-      node->dbname == NULL || node->ip == NULL ||
-      node->dbuser == NULL || node->dbpasswd == NULL)
+  if (node->node_name == NULL
+      || node->dbname == NULL || node->ip == NULL
+      || node->dbuser == NULL || node->dbpasswd == NULL)
     {
       goto err;
     }

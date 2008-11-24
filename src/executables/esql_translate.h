@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * trans.h - Embedded SQLX C Translator Inclusion header file 
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
 
-#ifndef _TRANS_H_
-#define _TRANS_H_
+
+/*
+ * esql_translate.h - ESQL C Translator Inclusion header file 
+ */
+
+#ifndef _ESQL_TRANSLATE_H_
+#define _ESQL_TRANSLATE_H_
 
 #ident "$Id$"
 
@@ -57,4 +73,4 @@ struct esql_translate_table_s
 
 extern ESQL_TRANSLATE_TABLE esql_Translate_table;
 
-#endif /* _TRANS_H_ */
+#endif /* _ESQL_TRANSLATE_H_ */

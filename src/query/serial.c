@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * qp_serial.c - Serial number handling routine 
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
  *
- * Note: if you feel the need
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
+ * serial.c - Serial number handling routine 
  */
 
 #ident "$Id$"
@@ -14,18 +27,18 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "intl.h"
+#include "intl_support.h"
 #include "error_code.h"
 #include "db.h"
-#include "memory_manager_4.h"
+#include "memory_alloc.h"
 #include "arithmetic.h"
 #include "query_evaluator.h"
 #include "heap_file.h"
 #include "page_buffer.h"
-#include "log.h"
+#include "log_manager.h"
 #include "transaction_sr.h"
 #include "replication.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 
 /*
  * xqp_get_serial_current_value () -

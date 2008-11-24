@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * elo_recover.c - This is the file that supports the interface to the
- *             transaction mechanism
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * elo_recovery.c - This is the file that supports the interface to the
+ *                  transaction mechanism
  */
 
 #ident "$Id$"
@@ -23,10 +37,10 @@
 #include "glo_class.h"
 #include "elo_holder.h"
 #include "db.h"
-#include "network_interface_sky.h"
-#include "recover_cl.h"
+#include "network_interface_cl.h"
+#include "recovery_cl.h"
 #include "elo_class.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "elo_recovery.h"
@@ -89,9 +103,6 @@ static char *make_shadow_pathname (const DB_OBJECT * holder_p);
  *
  *    These two methods of environment variable expansion could work
  *    together but they probably would be mutually exclusive.
- *
- *    I put this in recover.c because recover.h existed and was a convenient
- *    place to put the external definition. 
  */
 
 void

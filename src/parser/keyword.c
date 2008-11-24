@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * keyword.c - SQL keyword table
- *
  */
 
 #ident "$Id$"
@@ -14,14 +28,14 @@
 #include <string.h>
 
 #include "parser.h"
-#include "intl.h"
+#include "intl_support.h"
 #include "dbtype.h"
-#include "qp_str.h"
+#include "string_opfunc.h"
 
 #define ZZ_PREFIX gr_
 #include "zzpref.h"
 #define INSIDE_SCAN_DOT_C
-#include "sqtokens.h"
+#include "csql_grammar_tokens.h"
 
 /* Do not care alphabetical order of keywords. automatically sorted! */
 static KEYWORD_RECORD keywords[] = {

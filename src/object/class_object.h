@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * class_object.h - Definitions for structures used in the representation
  *                  of classes
  */
@@ -14,7 +30,7 @@
 #include "object_domain.h"
 #include "work_space.h"
 #include "object_primitive.h"
-#include "common.h"
+#include "storage_common.h"
 #include "statistics.h"
 
 /*
@@ -499,20 +515,7 @@ struct sm_component
 
 };
 
-/*
- *    Memory representation for attributes.
- *    Used for representing all types of attributes: instance, shared,
- *    and class.  For instance attributes, the value field will be
- *    the initial value for new instances.  For shared and class attributes,
- *    the value field has the current value.
- *
- *    Instance attributes must maintain two values.  The "original_value"
- *    is the value specified when the attribute was first defined.  This
- *    is the value that must be used when old objects are converted to
- *    a new representation or when the predicate processor attempts to
- *    access an attribute that is not found in the old representation of
- *    an object.
- */
+
 typedef struct sm_attribute SM_ATTRIBUTE;
 
 struct sm_attribute
@@ -600,20 +603,7 @@ struct sm_method_argument
 
 };
 
-/*
- *    Describes a method signature including the argument domains,
- *    the return value domain, and the function used to implement
- *    the method.
- *    All methods must have a single signature.
- *    While all methods will have a single signature structure, the
- *    SM_METHOD_ARGUMENT descriptions of the argument list and return value are
- *    optional.  If they are not present, no checks can be made on the
- *    values passed to a method.
- *    In theory, it is possible to have multiple signatures, the language
- *    does not yet support this.  The structures have been left with
- *    support for multiple signatures in case it needs to be added
- *    in the future.
- */
+
 typedef struct sm_method_signature SM_METHOD_SIGNATURE;
 
 struct sm_method_signature
@@ -623,7 +613,7 @@ struct sm_method_signature
   const char *function_name;	/* C function name */
   METHOD_FUNCTION function;	/* C function pointer */
 
-  const char *sqlx_definition;	/* interpreted string (future) */
+  const char *sql_definition;	/* interpreted string (future) */
 
   SM_METHOD_ARGUMENT *value;	/* definition of return value */
 
@@ -678,19 +668,7 @@ struct sm_method_file
 };
 
 
-/*
- *    These provide manual control over the handling of name conflicts
- *    that occur with multiple inheritance.  They may be added to the
- *    class definition automatically in some cases if the resolution has
- *    to be handled by the system.
- *    If the alias field is NULL, this indicates an absolute preference
- *    for the method or attribute of the specified class.  If the alias
- *    field has a value, this will be a replacement name to avoid the
- *    conflict.
- *    The name_space field is used to indicate if the resolution applies
- *    to the ID_INSTANCE name_space or the ID_CLASS name_space since
- *    resolutions for both spaces are kept on the same list.
- */
+
 struct sm_resolution
 {
   struct sm_resolution *next;
@@ -835,19 +813,7 @@ struct sm_class
 };
 
 
-/*
- *    This is the state structure maintained during class definition
- *    and editing.  The structure is modified as necessary to describe
- *    the modification to the class.  When editing is complete, the template
- *    is flattened and checked for errors.  If there are no errors in
- *    the template, the class will be updated.
- *    If there were errors in the template, none of the operations specified
- *    in the template will be applied.  This is usefull for the
- *    DDL interpreter since it must construct a parse tree of schema
- *    operations while parsing the CREATE CLASS and ALTER CLASS statements.
- *    If any of the clauses in these statements is in error, none of the
- *    clauses must take effect.
- */
+
 struct sm_template
 {
   MOP op;			/* class MOP (if editing existing class) */
@@ -945,20 +911,7 @@ struct sm_descriptor_list
   unsigned write_access:1;
 };
 
-/*
- *    Cache structure used to make validation of incomming values faster.
- *    One of these can optionally be attached to an SM_DESCRIPTOR and if so
- *    will contain additional information about previously validated values
- *    that can be used to speed up the checking of other values.  This can
- *    be especially significant in tight loops with repeated assignments,
- *    particularly if we would normally have to search a class hierarchy
- *    to do domain validation on a subclass.
- *
- *    Note that things get added to the cache only if coercion is not
- *    required.  We could try to be smarter still and keep hints around about
- *    the coersion that needs to be performed when the cached types come
- *    in but its less clear that would have any benifit.
- */
+
 typedef struct sm_validation SM_VALIDATION;
 struct sm_validation
 {

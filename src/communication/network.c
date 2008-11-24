@@ -1,20 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * network.c - Misc support routines for the client server interface.
- *
- * Note:
- *
- *    This file contains code to pack and unpack X_VARIABLE structures
- *    for transfer across the net.  They are not included in or.c because
- *    I want to merge the representation of X_VARIABLE and DB_VALUE
- *    structures before they are put in there.  There should be no need
- *    for a parallel X_VARIABLE structure.
- *
- *    It also contains code for packing & unpacking the server
- *    statistics structures and the vector fetch structures.
- *
  */
 
 #ident "$Id$"
@@ -23,10 +26,9 @@
 
 #include <stdio.h>
 
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "object_representation.h"
 #include "network.h"
-
 
 /*
  * net_pack_stats -

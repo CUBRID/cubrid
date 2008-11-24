@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * heap_file.h: Heap file ojbect manager (at Server)
  */
 
@@ -13,14 +29,15 @@
 #include "config.h"
 
 #include "error_manager.h"
-#include "common.h"
-#include "locator_bt.h"
+#include "storage_common.h"
+#include "locator.h"
 #include "file_manager.h"
 #include "disk_manager.h"
 #include "slotted_page.h"
 #include "oid.h"
-#include "object_representation_earth.h"
+#include "object_representation_sr.h"
 #include "thread_impl.h"
+#include "system_catalog.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) || \
@@ -31,56 +48,7 @@
  * Heap scan structures
  */
 
-/*
- * The scan and scanrange structures are used to scan objects of a heap
- * (heap_next, heap_prev, heap_first, heap_last). By specific request, the latest
- * fetched page and memory allocated by the last scanned object can be left
- * fixed and cached. This information is used in future scans, for example, to
- * avoid hashing for the same page in the page buffer pool or defining another
- * allocation area. Scan heap operations can be executed using the PEEK or
- * COPY options in the scan functions.
- *
- * When PEEK is used, the scanned object is peeked into the page buffer where
- * the scanned object reside, or into a memory area allocated by the heap
- * manager to keep the object. A memory area is used instead of a page buffer
- * when the desired object is a multipage object. The address of the object
- * and its length are indicated in a supplied record descriptor. The following
- * restrictions apply when PEEK is used:
- *
- *   1: The scan structure must be initialized with the fixed page option.
- *
- *   2: Update operations should not be made to the page where the scanned
- *      object is stored until the peeking is done. This is very important
- *      since the heap manager may decide to move the scanned object around
- *      during an update. The heap manager prevents updates to the page by
- *      other transactions by locking the page in shared mode.
- *
- *   3: A peek is declared done when another scan operation (either with
- *      peek or copy) is executed with either the same scan or recdes
- *      structures. If the caller needs the scanned object for a longer time,
- *      the object should be copied or re_fetched.
- *
- * When COPY is used, the scanned object is copied into the data area of the
- * supplied record descriptor. The scan structure can be initialized with or
- * without the fixed page option.
 
- * Note 1: Using many scans with the fix page option the same time should
- *         be avoided since page buffers are fixed and locked for future
- *         references and there is a limit of buffers in the page buffer pool.
- *         This is analogous to fetching many pages at the same time. The
- *         page buffer pool is expanded when needed, however, developers must
- *         pay special attention to avoid this situation.
- *
- * Note 2: Objects can be retrieved from a heap file without the need of
- *         a scan with fix pageoption (See the COPY option above).
- *
- * Note 3: The caller is responsible for declaring the start and end of
- *         a heap scan.
- *
- * The content of these structures is used only by the heap manager. They
- * are exposed since they are defined in stacks instead of mallocs... we
- * could define the size.... I did not care to follow such approach.
- */
 
 typedef struct heap_bestspace HEAP_BESTSPACE;
 struct heap_bestspace
@@ -239,10 +207,8 @@ struct heap_idx_elements_info
   int has_multi_col;		/* class has multi-column index  */
 };
 
-/* Defined in hf.c */
-
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid,
 			 const OID * class_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid);
@@ -347,7 +313,7 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid,
 				      HEAP_SCANRANGE * scan_range,
 				      int ispeeking);
 
-extern int heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid,
+extern bool heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid,
 			    OID * class_oid);
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 int *npages, int *nobjs, int *avg_length);

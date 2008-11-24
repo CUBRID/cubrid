@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\src\cmserver;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_LIB;CCI_OLEDB;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -106,7 +106,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\src\cmserver;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_LIB;CCI_OLEDB;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"

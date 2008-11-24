@@ -1,5 +1,5 @@
 Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
+# Visual C++ Express 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CUBRIDProvider", "oledb\CUBRIDProvider.vcproj", "{47F98C66-1ADB-438D-9C38-A137D7B0C3D6}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cubrid_odbc", "odbc\cubrid_odbc.vcproj", "{37E00A2E-BBC5-4736-90D9-A1B4271759BB}"

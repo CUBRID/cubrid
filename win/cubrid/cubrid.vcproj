@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\src\dbmt;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\src\cmserver;..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\src\dbmt;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -115,7 +115,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\src\dbmt;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
+				AdditionalIncludeDirectories="..\..\src\cmserver;..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\src\dbmt;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -175,11 +175,11 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\..\src\executables\dbu_misc.c"
+					RelativePath="..\..\src\executables\util_service.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\util_service.c"
+					RelativePath="..\..\src\executables\util_support.c"
 					>
 				</File>
 			</Filter>

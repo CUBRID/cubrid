@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * db_old.c - Obsolete API functions, primarily in support of the early 
- *            visual editors. New code should not use these functions.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * db_old.c - Obsolete API functions. New code should not use these functions.
  */
 
 #ident "$Id$"
@@ -15,18 +29,18 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
 
 /*
@@ -44,7 +58,7 @@
  *      DB_METHOD
  *      DB_RESOLUTION
  *      DB_DOMAIN
- *      DB_METHFILE 
+ *      DB_METHFILE
  * return : length of the list, zero if empty
  * list(in): a list of some variety
  */
@@ -97,7 +111,7 @@ db_objlist_get (DB_OBJLIST * list, int index)
  *    list.Prints out the internal OID's of the elements. This should ONLY be
  *    used for debugging purposes, high level users should never see the OIDs
  *    of objects.
- * return : void 
+ * return : void
  * list(in): an object list
  */
 void
@@ -125,7 +139,7 @@ db_objlist_print (DB_OBJLIST * list)
  *    are copied as well as the list links.
  * return : a new list of names
  * list(in): a list of names
- * 
+ *
  * note : The returned name list must be freed with db_namelist_free() function
  */
 DB_NAMELIST *
@@ -146,7 +160,7 @@ db_namelist_copy (DB_NAMELIST * list)
 /*
  * db_namelist_sort() - This funciton is used to sort a namelist in
  *    alphabetical order.  The list is destructively sorted NOT copied
- *    so you should get rid of any pointers to the original list. 
+ *    so you should get rid of any pointers to the original list.
  * return : a namelist
  * names(in): an unsorted namelist
  */
@@ -210,7 +224,7 @@ db_namelist_remove (DB_NAMELIST ** list, const char *name)
 
 /*
  * db_namelist_print() - Debug function to display the names in a namelist.
- *    The list is printed to stdout. 
+ *    The list is printed to stdout.
  * return : void
  * list(in) : a namelist
  */
@@ -231,10 +245,10 @@ db_namelist_print (DB_NAMELIST * list)
 
 /*
  * db_get_attribute_names() - This can be used to get the list of attribute
- *    names for a class. 
+ *    names for a class.
  * return : a namelist containing attribute names
  * obj(in): a class or instance
- * 
+ *
  * note : There are more general class information functions but this
  *    is a common operation so it has an optomized interface.
  */
@@ -271,10 +285,10 @@ memory_error:
  *    shared attributes of a class.
  * return : a namelist of shared attribute names
  * obj(in): a class or instance
- * 
+ *
  * note:   There are more general information fucntion but this
  *    is a common operation so it has an optomized interface.
- * 
+ *
  */
 
 DB_NAMELIST *
@@ -307,10 +321,10 @@ memory_error:
 
 /*
  * db_get_class_attribute_names() - This can be used to get the list of
- *    attribute names for a class. 
+ *    attribute names for a class.
  * return : a namelist containing class attribute names
  * obj(in): a class or instance
- * 
+ *
  * note : There are more general class information functions but this
  *    is a common operation so it has an optomized interface.
  */
@@ -346,7 +360,7 @@ memory_error:
  * db_get_ordered_attribute_names() - This is used to get a list of the
  *    instance and shared attributes in definition order.  This is usefull
  *    for displaying attributes because the order makes more sense to the
- *    user than the internal storage order. 
+ *    user than the internal storage order.
  * return : a namelist containing attribute names
  * obj(in): a class or instance
  */
@@ -379,7 +393,7 @@ memory_error:
 
 /*
  * db_get_method_names() - Returns a list of the names of the methods
- *   (not class methods) for a class. 
+ *   (not class methods) for a class.
  * return : a namelist of method names
  * obj(in): a class or instance
  */
@@ -480,7 +494,7 @@ memory_error:
 
 /*
  * db_get_subclass_names() - Returns a list of the names of the immediate
- *    sub classes of a class. 
+ *    sub classes of a class.
  * return : a namelist
  * obj(in): a class or instance
  */
@@ -513,7 +527,7 @@ memory_error:
 
 /*
  * db_get_method_file_names() - Returns the list of method files defined
- *    for a class. 
+ *    for a class.
  * return : a namelist
  * obj(in): a class or instance
  */
@@ -546,7 +560,7 @@ memory_error:
 
 /*
  * db_get_method_function() - Returns the name of the C function that was
- *    defined to implement a method. 
+ *    defined to implement a method.
  * return : a C function name
  * obj(in): a class or instance
  * name(in): the name of a method
@@ -579,7 +593,7 @@ db_get_method_function (MOP obj, const char *name)
 /*
  * db_get_attribute_domain() - This is used to get a full domain descriptor
  *    for an attribute. The domain descriptor can be examined using the
- *    db_domain_ accessor functions. 
+ *    db_domain_ accessor functions.
  * return : the domain descriptor for an attribute
  * obj(in): a class or instance
  * name(in): attribute name
@@ -639,7 +653,7 @@ db_get_attribute_type (MOP obj, const char *name)
  * db_get_attribute_class() - This returns the MOP of the class that was
  *    defined as the domain of this attribute.  The basic type of the
  *    attribute must be DB_TYPE_OBJECT, if not, this function will return
- *    NULL. 
+ *    NULL.
  * return : a class pointer
  * obj(in): class or instance
  * name(in): attribute name
@@ -665,11 +679,11 @@ db_get_attribute_class (MOP obj, const char *name)
 
 /*
  * db_is_indexed() - This function is used to see if an attribute has an index
- *    or not. 
+ *    or not.
  * return : non-zero if attribute is indexed
  * classmp(in): class pointer
  * attname(in): attribute name
- * 
+ *
  * note : Because this returns a true or false, it masks any errors that may
  *    have been encountered aint the way so callers should first make sure that
  *    the class is accessible, the attribute exists, etc.
@@ -692,7 +706,7 @@ db_is_indexed (MOP classmop, const char *attname)
 /*
  * db_print_mop() - This can be used to get a printable representation of
  *    an object pointer. This should be used only for debugging purposes
- *    or other special system utilities. 
+ *    or other special system utilities.
  * return : number of chars used in the printed representation
  * obj(in): class or instance pointer
  * buffer(out): buffer to contain the printed representation
@@ -721,11 +735,11 @@ db_print_mop (DB_OBJECT * obj, char *buffer, int maxlen)
  * db_get_method_source_file() - This is an experimental function for the
  *    initial browser. It isn't guarenteed to work in all cases. It will
  *    attempt to locate the .c file that contains the source for a method
- *    implementation. 
+ *    implementation.
  * return : C string
  * class(in): class or instance
  * method(in): method name
- * 
+ *
  * note : There isn't any way that this can be determined for certain, what it
  *    does now is find the .o file that contains the implementation function
  *    and assume that a .c file exists in the same directoty that contains

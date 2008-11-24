@@ -1,26 +1,40 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * eh.h: Extendible hashing module (interface)			      
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _EH_H_
-#define _EH_H_
+
+/*
+ * extendible_hash.h: Extendible hashing module (interface)
+ */
+
+#ifndef _EXTENDIBLE_HASH_H_
+#define _EXTENDIBLE_HASH_H_
 
 #ident "$Id$"
 
 #include "config.h"
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "file_manager.h"
 #include "oid.h"
 
-/* The definition of the EHID is in dtsr.h */
-
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern EHID *xehash_create (THREAD_ENTRY * thread_p, EHID * ehid,
 			    DB_TYPE key_type, int exp_num_entries,
 			    OID * class_oid, int attr_id);
@@ -69,4 +83,4 @@ int ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 int ehash_rv_increment (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 int ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
-#endif /* _EH_H_ */
+#endif /* _EXTENDIBLE_HASH_H_ */

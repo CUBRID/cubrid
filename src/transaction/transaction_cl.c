@@ -1,154 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * tmcl.c -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * 	Overview: TRANSACTION MANAGER (AT CLIENT)
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * Concurrency control is the activity of coordinating the actions of
- * transactions that operate in parallel and access database resources such as
- * objects, pages, and data structures, and therefore potentially interface
- * with each other. CUBRID, like most commercial database systems, adopts
- * serializability [GRAY78, BERN78] as its criterion for concurrency
- * correctness. Serializability requires that whenever transactions execute
- * concurrently, their effect must be identical to some serial execution of
- * the same transactions. This principle is based on the assumption that each
- * transaction preserves database consistency if it runs atomically. That is,
- * if initially the database state is consistent, then after executing exactly
- * one transaction at a time, the database state is still consistent.
- * Serializability is ensured in CUBRID, as in many other database systems,
- * through the well known strict two phase locking mechanism[ESWA76]. One
- * reason for adopting locking as our concurrency control mechanism is that
- * the current theory of locking provides a sound basis for incorporating new
- * requirements of design environments. Locking is also a well-understood
- * technique which has been incorporated into many database systems. On the
- * other hand, other concurrency control techniques such as timestamps[BERN80]
- * and optimistic[KUNG81] are seldom incorporated into database systems. In
- * addition, simulation results [AGRA85, CARE84, CARE89, CARE88] have shown
- * the superiority of locking over the above concurrency control schemes in an
- * environment of multiple concurrent transactions.
- * See the lock manager for more details.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * Recovery is the activity of ensuring that software and hardware failures do
- * not corrupt the database. The main component of the above two concepts is
- * the transaction. Actions on database objects are implemented by CUBRID in
- * such a way as to be atomic. An atomic action either completes and possibly
- * modifies the state of the database or it does not complete and has no
- * effect on the database state. Transactions extend action atomicity to the
- * sequence of actions comprising a logical unit of work (set of actions or a
- * transaction). Either all the actions of the sequence are completed and have
- * their effect on the database or the transaction has no effect. Transactions
- * remain atomic despite failures of hardware, software, or the database
- * storage. Either all the effects of a transaction are applied to the
- * database or the transaction has no effect upon the database. In order to
- * preserve transaction atomicity, recovery management must be able to reapply
- * the effect of committed transactions whenever a failure occurs without
- * having written all of a transaction's updates to disk. Also the recovery
- * management facility must be able to remove the effects of partially
- * completed transactions from the database whenever a site fails while some
- * transactions are incomplete, or whenever the system or the application
- * requests a transaction abort. The recovery facilities relieve the
- * application from having to consider how to return the database to a
- * consistent state following a system failure. Also, partially completed
- * transactions can be aborted by the application or by the system without
- * having to write a program to undo the effects of the partially complete
- * transaction.	The recovery manager of CUBRID is based on UNDO and REDO
- * logging. See The recovery Manager module for more details.
- *
- * The transaction management is split in two: a client transaction manager
- * and a server transaction manager. They coordinate the commit and abort of
- * the transactions. By issuing a commit an application notifies that the
- * transaction has terminated normally and that all its effects must be made
- * permanent. The transaction manager in the client first flushes all objects
- * that have been updated by the transaction from the workspace(client) to the
- * page buffer pool (server). It then notifies the transaction manager in the
- * server to commit the transaction. The transaction manager in the server
- * will do some few loose ends and then notify the recovery manager the
- * commit. Once the recovery manager has agreed to commit the transaction, the
- * transaction manager in the server indicates to the transaction manager in
- * the client of any client loose ends actions (after commit actions) such as
- * multimedia external shadow files that need to be executed at the client.
- * Note that these loose end actions are performed once the transaction has
- * been declared as committed(committed but with client loose end actions) and
- * the application is notified that the transaction has been committed
- * successfully. Note once the recovery manager declares the transaction
- * committed, all loose ends postpone actions are eventually done even when
- * the server crashes when the loose ends were being executed. As a result of
- * the commit, locks that have been cached in the workspace are cleared by the
- * transaction manager and the acquired locks (on the lock table) are released
- * by the recovery manager once the transaction is fully committed (i.e., all
- * postponed actions have been done). Similarly, an abort operation may be
- * issued when a transaction cannot be completed. In this case, the
- * transaction manager in the client removes all updated objects from the
- * client workspace, clears the cached locks, and notifies the transaction
- * manager in the server of the abort. The transaction manager in the server
- * executes a few things and notifies the recovery manager of the abort. The
- * recovery manager rolls back all updates made by the transaction to the
- * database and the page buffer pool. In addition any loose end undo actions
- * that need to be executed in the client, for example multimedia stuff, are
- * indicated to the transaction manager in the client, so that such actions
- * are done. All of these loose end undo actions are eventually done even
- * when there are multiple client crashes. An abort operation may also be
- * forced by the database system for circumstances beyond the control of the
- * application such as media or system crashes on either the client or the
- * server. If the crash occurs only on the server but the client is still
- * active, the application is notified.
- *
- * There is a portion of the transaction management in the server (see tmsr.c)
- *
- * MODULE INTERFACE
- *
- * The following modules are called by the transaction manager at client:
- * Tran. Object locator at client: To flush dirty object from the workspace
- *                                 (client) to page buffer pool (server).
- * Work Space manager:             To clear cached locks
- * Log Manager:                    To obtain postpone/undo client actions.
- * Query Processor:                To close cursors.
- *
- * At least the following modules call the transaction manager at client:
- * Boot Manager at client:         To finish client loose_ends (either
- *                                    postpone or undo).
- * SQL/X interpreter (ddl):        To commit and abort transactions
- * SQL/X API:                      To commit and abort transactions
- * Tran. Object locator at client: To clean a client transaction in the event
- *                                    of a server crash.
- *
- * REFERENCES
- *
- * [AGRA85] Agrawal, R., M. Carey, M. Livny. "Models for Studying Concurrency
- *          Control Performance: Alternatives and Implications," In Proc. ACM
- *          SIGMOD Int'l Conf. on Management of Data, pp. 108-121. Austin, TX
- *          May 1985.
- *
- * [BERN78] Bernstein, P., J. Rothnie, N. Goodman, C. Papadimitriou.
- *          "The Concurrency Control Mechanism of SDD-1: A System for
- *          Distributed Databases ( The Fully Redundant Case)," IEEE Trans. on
- *          Software Engineering, Vol. 4, No. 3, May 1978, pp. 154-168.
- *
- * [CARE84] Carey, M., M. Stonebraker. "The Performance of Concurrency
- *          Control Algorithms for DBMSs," In Proc. 10th Int'l Conf. on Very
- *          Large Data Bases, pp. 107-118. Singapore, August, 1984.
- *
- * [CARE89] Carey, M, and M. Livny. "Parallelism and Concurrency Control
- *          Performance in Distributed Database machines," ACM SIGMOD 1989.
- *
- * [CARE88] Carey, M, and M. Livny. "Distributed Concurrency Control
- *          Performance: A Study of Algorithms, Distribution, and
- *          Replication," Proc 14th VLDB Conf. Los Angeles, CA, August 1988.
- *
- * [ESWA76] Eswaran, K., J. Gray, R. lorie, R. Traiger. "The Notions of
- *          Consistency and Predicate Locks in a Database System," Comm of the
- *          ACM, Vol. 19, No. 11, November 1976, pp 624-633.
- *
- * [GRAY78] Gray, J. "Notes on Data Base Operating Systems," in Operating
- *          Systems: An Advanced Course, Ed. G. Seegmuller, Springer-Verlag,
- *          1978, pp. 393-481.
- *
- * [KUNG81] Kung, H., J. Robinson. "On Optimistic Methods for Concurrency
- *          Control," ACM Trans. on Database Systems, Vol. 6, No. 2, June
- *          1981, pp. 213-226.
- *
+ */
+
+/*
+ * transaction_cl.c -
  */
 
 #ident "$Id$"
@@ -164,30 +33,30 @@
 #if !defined(WINDOWS)
 #include <sys/param.h>
 #endif
-#include <ustring.h>
 #if defined(SOLARIS)
 /* for MAXHOSTNAMELEN */
 #include <netdb.h>
 #endif
 
 #include "dbi.h"
+#include "misc_string.h"
 #include "transaction_cl.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "locator_cl.h"
 #include "work_space.h"
-#include "server.h"
-#include "logcp.h"
-#include "recover_cl.h"
+#include "server_interface.h"
+#include "log_comm.h"
+#include "recovery_cl.h"
 #include "db_query.h"
 #include "boot_cl.h"
-#include "virtual_object_1.h"
-#include "schema_manager_3.h"
+#include "virtual_object.h"
+#include "schema_manager.h"
 #include "trigger_manager.h"
 #include "system_parameter.h"
 #include "dbdef.h"
 #include "db.h"			/* for db_Connect_status */
 #include "porting.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -456,7 +325,7 @@ tran_abort_client_loose_ends (bool isknown_state)
   return log_has_finished_client_undo ();
 }
 
-/* only loaddb changes this setting; see loader.c */
+/* only loaddb changes this setting */
 bool tm_Use_OID_preflush = true;
 
 /*
@@ -642,22 +511,6 @@ tran_abort (void)
   sm_transaction_boundary ();
 
 #if defined(SA_MODE)
-  /*
-   *
-   * Only one workspace (there is not multiple concurrent transactions),
-   * The workspace is cleared to avoid the following situation:
-   * An object is updated, flushed, and then transaction aborts. Next
-   * transaction may see the invalid object in the workspace, unless
-   * the workspace is cleared at abort time or objects are validated
-   * when they are accessed just like in multiple concurrent transactions.
-   * This technique used in client/server is simple, an object does not
-   * need to be validated if a lock on the object is cached in the workspace,
-   * otherwise, is validated by comparing the cache coherence number in the
-   * workspace against the one on the disk. We have adopted the first
-   * technique, that is clearing the workspace, since aborts should not be
-   * very frequent.
-   *
-   */
   ws_clear ();
 #else /* SA_MODE */
   /* Remove any dirty objects and remove any hints */
@@ -1234,75 +1087,6 @@ end:
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE: Prepare the system for a nested top operation which does not
- *              depend on the destiny of the transaction, but the macro
- *              operation itself.
- *              Kind of a mini transaction for logging but no for concurrency
- *              control.
- *
- * NOTE 1:      A top nested operation will not conflict with any of its
- *              ancestros (i.e., other nested top operations and the
- *              transaction itself) or any of its decendents top nested
- *              operations. The locks are acquired by the transaction and not
- *              by top operation. The top operation was created only to make
- *              certain operations independent of the fate of the transaction.
- *              A top nested operation can be either committed or aborted
- *              independetly of the transaction, or the top nested operations
- *              can be attached to its immediate ancestor.
- * NOTE 2:      Distributed transaction stuff should not be done with system
- *              operations.
- * WARNING:
- *              It is possible that an ancestor may undo the effects of a
- *              committed  top operation if the operations are not planned
- *              carefully. For example, if the ancestor has modified the same
- *              data and such data is still transient (i.e., not committed)
- *              For example,
- *                  -
- *                  -
- *                  -
- *                  update person SET age = age + 1;
- *                  -
- *                  -
- *                  -
- *                  Start sysop
- *                  update person SET age = age + 1;
- *                  End sysop with commit..
- *
- *                  ABORT..
- *              In this case the objects are reverted as they were before the
- *              transaction and not the system operation...
- *
- *              In contrast,..
- *                  -
- *                  -
- *                  -
- *                  Start sysop
- *                  update person SET age = age + 1;
- *                  End sysop with commit..
- *                  -
- *                  -
- *                  -
- *                  update person SET age = age + 1;
- *
- *                  ABORT..
- *
- *              In this case the objects are reverted as they were after the
- *              system operation
- *
- *              THAT IS WHY, WE DO NOT RECOMMEND THE USE OF TOP NESTED ACTIONS
- *              WITH THE PURPOSE OF COMMITTING STUFF WITH USER PURPOSES. This
- *              kind of purpose should be used for specific DBMS system
- *              operations that do not depend on transactions. For example,
- *              System R and ARIES use them to create files.
- *              CUBRID uses this capacibilty to create volumes that are
- *              independent of the transaction and to update the disk map of
- *              old file when pages are created. In this case the newly
- *              allocated page and the new volume are immediately avaialble to
- *              any transaction.
- *              Top nested operation with the purpose of attach/join to parent
- *              or abort if operation fails can be used for any kind of
- *              operations (including user operations) without any
- *              inconsistencies.
  */
 int
 tran_start_topop (void)
@@ -1400,20 +1184,6 @@ tran_end_topop_abort (void)
   ws_abort_mops (false);
   ws_filter_dirty ();
 #if defined(SA_MODE)
-  /*
-   * Only one workspace (there is not multiple concurrent transactions),
-   * The workspace is cleared to avoid the following situation:
-   * An object is updated, flushed, and then aborts (either top action or
-   * transaction). Next transaction may see the invalid object in the
-   * workspace, unless the workspace is cleared at abort time or objects
-   * are validated when they are accessed just like in multiple concurrent
-   * transactions. This technique used in client/server is simple, an
-   * object does not need to be validated if a lock on the object is
-   * cached in the workspace, otherwise, is validated by comparing the
-   * cache coherence number in the workspace against the one on the disk.
-   * We have adopted the first technique, that is clearing the workspace,
-   * since aborts should not be very frequent.
-   */
   ws_clear ();
 #endif /* SA_MODE */
   state = tran_server_end_topop (LOG_RESULT_TOPOP_ABORT, &topop_lsa);
@@ -1750,20 +1520,6 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
   else
     {
 #if defined(SA_MODE)
-      /*
-       * Only one workspace (there is not multiple concurrent transactions),
-       * The workspace is cleared to avoid the following situation:
-       * An object is updated, flushed, and then aborts (either top action or
-       * transaction). Next transaction may see the invalid object in the
-       * workspace, unless the workspace is cleared at abort time or objects
-       * are validated when they are accessed just like in multiple concurrent
-       * transactions. This technique used in client/server is simple, an
-       * object does not need to be validated if a lock on the object is
-       * cached in the workspace, otherwise, is validated by comparing the
-       * cache coherence number in the workspace against the one on the disk.
-       * We have adopted the first technique, that is clearing the workspace,
-       * since aborts should not be very frequent.
-       */
       ws_clear ();
 #else /* SA_MODE */
       /* Remove any dirty objects and remove any hints */

@@ -1,462 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * eh.c - Extendible hash manager
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * This module implements Extendible Hashing [Fagi 79], a well-established file 
- * structuring and searching technique which guarantees 
- * that no more than two page accesses are needed to locate the data          
- * associated with a given key. Unlike conventional hashing, extendible       
- * hashing has a dynamic structure that grows and shrinks gracefully as the   
- * database grows and shrinks. [Hsu 86] describes the operations of the       
- * extendible hashing mechanism as follows:                                   
- * "The (Extendible Hashing) File consists of a directory and  
- * data pages. The directory is characterized by a global depth 'g', and      
- * contains (2 ^ 'g') entries, each of which points to a data page.           
- * A hash function is used to transform keys into pseudo keys of bit stream   
- * form. The first 'g' bits of the pseudo key determine the directory entry   
- * corresponding to a key. Each data page is characterized by a local depth   
- * 'l' <= 'g', and a bit pattern 'bp' of length 'l'. A data page with an      
- * 'l'-bit bit pattern 'bp' contains all keys the first 'l' bits of whose     
- * pseudo keys conform to the bit pattern 'bp'. When a datapage overflows,    
- * its local depth is incremented by 1 and the page is split in two: one page 
- * is now characterized by a bit pattern, which is the old bit pattern        
- * concatenated with an additional bit of '0', and the other with the bit of  
- * '1'. When the data page whose local depth is equal to the global depth of  
- * the directory overflows, the directory size is doubled, i.e., the global   
- * depth is incremented by 1, and the overflowing data page is again allowed  
- * to split."                                                                 
- *                                                                            
- * Below is an example which gives a pictorial explanation of    
- * the above textual description.                                             
- *                                                                            
- * The keys and their hashed values for this example are:                     
- *                                                                            
- *   Key    Binary                                                            
- *   34     100010                                                            
- *   17     010001   These records will be inserted in this order.            
- *    5     000101                                                            
- *   28     011100                                                            
- *   25     011001                                                            
- *   50     110010                                                            
- *   55     110111                                                            
- *    8     001000                                                            
- *                                                                            
- * Data will be stored as pages, with two records per page.                   
- *                                                                            
- * Start Condition:                                                   
- *                                                                            
- *      Directory        Pages                                                
- *        +---+                                                               
- *        | 0 | ------>(    ,    )      Two bucket pages allocated.           
- *        +---+                                                               
- *        | 1 | ------>(    ,    )                                            
- *        +---+                                                               
- * The data is inserted, using the leftmost bit as the hash value.            
- * After insertion, it looks like this:                                       
- *                                                                            
- *      Directory        Pages                                                
- *        +---+                                                               
- *        | 0 | ------>(  5 , 17 )                                            
- *        +---+                                                               
- *        | 1 | ------>( 34 ,    )                                            
- *        +---+                                                               
- * The next value, 28, cannot be put in the first page, so the directory      
- * size is doubled, and a new page is allocated:                              
- *                                                                            
- *      Directory        Pages                                                
- *        +----+                                                              
- *        | 00 | ------>(  5 ,    )                                           
- *        +----+                                                              
- *        | 01 | ------>( 17 , 28 )                                           
- *        +----+                                                              
- *        | 10 | ------>( 34 ,    )                                           
- *        | 11 |                                                              
- *        +----+                                                              
- * The next value, 25, causes the same problem, and the directory is split    
- * again:                                                                     
- *                                                                            
- *      Directory        Pages                                                
- *        +-----+                                                             
- *        | 000 | ------>(  5 ,    )                                          
- *        | 001 |                                                             
- *        +-----+                                                             
- *        | 010 | ------>( 17 ,    )                                          
- *        +-----+                                                             
- *        | 011 | ------>( 25 , 28 )                                          
- *        +-----+                                                             
- *        | 100 | ------>( 34 ,    )                                          
- *        | 101 |                                                             
- *        | 110 |                                                             
- *        | 111 |                                                             
- *        +-----+                                                             
- * The 50 can be inserted with the 34.                                        
- *                                                                            
- *      Directory        Pages                                                
- *        +-----+                                                             
- *        | 000 | ------>(  5 ,    )                                          
- *        | 001 |                                                             
- *        +-----+                                                             
- *        | 010 | ------>( 17 ,    )                                          
- *        +-----+                                                             
- *        | 011 | ------>( 25 , 28 )                                          
- *        +-----+                                                             
- *        | 100 | ------>( 34 , 50 )                                          
- *        | 101 |                                                             
- *        | 110 |                                                             
- *        | 111 |                                                             
- *        +-----+                                                             
- * The 55 causes the directory to remain the same, but a new page             
- * must be allocated.  After that the 8 is inserted with the 5.               
- *                                                                            
- *      Directory        Pages                                                
- *        +-----+                                                             
- *        | 000 | ------>(  5 ,  8 )                                          
- *        | 001 |                                                             
- *        +-----+                                                             
- *        | 010 | ------>( 17 ,    )                                          
- *        +-----+                                                             
- *        | 011 | ------>( 25 , 28 )                                          
- *        +-----+                                                             
- *        | 100 | ------>( 34 ,    )                                          
- *        | 101 |                                                             
- *        +-----+                                                             
- *        | 110 | ------>( 50 , 55 )                                          
- *        | 111 |                                                             
- *        +-----+                                                             
- *                                                                            
- * Note that as the directory may expand when neccessary, it may 
- * shrink as well. If the above example is backtracked, we can observe some   
- * pages merging with their siblings and the directory shrinking at some      
- * stages. Note that merging two buckets and shrinking the directory is       
- * not essential to the operation of extendible hashing. Even if all of the   
- * above keys are removed from their pages, the final extendible hashing      
- * structure would still be valid for future insertions. The main objective   
- * of performing these operations is to save valuable disk space.             
- *                                                                            
- *                                                                            
- * Terminology:                                                          
- * ------------                                                          
- * The following term is frequently used in the documentation    
- * of this module:                                                            
- *                                                                            
- * Sibling bucket: The sibling of a bucket is another bucket that has the     
- * same local depth as the original one, and the sibling bucket is pointed    
- * by directory pointers whose locations differ from those pointing to the    
- * original one only at local-depth bit.                                      
- *                                                                            
- *                                                                            
- * Functionality:                                                        
- * --------------                                                        
- * This implementation of the extendible hashing mechanism       
- * supports different key types (numbers and strings). The type of data value 
- * to associate with a key, on the other hand, is fixed to OID (the physical  
- * object identifier, which is a structure consisting of volume, page and     
- * slot identifier of disk location corresponding to the object). If a        
- * different data type needs to be associated with keys, some of the private  
- * fuctions of this module should be changed.                                 
- * In its current status, this module does not have the          
- * capability of allowing multiple values to be associated with a single key. 
- * If a need arises for this functionality, it can be added to this           
- * implementation.                                                            
- *                                                                            
- * Data structures:                                                      
- * ----------------                                                     
- * This module uses two main data structures: directory and     
- * data (bucket) pages. The directory of the extendible hashing is kept in    
- * logically contiguous pages, managed as a file. The first page (root page)  
- * of the directory starts with the directory-header. Directory header        
- * includes the global depth of the directory as well as some other useful    
- * information. The layout of directory header is shown below. The other      
- * directory pages consist of bucket pointers (bucket vpid) only.             
- *                                                                            
- * Directory Header Layout:                                              
- * ________________________________________________________________________   
- * | global | local depth  | key  | key  | bucket | number of | alignment |   
- * | depth  |  counters    | type | size | file   | entries   |           |   
- * ------------------------------------------------------------------------   
- *                                                                            
- * Each bucket, on the other hand, occupies a separete page in  
- * another file. The access to the bucket pages is controlled by using the    
- * Slotted Page Manager. The first slot of each bucket page is reserved for   
- * bucket-header, which keeps the local depth of the bucket. The layout of    
- * other slots is shown below:                                                
- *                                                                            
- * Bucket Record Layout:                                                 
- * ______________________________                                        
- * |   associated   |   key     |                                        
- * |     value      |   value   |                                        
- * ------------------------------                                        
- *                                                                            
- * Note: If the size of key is not fixed (in the case of string keys)    
- * the size of area keeping key value is calculated from the slot size. 
- * (Since key value area is the last field in each record this is possible). 
- * Otherwise, the fixed key size is kept in the directory header.                                               
- *                                                                            
- * Algorithms and Concepts:                                              
- * ------------------------                                              
- * The algorithms used in this module are rather well-established. 
- * However, the following remarks could be beneficial:      
- *                                                                            
- * (a) Identification:                                                         
- *    Each extendible hashing instance is identified with a triple  
- *    consisting of:                                                          
- *                                                                            
- *      (1)Volume id: identifier of the disk volume it is kept on              
- *      (2)File id  : identifier of its directory file                         
- *      (3)Page id  : identifier of its directory first (root) page            
- *                                                                            
- * (b) Locking Protocol:                                                       
- *    The concurrency control on the extendible hashing structure  
- *    is realized with page level locking on both the directory and bucket    
- *    pages. Before a transaction performs an operation on an extendible      
- *    hashing structure it obtains the appropriate page locks on that         
- *    extendible hashing structure. Once it finishes its operation, it        
- *    releases these locks without waiting for the commit/abort time.         
- *                                                                            
- *    The bucket pages are locked individually, either in the      
- *    shared mode (by using shared_lock: S_LOCK) or in the exclusive mode     
- *    (by using exclusive lock: X_LOCK).                                      
- *    The Directory is locked as a whole regardless of how many    
- *    pages it occupies. This reduces the level of attainable concurrency.    
- *    However, it is a safe (deadlock-free) and efficient (with minimum       
- *    locking overhead) way of controlling the access to the extendible       
- *    hashing structure.                                                      
- *    In order to attain a high concurrency level, all transactions 
- *    are restricted to acquire only shared lock on the directory. However,   
- *    insertion and deletion operations may require (or recommend) some       
- *    changes to the directory (e.g., bucket split or merge cases).  
- *    This situation is coped with in the following way:                           
- *                                                                            
- *    Insertions: For insertions, a private function which takes    
- *    an additional argument to specify the lock type to acquire on the       
- *    directory is used. The public function calls this private one with      
- *    S_LOCK to get the insertion done. If this private function finds out    
- *    that the bucket to insert the key is full, it releases all the locks    
- *    and calls itself with an X_LOCK. In this second call, if the split      
- *    (and possibly directory expansion) is still required it is performed    
- *    safely, since no other process can access to the directory (and hence,  
- *    to the bucket).                                                         
- *    Deletions: Unlike the split operation, a merge (and directory 
- *    shrink) operation can be delayed. This implementation uses this fact    
- *    in the following way. After deleting a key from a bucket, if it is      
- *    possible and desirable to merge the bucket with its sibling bucket,     
- *    then both the directory and the bucket are released and another function
- *    "try_to_merge" is invoked to perform the merge operation. "try_to_merge"
- *    acquires an exclusive lock on the directory and performs the merge      
- *    operation (possibly followed by a directory shrink operation) if it is  
- *    still possible and desirable. (See the explanation of thresholds below  
- *    for the meaning of desirable.)                                          
- *                                                                            
- * (c) Recovery Management:                                                    
- *    In order to preserve the consistency of the extendible hashing
- *    structures in a transaction abort or system crash situations, this      
- *    module produces logging information during the update operations.       
- *    Transaction aborts are supported with operation logs that are not       
- *    associated with any page. That is because the lock protocol on          
- *    extendible hashing (see item b, above) permits different uncommitted    
- *    transactions to update the same bucket page. Thus, an entry inserted/   
- *    deleted by a transaction might have been moved to another bucket        
- *    (via split/merge operations caused by other transactions) by the time   
- *    the transaction is aborted.                                             
- *    On the other hand, the split and merge operations are         
- *    performed as system permanent operations. This guarantees that they     
- *    will not be undone if the transaction that initiated these operations is
- *    aborted later on (since the log information produced during the         
- *    permanent system operations is recorded with a new transaction          
- *    identifier). This also ensures that either all, or none of the          
- *    updates (on different pages) that are caused by the split/merge         
- *    operations will take place, thus guaranteeing the consistency of the    
- *    extendible hashing structure.                                           
- *                                                                            
- * (d) Thresholds:                                                             
- *    The successive insertions and deletions can degrade the       
- *    performance of the extendible hashing considerably by causing:          
- *     (i) frequent split/merge operations on the same bucket pair                                                      
- *    (ii) frequent expansion/contraction operations of the directory.                                                
- *    To avoid these situations, this module delays merge and       
- *    shrink operations. The merge operation is delayed until the two         
- *    threshold values (one for bucket underflow, and one for bucket overflow)
- *    are satisfied. For the shrink operation, on the other hand, another     
- *    approach is taken. The global depth of the directory is kept one higher 
- *    than the maximum of the local depths of the buckets after a shrink      
- *    operation. As a result, the contraction of the directory is not         
- *    performed until this difference exceeds 1.                              
- *                                                                            
- * (e) Record Access:                                                          
- *    Bucket records are kept in increasing key order, each in a    
- *    different slot. The binary search method is used to locate the slot for 
- *    a given key value. In order to avoid unneccessary copy operation,       
- *    read access to these slots is performed in the PEEK mode (read only). 
- *    To avoid alignment problems, the slots are aligned to the size of
- *    their largest elements (either key value, or the associated data value).
- *    Note that since this implementation is not expected to run on a 64-bit  
- *    machine, alignment to 8-bytes is avoided even when the keys are of type 
- *    "double". If this implementation should be used in a 64-bit machine,    
- *    function eh_create should be updated for this purpose.                  
- *    TODO: M2 64-bit                                                                         
- *                                                                            
- * (f) Disk Full condition:                                                    
- *    Some extendible hashing operations (such as create and insert)
- *    require the allocation of some new pages. During these operations,      
- *    should the disk volume on which the extendible hashing structure        
- *    is accommodated become full, the operation is cancelled, and all        
- *    of the partial effects of the operation on the directory and on         
- *    the bucket pages that would leave the extendible hashing structure      
- *    in an inconsistent state are undone.                                    
- *    For example, if an insertion results in a split followed by             
- *    a directory expansion, and if the disk does not have enough vacant      
- *    pages for the new directory size, then the insertion operation is       
- *    cancelled. To leave the extendible hashing structure in a               
- *    consistent state, the two newly split buckets are merged into           
- *    one page again.                                                         
- *                                                                            
- *  (g) Overflow page management:                                              
- *    This module supports long strings (longer than a pagesize)   
- *    as key values. These strings are maintained in the overflow file (as a  
- *    linked list of overflow pages). Bucket records for these keys are       
- *    essentially relocation records containing the initial portion of the    
- *    long string (a few characters) and the address of the rest of the       
- *    string in the overflow area as well as the OID associated with this     
- *    key value.                                                              
- *    One important point about the overflow page handling in this  
- *    module is the recovery aspect of it. The relocation records (that       
- *    lives in the bucket pages) are treated just like ordinary records for   
- *    recovery purposes. That is, logical undo logging and physical (page)    
- *    redo logging is used in insertion and deletion operations of the        
- *    relocation records, just like the regular records. However, overflow    
- *    page changes (insertions & deletions) are logged phsically for both     
- *    redo and undo logging. This requires that during insertion operation    
- *    the overflow pages should be logged before the relocation record in the 
- *    bucket page and that during the deletion operation relocation record    
- *    removal should be logged before overflow area removal. Since the        
- *    recovery restart actions of our system will perform REDO pass before    
- *    the UNDO pass the above requirement guarantees the existince of the     
- *    overflow area when a recovery functin performing logical undo on the    
- *    relocation record is called.                                            
- *                                                                            
- * Conventions:                                                          
- * ------------                                                          
- * The conventions used in this implementation are:              
- *                                                                            
- * (a) Numbering directory pointers:                                           
- *    Directory pointers are numbered from 0 (the one immediately after 
- *    the directory header) to (2 ^ global_depth) - 1 (the very last one).                                                                   
- *                                                                            
- * (b) Numbering directory pages:                                              
- *    Directory pages are numbered starting from 0 (the root page). 
- *                                                                            
- * (c) Ordering of bits of pseudo keys:                                        
- *    Left adjustment with a starting number of 1 is used. For a    
- *    4-byte machine, for instance, the ordering of bits is as follows:       
- *                        ________________         _______________            
- *         BIT ORDERING : |  1 |  2 |  3 |  .....  | 30 | 31 | 32|            
- *                        ----------------         ---------------            
- *                                                                            
- *                                                                            
- * Future Extensions:                                                    
- * ------------------                                                    
- * (a) Multiple values:                                                        
- *    If desired, this module can be changed to allow multiple      
- *    values to be associated with each key value. (To do this, a flag should 
- *    be added to the directory header to denote if multiple values are       
- *    allowed, and the read and write operations on slotted bucket pages      
- *    should be performed in accordance with the value of this flag.) Note    
- *    that if multiple values are allowed a bucket page may overflow even if  
- *    it contains only one key. In this case, an overflow page should be      
- *    allocated, and it must be connected to the original page (the header    
- *    of the bucket may be changed to contain the vpid of the overflow      
- *    bucket, yielding a linked list of bucket pages).                        
- *                                                                            
- * Possible Implementation (performance) Enhancements:                   
- * ---------------------------------------------------                   
- * (a) Directory Locking:                                                      
- *    Directory can be locked at page level. This would improve    
- *    the concurrency level attained. Possibly some verification              
- *    technique can be adapted (as suggested in references 2 and 3) to        
- *    totally eliminate the need for locking the directory.                   
- *                                                                            
- * (b) Key Types:                                                              
- *    Having a general module for all key types has a negative     
- *    effect on performance. If needed, a special version of this module for  
- *    only one key type, (e.g., integer, for Object identifiers) can be       
- *    produced from this module. Another alternative can be the use of an     
- *    array of pointers to functions approach. In this approach, a set of     
- *    small functions is used to perform the same action on different key     
- *    types. An array of pointers to these functions can be indexed with the  
- *    value of the key_type field of the directory header to invoke the       
- *    correct function.                                                       
- *                                                                            
- * (c) Directory Expansion:                                                    
- *    This function can be upgraded to perform all neccessary      
- *    updates on the directory pointers, instead of merely duplicating the    
- *    previous content. This would eliminate the redundant operation of       
- *    updating some pointers immediately after this expansion.                
- *                                                                            
- * (d) Macro GETBITS:                                                          
- *    This macro is used to extract bits of a pseudo key to find  
- *    the corresponding directory entry. In this version, it is called on     
- *    the same pseudo key for a second time in the function "connect_bucket". 
- *    This is because this function is also used after directory expansion    
- *    when more numbers of bits are needed to address the directory entries.  
- *    If the change suggested in the third item related to directory          
- *    expansion is performed, this second macro call can be eliminated by     
- *    sending only the extracted bits of the pseudo key to this function.     
- *                                                                            
- * (e) Private function "slot_locate:                                          
- *    This function uses the binary search method to locate the    
- *    slot for each key value. For fixed size records it is possible to use   
- *    an internal hashing method with a simple collision handling mechanism,  
- *    such as open addressing, instead of the binary search. However, it      
- *    should be noted that binary search may yield better performance if      
- *    there are a few records in a bucket. Therefore, it may be a good idea   
- *    to define threshold values on the number of records each bucket         
- *    contains to determine the searching mechanism to be used on that        
- *    bucket, dynamically.                                                    
- *                                                                            
- *                                                                            
- * Relevant Literature:                                                  
- * --------------------                                                  
- * a: Fagin, R., et al. "Extendible Hashing: A fast access method for         
- *    dynamic files."  ACM Transactions on Database Systems, Vol. 4, No. 3,   
- *    September 1979, pp: 315-344.                                            
- *                                                                            
- * b: Hsu, M., Yang, W.-P., "Concurrent Operations in Extendible Hashing."    
- *    In Proceedings of the 12th International Conference on Very Large       
- *    Databases. Kyoto, August 1986, pp. 241-247.                             
- *                                                                            
- * c: Kumar, V., "Concurrent Operations on Extendible Hashing and its         
- *    Performance." Communications of the ACM. Vol. 33, No. 6, June 1990,     
- *                                                                            
- *                                                                            
- * Interfaces:                                                         
- * -----------                                                          
- *                                                                            
- * (a) Callees of the module:                                                  
- *                                                                            
- *    Buffer Manager;        for management of page buffers in main memory    
- *    File Manager;          for management of pages in auxiliary memory      
- *    Slotted Page Manager;  for access to buckets                            
- *    Lock Manager;          for concurrency control on accesses to           
- *                               Directory and Bucket Pages                   
- *    Recovery Manager;      for crash recovery                               
- *    Error Manager;         for reporting the error conditions               
- *                                                                            
- * (b) Possible callers of the module:                                         
- *                                                                            
- *    Object Locator Manager;for managing class-name object-id (physical      
- *                               address) relationships                       
- *    Schema Manager (indirectly); for supporting UNIQUE constraint           
- *                                                                            
- *                                                                            
- * Selling Points:                                                      
- * --------------                                                       
- * This implementation allows the directory to grow and shrink multiple 
- * times in one function call, if needed, as a result of a single insertion   
- * or deletion operation. Furthermore, it does not allow any empty buckets to 
- * exist (except the very first bucket allocated during creation). Instead,   
- * the corresponding directory entries are set to NULL.                       
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * extendible_hash.c - Extendible hash manager
  */
 
 #ident "$Id$"
@@ -475,26 +36,25 @@
 #endif
 
 #include "chartype.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "object_representation.h"
 #include "error_manager.h"
-#include "xserver.h"
-#include "log.h"
+#include "xserver_interface.h"
+#include "log_manager.h"
 #include "extendible_hash.h"
 #include "page_buffer.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "slotted_page.h"
 #include "file_manager.h"
-#include "fldesc.h"
 #include "overflow_file.h"
 #include "memory_hash.h"	/* For hash functions */
 #include "db_date.h"
 
 #ifdef EHASH_DEBUG
-#define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory 
+#define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory
 					   pointers over no. of bucket pages. If this
-					   threshold is exceeded, a warning is issued 
+					   threshold is exceeded, a warning is issued
 					   in the debugging mode */
 #endif /* EHASH_DEBUG */
 
@@ -507,12 +67,12 @@
 #define EHASH_OVERFLOW_RATE     0.9	/* UPPER THRESHOLD for a merge operation. */
 
   /*
-   * After a bucket merge operation, up to what percent of the sibling bucket 
+   * After a bucket merge operation, up to what percent of the sibling bucket
    * space (i.e. DB_PAGESIZE) can be full. If it is found that during a merge
    * the sibling bucket will become too full the merge is delayed to avoid an
-   * immediate split on the sibling bucket. (Exception: if the bucket becomes 
+   * immediate split on the sibling bucket. (Exception: if the bucket becomes
    * completely empty, the merge operation is performed no matter how full the
-   * sibling bucket is). That is we try to avoid a yoyo behaviour (split, 
+   * sibling bucket is). That is we try to avoid a yoyo behaviour (split,
    * merge).
    */
 
@@ -550,7 +110,7 @@ struct ehash_dir_header
 
   DB_TYPE key_type;		/* type of the keys */
   short depth;			/* global depth of the directory */
-  char alignment;		/* alignment value used on slots of bucket 
+  char alignment;		/* alignment value used on slots of bucket
 				   pages */
 };
 
@@ -617,12 +177,12 @@ struct ehash_repetition
 
 /*
  * GETBITS
- * 
+ *
  *   value: value from which bits are extracted; its type should be
  *          "unsigned int"
  *	 pos: first bit position (left adjusted) of the field
  *	 n: length of the field to be extracted
- * 
+ *
  * Note: Returns the n-bit field of key that begins at left adjusted
  * position pos. The type of key is supposed to be unsigned
  * so that when it is right-shifted vacated bits will be filled
@@ -635,14 +195,14 @@ struct ehash_repetition
 
 /*
  * FIND_OFFSET
- * 
+ *
  *   hash_key: pseudo key to map to a directory pointer
  *	 depth: depth of directory: tells how many bits to use
- * 
+ *
  * Note: This macro maps a hash_key to an entry in a directory of one
  * area. It extracts first "depth" bits from the left side of
  *       "hash_key" and returns this value.
- * 
+ *
  */
 
 #define FIND_OFFSET(hash_key, depth) (GETBITS((hash_key), 1, (depth)))
@@ -653,10 +213,10 @@ struct ehash_repetition
  *   word: computer word from which the bit is extracted.
  *         Its type should be "unsigned int".
  *   pos: bit position (left adjusted) of word to return
- * 
- * 
+ *
+ *
  * Note: Returns the value of the bit (in "pos" position) of a "word".
- * 
+ *
  */
 
 #define GETBIT(word, pos) (GETBITS((word), (pos), 1))
@@ -664,10 +224,10 @@ struct ehash_repetition
 
 /*
  * SETBIT
- * 
+ *
  *   word: computer word whose bit is set
  *   pos: bit position (left adjusted) of word to be set to
- * 
+ *
  * Note: Returns a value identical to "word" except the "pos" bit
  * is set to one.
  */
@@ -676,11 +236,11 @@ struct ehash_repetition
 
 /*
  * CLEARBIT
- * 
+ *
  *   word: computer word whose bit is to be cleared
  *         Nth_most_significant_bit: bit position of word to be set to
  *   key_side: which side of the word should be used
- * 
+ *
  * Note: Returns a value identical to "word" except the "pos" bit
  * is cleared (zeroed).
  */
@@ -768,7 +328,8 @@ static void ehash_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid,
 				      int depth, int delta);
 static int ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid,
 			     RECDES * recdes, DB_TYPE key_type,
-			     char *bucrec_ptr, OID * assoc_value, bool * ok,
+			     char *bucrec_ptr, OID * assoc_value,
+			     int *out_apply_error,
 			     int (*apply_function) (THREAD_ENTRY * thread_p,
 						    void *key, void *data,
 						    void *args), void *args);
@@ -870,13 +431,13 @@ static void ehash_dump_bucket (PAGE_PTR buc_pgptr, DB_TYPE key_type);
 
 /*
  * ehash_dir_locate()
- * 
+ *
  *   page_no_var(in): The nth directory page containing the pointer
- *   offset_var(in): The offset into the directory just like if the directory 
+ *   offset_var(in): The offset into the directory just like if the directory
  *              where contained in one contiguous area.
  *              SET by this macro according to the page_no_var where the
  *              offset is located in this page.
- * 
+ *
  * Note: This macro finds the location of a directory pointer
  * (i.e. the number of directory page containing this pointer and
  * the offset value to reach the pointer within that page).
@@ -922,15 +483,15 @@ ehash_dir_locate (int *out_page_no_p, int *out_offset_p)
 }
 
 /*
- * Overflow page handling functions                      
+ * Overflow page handling functions
  */
 
 /*
- * ehash_ansi_sql_strncmp () - 
- *   return: 
- *   s(in): 
- *   t(in): 
- *   max(in): 
+ * ehash_ansi_sql_strncmp () -
+ *   return:
+ *   s(in):
+ *   t(in):
+ *   max(in):
  */
 static int
 ehash_ansi_sql_strncmp (const char *s, const char *t, int max)
@@ -979,7 +540,7 @@ ehash_ansi_sql_strncmp (const char *s, const char *t, int max)
 }
 
 /*
- * ehash_allocate_recdes () - 
+ * ehash_allocate_recdes () -
  *   return: char *, or NULL
  *   recdes(out) : Record descriptor
  *   size(in)    : Request size
@@ -1006,8 +567,8 @@ ehash_allocate_recdes (RECDES * recdes_p, int size, short type)
 }
 
 /*
- * ehash_free_recdes () - 
- *   return: 
+ * ehash_free_recdes () -
+ *   return:
  *   recdes(in): Record descriptor
  */
 static void
@@ -1025,9 +586,9 @@ ehash_free_recdes (RECDES * recdes_p)
  * ehash_compare_overflow () - get/retrieve the content of a multipage object from overflow
  *   return: NO_ERROR, or ER_FAILED
  *   ovf_vpid(in): Overflow address
- *   key(in): 
- *   comp_result(out): 
- * 
+ *   key(in):
+ *   comp_result(out):
+ *
  * Note: The content of a multipage object associated with the given
  * overflow address(oid) is placed into the area pointed to by
  * the record descriptor. If the content of the object does not
@@ -1074,11 +635,11 @@ exit_on_error:
 }
 
 /*
- * ehash_compose_overflow () - get/retrieve the content of a multipage object from 
+ * ehash_compose_overflow () - get/retrieve the content of a multipage object from
  *                    overflow
- *   return: 
+ *   return:
  *   recdes(in): Record descriptor
- * 
+ *
  * Note: The content of a multipage object associated with the given
  * overflow address(oid) is placed into the area pointed to by
  * the record descriptor. If the content of the object does not
@@ -1157,7 +718,7 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
   alignment = *(char *) alignment_depth;
   depth = *((char *) alignment_depth + 1);
 
-  /* 
+  /*
    * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
    * SEQUENCE indicates that the order of records will be preserved
    * during insertions and deletions.
@@ -1186,8 +747,8 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
     sizeof (EHASH_BUCKET_HEADER);
   bucket_recdes.type = REC_HOME;
 
-  /* 
-   * Insert the bucket header into the first slot (slot # 0) 
+  /*
+   * Insert the bucket header into the first slot (slot # 0)
    * on the bucket page
    */
   success = spage_insert (thread_p, page_p, &bucket_recdes, &slot_id);
@@ -1215,11 +776,11 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
 
 #if defined(EHINSERTION_ORDER)
 /*
- * eh_dump_key () - 
- *   return: 
- *   key_type(in): 
- *   key(in): 
- *   value_ptr(in): 
+ * eh_dump_key () -
+ *   return:
+ *   key_type(in):
+ *   key(in):
+ *   value_ptr(in):
  */
 static void
 eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
@@ -1304,7 +865,7 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
  *   class_oid(in): OID of the class for which the index is created
  *   attr_id(in): Identifier of the attribute of the class for which the
  *                index is created.
- * 
+ *
  * Note: Creates an extendible hashing structure for the particular
  * key type on the disk volume whose identifier is passed in
  * ehid->vfid.volid field. It creates two files on this volume: one
@@ -1329,10 +890,10 @@ xehash_create (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 }
 
 /*
- * ehash_get_key_size () - Return the size of keys in bytes; 
- *                      Undeclared if key_type is "DB_TYPE_STRING". 
+ * ehash_get_key_size () - Return the size of keys in bytes;
+ *                      Undeclared if key_type is "DB_TYPE_STRING".
  *   return: byte size of key_type, or -1 for error;
- *   key_type(in): 
+ *   key_type(in):
  */
 static short
 ehash_get_key_size (DB_TYPE key_type)
@@ -1392,14 +953,14 @@ ehash_get_key_size (DB_TYPE key_type)
 }
 
 /*
- * ehash_create_helper () - 
- *   return: 
- *   ehid(in): 
- *   key_type(in): 
- *   exp_num_entries(in): 
- *   class_oid(in): 
- *   attr_id(in): 
- *   istmp(in): 
+ * ehash_create_helper () -
+ *   return:
+ *   ehid(in):
+ *   key_type(in):
+ *   exp_num_entries(in):
+ *   class_oid(in):
+ *   attr_id(in):
+ *   istmp(in):
  */
 static EHID *
 ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
@@ -1602,7 +1163,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 
   /*
    * Check if the key is of fixed size, and if so, store this information
-   * in the directory header 
+   * in the directory header
    */
 
   dir_record_p =
@@ -1630,7 +1191,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 }
 
 /*
- * ehash_fix_old_page () - 
+ * ehash_fix_old_page () -
  *   return: specified page pointer, or NULL
  *   vfid_p(in): only for error reporting
  *   vpid_p(in):
@@ -1658,7 +1219,7 @@ ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
 }
 
 /*
- * ehash_fix_ehid_page () - 
+ * ehash_fix_ehid_page () -
  *   return: specified page pointer, or NULL
  *   ehid(in): extendible hashing structure
  *   latch_mode(in): lock mode
@@ -1675,10 +1236,10 @@ ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, int latch_mode)
 }
 
 /*
- * ehash_fix_nth_page () - 
+ * ehash_fix_nth_page () -
  *   return: specified page pointer, or NULL
  *   vfid(in):
- *   offset(in): 
+ *   offset(in):
  *   lock(in): lock mode
  */
 static PAGE_PTR
@@ -1699,7 +1260,7 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset,
  * xehash_destroy () - Destroy the given extendible hashing instance
  *   return: NO_ERROR, or ER_FAILED
  *   ehid(in): extendible hashing structure to destroy
- * 
+ *
  * Note: Destroys the specified extendible hashing structure. All of
  * bucket and directory pages of this structure are deallocated
  * by this function.
@@ -1816,7 +1377,7 @@ ehash_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid_p,
  *   ehid(in): identifier for the extendible hashing structure
  *   key(in): key to search
  *   value_ptr(out): pointer to return the value associated with the key
- * 
+ *
  * Note: Returns the value associated with the given key, if it is
  * found in the specified extendible hashing structure. If the
  * key is not found an error condition is returned.
@@ -1946,7 +1507,7 @@ ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid_p,
  *   ehid(in): identifier of the extendible hashing structure
  *   key(in): key value to insert
  *   value_ptr(in): pointer to the associated value to insert
- * 
+ *
  * Note: Inserts the given (key & assoc_value) pair into the specified
  * extendible hashing structure. If the key already exists then
  * the previous associated value is replaced with the new one.
@@ -2186,7 +1747,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p,
 
       /*
        * Try to insert the new key & assoc_value pair into one of the buckets.
-       * The result of this attempt will determine if a recursive call is 
+       * The result of this attempt will determine if a recursive call is
        * needed to insert the new key.
        */
 
@@ -2218,45 +1779,8 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p,
  *   key(in): key value
  *   value_ptr(in): associated value to insert
  *   lock_type(in): type of lock to acquire for accessing directory pages
- *   existing_ovf_vpid(in): 
- * 
- * Note: This function is used to insert a new (key & assoc-value) pair
- * onto the specified extendible hashing instance.
- * A "lock_type" lock is acquired on the directory. The
- * bucket to insert the new key is found. An X_LOCK is acquired
- * on this bucket and it is retrieved into main memory. It is
- * checked to see if it has enough space for the new key. If so,
- * the new key is inserted and a redo log (page oriented
- * insertion operation log) is produced. If not, that means
- * the bucket needs to split into two. But, split operation
- * requires some changes to the directory. Therefore, this
- * function can proceed with split operation only if the
- * "lock_type" parameter is X_LOCK. If not, this function
- * releases both the bucket page and the directory, and calls
- * itself, but with an X_LOCK this time.
- * On the other hand, if the correct type of lock has
- * been acquired on the directory, a set of changes to the
- * extendible hashing structure is initiated. To prevent these
- * changes from being undone if the transaction is aborted later
- * on, all of these updates are performed as a single "permanent
- * system operation". First, the bucket is split into two  and
- * the new key is inserted onto either the original bucket or
- * onto its sibling bucket. Next, if the new local depth of the
- * bucket is higher than the depth of the directory, the
- * directory is expanded to have the same depth. Finally, some
- * directory entries are updated to reflect this split operation.
- * (Note that if the split increases the local depth of the
- * bucket by more than one, some of the directory entries are set
- * to NULL). Note further that even though the split operation
- * guarantees that at least one of the records will be separated
- * from others, the bucket may not have enough vacant room for
- * the new key. In this case, this function commits the split
- * operation and performs all the necessary changes on the
- * directory. However, at the end of the operation it calls
- * itself to perform this missing insertion, instead of simply
- * returning to the calling function.
- * After the insertion is completed, this function
- * puts a no-page-operation log for undoing this insertion.
+ *   existing_ovf_vpid(in):
+ *
  */
 static void *
 ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
@@ -2277,12 +1801,14 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
       return NULL;
     }
 
-  dir_root_page_p =
-    ehash_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p,
-				      (lock_type ==
-				       S_LOCK ? PGBUF_LATCH_READ :
-				       PGBUF_LATCH_WRITE), PGBUF_LATCH_READ,
-				      &bucket_vpid, &hash_key, &location);
+  dir_root_page_p = ehash_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p,
+						      (lock_type ==
+						       S_LOCK ?
+						       PGBUF_LATCH_READ :
+						       PGBUF_LATCH_WRITE),
+						      PGBUF_LATCH_READ,
+						      &bucket_vpid, &hash_key,
+						      &location);
   if (dir_root_page_p == NULL)
     {
       return NULL;
@@ -2299,8 +1825,8 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
   if (dir_header_p->key_type == DB_TYPE_STRING)
     {
       /* Check if string is too long and no overflow file has been created */
-      if ((int) (strlen ((char *) key_p) + 1) > EHASH_MAX_STRING_SIZE &&
-	  VFID_ISNULL (&dir_header_p->overflow_file))
+      if ((int) (strlen ((char *) key_p) + 1) > EHASH_MAX_STRING_SIZE
+	  && VFID_ISNULL (&dir_header_p->overflow_file))
 	{
 	  if (lock_type == S_LOCK)
 	    {
@@ -2310,9 +1836,9 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
 	    }
 	  else
 	    {
-	      if (ehash_create_overflow_file
-		  (thread_p, ehid_p, dir_root_page_p, dir_header_p,
-		   file_type) != NO_ERROR)
+	      if (ehash_create_overflow_file (thread_p, ehid_p,
+					      dir_root_page_p, dir_header_p,
+					      file_type) != NO_ERROR)
 		{
 		  pgbuf_unfix (thread_p, dir_root_page_p);
 		  return NULL;
@@ -2332,10 +1858,13 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
 	}
       else
 	{
-	  if (ehash_insert_to_bucket_after_create
-	      (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid,
-	       location, hash_key, file_type, key_p, value_p,
-	       existing_ovf_vpid_p) != NO_ERROR)
+	  if (ehash_insert_to_bucket_after_create (thread_p, ehid_p,
+						   dir_root_page_p,
+						   dir_header_p, &bucket_vpid,
+						   location, hash_key,
+						   file_type, key_p, value_p,
+						   existing_ovf_vpid_p) !=
+	      NO_ERROR)
 	    {
 	      pgbuf_unfix (thread_p, dir_root_page_p);
 	      return NULL;
@@ -2344,13 +1873,13 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
     }
   else
     {
-      result =
-	ehash_insert_bucket_after_extend_if_need (thread_p, ehid_p,
-						  dir_root_page_p,
-						  dir_header_p, &bucket_vpid,
-						  key_p, hash_key, lock_type,
-						  file_type, value_p,
-						  existing_ovf_vpid_p);
+      result = ehash_insert_bucket_after_extend_if_need (thread_p, ehid_p,
+							 dir_root_page_p,
+							 dir_header_p,
+							 &bucket_vpid, key_p,
+							 hash_key, lock_type,
+							 file_type, value_p,
+							 existing_ovf_vpid_p);
       if (result == EHASH_ERROR_OCCURRED)
 	{
 	  pgbuf_unfix (thread_p, dir_root_page_p);
@@ -2378,8 +1907,8 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
  *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
  *   value_ptr(in): Pointer to the associated value
- *   existing_ovf_vpid(in): 
- * 
+ *   existing_ovf_vpid(in):
+ *
  * Note: This function is used to insert a (key & assoc_value) pair
  * onto the given bucket. If the KEY already EXISTS in the bucket
  * the NEW ASSOCIATED VALUE REPLACES THE OLD ONE. Otherwise a
@@ -2412,7 +1941,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
   if (ehash_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no)
       == true)
     {
-      /* 
+      /*
        * Key already exists. So, replace the associated value
        * MIGHT BE CHANGED to allow multiple values
        */
@@ -2420,8 +1949,8 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 			       PEEK);
       bucket_record_p = (char *) old_bucket_recdes.data;
 
-      /* 
-       * Store the original OID associated with the key before it is replaced 
+      /*
+       * Store the original OID associated with the key before it is replaced
        * with the new OID value.
        */
       is_replaced_oid = true;
@@ -2439,7 +1968,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
     {
       /*
        * Key does not exist in the bucket, so create a record for it and
-       * insert it into the bucket; 
+       * insert it into the bucket;
        */
 
       if (ehash_compose_record (key_type, key_p, value_p,
@@ -2448,9 +1977,9 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	  return EHASH_ERROR_OCCURRED;
 	}
 
-      /* 
-       * If this is a long string produce the prefix key record and see if it 
-       * is going to fit into this page. If it fits, produce the overflow pages. 
+      /*
+       * If this is a long string produce the prefix key record and see if it
+       * is going to fit into this page. If it fits, produce the overflow pages.
        * If it does not return failure with SP_BUCKET_FULL value.
        */
       if (bucket_recdes.type == REC_BIGONE)
@@ -2471,8 +2000,8 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	  record_p += sizeof (OID);	/* Skip the associated OID */
 
 	  if (existing_ovf_vpid_p != NULL)
-	    /* 
-	     * Overflow pages already exists for this key (i.e., we are 
+	    /*
+	     * Overflow pages already exists for this key (i.e., we are
 	     * undoing a deletion of a long string
 	     * **** TODO: M2 Is this right ? ****
 	     */
@@ -2483,8 +2012,8 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	      if (overflow_insert
 		  (thread_p, ovf_file_p, &ovf_vpid, &ovf_recdes) == NULL)
 		{
-		  /* 
-		   * overflow pages creation failed; do not insert the prefix 
+		  /*
+		   * overflow pages creation failed; do not insert the prefix
 		   * key record to the bucket; return with error
 		   */
 		  ehash_free_recdes (&bucket_recdes);
@@ -2523,7 +2052,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
     }
 
   /***********************************
-      Log this insertion operation 
+      Log this insertion operation
    ***********************************/
 
   /* Add the "ehid" to the record for no-page operation logging */
@@ -2545,10 +2074,10 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
     {
       if (is_replaced_oid)
 	{
-	  /* 
+	  /*
 	   * This insertion has actully replaced the original oid. The undo
 	   * logging should cause this original oid to be restored in the record.
-	   * The undo recovery function "eh_rvundo_delete" with the original oid 
+	   * The undo recovery function "eh_rvundo_delete" with the original oid
 	   * as parameter will do this.
 	   */
 	  log_append_undo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, NULL,
@@ -2566,9 +2095,9 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 
   if (is_replaced_oid)
     {
-      /* 
+      /*
        * This insertion has actully replaced the original oid. The redo logging
-       * should cause this new oid to be written at its current physical 
+       * should cause this new oid to be written at its current physical
        * location.
        */
       log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid,
@@ -2582,9 +2111,9 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
       log_recdes.area_size = log_recdes.length =
 	bucket_recdes.length + sizeof (short);
 
-      /* 
-       * If undo looging was done the log_recdes.data should have enough space 
-       * for the redo logging since the redo log record is shorter than 
+      /*
+       * If undo looging was done the log_recdes.data should have enough space
+       * for the redo logging since the redo log record is shorter than
        * the undo log record. Otherwise, allocate space for redo log record.
        */
       if (log_recdes.data == NULL)
@@ -2636,7 +2165,7 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p,
   record_p = ehash_write_oid_to_record (record_p, value_p);
 
   /* TODO: M2 64-bit ???
-   * Is this really needed... Can we just move bytes.. we have the 
+   * Is this really needed... Can we just move bytes.. we have the
    * size of the key.. AT least all data types but string_key
    */
   switch (key_type)
@@ -2699,13 +2228,13 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p,
 }
 
 /*
- * ehash_compose_record () - 
+ * ehash_compose_record () -
  *   return: NO_ERROR, or ER_FAILED
  *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
  *   value_ptr(in): Pointer to the associated value
  *   recdes(in): Pointer to the Record descriptor to fill in
- * 
+ *
  * Note: This function prepares a record and sets the fields of the
  * passed record descriptor to describe it. All of the records
  * prepared by this function contain the
@@ -2790,7 +2319,7 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p,
 				    EHASH_LONG_STRING_PREFIX_SIZE);
 	  if (!compare_result)
 	    {
-	      /* 
+	      /*
 	       * The prefix of the bucket string matches with the given key.
 	       * It is very likely that the whole key will match. So, retrive
 	       * the chopped portion of the bucket string and compare it with
@@ -2963,13 +2492,13 @@ ehash_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p,
 
 /*
  * ehash_locate_slot () - Locate the slot for the key
- *   return: int  
+ *   return: int
  *   buc_pgptr(in): pointer to the bucket page
- *   key_type(in): 
+ *   key_type(in):
  *   key(in): key value to search
  *   position(out): set to the location of the slot that contains the key if
  *                  it exists, or that would contain the key if it does not.
- * 
+ *
  * Note: This function locates a specific key in a bucket
  * (namely, the slot number in the page). Currently this search
  * is done by using the binary search method on the real key
@@ -3020,9 +2549,9 @@ ehash_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p,
 
   if (recdes_p->type == REC_BIGONE)
     {
-      /* 
+      /*
        * The record contains a long string Compose the whole key and find
-       * pseudo key by using the whole key 
+       * pseudo key by using the whole key
        */
       whole_key_p = ehash_compose_overflow (thread_p, recdes_p);
       if (whole_key_p == NULL)
@@ -3182,7 +2711,7 @@ ehash_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p,
  *   old_local_depth(in): old local depth before the split operation; to be set
  *   new_local_depth(in): new local depth after the split operation; to be set
  *   sib_vpid(in): vpid of the sibling bucket; to be set
- * 
+ *
  * Note: This function splits the given bucket into two buckets.
  * First, the new local depth of the bucket is found. Then a
  * sibling bucket is allocated, and the records are
@@ -3288,7 +2817,7 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p,
  *   return: NO_ERROR, or ER_FAILED
  *   ehid(in): identifier for the extendible hashing structure to expand
  *   new_depth(in): requested new depth
- * 
+ *
  * Note: This function expands the given extendible hashing directory
  * as many times as necessary to attain the requested depth.
  * This is performed with a single pass on the original
@@ -3372,7 +2901,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     }
 
   /*****************************
-     Perform expansion                    
+     Perform expansion
    ******************************/
 
   /* Initilize source variables */
@@ -3404,8 +2933,8 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 
   if (new_dir_nth_page <= old_pages)
     {
-      /* 
-       * This page is part of old directory. 
+      /*
+       * This page is part of old directory.
        * Log the initial content of this original directory page
        */
       log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid,
@@ -3417,7 +2946,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     {
       if (old_dir_offset < 0)
 	{
-	  /* 
+	  /*
 	   * We reached the end of the old directory page.
 	   * The next bucket pointer is in the previous directory page
 	   */
@@ -3437,7 +2966,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 	      return ER_FAILED;
 	    }
 
-	  /* 
+	  /*
 	   * Set the olddir_offset to the offset of the last pointer in the
 	   * current source directory page.
 	   */
@@ -3561,7 +3090,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
  *   hash_key(in): pseudo key that led to the bucket page; determines which
  *                   pointers to be updated
  *   bucket_vpid(in): Identifier of the bucket page to connect
- * 
+ *
  * Note: This function connects the given bucket to the directory of
  * specified extendible hashing structure. All the directory
  * pointers whose number have the same value as the hash_key
@@ -3688,34 +3217,7 @@ ehash_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth,
  *   location(in): directory entry whose neighbooring area should be checked
  *   bucket_vpid(in): vpid of the bucket pointed by the specified directory entry
  *   sib_vpid(in): vpid of the sibling bucket
- * 
- * Note: Finds the depth of directory area (around the given location)
- * where all the entries are compatible (either identical to
- * the given entry, or pointing to its sibling bucket, or not
- * pointing to any bucket at all (namely, set to NULL)). This
- * function is called at two different points:
- *		     1: When a NULL entry of the directory should be
- *		overwritten to point to the bucket created as a result of an
- *		insertion (in order to find the depth of this NULL area in
- *		the directory).
- *		     2: After a bucket is merged with its sibling bucket (in
- *		order to find the depth of the area in the directory that can
- *		be unified to point to the remaining bucket).
- * Note that bucket_vpid and sib_vpid parameters are needed
- * only in the second case of this function. (NULL is passed to
- * these parameters in the first case.)
- * The logic of this function is to check deeper and deeper
- * areas of the directory and stop as soon as a different value
- * is encountered. At that moment, it is certain that the depth
- * is one less than what is currently being checked.
- *		     There are two tips used in this function:
- *		     1: Once a depth "d" is verified there is no need to check
- *              any one of the 2^d pointers again when depth is "d+1" in the
- *		next iteration, and
- *		     2: Once a location is verified there is no need to check
- *		its direct sibling location (which differs only at the least
- *		significant bit); if they were different from each other, the
- *		first one would not verify our check.
+ *
  */
 static char
 ehash_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location,
@@ -3747,8 +3249,8 @@ ehash_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location,
     {
       /*
        * Find the base location for this iteration. The base location differs from
-       * the original location at the check_depth bit (it has the opposite value 
-       * for this bit position) and at the remaining least significant bit 
+       * the original location at the check_depth bit (it has the opposite value
+       * for this bit position) and at the remaining least significant bit
        * positions (it has 0 for these bit positions).
        */
       clear = 1;
@@ -3866,7 +3368,7 @@ ehash_check_merge_possible (THREAD_ENTRY * thread_p, EHID * ehid_p,
     }
 
   /*
-   * Now, "loc" is the index of directory entry pointing to the sibling bucket 
+   * Now, "loc" is the index of directory entry pointing to the sibling bucket
    * (of course, if the sibling bucket exists). So, find its absolute location.
    */
   if (ehash_find_bucket_vpid
@@ -3962,7 +3464,7 @@ ehash_check_merge_possible (THREAD_ENTRY * thread_p, EHID * ehid_p,
  *   return: void * (NULL is returned in case of error)
  *   ehid(in): identifier for the extendible hashing structure
  *   key(in): Key value to remove
- * 
+ *
  * Note: Deletes the given key value (together with its assoc_value)
  * from the specified extendible hashing structure. If the key
  * does not exist then it returns an error code.
@@ -4105,7 +3607,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      /* Overflow pages needs to be removed, too. But, that shoud be done
 	       * after the bucket record deletion has been logged. This way, we will
 	       * have the overflow pages available when logical undo-delete
-	       * recovery operation is called. Here just save the overflow page(s) 
+	       * recovery operation is called. Here just save the overflow page(s)
 	       * id.
 	       */
 	    }
@@ -4334,10 +3836,10 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p,
 
 /*
  * ehash_merge () - If possible, merge two buckets
- *   return: 
+ *   return:
  *   ehid(in): identifier for the extendible hashing structure
  *   key(in): key value that has just been removed; used to locate the bucket.
- * 
+ *
  * Note: This function checks to determine if it is possible (and
  * desirable) to merge the bucket (that contained the given key
  * before the deletion) with its sibling bucket. If so, it starts
@@ -4406,16 +3908,19 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	    }
 	}
 
-      if ((bucket_status == EHASH_BUCKET_EMPTY) ||
-	  (bucket_status == EHASH_BUCKET_UNDERFLOW))
+      if (bucket_status == EHASH_BUCKET_EMPTY
+	  || bucket_status == EHASH_BUCKET_UNDERFLOW)
 	{
-	  check_result =
-	    ehash_check_merge_possible (thread_p, ehid_p, dir_header_p,
-					&bucket_vpid, bucket_page_p, location,
-					X_LOCK, &old_local_depth,
-					&sibling_vpid, &sibling_page_p,
-					&first_slot_id, &num_records,
-					&sibling_location);
+	  check_result = ehash_check_merge_possible (thread_p, ehid_p,
+						     dir_header_p,
+						     &bucket_vpid,
+						     bucket_page_p, location,
+						     X_LOCK, &old_local_depth,
+						     &sibling_vpid,
+						     &sibling_page_p,
+						     &first_slot_id,
+						     &num_records,
+						     &sibling_location);
 
 	  switch (check_result)
 	    {
@@ -4451,7 +3956,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	    case EHASH_FULL_SIBLING_BUCKET:
 	      /* If the sib_bucket does not have room for the remaining records
-	         of buc_page, the record has already been deleted, so just 
+	         of buc_page, the record has already been deleted, so just
 	         release bucket page */
 	      pgbuf_unfix (thread_p, bucket_page_p);
 	      break;
@@ -4460,11 +3965,13 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      /* Perform actual merge operation */
 	      log_start_system_op (thread_p);
 
-	      if (ehash_merge_permanent
-		  (thread_p, ehid_p, dir_root_page_p, dir_header_p,
-		   bucket_page_p, sibling_page_p, &bucket_vpid, &sibling_vpid,
-		   num_records, sibling_location, first_slot_id,
-		   &new_local_depth) != NO_ERROR)
+	      if (ehash_merge_permanent (thread_p, ehid_p, dir_root_page_p,
+					 dir_header_p,
+					 bucket_page_p, sibling_page_p,
+					 &bucket_vpid, &sibling_vpid,
+					 num_records, sibling_location,
+					 first_slot_id,
+					 &new_local_depth) != NO_ERROR)
 		{
 		  pgbuf_unfix (thread_p, sibling_page_p);
 		  pgbuf_unfix (thread_p, bucket_page_p);
@@ -4505,7 +4012,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      return;
 
 	    default:
-	      /* An undefined merge result was returned; This should never 
+	      /* An undefined merge result was returned; This should never
 	         happen */
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED,
 		      0);
@@ -4522,10 +4029,10 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 /*
  * ehash_shrink_directory () - Shrink directory
- *   return: 
+ *   return:
  *   ehid(in): identifier for the extendible hashing structure to shrink
  *   new_depth(in): requested new depth of directory
- * 
+ *
  * Note: This function shrinks the directory of specified extendible
  * hashing structure as many times as necessary to attain
  * the requested depth. During this operation, the directory is
@@ -4627,7 +4134,7 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
       if (old_dir_nth_page != prev_pg_no)
 	{
 	  /* We reached the end of the source page.
-	   * The next bucket pointer is in  the next Dir page 
+	   * The next bucket pointer is in  the next Dir page
 	   */
 
 	  prev_pg_no = old_dir_nth_page;
@@ -4718,7 +4225,8 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
   /* Eliminate any traling space characters */
   if (char_isspace (*(char *) (key_p + length - 1)))
     {
-      for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--);
+      for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--)
+	;
       length = (int) (p - key_p + 1);
       key_p = new_key_p = (char *) malloc (length + 1);	/* + 1 is for \0 */
       if (key_p == NULL)
@@ -4753,7 +4261,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
       new_key_p = NULL;
     }
 
-  /* Copy the hash_key to an aux. area, to be further hashed into 
+  /* Copy the hash_key to an aux. area, to be further hashed into
      individual bytes */
   memcpy (&copy_psekey, &hash_key, sizeof (EHASH_HASH_KEY));
   copy_psekey[sizeof (EHASH_HASH_KEY)] = '\0';
@@ -4869,7 +4377,7 @@ ehash_hash_two_bytes_type (char *key_p)
  *   return: EHASH_HASH_KEY
  *   orig_key(in): original key to encode into a pseudo key
  *   key_type(in): type of the key
- * 
+ *
  * Note: This function converts the given original key into a pseudo
  * key. Since the original key is presented as a character
  * string, its conversion into a int-compatible type is essential
@@ -4925,15 +4433,15 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
 /* TODO: check not use */
 #if 0
 /*
- * Utility functions                              
+ * Utility functions
  */
 
 /*
  * eh_size () - Find how many pages are used
- *   return: int 
+ *   return: int
  *   ehid(in): identifier of the extendible hashing structure
- *   num_bucket_pages(in): 
- *   num_dir_pages(in): 
+ *   num_bucket_pages(in):
+ *   num_dir_pages(in):
  * Note: Returns the total number of pages allocated for the directory
  * bucket and overflow pages of the  specified extendible hashing
  * structure. If an error occurs in finding this information, -1 is returned.
@@ -4976,14 +4484,14 @@ eh_size (EHID * ehid, int *num_bucket_pages, int *num_dir_pages)
 
 /*
  * eh_count () - Find how many entries are kept in the ext. hashing structure
- *   return: int 
+ *   return: int
  *   ehid(in): identifier of the extendible hashing structure
- * 
+ *
  * Note: Find outs and returns the total number of entries (i.e., the
  * key and assoc_value pairs) stored in the specified extendible
  * hashing structure. If an error occurs in finding this
  * information, -1 is returned.
- * 
+ *
  * Note that the total number of entries of an extendible hashing
  * structure is not a stored piece of information. (Keeping a
  * counter for this purpose would put an extra overhead to
@@ -4997,7 +4505,7 @@ eh_size (EHID * ehid, int *num_bucket_pages, int *num_dir_pages)
 int
 eh_count (EHID * ehid)
 {
-  int num_entries;		/*Total number of entries contained in the 
+  int num_entries;		/*Total number of entries contained in the
 				 * extendible hashing structure; will be the
 				 * return value
 				 */
@@ -5053,9 +4561,9 @@ eh_count (EHID * ehid)
 
 /*
  * eh_depth () - Find depth of extendible hash structure
- *   return: int 
+ *   return: int
  *   ehid(in): identifier of the extendible hashing structure
- * 
+ *
  * Note: Find outs the depth of the extendible hash structure.
  */
 int
@@ -5095,7 +4603,7 @@ eh_depth (EHID * ehid)
  *   dir_depth(out): Depth of directory
  *   avg_freespace_per_page(out): Average free space per page
  *   avg_overhead_per_page(out): Average overhead in each page
- * 
+ *
  * Note: Find the current storage facts/capacity for given extendible hash.
  */
 int
@@ -5200,13 +4708,13 @@ exit_on_error:
  *   return: int npages
  *   total_nkeys(in): Total number of keys
  *   avg_key_size(in): Average key size
- * 
+ *
  * Note: Find the number of needed pages to populate a hash with a set
  * of keys of the given length.
- * 
+ *
  * The aproximation formulas has been taken from the book:
  * Algorithms by Robert Sedgewick, Second Edition
- * 
+ *
  * With pages that can hold M records, extendible hashing may be
  * expected to require about 1.44(N/M)pages for a set of N
  * instances. The directory may be expected to have about
@@ -5271,9 +4779,11 @@ ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys,
 static int
 ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 		  DB_TYPE key_type, char *bucket_record_p,
-		  OID * assoc_value_p, bool * out_is_ok_p,
-		  int (*apply_function) (THREAD_ENTRY * thread_p, void *key,
-					 void *data, void *args), void *args)
+		  OID * assoc_value_p,
+		  int *out_apply_error, int (*apply_function) (THREAD_ENTRY * thread_p,
+					                       void *key,
+					                       void *data, void *args),
+		  void *args)
 {
   char *long_str, *str_next_key_p, *temp_p;
   short key_size;
@@ -5290,7 +4800,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 	  long_str = ehash_compose_overflow (thread_p, recdes_p);
 	  if (long_str == NULL)
 	    {
-	      *out_is_ok_p = false;
+	      *out_apply_error = ER_FAILED;
 	      return NO_ERROR;
 	    }
 	  key_p = long_str;
@@ -5303,7 +4813,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 	  str_next_key_p = (char *) malloc (key_size);
 	  if (str_next_key_p == NULL)
 	    {
-	      return ER_FAILED;
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  temp_p = str_next_key_p;
@@ -5364,7 +4874,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
       return ER_EH_ROOT_CORRUPTED;
     }
 
-  *out_is_ok_p = (*apply_function) (thread_p, key_p, assoc_value_p, args);
+  *out_apply_error = (*apply_function) (thread_p, key_p, assoc_value_p, args);
 
   if (key_type == DB_TYPE_STRING)
     {
@@ -5379,32 +4889,8 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
  *   return: int NO_ERROR, or ER_FAILED
  *   ehid(in): identifier of the extendible hashing structure
  *   fun(in): function to call on key, data, and arguments
- *   args(in): 
- * 
- * Note: For each entry in the specified extendible hash structure,
- * call function "fun" on three arguments: the key of the entry,
- * the data associated with the key, and args."fun" should not
- * insert/remove entries on the given extendible hash structure.
- * Otherwise, the behavior of this ehash_map is unpredictable.
- * For example, if "fun" inserts a new entry after the
- * current one in the mapping order, it will be subject to this
- * mapping. However, if it comes before the current one, it will
- * not. Similarly, a deletion operation initiated by "fun"
- * may remove an entry that has not yet been mapped.
- * Note that the entry insertion/removal is not prohibited
- * during this mapping in order to avoid an extra overhead on
- * regular insertion and deletion operations of checking the
- * status of the extendible hashing structure. So, it is the
- * responsibility of the caller of this mapping to ensure that
- * this restriction is not violated by "fun".
- * If "fun" cannot be applied to all of the records
- * ER_FAILED is returned. This may happen either because of a
- * system error (such as all buffers are fixed), or if the
- * function "fun" returns false and the mapping is stopped.
- * Note further that for security purposes the key and the
- * associated value of each record are first copied to two local
- * variables from the bucket in which the record is kept, and
- * these local values are passed to "fun".
+ *   args(in):
+ *
  */
 int
 ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
@@ -5418,7 +4904,7 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
   RECDES recdes;
   PGSLOTID slot_id, first_slot_id = -1;
   OID assoc_value;
-  bool is_ok = true;
+  int apply_error_code = NO_ERROR;
 
   if (ehid_p == NULL)
     {
@@ -5435,12 +4921,13 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
   num_pages = file_get_numpages (thread_p, &dir_header_p->bucket_file);
 
   /* Retrieve each bucket page and apply the given function to its entries */
-  for (bucket_page_no = 0; is_ok && bucket_page_no < num_pages;
+  for (bucket_page_no = 0;
+       apply_error_code == NO_ERROR && bucket_page_no < num_pages;
        bucket_page_no++)
     {
-      bucket_page_p =
-	ehash_fix_nth_page (thread_p, &dir_header_p->bucket_file,
-			    bucket_page_no, PGBUF_LATCH_READ);
+      bucket_page_p = ehash_fix_nth_page (thread_p,
+					  &dir_header_p->bucket_file,
+					  bucket_page_no, PGBUF_LATCH_READ);
       if (bucket_page_p == NULL)
 	{
 	  pgbuf_unfix (thread_p, dir_page_p);
@@ -5452,18 +4939,18 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
       /* Skip the first slot since it contains the bucket header */
       (void) spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK);
 
-      for (slot_id = first_slot_id + 1; is_ok && slot_id < num_records;
-	   slot_id++)
+      for (slot_id = first_slot_id + 1;
+	   apply_error_code == NO_ERROR && slot_id < num_records; slot_id++)
 	{
 	  (void) spage_get_record (bucket_page_p, slot_id, &recdes, PEEK);
 	  bucket_record_p = (char *) recdes.data;
-	  bucket_record_p =
-	    ehash_read_oid_from_record (bucket_record_p, &assoc_value);
+	  bucket_record_p = ehash_read_oid_from_record (bucket_record_p,
+							&assoc_value);
 
-	  if (ehash_apply_each
-	      (thread_p, ehid_p, &recdes, dir_header_p->key_type,
-	       bucket_record_p, &assoc_value, &is_ok, apply_function,
-	       args) != NO_ERROR)
+	  if (ehash_apply_each (thread_p, ehid_p, &recdes, dir_header_p->key_type,
+				bucket_record_p, &assoc_value,
+				&apply_error_code, apply_function,
+                                args) != NO_ERROR)
 	    {
 	      pgbuf_unfix (thread_p, bucket_page_p);
 	      pgbuf_unfix (thread_p, dir_page_p);
@@ -5475,25 +4962,18 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
 
   pgbuf_unfix (thread_p, dir_page_p);
 
-  if (is_ok)
-    {
-      return NO_ERROR;
-    }
-  else
-    {
-      return ER_FAILED;
-    }
+  return apply_error_code;
 }
 
 /*
- * Debugging functions                             
+ * Debugging functions
  */
 
 /*
  * ehash_dump () - Dump directory & all buckets
- *   return: 
+ *   return:
  *   ehid(in): identifier for the extendible hashing structure to dump
- * 
+ *
  * Note: A debugging function. Dumps the contents of the directory
  * and the buckets of specified ext. hashing structure.
  */
@@ -5712,10 +5192,10 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
 /*
  * ehash_print_bucket () - Retrieve the bucket and print its contents
- *   return: 
+ *   return:
  *   ehid(in): identifier for the extendible hashing structure
  *   nth_ptr(in): which pointer of the directory points to the bucket
- * 
+ *
  * Note: A debugging function. Prints out the contents of the bucket
  * pointed by the "nth_ptr" pointer.
  */
@@ -5760,10 +5240,10 @@ ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int nth_ptr)
 
 /*
  * ehash_dump_bucket () - Print the bucket's contents
- *   return: 
+ *   return:
  *   buc_pgptr(in): bucket page whose contents is going to be dumped
  *   key_type(in): type of the key
- * 
+ *
  * Note: A debugging function. Prints out the contents of the given bucket.
  */
 static void
@@ -5897,16 +5377,16 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
 /* TODO: check not use */
 #if 0
 /*
- * Specialty functions                             
+ * Specialty functions
  */
 
 /*
- * xeh_find () - 
+ * xeh_find () -
  *   return: error code
  *   ehid(in): hash table identifier
  *   value(in): : key value
  *   oid(in): oid registered under key value if any (returned)
- * 
+ *
  * Note: This was designed for the maintenance of the UNIQUE integrity
  * constraint.  The only difference between this and ehash_search is that
  * the DB_TYPE is supplied as a parameter.
@@ -5931,14 +5411,14 @@ xeh_find (EHID * ehid, void *value, OID * oid)
 #endif
 
 /*
- * Recovery functions                              
+ * Recovery functions
  */
 
 /*
  * ehash_rv_init_bucket_redo () - Redo the initilization of a bucket page
  *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Redo the initilization of a bucket page. The data area of the
  * recovery structure contains the alignment value and the
  * local depth of the bucket page.
@@ -5990,9 +5470,9 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_insert_redo () - Redo the insertion of an entry to a bucket page
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Redo the insertion of a (key, assoc-value) entry to a specific
  * extendible hashing structure. The data area of the recovery
  * structure contains the key type, and the entry to be inserted.
@@ -6025,9 +5505,9 @@ ehash_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_insert_undo () - Undo the insertion of an entry to ext. hash
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Undo the insertion of a (key, assoc-value) entry to a
  * specific extendible hashing structure. The data area of the
  * recovery structure contains the ext. hashing identifier, and
@@ -6047,8 +5527,8 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
   if (record_type == REC_BIGONE)
     {
-      /* This record is for a long string. At the monent it seems more logical 
-       * to compose the whole key here rather than at the logging time. 
+      /* This record is for a long string. At the monent it seems more logical
+       * to compose the whole key here rather than at the logging time.
        * But, if the overflow pages cannot be guaranteed to exist
        * when this function is called, then the whole key would need to be
        * logged and this portion of the code becomes unnecessary.
@@ -6080,9 +5560,9 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_delete_redo () - Redo the deletion of an entry to ext. hash
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Redo the deletion of a (key, assoc-value) entry from a
  * specific extendible hashing structure. The data area of the
  * recovery structure contains the key type followed by the
@@ -6102,13 +5582,13 @@ ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
   if (spage_get_record (recv_p->pgptr, slot_id, &existing_recdes, PEEK)
       == S_SUCCESS)
-    /* 
+    /*
      * There is a record in the specified slot. Check if it is the same
      * record
      */
-    if ((existing_recdes.type == recdes.type) &&
-	(existing_recdes.length == recdes.length) &&
-	(memcmp (existing_recdes.data, recdes.data, recdes.length) == 0))
+    if ((existing_recdes.type == recdes.type)
+	&& (existing_recdes.length == recdes.length)
+	&& (memcmp (existing_recdes.data, recdes.data, recdes.length) == 0))
       {
 	/* The record exist in the correct slot in the page. So, delete this slot
 	   from the page */
@@ -6122,9 +5602,9 @@ ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_delete_undo () - Undo the deletion of an entry from ext. hash
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Undo the deletion of a (key, assoc-value) entry from a
  * specific extendible hashing structure. The data area of the
  * recovery structure contains the ext. hashing identifier,
@@ -6145,8 +5625,8 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   /* Now rec_ptr is pointing to the key value */
   if (record_type == REC_BIGONE)
     {
-      /* This record is for a long string. At the monent it seems more logical 
-       * to compose the whole key here rather than at the logging time. 
+      /* This record is for a long string. At the monent it seems more logical
+       * to compose the whole key here rather than at the logging time.
        * But, if the overflow pages cannot be guaranteed to exist
        * when this function is called, then the whole key would need to be
        * logged and this portion of the code becomes unnecessary.
@@ -6186,10 +5666,10 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_delete () - Recovery delete function
- *   return: int 
+ *   return: int
  *   ehid(in): identifier for the extendible hashing structure
  *   key(in): Key value to remove
- * 
+ *
  * Note: This is the recovery version of the "ehash_delete" function. Just
  * like the original function, this one also deletes the given
  * key value (together with its assoc_value) from the specified
@@ -6215,10 +5695,11 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
   char *log_redo_record_p;
   int error = NO_ERROR;
 
-  dir_root_page_p =
-    ehash_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p,
-				      PGBUF_LATCH_READ, PGBUF_LATCH_WRITE,
-				      &bucket_vpid, NULL, NULL);
+  dir_root_page_p = ehash_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p,
+						      PGBUF_LATCH_READ,
+						      PGBUF_LATCH_WRITE,
+						      &bucket_vpid, NULL,
+						      NULL);
   if (dir_root_page_p == NULL)
     {
       return er_errid ();
@@ -6267,7 +5748,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      (&log_recdes_redo, bucket_recdes.length + sizeof (short),
 	       REC_HOME) == NULL)
 	    {
-	      /* 
+	      /*
 	       * Will not be able to log a compensating log record... continue
 	       * anyhow...without the log...since we are doing recovery anyhow
 	       */
@@ -6310,9 +5791,9 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 /*
  * ehash_rv_increment () - Recovery increment counter
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: This function increments the value of an (integer) counter
  * during the recovery (or transaction abort) time. The location
  * of the counter and the amount of increment is passed as the
@@ -6334,9 +5815,9 @@ ehash_rv_increment (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
 /*
  * ehash_rv_connect_bucket_redo () - Recovery connect bucket
- *   return: int 
+ *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: This function sets a number of directory pointers (on the
  * same directory page) to the specified bucket pageid. The
  * bucket pageid, and the number of pointers to be updated are

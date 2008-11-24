@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ *
+ */
+
+/*
  * repl_agent.c - main routine of Transaction Log Receiver
  *                at the distributor site
  *
@@ -49,13 +65,13 @@
 #endif
 
 #include "porting.h"
-#include "repl_ag.h"
-#include "repl_comm.h"
+#include "repl_agent.h"
+#include "repl_support.h"
 #include "repl_tp.h"
 #include "object_primitive.h"
 #include "db.h"
-#include "schema_manager_3.h"
-#include "transform_sky.h"
+#include "schema_manager.h"
+#include "transform_cl.h"
 #include "locator_cl.h"
 #include "page_buffer.h"
 #include "file_manager.h"
@@ -64,7 +80,7 @@
 #include "utility.h"
 #include "object_accessor.h"
 #include "parser.h"
-#include "object_print_1.h"
+#include "object_print.h"
 #include "log_compress.h"
 #include "environment_variable.h"
 
@@ -81,11 +97,11 @@ int perf_Log_size;		/* perf log file size */
 FILE *history_fp = NULL;	/* user and trigger history file */
 int agent_status_port;		/* agent status port id */
 int perf_Commit_msec = 500;	/* commit interval of apply thread */
-bool is_Debug = false;
+bool restart_Agent = false;
+int agent_Max_size = 50;	/* 50M */
+int debug_Dump_info = 0;
 
-#if defined(DEBUG_REPL)
 FILE *debug_Log_fd = NULL;
-#endif
 
 /* Global variables for argument parsing */
 char *dist_LogPath = (char *) "";	/* the distributor log path */
@@ -96,6 +112,7 @@ REPL_ERR *err_Head = NULL;
 const char *log_dump_fn = "";	/* file name of replication copy log */
 int log_pagesize = 4096;	/* log page size for log dump */
 
+extern int repl_Pipe_to_master;
 
 #define REPLAGENT_ARG_DBNAME           1
 #define REPLAGENT_ARG_PASSWD           2
@@ -104,14 +121,14 @@ int log_pagesize = 4096;	/* log page size for log dump */
 #define REPLAGENT_ARG_LOG_DUMP_PSIZE   5
 
 /*
- * Following macros are re-defined from the log_prv.h to traverse the log file
+ * Following macros are re-defined from the log_impl.h to traverse the log file
  */
 
 #define REPL_LOGAREA_SIZE(m_idx)                                             \
         (mInfo[m_idx]->io_pagesize - DB_SIZEOF(LOG_HDRPAGE))
 
 /* macros to process the log record at the edge point of the page */
-/* copied the macros of log_prv.h, and adjusted some logic */
+/* copied the macros of log_impl.h, and adjusted some logic */
 #define REPL_LOG_READ_ALIGN(offset, pageid, log_pgptr, release, m_idx)        \
   do {                                                                        \
     DB_ALIGN((offset), INT_ALIGNMENT);                                        \
@@ -183,6 +200,16 @@ struct ovf_page_list
   int length;			/* total length of data */
   struct ovf_page_list *next;	/* next page */
 };
+
+/* debug info */
+struct debug_string
+{
+  char *data;
+  int length;
+  int max_length;
+};
+static struct debug_string *debug_record_data = NULL;
+static struct debug_string *debug_workspace_data = NULL;
 
 /* Functions */
 static int repl_ag_set_copy_log (int m_idx, PAGEID start_pageid,
@@ -261,8 +288,13 @@ static int repl_ag_get_parameters_internal (int (*func) (DB_QUERY_RESULT *),
 static int repl_ag_get_parameters ();
 static void usage (const char *argv0);
 
-
-
+static int repl_debug_add_valules (struct debug_string **record_data,
+				   DB_VALUE * value);
+static bool repl_debug_check_data (char *str);
+static int
+repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
+			  struct debug_string **record_data);
+static void repl_restart_agent ();
 
 /*
  * repl_ag_set_copy_log() - Set the end log info
@@ -1494,27 +1526,27 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
 
   switch (item->type)
     {
-    case SQLX_CMD_CREATE_CLASS:
-    case SQLX_CMD_ALTER_CLASS:
-    case SQLX_CMD_RENAME_CLASS:
-    case SQLX_CMD_DROP_CLASS:
+    case CUBRID_STMT_CREATE_CLASS:
+    case CUBRID_STMT_ALTER_CLASS:
+    case CUBRID_STMT_RENAME_CLASS:
+    case CUBRID_STMT_DROP_CLASS:
 
-    case SQLX_CMD_CREATE_INDEX:
-    case SQLX_CMD_ALTER_INDEX:
-    case SQLX_CMD_DROP_INDEX:
+    case CUBRID_STMT_CREATE_INDEX:
+    case CUBRID_STMT_ALTER_INDEX:
+    case CUBRID_STMT_DROP_INDEX:
 
 #if 0
       /* serial replication is not schema replication but data replication */
-    case SQLX_CMD_CREATE_SERIAL:
-    case SQLX_CMD_ALTER_SERIAL:
-    case SQLX_CMD_DROP_SERIAL:
+    case CUBRID_STMT_CREATE_SERIAL:
+    case CUBRID_STMT_ALTER_SERIAL:
+    case CUBRID_STMT_DROP_SERIAL:
 #endif
 
-    case SQLX_CMD_DROP_DATABASE:
-    case SQLX_CMD_DROP_LABEL:
+    case CUBRID_STMT_DROP_DATABASE:
+    case CUBRID_STMT_DROP_LABEL:
 
-    case SQLX_CMD_CREATE_STORED_PROCEDURE:
-    case SQLX_CMD_DROP_STORED_PROCEDURE:
+    case CUBRID_STMT_CREATE_STORED_PROCEDURE:
+    case CUBRID_STMT_DROP_STORED_PROCEDURE:
 
       ddl = db_get_string (&item->key);
       if (repl_ag_update_query_execute (ddl) != NO_ERROR)
@@ -1531,17 +1563,17 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
 	}
       break;
 
-    case SQLX_CMD_CREATE_USER:
-    case SQLX_CMD_ALTER_USER:
-    case SQLX_CMD_DROP_USER:
-    case SQLX_CMD_GRANT:
-    case SQLX_CMD_REVOKE:
+    case CUBRID_STMT_CREATE_USER:
+    case CUBRID_STMT_ALTER_USER:
+    case CUBRID_STMT_DROP_USER:
+    case CUBRID_STMT_GRANT:
+    case CUBRID_STMT_REVOKE:
 
-    case SQLX_CMD_CREATE_TRIGGER:
-    case SQLX_CMD_RENAME_TRIGGER:
-    case SQLX_CMD_DROP_TRIGGER:
-    case SQLX_CMD_REMOVE_TRIGGER:
-    case SQLX_CMD_SET_TRIGGER:
+    case CUBRID_STMT_CREATE_TRIGGER:
+    case CUBRID_STMT_RENAME_TRIGGER:
+    case CUBRID_STMT_DROP_TRIGGER:
+    case CUBRID_STMT_REMOVE_TRIGGER:
+    case CUBRID_STMT_SET_TRIGGER:
       ddl = db_get_string (&item->key);
       if (fprintf (history_fp, "%s\n", ddl) < 0)
 	REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
@@ -2174,6 +2206,62 @@ repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
   return error;
 }
 
+static bool
+repl_debug_check_data (char *str)
+{
+  int length, i;
+
+  length = strlen (str);
+  for (i = 0; i < length; i++)
+    {
+      if (!(('a' <= str[i] && str[i] <= 'z')
+	    || ('A' <= str[i] && str[i] <= 'Z')
+	    || ('0' <= str[i] && str[i] <= '9') || str[i] == ' '))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+static int
+repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
+{
+  PARSER_VARCHAR *buf;
+  PARSER_CONTEXT *parser;
+
+  parser = parser_create_parser ();
+  buf = describe_value (parser, NULL, value);
+  if (record_data == NULL)
+    {
+      (*record_data) =
+	(struct debug_string *) malloc (sizeof (struct debug_string));
+      if (record_data != NULL)
+	{
+	  (*record_data)->data = NULL;
+	  (*record_data)->length = 0;
+	  (*record_data)->max_length = 0;
+	}
+    }
+  if ((*record_data) != NULL
+      && ((*record_data)->max_length
+	  <= ((*record_data)->length + pt_get_varchar_length (buf) + 3)))
+    {
+      (*record_data) = (char *) realloc ((*record_data),
+					 debug_record_data->max_length
+					 + 10240);
+      if ((*record_data) != NULL)
+	{
+	  (*record_data)->max_length += 10240;
+	}
+    }
+  strcat ((*record_data)->data, pt_get_varchar_bytes (buf));
+  strcat ((*record_data)->data, ", ");
+  parser_free_parser (parser);
+
+  return NO_ERROR;
+}
+
 /*
  * repl_get_current()
  *   return: NO_ERROR or error code
@@ -2193,19 +2281,6 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
   int rc = NO_ERROR;
   DB_VALUE value;
   int error = NO_ERROR;
-
-#if 0				/* pk-fk update failure */
-  SM_CLASS_CONSTRAINT *constraint = sm_class->constraints;
-  /* find primary key constraint  */
-  while (constraint != NULL)
-    {
-      if (SM_CONSTRAINT_PRIMARY_KEY == constraint->type)
-	{
-	  break;
-	}
-      constraint = constraint->next;
-    }
-#endif
 
   if (sm_class->variable_count)
     {
@@ -2248,50 +2323,19 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 				   NULL, 0);
 	}
 
-#if 0				/* pk-fk update failure */
-      update = true;
-      /* is existed in primary-key's attributes */
-      for (j = 0; NULL != constraint->attributes[j]; j++)
-	{
-	  if (constraint->attributes[j]->id == att->id)
-	    {
-	      if (key->domain.general_info.type == DB_TYPE_MIDXKEY)
-		{
-		  /* read j-th value in midxkey */
-		  set_midxkey_get_element_nocopy (key, j, &pk);
-		  /* record's value == key's value */
-		  if (true == db_value_equal (&value, &pk))
-		    {
-		      update = false;
-		    }
-		}
-	      else
-		{
-		  if (true == db_value_equal (&value, key))
-		    {
-		      update = false;
-		    }
-		}
-	      break;
-	    }
-	}
-#endif
-
       /* skip cache object attribute for foreign key */
       if (att->is_fk_cache_attr)
 	continue;
-
-#if 0				/* pk-fk update failure */
-      /* skip - if record's value and key's value are same */
-      if (false == update)
-	continue;
-#endif
 
       /* update the column */
       error = dbt_put_internal (def, att->header.name, &value);
       if (error != NO_ERROR)
 	{
 	  return error;
+	}
+      if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
+	{
+	  repl_debug_add_valules (&debug_record_data, &value);
 	}
     }
 
@@ -2318,6 +2362,10 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
       if (error != NO_ERROR)
 	{
 	  return error;
+	}
+      if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
+	{
+	  repl_debug_add_valules (&debug_record_data, &value);
 	}
     }
 
@@ -2382,6 +2430,59 @@ repl_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
     }
 
   return error;
+}
+
+static int
+repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
+			  struct debug_string **record_data)
+{
+  SM_CLASS *sm_class;
+  SM_ATTRIBUTE *att;
+  DB_VALUE value;
+  DB_OBJECT *object;
+  int i, j, error;
+
+  object = obj_find_object_by_pkey (class_obj, key, AU_FETCH_READ);
+  if (object == NULL)
+    {
+      return er_errid ();
+    }
+
+  sm_class = (SM_CLASS *) class_obj;
+  att = sm_class->attributes;
+  /* process the fixed length column */
+  for (i = 0; i < sm_class->fixed_count;
+       i++, att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      /* skip cache object attribute for foreign key */
+      if (att->is_fk_cache_attr)
+	{
+	  continue;
+	}
+
+      /* get the column */
+      error = db_get (object, att->header.name, &value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      repl_debug_add_valules (record_data, &value);
+    }
+
+  /* process variable length column */
+  for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count;
+       i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      /* get the column */
+      error = db_get (object, att->header.name, &value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      repl_debug_add_valules (record_data, &value);
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2494,6 +2595,22 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   /* update object */
   if (dbt_finish_object (inst_tp) == NULL)
     goto error_rtn;
+
+  if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
+    {
+      repl_debug_object2string (class_obj, &item->key, &debug_workspace_data);
+      if (strcmp (debug_record_data->data, debug_workspace_data->data) != 0)
+	{
+	  fprintf (debug_Log_fd,
+		   "VALUE ERROR : PUT VALUE(%s)\nWORKSPACE(%s)\n",
+		   debug_record_data->data, debug_workspace_data->data);
+	  fflush (debug_Log_fd);
+	}
+      debug_record_data->data[0] = NULL;
+      debug_record_data->length = 0;
+      debug_workspace_data->data[0] = NULL;
+      debug_workspace_data->length = 0;
+    }
 
   if (ovfyn)
     free_and_init (recdes.data);
@@ -3089,24 +3206,20 @@ repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
 
   if (apply->repl_head == NULL)
     {
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  fprintf (debug_Log_fd,
 		   "APPLY TRAN[%10d] : HEADER NULL\n", apply->tranid);
 	  fflush (debug_Log_fd);
 	}
-#endif
       repl_ag_clear_repl_item (apply);
       return NO_ERROR;
     }
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd, "APPLY TRAN[%10d] : ", apply->tranid);
     }
-#endif
 
   item = apply->repl_head;
   while (item && error == NO_ERROR)
@@ -3133,8 +3246,7 @@ repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
 	  }
 	}
 
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  parser = parser_create_parser ();
 	  buf = describe_value (parser, NULL, &item->key);
@@ -3168,7 +3280,6 @@ repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
 	    }
 	  parser_free_parser (parser);
 	}
-#endif
 
       if (error == NO_ERROR)
 	{
@@ -3196,13 +3307,11 @@ repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
       item = item->next;
     }
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd, "END\n");
       fflush (debug_Log_fd);
     }
-#endif
 
   if (error == NO_ERROR)
     {
@@ -3788,25 +3897,20 @@ void
 repl_ag_clear_repl_item (REPL_APPLY * repl_list)
 {
   REPL_ITEM *repl_item;
-#if defined(DEBUG_REPL)
   PARSER_VARCHAR *buf;
   PARSER_CONTEXT *parser;
-#endif
 
   repl_item = repl_list->repl_head;
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd, "CLEAR TRAN[%10d] : ", repl_list->tranid);
     }
-#endif
 
   while (repl_item != NULL)
     {
       repl_list->repl_head = repl_item->next;
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  parser = parser_create_parser ();
 	  buf = describe_value (parser, NULL, &repl_item->key);
@@ -3815,7 +3919,6 @@ repl_ag_clear_repl_item (REPL_APPLY * repl_list)
 		   repl_item->lsa.offset);
 	  parser_free_parser (parser);
 	}
-#endif
       if (repl_item->class_name != NULL)
 	{
 	  db_private_free_and_init (NULL, repl_item->class_name);
@@ -3827,13 +3930,11 @@ repl_ag_clear_repl_item (REPL_APPLY * repl_list)
   repl_list->repl_tail = NULL;
   LSA_SET_NULL (&repl_list->start_lsa);
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd, "END\n");
       fflush (debug_Log_fd);
     }
-#endif
 
   repl_list->tranid = 0;	/* set "free" for the reuse */
 }
@@ -3994,6 +4095,7 @@ repl_ag_shutdown ()
   repl_ag_clear_master_info_all ();
   repl_ag_clear_slave_info_all ();
   repl_error_flush (err_Log_fp, 0);
+  close (repl_Pipe_to_master);
 }
 
 /*
@@ -4063,14 +4165,15 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
 	  error = REPL_AGENT_IO_ERROR;
 	  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
 	}
-#if defined(DEBUG_REPL)
-      sprintf (file_path, "%s/%s.debug", env_value, dist_Dbname);
-      debug_Log_fd = fopen (file_path, "a");
-      if (debug_Log_fd == NULL)
+      if (debug_Dump_info != 0)
 	{
-	  debug_Log_fd = stdout;
+	  sprintf (file_path, "%s/%s.debug", env_value, dist_Dbname);
+	  debug_Log_fd = fopen (file_path, "a");
+	  if (debug_Log_fd == NULL)
+	    {
+	      debug_Log_fd = stdout;
+	    }
 	}
-#endif
     }
   else if (env_name != NULL && strcmp (env_name, "error_log") == 0)
     {
@@ -4097,6 +4200,12 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
       perf_Commit_msec = atoi (env_value);
       if (perf_Commit_msec < 0)
 	perf_Commit_msec = 10000;
+    }
+  else if (env_name != NULL && strcmp (env_name, "repl_agent_max_size") == 0)
+    {
+      agent_Max_size = atoi (env_value);
+      if (agent_Max_size < 0)
+	agent_Max_size = 50;
     }
 
   for (i = 0; i < col_cnt; i++)
@@ -4894,6 +5003,43 @@ usage (const char *argv0)
   msgcat_final ();
 }
 
+static void
+repl_restart_agent ()
+{
+  int pid;
+
+  pid = fork ();
+  if (pid == 0)
+    {
+      int ppid;
+      char path[PATH_MAX];
+
+      ppid = getppid ();
+      while (1)
+	{
+	  if (kill (ppid, 0) < 0)
+	    break;
+	  sleep (1);
+	}
+      sprintf (path, "%s/bin/repl_agent", getenv ("CUBRID"));
+
+      if (strlen (dist_Passwd) > 0)
+	{
+	  pid = execl (path, "repl_agent", "-d", dist_Dbname,
+		       "-p", dist_Passwd, NULL);
+	}
+      else
+	{
+	  pid = execl (path, "repl_agent", "-d", dist_Dbname, NULL);
+	}
+      if (pid != 0)
+	{
+	  perror ("exec");
+	}
+      exit (0);
+    }
+}
+
 /*
  * main() - Main Routine of repl_agent
  *   return: int
@@ -4948,9 +5094,9 @@ main (int argc, char **argv)
    */
 
   env = envvar_get ("DEBUG_REPL");
-  if (env != NULL && strcmp (env, "yes") == 0)
+  if (env != NULL)
     {
-      is_Debug = true;
+      debug_Dump_info = atoi (env);
     }
   PTHREAD_MUTEX_INIT (file_Mutex);
 
@@ -5058,22 +5204,26 @@ main (int argc, char **argv)
 
 error_exit:
   repl_ag_shutdown ();
-  if (err_Log_fp != stdout && err_Log_fp)
+  if (err_Log_fp && err_Log_fp != stdout && err_Log_fp)
     {
       fclose (err_Log_fp);
     }
-  if (perf_Log_fp != stdout && perf_Log_fp)
+  if (perf_Log_fp && perf_Log_fp != stdout && perf_Log_fp)
     {
       fclose (perf_Log_fp);
     }
 
-#if defined(DEBUG_REPL)
-  if (debug_Log_fd != stdout && debug_Log_fd)
+  if (debug_Log_fd && debug_Log_fd != stdout && debug_Log_fd)
     {
       fclose (debug_Log_fd);
     }
-#endif
 
   msgcat_final ();
+
+  if (restart_Agent)
+    {
+      repl_restart_agent ();
+    }
+
   return error;
 }

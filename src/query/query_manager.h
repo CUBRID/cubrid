@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * Query manager (Server Side)
  */
 
@@ -10,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "common.h"
+#include "storage_common.h"
 #include "list_file.h"
 #include "dbtype.h"
 #include "thread_impl.h"
@@ -136,7 +152,7 @@ struct qmgr_query_entry
 };
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd,
 				     const char *query_str,
 				     const OID * user_oid,

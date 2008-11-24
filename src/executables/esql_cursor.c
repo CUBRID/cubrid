@@ -1,17 +1,33 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * cursor.c - Preprocessor routines for manipulating and
- *            storing cursor definitions.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
+
+/*
+ * esql_cursor.c - Preprocessor routines for manipulating and
+ *                 storing cursor definitions.
+ */
+
 #ident "$Id$"
 
 #include "config.h"
 
 #include <stdlib.h>
 #include "esql_misc.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 
 enum
 {
@@ -201,7 +217,7 @@ pp_print_cursors (FILE * fp)
 }
 
 /*
- * pp_remove_cursors_from_table() - 
+ * pp_remove_cursors_from_table() -
  * returns/side-effects: nothing
  * chain(in): The head of a list of cursors to be removed from
  *    the cursor table.
@@ -221,7 +237,7 @@ pp_remove_cursors_from_table (CURSOR * chain)
 }
 
 /*
- * pp_discard_cursor_chain() - Discard all of the cursors in the chain. 
+ * pp_discard_cursor_chain() - Discard all of the cursors in the chain.
  * return : void
  * chain(in): The head of a list of cursors to be discarded.
  */
@@ -241,11 +257,11 @@ pp_discard_cursor_chain (CURSOR * chain)
 
 /*
  * pp_new_stmt() - Build a new STMT record for an embedded dynamic statement
- *    (e.g., the thing that arises from an ESQL/X statement such as
- *     "PREPARE stmt FROM :buffer"). 
+ *    (e.g., the thing that arises from an esql statement such as
+ *     "PREPARE stmt FROM :buffer").
  * return : STMT *
  * name(in): The name of the dynamic statement.
- * 
+ *
  */
 STMT *
 pp_new_stmt (char *name)

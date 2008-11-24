@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * log_tb.c -  
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * log_tran_table.c -
  */
 
 #ident "$Id$"
@@ -27,23 +40,23 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "xserver.h"
-#include "log_prv.h"
-#include "log.h"
-#include "logcp.h"
+#include "xserver_interface.h"
+#include "log_impl.h"
+#include "log_manager.h"
+#include "log_comm.h"
 #include "recovery.h"
 #if !defined(SERVER_MODE)
-#include "recover_cl.h"
+#include "recovery_cl.h"
 #endif /* SERVER_MODE */
 #include "system_parameter.h"
 #include "release_string.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "file_io.h"
 #include "disk_manager.h"
 #include "page_buffer.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "wait_for_graph.h"
 #include "file_manager.h"
 #include "critical_section.h"
@@ -105,7 +118,7 @@ static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  * return: stack or NULL
  *
  *   tdes(in): State structure of transaction to realloc stack
- *   num_elms(in): 
+ *   num_elms(in):
  *
  * Note: Realloc the current transaction top system operation stack by
  *              the given number of entries.
@@ -143,13 +156,13 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
 }
 
 /*
- * logtb_allocate_tdes_area - 
+ * logtb_allocate_tdes_area -
  *
- * return: 
+ * return:
  *
- *   num_indices(in): 
+ *   num_indices(in):
  *
- * Note: 
+ * Note:
  */
 static LOG_ADDR_TDESAREA *
 logtb_allocate_tdes_area (int num_indices)
@@ -209,7 +222,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   int error_code = NO_ERROR;
 
 #if defined(SERVER_MODE)
-  /* 
+  /*
    * When second time this function invoked during normal processing,
    * just return.
    */
@@ -246,7 +259,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   total_indices = NUM_TOTAL_TRAN_INDICES + num_new_indices;
 #endif
 
-  /* 
+  /*
    * NOTE that this realloc is OK since we are in a critical section.
    * Nobody should have pointer to transaction table
    */
@@ -349,7 +362,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 
   assert (LOG_CS_OWN ());
 
-  /* 
+  /*
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
    *                 table after recovery.
@@ -418,7 +431,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 
   logtb_set_number_of_assigned_tran_indices (1);	/* sys tran */
 
-  /* 
+  /*
    * Assign the first entry for the system transaction. System transaction
    * has an infinite timeout
    */
@@ -459,12 +472,12 @@ error:
 }
 
 /*
- * logtb_initialize_trantable - 
+ * logtb_initialize_trantable -
  *
  * return: nothing
- * 
- *   trantable_p(in/out): 
- * 
+ *
+ *   trantable_p(in/out):
+ *
  * Note: .
  */
 static void
@@ -482,10 +495,10 @@ logtb_initialize_trantable (TRANTABLE * trantable_p)
 }
 
 /*
- * logtb_initialize_system_tdes - 
+ * logtb_initialize_system_tdes -
  *
  * return: NO_ERROR if all OK, ER status otherwise
- * 
+ *
  * Note: .
  */
 static int
@@ -536,13 +549,13 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   if (log_Gl.trantable.area != NULL)
     {
-      /* 
+      /*
        * If any one of the transaction indices has coordinator info,
        * free this area
        */
       for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
 	{
-	  /* 
+	  /*
 	   * If there is any memory allocated in the transaction descriptor,
 	   * release it
 	   */
@@ -588,8 +601,8 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 int
 logtb_get_number_assigned_tran_indices (void)
 {
-  /* Do not use TR_TABLE_CS_ENTER()/TR_TABLE_CS_EXIT(), 
-   * Estimated value is sufficient for the caller 
+  /* Do not use TR_TABLE_CS_ENTER()/TR_TABLE_CS_EXIT(),
+   * Estimated value is sufficient for the caller
    */
   return NUM_ASSIGNED_TRAN_INDICES;
 }
@@ -609,7 +622,7 @@ logtb_set_number_of_assigned_tran_indices (int num_trans)
 }
 
 /*
- * logtb_increment_number_of_assigned_tran_indices - 
+ * logtb_increment_number_of_assigned_tran_indices -
  *      increment the number of tran indices
  *
  * return: nothing
@@ -623,7 +636,7 @@ logtb_increment_number_of_assigned_tran_indices (void)
 }
 
 /*
- * logtb_decrement_number_of_assigned_tran_indices - 
+ * logtb_decrement_number_of_assigned_tran_indices -
  *      decrement the number of tran indices
  *
  * return: nothing
@@ -692,9 +705,9 @@ logtb_am_i_sole_tran (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_i_am_not_sole_tran - 
+ * logtb_i_am_not_sole_tran -
  *
- * return: 
+ * return:
  *
  * NOTE:
  */
@@ -715,7 +728,7 @@ logtb_i_am_not_sole_tran (void)
  *   client_prog_name(in): Name of the client program or NULL
  *   client_user_name(in): Name of the client user or NULL
  *   client_host_name(in): Name of the client host or NULL
- *   client_process_id(in): Identifier of the process of the host where the 
+ *   client_process_id(in): Identifier of the process of the host where the
  *                      client transaction runs.
  *   current_state(in/out): Set as a side effect to state of transaction, when
  *                      a valid pointer is given.
@@ -779,12 +792,12 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 }
 
 /*
- * logtb_set_tdes - 
+ * logtb_set_tdes -
  *
- * return: 
+ * return:
  *
  *   tdes(in/out): Transaction descriptor
- *   client_prog_name(in): the name of the client program 
+ *   client_prog_name(in): the name of the client program
  *   client_host_name(in): the name of the client host
  *   client_user_name(in): the name of the client user
  *   client_process_id(in): the process id of the client
@@ -896,7 +909,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
   if (log_Gl.trantable.num_client_loose_end_indices > 0
       && client_user_name != NULL)
     {
-      /* 
+      /*
        * Check if the client_user has a dangling entry for client loose ends.
        * If it does, assign such a dangling index to it
        */
@@ -908,7 +921,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 	      && LOG_ISTRAN_CLIENT_LOOSE_ENDS (tdes)
 	      && strcmp (tdes->client.user_name, client_user_name) == 0)
 	    {
-	      /* 
+	      /*
 	       * A client loose end transaction for current user.
 	       */
 	      log_Gl.trantable.num_client_loose_end_indices--;
@@ -1058,9 +1071,9 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
       tdes = LOG_FIND_TDES (tran_index);
       if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
 	{
-	  /* 
+	  /*
 	   * Unable to assign a transaction index. The recovery process
-	   * cannot continue 
+	   * cannot continue
 	   */
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_recovery_find_or_alloc");
@@ -1103,18 +1116,6 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index != LOG_SYSTEM_TRAN_INDEX && tdes != NULL)
     {
-      /* 
-       * Freeing an index of a transaction which was performing client loose
-       * end operations is only allowed during recovery times. Otherwise, 
-       * this entry cannot be freed (this is a client crash case). This
-       * transaction index is  assigned to the client user when it restarts.
-       * 
-       * Freeing an index with a transaction state "prepared to commit" or
-       * "informing participants" is only allowed during recovery times. 
-       * Otherwise, this entry cannot be freed (application or a participant
-       * crash). This transaction index is assigned to the client when it
-       * restarts.
-       */
 
       TR_TABLE_CS_ENTER (thread_p);
 
@@ -1242,7 +1243,7 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
     }
 }
 
-/* 
+/*
  * logtb_free_tran_index_with_undo_lsa - free tranindex with lsa
  *
  * return: nothing
@@ -1285,14 +1286,14 @@ logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
   TR_TABLE_CS_EXIT ();
 }
 
-/* 
- * logtb_dump_tdes - 
+/*
+ * logtb_dump_tdes -
  *
  * return: nothing
  *
- *   tdes(in): 
+ *   tdes(in):
  *
- * Note: 
+ * Note:
  */
 static void
 logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
@@ -1334,14 +1335,14 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
     }
 }
 
-/* 
- * logtb_dump_top_operations - 
+/*
+ * logtb_dump_top_operations -
  *
  * return: nothing
  *
- *   tdes(in): 
+ *   tdes(in):
  *
- * Note: 
+ * Note:
  */
 static void
 logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
@@ -1364,14 +1365,14 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
     }
 }
 
-/* 
- * logtb_dump_tdes_distribute_transaction - 
+/*
+ * logtb_dump_tdes_distribute_transaction -
  *
  * return: nothing
  *
- *   tdes(in): 
+ *   tdes(in):
  *
- * Note: 
+ * Note:
  */
 static void
 logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id,
@@ -1591,7 +1592,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   return tdes->trid;
 }
 
-/* 
+/*
  * logtb_find_tran_index - find index of transaction
  *
  * return: tran index
@@ -1640,7 +1641,7 @@ logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid)
   return tran_index;
 }
 
-/* 
+/*
  * logtb_find_tran_index_host_pid - find index of transaction
  *
  * return: tran index
@@ -1832,7 +1833,7 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
   return NO_ERROR;
 }
 
-/* 
+/*
  * xlogtb_get_pack_tran_table - return transaction info stored on transaction table
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -1846,7 +1847,7 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
  *              the user can select which transaction id needs to be aborted.
  *
  *       The buffer is allocated using malloc and must be freed by the
- *       caller. 
+ *       caller.
  */
 int
 xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
@@ -1859,7 +1860,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   char *buffer, *ptr;
   LOG_TDES *tdes;		/* Transaction descriptor */
 
-  /* Note, we'll be in a critical section while we gather the data but 
+  /* Note, we'll be in a critical section while we gather the data but
    * the section ends as soon as we return the data.  This means that the
    * transaction table can change after the information is used.
    */
@@ -1954,7 +1955,7 @@ logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p)
  *
  * return: TRAN_STATE
  *
- *   tran_index(in): transaction index 
+ *   tran_index(in): transaction index
  */
 TRAN_STATE
 logtb_find_state (int tran_index)
@@ -2115,7 +2116,7 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation,
  *
  * return: isolation
  *
- *   tran_index(in):Index of transaction 
+ *   tran_index(in):Index of transaction
  */
 TRAN_ISOLATION
 logtb_find_isolation (int tran_index)
@@ -2172,13 +2173,13 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
  * logtb_set_tran_index_interrupt - indicate interrupt to a future caller for an
  *                               specific transaction index
  *
- * return: false is returned when the tran_index is not associated 
+ * return: false is returned when the tran_index is not associated
  *              with a transaction
  *
  *   tran_index(in): Transaction index
  *   set(in): true for set and false for clear
  *
- * Note:Set the interrupt flag for the execution of the given transaction, 
+ * Note:Set the interrupt flag for the execution of the given transaction,
  *              so that the next caller obtains an interrupt.
  */
 bool
@@ -2222,12 +2223,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 }
 
 /*
- * logtb_is_interrupt_tdes - 
+ * logtb_is_interrupt_tdes -
  *
- * return: 
+ * return:
  *
- *   tdes(in/out): 
- *   clear(in/out): 
+ *   tdes(in/out):
+ *   clear(in/out):
  *   continue_checking(out):
  *
  * Note:
@@ -2275,7 +2276,7 @@ logtb_is_interrupt_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 /*
  * logtb_is_interrupt - find if execution must be stopped due to an interrupt (^C)
  *
- * return: 
+ * return:
  *
  *   clear(in): true if the interrupt should be cleared.
  *   continue_checking(in): Set as a side effect to true if there are more
@@ -2318,7 +2319,7 @@ logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
  * log_isinterrupt_tdes - find if execution of the transaction associated with
  *                       tdes must be stopped due to an interrupt (^C)
  *
- * return: 
+ * return:
  *
  *   tdes(in): Transaction descriptor
  *   clear(in): true if the interrupt should be cleared.
@@ -2349,13 +2350,13 @@ logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
  * logtb_is_interrupt_tran - find if the execution of the given transaction must
  *                       be stopped due to an interrupt (^C)
  *
- * return: 
+ * return:
  *
  *   clear(in): true if the interrupt should be cleared.
  *   continue_checking(in): Set as a side effect to true if there are more
  *                        interrupts to check or to false if there are not
  *                        more interrupts.
- *   tran_index(in): 
+ *   tran_index(in):
  *
  * Note: Find if the execution o fthe given transaction must be stopped
  *              due to an interrupt (^C). If clear is true, the
@@ -2383,7 +2384,7 @@ logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
 /*
  * logtb_are_any_interrupts - an interrupt for any transaction ?
  *
- * return: 
+ * return:
  *
  * Note: Find if an interrupt must be executed on any transaction.
  */
@@ -2414,7 +2415,7 @@ logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
 /*
  * logtb_is_active - is transaction active ?
  *
- * return: 
+ * return:
  *
  *   trid(in): Transaction identifier
  *
@@ -2470,7 +2471,7 @@ logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid)
 /*
  * logtb_is_current_active - is current transaction active ?
  *
- * return: 
+ * return:
  *
  * Note: Find if the current transaction is an active one.
  */
@@ -2496,7 +2497,7 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
 /*
  * logtb_istran_finished - is transaction finished?
  *
- * return: 
+ * return:
  *
  *   trid(in): Transaction identifier
  *
@@ -2551,7 +2552,7 @@ logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid)
 /*
  * logtb_has_updated - has transaction updated the database ?
  *
- * return: 
+ * return:
  *
  */
 bool
@@ -2621,13 +2622,13 @@ logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 }
 
 /*
- * logtb_set_loose_end_tdes - 
+ * logtb_set_loose_end_tdes -
  *
  * return:
  *
  *   tdes(in/out):
  *
- * Note: 
+ * Note:
  */
 static void
 logtb_set_loose_end_tdes (LOG_TDES * tdes)
@@ -2751,7 +2752,7 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 /*
  * log_find_unilaterally_largest_undo_lsa - find maximum lsa address to undo
  *
- * return: 
+ * return:
  *
  * Note: Find the maximum log sequence address to undo during the undo
  *              crash recovery phase.
@@ -2785,12 +2786,12 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
   return max;
 }
 
-/* 
+/*
  * logtb_find_smallest_lsa - smallest lsa address of all active transactions
  *
- * return: 
+ * return:
  *
- *   lsa(in): 
+ *   lsa(in):
  *
  */
 void
@@ -2823,7 +2824,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   TR_TABLE_CS_EXIT ();
 }
 
-/* 
+/*
  * logtb_find_largest_lsa - largest lsa address of all active transactions
  *
  * return: LOG_LSA *
@@ -2857,7 +2858,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
   return max_lsa;
 }
 
-/* 
+/*
  * logtb_find_smallest_and_largest_active_pages - smallest and larger active pages
  *
  * return: nothing...

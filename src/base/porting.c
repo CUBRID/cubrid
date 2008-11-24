@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * porting.c - Functions supporting platform porting
  */
 
@@ -20,7 +35,7 @@
 #endif
 
 #include "porting.h"
-#include "common.h"
+#include "storage_common.h"
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'
@@ -1056,3 +1071,36 @@ strsep (char **stringp, const char *delim)
 }
 #endif
 #endif
+
+/*
+ * getpass() - get a password
+ *   return: password string
+ *   prompt(in): prompt message string
+ */
+char *
+getpass (const char *prompt)
+{
+  int pwlen = 0;
+  int c;
+  static char password_buffer[80];
+
+  fprintf (stdout, prompt);
+
+  while (1)
+    {
+      c = getch ();
+      if (c == '\r' || c == '\n')
+        break;
+      if (c == '\b')
+        {                       /* backspace */
+          if (pwlen > 0)
+            pwlen--;
+          continue;
+        }
+      if (pwlen < sizeof (password_buffer) - 1)
+        password_buffer[pwlen++] = c;
+    }
+  password_buffer[pwlen] = '\0';
+  return password_buffer;
+}
+

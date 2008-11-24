@@ -177,51 +177,51 @@
 				Name="broker"
 				>
 				<File
-					RelativePath="..\..\src\broker\admin_pub.c"
+					RelativePath="..\..\src\broker\broker_admin_pub.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\br_config.c"
+					RelativePath="..\..\src\broker\broker_admin_so.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\error.c"
+					RelativePath="..\..\src\broker\broker_config.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\file_name.c"
+					RelativePath="..\..\src\broker\broker_error.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\get_psinfo.c"
+					RelativePath="..\..\src\broker\broker_filename.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\getsize.c"
+					RelativePath="..\..\src\broker\broker_list.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\link_list.c"
+					RelativePath="..\..\src\broker\broker_max_heap.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\max_heap.c"
+					RelativePath="..\..\src\broker\broker_process_info.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\shm.c"
+					RelativePath="..\..\src\broker\broker_process_size.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\uc_admin.c"
+					RelativePath="..\..\src\broker\broker_shm.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\util.c"
+					RelativePath="..\..\src\broker\broker_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\wsa_init.c"
+					RelativePath="..\..\src\broker\broker_wsa_init.c"
 					>
 				</File>
 			</Filter>

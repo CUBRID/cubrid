@@ -1,133 +1,39 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * query_manager.c - Query manager module (Server Side)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: if you feel the need
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * query_manager.c - Query manager module 
  */
 
 #ident "$Id$"
-
-/* This module is responsible for the management of queries on the server
- * side. It forms the basic interface to the server side query processor
- * from each client. It manages the queries submitted by clients by
- * coordinating with the query file manager for the storage of the query
- * XASL plans and query results; with the query evaluator for the evaluation
- * of the queries and generation of query result list files and with the
- * transaction and recovery manager to handle related issues such as commits,
- * aborts or abnormal situations. Thus, the interaction of the query manager
- * with other modules can be diagrammed as follows:
- *
- *                      _________________       ____________________
- *                      | Query Manager |-------|Trans. & Rec. Mgr.|
- *                      -----------------       --------------------
- *                        /            \
- *           _____________________    __________________
- *           | Query File Manager|----| Query Evaluator|
- *           ---------------------    ------------------
- *
- * There are two main data structures used the Query Manager:
- *  (i) The global query table structure
- * (ii) The query entry resource pool
- *
- * The global query table structure is the main structure where all the
- * query related information for queries issued by several transactions are
- * kept and maintained. In addition to having some global information
- * such as number of active query transactions (transactions that have issued
- * queries), the WFG group transaction index, the query table contains an
- * array tansaction index pointers, each which representing a client
- * transaction and possibly pointing to a linked list of query entry
- * structures for the queries issued by the that client. Each query entry
- * structure contains query specific information, such as the unique query
- * identifier, the XASL tree storage identifier, the query result list file
- * identifier. Thus, the structure of the query table looks as below:
- *
- *   ----------
- *   | Query  |
- *   | Table  |-----
- *   ----------    |
- *                 |
- *              ----------     ---------------     ---------------
- *              |Trans. 0|---->|Query Entry 0|---->|Query Entry 1|
- *              ----------     ---------------     ---------------
- *              |Trans  1|
- *              ----------
- *                 ...
- *              ----------     ---------------
- *              |Trans n |---->|Query Entry 0|
- *              ----------     ---------------
- *
- * The query entry resource pool is a pool of query entry structures which
- * can be used as a newly allocated query entry structure and returned back
- * to the pool. The main use of query entry resource pool is to avoid
- * expensive malloc/free operations.
- *
- * The interface between a client process and the query manager conceptually
- * takes place in 3 successive phases: query preparation, query execution and
- * query end:
- *
- * Query preparation: The client process requests a query preparation on the
- * server side by sending an XASL tree plan and a flag which indicates
- * whether the plan is repetitive or not, ie. whether it will be kept after
- * query execution or not. The query manager creates a new query entry for
- * the client and adds it to its query entry table. It also contacts the
- * query file manager to store the XASL tree plan in the query file. It
- * generates a unique query identifier and returns it back to the client
- * which will be then used as the basic communication parameter between the
- * query manager and the client process.
- *
- * Query execution: The client process requests a query execution by passing
- * the query manager the unique query identifier and optionally a set of
- * positional values (extracted from embedded SQLX programs) which will be
- * used during query execution. The query manager locates the corresponding
- * query entry structure, contacts the query file manager to load the XASL
- * tree plan for the query to the main memory and contacts the query evaluator
- * to execute the query, i.e. interpret the XASL tree, and form the query
- * result list file. It then returns the query result list file identifier to
- * the client process. If the query is not repetitive, it also contacts the
- * query file manager to drop the XASL tree plan for the query.
- *
- * Query end: The query end operations are either directly requested by the
- * client process or forced to happen by the transaction and recovery manager.
- * The client process contacts the query manager to drop the query result list
- * file, or the XASL tree plan for the query, or both. In both cases, the
- * query manager contacts the query file manager for drop operations. If the
- * query is not repetitive, dropping the query result file invalidates the
- * query identifier, otherwise the query identifier is invalidated only after
- * the XASL tree plan for the query is dropped.
- *
- * Query manager is also responsible for keeping track of the running status
- * of the client processes, number of pages allocated for client processes
- * by the file manager and suspending/resuming them as needed. Depending upon
- * the avaliability of query file pages, the query file manager may ask the
- * query manager to suspend or resume some transactions, or the query manager
- * itself may decide to do so, using the transaction status information it
- * keeps in the query entry table. If there are already transactions which
- * have been suspended and waiting for query file pages to become available,
- * new coming transactions are blocked, suspended by the query manager until
- * all the waiting transactions are served.
- *
- * The callers of the module include Client Side Query Processor,
- * Client/Server Communication Routines, Transaction Manager, Query File
- * Manager and Query Evaluator modules.
- *
- * The callees of the module include Query File Manager, Query Evalautor,
- * Scheduler and WFG manager modules.
- */
 
 #include "config.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include "common.h"
+#include "storage_common.h"
 #include "system_parameter.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 #include "error_manager.h"
-#include "log.h"
+#include "log_manager.h"
 #if defined(SERVER_MODE)
-#include "log_prv.h"
+#include "log_impl.h"
 #endif /* SERVER_MODE */
 #include "critical_section.h"
 #include "wait_for_graph.h"
@@ -135,9 +41,9 @@
 #include "query_manager.h"
 
 #if defined (SERVER_MODE)
-#include "defs.h"
-#include "jobqueue.h"
-#include "csserror.h"
+#include "connection_defs.h"
+#include "job_queue.h"
+#include "connection_error.h"
 #endif
 #include "thread_impl.h"
 
@@ -321,30 +227,30 @@ static bool
 qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
 				  QMGR_TEMP_FILE * temp_file_p)
 {
-  return (temp_file_p != NULL &&
-	  temp_file_p->membuf_last >= 0 &&
-	  temp_file_p->membuf &&
-	  page_p >= temp_file_p->membuf[0] &&
-	  page_p <= temp_file_p->membuf[temp_file_p->membuf_last]);
+  return (temp_file_p != NULL
+	  && temp_file_p->membuf_last >= 0
+	  && temp_file_p->membuf
+	  && page_p >= temp_file_p->membuf[0]
+	  && page_p <= temp_file_p->membuf[temp_file_p->membuf_last]);
 }
 
 
 static bool
 qmgr_is_not_allowed_result_cache (QUERY_FLAG flag)
 {
-  return (PRM_LIST_QUERY_CACHE_MODE == 0 ||
-	  (PRM_LIST_QUERY_CACHE_MODE == 1 &&
-	   (flag & RESULT_CACHE_INHIBITED)) ||
-	  (PRM_LIST_QUERY_CACHE_MODE == 2 &&
-	   !(flag & RESULT_CACHE_REQUIRED)));
+  return (PRM_LIST_QUERY_CACHE_MODE == 0
+	  || (PRM_LIST_QUERY_CACHE_MODE == 1
+	      && (flag & RESULT_CACHE_INHIBITED))
+	  || (PRM_LIST_QUERY_CACHE_MODE == 2
+	      && !(flag & RESULT_CACHE_REQUIRED)));
 }
 
 static bool
 qmgr_can_not_get_result_from_cache (QUERY_FLAG flag)
 {
-  return (PRM_LIST_QUERY_CACHE_MODE == 0 ||
-	  (PRM_LIST_QUERY_CACHE_MODE > 0
-	   && ((flag) & NOT_FROM_RESULT_CACHE)));
+  return (PRM_LIST_QUERY_CACHE_MODE == 0
+	  || (PRM_LIST_QUERY_CACHE_MODE > 0
+	      && ((flag) & NOT_FROM_RESULT_CACHE)));
 }
 
 static void
@@ -1029,7 +935,7 @@ qmgr_free_tran_entries (THREAD_ENTRY * thread_p)
   qmgr_Query_table.num_trans = 0;
 }
 
-static char *
+static const char *
 qmgr_get_tran_status_string (QMGR_TRAN_STATUS stat)
 {
   switch (stat)
@@ -1399,7 +1305,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 	  XASL_ID_SET_NULL (xasl_id_p);
 	}
 
-      return (cache_entry_p) ? xasl_id_p : NULL;
+      return xasl_id_p;
     }
 
   /* xasl_stream is given. It means that the client generated a XASL for
@@ -1518,6 +1424,7 @@ exit_on_error:
   goto exit_on_end;
 }
 
+#if defined (SERVER_MODE)
 /*
  * qmgr_check_active_query_and_wait () -
  *   return:
@@ -1531,14 +1438,13 @@ qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p,
 				  THREAD_ENTRY * current_thread_p,
 				  int exec_mode)
 {
-#if defined (SERVER_MODE)
   THREAD_ENTRY *prev_thread_p;
 
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 
-  if ((tran_entry_p->exist_active_query &&
-       tran_entry_p->active_sync_query_count == 0) ||
-      tran_entry_p->wait_thread_p != NULL)
+  if ((tran_entry_p->exist_active_query
+       && tran_entry_p->active_sync_query_count == 0)
+      || tran_entry_p->wait_thread_p != NULL)
     {
       current_thread_p->next_wait_thrd = NULL;
 
@@ -1569,8 +1475,8 @@ qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p,
 
   tran_entry_p->exist_active_query = true;
   qmgr_unlock_mutex (&tran_entry_p->lock);
-#endif
 }
+#endif
 
 /*
  * qmgr_check_waiter_and_wakeup () -
@@ -1649,11 +1555,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
   int tran_index;
-  QMGR_QUERY_TYPE dummy;
   QMGR_TRAN_ENTRY *tran_entry_p;
   QFILE_LIST_ID *list_id_p, *tmp_list_id_p;
   bool is_sync_query, error_flag, cached_result;
 #if defined (SERVER_MODE)
+  QMGR_QUERY_TYPE dummy;
   THREAD_ENTRY *current_thread_p;
 #endif
   XASL_CACHE_CLONE *cache_clone_p;
@@ -2772,15 +2678,16 @@ again:
       /* drop the XASL plan and invalidate query only if the query is
        * non-repetitive and not currently executing or the transaction has died
        */
-      if ((!q->xasl || (q->xasl && q->xasl->query_in_progress == false)) &&
-	  (q->repeat == false || is_tran_died))
+      if ((!q->xasl || (q->xasl && q->xasl->query_in_progress == false))
+	  && (q->repeat == false || is_tran_died))
 	{
 	  XASL_ID_SET_NULL (&q->xasl_id);
 	  /* if there were external volumes created for the transaction,
 	   * free them so that they can be used by coming transactions.
 	   */
-	  if (qmgr_free_query_temp_file_by_query_entry
-	      (thread_p, q, tran_index) != NO_ERROR)
+	  if (qmgr_free_query_temp_file_by_query_entry (thread_p, q,
+							tran_index) !=
+	      NO_ERROR)
 	    {
 #ifdef QP_DEBUG
 	      er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: "
@@ -2929,9 +2836,9 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 
-  if (tran_entry_p->modified_classes_p == NULL &&
-      (tran_entry_p->modified_classes_p =
-       qmgr_allocate_oid_block (thread_p)) == NULL)
+  if (tran_entry_p->modified_classes_p == NULL
+      && (tran_entry_p->modified_classes_p =
+	  qmgr_allocate_oid_block (thread_p)) == NULL)
     {
       qmgr_unlock_mutex (&tran_entry_p->lock);
       return;
@@ -2988,7 +2895,9 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 {
   int tran_index;
   PAGE_PTR page_p;
+#if defined(SERVER_MODE)
   bool dummy;
+#endif /* SERVER_MODE */
 
   if (vpid_p->volid == NULL_VOLID && tfile_vfid_p == NULL)
     {
@@ -3006,9 +2915,9 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 	{
 	  /* interrupt check */
 #if defined (SERVER_MODE)
-	  if (thread_get_check_interrupt (thread_p) == true &&
-	      logtb_is_interrupt_tran (thread_p, true, &dummy,
-				       tran_index) == true)
+	  if (thread_get_check_interrupt (thread_p) == true
+	      && logtb_is_interrupt_tran (thread_p, true, &dummy,
+					  tran_index) == true)
 	    {
 	      page_p = NULL;
 	    }
@@ -3630,8 +3539,8 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, int query_id)
 
       while (tfile_vfid_p)
 	{
-	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA &&
-		query_p->errid >= 0)
+	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA
+		&& query_p->errid >= 0)
 	      && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	    {
 	      if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) !=
@@ -3730,8 +3639,8 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
 
       while (tfile_vfid_p)
 	{
-	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA &&
-		query_p->errid >= 0)
+	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA
+		&& query_p->errid >= 0)
 	      && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	    {
 	      if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) !=
@@ -4121,17 +4030,6 @@ qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count,
       return NULL;
     }
 
-  /*
-   * Guess the length needed and allocate the area.
-   * The reply buf contains these fields:
-   *   length of total buffer
-   *   done flag (is the query finished)
-   *   tuple count
-   *   errid
-   *   er_msg (if errid != 0)
-   * The last field contains the length of the string plus the
-   * string itself with any necessary padding.
-   */
 
   MUTEX_LOCK (rv, query_p->lock);
   errid = query_p->errid;
@@ -4514,8 +4412,8 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
 {
   PROC_TYPE xasl_type = xasl_p->type;
 
-  if (xasl_type == UNION_PROC ||
-      xasl_type == DIFFERENCE_PROC || xasl_type == INTERSECTION_PROC)
+  if (xasl_type == UNION_PROC
+      || xasl_type == DIFFERENCE_PROC || xasl_type == INTERSECTION_PROC)
     {
       *query_type_p = UNION_QUERY;
       return false;
@@ -4543,9 +4441,9 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
   /* ORDER BY */
   if (xasl_type == BUILDLIST_PROC && xasl_p->orderby_list)
     {
-      if (xasl_p->ordbynum_val != NULL ||
-	  !qfile_is_sort_list_covered (xasl_p->after_iscan_list,
-				       xasl_p->orderby_list))
+      if (xasl_p->ordbynum_val != NULL
+	  || !qfile_is_sort_list_covered (xasl_p->after_iscan_list,
+					  xasl_p->orderby_list))
 	{
 	  /* cannot ignore sorting */
 	  *query_type_p = ORDERBY_QUERY;
@@ -4668,11 +4566,11 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	      db_private_free_and_init (thread_p, type_list.domp);
 	    }
 	}
-      else if (query_type == VALUE_QUERY || query_type == GROUPBY_QUERY ||
-	       query_type == ORDERBY_QUERY || query_type == DISTINCT_QUERY)
+      else if (query_type == VALUE_QUERY || query_type == GROUPBY_QUERY
+	       || query_type == ORDERBY_QUERY || query_type == DISTINCT_QUERY)
 	{
-	  if (xasl_p->type == BUILDLIST_PROC &&
-	      xasl_p->proc.buildlist.groupby_list != NULL)
+	  if (xasl_p->type == BUILDLIST_PROC
+	      && xasl_p->proc.buildlist.groupby_list != NULL)
 	    {
 	      outptr_list_p = xasl_p->proc.buildlist.g_outptr_list;
 	    }

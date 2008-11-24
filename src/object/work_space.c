@@ -1,40 +1,56 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * work_space.c - Workspace Manager
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
+
+/*
+ * work_space.c - Workspace Manager
+ */
+
 #ident "$Id$"
 
 #include "config.h"
 #include "gc.h"			/* external/gc6.7 */
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
-#include "memory_manager_2.h"
-#include "memory_manager_1.h"
+#include "memory_alloc.h"
+#include "area_alloc.h"
 #include "message_catalog.h"
 #include "memory_hash.h"
 #include "error_manager.h"
 #include "oid.h"
 #include "work_space.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "authenticate.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
-#include "common.h"
+#include "storage_common.h"
 #include "system_parameter.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "object_primitive.h"
 #include "class_object.h"
 #include "environment_variable.h"
 #include "db.h"
 #include "transaction_cl.h"
 #include "object_template.h"
-#include "server.h"
+#include "server_interface.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -81,7 +97,6 @@ MOP ws_Reference_mops = NULL;
  * ws_Set_mops
  *    Linked list of set MOPs.
  *    This is a temporary solution for the disconnected set GC problem.
- *    See description in set.c for more details.
  *    All MOPs in this list are to serve as roots for the garbage collector.
  */
 
@@ -102,7 +117,6 @@ DB_OBJLIST *ws_Resident_classes = NULL;
  * ws_Stats
  *    Workspace statistics structure.
  *    This contains random information about the state of the workspace.
- *    See definition in ws.h
  */
 
 WS_STATISTICS ws_Stats =
@@ -144,6 +158,22 @@ static MOP Null_object;
  */
 
 static MHT_TABLE *Classname_cache = NULL;
+
+
+/*
+ * Objlist_area
+ *    Area for allocating external object list links.
+ */
+static AREA *Objlist_area = NULL;
+
+/*
+ * ws_area_init
+ *    Initialize the areas used by the workspace manager.
+ *
+ */
+#define OBJLIST_AREA_COUNT 4096
+
+
 
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
@@ -291,8 +321,7 @@ ws_free_mop (MOP op)
  *    setptr(in): opaque set pointer
  *
  * Note: These are a temporary solution to prevent objects in disconnected
- *       sets from being garbage collected. See commentary in om/set.c
- *       for more information
+ *       sets from being garbage collected.
  */
 MOP
 ws_make_set_mop (void *setptr)
@@ -466,38 +495,6 @@ ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
  *    refobj(in): structure header of referenced object
  *    collector(in): callback function to perform garbage collection
  *
- * Note: This is used to install a reference mop in the workspace.  Since we
- *    want to avoid duplication of reference mops, we must check to see
- *    if there is already a reference mop installed and if so use it.  If
- *    there is no matching mop, create a new one.
- *    Currently this uses a simple list search on the assumption that
- *    the number of reference mops will be small relative to regular mops and
- *    that once cached, they will tend to remain connected to the reference
- *    object.  Reference objects are decached only when the containing
- *    object is decached.
- *    There are a number of alternatives to this scheme that should be
- *    considered.
- *    1) The reference mop list could be maintained in a hash table so this
- *       lookup is more effecient.
- *    2) We avoid this lookup entirely by allowing duplicate reference
- *       mops to be created but chain them together as they are detected.
- *       e.g. A reference mop is created and the object becomes decached
- *       leaving the reference mop in the unconnected state.  Another
- *       request is made for the attribute, since the object is decached
- *       we don't know about the existing reference mop, the object is
- *       cached and a new reference mop is created.  When an access to
- *       the old reference mop is made, we see that it is unconnected and
- *       go through normal attribute lookup to get the referenced object.
- *       When we get the referenced object, we see that it already has a
- *       reference mop cached in its header.  At this point we chain the
- *       old reference mop and the new reference mop together with the root
- *       in the referenced object header.  Now when the object is swapped
- *       out, we must remember that we have to unconnect all reference
- *       mops in the list, not just one.  When a reference mop is garbage
- *       collected, we must remember to remove it from the list of
- *       reference mops rooted in the referenced object header.
- *       This scheme will avoid a potentially costly lookup when creating
- *       the initial reference mop at the expense of a more complexity.
  */
 MOP
 ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
@@ -1004,9 +1001,9 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 	  for (att = class_->attributes; att != NULL;
 	       att = (SM_ATTRIBUTE *) att->header.next)
 	    {
-	      if ((att->flags & SM_ATTFLAG_VID) &&
-		  (classobj_get_prop
-		   (att->properties, SM_PROPERTY_VID_KEY, &val)))
+	      if ((att->flags & SM_ATTFLAG_VID)
+		  && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY,
+					 &val)))
 		{
 		  att_seq_val = DB_GET_INTEGER (&val);
 		  if (att_seq_val == key_index)
@@ -1017,8 +1014,8 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 					    att->domain->precision,
 					    att->domain->scale);
 		      PRIM_GETMEM (att->type, att->domain, mem, &val);
-		      if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) &&
-			  (DB_GET_STRING (value) == NULL))
+		      if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING)
+			  && (DB_GET_STRING (value) == NULL))
 			{
 			  DB_MAKE_NULL (value);
 			}
@@ -1283,30 +1280,12 @@ emergency_remove_dirty (MOP op)
    * make sure we can get to op's class dirty list because without that
    * there is no dirty list from which we can remove op.
    */
-  if (op->dirty_link != NULL &&
-      op->class_mop != NULL && op->class_mop->dirty_link != NULL)
+  if (op->dirty_link != NULL
+      && op->class_mop != NULL && op->class_mop->dirty_link != NULL)
     {
       /* search for op in op's class' dirty list */
       prev = NULL;
 
-      /*
-       * NB: there is an important assumption in this ws.c module that when an
-       * object is on a list (e.g., on a dirty list or a resident class list),
-       * it never has a non-NULL dirty_link or class_link. The end of the list
-       * is indicated by a pointer to the magical Null_object. This allows us
-       * to look at the dirty_link field, for example, to determine whether
-       * the object is dirty or not: if the dirty_link is NULL, the object is
-       * not dirty, and if the dirty_link is non-NULL, the object is dirty.
-       * This simple list membership test is very important for performance
-       * reasons. So, if you ever need to make changes that affect the dirty
-       * lists or the resident class list, make sure you preserve this very
-       * important invariant. In particular, don't try to add a test for a
-       * NULL dirty_link here because that will probably hide a violation of
-       * this invariant. That is, if any change introduces a mop with a NULL
-       * dirty_link into a dirty list we want to see a crash here! The
-       * alternative will be an obscure bug that may be very difficult to
-       * catch and fix.
-       */
       for (mop = op->class_mop->dirty_link;
 	   mop != Null_object && mop != op; mop = mop->dirty_link)
 	{
@@ -1348,16 +1327,6 @@ ws_cull_mops (void)
   DB_OBJLIST *m;
   unsigned int slot, count;
 
-  /*
-   * Before we map the hash table, whip through the resident instance
-   * list of all classes and remove any MOPs that are about to
-   * be deleted.  This saves having to remove them one at a time
-   * from the loop below which is especially slow since the instance
-   * list isn't doubly linked and it requires a full traversal to
-   * remove them. It would be faster to keep these doubly linked
-   * so we wouldn't have to traverse the MOP space twice but that makes
-   * the MOPs larger which isn't good either.
-   */
 
   for (m = ws_Resident_classes; m != NULL; m = m->next)
     {
@@ -1427,22 +1396,6 @@ ws_cull_mops (void)
 		  /* probably fatal to continue here */
 		}
 
-	      /*
-	       * After the recent reorganization of the client workspace dirty
-	       * list from a global dirty list into a dirty list by class, the
-	       * simple test for a dirty object:
-	       *   "mops->dirty_link != NULL"
-	       * applies only to dirty instances. It cannot be applied to dirty
-	       * classes because the dirty_link of a class is always non-null.
-	       * Even if a class' dirty list is empty, the class' dirty_link
-	       * will be pointing to the magical Null_object. So we have to
-	       * split this dirty test into two cases: one for classes and one
-	       * for instances.
-	       *
-	       * These two cases have been separated so that they have
-	       * different line numbers in the error message; that will help us
-	       * determine which case has been violated.
-	       */
 	      if (mops->class_mop == sm_Root_class_mop && mops->dirty)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1947,16 +1900,6 @@ add_class_object (MOP class_mop, MOP obj)
 	{
 	  if ((obj->class_mop != NULL) && (obj->class_mop != class_mop))
 	    {
-	      /*
-	       * note, in FCS, we allowed this to unconditionally
-	       * overwrite the class field. I don't think this is
-	       * valid in any case and in fact it caused a problem
-	       * trashing a MOP fro a database that was probably
-	       * corrupted. The resulting bug was VERY subtle.
-	       * Its best to ignore it if it happens. If we need
-	       * a way to migrate objects from one class to another,
-	       * this will have to be a much more controlled operation.
-	       */
 	      error = ER_WS_CHANGING_OBJECT_CLASS;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      ws_Stats.ignored_class_assignments++;
@@ -2027,7 +1970,6 @@ remove_class_object (MOP class_mop, MOP obj)
 void
 ws_set_class (MOP inst, MOP class_mop)
 {
-  /* need to change this to return an error to lccl.c */
   if (inst->class_mop != class_mop)
     {
       (void) add_class_object (class_mop, inst);
@@ -2449,10 +2391,6 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
-  /*
-   * kludge, bocl.c is checked out right now, this should
-   * go in boot_client_all_finalize immediately prior to ws_final().
-   */
   tr_final ();
 
   if (PRM_WS_MEMORY_REPORT)
@@ -2745,31 +2683,6 @@ ws_cache_dirty (MOBJ obj, MOP op, MOP class_)
  *    oid(in): object identifier
  *    class(in): class of object
  *
- * Note:
- *    We used to disable GC during this period since in theory, the
- *    garbage collector can remove things that are referenced by the
- *    object we're caching during the call to ws_mop().
- *    Unfortunately, this prevented us from ever performing GC on
- *    repeated INSERT operations since locator_add_instance would always
- *    call this function to allocate the new instance MOP.
- *    Currently, we have ensured that the object cached here for both
- *    locator_add_instance and locator_add_class will be empty and not contain
- *    any important object references.  It is therefore OK to allow GC
- *    during this function.
- *    The flow of control between om/wm and lc has always been rather odd,
- *    we could try to remove some of the caching logic from
- *    locator_add_instance and instead try to pre-allocate the MOPs before any
- *    attempt is made to cache their contents.  Perhaps lc_new_instance
- *    can do everything locator_add_instance does except cache the MOP contents
- *    and then return a new MOP.  This MOP can then be cached later
- *    possibly in obj.c when we know we're ready to assign the object
- *    contents.  This may result in a temporary window where we have installed
- *    MOPs with temporary OIDs but no contents which hasn't happened before.
- *    This window would only exist during the execution of obt_update and
- *    sm_update.
- *
- *    The disable statements are left in comments in case we need to put them
- *    back in the event of some unforseen emergency.
  */
 MOP
 ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_)
@@ -2836,16 +2749,6 @@ ws_decache (MOP mop)
 	{
 	  ws_drop_classname ((MOBJ) mop->object);
 
-	  /*
-	   * WARNING: since we're decaching the class, we must not have
-	   * any instances remaining in memory since their representation
-	   * is dependent on the current class object.  Must decache
-	   * instances when removing the class.
-	   *
-	   * This should already have been done but we do it to
-	   * prevent crashes in error conditions.  If the instances are
-	   * dirty we lose the changes.
-	   */
 	  ws_decache_all_instances (mop);
 	  classobj_free_class ((SM_CLASS *) mop->object);
 	}
@@ -2901,7 +2804,7 @@ ws_decache_all_instances (MOP mop)
 /*
  * These provide access shells for the fields in the MOP structure.  These
  * are simple enough that callers should change to use the corresponding
- * macros in ws.h.
+ * macros.
  */
 
 /*
@@ -3005,9 +2908,7 @@ ws_set_lock (MOP mop, LOCK lock)
  *    can ocurr during the loading of one of the prefetched objects, we
  *    must make sure that the original object we were attempting to fetch
  *    is not swapped out as part of the panic.  To prevent this, we pin
- *    the mop before it is cached.  This is currently done by the
- *    authorization manager in au_fetch_insance but should probably be
- *    done by the lc_ level.
+ *    the mop before it is cached.
  */
 int
 ws_pin (MOP mop, int pin)
@@ -3370,34 +3271,6 @@ ws_clear_all_hints (bool retain_lock)
  *    return: void
  *    only_unpinned(in): flag whether is it safe to abort pinned mops
  *
- * Note:
- *    This is called by the transaction manager when a transaction is
- *    aborted.  If the mop has an exclusive lock or if it is dirty, decache it
- *    so that the changes made during the transaction are thrown away. Note
- *    that it is not enough to check for dirty mop since objects are flushed
- *    by the transaction. When an object is flushed, its cache coherence
- *    number is increased by one. If an object is updated, flushed, and the
- *    transaction is rolled back, and we do not dechae the object. We may
- *    incorrectly assume that the object is the workspace is upto date since
- *    it has the same cache coherencey number that the one in the server. This
- *    happens since another client updated the object and commits after the
- *    rollback of the first client and before the first client accesses the
- *    object after the rollback. That is, the second client increases the
- *    cache coherency number by 1 which makes it the same that the one in the
- *    workspace of the first client.. But the objects are different.
- *
- *    Technically this should also free the mop strucure but it may be
- *    referenced in the application program space so we must rely on
- *    garbage collection to reclaim the storage.
- *
- *    NOTE: I think this could also remove the MOP from the various lists
- *    including the workspace table and the OID be set to NULL.  Is it
- *    possible for the OID to get reassigned in the next transaction which
- *    causes a cached MOP pointer in the application to suddenly change
- *    when the OID gets reused ?  Since technically, it is illegal to
- *    retain pointers to mops that have never been flushed when a
- *    transaction aborts this isn't really a problem but it could be
- *    confusing if a user inadvertently encounters this situation.
  */
 void
 ws_abort_mops (bool only_unpinned)
@@ -3477,10 +3350,10 @@ ws_decache_allxlockmops_but_norealclasses (void)
       for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
 	{
 
-	  if (mop->pinned == 0 &&
-	      (ws_get_lock (mop) == X_LOCK || WS_ISDIRTY (mop)) &&
-	      (mop->class_mop != sm_Root_class_mop || mop->object == NULL ||
-	       ((SM_CLASS *) mop->object)->class_type == SM_CLASS_CT))
+	  if (mop->pinned == 0
+	      && (ws_get_lock (mop) == X_LOCK || WS_ISDIRTY (mop))
+	      && (mop->class_mop != sm_Root_class_mop || mop->object == NULL
+		  || ((SM_CLASS *) mop->object)->class_type == SM_CLASS_CT))
 	    {
 	      ws_decache (mop);
 	      ws_clear_hints (mop, false);
@@ -4075,11 +3948,12 @@ ws_flush_properties (MOP op)
 int
 ws_has_dirty_objects (MOP op, int *isvirt)
 {
-  *isvirt = op && !op->deleted && op->object &&
-    (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT ||
-     ((SM_CLASS *) (op->object))->class_type == SM_LDBVCLASS_CT);
-  return op && !op->deleted && op->object &&
-    op->dirty_link && op->dirty_link != Null_object;
+  *isvirt = (op && !op->deleted && op->object
+	     && (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT
+		 || ((SM_CLASS *) (op->object))->class_type ==
+		 SM_LDBVCLASS_CT));
+  return (op && !op->deleted && op->object && op->dirty_link
+	  && op->dirty_link != Null_object);
 }
 
 /*
@@ -4139,4 +4013,1079 @@ bool
 ws_need_flush (void)
 {
   return (ws_Num_dirty_mop > 0);
+}
+
+
+
+
+/*
+ * ws_area_init - initialize area for object list links.
+ *    return: void
+ */
+void
+ws_area_init ()
+{
+  Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST),
+			      OBJLIST_AREA_COUNT, true);
+}
+
+/*
+ * LIST UTILITIES
+ */
+/*
+ * These operations assume a structure with a single link field at the top.
+ *
+ * struct link {
+ *   struct link *next;
+ * };
+ *
+ */
+
+
+/*
+ * ws_list_append - append element to the end of a list
+ *    return: none
+ *    root(in/out): pointer to pointer to list head
+ *    element(in): element to add
+ */
+void
+ws_list_append (DB_LIST ** root, DB_LIST * element)
+{
+  DB_LIST *el;
+
+  for (el = *root; (el != NULL) && (el->next != NULL); el = el->next);
+  if (el == NULL)
+    {
+      *root = element;
+    }
+  else
+    {
+      el->next = element;
+    }
+}
+
+/*
+ * ws_list_remove - Removes an element from a list if it exists.
+ *    return: non-zero if the element was removed
+ *    root(): pointer to pointer to list head
+ *    element(): element to remove
+ */
+int
+ws_list_remove (DB_LIST ** root, DB_LIST * element)
+{
+  DB_LIST *el, *prev;
+  int removed;
+
+  removed = 0;
+  for (el = *root, prev = NULL; el != NULL && el != element; el = el->next)
+    {
+      prev = el;
+    }
+
+  if (el != element)
+    {
+      return removed;
+    }
+  if (prev == NULL)
+    {
+      *root = element->next;
+    }
+  else
+    {
+      prev->next = element->next;
+    }
+  removed = 1;
+
+  return (removed);
+}
+
+/*
+ * ws_list_length - return the number of elements in a list
+ *    return: length of the list (zero if empty)
+ *    list(in): list to examine
+ */
+int
+ws_list_length (DB_LIST * list)
+{
+  DB_LIST *el;
+  int length = 0;
+
+  for (el = list; el != NULL; el = el->next)
+    {
+      length++;
+    }
+
+  return (length);
+}
+
+/*
+ * ws_list_free - apply (free) function over the elements of a list
+ *    return: none
+ *    list(in): list to free
+ *    function(in): function to perform the freeing of elements
+ */
+void
+ws_list_free (DB_LIST * list, LFREEER function)
+{
+  DB_LIST *link, *next;
+
+  for (link = list, next = NULL; link != NULL; link = next)
+    {
+      next = link->next;
+      (*function) (link);
+    }
+}
+
+
+/*
+ * ws_list_total - maps a function over the elements of a list and totals up
+ * the integers returned by the mapping function.
+ *    return: total of all calls to mapping function
+ *    list(in): list to examine
+ *    function(in): function to call on list elements
+ */
+int
+ws_list_total (DB_LIST * list, LTOTALER function)
+{
+  DB_LIST *el;
+  int total = 0;
+
+  for (el = list; el != NULL; el = el->next)
+    {
+      total += (*function) (el);
+    }
+
+  return (total);
+}
+
+
+/*
+ * ws_list_copy - Copies a list by calling a copier function for each element.
+ *    return: new list
+ *    src(in): list to copy
+ *    copier(in): function to copy the elements
+ *    freeer(in): function to free the elements
+ */
+DB_LIST *
+ws_list_copy (DB_LIST * src, LCOPIER copier, LFREEER freeer)
+{
+  DB_LIST *list, *last, *new_;
+
+  list = last = NULL;
+  for (; src != NULL; src = src->next)
+    {
+      new_ = (DB_LIST *) (*copier) (src);
+      if (new_ == NULL)
+	{
+	  goto memory_error;
+	}
+
+      new_->next = NULL;
+      if (list == NULL)
+	{
+	  list = new_;
+	}
+      else
+	{
+	  last->next = new_;
+	}
+      last = new_;
+    }
+  return (list);
+
+memory_error:
+  if (freeer != NULL)
+    {
+      ws_list_free (list, freeer);
+    }
+  return NULL;
+}
+
+
+/*
+ * ws_list_nconc - concatenate list2 to list1
+ *    return: list pointer
+ *    list1(out): first list
+ *    list2(in): list to concatenate
+ * Note:
+ *    If list1 was NULL, it returns a pointer to list2.
+ */
+DB_LIST *
+ws_list_nconc (DB_LIST * list1, DB_LIST * list2)
+{
+  DB_LIST *el, *result;
+
+  if (list1 == NULL)
+    {
+      result = list2;
+    }
+  else
+    {
+      result = list1;
+      for (el = list1; el->next != NULL; el = el->next);
+      el->next = list2;
+    }
+  return (result);
+}
+
+/*
+ * NAMED LIST UTILITIES
+ */
+/*
+ * These utilities assume elements with a link field and a name.
+ * struct named_link {
+ *   struct named_link *next;
+ *   const char *name;
+ * }
+ */
+
+
+/*
+ * nlist_find - Search a name list for an entry with the given name.
+ *    return: namelist entry
+ *    list(in): list to search
+ *    name(in): element name to look for
+ *    fcn(in): compare function
+ */
+DB_NAMELIST *
+nlist_find (DB_NAMELIST * list, const char *name, NLSEARCHER fcn)
+{
+  DB_NAMELIST *el, *found;
+
+  found = NULL;
+
+  if (fcn == NULL)
+    {
+      fcn = (NLSEARCHER) strcmp;
+    }
+
+  for (el = list; el != NULL && found == NULL; el = el->next)
+    {
+      if ((el->name == name) ||
+	  ((el->name != NULL) && (name != NULL)
+	   && (*fcn) (el->name, name) == 0))
+	{
+	  found = el;
+	}
+    }
+  return (found);
+}
+
+
+/*
+ * nlist_remove - Removes a named element from a list.
+ *    return: removed element (if found), NULL otherwise
+ *    root(in/out): pointer to pointer to list head
+ *    name(in): name of entry to remove
+ *    fcn(in): compare function
+ * Note:
+ *    If an element with the given name was found it is removed and returned.
+ *    If an element was not found, NULL is returned.
+ */
+DB_NAMELIST *
+nlist_remove (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
+{
+  DB_NAMELIST *el, *prev, *found;
+
+  if (fcn == NULL)
+    {
+      fcn = (NLSEARCHER) strcmp;
+    }
+
+  found = NULL;
+
+  for (el = *root, prev = NULL; el != NULL && found == NULL; el = el->next)
+    {
+      if ((el->name == name) ||
+	  ((el->name != NULL) && (name != NULL)
+	   && (*fcn) (el->name, name) == 0))
+	{
+	  found = el;
+	}
+      else
+	{
+	  prev = el;
+	}
+    }
+  if (found != NULL)
+    {
+      if (prev == NULL)
+	{
+	  *root = found->next;
+	}
+      else
+	{
+	  prev->next = found->next;
+	}
+    }
+
+  return (found);
+}
+
+
+/*
+ * nlist_add - Adds an element to a namelist if it does not already exist.
+ *    return: NO_ERROR if the element was added , error code otherwise
+ *    list(in/out): pointer to pointer to list head
+ *    name(in): element name to add
+ *    fcn(in):  compare function
+ *    added_ptr(out): set to 1 if added
+ */
+int
+nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
+	   int *added_ptr)
+{
+  DB_NAMELIST *found, *new_;
+  int status = 0;
+
+  found = nlist_find (*list, name, fcn);
+
+  if (found != NULL)
+    {
+      goto error;
+    }
+
+  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+  if (new_ == NULL)
+    {
+      return er_errid ();
+    }
+
+  new_->name = ws_copy_string (name);
+  if (new_->name == NULL)
+    {
+      db_ws_free (new_);
+      return er_errid ();
+    }
+
+  new_->next = *list;
+  *list = new_;
+  status = 1;
+
+error:
+  if (added_ptr != NULL)
+    {
+      *added_ptr = status;
+    }
+  return NO_ERROR;
+}
+
+
+/*
+ * nlist_append - appends an element to a namelist if it does not exist.
+ *    return: NO_ERROR if the element was added , error code otherwise
+ *    list(in/out): pointer to pointer to list head
+ *    name(in): entry name to append
+ *    fcn(in): compare function
+ *    added_ptr(out): set to 1 if added
+ */
+int
+nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
+	      int *added_ptr)
+{
+  DB_NAMELIST *el, *found, *last, *new_;
+  int status = 0;
+
+  if (fcn == NULL)
+    {
+      fcn = (NLSEARCHER) strcmp;
+    }
+
+  if (name == NULL)
+    {
+      goto error;
+    }
+
+  found = NULL;
+  last = NULL;
+
+  for (el = *list; el != NULL && found == NULL; el = el->next)
+    {
+      if ((el->name == name) ||
+	  ((el->name != NULL) && (name != NULL)
+	   && (*fcn) (el->name, name) == 0))
+	{
+	  found = el;
+	}
+      last = el;
+    }
+  if (found != NULL)
+    {
+      goto error;
+    }
+  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+
+  if (new_ == NULL)
+    {
+      return er_errid ();
+    }
+
+  new_->name = ws_copy_string (name);
+
+  if (new_->name == NULL)
+    {
+      db_ws_free (new_);
+      return er_errid ();
+    }
+
+  new_->next = NULL;
+
+  if (last == NULL)
+    {
+      *list = new_;
+    }
+  else
+    {
+      last->next = new_;
+    }
+  status = 1;
+
+error:
+  if (added_ptr != NULL)
+    {
+      *added_ptr = status;
+    }
+  return NO_ERROR;
+}
+
+
+/*
+ * nlist_find_or_append - searches for a name or appends the element.
+ *    return: error code
+ *    list(in/out): pointer to pointer to list head
+ *    name(in): name of element to add
+ *    fcn(in): compare funciont
+ *    position(out): position of element if found or inserted
+ */
+int
+nlist_find_or_append (DB_NAMELIST ** list, const char *name,
+		      NLSEARCHER fcn, int *position)
+{
+  DB_NAMELIST *el, *found, *last, *new_;
+  int psn = -1;
+
+  if (fcn == NULL)
+    {
+      fcn = (NLSEARCHER) strcmp;
+    }
+
+  if (name != NULL)
+    {
+      found = last = NULL;
+      for (el = *list, psn = 0; el != NULL && found == NULL; el = el->next)
+	{
+	  if ((el->name == name) ||
+	      ((el->name != NULL) && (*fcn) (el->name, name) == 0))
+	    {
+	      found = el;
+	    }
+	  else
+	    {
+	      psn++;
+	    }
+	  last = el;
+	}
+      if (found == NULL)
+	{
+	  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+	  if (new_ == NULL)
+	    {
+	      return er_errid ();
+	    }
+
+	  new_->name = ws_copy_string (name);
+	  if (new_->name == NULL)
+	    {
+	      db_ws_free (new_);
+	      return er_errid ();
+	    }
+
+	  new_->next = NULL;
+	  if (last == NULL)
+	    {
+	      *list = new_;
+	    }
+	  else
+	    {
+	      last->next = new_;
+	    }
+	}
+    }
+  *position = psn;
+  return NO_ERROR;
+}
+
+
+/*
+ * nlist_free - frees a name list
+ *    return: none
+ *    list(in/out): list to free
+ */
+void
+nlist_free (DB_NAMELIST * list)
+{
+  DB_NAMELIST *el, *next;
+
+  for (el = list, next = NULL; el != NULL; el = next)
+    {
+      next = el->next;
+      db_ws_free ((char *) el->name);
+      db_ws_free (el);
+    }
+}
+
+
+/*
+ * nlist_copy - makes a copy of a named list
+ *    return: new namelist
+ *    list(in): namelist to copy
+ */
+DB_NAMELIST *
+nlist_copy (DB_NAMELIST * list)
+{
+  DB_NAMELIST *first, *last, *el, *new_;
+
+  first = last = NULL;
+  for (el = list; el != NULL; el = el->next)
+    {
+      new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+      if (new_ == NULL)
+	{
+	  goto memory_error;
+	}
+
+      new_->name = ws_copy_string (el->name);
+      if (new_->name == NULL)
+	{
+	  db_ws_free (new_);
+	  goto memory_error;
+	}
+
+      new_->next = NULL;
+      if (first == NULL)
+	{
+	  first = new_;
+	}
+      else
+	{
+	  last->next = new_;
+	}
+      last = new_;
+    }
+  return first;
+
+memory_error:
+  nlist_free (first);
+  return NULL;
+}
+
+
+/*
+ * nlist_filter - remove all elements with the given name from a list
+ * and return a list of the removed elements.
+ *    return: filtered list of elements
+ *    root(in/out): pointer to pointer to list head
+ *    name(in): name of elements to filter
+ *    fcn(in): compare function
+ */
+DB_NAMELIST *
+nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
+{
+  DB_NAMELIST *el, *prev, *next, *head, *filter;
+
+  if (fcn == NULL)
+    {
+      fcn = (NLSEARCHER) strcmp;
+    }
+
+  filter = NULL;
+  head = *root;
+
+  for (el = head, prev = NULL, next = NULL; el != NULL; el = next)
+    {
+      next = el->next;
+      if ((el->name == name) ||
+	  ((el->name != NULL) && (name != NULL)
+	   && (*fcn) (el->name, name) == 0))
+	{
+	  if (prev == NULL)
+	    {
+	      head = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  el->next = filter;
+	  filter = el;
+	}
+      else
+	{
+	  prev = el;
+	}
+    }
+
+  *root = head;
+  return (filter);
+}
+
+/*
+ * MOP LIST UTILITIES
+ */
+/*
+ * These utilities operate on a list of MOP links.
+ * This is such a common operation for the workspace and schema manager that
+ * it merits its own optimized implementation.
+ *
+ */
+
+
+/*
+ * ml_find - searches a list for the given mop.
+ *    return: non-zero if mop was in the list
+ *    list(in): list to search
+ *    mop(in): mop we're looking for
+ */
+int
+ml_find (DB_OBJLIST * list, MOP mop)
+{
+  DB_OBJLIST *l;
+  int found;
+
+  found = 0;
+  for (l = list; l != NULL && found == 0; l = l->next)
+    {
+      if (l->op == mop)
+	found = 1;
+    }
+  return (found);
+}
+
+
+/*
+ * ml_add - Adds a MOP to the list if it isn't already present.
+ *    return: NO_ERROR or error code
+ *    list(in/out): pointer to pointer to list head
+ *    mop(in): mop to add to the list
+ *    added_ptr(out): set to 1 if added
+ * Note:
+ *    There is no guarentee where the MOP will be added in the list although
+ *    currently it will push it at the head of the list.  Use ml_append
+ *    if you must ensure ordering.
+ */
+int
+ml_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
+{
+  DB_OBJLIST *l, *found, *new_;
+  int added;
+
+  added = 0;
+  if (mop == NULL)
+    {
+      goto error;
+    }
+
+  for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
+    {
+      if (l->op == mop)
+	{
+	  found = l;
+	}
+    }
+  /* since we can get the end of list easily, may want to append here */
+  if (found != NULL)
+    {
+      goto error;
+    }
+
+  new_ = (DB_OBJLIST *) db_ws_alloc (sizeof (DB_OBJLIST));
+  if (new_ == NULL)
+    {
+      return er_errid ();
+    }
+  new_->op = mop;
+  new_->next = *list;
+  *list = new_;
+  added = 1;
+
+error:
+  if (added_ptr != NULL)
+    {
+      *added_ptr = added;
+    }
+  return NO_ERROR;
+}
+
+
+/*
+ * ml_append - Appends a MOP to the list if it isn't already present.
+ *    return: NO_ERROR or error code
+ *    list(in/out): pointer to pointer to list head
+ *    mop(in): mop to add
+ *    added_ptr(out): set to 1 if added
+ */
+int
+ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
+{
+  DB_OBJLIST *l, *found, *new_, *last;
+  int added;
+
+  added = 0;
+  if (mop == NULL)
+    {
+      goto error;
+    }
+
+  last = NULL;
+  for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
+    {
+      if (l->op == mop)
+	{
+	  found = l;
+	}
+      last = l;
+    }
+  /* since we can get the end of list easily, may want to append here */
+
+  if (found != NULL)
+    {
+      goto error;
+    }
+
+  new_ = (DB_OBJLIST *) db_ws_alloc (sizeof (DB_OBJLIST));
+  if (new_ == NULL)
+    {
+      return er_errid ();
+    }
+  new_->op = mop;
+  new_->next = NULL;
+  if (last == NULL)
+    {
+      *list = new_;
+    }
+  else
+    {
+      last->next = new_;
+    }
+  added = 1;
+
+error:
+
+  if (added_ptr != NULL)
+    {
+      *added_ptr = added;
+    }
+  return NO_ERROR;
+}
+
+
+/*
+ * ml_remove - removes a mop from a mop list if it is found.
+ *    return: non-zero if mop was removed
+ *    list(in/out): pointer to pointer to list head
+ *    mop(in): mop to remove from the list
+ */
+int
+ml_remove (DB_OBJLIST ** list, MOP mop)
+{
+  DB_OBJLIST *l, *found, *prev;
+  int deleted;
+
+  deleted = 0;
+  for (l = *list, found = NULL, prev = NULL; l != NULL && found == NULL;
+       l = l->next)
+    {
+      if (l->op == mop)
+	{
+	  found = l;
+	}
+      else
+	{
+	  prev = l;
+	}
+    }
+  if (found != NULL)
+    {
+      if (prev == NULL)
+	{
+	  *list = found->next;
+	}
+      else
+	{
+	  prev->next = found->next;
+	}
+      db_ws_free (found);
+      deleted = 1;
+    }
+  return (deleted);
+}
+
+
+/*
+ * ml_free - free a list of MOPs.
+ *    return: none
+ *    list(in/out): list to free
+ */
+void
+ml_free (DB_OBJLIST * list)
+{
+  DB_OBJLIST *l, *next;
+
+  for (l = list, next = NULL; l != NULL; l = next)
+    {
+      next = l->next;
+      db_ws_free (l);
+    }
+}
+
+
+/*
+ * ml_copy - copy a list of mops.
+ *    return: new list
+ *    list(in): list to copy
+ */
+DB_OBJLIST *
+ml_copy (DB_OBJLIST * list)
+{
+  DB_OBJLIST *l, *new_, *first, *last;
+
+  first = last = NULL;
+  for (l = list; l != NULL; l = l->next)
+    {
+      new_ = (DB_OBJLIST *) db_ws_alloc (sizeof (DB_OBJLIST));
+      if (new_ == NULL)
+	{
+	  goto memory_error;
+	}
+
+      new_->next = NULL;
+      new_->op = l->op;
+      if (first == NULL)
+	{
+	  first = new_;
+	}
+      else
+	{
+	  last->next = new_;
+	}
+      last = new_;
+    }
+  return (first);
+
+memory_error:
+  ml_free (first);
+  return NULL;
+}
+
+
+/*
+ * ml_size - This calculates the number of bytes of memory required for the
+ * storage of a MOP list.
+ *    return: memory size of list
+ *    list(in): list to examine
+ */
+int
+ml_size (DB_OBJLIST * list)
+{
+  int size = 0;
+
+  size = ws_list_length ((DB_LIST *) list) * sizeof (DB_OBJLIST);
+
+  return (size);
+}
+
+
+/*
+ * ml_filter - maps a function over the mops in a list selectively removing
+ * elements based on the results of the filter function.
+ *    return: void
+ *    list(in/out): pointer to pointer to mop list
+ *    filter(in): filter function
+ *    args(in): args to pass to filter function
+ * Note:
+ *    If the filter function returns zero, the mop will be removed.
+ */
+void
+ml_filter (DB_OBJLIST ** list, MOPFILTER filter, void *args)
+{
+  DB_OBJLIST *l, *prev, *next;
+  int keep;
+
+  prev = NULL;
+  next = NULL;
+
+  for (l = *list; l != NULL; l = next)
+    {
+      next = l->next;
+      keep = (*filter) (l->op, args);
+      if (keep)
+	{
+	  prev = l;
+	}
+      else
+	{
+	  if (prev != NULL)
+	    {
+	      prev->next = next;
+	    }
+	  else
+	    {
+	      *list = next;
+	    }
+	}
+    }
+}
+
+/*
+ * DB_OBJLIST AREA ALLOCATION
+ */
+
+
+/*
+ * ml_ext_alloc_link - This is used to allocate a mop list link for return to
+ * the application layer.
+ *    return: new mop list link
+ * Note:
+ *    These links must be allocated in areas outside the workspace
+ *    so they serve as roots to the garabage collector.
+ */
+DB_OBJLIST *
+ml_ext_alloc_link (void)
+{
+  return ((DB_OBJLIST *) area_alloc (Objlist_area));
+}
+
+
+/*
+ * ml_ext_free_link - frees a mop list link that was allocated with
+ * ml_ext_alloc_link.
+ *    return: void
+ *    link(in/out): link to free
+ */
+void
+ml_ext_free_link (DB_OBJLIST * link)
+{
+  if (link != NULL)
+    {
+      link->op = NULL;		/* this is important */
+      area_free (Objlist_area, (void *) link);
+    }
+}
+
+
+/*
+ * ml_ext_free - frees a complete list of links allocated with the
+ * ml_ext_alloc_link function.
+ *    return: void
+ *    list(in/out): list to free
+ */
+void
+ml_ext_free (DB_OBJLIST * list)
+{
+  DB_OBJLIST *l, *next;
+
+  if (list == NULL)
+    {
+      return;
+    }
+
+  if (area_validate (Objlist_area, 0, (void *) list) == NO_ERROR)
+    {
+      for (l = list, next = NULL; l != NULL; l = next)
+	{
+	  next = l->next;
+	  ml_ext_free_link (l);
+	}
+    }
+}
+
+
+/*
+ * ml_ext_copy - Like ml_copy except that it allocates the mop list links using
+ * ml_ext_alloc_link so they can be returned to the application level.
+ *    return: new mop list
+ *    list(in): list to copy
+ */
+DB_OBJLIST *
+ml_ext_copy (DB_OBJLIST * list)
+{
+  DB_OBJLIST *l, *new_, *first, *last;
+
+  first = NULL;
+  last = NULL;
+
+  for (l = list; l != NULL; l = l->next)
+    {
+      new_ = ml_ext_alloc_link ();
+      if (new_ == NULL)
+	{
+	  goto memory_error;
+	}
+      new_->next = NULL;
+      new_->op = l->op;
+      if (first == NULL)
+	{
+	  first = new_;
+	}
+      else
+	{
+	  last->next = new_;
+	}
+      last = new_;
+    }
+  return (first);
+
+memory_error:
+  ml_ext_free (first);
+  return NULL;
+}
+
+
+/*
+ * ml_ext_add - same as ml_add except that it allocates a mop in the external
+ * area so it serves as a GC root.
+ *    return: NO_ERROR or error code
+ *    list(in/out): pointer to pointer to list head
+ *    mop(in): mop to add to the list
+ *    added_ptr(out): set to 1 if added
+ */
+int
+ml_ext_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
+{
+  DB_OBJLIST *l, *found, *new_;
+  int added;
+
+  added = 0;
+  if (mop == NULL)
+    {
+      goto error;
+    }
+  for (l = *list, found = NULL; l != NULL && found == NULL; l = l->next)
+    {
+      if (l->op == mop)
+	{
+	  found = l;
+	}
+    }
+  /* since we can get the end of list easily, may want to append here */
+  if (found == NULL)
+    {
+      new_ = (DB_OBJLIST *) area_alloc (Objlist_area);
+      if (new_ == NULL)
+	{
+	  return er_errid ();
+	}
+
+      new_->op = mop;
+      new_->next = *list;
+      *list = new_;
+      added = 1;
+    }
+
+error:
+  if (added_ptr != NULL)
+    {
+      *added_ptr = added;
+    }
+  return NO_ERROR;
 }

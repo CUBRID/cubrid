@@ -1,25 +1,45 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * repl_ag_tp.c - implementation of replication agent
  */
 
 #ident "$Id$"
 
 #include <sys/stat.h>
+#if defined(LINUX)
+#include <sys/resource.h>
+#include <asm/page.h>
+#endif
 
 #include "porting.h"
 #include "utility.h"
 #include "dbi.h"
-#include "repl_ag.h"
+#include "repl_agent.h"
 #include "repl_tp.h"
 #include "log_compress.h"
 #include "error_code.h"
 
-#if defined(DEBUG_REPL)
 extern FILE *debug_Log_fd;
-#endif
+extern int debug_Dump_info;
+extern bool restart_Agent;
+extern int agent_Max_size;
 
 static pthread_t *repl_recv_thread;	/* for log reception */
 static pthread_t *repl_flush_thread;	/* for log flushing */
@@ -119,14 +139,6 @@ pthread_key_t slave_Key;
 
 #define REPL_PREFETCH_PAGE_COUNT         1000
 
-#define SLEEP_USEC(sec, usec)                           \
-        do {                                            \
-          struct timeval sleep_time_val;                \
-          sleep_time_val.tv_sec = sec;                  \
-          sleep_time_val.tv_usec = usec;                \
-          select(0, 0, 0, 0, &sleep_time_val);          \
-        } while (0)
-
 
 static void *repl_tr_log_apply_fail (void *arg);
 static void *repl_tr_log_recv_fail (void *arg);
@@ -166,10 +178,21 @@ repl_tr_log_record_process (void *arg, struct log_rec *lrec, int m_idx,
 			    REPL_PB * pb);
 static int repl_tr_log_commit (SLAVE_INFO * sinfo, int m_idx, REPL_PB * pb);
 static void *repl_tr_log_apply (void *arg);
+static unsigned long repl_ag_get_resource_size ();
 static void *repl_tr_log_flush (void *arg);
 static void *repl_tr_log_recv (void *arg);
 static void *repl_ag_status ();
 static int repl_ag_thread_alloc ();
+static int
+repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+			      REPL_DUMP_NODE * dump_node);
+static int
+repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+			      REPL_DUMP_NODE * dump_node);
+static int
+repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
+				REPL_DUMP_NODE ** tail,
+				REPL_DUMP_NODE * dump_node);
 
 /*
  * repl_tr_log_apply_fail() - error processing when the apply thread fails
@@ -441,13 +464,11 @@ repl_ag_shutdown_by_signal ()
 {
   int i;
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd, "AGENT EXIT\n");
       fflush (debug_Log_fd);
     }
-#endif
 
   ag_status_need_shutdown = true;
 
@@ -796,13 +817,11 @@ repl_ag_delete_min_trantable (MASTER_INFO * minfo)
     }
   if (apply)
     {
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  fprintf (debug_Log_fd, "repl_ag_delete_min_trantable\n");
 	  fflush (debug_Log_fd);
 	}
-#endif
       repl_ag_clear_repl_item (apply);
     }
 }
@@ -843,8 +862,7 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
       return error;
     }
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd,
 	       "TRUNCATE ENTER : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -855,7 +873,6 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 	       mInfo[0]->copy_log.last_pageid);
       fflush (debug_Log_fd);
     }
-#endif
 
   /* the last page id to be archived */
   last_pageid = minfo->copy_log.first_pageid + minfo->copylog_size;
@@ -876,8 +893,8 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 		      && sInfo[i]->masters[j].repl_lists[k]->tranid > 0
 		      && !LSA_ISNULL (&sInfo[i]->masters[j].repl_lists[k]->
 				      start_lsa)
-		      && sInfo[i]->masters[j].repl_lists[k]->start_lsa.
-		      pageid <= last_pageid)
+		      && (sInfo[i]->masters[j].repl_lists[k]->start_lsa.
+			  pageid <= last_pageid))
 		    {
 		      return error;
 		    }
@@ -891,11 +908,12 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
   buf = (char *) malloc (minfo->io_pagesize);
   REPL_CHECK_ERR_NULL (REPL_FILE_AG_TP, REPL_AGENT_MEMORY_ERROR, buf);
 
-  if (create_Arv == false &&
-      ((minfo->copy_log.first_pageid - minfo->copy_log.start_pageid)
-       / minfo->copylog_size) != 0)
-    error = repl_ag_truncate_copy_log (minfo, flushed, buf, last_pageid);
-
+  if (create_Arv == false
+      && ((minfo->copy_log.first_pageid - minfo->copy_log.start_pageid)
+	  / minfo->copylog_size) != 0)
+    {
+      error = repl_ag_truncate_copy_log (minfo, flushed, buf, last_pageid);
+    }
   else
     {
       /* create the archive file */
@@ -908,23 +926,29 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 	{
 
 	  if (file_size < minfo->copylog_size * minfo->io_pagesize * 2)
-	    error = repl_ag_archive_by_file_rename (minfo, flushed, buf,
+	    {
+	      error = repl_ag_archive_by_file_rename (minfo, flushed, buf,
+						      archive_path,
+						      last_pageid);
+	    }
+	  else
+	    {
+	      error = repl_ag_archive_by_file_copy (minfo, flushed, buf,
 						    archive_path,
 						    last_pageid);
-	  else
-	    error = repl_ag_archive_by_file_copy (minfo, flushed, buf,
-						  archive_path, last_pageid);
+	    }
 	}
       else
-	error = REPL_AGENT_IO_ERROR;
+	{
+	  error = REPL_AGENT_IO_ERROR;
+	}
     }
 
   if (error != NO_ERROR)
     REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_CANT_CREATE_ARCHIVE,
 			  archive_path);
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd,
 	       "TRUNCATE EXIT : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -935,7 +959,6 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 	       mInfo[0]->copy_log.last_pageid);
       fflush (debug_Log_fd);
     }
-#endif
 
   free_and_init (buf);
   return error;
@@ -1308,8 +1331,7 @@ repl_tr_log_record_process (void *arg,
   time_t slave_time;
 
   /* Is this a partial record? refetch the target page */
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 1)
+  if (debug_Dump_info & REPL_DEBUG_LOG_DUMP)
     {
       fprintf (debug_Log_fd, "\nLSA = %3d|%3d, Forw log = %3d|%3d,"
 	       " Backw log = %3d|%3d,\n"
@@ -1322,7 +1344,6 @@ repl_tr_log_record_process (void *arg,
 	       lrec->prev_tranlsa.offset, repl_rectype_string (lrec->type));
       fflush (debug_Log_fd);
     }
-#endif
 
   if (REPL_PARTIAL_RECORD (lrec, final, minfo->copy_log.first_pageid))
     {
@@ -1415,8 +1436,7 @@ repl_tr_log_record_process (void *arg,
 	}
 
     case LOG_COMMIT:
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  fprintf (debug_Log_fd,
 		   "COMMIT: TRAIL LSA(%d,%d), FINAL(%d,%d)\n",
@@ -1425,7 +1445,6 @@ repl_tr_log_record_process (void *arg,
 		   final->pageid, final->offset);
 	  fflush (debug_Log_fd);
 	}
-#endif
       /* apply the replication log to the slave */
       if (LSA_GT (final, &sinfo->masters[m_idx].final_lsa))
 	{
@@ -1503,8 +1522,7 @@ repl_tr_log_record_process (void *arg,
 			   repl_ag_retrieve_eot_time (pg_ptr, final,
 						      m_idx),
 			   &sinfo->old_time);
-#if defined(DEBUG_REPL)
-      if (DEBUG_REPL == 2)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	{
 	  fprintf (debug_Log_fd,
 		   "ABORT TRAN : TRAIL LSA(%d,%d), FINAL(%d,%d)\n",
@@ -1513,7 +1531,6 @@ repl_tr_log_record_process (void *arg,
 		   final->pageid, final->offset);
 	  fflush (debug_Log_fd);
 	}
-#endif
       repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx);
       break;
 
@@ -1579,8 +1596,7 @@ repl_tr_log_commit (SLAVE_INFO * sinfo, int m_idx, REPL_PB * pb)
 	  LSA_COPY (&sinfo->masters[m_idx].last_committed_lsa,
 		    &sinfo->masters[m_idx].final_lsa);
 
-#if defined(DEBUG_REPL)
-	  if (DEBUG_REPL == 2)
+	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	    {
 	      fprintf (debug_Log_fd,
 		       "COMMIT : TRAIL LSA(%d, %d)\n",
@@ -1588,7 +1604,6 @@ repl_tr_log_commit (SLAVE_INFO * sinfo, int m_idx, REPL_PB * pb)
 		       sinfo->masters[m_idx].final_lsa.offset);
 	      fflush (debug_Log_fd);
 	    }
-#endif
 	}
     }
 
@@ -1708,8 +1723,7 @@ repl_tr_log_apply (void *arg)
 			       sinfo->conn.dbname, arg);
     }
 
-#if defined(DEBUG_REPL)
-  if (DEBUG_REPL == 2)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
     {
       fprintf (debug_Log_fd,
 	       "AGENT START : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -1720,7 +1734,6 @@ repl_tr_log_apply (void *arg)
 	       mInfo[0]->copy_log.last_pageid);
       fflush (debug_Log_fd);
     }
-#endif
 
   gettimeofday (&time_commit, NULL);
   gettimeofday (&time_reconnect, NULL);
@@ -1753,8 +1766,7 @@ repl_tr_log_apply (void *arg)
 	      break;
 	    }
 
-#if defined(DEBUG_REPL)
-	  if (DEBUG_REPL == 2)
+	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
 	    {
 	      fprintf (debug_Log_fd,
 		       "AGENT PRE : FINAL LSA(%d,%d), TRAIL LSA(%d, %d)\n",
@@ -1763,7 +1775,6 @@ repl_tr_log_apply (void *arg)
 		       sinfo->masters[0].final_lsa.offset);
 	      fflush (debug_Log_fd);
 	    }
-#endif
 
 	  /* start to process the target page */
 	  while (!LSA_ISNULL (&final))
@@ -1880,6 +1891,11 @@ repl_tr_log_apply (void *arg)
 					   REPL_AGENT_CANT_CONNECT_TO_SLAVE,
 					   sinfo->conn.dbname, arg);
 		}
+	      if (repl_ag_get_resource_size () > agent_Max_size * 1024)
+		{
+		  restart_Agent = true;
+		  pb->need_shutdown = true;
+		}
 	    }
 	}
     }
@@ -1896,6 +1912,113 @@ repl_tr_log_apply (void *arg)
   PTHREAD_EXIT;
 
   return NULL;
+}
+
+static char *
+repl_ag_skip_token (const char *p)
+{
+  while (isspace (*p))
+    p++;
+  while (*p && !isspace (*p))
+    p++;
+  return (char *) p;
+}
+
+/*
+ * repl_ag_get_resource_size() -
+ *   return: kbyte
+ *
+ * Note:
+ */
+static unsigned long
+repl_ag_get_resource_size ()
+{
+#if defined(LINUX)
+  int fd;
+  unsigned long mem;
+  char buffer[4096], *current_p;
+  int length;
+
+  sprintf (buffer, "/proc/%d/stat", getpid ());
+
+  fd = open (buffer, O_RDONLY);
+  if (fd < 0)
+    {
+      return 0;
+    }
+  length = read (fd, buffer, sizeof (buffer) - 1);
+  buffer[length] = '\0';
+  close (fd);
+
+  current_p = buffer;
+
+  current_p = repl_ag_skip_token (current_p);	/* skip pid */
+  current_p = repl_ag_skip_token (current_p);	/* skip procname */
+  current_p = repl_ag_skip_token (current_p);	/* skip state */
+  current_p = repl_ag_skip_token (current_p);	/* skip ppid */
+  current_p = repl_ag_skip_token (current_p);	/* skip pgrp */
+  current_p = repl_ag_skip_token (current_p);	/* skip session */
+  current_p = repl_ag_skip_token (current_p);	/* skip tty */
+  current_p = repl_ag_skip_token (current_p);	/* skip tty pgrp */
+  current_p = repl_ag_skip_token (current_p);	/* skip flags */
+  current_p = repl_ag_skip_token (current_p);	/* skip min flt */
+  current_p = repl_ag_skip_token (current_p);	/* skip cmin flt */
+  current_p = repl_ag_skip_token (current_p);	/* skip maj flt */
+  current_p = repl_ag_skip_token (current_p);	/* skip cmaj flt */
+  current_p = repl_ag_skip_token (current_p);	/* skip utime */
+  current_p = repl_ag_skip_token (current_p);	/* skip stime */
+  current_p = repl_ag_skip_token (current_p);	/* skip cutime */
+  current_p = repl_ag_skip_token (current_p);	/* skip cstime */
+  current_p = repl_ag_skip_token (current_p);	/* skip priority */
+  current_p = repl_ag_skip_token (current_p);	/* skip nice */
+  current_p = repl_ag_skip_token (current_p);	/* skip threads */
+  current_p = repl_ag_skip_token (current_p);	/* skip it_real_val */
+  current_p = repl_ag_skip_token (current_p);	/* skip start_time */
+  current_p = repl_ag_skip_token (current_p);	/* skip vsize */
+
+  mem = strtoul (current_p, &current_p, 10);	/* rss */
+
+  /* page to kbyte */
+  mem = mem << (PAGE_SHIFT - 10);
+
+  return mem;
+
+#elif defined(SOLARIS)
+  unsigned long mem;
+
+#if defined (__sparc_v9__) || defined (__sparcv9)
+
+  struct stat64 stat_buf;
+  char buf[256];
+
+  snprintf (buf, sizeof (buf), "/proc/%d/as", (unsigned int) getpid ());
+
+  if (stat64 (buf, &stat_buf) < 0)
+    {
+      return 0;
+    }
+
+  mem = stat_buf.st_size / 1024;
+
+#else
+
+  struct stat stat_buf;
+  char buf[256];
+
+  snprintf (buf, sizeof (buf), "/proc/%d/as", (unsigned int) getpid ());
+
+  if (stat (buf, &stat_buf) < 0)
+    {
+      return 0;
+    }
+
+  mem = stat_buf.st_size / 1024;
+
+#endif
+
+  return mem;
+
+#endif
 }
 
 /*
@@ -2167,8 +2290,8 @@ repl_tr_log_recv (void *arg)
       /* I got it.. Now insert the page to the buffer */
       PTHREAD_MUTEX_LOCK (pb->mutex);
       /* find out the slot to be inserted */
-      while (!pb->need_shutdown &&
-	     (pb->tail + 1) % minfo->log_buffer_size == pb->head)
+      while (!pb->need_shutdown
+	     && (pb->tail + 1) % minfo->log_buffer_size == pb->head)
 	{
 	  /* the page buffer is full, wait ... */
 	  PTHREAD_COND_TIMEDWAIT (pb->write_cond, pb->mutex);
@@ -2179,9 +2302,9 @@ repl_tr_log_recv (void *arg)
 	  break;
 	}
 
-      if (pb->log_buffer[pb->tail]->pageid != 0 &&
-	  pb->log_buffer[(pb->tail + 1) % minfo->log_buffer_size]->pageid !=
-	  0)
+      if (pb->log_buffer[pb->tail]->pageid != 0
+	  && pb->log_buffer[(pb->tail + 1) %
+			    minfo->log_buffer_size]->pageid != 0)
 	{
 	  /* overwrite */
 	  pb->min_pageid
@@ -2447,8 +2570,65 @@ repl_ag_thread_end (void)
     }
 
   ag_status_need_shutdown = true;
-  PTHREAD_JOIN_EXIT (repl_status_thread);
+  PTHREAD_JOIN (*repl_status_thread);
   free_and_init (repl_status_thread);
+}
+
+static int
+repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+			      REPL_DUMP_NODE * dump_node)
+{
+  if (*head == NULL)
+    {
+      *head = *tail = dump_node;
+    }
+  else if (*head == *tail)
+    {
+
+      dump_node->next = *head;
+      *head = dump_node;
+      (*tail)->prev = dump_node;
+    }
+  else
+    {
+      (*head)->prev = dump_node;
+      dump_node->next = *head;
+      *head = dump_node;
+    }
+}
+
+static int
+repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+			      REPL_DUMP_NODE * dump_node)
+{
+  if (*head == *tail)
+    {
+      *head = *tail = NULL;
+    }
+  else if (*head == dump_node)
+    {
+      *head = dump_node->next;
+      (*head)->prev = NULL;
+    }
+  else if (*tail == dump_node)
+    {
+      *tail = dump_node->prev;
+      (*tail)->next = NULL;
+    }
+  else
+    {
+      dump_node->prev->next = dump_node->next;
+      dump_node->next->prev = dump_node->prev;
+    }
+  free_and_init (dump_node);
+}
+
+static int
+repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
+				REPL_DUMP_NODE ** tail,
+				REPL_DUMP_NODE * dump_node)
+{
+
 }
 
 /*
@@ -2467,7 +2647,9 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
   PAGEID read_pageid;
   struct log_rec *lrec;
   FILE *log_out_fp = stdout;
+  REPL_DUMP_NODE *head, *tail, *dump_node;
 
+  head = tail = NULL;
   LSA_SET_NULL (&lsa);
   cache_log_buffer =
     (REPL_CACHE_LOG_BUFFER *)
@@ -2486,15 +2668,15 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
       lsa.pageid = logpage->hdr.logical_pageid;
       lsa.offset = logpage->hdr.offset;
 
-      fprintf (log_out_fp, "\nPage Header (%3d, %3d)", lsa.pageid,
+      fprintf (log_out_fp, "Page Header (%8d, %4d)\n", lsa.pageid,
 	       lsa.offset);
       while (logpage->hdr.logical_pageid == lsa.pageid)
 	{
 	  lrec = (struct log_rec *) ((char *) logpage->area + lsa.offset);
-	  fprintf (log_out_fp, "\nLSA = %3d|%3d, Forw log = %3d|%3d,"
-		   " Backw log = %3d|%3d,\n"
-		   "     Trid = %3d, Prev tran logrec = %3d|%3d\n"
-		   "     Type = %s",
+	  fprintf (log_out_fp, "LSA = %8d|%4d, Forw log = %8d|%4d,"
+		   " Backw log = %8d|%4d,"
+		   "     Trid = %8d, Prev tran logrec = %8d|%4d"
+		   "     Type = %s\n",
 		   lsa.pageid, lsa.offset,
 		   lrec->forw_lsa.pageid, lrec->forw_lsa.offset,
 		   lrec->back_lsa.pageid, lrec->back_lsa.offset,
@@ -2503,9 +2685,50 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
 		   repl_rectype_string (lrec->type));
 	  fflush (log_out_fp);
 
+	  dump_node = head;
+	  while (dump_node)
+	    {
+	      if (dump_node->tranid == lrec->trid)
+		{
+		  break;
+		}
+	      dump_node = dump_node->next;
+	    }
+
+	  if (dump_node != NULL)
+	    {
+	      dump_node->type = lrec->type;
+	    }
+	  else
+	    {
+	      dump_node = (REPL_DUMP_NODE *) malloc (sizeof (REPL_DUMP_NODE));
+	      dump_node->next = NULL;
+	      dump_node->prev = NULL;
+	      dump_node->tranid = lrec->trid;
+	      dump_node->type = lrec->type;
+	      repl_ag_log_dump_node_insert (&head, &tail, dump_node);
+	    }
+
+	  if (dump_node->type == LOG_COMMIT)
+	    {
+	      repl_ag_log_dump_node_delete (&head, &tail, dump_node);
+	      dump_node = NULL;
+	    }
+
 	  LSA_COPY (&lsa, &lrec->forw_lsa);
 	}
       read_pageid++;
+    }
+
+  while (head)
+    {
+      dump_node = head;
+      head = head->next;
+
+      fprintf (log_out_fp, "NOT COMMIT TRANSACTION : %d, type:%s\n",
+	       dump_node->tranid, repl_rectype_string (dump_node->type));
+      fflush (log_out_fp);
+      free_and_init (dump_node);
     }
 
   if (cache_log_buffer)

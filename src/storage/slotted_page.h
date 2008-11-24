@@ -1,20 +1,36 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * sp.h - SLOTTED PAGE MANAGEMENT MODULE (AT SERVER) 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _SP_H_
-#define _SP_H_
+
+/*
+ * slotted_page.h - SLOTTED PAGE MANAGEMENT MODULE (AT SERVER)
+ */
+
+#ifndef _SLOTTED_PAGE_H_
+#define _SLOTTED_PAGE_H_
 
 #ident "$Id$"
 
 #include "config.h"
 
 #include "error_manager.h"
-#include "common.h"
-#include "log.h"
+#include "storage_common.h"
+#include "log_manager.h"
 
 #define PEEK          true	/* Peek for a slotted record */
 #define COPY          false	/* Don't peek, but copy a slotted record */
@@ -132,4 +148,4 @@ extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				   PGSLOTID slotid);
 
-#endif /* _SP_H_ */
+#endif /* _SLOTTED_PAGE_H_ */

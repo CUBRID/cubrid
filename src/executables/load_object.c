@@ -1,8 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *      load_object.c: simplified object descriptions.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * load_object.c: simplified object descriptions.
  */
 
 #ident "$Id$"
@@ -19,23 +34,23 @@
 #include <math.h>
 
 #include "utility.h"
-#include "ustring.h"
-#include "memory_manager_2.h"
+#include "misc_string.h"
+#include "memory_alloc.h"
 #include "dbtype.h"
 #include "object_representation.h"
 #include "work_space.h"
 #include "class_object.h"
 #include "object_primitive.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "db.h"
 #include "large_object.h"
-#include "server.h"
+#include "server_interface.h"
 #include "load_object.h"
-#include "object_print_1.h"
-#include "network_interface_sky.h"
+#include "object_print.h"
+#include "network_interface_cl.h"
 
 #include "message_catalog.h"
-#include "qp_str.h"
+#include "string_opfunc.h"
 #if defined(WINDOWS)
 #include "porting.h"
 #endif
@@ -504,7 +519,7 @@ exit_on_error:
  *    in the buffer and the transformation was aborted.
  */
 int
-desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, int *index_flag)
+desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
 {
   OR_BUF orep, *buf;
   int error, status;
@@ -779,18 +794,6 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	    }
 	}
 
-      /*
-       * We need to round up here to the end of the fixed block.
-       *  Unlike get_current() we don't have the true size of the
-       *  fixed block to use so we must assume that we simply round
-       *  up to a pointer size boundary.  Note that this is currently
-       *  8 bytes on an Alpha dn 4 bytes everywhere else.  Need to
-       *  store the fixed block size in the old representations.
-       *
-       *  We were previously aligning differently when reading vs writing.
-       *  In order to be consistant we'll use the DB_ATT_ALIGN() macro in
-       *  both places.
-       */
       padded_size = fixed_size = (int) (buf->ptr - start);
       DB_ATT_ALIGN (padded_size);
       or_advance (buf, (padded_size - fixed_size));
@@ -819,16 +822,6 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 		{
 		  if (!OR_GET_BOUND_BIT (bits, i))
 		    {
-		      /*
-		       * This DB_VALUE will have had a non-NULL value stuffed
-		       * in it in the preceding section.
-		       * That value was meaningless because, as we have just
-		       * discovered, the NULL bit was on, but we read it in
-		       * anyway.  And in the case of a fixed char attribute,
-		       * that means that we've allocated space for it.
-		       * If we just do db_value_put_null() here, we'll leak that
-		       * space, so we have to do db_value_clear() first.
-		       */
 		      DB_VALUE *v = &obj->values[attmap[i]->storage_order];
 		      db_value_clear (v);
 		      db_value_put_null (v);
@@ -861,8 +854,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	}
 
       /*
-       * initialize new values, this is the equivalent of clear_new_unbound
-       * in tfcl.c
+       * initialize new values
        */
       for (i = 0, att = class_->attributes; att != NULL;
 	   i++, att = (SM_ATTRIBUTE *) att->header.next)
@@ -1064,7 +1056,7 @@ exit_on_error:
  */
 #define  MAX_DISPLAY_COLUMN    70
 #define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10(FLT_RADIX)))
-/* import from bfmt_print() in cnv.c */
+
 #define BITS_IN_BYTE            8
 #define HEX_IN_BYTE             2
 #define BITS_IN_HEX             4
@@ -1451,22 +1443,6 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_NUMERIC:
       ptr = numeric_db_value_print (value);
 
-      /*
-       * The rendering of numeric(n,0) by nm_print_numeric will not include
-       * a trailing decimal point.  This will make loaddb try to read the
-       * number as a 32 bit integer, which will lose if the precision of the
-       * number overflows 32 bits.  This was fixed originally by reading
-       * all integers as reals and then coercing them to an integer target
-       * domain if necessary.  Unfortunately, this caused a problem for
-       * literals of "wildcard" sets: sets containing integers would turn
-       * into sets containing doubles because the coercion from double to
-       * int wouldn't happen.  A compromise between the two problems is
-       * to go back to reading integers as 32 bit values but make sure that
-       * all numeric() values are rendered with a decimal point which will
-       * force the lexical analyzer into reading them as doubles.  We didn't
-       * want to change nm_print_numeric to do this since that would effect
-       * rendering of numerics in many places other than unloaddb.
-       */
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0,
 				     !strchr (ptr, '.') ? "%s." : "%s", ptr));
       break;

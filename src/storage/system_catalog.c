@@ -1,226 +1,26 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * cat.c - Catalog manager
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * system_catalog.c - Catalog manager
  */
 
 #ident "$Id$"
-
-/*
- * FUNCTIONALITY:
- * 
- * This module manages the creation, destruction, insertion, deletion and
- * search operations on the catalog data structure. The basic purpose of the
- * catalog is to store disk representation information for the classes in the
- * database in a localized manner, keep this information updated and make it
- * easily and quickly accessible by various components of the database system.
- * The catalog is also used to store information specific to a class, such as
- * the heap file identifier for the instances of the class.
- * 
- * 
- * Each class has an class identifier which is an object identifier. Thus, a
- * class identifier consists of a volume, page and slot identifier. The disk
- * representation information for a given class identifier consists of a
- * representation identifier and a set of attribute representations for the
- * fixed and variable attributes of the class. A fixed attribute is an
- * attribute whose size is fixed as set by the data type of the attribute. For
- * example an attribute whose data type is integer is an fixed attribute. The
- * size of a variable attribute, such as an attribute of type string is not
- * fixed. Each attribute representation consists of the attribute identifier,
- * data type of the attribute and location of the attribute in the disk
- * representation, name of the attribute, index identifier, the class object
- * identifier, the value of the attribute and the length of the value of the
- * attribute. The location of an attribute refers to an exact location
- * (offset) in the case of fixed attributes and an index to the variables
- * table in the case of an variable attribute. Each class may have more than
- * one disk representations each of which has a unique representation
- * identifier. Class specific information consists of the heap file identifier
- * for the instances of the class and some other statistical data about class.
- * The disk representation of a class may be shown as in diagram below:
- * 
- *    _______________
- *    | Repr. Id.   |
- *    |_____________|
- *    | n_fixed     |   Attribute Representation
- *    |_____________|   ________________   ________________
- *    | fixed attrs.|-->| attr. struct |-->| attr. struct |-->  ...
- *    |_____________|   |______________|   |______________|
- *    | fixed len.  |
- *    |_____________|
- *    | n_var       |
- *    |_____________|   ________________
- *    | var  attrs. |-->| attr. struct |-->  ...
- *    |_____________|   |______________|
- *    | n_objects   |
- *    |_____________|
- * 
- *     Disk Representation
- * 
- * Each attribute structure may in turn be shown as below:
- * 
- *     ___________________
- *     |  attr. id.      |
- *     |-----------------|
- *     |  location       |
- *     |-----------------|
- *     |  data type      |
- *     |_________________|
- *     |  value length   |
- *     |-----------------|   ______________________
- *     |  value          |-->|      Value         |
- *     |-----------------|   |____________________|
- *     |  repr_id        |
- *     |-----------------|
- *     |  class oid      |
- *     |-----------------|
- *     |  btid           |
- *     |-----------------|
- *     |  btree stat inf.|
- *     |-----------------|
- *     |  min value      |
- *     |-----------------|
- *     |  max value      |
- *     -------------------
- * 
- *     Attribute Structure
- * 
- * Class specific information structure may be shown as below:
- * 
- *     ___________________
- *     | Heap File Id.   |
- *     |_________________|
- *     | Total Pages     |
- *     |-----------------|
- *     | Total Objects   |
- *     |-----------------|
- *     | Time Stamp      |
- *     -------------------
- * 
- *     Class Information Structure
- * 
- * DATA STRUCTURES:
- * 
- * The catalog manager is essentially built on top of UNIDRIVER slotted page
- * management module. Anchored slotted pages are used to store catalog data.
- * Each slotted page record may contain one of the following catalog units:
- * a header record, a disk representation record, a class information record
- * a class directory record. The location of each catalog unit is identified
- * by a <page_id, slot_id> pair. Since the pages are anchored, the slot
- * identifier of a catlog unit can not be changed, but may reused if the slot
- * is deleted. If a disk representation is bigger in size than a page, then
- * overflow pages are used to store that representation. Each catalog page has
- * a header. This header record is used to store the page identifier of the
- * following overflow page, if any, and the number of directories in the page.
- * A global catalog header information is kept to keep hinted space data. The
- * header contains information to be used for a good storage utilization of
- * the catalog, namely:
- * 
- *    max_page_id : the page that has the estimated maximum free space
- *    max_space : estimated available free space in the page max_page_id
- * 
- * For each class referred to in the catalog, there is specific catalog unit
- * called class representations directory. This directory has an entry for
- * each different disk representation of the class. Each entry has the form
- * < repr_id, page_id, slot_id >, where repr_id is the specific representation
- * identifier and page_id and slot_id refer to the location of the
- * representation in the catalog.
- * 
- * In order to be able to locate a representation in the catalog quickly, the
- * catalog manager employs an index. The index currently used is an extendible
- * hashing index. The basic purpose of the index is to quickly access to a
- * class representations directory, given a class identifier. Thus each index
- * entry can be viewed as :
- * 
- *          (class_id , (volume_id, page_id, slot_id))
- *          <-- key -->  <----------- value ------------->
- * 
- * Each key is a class identifier, and each value gives the location of the
- * directory in the catalog for that class identifier. The key type of the
- * index is DB_TYPE_DOUBLE and this guarantees to have a unique key for each
- * different class identifier, as long as sizeof(class_identifier) is less
- * than or equal to sizeof(double).
- * 
- * It is likely that the catalog units accessed recently be requested again.
- * That is, there is a locality in reference and time. Using this principle,
- * the catalog manager employs another data structure to speed up accesses to
- * the catalog: a memory hash table. As its name implies, the memory hash
- * table stays in the main memory, so it is very fast. It is used to store
- * the location of the recently accessed catalog units. Each entry has the
- * form :
- * 
- *          ((class_id, repr_id), (page_id, slot_id))
- *            <------ key -------->  <----- value ------->
- * 
- * If the repr_id is NULL_REPRID, the catalog unit refers to class specific
- * information record, rather than a disk representation record. The memory
- * hash table is supplied by the UNIDRIVER memory hash table module and it
- * has creation, destruction, insert, delete, search operations defined on it,
- * among the others.
- * 
- * ALGORITHMS and CONCEPTS:
- * 
- * During insertions, first the catalog header information is consulted to
- * see if there is an adequate free space to insert the given catalog unit.
- * If not, a new page and possibly a set of overflow pages are allocated to
- * insert the given unit. After the given catalog unit is inserted, the
- * catalog index is consulted to find the location of the representations
- * directory for the given class, if any. If there is already a directory, the
- * directory is updated to contain a pointer entry to point to the location
- * of the inserted unit in the catalog, in terms of a page and slot identifier
- * If the updated directory can not be put back to its original page, it is
- * moved to another page of the catalog using the catalog header space
- * information., and the index entry for the directory is updated to point to
- * the new location of the class directory. The directory is limited to
- * contain less than MAX_REPR_CNT entries, which ensures that the directory
- * size is smaller than a page size. If the new entry violates this, that
- * means the objects of the class have not been brought up-to-date for a long
- * time, and the class has too many representations. In this case, a warning
- * message is issued and a routine is called to bring the representations
- * up-to-date. If there is no directory for the given class identifier, a
- * directory is created with only one entry to point to the location of the
- * newly inserted catalog unit, and an index entry is formed to pint to this
- * directory for the given class identifier. Catalog header information is
- * updated to reflect the new available space and last page information. If
- * the inserted catalog unit is a disk representation, there is no limit on
- * the size of the representation.
- * 
- * During deletions, first the catalog index is consulted to locate the class
- * representations directory, then the directory is searched to find the
- * location of the actual catalog unit to be deleted. Both the directory page
- * and the page containing the catalog unit to be deleted are locked in an
- * Exclusive (X) mode. After the deletion is completed, the class directory
- * is updated. If the class directory becomes empty, the catalog index entry
- * corresponding to the given class identifier is deleted. The catalog pages
- * that become empty after deletion are dealloacted. Catalog header
- * information is updated after the deletion to reflect new available space
- * information.
- * 
- * During search operations, all catalog pages that are accessed are locked
- * in Shared (S) mode. In order to locate the catalog unit to be fetched
- * quickly, first the memory hash table is consulted. If the memory hash table
- * does not have this information, then catalog index is used to loacte the
- * representations directory for the specified class. The directory is
- * searched to get the location of the actual catalog unit to be fetched and
- * this location is recorded in memory hash table for further use. The disk
- * representation/class information structure is formed from the slotted page
- * record(s) and returned to the caller.
- * 
- * FUTURE EXTENSIONS:
- * 
- * Future extensions to the catalog manager include adding new functionalities
- * and/or new catalog units that may be necessiated by missellaneous database
- * components such as predicate processor or schema manager, and adding
- * recovery feautures.
- * 
- * INTERFACES:
- * 
- * The callees of the module include Buffer Manager, Slotted Page Manger,
- * File Manager, Disk Manager, Locking Manager, Recovery Manager, Memory Hash
- * Table Manager and Extendible Hashing Index Manager. The callers of the
- * module include Schema Manager, Query Evaluator, Transaction Locator and
- * Statistics Manager.
- */
 
 #include <stdlib.h>
 #include <string.h>
@@ -229,7 +29,7 @@
 
 #include "error_manager.h"
 #include "system_catalog.h"
-#include "log.h"
+#include "log_manager.h"
 #include "memory_hash.h"
 #include "page_buffer.h"
 #include "file_manager.h"
@@ -237,17 +37,16 @@
 #include "slotted_page.h"
 #include "oid.h"
 #include "extendible_hash.h"
-#include "memory_manager_2.h"
-#include "object_representation_earth.h"
+#include "memory_alloc.h"
+#include "object_representation_sr.h"
 #include "object_representation.h"
 #include "btree_load.h"
 #include "heap_file.h"
-#include "common.h"
-#include "fldesc.h"
-#include "xserver.h"
+#include "storage_common.h"
+#include "xserver_interface.h"
 
 #if defined(SERVER_MODE)
-#include "csserror.h"
+#include "connection_error.h"
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
@@ -308,7 +107,7 @@
 
 /* Each disk attribute is aligned with MAX_ALIGN( = DOUBLE_ALIGN )
    Each disk attribute may be followed by a "value" which is of
-   variable size. The below constants does not consider the 
+   variable size. The below constants does not consider the
    optional value field following the attribute structure. */
 #define CATALOG_DISK_ATTR_ID_OFF         0
 #define CATALOG_DISK_ATTR_LOCATION_OFF   4
@@ -808,12 +607,12 @@ catalog_update_max_space (VPID * page_id_p, PGLENGTH space)
 }
 
 /*
- * catalog_initialize_new_page () - 
- *   return: 
- *   vfid(in): 
- *   vpid(in): 
- *   ignore_napges(in): 
- *   pg_ovfl(in): 
+ * catalog_initialize_new_page () -
+ *   return:
+ *   vfid(in):
+ *   vpid(in):
+ *   ignore_napges(in):
+ *   pg_ovfl(in):
  */
 static bool
 catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
@@ -874,7 +673,7 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
  *   nearpg(in): A page identifier that may be used in a nearby page allocation.
  *               (It may be ignored.)
  *   pg_ovfl(in): Page is an overflow page (1) or not (0)
- * 
+ *
  * Note: Allocates a new page for the catalog and inserts the header
  * record for the page.
  */
@@ -916,11 +715,11 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
 }
 
 /*
- * catalog_find_optimal_page () - 
+ * catalog_find_optimal_page () -
  *   return: PAGE_PTR
  *   size(in): The size requested in the page
  *   page_id(out): Set to the page identifier fetched
- * 
+ *
  * Note: The routine considers the requested size and hinted catalog
  * space information to find a catalog page optimal for the good
  * catalog storage utilization and returns the page.
@@ -955,10 +754,10 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
        * previous run will not be left around empty.
        */
       page_count = file_get_numpages (thread_p, &catalog_Id.vfid);
-      if ((page_count > 0) &&
-	  (file_find_nthpages
-	   (thread_p, &catalog_Id.vfid, &catalog_Max_space.max_page_id,
-	    (page_count - 1), 1) == 1)
+      if ((page_count > 0)
+	  && (file_find_nthpages (thread_p, &catalog_Id.vfid,
+				  &catalog_Max_space.max_page_id,
+				  (page_count - 1), 1) == 1)
 	  && catalog_Max_space.max_page_id.pageid != NULL_PAGEID)
 	{
 	  page_p = pgbuf_fix (thread_p, &catalog_Max_space.max_page_id,
@@ -1131,11 +930,11 @@ catalog_free_class_info (CLS_INFO * class_info_p)
 }
 
 /*
- * catalog_get_key_list () - 
- *   return: 
- *   key(in): 
- *   val(in): 
- *   args(in): 
+ * catalog_get_key_list () -
+ *   return: NO_ERROR or error code
+ *   key(in):
+ *   val(in):
+ *   args(in):
  */
 static int
 catalog_get_key_list (THREAD_ENTRY * thread_p, void *key, void *ignore_value,
@@ -1150,7 +949,7 @@ catalog_get_key_list (THREAD_ENTRY * thread_p, void *key, void *ignore_value,
 
   if (class_id_p == NULL)
     {
-      return false;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   class_id_p->class_id.volid = ((OID *) key)->volid;
@@ -1160,13 +959,13 @@ catalog_get_key_list (THREAD_ENTRY * thread_p, void *key, void *ignore_value,
 
   *p = class_id_p;
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
- * catalog_free_key_list () - 
- *   return: 
- *   clsid_list(in): 
+ * catalog_free_key_list () -
+ *   return:
+ *   clsid_list(in):
  */
 static void
 catalog_free_key_list (CATALOG_CLASS_ID_LIST * class_id_list)
@@ -1201,9 +1000,8 @@ catalog_compare (const void *key1, const void *key2)
   k1 = (const CATALOG_KEY *) key1;
   k2 = (const CATALOG_KEY *) key2;
 
-  if (k1->page_id == k2->page_id &&
-      k1->slot_id == k2->slot_id &&
-      k1->repr_id == k2->repr_id && k1->volid == k2->volid)
+  if (k1->page_id == k2->page_id && k1->slot_id == k2->slot_id
+      && k1->repr_id == k2->repr_id && k1->volid == k2->volid)
     {
       return true;
     }
@@ -1214,11 +1012,11 @@ catalog_compare (const void *key1, const void *key2)
 }
 
 /*
- * catalog_hash () - 
+ * catalog_hash () -
  *   return: int
  *   key(in): Catalog key
  *   htsize(in): Memory Hash Table Size
- * 
+ *
  * Note: Generate a hash number for the given key for the given hash table size.
  */
 static unsigned int
@@ -1235,12 +1033,12 @@ catalog_hash (const void *key, unsigned int hash_table_size)
 }
 
 /*
- * catalog_put_record_into_page () - 
+ * catalog_put_record_into_page () -
  *   return: NO_ERROR or ER_FAILED
  *   ct_recordp(in): pointer to CATALOG_RECORD structure
  *   next(in): flag of next page
- *   remembered_slotid(in): 
- * 
+ *   remembered_slotid(in):
+ *
  * Note: Put the catalog record into the page and then prepare next page.
  */
 static int
@@ -1363,12 +1161,12 @@ catalog_write_unwritten_portion (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_store_disk_representation () - 
+ * catalog_store_disk_representation () -
  *   return: NO_ERROR or ER_FAILED
  *   disk_reprp(in): pointer to DISK_REPR structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- *   remembered_slotid(in): 
- * 
+ *   remembered_slotid(in):
+ *
  * Note: Transforms disk representation form into catalog disk form.
  * Store DISK_REPR structure into catalog record.
  */
@@ -1393,12 +1191,12 @@ catalog_store_disk_representation (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_store_disk_attribute () - 
+ * catalog_store_disk_attribute () -
  *     NO_ERROR or ER_FAILED
  *   disk_attrp(in): pointer to DISK_ATTR structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- *   remembered_slotid(in): 
- * 
+ *   remembered_slotid(in):
+ *
  * Note: Transforms disk representation form into catalog disk form.
  * Store DISK_ATTR structure into catalog record.
  */
@@ -1423,13 +1221,13 @@ catalog_store_disk_attribute (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_store_attribute_value () - 
+ * catalog_store_attribute_value () -
  *   return: NO_ERROR or ER_FAILED
  *   value(in): pointer to the value data (disk representation)
  *   length(in): length of the value data
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- *   remembered_slotid(in): 
- * 
+ *   remembered_slotid(in):
+ *
  * Note: Transforms disk representation form into catalog disk form.
  * Store value data into catalog record.
  */
@@ -1452,12 +1250,12 @@ catalog_store_attribute_value (THREAD_ENTRY * thread_p, void *value,
 }
 
 /*
- * catalog_store_btree_statistics () - 
+ * catalog_store_btree_statistics () -
  *   return: NO_ERROR or ER_FAILED
  *   bt_statsp(in): pointer to BTREE_STATS structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- *   remembered_slotid(in): 
- * 
+ *   remembered_slotid(in):
+ *
  * Note: Transforms disk representation form into catalog disk form.
  * Store BTREE_STATS structure into catalog record.
  */
@@ -1561,11 +1359,11 @@ catalog_read_unread_portion (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_fetch_disk_representation () - 
+ * catalog_fetch_disk_representation () -
  *   return: NO_ERROR or ER_FAILED
  *   disk_reprp(in): pointer to DISK_REPR structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- * 
+ *
  * Note: Transforms catalog disk form into disk representation form.
  * Fetch DISK_REPR structure from catalog record.
  */
@@ -1589,11 +1387,11 @@ catalog_fetch_disk_representation (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_fetch_disk_attribute () - 
+ * catalog_fetch_disk_attribute () -
  *   return: NO_ERROR or ER_FAILED
  *   disk_attrp(in): pointer to DISK_ATTR structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- * 
+ *
  * Note: Transforms catalog disk form into disk representation form.
  * Fetch DISK_ATTR structure from catalog record.
  */
@@ -1617,12 +1415,12 @@ catalog_fetch_disk_attribute (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_fetch_attribute_value () - 
+ * catalog_fetch_attribute_value () -
  *   return: NO_ERROR or ER_FAILED
  *   value(in): pointer to the value data (disk representation)
  *   length(in): length of the value data
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- * 
+ *
  * Note: Transforms catalog disk form into disk representation form.
  * Fetch value data from catalog record.
  */
@@ -1645,11 +1443,11 @@ catalog_fetch_attribute_value (THREAD_ENTRY * thread_p, void *value,
 }
 
 /*
- * catalog_fetch_btree_statistics () - 
+ * catalog_fetch_btree_statistics () -
  *   return: NO_ERROR or ER_FAILED
  *   bt_statsp(in): pointer to BTREE_STATS structure (disk representation)
  *   ct_recordp(in): pointer to CATALOG_RECORD structure (catalog record)
- * 
+ *
  * Note: Transforms catalog disk form into disk representation form.
  * Fetch BTREE_STATS structure from catalog record.
  */
@@ -1683,7 +1481,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
     {
       /* after create the catalog record of the class, and
        * before create the catalog record of the constraints for the class
-       * 
+       *
        * currently, does not know BTID
        */
       btree_stats_p->key_type = &tp_Null_domain;
@@ -1829,11 +1627,11 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 }
 
 /*
- * catalog_drop_disk_representation_from_page () - 
+ * catalog_drop_disk_representation_from_page () -
  *   return: NO_ERROR or ER_FAILED
  *   page_id(in): Page identifier for the catalog unit
  *   slot_id(in): Slot identifier for the catalog unit
- * 
+ *
  * Note: The catalog storage unit whose location is identified with
  * the given page and slot identifier is deleted from the
  * catalog page. If there overflow pages pointed by the given
@@ -1865,13 +1663,13 @@ catalog_drop_disk_representation_from_page (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_drop_representation_class_from_page () - 
+ * catalog_drop_representation_class_from_page () -
  *   return: NO_ERROR or ER_FAILED
  *   dir_pgid(in): Directory page identifier
  *   dir_pgptr(in): Directory page pointer
  *   page_id(in): Catalog unit page identifier
  *   slot_id(in): Catalog unit slot identifier
- * 
+ *
  * Note: The catalog storage unit which can be disk representation or
  * class information record, whose location is identified by the
  * given page and slot identifier is deleted from the catalog page.
@@ -2093,11 +1891,11 @@ catalog_insert_representation_item (THREAD_ENTRY * thread_p,
 
 
 /*
- * catalog_put_representation_item () - 
+ * catalog_put_representation_item () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class object identifier
  *   repr_item(in): Representation Item
- * 
+ *
  * Note: The given representation item is inserted to the class
  * directory, if any. If there is no class directory, one is
  * created to contain the given item and catalog index is
@@ -2302,12 +2100,12 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 }
 
 /*
- * catalog_get_representation_item () - 
+ * catalog_get_representation_item () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class object identifier
  *   repr_item(in/out): Set to the Representation Item
  *                      (repr_item->repr_id must be set by the caller)
- * 
+ *
  * Note: The representation item for the given class and the specified
  * representation identifier (set by the caller in repr_item) is
  * extracted from the class directory. This information tells
@@ -2447,12 +2245,12 @@ catalog_drop_directory (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 }
 
 /*
- * catalog_drop_representation_item () - 
+ * catalog_drop_representation_item () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class object identifier
  *   repr_item(in): Representation Item
  *                  (repr_item->repr_id must be set by the caller)
- * 
+ *
  * Note: The representation item for the given class and the specified
  * representation identifier (set by the caller in repr_item) is
  * dropped from the class directory.
@@ -2631,14 +2429,14 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count,
 }
 
 /*
- * Catalog interface routines                         
+ * Catalog interface routines
  */
 
 /*
  * catalog_initialize () - Initialize data for further catalog operations
  *   return: nothing
  *   catid(in): Catalog identifier taken from the system page
- * 
+ *
  * Note: Creates and initializes a main memory hash table that will be
  * used by catalog operations for fast access to catalog data.
  * The max_rec_size global variable which shows the maximum
@@ -2691,7 +2489,7 @@ catalog_finalize (void)
 }
 
 /*
- * catalog_create () - 
+ * catalog_create () -
  *   return: CTID * (catid on success and NULL on failure)
  *   catid(out): Catalog identifier.
  *               All the fields in the identifier are set except the catalog
@@ -2699,7 +2497,7 @@ catalog_finalize (void)
  *               set by the caller.
  *   exp_ncatpg(in): Expected number of pages in the catalog
  *   exp_nindetr(in): Expected number of entries in the catalog index
- * 
+ *
  * Note: Creates the catalog and an index that will be used for fast
  * catalog search. The index used is an extendible hashing index.
  * The first page (header page) of the catalog is allocated and
@@ -2769,9 +2567,9 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
 /*TODO: check not use */
 #if 0
 /*
- * catalog_destroy () - 
+ * catalog_destroy () -
  *   return: NO_ERROR or ER_FAILED
- * 
+ *
  * Note: Destroys the catalog and its associated index. After the
  * routine is called, the catalog volume identifier and catalog
  * index identifier are not valid any more.
@@ -2793,10 +2591,10 @@ catalog_destroy (void)
 #endif
 
 /*
- * catalog_reclaim_space () - Reclaim catalog space by deallocating all the empty 
+ * catalog_reclaim_space () - Reclaim catalog space by deallocating all the empty
  *                       pages.
  *   return: NO_ERROR or ER_FAILED
- * 
+ *
  * Note: This routine is supposed to be called only OFF-LINE.
  */
 int
@@ -2880,52 +2678,7 @@ catalog_sum_disk_attribute_size (DISK_ATTR * attrs_p, int count)
  *   class_id(in): Class identifier
  *   repr_id(in): Disk Representation identifier
  *   disk_reprp(in): Pointer to the disk representation structure
- * 
- * Note: The given disk representation is inserted to the catalog.
- * There is virtually no limit on the size of the representation
- * to be inserted. If there is already another representation
- * with the same representation identifier for the given class
- * identifier, then an error condition is raised, only in
- * debugging mode for performance reasons. The representation
- * identifier should be different from NULL_REPRID. If the new
- * representation brings the number of representations for the
- * specified class to MAX_REPR_CNT, then a warning message is
- * issued and a routine is called to bring the representations up-to-date.
- * 
- * First, an adequate space is found in the catalog to insert
- * the given representation, by using the space information in
- * the catalog header. If there is not an adequate available
- * space in existing catalog pages, a new page is allocated.
- * The representation is converted to slotted page record(s) and
- * inserted to the catalog. If the representation size is bigger
- * than a page size, then overflow pages are allocated and used
- * to store the representation. The header record of each page
- * is used to point to the following overflow page, if any.
- * Catalog header information is updated to reflect the new
- * avaliable space and last page information.
- * 
- * After the representation is inserted, the catalog index is
- * consulted to find the location of the representation directory
- * for the given class, if any. If there is already a directory,
- * the directory is updated to contain a pointer entry for the
- * given representation identifier to point to the location of
- * the representation in the catalog, in terms of a page and slot
- * identifier. If the updated directory can not be put back to
- * its original page, it is moved another page of the catalog
- * using the catalog header information, and the index entry for
- * directory is updated to point to the new directory location in
- * the catalog. The directory is limited to contain less than
- * MAX_REPR_CNT entries, which ensures that the directory size is
- * smaller than a page size. If the new entry vilaotes this, that
- * means the objects for the class have not been brought
- * up-to-date for a long time. In this case, a warning message is
- * issued and a routine is called to bring the representations
- * up-to-date. If there is no directory for the given class
- * identifier, a directory is created in the catalog with only
- * one entry to point to the specified representation, an index
- * entry is formed to point to the directory for the given class.
- * Catalog header information is updated to reflect the new
- * avaiable space and last page information.
+ *
  */
 int
 catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
@@ -3074,47 +2827,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
  *   return: int
  *   class_id(in): Class identifier
  *   cls_info(in): Pointer to class specific information structure
- * 
- * Note: The given class specific information structure is inserted to
- * the catalog. The size of the structure is limited to a page
- * size. There is no requirement on when the class specific
- * information should be entered to the catalog. It is totally
- * independent from when the disk representations for the class
- * are entered to the catalog.
- * 
- * First, an adequate space is found in the catalog to insert
- * the given class structure, by using the space information in
- * the catalog header. If there is not an adequate available
- * space in existing catalog pages, a new page is allocated.
- * The structure content is converted to a slotted page record
- * and inserted to the catalog. Catalog header information is
- * updated to reflect the new avaliable space and last page information.
- * 
- * After the class structure is inserted, the catalog index is
- * consulted to find the location of the representation directory
- * for the given class, if any. If there is already a directory,
- * the directory is updated to contain a pointer entry with the
- * representation identifier NULL_REPRID to point to the location
- * of the class information in the catalog, in terms of a page
- * and slot identifier. Thus, in the class directory, there is
- * only one entry with NULL_REPRID, and this entry points to the
- * class specific information, rather than a disk representation.
- * If the updated directory can not be put back to its original
- * page, it is moved another page of the catalog using catalog
- * information, and the index entry for directory is updated to
- * point to the new directory location in the catalog. The
- * directory is limited to contain less than MAX_REPR_CNT entries
- * which ensures that the directory size is smaller than a page
- * size. If the new entry vilaotes this, that means the objects
- * for the class have not been brought up-to-date for a long time
- * In this case, a warning message is issued and a routine is
- * called to bring the representations up-to-date. If there is no
- * directory for the given class identifier, a directory is
- * created in the catalog with only one entry to point to the
- * given class specific information, and an index entry is formed
- * to point to the directory for the given class. Catalog header
- * information is updated to reflect the new avaiable space and
- * last page information.
+ *
  */
 int
 catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
@@ -3189,11 +2902,11 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
  *   return: CLS_INFO* or NULL
  *   class_id(in): Class identifier
  *   cls_info(in): Pointer to class specific information structure
- * 
+ *
  * Note: The given class specific information structure is used to
  * update existing class specific information. On success, it
  * returns the cls_info parameter itself, on failure it returns NULL.
- * 
+ *
  * Note: This routine assumes that cls_info structure is of fixed size, ie.
  * the new record size is equal to the old record size, therefore it is
  * possible to update the old record in_place without moving.
@@ -3266,31 +2979,8 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
  *   return: int
  *   class_id(in): Class identifier
  *   repr_id(in): Representation identifier
- * 
- * 
- * Note: The given representation is deleted from the catalog. If the
- * repr_id is NULL_REPRID, the representation refers to class
- * specific information, otherwise it refers to a disk
- * representation for the class. If there is no class in the
- * catalog with the given class identifier or if there is no
- * representation with the given representation and class
- * identifier, an error condition is raised.
- * 
- * First the catalog index is consulted to locate the class
- * representations directory for the given class identifier. The
- * directory is searched to find the entry that points to the
- * specified representation in the catalog. The representation
- * and corresponding directory entries are deleted. If the
- * memory hash table contains an entry for the given class and
- * representation identifier, this entry is deleted, too. If the
- * class directory becomes empty after the deletion, the index
- * entry for the class is deleted as well. If, after deletion,
- * the representation catalog page becomes empty, it is
- * deallocated unless it is the root page or a page referred to
- * in the catalog header information. If the representation
- * occupy several overflow pages, all of the overflow pages are
- * deallocated. Catalog header information is updated after
- * deletion to reflect the new space information.
+ *
+ *
  */
 static int
 catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
@@ -3322,7 +3012,7 @@ catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
  * catalog_drop_all () - Drop all representations for the class from the catalog
  *   return: int
  *   class_id(in): Class identifier
- * 
+ *
  * Note: All the disk representations of the given class identifier are
  * dropped from the catalog.
  */
@@ -3384,17 +3074,17 @@ catalog_drop_all (THREAD_ENTRY * thread_p, OID * class_id_p)
 }
 
 /*
- * catalog_drop_all_representation_and_class () - 
+ * catalog_drop_all_representation_and_class () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class identifier
- * 
+ *
  * Note: All the disk representations of the given class identifier and
  * the class specific information of the class, if any, are
  * deleted from the catalog, as well as the class representations
  * directory and the index entry for the given class.
  * If there is no representation and class specific information
  * for the given class identifier, an error condition is raised.
- * 
+ *
  * The catalog index is consulted to locate the class directory.
  * The class specific information and each representation
  * pointed to by the class directory is deleted from the catalog.
@@ -3477,10 +3167,10 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_drop_old_representations () - 
+ * catalog_drop_old_representations () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class identifier
- * 
+ *
  * Note: All the disk representations of the given class identifier but
  * the most recent one are deleted from the catalog. if there is
  * no such class stored in the catalog, an error condition is raised.
@@ -3621,16 +3311,16 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 }
 
 /*
- * xcatalog_is_acceptable_new_representation () - 
+ * xcatalog_is_acceptable_new_representation () -
  *   return: NO_ERROR or ER_FAILED
  *   class_id(in): Class identifier
  *   hfid(in): Heap file identifier
  *   can_accept(out): Set to the flag to indicate if catalog can accept a new
  *                    representation.
- * 
+ *
  * Note: Set can_accept flag to true if catalog can accept a new
  * representation and to false otherwise.
- * 
+ *
  * The routine first checks if given class representation count
  * in the catalog has reached to the limit. If not, it simply
  * sets can_accept to true. Otherwise, it goes through all the
@@ -3859,10 +3549,10 @@ xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_fixup_missing_disk_representation () - 
- *   return: 
- *   class_oid(in): 
- *   reprid(in): 
+ * catalog_fixup_missing_disk_representation () -
+ *   return:
+ *   class_oid(in):
+ *   reprid(in):
  */
 static int
 catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
@@ -3900,7 +3590,7 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
  *   return: Pointer to the disk representation structure, or NULL.
  *   class_id(in): Class identifier
  *   repr_id(in): Disk Representation identifier
- * 
+ *
  * Note: The disk representation structure for the given class and
  * representation identifier is extracted from the catalog and
  * returned. If there is no representation with the given class
@@ -3908,7 +3598,7 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
  * The memory area for the representation structure should be
  * freed explicitly by the caller, possibly by calling the
  * catalog_free_representation() routine.
- * 
+ *
  * First, the memory hash table is consulted to get the location
  * of the representation in the catalog in terms of a page and a
  * slot identifier. If the memory hash table doesn't have this
@@ -3985,8 +3675,9 @@ start:
 
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
 	{
-	  if (catalog_fixup_missing_disk_representation
-	      (thread_p, class_id_p, repr_id) == NO_ERROR
+	  if (catalog_fixup_missing_disk_representation (thread_p,
+							 class_id_p,
+							 repr_id) == NO_ERROR
 	      && retry_count++ == 0)
 	    {
 	      goto start;
@@ -3997,10 +3688,11 @@ start:
 
   if (disk_repr_p->n_fixed > 0)
     {
-      disk_repr_p->fixed =
-	(DISK_ATTR *) db_private_alloc (thread_p,
-					(sizeof (DISK_ATTR) *
-					 disk_repr_p->n_fixed));
+      disk_repr_p->fixed = (DISK_ATTR *) db_private_alloc (thread_p,
+							   (sizeof (DISK_ATTR)
+							    *
+							    disk_repr_p->
+							    n_fixed));
       if (!disk_repr_p->fixed)
 	{
 	  goto exit_on_error;
@@ -4013,11 +3705,11 @@ start:
 
   if (disk_repr_p->n_variable > 0)
     {
-      disk_repr_p->variable =
-	(DISK_ATTR *) db_private_alloc (thread_p,
-					(sizeof
-					 (DISK_ATTR) *
-					 disk_repr_p->n_variable));
+      disk_repr_p->variable = (DISK_ATTR *) db_private_alloc (thread_p,
+							      (sizeof
+							       (DISK_ATTR) *
+							       disk_repr_p->
+							       n_variable));
       if (!disk_repr_p->variable)
 	{
 	  goto exit_on_error;
@@ -4166,11 +3858,11 @@ catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p)
  * catalog_get_class_info () - Get class information from the catalog
  *   return: Pointer to the class information structure, or NULL.
  *   class_id(in): Class identifier
- * 
+ *
  * Note: The class information structure for the given class is
  * extracted from the catalog and returned. If there is no class
  * in the catalog with the given class identifier, NULL is returned.
- * 
+ *
  * First, the memory hash table is consulted to get the location
  * of the class information  in the catalog in terms of a page
  * and a slot identifier. If the memory hash table doesn't have
@@ -4235,8 +3927,8 @@ start:
 	{
 	  pgbuf_unfix (thread_p, page_p);
 
-	  if (catalog_fixup_missing_class_info (thread_p, class_id_p) ==
-	      NO_ERROR && retry++ == 0)
+	  if ((catalog_fixup_missing_class_info (thread_p, class_id_p) ==
+	       NO_ERROR) && retry++ == 0)
 	    {
 	      goto start;
 	    }
@@ -4268,7 +3960,7 @@ start:
  *   class_id(in): Class identifier
  *   reprid_set(out): Set to the set of representation identifiers for the class
  *   repr_cnt(out): Set to the representation count
- * 
+ *
  * Note: The set of representation identifiers for the specified class
  * is extracted from the catalog and returned in the memory area
  * allocated in this routine and pointed to by reprid_set. The
@@ -4330,11 +4022,11 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p,
 }
 
 /*
- * catalog_get_last_representation_id () - 
+ * catalog_get_last_representation_id () -
  *   return: int
  *   cls_oid(in): Class identifier
  *   repr_id(out): Set to the last representation id or NULL_REPRID
- * 
+ *
  * Note: The representation identifiers directory for the given class
  * is fetched from the catalog and the repr_id parameter is set
  * to the most recent representation identifier, or NULL_REPRID.
@@ -4378,7 +4070,7 @@ catalog_get_last_representation_id (THREAD_ENTRY * thread_p,
  *   return: int
  *   record(in): Record descriptor containing class disk representation info.
  *   classoid(in): Class object identifier
- * 
+ *
  * Note: The disk represntation information for the initial
  * representation of the class and the class specific information
  * is extracted from the record descriptor and stored in the
@@ -4435,7 +4127,7 @@ catalog_insert (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
  *   return: int
  *   record(in): Record descriptor containing class disk representation info.
  *   classoid(in): Class object identifier
- * 
+ *
  * Note: The disk represntation information for the specified class and
  * also possibly the class specific information is updated, if
  * the record descriptor contains a new disk representation, ie.
@@ -4539,7 +4231,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
  * catalog_delete () - Delete class representation information from catalog
  *   return: int
  *   classoid(in): Class object identifier
- * 
+ *
  * Note: All the disk representation information for the class and the
  * class specific information are dropped from the catalog.
  */
@@ -4556,14 +4248,14 @@ catalog_delete (THREAD_ENTRY * thread_p, OID * class_oid_p)
 }
 
 /*
- * Checkdb consistency check routines                     
+ * Checkdb consistency check routines
  */
 
 /*
- * catalog_check_class_consistency () - 
+ * catalog_check_class_consistency () -
  *   return: DISK_VALID, DISK_VALID or DISK_ERROR
  *   class_oid(in): Class object identifier
- * 
+ *
  * Note: This function checks the consistency of the class information
  * in the class and returns the consistency result. It checks
  * if the given class has an entry in the catalog index, and
@@ -4679,7 +4371,7 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
 /*
  * catalog_check_class () - Check if the current class (key) is in a valid state in
  *                     the catalog.
- *   return: int
+ *   return: NO_ERROR or error code
  *   key(in): Index key pointer
  *   val(in): Index value pointer
  *   args(in): Argument data (validity status)
@@ -4693,14 +4385,14 @@ catalog_check_class (THREAD_ENTRY * thread_p, void *key, void *ignore_value,
   *ct_valid = catalog_check_class_consistency (thread_p, (OID *) key);
   if (*ct_valid != DISK_VALID)
     {
-      return false;
+      return ER_FAILED;
     }
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
- * catalog_check_consistency () - Check if catalog is in a consistent (valid) 
+ * catalog_check_consistency () - Check if catalog is in a consistent (valid)
  *                               state.
  *   return: DISK_VALID, DISK_VALID or DISK_ERROR
  */
@@ -4709,9 +4401,8 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID ct_valid = DISK_VALID;
 
-  if (ehash_map
-      (thread_p, &catalog_Id.xhid, catalog_check_class,
-       (void *) &ct_valid) == ER_FAILED && ct_valid == DISK_VALID)
+  if (ehash_map (thread_p, &catalog_Id.xhid, catalog_check_class,
+		 (void *) &ct_valid) == ER_FAILED && ct_valid == DISK_VALID)
     {
       return DISK_ERROR;
     }
@@ -4720,9 +4411,9 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 }
 
 /*
- * catalog_dump_disk_attribute () - 
- *   return: 
- *   atr(in): 
+ * catalog_dump_disk_attribute () -
+ *   return:
+ *   atr(in):
  */
 static void
 catalog_dump_disk_attribute (DISK_ATTR * attr_p)
@@ -4834,7 +4525,7 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
 }
 
 /*
- * min_max_print () - 
+ * min_max_print () -
  *   return: nothing
  *   atr(in): attribute description
  */
@@ -4851,9 +4542,9 @@ catalog_print_min_max (DISK_ATTR * attr_p)
 }
 
 /*
- * catalog_dump_representation () - 
- *   return: 
- *   dr(in): 
+ * catalog_dump_representation () -
+ *   return:
+ *   dr(in):
  */
 static void
 catalog_dump_representation (DISK_REPR * disk_repr_p)
@@ -4887,11 +4578,11 @@ catalog_dump_representation (DISK_REPR * disk_repr_p)
 }
 
 /*
- * ct_printind_entry () - 
- *   return: 
- *   key(in): 
- *   val(in): 
- *   args(in): 
+ * ct_printind_entry () -
+ *   return: NO_ERROR
+ *   key(in):
+ *   val(in):
+ *   args(in):
  */
 static int
 catalog_print_entry (THREAD_ENTRY * thread_p, void *key, void *val,
@@ -4906,7 +4597,7 @@ catalog_print_entry (THREAD_ENTRY * thread_p, void *key, void *val,
 		  keyp->volid, keyp->pageid, keyp->slotid, valp->volid,
 		  valp->pageid, valp->slotid);
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -5249,7 +4940,7 @@ catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * catalog_rv_update () - Recover an update either for undo or redo
  *   return: int
  *   recv(in): Recovery structure
- * 
+ *
  * Note: Recover an update to a record in a slotted page
  */
 int

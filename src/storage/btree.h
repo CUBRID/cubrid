@@ -1,8 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * btree.h: B+tree index manager module(interface)		      
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * btree.h: B+tree index manager module(interface)
  */
 
 #ifndef _BTREE_H_
@@ -12,14 +28,14 @@
 
 #include "config.h"
 
-#include "common.h"
+#include "storage_common.h"
 #include "error_manager.h"
 #include "oid.h"
 #include "statistics.h"
 #include "disk_manager.h"
 #include "object_domain.h"
 #include "query_evaluator.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "recovery.h"
 
 #define SINGLE_ROW_INSERT    1
@@ -61,9 +77,9 @@ struct btid_int
   int part_key_desc;		/* the last partial-key domain is desc */
   int last_key_desc;		/* the last key domain is desc */
   TP_DOMAIN *key_type;
-  TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the 
+  TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the
 				 * non leaf keys might be different.  It
-				 * will be different when the domain of 
+				 * will be different when the domain of
 				 * index is one of the fixed character
 				 * types.  In that case, the domain of
 				 * the non leaf keys will be the varying
@@ -128,9 +144,9 @@ struct btree_scan
 #if defined(SERVER_MODE)
   OID cls_oid;			/* class OID */
 
-  /* 
-   * 'cls_lock_ptr' has the memory address where the lock mode 
-   * acquired on the class oid has been kept. Since the lock mode 
+  /*
+   * 'cls_lock_ptr' has the memory address where the lock mode
+   * acquired on the class oid has been kept. Since the lock mode
    * is kept in the lock acquired entry of the corresponding class,
    * the class lock mode cannot be moved to another memory space
    * during the index scan operation.
@@ -143,14 +159,14 @@ struct btree_scan
   int class_lock_map_count;
   BTREE_CLASS_LOCK_MAP_ENTRY class_lock_map[BTREE_CLASS_LOCK_MAP_MAX_COUNT];
 
-  /* 
+  /*
    * lock_mode, escalated_mode
    */
   LOCK lock_mode;		/* S_LOCK or U_LOCK */
   LOCK escalated_mode;		/* escalated mode of class lock */
 
   /*
-   * Used only in case of TRAN_SERIALIZABLE 
+   * Used only in case of TRAN_SERIALIZABLE
    */
   int prev_KF_satisfied;
   int prev_oid_pos;
@@ -158,7 +174,7 @@ struct btree_scan
 
   int key_range_max_value_equal;
 
-  /* 
+  /*
    * cur_leaf_lsa
    */
   LOG_LSA cur_leaf_lsa;		/* page LSA of current leaf page */
@@ -216,7 +232,7 @@ struct btree_capacity
 #define DBVAL_BUFSIZE   4096
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
 			       TP_DOMAIN * key_type, OID * class_oid,
 			       int attr_id, int unique_btree,
@@ -286,7 +302,7 @@ extern int btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
 					    unique_stat_info);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
 				      DB_VALUE * key, int flag_minkey);
-extern int btree_multicol_key_is_null (DB_VALUE * key);
+extern bool btree_multicol_key_is_null (DB_VALUE * key);
 extern int btree_multicol_key_has_null (DB_VALUE * key);
 extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid,
 				    OID * oid, DB_VALUE * key,

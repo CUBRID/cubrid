@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * elo_class.c - ELO interface
- *
  */
 
 #ident "$Id$"
@@ -14,9 +28,9 @@
 #include <string.h>
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "oid.h"
-#include "server.h"
+#include "server_interface.h"
 #include "object_representation.h"
 #include "work_space.h"
 #include "locator_cl.h"
@@ -25,7 +39,7 @@
 #include "fbo_class.h"
 #include "elo_recovery.h"
 #include "glo_class.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 /* This is used for the page size field in the ELO.  Need to find out what
    the appropriate value is */
@@ -34,13 +48,13 @@
 #define ELO_INVALID_TYPE -3
 
 /*
- * NAME: Elo_volume                                                         
- *                                                                          
- * This is only for integration.  The function lo_create must have the      
- * volume initially specified in the LOID before it can allocate a new one. 
- * I'm not sure how we're supposed to be allocating volumes at this level.  
- * For now, assume that its volume zero.                                    
- * THIS WILL HAVE TO BE CHANGED !!!                                         
+ * NAME: Elo_volume
+ *
+ * This is only for integration.  The function lo_create must have the
+ * volume initially specified in the LOID before it can allocate a new one.
+ * I'm not sure how we're supposed to be allocating volumes at this level.
+ * For now, assume that its volume zero.
+ * THIS WILL HAVE TO BE CHANGED !!!
  */
 
 static short Elo_volume = 0;
@@ -58,16 +72,14 @@ static char elo_mode_check (const char *mode);
 static int elo_flush (ELO_STREAM * elo_stream);
 
 /*
- * LOID FUNCTIONS                               
+ * LOID FUNCTIONS
  */
 
-/* Shouldn't have this level of intelligence here, should go in lo.c */
-
 /*
- * elo_loid_init() - Initialize LARGE OBJECT IDENTIFIER 
- *      return: none 
- *  loid(out) : the LOID object 
- * 
+ * elo_loid_init() - Initialize LARGE OBJECT IDENTIFIER
+ *      return: none
+ *  loid(out) : the LOID object
+ *
  */
 
 static void
@@ -81,10 +93,10 @@ elo_loid_init (LOID * loid)
 
 /*
  * elo_loid_copy() - copy from src LOID to des LOID
- *      return: none 
+ *      return: none
  *  dest(out) : destination LOID
- *  src(in) : source LOID   
- * 
+ *  src(in) : source LOID
+ *
  */
 
 static void
@@ -97,9 +109,9 @@ elo_loid_copy (LOID * dest, LOID * src)
 }
 
 /*
- * elo_get_pathname_internal() - Returns the current pathname of the FBO from 
- *                           the elo struct or from the shadow file recovery 
- *                           queue in mm/recover.c    
+ * elo_get_pathname_internal() - Returns the current pathname of the FBO from
+ *                           the elo struct or from the shadow file recovery
+ *                           queue
  *      return: the pathname of the FBO
  *  glo(in) : the glo object
  *  elo(in) : the ELO object
@@ -127,14 +139,14 @@ elo_get_pathname_internal (DB_OBJECT * glo, DB_ELO * elo,
 
 /*
  * elo_read_from() - reads length bytes from the elo object
- *      return: returns actual number of bytes read or a negative value 
- *              indicating the error received from the operation               
+ *      return: returns actual number of bytes read or a negative value
+ *              indicating the error received from the operation
  *  elo(in) : the elo object
- *  offset(in) : offset to start reading from.   
+ *  offset(in) : offset to start reading from.
  *  length(in) : number of bytes to read
  *  buffer(in) : buffer to read into
  *  glo(in) : the containing Glo instance (for file mgr info)
- * 
+ *
  */
 
 int
@@ -183,16 +195,16 @@ elo_read_from (DB_ELO * elo, const long offset, const int length,
 }
 
 /*
- * elo_write_to() - writes length bytes from buffer over the data in the elo      
+ * elo_write_to() - writes length bytes from buffer over the data in the elo
  *                  starting at offset
- *      return: Returns the number of bytes written or a negative number 
- *              corresponding to the error received during the operation.          
+ *      return: Returns the number of bytes written or a negative number
+ *              corresponding to the error received during the operation.
  *  elo(in) : the elo object
- *  offset(in) : offset to start writing at        
+ *  offset(in) : offset to start writing at
  *  length(in) : number of bytes to write
  *  buffer(in) : buffer to write from
- *  glo(in) : the containing Glo instance (for file mgr info)   
- * 
+ *  glo(in) : the containing Glo instance (for file mgr info)
+ *
  */
 
 int
@@ -277,16 +289,16 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
 }
 
 /*
- * elo_write_to() - inserts length bytes from buffer into the elo object      
- *      return: Returns the number of bytes inserted or a negative number 
- *              corresponding to the error code encountered during     
- *              the operation.                                                    
+ * elo_write_to() - inserts length bytes from buffer into the elo object
+ *      return: Returns the number of bytes inserted or a negative number
+ *              corresponding to the error code encountered during
+ *              the operation.
  *  elo(in) : the elo object
- *  offset(in) : offset to start inserting at       
+ *  offset(in) : offset to start inserting at
  *  length(in) : number of bytes to insert
- *  buffer(in) : buffer to insert data from     
- *  glo(in) : the containing Glo instance (for file mgr info)  
- * 
+ *  buffer(in) : buffer to insert data from
+ *  glo(in) : the containing Glo instance (for file mgr info)
+ *
  */
 
 int
@@ -377,9 +389,9 @@ elo_insert_into (DB_ELO * elo, long offset, int length, char *buffer,
 
 /*
  * elo_delete_from() - deletes length bytes from elo object
- *      return: Returns the number of bytes deleted.                         
+ *      return: Returns the number of bytes deleted.
  *  elo(in) : the elo object
- *  offset(in) : offset to start deleting at  
+ *  offset(in) : offset to start deleting at
  *  length(in) : number of bytes to delete
  *  glo(in) : the glo object
  */
@@ -421,12 +433,12 @@ elo_delete_from (DB_ELO * elo, long offset, int length, DB_OBJECT * glo)
 
 /*
  * elo_get_size() - get the elo objects size
- *      return: Returns the current size of the ELO object or the negative    
- *              value associated with the error code encountered during       
+ *      return: Returns the current size of the ELO object or the negative
+ *              value associated with the error code encountered during
  *              the operation
  *  elo(in) : the elo object
- *  glo(in) : the glo object  
- * 
+ *  glo(in) : the glo object
+ *
  */
 
 long
@@ -465,12 +477,12 @@ elo_get_size (DB_ELO * elo, DB_OBJECT * glo)
 
 /*
  * elo_truncate() - Truncates the elo object at the current position
- *      return: Returns the truncation size or the negative value associated 
- *              with the error code received during the operation       
+ *      return: Returns the truncation size or the negative value associated
+ *              with the error code received during the operation
  *  elo(in) : the elo object
- *  offset(in) : offset to truncate from                                  
- *  glo(in) : the glo object 
- * 
+ *  offset(in) : offset to truncate from
+ *  glo(in) : the glo object
+ *
  */
 
 long
@@ -511,15 +523,15 @@ elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
 
 /*
  * elo_append_to() - appends length bytes from buffer to end of elo object
- *      return: Returns the number of bytes appended or a negative value      
+ *      return: Returns the number of bytes appended or a negative value
  *              corresponding to the error code received during the operation
  *  elo(in) : the elo object
  *  length(in) :   number of bytes in buffer to append
  *  buffer(in) : data to append to end of elo
  *  glo(in) : the containing Glo instance (for file mgr info)
- * 
- * Note : 
- *      The elo's size is adjusted and current position is set to eof.  
+ *
+ * Note :
+ *      The elo's size is adjusted and current position is set to eof.
  */
 
 int
@@ -588,9 +600,9 @@ elo_append_to (DB_ELO * elo, int length, char *buffer, DB_OBJECT * glo)
 
 /*
  * elo_compress() - compresses large objects only
- *      return: returns 0 or error code received during operation       
- *  elo(in) : elo object to compress 
- * 
+ *      return: returns 0 or error code received during operation
+ *  elo(in) : elo object to compress
+ *
  */
 /* TODO : later~~ */
 int
@@ -601,9 +613,11 @@ elo_compress (DB_ELO * elo)
   switch (elo->type)
     {
     case ELO_LO:
-      if ((&elo->loid)->vpid.pageid != NULL_PAGEID &&
-	  (largeobjmgr_compress (&elo->loid) != NO_ERROR))
-	err = er_errid ();
+      if ((&elo->loid)->vpid.pageid != NULL_PAGEID
+	  && (largeobjmgr_compress (&elo->loid) != NO_ERROR))
+	{
+	  err = er_errid ();
+	}
       break;
     case ELO_FBO:
       break;
@@ -618,8 +632,8 @@ elo_compress (DB_ELO * elo)
 
 /*
  * elo_new_elo() - Allocate and initialize area for elo object
- *      return: return the object or NULL if an error occurs.              
- * 
+ *      return: return the object or NULL if an error occurs.
+ *
  */
 
 
@@ -642,9 +656,9 @@ elo_new_elo (void)
 
 /*
  * elo_copy() - Copy an ELO
- *      return: the elo object 
+ *      return: the elo object
  *  src(in) : the elo object
- * 
+ *
  */
 
 DB_ELO *
@@ -668,12 +682,12 @@ elo_copy (DB_ELO * src)
 }
 
 /*
- * elo_create() - Creates a new elo (large object) in the database with an      
+ * elo_create() - Creates a new elo (large object) in the database with an
  *                initial size of 0
- *      return: Returns elo object or NULL if an error occurs during 
+ *      return: Returns elo object or NULL if an error occurs during
  *              the operation
  *  pathname(in) : path name
- * 
+ *
  */
 
 DB_ELO *
@@ -698,7 +712,7 @@ elo_create (const char *pathname)
   else
     {
       elo->type = ELO_FBO;
-      /* formerly called esm_create(pathname) here which didn't   
+      /* formerly called esm_create(pathname) here which didn't
          do anything - what should this be now ? */
       elo->pathname = ws_copy_string (pathname);
       elo->original_pathname = ws_copy_string (pathname);
@@ -711,12 +725,12 @@ elo_create (const char *pathname)
 }
 
 /*
- * elo_destroy() - removes any data associated with LOs, and makes the Glo 
+ * elo_destroy() - removes any data associated with LOs, and makes the Glo
  *                 appear empty
  *      return: NULL
  *  elo(in) : elo object to destroy
- *  glo(in) : the glo object  
- * 
+ *  glo(in) : the glo object
+ *
  */
 /* TODO : later */
 DB_ELO *
@@ -730,8 +744,8 @@ elo_destroy (DB_ELO * elo, DB_OBJECT * glo)
 
 	if (elo != NULL)
 	  {
-	    if ((&elo->loid)->vpid.pageid != NULL_PAGEID &&
-		(largeobjmgr_destroy (&elo->loid) != NO_ERROR))
+	    if ((&elo->loid)->vpid.pageid != NULL_PAGEID
+		&& largeobjmgr_destroy (&elo->loid) != NO_ERROR)
 	      {
 		err = er_errid ();
 	      }
@@ -759,9 +773,9 @@ elo_destroy (DB_ELO * elo, DB_OBJECT * glo)
 
 /*
  * elo_free() - free elo object
- *      return: NULL 
+ *      return: NULL
  *  elo(in) : the elo object to free
- * 
+ *
  */
 
 DB_ELO *
@@ -795,10 +809,10 @@ elo_free (DB_ELO * elo)
 
 /*
  * elo_get_pathname() - return the pathname
- *      return: return the pathname otherwise if object is a large object 
- *              return NULL  
- *  elo(in) : the elo object 
- * 
+ *      return: return the pathname otherwise if object is a large object
+ *              return NULL
+ *  elo(in) : the elo object
+ *
  */
 
 const char *
@@ -808,12 +822,12 @@ elo_get_pathname (DB_ELO * elo)
 }				/* elo_get_pathname */
 
 /*
- * elo_set_pathname() - copies pathname to elo's pathname 
+ * elo_set_pathname() - copies pathname to elo's pathname
  *                      allocating/deallocating space as needed
  *      return: Returns object or NULL on error
  *  elo(in) : the elo object
- *  pathname(in) : string containing the new pathname  
- * 
+ *  pathname(in) : string containing the new pathname
+ *
  */
 
 DB_ELO *
@@ -867,7 +881,7 @@ elo_set_pathname (DB_ELO * elo, const char *pathname)
  * elo_mode_check() - tests the open mode string to see if a legal value was passed
  *      return: will return ELO_READ_ONLY, ELO_READ_WRITE or ELO_MODE_ERROR
  *  mode(in) : open mode string
- * 
+ *
  */
 
 static char
@@ -904,8 +918,8 @@ elo_mode_check (const char *mode)
  * elo_open() - opens and allocates the elo stream
  *      return: return an ELO_STREAM on the elo, or NULL on error
  *  glo(in) : elo to open ELO_STREAM on
- *  mode(in) : open mode string   
- * 
+ *  mode(in) : open mode string
+ *
  */
 
 ELO_STREAM *
@@ -940,10 +954,10 @@ elo_open (DB_OBJECT * glo, const char *mode)
 
 /*
  * elo_close() - closes and deallocates the elo stream
- *      return: Returns the number of bytes written or a negative number 
+ *      return: Returns the number of bytes written or a negative number
  *              corresponding to the error received during the operation
  *  elo_stream(in) : elo stream to deallocate
- * 
+ *
  */
 
 int
@@ -964,11 +978,11 @@ elo_close (ELO_STREAM * elo_stream)
 }
 
 /*
- * elo_flush() - 
- *      return: Returns the number of bytes written or a negative number 
+ * elo_flush() -
+ *      return: Returns the number of bytes written or a negative number
  *              corresponding to the error received during the operation
  *  elo_stream(in) : the elo stream
- * 
+ *
  */
 
 
@@ -977,25 +991,24 @@ elo_flush (ELO_STREAM * elo_stream)
 {
   int bytes_written = 0;
 
-  if (elo_stream->buffer_modified &&
-      elo_stream->buffer_current && (elo_stream->mode == ELO_READ_WRITE))
+  if (elo_stream->buffer_modified
+      && elo_stream->buffer_current && elo_stream->mode == ELO_READ_WRITE)
     {
-      bytes_written =
-	elo_write_to (elo_stream->elo, elo_stream->offset,
-		      elo_stream->bytes_in_buffer, elo_stream->buffer,
-		      elo_stream->glo);
+      bytes_written = elo_write_to (elo_stream->elo, elo_stream->offset,
+				    elo_stream->bytes_in_buffer,
+				    elo_stream->buffer, elo_stream->glo);
     }
   elo_stream->buffer_modified = false;
   return (bytes_written);
 }
 
 /*
- * elo_seek() - seeks to the requested location in the stream.  
- *      return: 
- *  elo_stream(in) : the elo stream 
- *  offset(in) : offset  
- *  origin(in) : where to seek relative from                    
- * 
+ * elo_seek() - seeks to the requested location in the stream.
+ *      return:
+ *  elo_stream(in) : the elo stream
+ *  offset(in) : offset
+ *  origin(in) : where to seek relative from
+ *
  */
 
 int
@@ -1036,8 +1049,8 @@ elo_seek (ELO_STREAM * elo_stream, long offset, int origin)
       elo_stream->buffer_pos = 0;
       return (0);
     }
-  if ((new_offset > elo_stream->offset) &&
-      (new_offset < elo_stream->offset + elo_stream->bytes_in_buffer))
+  if ((new_offset > elo_stream->offset)
+      && (new_offset < elo_stream->offset + elo_stream->bytes_in_buffer))
     {
       elo_stream->buffer_pos = new_offset - elo_stream->offset;
       return (0);
@@ -1046,11 +1059,11 @@ elo_seek (ELO_STREAM * elo_stream, long offset, int origin)
 }
 
 /*
- * elo_getc() - 
+ * elo_getc() -
  *      return: returns the next character of elo_stream as an unsigned char
  *              or END_OF_ELO if an end of file occurs
  *  elo_stream(out) : elo stream
- * 
+ *
  */
 
 int
@@ -1058,8 +1071,8 @@ elo_getc (ELO_STREAM * elo_stream)
 {
   unsigned char return_value;
 
-  if (!((elo_stream->buffer_current) &&
-	(elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
+  if (!((elo_stream->buffer_current)
+	&& (elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
     {
       if (elo_read_next_buffer (elo_stream) == END_OF_ELO)
 	{
@@ -1073,12 +1086,12 @@ elo_getc (ELO_STREAM * elo_stream)
 }
 
 /*
- * elo_gets() - 
- *      return: 
+ * elo_gets() -
+ *      return:
  *  s(in) : string
- *  n(in) : size of buffer (including \0 terminator)  
+ *  n(in) : size of buffer (including \0 terminator)
  *  elo_stream(out) : the stream representation
- * 
+ *
  */
 
 char *
@@ -1089,8 +1102,8 @@ elo_gets (char *s, int n, ELO_STREAM * elo_stream)
   int total_bytes_copied = 0;
   int bytes_to_end_of_buffer;
 
-  if (!((elo_stream->buffer_current) &&
-	(elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
+  if (!((elo_stream->buffer_current)
+	&& (elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
     {
       if (elo_read_next_buffer (elo_stream) == END_OF_ELO)
 	{
@@ -1134,12 +1147,12 @@ elo_gets (char *s, int n, ELO_STREAM * elo_stream)
 }
 
 /*
- * elo_putc() - eputc writes the character c (converted to an unsigned char) 
+ * elo_putc() - eputc writes the character c (converted to an unsigned char)
  *           on elo_stream
  *      return: It returns the character written or END_OF_ELO for error
  *  c(in) : character to put on stream
- *  elo_stream(out) : the stream representation  
- * 
+ *  elo_stream(out) : the stream representation
+ *
  */
 
 int
@@ -1147,8 +1160,8 @@ elo_putc (int c, ELO_STREAM * elo_stream)
 {
   if (elo_stream->mode == ELO_READ_WRITE)
     {
-      if (!((elo_stream->buffer_current) &&
-	    (elo_stream->buffer_pos < elo_stream->buffer_size)))
+      if (!((elo_stream->buffer_current)
+	    && (elo_stream->buffer_pos < elo_stream->buffer_size)))
 	{
 	  elo_read_next_buffer (elo_stream);
 	}
@@ -1165,11 +1178,11 @@ elo_putc (int c, ELO_STREAM * elo_stream)
 }
 
 /*
- * elo_puts() - 
- *      return: 
+ * elo_puts() -
+ *      return:
  *  s(out) : string to write to elo stream
- *  elo_stream(out) : the stream representation  
- * 
+ *  elo_stream(out) : the stream representation
+ *
  */
 
 int
@@ -1182,8 +1195,8 @@ elo_puts (const char *s, ELO_STREAM * elo_stream)
   if (elo_stream->mode == ELO_READ_WRITE)
     {
 
-      if (!((elo_stream->buffer_current) &&
-	    (elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
+      if (!((elo_stream->buffer_current)
+	    && (elo_stream->buffer_pos < elo_stream->bytes_in_buffer)))
 	{
 	  elo_read_next_buffer (elo_stream);
 	}
@@ -1220,13 +1233,12 @@ elo_puts (const char *s, ELO_STREAM * elo_stream)
 
 /*
  * elo_setvbuf() - release the standard buffer, use buf instead
- *      return: Returns 0 or -1 if there is an error.                        
+ *      return: Returns 0 or -1 if there is an error.
  *  elo_stream(out) : elo stream
- *  buf(in/out) : buffer to use instead of default        
+ *  buf(in/out) : buffer to use instead of default
  *  buf_size(in/out) : size of buffer
- * 
+ *
  */
-
 
 int
 elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size)
@@ -1246,11 +1258,11 @@ elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size)
 }
 
 /*
- * elo_copy_to_char() - copies at most length characters from source to target 
- *                      or less if the character c is encountered                   
- *      return: 
- *  target(in) : 
- *  source(in) :   
+ * elo_copy_to_char() - copies at most length characters from source to target
+ *                      or less if the character c is encountered
+ *      return:
+ *  target(in) :
+ *  source(in) :
  *  c(in) : char to search for
  *  length(in) : maximum length
  */
@@ -1279,12 +1291,12 @@ elo_copy_to_char (char *target, char *source, int c, int length)
 }
 
 /*
- * elo_read_next_buffer_from_offset() - Reads the next elo into buffer 
- *      return: returns 0 if successful or END_OF_ELO if the end of the elo 
+ * elo_read_next_buffer_from_offset() - Reads the next elo into buffer
+ *      return: returns 0 if successful or END_OF_ELO if the end of the elo
  *              is reached
  *  elo_stream(out) : the elo stream representation
- *  offset(in) : offset   
- * 
+ *  offset(in) : offset
+ *
  */
 
 static int
@@ -1329,10 +1341,10 @@ elo_read_next_buffer_from_offset (ELO_STREAM * elo_stream, int offset)
 
 /*
  * elo_read_next_buffer() - Reads the next elo into buffer
- *      return: returns 0 if successful or END_OF_ELO if the end of the elo 
+ *      return: returns 0 if successful or END_OF_ELO if the end of the elo
  *              is reached
- *  elo_stream(out) : the elo stream representation  
- * 
+ *  elo_stream(out) : the elo stream representation
+ *
  */
 
 static int

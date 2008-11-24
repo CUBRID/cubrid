@@ -155,7 +155,11 @@
 				Name="broker"
 				>
 				<File
-					RelativePath="..\..\src\broker\as_util.c"
+					RelativePath="..\..\src\broker\broker_filename.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_wsa_init.c"
 					>
 				</File>
 				<File
@@ -163,7 +167,39 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\broker\cas_execute.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_function.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_handle.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\broker\cas_log.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_net_buf.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_network.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_schema_info.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_sql_log2.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_str_like.c"
 					>
 				</File>
 				<File
@@ -172,46 +208,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\broker\cas_xa.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\exec_db.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\file_name.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\func.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\handle_mng.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\net_buf.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\net_cas.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\schema_info.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\sql_log2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\str_like.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\wsa_init.c"
 					>
 				</File>
 			</Filter>

@@ -1,69 +1,49 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * trans.c - translate ESQL statements into sequences of UniCI function calls.
- * 
- * note : Translator is a library which is used by Embedded SQL/X C compiler.
- *  The compiler accepts Embedded SQL/X statements and call this library
- *  functions to emit the corresponding C codes. Each function in this library
- *  emits CUBRID Call Interface functions (prefixed by `uci_') to perform the
- *  work corresponding to the Embbed SQL/X statement at the run-time.
- * 
- *  GENERATION OF UNIQUE ID FOR EACH SOURCE FILE
- * 
- *  Repetitive statements, cursors and dynamic statements are created and then
- *  possibly accessed more than one time by users. Users specify a unique name
- *  for each cursor or dynamic statement. Translator generates serial number
- *  for each repetitive statement. Therefore, these statements are given their
- *  own unique identifier within a C source file. To get unique identifiers
- *  for these statements at run-time (possibly among more than one source
- *  files), we introduce a unique run-time file identifier which will be
- *  associated with the statement identifiers built at compilation time.
- * 
- *  This is accomplished by introducing a static variable in each Embedded
- *  SQL/X C source file (by forcing users to include a header file which
- *  contains a declaration like following.
- * 
- *  static char uci_esqlxc_file;
- * 
- *  Actually, this inclusion can be done automatically by pre-compiler.
- *  During the pre-compilation time of each file, the pre-compiler assigns
- *  a serial number for such statements. This serial number is unique within
- *  a source file. At the run-time, each statement can be identified uniquely
- *  using both the address of `uci_esqlxc_file' and the serial number.
- * 
- *  The caller (parser) should be responsible for the followings
- *      . all indicators should be C_TYPE_SHORT
- *      . db_name/user_name/passwd in tr_connect(), `stmt' in tr_prepare()/
- *        tr_execute_immediate() should be one of C_TYPE_CHAR_ARRAY,
- *        C_TYPE_CHAR_POINTER and C_TYPE_STRING_CONST.
- *      . `obj' in tr_object_{describe,fetch}() should be C_TYPE_OBJECTID.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
+
+/*
+ * esql_translate.c - translate ESQL statements into sequences of 
+ *                    CUBRID CLI function calls.
+ */
+
 #ident "$Id$"
 
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "language_support.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "util_func.h"
 #include "dbi.h"
 #include "esql_translate.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "esql_misc.h"
 
-/* the following definition is subject to changes of esqlx.h which defines
- * stuffs directly exported to users. ESQLX_FILE_ID_VAR_NAME is the
- * name of static variable which all user's esqlx C program should have.
+/* the following definition is subject to changes of cubrid_esql.h which defines
+ * stuffs directly exported to users. ESQL_FILE_ID_VAR_NAME is the
+ * name of static variable which all user's esql C program should have.
  * NOT_FOUND_MACRO_NAME is the macro definition name of SQL_NOT_FOUND
- * in esqlx.h. WARN_CHAR_MACRO_NAME is the macro definition name of
- * SQL_WARNING_CHAR in esqlx.h.
- * 
- * NOTE: Be sure to make these definition consistent with the esqlx.h file.
+ * in cubrid_esql.h. WARN_CHAR_MACRO_NAME is the macro definition name of
+ * SQL_WARNING_CHAR in cubrid_esql.h.
+ *
+ * NOTE: Be sure to make these definition consistent with the cubrid_esql.h file.
  */
-#define	ESQLX_FILE_ID_VAR_NAME		"uci_esqlxc_file"
+#define	ESQL_FILE_ID_VAR_NAME		"uci_esqlxc_file"
 #define	NOT_FOUND_MACRO_NAME		"SQL_NOT_FOUND"
 #define	WARN_CHAR_MACRO_NAME		"SQL_WARNING_CHAR"
 
@@ -165,7 +145,7 @@ static const char *c_type_to_db_type_c[NUM_C_VARIABLE_TYPES] = {
   "DB_TYPE_C_VARBIT"
 };
 
-enum esqlx_msg			/* Message codes for esqlx.msg */
+enum esql_msg			/* Message codes for esql.msg */
 {
   MSG_BAD_CASE = 1
 };
@@ -194,7 +174,7 @@ ESQL_TRANSLATE_TABLE esql_Translate_table = {
 };
 
 /*
- * emit_start() - 
+ * emit_start() -
  * return:
  * leading_brace(in) :
  */
@@ -206,12 +186,12 @@ emit_start (int leading_brace)
       fprintf (FP, "{ ");
     }
   fprintf (FP, "uci_start((void *)&%s, __FILE__, __LINE__, 0x%04x); %s",
-	   ESQLX_FILE_ID_VAR_NAME, pp_uci_opt, NL);
+	   ESQL_FILE_ID_VAR_NAME, pp_uci_opt, NL);
   emit_line_directive ();
 }
 
 /*
- * emit_end() - 
+ * emit_end() -
  * return:
  */
 static void
@@ -224,7 +204,7 @@ emit_end (void)
 }
 
 /*
- * get_quasi_string() - 
+ * get_quasi_string() -
  * return: void
  * ref(in) :
  * buf_str(out) :
@@ -275,7 +255,7 @@ get_quasi_string (HOST_REF * ref,
  *    the given user information. `user_name' can be NULL to indicate
  *    current user's login name. If 'user_name' is NULL, `passwd' has
  *    no meaning. if `passwd' is NULL the empty passwd is assumed
- * return : void 
+ * return : void
  * db_name(in) - pointer to symbol desc of database name
  * user_name(in) - pointer to symbol desc of user name
  * passwd(in) - pointer to symbol desc of passwd
@@ -348,7 +328,7 @@ tr_connect (HOST_REF * db_name, HOST_REF * user_name, HOST_REF * passwd)
 
 /*
  * tr_disconnect() - Emit the code to disconnect from the current database
- * return : void 
+ * return : void
  */
 static void
 tr_disconnect (void)
@@ -394,17 +374,8 @@ tr_rollback (void)
 }
 
 /*
- * tr_static() - emit codes to execute the given statements.  If `num_in_vars'
- *    is positive, it is assumed to be the number of input host variables
- *    provided by the user, and `in_vars' is assumed to be an array of that
- *    many HOST_REF structures.  If `num_in_vars' is 0 and 'in_desc_name' is
- *    non-NULL, `in_desc_name' is assumed to be the name of an sqlda structure
- *    that specifies the input host variables.  If `num_in_vars' is 0 and
- *    'in_desc_name' is NULL, it is assumed that there are no input host
- *    variables.  Similar rules apply to 'num_out_vars', `out_vars', and
- *    'out_desc_name'.  If repetitive is 0, the statement is regarded as an ad
- *    hoc statement, otherwise, a repetitive statement.
- *    statement_coverage: all static statements
+ * tr_static() - emit codes to execute the given statements.   
+ *
  * return/side-effects: none
  * stmt(in) : pointer to statement string
  * length(in) : length of stmt
@@ -517,16 +488,8 @@ tr_print_n_string (char *stmt, int length)
 }
 
 /*
- * tr_open_cs() - emits codes to open a cursor. if `stmt' is not NULL, 'stmt'
- *    will be regarded as it contains SELECT stmt, otherwise, 'stmt_no' will
- *    specify prepared stmt no. if 'num_in_vars' is positive, it is assumed
- *    that a user specifies host variables, if it is not positive and
- *    'desc_name' is not NULL, it is assumed that a user specifies
- *    a descriptor, if 'num_in_vars' is not positive and 'desc_name' is NULL,
- *    it is assumed that neither host variables nor descriptor is given.
- * 
- *    statement-coverage: OPEN statement
- * 
+ * tr_open_cs() - emits codes to open a cursor. 
+ *
  * return : none
  * cs_no(in) : cursor number
  * stmt(in) : statement contents or prepared stmt name
@@ -535,7 +498,7 @@ tr_print_n_string (char *stmt, int length)
  * num_in_vars(in) : # of input variables
  * in_vars(in) : array of input variable descriptions
  * desc_name(in) : descriptor name if given
- * 
+ *
  */
 static void
 tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
@@ -611,9 +574,9 @@ tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
  *    a descriptor, if `num_out_vars' is not positive and `desc_name' is NULL,
  *    it is assumed that neither host variables nor descriptor is given
  *    (in most cases, it will cause run time warning).
- * 
+ *
  *    statement-coverage: FETCH statement
- * 
+ *
  * return : none
  * cs_no(in) : cursor number
  * num_out_vars(in) : # of output variables
@@ -681,9 +644,9 @@ tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
 /*
  * tr_update_cs() - emits the codes to update the current object of the
  *    cursor using the given set expression.
- * 
+ *
  *    statement-coverage: [REPEAT] UPDATE ...WHERE CURRENT OF cs_name
- * 
+ *
  * return : none
  * cs_no(in) : cursor id
  * text(in) : update statement
@@ -691,7 +654,7 @@ tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
  * repetitive(in) :
  * num_in_vars(in) : # of input host variables
  * in_vars(in) : array of input host variables
- * 
+ *
  * note : 'text' should NOT include WHERE CURRENT OF cs_name
  */
 static void
@@ -961,7 +924,7 @@ tr_execute_immediate (HOST_REF * stmt)
  * num_attrs(in) : # of attribute names
  * attr_names(in) : array of attribute name to be described
  * desc_name(in) : SQLDA name to hold the description
- * 
+ *
  * note: Caller should make sure the 'obj' refers to C_TYPE_OBJECTID.
  */
 static void
@@ -1010,7 +973,7 @@ tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names,
  * num_out_vars(in) : # of output host variables
  * out_vars(in) : array of output host variables
  * desc_name(in) : SQLDA name if given
- * 
+ *
  * note : Caller should make sure the `obj' refers to C_TYPE_OBJECTID.
  */
 static void
@@ -1105,7 +1068,7 @@ tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names,
  * repetitive(in) : true if repetitive
  * num_in_vars(in) : # of input host variables
  * in_vars(in) : array of pointers to input host variables
- * 
+ *
  * note : - Caller should make sure the `obj' refers to	C_TYPE_OBJECTID.
  *        - 'set_expr' should NOT include 'SET' keyword itself.
  */
@@ -1227,17 +1190,6 @@ emit_put_db_value (HOST_REF * host)
   const char *bufsize_str = NULL;
   const char *fmt = "db_col_type(%s)";
 
-  /*
-   * Print the indicator expression first, so we can be done with it.
-   * pp_get_ind_addr_expr() indirectly shares a scratch buffer with
-   * pp_get_addr_expr(), so we need to print the indicator string out
-   * before we try to do anything else, lest we inadvertently clobber
-   * it.
-   *
-   * pp_get_input_size() uses a different buffer than either
-   * pp_get_expr() or pp_get_addr_expr(), so we it's ok just to hold on
-   * to the pointer for that result.
-   */
   fprintf (FP, "  uci_put_value(%s, ", pp_get_ind_addr_expr (host));
 
   prec_str = "0";
@@ -1615,12 +1567,12 @@ emit_whenever (void)
 
 /*
  * escape_string() - copies the input string and escapes ("\") quotes, single
- *    quotes, null, and backslashes. 
+ *    quotes, null, and backslashes.
  * return : char *
  * in_str(in) :
  * length(in) :
  * counter(out) :
- * 
+ *
  * note : calling routine must free the string when through.
  */
 static char *
@@ -1640,7 +1592,7 @@ escape_string (const char *in_str, int length, int *counter)
 
   add_count = 0;
   /*
-   * Need four times the size of the input string  since this is the 
+   * Need four times the size of the input string  since this is the
    * max size the out string could be.
    */
   if (length * 4 + 1 <= 1024)
@@ -1660,9 +1612,8 @@ escape_string (const char *in_str, int length, int *counter)
        * of form feed, precede it by an escape character in the emitted
        * string
        */
-      if ((*in_str == '"') ||
-	  (*in_str == '\'') ||
-	  (*in_str == '\\') || (*in_str == '\n') || (*in_str == '\f'))
+      if ((*in_str == '"') || (*in_str == '\'')
+	  || (*in_str == '\\') || (*in_str == '\n') || (*in_str == '\f'))
 	{
 
 	  *temp = '\\';
@@ -1698,7 +1649,7 @@ escape_string (const char *in_str, int length, int *counter)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Emit current char.
 	   * Increment input string pointer by 1.
 	   * Increment output string pointer by 1.

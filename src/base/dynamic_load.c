@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * dynload.c - Dynamic loader for run-time inclusion of object code
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * dynamic_load.c - Dynamic loader for run-time inclusion of object code
  */
 
 #ident "$Id$"
@@ -34,10 +48,10 @@
 
 #include "porting.h"
 
-#include "intl.h"
+#include "intl_support.h"
 #include "dynamic_load.h"
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "util_func.h"
@@ -1751,8 +1765,8 @@ cleanup:
 	  int rc;
 	  int max_retry = 0;
 
-	  while (((rc = unlink (tmp_file)) != 0) &&
-		 (max_retry < MAX_UNLINK_RETRY))
+	  while (((rc = unlink (tmp_file)) != 0)
+		 && (max_retry < MAX_UNLINK_RETRY))
 	    {
 	      if (rc < 0)
 		{
@@ -1903,8 +1917,8 @@ cleanup:
 	  int rc;
 	  int max_retry = 0;
 
-	  while (((rc = unlink (tmp_file)) != 0) &&
-		 (max_retry < MAX_UNLINK_RETRY))
+	  while (((rc = unlink (tmp_file)) != 0)
+		 && (max_retry < MAX_UNLINK_RETRY))
 	    {
 	      if (rc < 0)
 		{

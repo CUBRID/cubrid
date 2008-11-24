@@ -1,3 +1,21 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
@@ -170,36 +188,36 @@
 #define PACKAGE_BUGREPORT ""
 
 /* Define to the full name of this package. */
-#define PACKAGE_NAME "CUBRID"
+#define PACKAGE_NAME "CUBRID 2008"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CUBRID 8.1.0"
+#define PACKAGE_STRING "CUBRID 2008 R1.1"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "cubrid"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "8.1.0"
+#define PACKAGE_VERSION "R1.1"
 
 /* Max path length */
 /* #undef PATH_MAX */
 
-/* The size of `char', as computed by sizeof. */
+/* The size of a `char', as computed by sizeof. */
 #define SIZEOF_CHAR 1
 
-/* The size of `int', as computed by sizeof. */
+/* The size of a `int', as computed by sizeof. */
 #define SIZEOF_INT 4
 
-/* The size of `long', as computed by sizeof. */
+/* The size of a `long', as computed by sizeof. */
 #define SIZEOF_LONG 4
 
-/* The size of `long long', as computed by sizeof. */
+/* The size of a `long long', as computed by sizeof. */
 #define SIZEOF_LONG_LONG 8
 
-/* The size of `short', as computed by sizeof. */
+/* The size of a `short', as computed by sizeof. */
 #define SIZEOF_SHORT 2
 
-/* The size of `void *', as computed by sizeof. */
+/* The size of a `void *', as computed by sizeof. */
 #define SIZEOF_VOID_P 4
 
 /* Define to 1 if the `S_IS*' macros in <sys/stat.h> do not work properly. */
@@ -215,7 +233,7 @@
 /* #undef TM_IN_SYS_TIME */
 
 /* Version number of package */
-#define VERSION "8.1.0"
+#define VERSION "R1.1"
 
 /* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
    `char[]'. */
@@ -238,6 +256,5 @@
 
 #include "version.h"
 #include "system.h"
-
 #endif /* _CONFIG_H_ */
 

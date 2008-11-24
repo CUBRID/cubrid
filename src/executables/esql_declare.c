@@ -1,8 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * decl.c - Declaration-handling code for embedded SQL/X preprocessor.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * esql_declare.c - Declaration-handling code for esql preprocessor.
  */
 
 #ident "$Id$"
@@ -16,10 +32,10 @@
 #define   ZZ_PREFIX em_
 #include "zzpref.h"
 #define  INSIDE_SCAN_DOT_C
-#include "estokens.h"
-#include "memory_manager_2.h"
+#include "esql_grammar_tokens.h"
+#include "memory_alloc.h"
 #include "esql_translate.h"
-#include "vstr.h"
+#include "variable_string.h"
 
 #define NFRAMES		8
 #define MAX_LONGS_ALLOWED 1
@@ -190,21 +206,6 @@ pp_new_type_spec (void)
 void
 pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 {
-  /*
-   * In theory, you could save space by modifying all declarators to
-   * point at a single specifier.  This makes deletions much more
-   * difficult, because you can no longer just free every node in the
-   * chain as it is used.  The problem is complicated further by
-   * typedefs, which may be declared at an outer level, but can't be
-   * deleted when an inner-level symbol is discarded.  It's easiest
-   * just to make a copy.
-   *
-   * Typedefs are handled like this:  if the incoming storage class is
-   * TYPEDEF, then the typedef appeared in the current declaration and
-   * the tdef bit is set at the head of the cloned type chain and the
-   * storage class in the clone is cleared; otherwise, the clone's tdef
-   * bit is cleared (it's just not copied by st_clone_type());
-   */
   LINK *clone_start, *clone_end;
 
   for (; decl_chain; decl_chain = decl_chain->next)
@@ -216,28 +217,6 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 	  exit (1);
 	}
 
-      /*
-       * If the specifier is a VARCHAR specifier, either we're seeing
-       * it as part of a direct declarator:
-       *
-       *      varchar x[15];
-       *
-       * or we're seeing it as a result of a typedef:
-       *
-       *      typedef varchar v15[15];
-       *      v15 x;
-       *
-       * In the former case, the decl.s.val.v_struct field will still be NULL, 
-       * and we'll have an ARRAY declarator at the end of the declarator
-       * chain we're working on.  In this case, we want to eat the
-       * ARRAY declarator and create a new, anonymous struct for the
-       * declaration, taking the size of the internal char array from
-       * the array declarator.
-       *
-       * In the latter case, the decl.s.val.v_struct field will not be NULL. it
-       * will point to the struct created by some application of the
-       * first case.  In this case we need do nothing.
-       */
       if (IS_PSEUDO_TYPE (clone_start)
 	  && clone_start->decl.s.val.v_struct == NULL)
 	{
@@ -554,13 +533,13 @@ pp_decl_init (void)
   pp_nesting_level = -1;	/* It will get bumped by push_name_scope(). */
 
   pp_name_scope_base = pp_malloc (NFRAMES * sizeof (SCOPE));
-  memset(pp_name_scope_base, 0, NFRAMES * sizeof (SCOPE));
+  memset (pp_name_scope_base, 0, NFRAMES * sizeof (SCOPE));
   pp_name_scope_limit = pp_name_scope_base + NFRAMES;
   pp_current_name_scope = NULL;
   pp_push_name_scope ();
 
   pp_spec_scope_base = pp_malloc (NFRAMES * sizeof (SPEC_STATE));
-  memset(pp_spec_scope_base, 0, NFRAMES * sizeof(SPEC_STATE));
+  memset (pp_spec_scope_base, 0, NFRAMES * sizeof (SPEC_STATE));
   pp_spec_scope_limit = pp_spec_scope_base + NFRAMES;
   pp_current_spec_scope = NULL;
   pp_push_spec_scope ();
@@ -1388,18 +1367,6 @@ pp_print_decl (SYMBOL * sym, varstring * buf, int preechoed)
   pp_print_link (sym->type, buf, D_ARRAY, preechoed);
   if (preechoed == 0)
     {
-      /* A real printer would do the right thing with the typedef
-       * here, but since the only context in which this printer is being
-       * used right now is the preprocessor context, we'll use this kludge
-       * to fix the preprocessor's problem, which is this:
-       *
-       * The "typedef" keyword has already been echoed during parsing.  If
-       * we print it here, we'll have a repeated keyword that will produce
-       * a syntactically incorrect program.
-       *
-       * If we ever really start printing declarations, this problem will
-       * have to be addressed more thoroughly.
-       */
       if (sym->type->tdef)
 	{
 	  vs_prepend (buf, TOK_TYPEDEF TOK_SPACE);
@@ -1412,15 +1379,15 @@ pp_print_decl (SYMBOL * sym, varstring * buf, int preechoed)
  *    decl_chain.
  * return : void
  * decl_chain(in): a list of symbols to be printed.
- * preechoed(in):  true if called from esqlx parser, false otherwise.
+ * preechoed(in):  true if called from esql parser, false otherwise.
  *
  * note :   Because we echo most declarations while parsing them, this
  *    implementation currently concerns itself ONLY with VARCHAR declarations.
- *    The esqlx parser sees and echoes storage class specifiers (auto,
+ *    The esql parser sees and echoes storage class specifiers (auto,
  *    register, static, extern) and type qualifiers (const, volatile) before
  *    noting the VARCHAR token. therefore we don't want to reprint them and
  *    preechoed will always be true. If pp_print_decls is called from anywhere
- *    other than the esqlx parser (e.g. test programs), preechoed should be
+ *    other than the esql parser (e.g. test programs), preechoed should be
  *    specified as false.
  */
 void

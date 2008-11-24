@@ -1,33 +1,42 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * dber.h - Error codes
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * error_code.h - Error codes
  *
  * Note: When an entry is added here, please ensure that the array,
  *       er.msg file should be updated with a matching entry.
  */
 
-#ifndef _DBER_H_
-#define _DBER_H_
+#ifndef _ERROR_CODE_H_
+#define _ERROR_CODE_H_
 
 #ident "$Id$"
 
-/* TODO: ER_FAILED is -1, and ER_GENERIC_ERROR should be started from -2.
- * ER_FAILED is used to replace ER_FAILURE so that it need to differentiate
- * ER_FAILED and ER_GENERIC_ERROR.
- *  by iamyaw (Mar 30, 2008) */
-/* TODO: Fix for all error code names to have correct module prefix.
- *  by iamyaw (Mar 30, 2008) */
 #ifdef NO_ERROR
 #undef NO_ERROR
 #endif
 #define NO_ERROR                                       0
 #define ER_FAILED                                     -1
-#define ER_GENERIC_ERROR                              -1
 
-#define ER_OUT_OF_VIRTUAL_MEMORY                      -2
-#define ER_INVALID_ENV                                -3
+#define ER_GENERIC_ERROR                              -2
+#define ER_OUT_OF_VIRTUAL_MEMORY                      -3
 #define ER_INTERRUPT                                  -4
 
 #define ER_MHT_NOTFOUND                               -5
@@ -1181,4 +1190,4 @@
 
 #define ER_LAST_ERROR                               -966
 
-#endif /* _DBER_H_ */
+#endif /* _ERROR_CODE_H_ */

@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * glo_class.c - Glo method source file
- *
  */
 
 #ident "$Id$"
@@ -27,8 +41,8 @@
 #include "elo_recovery.h"
 #include "elo_class.h"
 #include "object_accessor.h"
-#include "schema_manager_3.h"
-#include "memory_manager_2.h"
+#include "schema_manager.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "locator_cl.h"
@@ -466,8 +480,8 @@ esm_Glo_read (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
     }
 
   /* guard against negative glo position */
-  if (return_value >= 0 &&
-      update_position (esm_glo_object_p, return_value + offset) >= 0)
+  if (return_value >= 0
+      && update_position (esm_glo_object_p, return_value + offset) >= 0)
     {
       db_make_int (return_argument_p, return_value);
     }
@@ -622,8 +636,8 @@ esm_Glo_write (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
     }
 
   /* guard against negative glo position */
-  if (return_value >= 0 &&
-      update_position (esm_glo_object_p, return_value + offset) >= 0)
+  if (return_value >= 0
+      && update_position (esm_glo_object_p, return_value + offset) >= 0)
     {
       db_make_int (return_argument_p, return_value);
     }
@@ -710,8 +724,8 @@ esm_Glo_insert (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
     }
 
   /* guard against negative glo position */
-  if (return_value >= 0 &&
-      update_position (esm_glo_object_p, return_value + offset) >= 0)
+  if (return_value >= 0
+      && update_position (esm_glo_object_p, return_value + offset) >= 0)
     {
       db_make_int (return_argument_p, return_value);
     }
@@ -943,9 +957,9 @@ esm_Glo_append (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   offset = (int) elo_get_size (glo_p, esm_glo_object_p);
 
   /* guard against negative glo position */
-  if (return_value >= 0 &&
-      update_position (esm_glo_object_p,
-		       (offset * unit_size) / BASE_BYTE) >= 0)
+  if (return_value >= 0
+      && update_position (esm_glo_object_p,
+			  (offset * unit_size) / BASE_BYTE) >= 0)
     {
       db_make_int (return_argument_p, return_value);
     }
@@ -1629,8 +1643,7 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 		  &value3) == 0)
 	    {
 	      length = DB_GET_INTEGER (&value1);
-	      if ((DB_VALUE_TYPE (&value1) == DB_TYPE_INTEGER) &&
-		  (length > 0))
+	      if (DB_VALUE_TYPE (&value1) == DB_TYPE_INTEGER && length > 0)
 		{
 		  total_length += length;
 		  rc = write (fd, buffer, length);

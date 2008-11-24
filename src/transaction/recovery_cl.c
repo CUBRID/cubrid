@@ -1,45 +1,35 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * rvcl.c - 
- * 									       
- * 	Overview: RECOVERY FUNCTIONS (AT CLIENT)			       
- * 									       
- * This module list all undo and recovery functions available to the log and   
- * recovery manager in the client. The actual implementation of the functions  
- * is located somewhere else. The name of a recovery function follows the      
- * module prefix conventions where the function is located and it should also  
- * include the "rv" prefix to indicate that this is a recovery function.       
- * Example: foo_rv_hello ...> function hello in module foo		       
- * The log manager provides interfaces using constants instead of the recovery 
- * function. The recovery functions are registered into an array of recovery   
- * functions. The index of the array is used to interact with the log and      
- * recovery manager. Every element of the array contains the following 	       
- * structure.								       
- * 									       
- * rvfun_array:								       
- *   recv_index   -->> Used for debugging purposes			       
- *   undo_fun     -->> Undo function associated with the action		       
- *   redo_fun     -->> Redo function associated with the action		       
- *   dump_undofun -->> Function to dump undo information (for debugging)       
- *   dump_redofun -->> Function to dump redo information (for debugging)       
- * 									       
- * A similar array of recovery functions available for server actions such as  
- * multimedia resides in the server (see rv.c)				       
- * 									       
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * recovery_cl.c - 
  */
 
 #ident "$Id$"
 
 #include "config.h"
 
-#include "recover_cl.h"
+#include "recovery_cl.h"
 #include "error_manager.h"
 #include "elo_recovery.h"
 
 /*
- * THE ARRAY OF CLIENT RECOVERY FUNCTIONS                    
+ * THE ARRAY OF CLIENT RECOVERY FUNCTIONS
  */
 struct rvcl_fun RVCL_fun[] = {
   {RVMM_INTERFACE,
@@ -52,7 +42,7 @@ struct rvcl_fun RVCL_fun[] = {
 /*
  * rv_rcvcl_index_string - RETURN STRING ASSOCIATED WITH THE CLIENT LOG_RVINDEX
  *
- * return: 
+ * return:
  *
  *   rcvindex(in): Numeric recovery index
  *

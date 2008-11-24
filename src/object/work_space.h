@@ -1,10 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *      work_space.h: External definitions for the workspace manager.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * work_space.h: External definitions for the workspace manager.
+ *
  */
 
 #ifndef _WORK_SPACE_H_
@@ -15,7 +30,7 @@
 #include <stdio.h>
 #include "quick_fit.h"
 #include "oid.h"
-#include "common.h"
+#include "storage_common.h"
 #include "dbtype.h"
 #include "dbdef.h"
 
@@ -91,16 +106,7 @@ struct db_object
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
 };
 
-/*
- * WS_REFERENCE
- *    This must be the header of any structure that is pointed to by a
- *    reference MOP.  This belongs in or.h but I don't want to drag that
- *    into the workspace yet.  For now, make damn sure that the definition
- *    of DB_REFERENCE in or.h follows this structure.
- *    The only field in this structure is a pointer back to the reference
- *    mop.  This is necessary so that if the reference MOP is garbage
- *    collected, we can remove the cached pointer in the reference object.
- */
+
 
 typedef struct ws_reference WS_REFERENCE;
 struct ws_reference
@@ -115,22 +121,7 @@ struct ws_reference
  */
 typedef void (*WS_REFCOLLECTOR) (WS_REFERENCE * refobj);
 
-/*
- * REFMOP accessors
- *    A reference mop is used in special circumstances to provde a way to
- *    refer directly to an attribute value within an object withoug going
- *    through the object MOP for every access.  These are MOPs so that
- *    they can use the same garbage collection mechanism.  These are NOT
- *    handles to persistent objects, reference mops have no object identifer.
- *    These are not in the workspace object table so they cannot be confused
- *    with persistent mops.  The fields in the MOP for reference mops are
- *    used in a completely different way and are accessed with the macros
- *    below to make it clear what the fields do.  Ideally this should be
- *    a seperate structure that the garbage collector understands.
- *    In order to make it harder to confuse reference and normal mops,
- *    always leave the class field NULL in reference mops and leave it
- *    with a NULL oid.  The reference bit will also be set.
- */
+
 
 #define WS_IS_REFMOP(mop) 		((mop)->reference)
 
@@ -146,17 +137,7 @@ typedef void (*WS_REFCOLLECTOR) (WS_REFERENCE * refobj);
 #define WS_GET_REFMOP_COLLECTOR(mop) 	(WS_REFCOLLECTOR) (mop)->version
 #define WS_SET_REFMOP_COLLECTOR(mop, coll) (mop)->class_link = (MOP) coll
 
-/*
- * MOID
- *    This is how OID's are represented in the memory for an object in
- *    the workspace.  This is exactly like the OID structure in oid.h with
- *    the addition of an object pointer field.
- *    The object pointer will remain NULL until the value of this attribute
- *    is requested at which time a MOP will be created for this OID, cached
- *    in the pointer field and returned.  This allows us to delay the
- *    creation of MOPs until they are needed which can result in memory
- *    savings if there are a lot of object attributes that aren't used.
- */
+
 
 typedef struct ws_memoid WS_MEMOID;
 typedef struct ws_memoid *MOID;
@@ -686,4 +667,5 @@ extern int ws_hide_new_old_trigger_obj (MOP op);
 extern void ws_unhide_new_old_trigger_obj (MOP op);
 
 extern bool ws_need_flush (void);
+
 #endif /* _WORK_SPACE_H_ */

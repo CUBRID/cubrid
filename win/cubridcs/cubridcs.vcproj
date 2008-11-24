@@ -185,7 +185,11 @@
 				Name="base"
 				>
 				<File
-					RelativePath="..\..\src\base\adj_ar.c"
+					RelativePath="..\..\src\base\adjustable_array.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\area_alloc.c"
 					>
 				</File>
 				<File
@@ -193,7 +197,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\co.c"
+					RelativePath="..\..\src\base\condition_handler.c"
 					>
 				</File>
 				<File
@@ -213,6 +217,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\fixed_alloc.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\getopt_long.c"
 					>
 				</File>
@@ -221,7 +229,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\intl.c"
+					RelativePath="..\..\src\base\intl_support.c"
 					>
 				</File>
 				<File
@@ -229,19 +237,19 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\memory_alloc.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\memory_hash.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\memory_manager_1.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\base\memory_manager_2.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\base\message_catalog.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\misc_string.c"
 					>
 				</File>
 				<File
@@ -269,15 +277,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\ustring.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\base\util_func.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\vstr.c"
+					RelativePath="..\..\src\base\variable_string.c"
 					>
 				</File>
 			</Filter>
@@ -345,35 +349,31 @@
 				Name="connection"
 				>
 				<File
-					RelativePath="..\..\src\connection\anchor.c"
+					RelativePath="..\..\src\connection\client_support.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\connless.c"
+					RelativePath="..\..\src\connection\connection_cl.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\general.c"
+					RelativePath="..\..\src\connection\connection_globals.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\globals.c"
+					RelativePath="..\..\src\connection\connection_less.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\net.c"
+					RelativePath="..\..\src\connection\connection_list_cl.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\oob.c"
+					RelativePath="..\..\src\connection\connection_support.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\queue.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\connection\top.c"
+					RelativePath="..\..\src\connection\oob_handler.c"
 					>
 				</File>
 				<File
@@ -385,7 +385,7 @@
 				Name="jsp"
 				>
 				<File
-					RelativePath="..\..\src\jsp\jsp_sky.c"
+					RelativePath="..\..\src\jsp\jsp_cl.c"
 					>
 				</File>
 			</Filter>
@@ -397,11 +397,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\communication\network_interface_sky.c"
+					RelativePath="..\..\src\communication\network_cl.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\communication\network_sky.c"
+					RelativePath="..\..\src\communication\network_interface_cl.c"
 					>
 				</File>
 			</Filter>
@@ -417,10 +417,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\classdef.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\object\elo_class.c"
 					>
 				</File>
@@ -429,11 +425,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\elo_holder2.c"
+					RelativePath="..\..\src\object\elo_recovery.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\elo_recovery.c"
+					RelativePath="..\..\src\object\esm_class.c"
 					>
 				</File>
 				<File
@@ -442,18 +438,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\object\glo_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\memory_manager_3.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\memory_manager_4.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\memory_manager_5.c"
 					>
 				</File>
 				<File
@@ -469,7 +453,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\object_print_1.c"
+					RelativePath="..\..\src\object\object_print.c"
 					>
 				</File>
 				<File
@@ -481,27 +465,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\primch.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\object\quick_fit.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\schema_manager_1.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\schema_manager_2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\schema_manager_3.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\schema_manager_4.c"
+					RelativePath="..\..\src\object\schema_manager.c"
 					>
 				</File>
 				<File
@@ -509,7 +477,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\set_object_1.c"
+					RelativePath="..\..\src\object\set_object.c"
 					>
 				</File>
 				<File
@@ -517,7 +485,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\transform_sky.c"
+					RelativePath="..\..\src\object\transform_cl.c"
 					>
 				</File>
 				<File
@@ -525,15 +493,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\virtual_object_1.c"
+					RelativePath="..\..\src\object\virtual_object.c"
 					>
 				</File>
 				<File
 					RelativePath="..\..\src\object\work_space.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\wslist.c"
 					>
 				</File>
 			</Filter>
@@ -541,35 +505,19 @@
 				Name="optimizer"
 				>
 				<File
-					RelativePath="..\..\src\optimizer\bitset.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\optimizer\info.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\optimizer\plan_generation.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\optimizer\query_graph_1.c"
+					RelativePath="..\..\src\optimizer\query_bitset.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\optimizer\query_graph_2.c"
+					RelativePath="..\..\src\optimizer\query_graph.c"
 					>
 				</File>
 				<File
 					RelativePath="..\..\src\optimizer\query_planner.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\optimizer\query_planner_1.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\optimizer\query_planner_2.c"
 					>
 				</File>
 				<File
@@ -589,15 +537,39 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\parser\dbi.c"
+					RelativePath="..\grammar\csql_grammar.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\parser\csql_grammar.g"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						ExcludedFromBuild="true"
+						>
+						<Tool
+							Name="VCCustomBuildTool"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						ExcludedFromBuild="true"
+						>
+						<Tool
+							Name="VCCustomBuildTool"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\grammar\csql_grammar_err.c"
+					>
+				</File>
+				<File
+					RelativePath="..\grammar\csql_grammar_scan.c"
 					>
 				</File>
 				<File
 					RelativePath="..\..\src\parser\double_byte_support.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\evaluate.c"
 					>
 				</File>
 				<File
@@ -613,23 +585,23 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\parser\parse_dbi.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\parser\parse_evaluate.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\parser\parse_tree.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\parser\parse_tree_1.c"
+					RelativePath="..\..\src\parser\parse_tree_cl.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\parser\parse_tree_3.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\qp_mem.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\qp_util.c"
+					RelativePath="..\..\src\parser\parser_support.c"
 					>
 				</File>
 				<File
@@ -637,47 +609,11 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\parser\scanner_support.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\parser\semantic_check.c"
-					>
-				</File>
-				<File
-					RelativePath="..\grammar\sqerr.c"
-					>
-				</File>
-				<File
-					RelativePath="..\grammar\sqlx_grammar.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\sqlx_grammar.g"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						ExcludedFromBuild="true"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						ExcludedFromBuild="true"
-						>
-						<Tool
-							Name="VCCustomBuildTool"
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\sqs.c"
-					>
-				</File>
-				<File
-					RelativePath="..\grammar\sqscan.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\support_functinos.c"
 					>
 				</File>
 				<File
@@ -685,23 +621,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\parser\view_transform_1.c"
+					RelativePath="..\..\src\parser\view_transform.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\parser\view_transform_2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\xasl_generation_1.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\xasl_generation_2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\parser\xasl_generation_3.c"
+					RelativePath="..\..\src\parser\xasl_generation.c"
 					>
 				</File>
 			</Filter>
@@ -717,91 +641,15 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\query\execute_schema_1.c"
+					RelativePath="..\..\src\query\execute_schema.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\query\execute_schema_2.c"
+					RelativePath="..\..\src\query\execute_statement.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\query\execute_schema_4.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_schema_6.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_schema_8.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_schema_9.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_10.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_11.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_12.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_13.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_14.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_15.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_3.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_4.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_5.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_7.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_8.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\execute_statement_9.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\numeric.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\qp_regu.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\query\qp_xmcl.c"
+					RelativePath="..\..\src\query\numeric_opfunc.c"
 					>
 				</File>
 				<File
@@ -817,21 +665,17 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\query\string.c"
+					RelativePath="..\..\src\query\string_opfunc.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\query\xvarcl.c"
+					RelativePath="..\..\src\query\xasl_to_stream.c"
 					>
 				</File>
 			</Filter>
 			<Filter
 				Name="storage"
 				>
-				<File
-					RelativePath="..\..\src\storage\common.c"
-					>
-				</File>
 				<File
 					RelativePath="..\..\src\storage\oid.c"
 					>
@@ -841,7 +685,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\storage\value_convert.c"
+					RelativePath="..\..\src\storage\storage_common.c"
 					>
 				</File>
 			</Filter>
@@ -853,7 +697,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\transaction\locator_bt.c"
+					RelativePath="..\..\src\transaction\locator.c"
 					>
 				</File>
 				<File
@@ -861,15 +705,15 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\transaction\lock_bt.c"
+					RelativePath="..\..\src\transaction\lock_table.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\transaction\log_comm.c"
 					>
 				</File>
 				<File
 					RelativePath="..\..\src\transaction\log_compress.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\transaction\logcp.c"
 					>
 				</File>
 				<File
@@ -885,11 +729,23 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\..\src\executables\extract_object.c"
+					RelativePath="..\..\src\executables\csql.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\extract_schema.c"
+					RelativePath="..\..\src\executables\csql_result.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\executables\csql_result_format.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\executables\csql_session.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\executables\csql_support.c"
 					>
 				</File>
 				<File
@@ -897,15 +753,23 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\iqutil.c"
+					RelativePath="..\..\src\executables\load_object.c"
 					>
 				</File>
 				<File
-					RelativePath="..\grammar\ld.c"
+					RelativePath="..\..\src\executables\loaddb.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\ld.g"
+					RelativePath="..\..\src\executables\loader.c"
+					>
+				</File>
+				<File
+					RelativePath="..\grammar\loader_grammar.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\executables\loader_grammar.g"
 					>
 					<FileConfiguration
 						Name="Debug|Win32"
@@ -925,23 +789,11 @@
 					</FileConfiguration>
 				</File>
 				<File
-					RelativePath="..\grammar\lderr.c"
+					RelativePath="..\grammar\loader_grammar_err.c"
 					>
 				</File>
 				<File
-					RelativePath="..\grammar\ldscan.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\load_object.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\loaddb.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\loader.c"
+					RelativePath="..\grammar\loader_grammar_scan.c"
 					>
 				</File>
 				<File
@@ -949,23 +801,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\pccurses.c"
+					RelativePath="..\..\src\executables\unload_object.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\sqlx.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\sqlx_result.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\sqlx_result_format.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\executables\sqlx_session.c"
+					RelativePath="..\..\src\executables\unload_schema.c"
 					>
 				</File>
 				<File

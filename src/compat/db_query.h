@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * db_query.h - Query interface header file(Client Side)
  */
 
@@ -30,10 +46,10 @@ struct db_query_type
 {
   struct db_query_type *next;
   DB_COL_TYPE col_type;		/* Column type */
-  char *name;		/* Column name */
-  char *attr_name;	/* Attribute name */
-  char *spec_name;	/* Spec name */
-  char *original_name;	/* user specified column name */
+  char *name;			/* Column name */
+  char *attr_name;		/* Attribute name */
+  char *spec_name;		/* Spec name */
+  char *original_name;		/* user specified column name */
   DB_TYPE db_type;		/* Column data type */
   int size;			/* Column data size */
   SM_DOMAIN *domain;		/* Column domain information */
@@ -107,12 +123,12 @@ struct db_query_result
 
 extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
 
-extern int db_execute_with_values (const char *SQLX_query,
+extern int db_execute_with_values (const char *CSQL_query,
 				   DB_QUERY_RESULT ** result,
 				   DB_QUERY_ERROR * query_error,
 				   int arg_count, DB_VALUE * vals);
 
-extern int db_query_execute_oid (const char *SQLX_query,
+extern int db_query_execute_oid (const char *CSQL_query,
 				 DB_QUERY_RESULT ** result,
 				 DB_QUERY_ERROR * query_error);
 
@@ -177,7 +193,7 @@ extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list,
 					 SM_DOMAIN ** domain_list,
 					 SM_DOMAIN ** src_domain_list,
 					 int cnt, bool oid_included);
-extern int db_query_execute_immediate (const char *SQLX_query,
+extern int db_query_execute_immediate (const char *CSQL_query,
 				       DB_QUERY_RESULT ** result,
 				       DB_QUERY_ERROR * query_error);
 extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list,

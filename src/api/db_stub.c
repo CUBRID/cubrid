@@ -1,4 +1,27 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * db_stub.c -
+ */
+
 #include "config.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -6,15 +29,15 @@
 #include "db_stub.h"
 #include "db.h"
 #include "parser.h"
-#include "schema_manager_3.h"
-#include "execute_schema_8.h"
-#include "execute_statement_11.h"
+#include "schema_manager.h"
+#include "execute_schema.h"
+#include "execute_statement.h"
 #include "boot_cl.h"
 #include "system_parameter.h"
 #include "authenticate.h"
 #include "glo_class.h"
 #include "object_accessor.h"
-#include "jsp_earth.h"
+#include "jsp_sr.h"
 
 #define API_PROGRAM_NAME "CUBRID C API"
 
@@ -218,7 +241,7 @@ static API_RESULTSET_IFS RS_IFS_ = {
 };
 
 /*
- * stmt_remove_error_info - 
+ * stmt_remove_error_info -
  *    return:
  *    pstmt():
  */
@@ -243,7 +266,7 @@ stmt_remove_error_info (CI_STMT_STRUCTURE * pstmt)
 }
 
 /*
- * conn_destroyf - 
+ * conn_destroyf -
  *    return:
  *    ptr():
  */
@@ -397,13 +420,13 @@ rs_destroyf (BH_BIND * ptr)
 	      pstmt->rs_info[stmt_index].rs = NULL;
 	    }
 
-	  if ((prsmeta != NULL) &&
-	      !(pstmt->stmt_status | CI_STMT_STATUS_PREPARED))
+	  if ((prsmeta != NULL)
+	      && !(pstmt->stmt_status | CI_STMT_STATUS_PREPARED))
 	    {
-	      retval =
-		bh_interface->bind_to_handle (bh_interface,
-					      (BH_BIND *) prsmeta,
-					      (BIND_HANDLE *) & hrsmeta);
+	      retval = bh_interface->bind_to_handle (bh_interface,
+						     (BH_BIND *) prsmeta,
+						     ((BIND_HANDLE *)
+						      & hrsmeta));
 	      if (retval == NO_ERROR)
 		{
 		  retval = bh_interface->destroy_handle (bh_interface,
@@ -1308,8 +1331,8 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
 
       stmt_make_error_info (pstmt, statement_id);
 
-      if (pstmt->opt.exec_continue_on_error &&
-	  statement_id != ER_IT_EMPTY_STATEMENT)
+      if (pstmt->opt.exec_continue_on_error
+	  && statement_id != ER_IT_EMPTY_STATEMENT)
 	{
 	  pstmt->rs_info[stmt_idx].metainfo.affected_row = -1;
 
@@ -1644,8 +1667,8 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
 
-  if ((pstmt->stmt_status & CI_STMT_STATUS_PREPARED) &&
-      (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if ((pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
+      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       /* read db values from session->parser->host_variables */
       dbval = pstmt->session->parser->host_variables;
@@ -1653,8 +1676,8 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
   else
     {
       /* read db values from stmt's val_table if (is_set == true) */
-      if ((pstmt->param_value_is_set == NULL) ||
-	  (pstmt->param_value_is_set[index - 1] == false))
+      if ((pstmt->param_value_is_set == NULL)
+	  || (pstmt->param_value_is_set[index - 1] == false))
 	{
 	  ER_SET_AND_RETURN (ER_INTERFACE_PARAM_IS_NOT_SET);
 	}
@@ -1898,8 +1921,8 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 
 	      while (pnext != NULL)
 		{
-		  if ((pnext->handle_type == HANDLE_TYPE_RMETA) &&
-		      (pnext->stmt_idx == i))
+		  if ((pnext->handle_type == HANDLE_TYPE_RMETA)
+		      && (pnext->stmt_idx == i))
 		    {
 		      rs_ptr->prsmeta = pnext;
 		      break;
@@ -2171,8 +2194,8 @@ res_delete_row_internal (BH_INTERFACE * bh_interface,
       return er_errid ();
     }
 
-  if ((tpl_oid.domain.general_info.is_null) ||
-      (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
+  if ((tpl_oid.domain.general_info.is_null)
+      || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_GENERIC);
     }
@@ -2302,8 +2325,8 @@ rs_set_db_value (void *impl, int index, DB_VALUE * val)
       return er_errid ();
     }
 
-  if ((tpl_oid.domain.general_info.is_null) ||
-      (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
+  if ((tpl_oid.domain.general_info.is_null)
+      || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_GENERIC);
     }
@@ -2990,13 +3013,12 @@ stmt_release_children (BH_INTERFACE * bh_interface,
 	{
 	  do
 	    {
-	      if (resptr->handle_type == HANDLE_TYPE_RESULTSET ||
-		  resptr->handle_type == HANDLE_TYPE_RMETA)
+	      if (resptr->handle_type == HANDLE_TYPE_RESULTSET
+		  || resptr->handle_type == HANDLE_TYPE_RMETA)
 		{
-		  retval =
-		    bh_interface->bind_to_handle (bh_interface,
-						  (BH_BIND *) resptr,
-						  &rs_handle);
+		  retval = bh_interface->bind_to_handle (bh_interface,
+							 (BH_BIND *) resptr,
+							 &rs_handle);
 		  if (retval != NO_ERROR)
 		    {
 		      ER_SET_AND_RETURN (retval);
@@ -3012,12 +3034,12 @@ stmt_release_children (BH_INTERFACE * bh_interface,
 		}
 	      else
 		{
-		  retval =
-		    bh_interface->bind_get_next_sibling (bh_interface,
-							 (BH_BIND *)
-							 resptr,
-							 (BH_BIND **) &
-							 nextresptr);
+		  retval = bh_interface->bind_get_next_sibling (bh_interface,
+								(BH_BIND *)
+								resptr,
+								(BH_BIND
+								 **)
+								(&nextresptr));
 		  resptr = nextresptr;
 		}
 	    }
@@ -3654,8 +3676,8 @@ ci_stmt_add_batch_query_impl (COMMON_API_STRUCTURE * pst,
       ER_SET_AND_RETURN (ER_INTERFACE_IS_PREPARED_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) &&
-      (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED)
+      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_BATCH_STATEMENT);
     }
@@ -3738,8 +3760,8 @@ ci_stmt_add_batch_impl (COMMON_API_STRUCTURE * pst)
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_PREPARED_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) &&
-      (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED)
+      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_BATCH_STATEMENT);
     }
@@ -3868,8 +3890,8 @@ ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * pst,
       pstmt->pconn->need_defered_commit = false;
     }
 
-  retval =
-    stmt_exec_immediate_internal (bh_interface, pstmt, sql, len, rs, r);
+  retval = stmt_exec_immediate_internal (bh_interface, pstmt, sql, len,
+					 rs, r);
 
   pstmt->stmt_status |= CI_STMT_STATUS_EXECUTED;
 
@@ -4133,8 +4155,8 @@ ci_stmt_prepare_impl (COMMON_API_STRUCTURE * pst, const char *sql, size_t len)
 
   bh_interface = pstmt->pconn->bh_interface;
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED) &&
-      (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
+      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       /* executed with exec_immediate before */
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_SUPPORTED_OPERATION);
@@ -4234,8 +4256,8 @@ ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * pst,
   pstmt = (CI_STMT_STRUCTURE *) pst;
   bh_interface = pstmt->pconn->bh_interface;
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED) &&
-      !(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
+      && !(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
@@ -4731,13 +4753,14 @@ ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * pst, int *line,
 }
 
 /*
- * ci_stmt_get_query_type_impl - 
+ * ci_stmt_get_query_type_impl -
  *    return:
  *    pst():
  *    type(out):
  */
 static int
-ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst, SQLX_CMD_TYPE * type)
+ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst,
+			     CUBRID_STMT_TYPE * type)
 {
   CI_STMT_STRUCTURE *pstmt;
 
@@ -4748,8 +4771,8 @@ ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst, SQLX_CMD_TYPE * type)
       ER_SET_AND_RETURN (ER_INTERFACE_IS_BATCH_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED) &&
-      !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)
+      && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_EXECUTED);
     }
@@ -4763,7 +4786,7 @@ ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst, SQLX_CMD_TYPE * type)
 }
 
 /*
- * ci_stmt_get_start_line_impl - 
+ * ci_stmt_get_start_line_impl -
  *    return:
  *    pst():
  *    line(out):
@@ -4780,8 +4803,8 @@ ci_stmt_get_start_line_impl (COMMON_API_STRUCTURE * pst, int *line)
       ER_SET_AND_RETURN (ER_INTERFACE_IS_BATCH_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED) &&
-      !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)
+      && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_EXECUTED);
     }
@@ -4795,7 +4818,7 @@ ci_stmt_get_start_line_impl (COMMON_API_STRUCTURE * pst, int *line)
 }
 
 /*
- * ci_collection_new_impl - 
+ * ci_collection_new_impl -
  *    return:
  *    conn():
  *    coll():

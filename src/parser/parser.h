@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * parser.h - Parser module functions
  */
 
@@ -14,7 +30,7 @@
 #include <stdarg.h>
 #include "dbtype.h"
 #include "dbdef.h"
-#include "parse_tree_3.h"
+#include "parse_tree.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -377,7 +393,7 @@ extern "C"
 
   extern void pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolved (const PT_NODE * expr);
-  extern int pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser,
 					 const PT_NODE * statement);
@@ -537,7 +553,7 @@ extern "C"
   extern void pt_reset_error (PARSER_CONTEXT * parser);
   extern int pt_has_error (const PARSER_CONTEXT * parser);
 
-  extern int pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern bool pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);
 
   extern int pt_statement_line_number (const PT_NODE * stmt);
 

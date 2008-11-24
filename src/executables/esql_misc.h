@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * esql_misc.h - Prototypes of all interesting inter-module definitions.
  */
 
@@ -14,7 +30,7 @@
 #include "esql_host_variable.h"
 #include "esql_hash.h"
 #include "parser.h"
-#include "vstr.h"
+#include "variable_string.h"
 
 /* True iff the default size of an int is long. */
 #define HOST_N_REFS(p)  ((p) ? (p)->n_refs : 0)
@@ -161,22 +177,7 @@ extern int yylineno;
 extern int errors;
 extern ECHO_FN echo_fn;
 
-/*
- * 'varchar' declarations expand to anonymous structs, so that
- *
- *      varchar x[15];
- *
- * winds up looking like
- *
- *      struct {
- *          DB_INDICATOR length;
- *          char array[15];
- *      } x;
- *
- * The names of the struct fields are kept here as macros in case there's
- * a need to change them; that should minimize the amount of code with
- * actual literals in it.
- */
+
 extern const char *VARCHAR_ARRAY_NAME;
 extern const char *VARCHAR_LENGTH_NAME;
 extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.         */

@@ -1,3 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
 package cubridmanager;
 
 import java.util.ArrayList;
@@ -45,7 +75,6 @@ import cubridmanager.action.StartServerAction;
 import cubridmanager.action.StopServerAction;
 import cubridmanager.action.UserManagementAction;
 import cubridmanager.cas.CASItem;
-import cubridmanager.cas.action.CASVersionAction;
 import cubridmanager.cas.action.DeleteBrokerAction;
 import cubridmanager.cas.action.ResetCASAdminLogAction;
 import cubridmanager.cas.action.RestartAPServerAction;
@@ -188,7 +217,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 	private static RefreshAction refreshActionOnToolbar;
 	private static RefreshIntervalAction refreshIntervalActionOnToolbar;
 	private static ServerVersionAction serverVersionActionOnToolbar;
-	private static CASVersionAction cASVersionActionOnToolbar;
 	public static StartServerAction startServerActionOnToolbar;
 	public static StopServerAction stopServerActionOnToolbar;
 	private static CreateAction createActionOnToolbar;
@@ -226,7 +254,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 	public static LockinfoAction lockinfoAction;
 	public static TraninfoAction traninfoAction;
 	public static RefreshIntervalAction refreshIntervalAction;
-	public static CASVersionAction cASVersionAction;
 	// public static DBServerPropertyAction dBServerPropertyAction;
 	// public static DownloadFilesAction downloadFilesAction;
 	public static CreateNewUserAction createNewUserAction;
@@ -423,8 +450,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				"icons/refresh_interval.png");
 		serverVersionActionOnToolbar = new ServerVersionAction(Messages
 				.getString("TOOL.SERVERVERSION"), "icons/version.png");
-		cASVersionActionOnToolbar = new CASVersionAction(Messages
-				.getString("TOOL.CASVERSION"), "icons/cas_version.png");
 		startServerActionOnToolbar = new StartServerAction(Messages
 				.getString("TOOL.STARTSERVER"), "icons/start.png");
 		stopServerActionOnToolbar = new StopServerAction(Messages
@@ -482,8 +507,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				+ "...", "icons/refresh_interval_16.png");
 		serverVersionAction = new ServerVersionAction(Messages
 				.getString("TOOL.SERVERVERSION"), "icons/version_16.png");
-		cASVersionAction = new CASVersionAction(Messages
-				.getString("TOOL.CASVERSION"), "icons/cas_version_16.png");
 
 		dBLogoutAction = new DBLogout(Messages.getString("TOOL.DBLOGOUT"), null);
 		startServerAction = new StartServerAction(Messages
@@ -919,7 +942,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		helpMenu.add(querySampleAction);
 		helpMenu.add(new Separator());
 		helpMenu.add(serverVersionAction);
-		helpMenu.add(cASVersionAction);
 		helpMenu.add(new Separator());
 		helpMenu.add(aboutAction);
 
@@ -957,14 +979,12 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		toolbar.add(new Separator());
 
 		toolbar.add(serverVersionActionOnToolbar);
-		toolbar.add(cASVersionActionOnToolbar);
 	}
 
 	private static void disable_all() {
 		refreshActionOnToolbar.setEnabled(false);
 		refreshIntervalActionOnToolbar.setEnabled(false);
 		serverVersionActionOnToolbar.setEnabled(false);
-		cASVersionActionOnToolbar.setEnabled(false);
 		startServerActionOnToolbar.setEnabled(false);
 		stopServerActionOnToolbar.setEnabled(false);
 		createActionOnToolbar.setEnabled(false);
@@ -1009,7 +1029,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		lockinfoAction.setEnabled(false);
 		traninfoAction.setEnabled(false);
 		refreshIntervalAction.setEnabled(false);
-		cASVersionAction.setEnabled(false);
 		// dBServerPropertyAction.setEnabled(false);
 		// downloadFilesAction.setEnabled(false);
 		createNewUserAction.setEnabled(false);
@@ -1107,10 +1126,8 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 			managerLogAction.setEnabled(true);
 
 			serverVersionAction.setEnabled(true);
-			cASVersionAction.setEnabled(true);
 			refreshAction.setEnabled(true);
 			serverVersionActionOnToolbar.setEnabled(true);
-			cASVersionActionOnToolbar.setEnabled(true);
 			refreshActionOnToolbar.setEnabled(true);
 
 			Current_auth = null;
@@ -1450,7 +1467,6 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				manager.add(new Separator());
 				manager.add(ApplicationActionBarAdvisor.refreshIntervalAction);
 				manager.add(ApplicationActionBarAdvisor.setParameterAction);
-				manager.add(ApplicationActionBarAdvisor.cASVersionAction);
 			} else if (Current_select.equals(BrokerStatus.ID)) {
 				manager.add(ApplicationActionBarAdvisor.refreshIntervalAction);
 			} else if (Current_select.equals(BrokerJob.ID)) {

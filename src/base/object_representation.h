@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * object_representation.h - Definitions related to the representation of
  *        objects on disk and in memory.
  *        his file is shared by both the client and server.
@@ -21,15 +37,15 @@
 #endif /* !WINDOWS */
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "oid.h"
 #include "dbtype.h"
-#include "byteord.h"
-#include "memory_manager_4.h"
+#include "byte_order.h"
+#include "memory_alloc.h"
 
 /*
  * NUMERIC TYPE SIZES
- * 
+ *
  * These constants define the byte sizes for the fundamental
  * primitives types as represented in memory and on disk.
  * WARNING: The disk size for the "short" type is actually the same
@@ -44,7 +60,7 @@
 
 /*
  * DISK IDENTIFIER SIZES
- * 
+ *
  * These constants describe the size and contents of various disk
  * identifiers as they are represented in a communication buffer.
  * The OID can also be used in an attribute value.
@@ -82,7 +98,7 @@
 
 /*
  * EXTENDED TYPE SIZES
- * 
+ *
  * These define the sizes and contents of the primitive types that
  * are not simple numeric types.
  */
@@ -315,25 +331,7 @@
   ((OR_GET_INT(OR_VAR_TABLE_ELEMENT((table), (index) + 1))) - \
    (OR_GET_INT(OR_VAR_TABLE_ELEMENT((table), (index)))))
 
-/*
- * OBJECT HEADER
- * 
- * These define the format of the header of the disk representation of
- * an object.  Both class objects and instance objects will follow this
- * convention.
- * 
- * BOUND BIT NOTES:
- * These are being added in a manner that won't cause invalidation
- * of existing databases.  Databases cannot be invalidated until release 2.0.
- * 
- * The presence of a bound bit array is indicated by the high bit in the
- * representation id word.
- * 
- * The bound bits will be inserted AFTER the values of the fixed attributes
- * in the object.  This will allow the attribute offsets in the catalog
- * to remain unchanged, regardless of whether a particular disk representation
- * has bound bits or not.
- */
+
 
 /* OBJECT HEADER LAYOUT */
 #define OR_HEADER_SIZE  20	/* oid & two integers & flag word */
@@ -489,7 +487,7 @@
 
 /*
  * SET BOUND BIT ACCESSORS
- * 
+ *
  * Should make sure that the set actually has these before using.
  * Its essentially the same as OR_GET_SET_VAR_TABLE since these will
  * be in the same position and can't both appear at the same time.
@@ -530,26 +528,11 @@
           *OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) &  \
           ~OR_MULTI_BOUND_BIT_MASK(element)
 
-/*
- * SUBSTRUCTURE HEADER
- * 
- * Substructures to represent "nested objects" or ADT's.
- * 
- * They are currently used only in the disk representation of classes, but
- * this could be the basis of a more general ADT mechanism.
- * 
- * A substructure domain looks just like a "object" domain, except that
- * the basic type is DB_TYPE_SUB rather than DB_TYPE_OBJECT.  The only
- * domain parameter is the OID of the substructure class.
- * 
- * A substructure stored on disk will have a header consisting only
- * of the a representation id and a flag word.  Following the header
- * is the offset table like any other object.
- */
+
 
 /*
  * OR_SUB_HEADER_SIZE
- * 
+ *
  * Used to tag each substructure.  Same as the object header currently.
  *   class oid, repid, flags
  */
@@ -557,7 +540,7 @@
 
 /*
  * OR_SUB_DOMAIN_AND_HEADER_SIZE
- * 
+ *
  * Hack for the class transformer, since we always currently know what the
  * substructure lists contain, this allows us to skip over the packed domain
  * quickly.  Must match the stuff packed by or_put_sub_domain_and_header().
@@ -569,20 +552,7 @@
 
 #define OR_GET_VARIABLE_TYPE(ptr) (OR_GET_INT((int *)ptr))
 
-/*
- * CLASS REPRESENTATION OFFSETS
- * 
- * These are VERY magic numbers used by functions that walk through then
- * the disk representations of classes.  These should be limited to the
- * functions in orsr.c.
- *
- * They are entirely dependent on the structure of the class disk representation.
- * The catalog entries for the disk representation are in tf.c but 
- * since the catalog is going away, these may no longer be necessary.
- *
- * The disk representation is parsed by the tfcl.c routines which are kept
- * in sync wyth the tf.c definitions.  
- */
+
 
 /* class */
 #define ORC_CLASS_VAR_ATT_COUNT		15
@@ -641,18 +611,7 @@
 #define ORC_DOMAIN_SETDOMAIN_INDEX	0
 
 /* MEMORY REPRESENTATION STRUCTURES */
-/*
- * DB_BINARY
- *    This data type is similar to DB_TYPE_STRING except that it keeps
- *    a length with the data array allowing the data to have imbedded
- *    bytes with value zero.  Can be usefull as a small "blob" without
- *    going through the overhead of a Glo.
- *    These are limited in size to 64K, partly so that we don't have
- *    to waste a full word in the disk representation to store the size
- *    since these are only for small things.  For anything larger,
- *    a Glo should be used.  We may even want to make the maximum size
- *    smaller (less than a page size).
- */
+
 #define OR_BINARY_MAX_LENGTH 65535
 #define OR_BINARY_LENGTH_MASK 0xFFFF
 #define OR_BINARY_PAD_SHIFT  16
@@ -670,7 +629,7 @@ struct db_binary
  *    It encapsulates ownership information that must be maintained
  *    by these two types.  General routines can be written to maintain
  *    ownership information for both types.
- * 
+ *
  */
 typedef struct db_reference DB_REFERENCE;
 struct db_reference
@@ -685,7 +644,7 @@ struct db_reference
  *    This is the run-time state structure for an ELO.
  *    The ELO is part of the implementation of the GLO and is not
  *    used directly by the API.
- * 
+ *
  */
 typedef enum db_elo_type DB_ELO_TYPE;
 enum db_elo_type
@@ -708,17 +667,7 @@ struct db_elo
   long position;
 };
 
-/*
- * SETREF
- *    This is an external handle to set objects.  Since sets can be referenced
- *    directly without going through an object/attribute lookup each time,
- *    we need to be able to detach the application pointer to the
- *    set from the actual storage of the set which may be swapped out of
- *    the workspace at any time.  Application access to sets
- *    will always be done through the SETREF structure.  In a way
- *    these are like MOPs except they are not "objects" and are not
- *    garbage collected.
- */
+
 typedef struct db_set SETREF;
 struct db_set
 {
@@ -745,11 +694,9 @@ typedef struct setobj SETOBJ;
 
 /*
  * MISC OBSOLETE CONSTANTS
- * 
+ *
  * Find out where these are used and change the references to use
  * the official names in dbtype.h.
- * Most of the references are probably in the ancient API test functions
- * like test_basic_func_interf.c.
  */
 
 #define SET_TYPE 	DB_TYPE
@@ -795,8 +742,6 @@ typedef DB_ELO ELO;
 #define M_won		DB_CURRENCY_WON
 
 /*
- * or.c externals
- * 
  * OR_TYPE_SIZE
  *    Returns the byte size of the disk representation of a particular
  *    type.  Returns -1 if the type is variable and the size cannot
@@ -828,37 +773,13 @@ union { \
 #define OR_ALIGNED_BUF_START(abuf) (abuf.buf)
 #define OR_ALIGNED_BUF_SIZE(abuf) (sizeof(abuf.buf))
 
-/*
- * OR_INFINITE_POINTER
- *    This is used when synthesizing a temporary OR_BUF for pack/unpack
- *    style functions whose implementations are actually stored in
- *    get/put functions.  In these cases, we just build up a dummy
- *    OR_BUF to pass down to the get/put function, since the get/put
- *    function is going to be checking for buffer overflow/underflow,
- *    we have to put a suitably large "ending" pointer in the buffer
- *    to prevent errors.
- *    This number is used for this.  It will be architecture dependent.
- */
+
 
 /* currently assuming that sizeof(long) == sizof(void *) */
 /* TODO: LLP64 system problem */
 #define OR_INFINITE_POINTER ((void *)(~0UL))
 
-/*
- * OR_BUF
- * State structure used by the or_get_ and or_put_ functions.
- *
- * This is key structure for the methods of packing/unpacking values that 
- * adds some extensions to the basic or_pack_ or_unpack_ functions.
- * 
- * Here, there is a state structure kept that maintains a running buffer
- * pointer that is advanced as the data is packed.  It also records a
- * jmp_buf so you can perform a longjmp to abort the data packing if the
- * buffer overflows or some other exceptional thing happens.
- * 
- * This is used by the transformer on the client for packing/unpacking
- * the disk representation of objects.
- */
+
 typedef struct or_buf OR_BUF;
 struct or_buf
 {
@@ -869,7 +790,6 @@ struct or_buf
   int error_abort;
   jmp_buf env;
 
-  /* private structure inside tfcl.c */
   struct or_fixup *fixups;
 };
 
@@ -985,7 +905,7 @@ extern char *or_unpack_db_value_array (char *buffer, DB_VALUE ** val,
 extern char *or_unpack_elo (char *ptr, void **elo_ptr);
 
 /* pack/unpack support functions */
-extern int or_packed_string_length (char *string);
+extern int or_packed_string_length (const char *string);
 extern int or_align_length (int length);
 extern int or_align_length_for_btree (int length);
 extern int or_packed_key_length (DB_TYPE key_type, void *value);

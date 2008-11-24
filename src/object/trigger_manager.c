@@ -1,26 +1,40 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * trigger_manager.c - Trigger Manager
- *
  */
 
 #ident "$Id$"
 
 #include "config.h"
 
-#include "ustring.h"
-#include "memory_manager_2.h"
+#include "misc_string.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "trigger_manager.h"
 #include "memory_hash.h"
 #include "work_space.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "authenticate.h"
 #include "db.h"
 #include "parser.h"
@@ -69,7 +83,7 @@
  */
 
 
-#define MAX_USER_NAME 32	/* actually its 8, should be in au.h */
+#define MAX_USER_NAME 32	/* actually its 8 */
 
 static char namebuf[MAX_USER_NAME];
 
@@ -1494,20 +1508,6 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
       if (activity->statement == NULL
 	  || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
-	  /*
-	   * Dump the compile errors into the er_ system.
-	   * Is doing this at all usefull? We don't have any guarentee that
-	   * these are being displayed and the last error may not be
-	   * particularly meaningful.  Could just set a general "couldn't
-	   * compile activity" error and be done with it.
-	   *
-	   * NOTE: this uses ER_EMERGENCY_ERROR to display the error
-	   * message text.  This contains only a %s format symbol because
-	   * the error emssage was already formatted using the message catalog.
-	   * There is similar code in vdb.c that uses ERR_CSS_ERROR_FROM_SERVER
-	   * for the same effect.  Not sure this is such a good idea, there
-	   * should be a particular error reserved for this purpose.
-	   */
 	  err = pt_get_errors ((PARSER_CONTEXT *) activity->parser);
 	  if (err == NULL)
 	    {
@@ -1588,35 +1588,6 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
 
 /* TRIGGER STRUCTURE & OBJECT MAP */
 
-/*
- * The trigger trigger structure is a run-time C structure
- * that represents the state of a trigger.  It is extracted from the
- * trigger database object.  Using trigger structures simplifies operations
- * that need repeated accesses to the trigger attributes.
- * It is used as a cache so we don't have to keep doing db_get() on the trigger
- * objects in order to figure things out.  We can also maintain pointers
- * to main-memory things like compiled representations of the expressions
- * which we can't do in a persistent object.
- *
- * The trigger object map is used to map a trigger object handle
- * (instance of db_trigger) into a corresponding trigger memory structure.
- *
- * Internally, we use trigger structures for everything, trigger object handles
- * are used only by the API.  It might be possible to dispense with this
- * difference and use trigger structures in the API since callers must
- * go through the approved API functions anyway to access the trigger
- * objects.
- *
- * It would be nice if this kind of "alternate" representation could
- * be generalized in order to make this kind of caching more effecient
- * and automatic.  One possibility is to introduce "property lists"
- * on DB_OBJECT structures.  With property lists, we can associated
- * arbitrary run-time structures with MOPs without modifying the contents
- * of the object and without having to worry about losing the pointers
- * if the object is swapped out.  We would still have to deal with what
- * to do with the property values when the MOP is garbage collected however.
- *
- */
 
 /*
  * validate_trigger() - This is used to check the validity of a cached
@@ -1657,16 +1628,6 @@ validate_trigger (TR_TRIGGER * trigger)
       if (object_to_trigger (object_p, trigger))
 	return er_errid ();
 
-      /*
-       * Formerly, we would return an error here if the expressions don't
-       * compile.  Since expressions that were once good, can stop compiling
-       * if the references classes are deleted, we can't just abort here
-       * if something goes wrong, instead, mark the trigger as INVALID
-       * and return.  This is especially important if we're trying to drop
-       * a trigger.  If we returned an error here, then tr_map_trigger
-       * would fail, tr_find_trigger would fail, and we would give an
-       * erroneous error message.
-       */
 
       if (compile_trigger_activity (trigger, trigger->condition, 1))
 	{
@@ -1810,8 +1771,8 @@ register_user_trigger (DB_OBJECT * object)
   int save;
 
   AU_DISABLE (save);
-  if (Au_user != NULL &&
-      (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -1890,8 +1851,8 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
     }
 
   AU_DISABLE (save);
-  if (Au_user != NULL &&
-      (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -1943,8 +1904,8 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter,
 
   *trigger_list = NULL;
 
-  if (Au_user != NULL &&
-      (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -1962,8 +1923,9 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter,
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_OBJECT (&value) != NULL)
 		    {
 		      /* deleted objects should have been filtered by now */
 		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
@@ -2043,8 +2005,8 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  if (Au_user != NULL &&
-      (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL
+      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2063,8 +2025,9 @@ tr_update_user_cache (void)
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_OBJECT (&value) != NULL)
 		    {
 		      /* deleted objects will have been filtered by now */
 		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
@@ -2715,17 +2678,6 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
   db_make_int (&value, (int) TR_STATUS_INVALID);
   if (cache != NULL)
     {
-      /*
-       * Don't validate the cache because it doesn't need to
-       * be compiled it hasn't been by now.  Do a quick map on the
-       * trigger object list to get to the caches.  If they exist, we
-       * can mark them invalid.  If they don't exist, we don't bother
-       * with creating them.
-       *
-       * Note: Changed to perform a full map on the trigger object because
-       * we need to cache the trigger (if it's not already cached) so
-       * that we can mark it as invalid.  - JB 3/12/96
-       */
       for (m = cache->objects; m != NULL; m = m->next)
 	{
 	  trigger = tr_map_trigger (m->op, 0);
@@ -2798,8 +2750,8 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
   int max, save;
 
   AU_DISABLE (save);
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2869,8 +2821,8 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
   int max, i, found;
 
   *trigger_p = NULL;
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2888,20 +2840,24 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
 	  for (i = 0, found = -1; i < max && error == NO_ERROR && found == -1;
 	       i += 2)
 	    {
-	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
+	      error = set_get_element (table, i, &value);
+	      if (error == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING &&
-		      !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_STRING (&value) != NULL
 		      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value),
 						name) == 0)
-		    found = i;
+		    {
+		      found = i;
+		    }
 		  pr_clear_value (&value);
 		}
 	    }
 	  if (found != -1)
 	    {
-	      if ((error =
-		   set_get_element (table, found + 1, &value)) == NO_ERROR)
+	      error = set_get_element (table, found + 1, &value);
+	      if (error == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT)
 		    {
@@ -2960,8 +2916,8 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
 
   /* change the name */
   AU_DISABLE (save);
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2971,6 +2927,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
 	{
 	  table = DB_GET_SET (&value);
 	}
+
       if (table == NULL)
 	{
 	  error = ER_TR_TRIGGER_NOT_FOUND;
@@ -2985,8 +2942,8 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      DB_GET_OBJECT (&value) == trigger_object)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && DB_GET_OBJECT (&value) == trigger_object)
 		    {
 		      found = i;
 		    }
@@ -3030,8 +2987,8 @@ trigger_table_drop (const char *name)
   int max, i, found, save;
 
   AU_DISABLE (save);
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -3055,8 +3012,9 @@ trigger_table_drop (const char *name)
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING &&
-		      !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_STRING (&value) != NULL
 		      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value),
 						name) == 0)
 		    {
@@ -3186,8 +3144,8 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 
   *list = NULL;
 
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -3204,12 +3162,13 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 	  max = set_size (table);
 	  for (i = 1; i < max && error == NO_ERROR; i += 2)
 	    {
-	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
+	      error = set_get_element (table, i, &value);
+	      if (error == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_OBJECT (&value) != NULL)
 		    {
-
 		      /*
 		       * think about possibly avoiding this, especially
 		       * if we're going to turn around and delete it
@@ -3528,8 +3487,9 @@ check_semantics (TR_TRIGGER * trigger)
     {
 
       /* REJECT actions cannot be AFTER or DEFERRED */
-      if (action->type == TR_ACT_REJECT &&
-	  (action->time == TR_TIME_AFTER || action->time == TR_TIME_DEFERRED))
+      if (action->type == TR_ACT_REJECT
+	  && (action->time == TR_TIME_AFTER
+	      || action->time == TR_TIME_DEFERRED))
 	{
 	  /*
 	   * REJECT action cannot be used with an action time of
@@ -3541,9 +3501,9 @@ check_semantics (TR_TRIGGER * trigger)
 	}
 
       /* REJECT actions cannot be applied to TIMEOUT or ABORT events */
-      if (action->type == TR_ACT_REJECT &&
-	  (trigger->event == TR_EVENT_ABORT
-	   || trigger->event == TR_EVENT_TIMEOUT))
+      if (action->type == TR_ACT_REJECT
+	  && (trigger->event == TR_EVENT_ABORT
+	      || trigger->event == TR_EVENT_TIMEOUT))
 	{
 	  /* REJECT action cannot be used with the ABORT or TIMEOUT events */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_REJECT_NOT_POSSIBLE,
@@ -3575,8 +3535,8 @@ check_semantics (TR_TRIGGER * trigger)
    * TIME
    * action time must be greater or equal to condition time
    */
-  if (trigger->condition != NULL && trigger->action != NULL &&
-      trigger->action->time < trigger->condition->time)
+  if (trigger->condition != NULL && trigger->action != NULL
+      && trigger->action->time < trigger->condition->time)
     {
 
       c_time = time_as_string (trigger->condition->time);
@@ -3612,15 +3572,14 @@ tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node,
    *  If so, and there is no original, the it must be "new" and not "new.a".
    */
   /* TODO: char *info.name.original; compare with NULL?? */
-  if (node->node_type == PT_NAME && node->info.name.resolved &&
-      node->info.name.original && (node->info.name.original == NULL) &&
-      !strcmp (node->info.name.resolved, NEW_REFERENCE_NAME))
+  if (node->node_type == PT_NAME && node->info.name.resolved
+      && node->info.name.original && (node->info.name.original == NULL)
+      && !strcmp (node->info.name.resolved, NEW_REFERENCE_NAME))
     {
       PT_ERROR (parser, node, er_msg ());
     }
 
   return node;
-
 }
 
 /*
@@ -4136,7 +4095,9 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
     }
 
   if (trigger == NULL)
-    ;
+    {
+      ;
+    }
   else if (!check_authorization (trigger, true))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_DELETE_FAILURE,
@@ -4145,13 +4106,17 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
     }
   else
     {
-      if ((trigger->condition &&
-	   trigger->condition->time == TR_TIME_DEFERRED) ||
-	  (trigger->action && trigger->action->time == TR_TIME_DEFERRED))
-	error = tr_drop_deferred_activities (obj, NULL);
+      if ((trigger->condition
+	   && trigger->condition->time == TR_TIME_DEFERRED)
+	  || (trigger->action && trigger->action->time == TR_TIME_DEFERRED))
+	{
+	  error = tr_drop_deferred_activities (obj, NULL);
+	}
 
       if (error == NO_ERROR)
-	error = tr_drop_trigger_internal (trigger, 0);
+	{
+	  error = tr_drop_trigger_internal (trigger, 0);
+	}
     }
 
   AU_ENABLE (save);
@@ -4160,7 +4125,8 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
     {
       free_and_init (trigger_name);
     }
-  return (error);
+
+  return error;
 }
 
 /* CONDITION & ACTION EVALUATION */
@@ -4310,9 +4276,9 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
       else
 	{
 	  /* should have been done by now */
-	  if (tr_Current_depth <= 1 &&
-	      ++act->exec_cnt > PRM_RESET_TR_PARSER &&
-	      PRM_RESET_TR_PARSER > 0)
+	  if (tr_Current_depth <= 1
+	      && ++act->exec_cnt > PRM_RESET_TR_PARSER
+	      && PRM_RESET_TR_PARSER > 0)
 	    {
 	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
 	      act->parser = NULL;
@@ -4334,17 +4300,6 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 		}
 	      else
 		{
-		  /*
-		   * Recall that the pt_ interface wants the name/objects to be
-		   * compressed in that the first object can't be NULL if the
-		   * second object is non-NULL.  This was handled in
-		   * compile_trigger_activity with the names.
-		   * We must now do the corresponding thing for the object
-		   * pointers.  The callers of tr_before_object &
-		   * tr_after_object could do this as well.
-		   * Make sure the callers don't leave out the first object if
-		   * it has been expected !
-		   */
 		  if (current == NULL)
 		    {
 		      current = temp;
@@ -4417,7 +4372,6 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 
       switch (act->type)
 	{
-
 	case TR_ACT_REJECT:
 	  *reject = true;
 	  break;
@@ -4431,9 +4385,9 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	    fprintf (stdout, "%s\n", trigger->action->source);
 	  break;
 	case TR_ACT_EXPRESSION:
-	  if (tr_Current_depth <= 1 &&
-	      ++act->exec_cnt > PRM_RESET_TR_PARSER &&
-	      PRM_RESET_TR_PARSER > 0)
+	  if (tr_Current_depth <= 1
+	      && ++act->exec_cnt > PRM_RESET_TR_PARSER
+	      && PRM_RESET_TR_PARSER > 0)
 	    {
 	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
 	      act->parser = NULL;
@@ -4455,17 +4409,6 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 		}
 	      else
 		{
-		  /*
-		   * Recall that the pt_ interface wants the name/objects to be
-		   * compressed in that the first object can't be NULL if the
-		   * second object is non-NULL.  This was handled in
-		   * compile_trigger_activity with the names.
-		   * We must now do the corresponding thing for the
-		   * object pointers.  The callers of tr_before_object &
-		   * tr_after_object could do this as well.
-		   * Make sure the callers don't leave out the first object if
-		   * it has been expected !
-		   */
 		  if (current == NULL)
 		    {
 		      current = temp;
@@ -4846,7 +4789,7 @@ start_state (TR_STATE ** current, const char *name)
  *    Could build the trigger list separately and pass it to
  *    tr_prepare() but in this case we will always be throwing away
  *    the merged list so it doesn't really matter.
- *    If the statement is repeatable (in ESQLX) it would be better if we
+ *    If the statement is repeatable (in ESQL) it would be better if we
  *    could cache the trigger list in the parse tree rather than having
  *    to derive it each time.
  */
@@ -5340,17 +5283,6 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
   /* this always gets cleared when the transaction aborts */
   tr_Invalid_transaction = false;
 
-  /*
-   * Must remember to recalculate user cache after a rollback,
-   * this is especially important for the user cache in case a user
-   * trigger was deleted before the transaction is aborted.
-   * Class caches have a similar problem but they are re-calculated
-   * when the class is re-fetched after the rollback (adding or dropping
-   * a trigger will mark the class dirty, dirty objects are always
-   * thrown out during the rollback).
-   * Only need to do this if there was a change in user triggers
-   * during this transaction.
-   */
   if (tr_User_triggers_modified)
     {
       tr_User_triggers_valid = 0;
@@ -5502,10 +5434,9 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 	  next = t->next;
 	  trigger = t->trigger;
 
-	  if ((trigger_object == NULL || trigger->object == trigger_object) &&
-	      (target == NULL || t->target == target))
+	  if ((trigger_object == NULL || trigger->object == trigger_object)
+	      && (target == NULL || t->target == target))
 	    {
-
 	      if (its_deleted (t->target))
 		{
 		  /*
@@ -5539,11 +5470,13 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 		       */
 		    }
 		  else if (status == TR_RETURN_ERROR)
-		    /*
-		     * if an error happens, should we invalidate
-		     * the transaction ?
-		     */
-		    error = er_errid ();
+		    {
+		      /*
+		       * if an error happens, should we invalidate
+		       * the transaction ?
+		       */
+		      error = er_errid ();
+		    }
 
 		  /*
 		   * else, thinks the trigger can't be evaulated yet,
@@ -5873,13 +5806,14 @@ tr_trigger_condition (DB_OBJECT * trigger_object, char **condition)
     {
       error = er_errid ();
     }
-  else if (trigger->condition != NULL &&
-	   trigger->condition->type == TR_ACT_EXPRESSION)
+  else if (trigger->condition != NULL
+	   && trigger->condition->type == TR_ACT_EXPRESSION)
     {
       *condition = ws_copy_string (trigger->condition->source);
     }
+
   AU_ENABLE (save);
-  return (error);
+  return error;
 }
 
 /*
@@ -5920,7 +5854,7 @@ tr_trigger_condition_time (DB_OBJECT * trigger_object,
     }
 
   AU_ENABLE (save);
-  return (error);
+  return error;
 }
 
 /*
@@ -6087,12 +6021,6 @@ tr_is_trigger (DB_OBJECT * trigger_object, int *status)
 /* TRIGGER MIGRATION SUPPORT */
 
 /*
- * Trigger "visualization" stuff.  Intended for the unloaddb/loadb migration
- * utilities and also used by help.c
- *
- */
-
-/*
  * tr_time_as_string() - Returns the ASCII text for the given time constant.
  *    return: const char
  *    time(in): trigger time constant
@@ -6220,7 +6148,7 @@ tr_status_as_string (DB_TRIGGER_STATUS status)
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, int quoted_id_flag)
+tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -6391,7 +6319,7 @@ get_user_name (DB_OBJECT * user)
  *    users can't alter the system classes in any other way.
  */
 int
-tr_dump_all_triggers (FILE * fp, int quoted_id_flag)
+tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -6400,8 +6328,8 @@ tr_dump_all_triggers (FILE * fp, int quoted_id_flag)
   DB_OBJECT *trigger_object;
   int max, i;
 
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -6419,8 +6347,9 @@ tr_dump_all_triggers (FILE * fp, int quoted_id_flag)
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_OBJECT (&value) != NULL)
 		    {
 		      trigger_object = DB_GET_OBJECT (&value);
 		      trigger = tr_map_trigger (trigger_object, 1);
@@ -6453,7 +6382,8 @@ tr_dump_all_triggers (FILE * fp, int quoted_id_flag)
 	  set_free (table);
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -6486,7 +6416,7 @@ is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes)
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (FILE * fp, int quoted_id_flag,
+tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 			    DB_OBJLIST * classes)
 {
   int error = NO_ERROR;
@@ -6496,8 +6426,8 @@ tr_dump_selective_triggers (FILE * fp, int quoted_id_flag,
   DB_OBJECT *trigger_object;
   int max, i;
 
-  if (Au_root != NULL &&
-      (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
+  if (Au_root != NULL
+      && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -6516,8 +6446,9 @@ tr_dump_selective_triggers (FILE * fp, int quoted_id_flag,
 	    {
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT &&
-		      !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
+		      && !DB_IS_NULL (&value)
+		      && DB_GET_OBJECT (&value) != NULL)
 		    {
 		      trigger_object = DB_GET_OBJECT (&value);
 		      trigger = tr_map_trigger (trigger_object, 1);
@@ -6554,7 +6485,8 @@ tr_dump_selective_triggers (FILE * fp, int quoted_id_flag,
 	  set_free (table);
 	}
     }
-  return (error);
+
+  return error;
 }
 
 
@@ -6845,7 +6777,7 @@ tr_get_trace (void)
  *    trace(in):
  */
 int
-tr_set_trace (int trace)
+tr_set_trace (bool trace)
 {
   tr_Trace = trace;
   return NO_ERROR;
@@ -6894,7 +6826,7 @@ map_flush_helper (const void *key, void *data, void *args)
     {
       free_trigger ((TR_TRIGGER *) data);
     }
-  return (1);
+  return (NO_ERROR);
 }
 
 

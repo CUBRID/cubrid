@@ -1,158 +1,136 @@
-JAVAC = javac
-
 JDBC_DRIVER_MAJOR_VERSION = $(shell cut -d . -f 1 ../../BUILD_NUMBER)
 JDBC_DRIVER_MINOR_VERSION = $(shell cut -d . -f 2 ../../BUILD_NUMBER)
 JDBC_DRIVER_PATCH_VERSION = $(shell cut -d . -f 3 ../../BUILD_NUMBER)
 JDBC_DRIVER_SERIAL_NUMBER = $(shell cut -d . -f 4 ../../BUILD_NUMBER)
 
-CPP_OPT = -C -P $(CPP_DEF)
+DRIVER = cubridjdbc$(JDBC_DRIVER_MAJOR_VERSION).$(JDBC_DRIVER_MINOR_VERSION).$(JDBC_DRIVER_PATCH_VERSION).$(JDBC_DRIVER_SERIAL_NUMBER).jar
 
-MAKE_JAR = (cd $(CLASS_DIR) ; jar cf $(DRIVER) cubrid; /bin/rm -f cubridjdbc.jar ; ln -s $(DRIVER) cubridjdbc.jar)
+JSP_OUTPUT = jspserver.jar
 
-JDBC_SRCS =	$(JDBC_SRC_DIR)/CUBRIDCancelQueryThread.java	\
-		$(JDBC_SRC_DIR)/CUBRIDBlob.java			\
-		$(JDBC_SRC_DIR)/CUBRIDClob.java			\
-		$(JDBC_SRC_DIR)/CUBRIDGloInputStream.java	\
-		$(JDBC_SRC_DIR)/CUBRIDGloOutputStream.java	\
-		$(JDBC_SRC_DIR)/CUBRIDGloWriter.java		\
-		$(JDBC_SRC_DIR)/CUBRIDGloReader.java		\
-		$(JDBC_SRC_DIR)/CUBRIDComparator.java		\
-		$(JDBC_SRC_DIR)/CUBRIDConnection.java		\
-		$(JDBC_SRC_DIR)/CUBRIDDatabaseMetaData.java	\
-		$(JDBC_SRC_DIR)/CUBRIDInputStream.java		\
-		$(JDBC_SRC_DIR)/CUBRIDJDBCErrorCode.java	\
-		$(JDBC_SRC_DIR)/CUBRIDPreparedStatement.java	\
-		$(JDBC_SRC_DIR)/CUBRIDReader.java		\
-		$(JDBC_SRC_DIR)/CUBRIDResultSet.java		\
-		$(JDBC_SRC_DIR)/CUBRIDResultSetMetaData.java	\
-		$(JDBC_SRC_DIR)/CUBRIDResultSetWithoutQuery.java\
-		$(JDBC_SRC_DIR)/CUBRIDStatement.java		\
-		$(JDBC_SRC_DIR)/CUBRIDDriver.java		\
-		$(JDBC_SRC_DIR)/CUBRIDCallableStatement.java	\
-		$(JDBC_SRC_DIR)/CUBRIDDataSource.java		\
-		$(JDBC_SRC_DIR)/CUBRIDDataSourceObjectFactory.java\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionWrapperPooling.java\
-		$(JDBC_SRC_DIR)/CUBRIDPooledConnection.java	\
-		$(JDBC_SRC_DIR)/CUBRIDDataSourceBase.java	\
-		$(JDBC_SRC_DIR)/CUBRIDPoolDataSourceBase.java	\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionPoolDataSource.java\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionPoolManager.java\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionEventListener.java\
-		$(JDBC_SRC_DIR)/CUBRIDXADataSource.java		\
-		$(JDBC_SRC_DIR)/CUBRIDXAConnection.java		\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionWrapperXA.java	\
-		$(JDBC_SRC_DIR)/CUBRIDXid.java			\
-		$(JDBC_SRC_DIR)/CUBRIDOutResultSet.java	        \
-		$(JDBC_SRC_DIR)/CUBRIDXAResource.java		\
-		$(JDBC_SRC_DIR)/CUBRIDXidTable.java		\
-		$(JDBC_SRC_DIR)/CUBRIDXidInfo.java		\
-		$(JDBC_SRC_DIR)/CUBRIDException.java		\
-		$(JDBC_SRC_DIR)/CUBRIDKeyTable.java		\
-		$(JDBC_SRC_DIR)/CUBRIDConnectionKey.java	\
-		$(JDBC_SRC_DIR)/UConnection.java		\
-		$(JDBC_SRC_DIR)/UStatement.java			\
-		$(JDBC_SRC_DIR)/UErrorCode.java			\
-		$(JDBC_SRC_DIR)/UAParameter.java		\
-		$(JDBC_SRC_DIR)/UBatchResult.java		\
-		$(JDBC_SRC_DIR)/UBindParameter.java		\
-		$(JDBC_SRC_DIR)/UColumnInfo.java		\
-		$(JDBC_SRC_DIR)/UError.java			\
-		$(JDBC_SRC_DIR)/UFunctionCode.java		\
-		$(JDBC_SRC_DIR)/UGetTypeConvertedValue.java	\
-		$(JDBC_SRC_DIR)/UInputBuffer.java		\
-		$(JDBC_SRC_DIR)/UJCIManager.java		\
-		$(JDBC_SRC_DIR)/UJCIUtil.java			\
-		$(JDBC_SRC_DIR)/UOutputBuffer.java		\
-		$(JDBC_SRC_DIR)/UParameter.java			\
-		$(JDBC_SRC_DIR)/UPutByOIDParameter.java		\
-		$(JDBC_SRC_DIR)/UResultInfo.java		\
-		$(JDBC_SRC_DIR)/UResultTuple.java		\
-		$(JDBC_SRC_DIR)/USchType.java			\
-		$(JDBC_SRC_DIR)/UJciException.java		\
-		$(JDBC_SRC_DIR)/UUType.java			\
-		$(JDBC_SRC_DIR)/UUpdateParameter.java		\
-		$(JDBC_SRC_DIR)/CUBRIDArray.java		\
-		$(JDBC_SRC_DIR)/CUBRIDCommandType.java		\
-		$(JDBC_SRC_DIR)/CUBRIDIsolationLevel.java	\
-		$(JDBC_SRC_DIR)/UUrlCache.java           	\
-		$(JDBC_SRC_DIR)/UUrlHostKey.java	        \
-		$(JDBC_SRC_DIR)/UStmtCache.java          	\
-		$(JDBC_SRC_DIR)/UBindKey.java	                \
-		$(JDBC_SRC_DIR)/UResCache.java	                \
-		$(JDBC_SRC_DIR)/UStatementCacheData.java        \
-		$(JDBC_SRC_DIR)/UConKey.java                	\
-		$(JDBC_SRC_DIR)/CUBRIDOID.java
+CPP_DEF_DRIVER = -DJDBC_DRIVER_MAJOR_VERSION=$(JDBC_DRIVER_MAJOR_VERSION)      \
+          -DJDBC_DRIVER_MINOR_VERSION=$(JDBC_DRIVER_MINOR_VERSION)      \
+          -DJDBC_DRIVER_PATCH_VERSION=$(JDBC_DRIVER_PATCH_VERSION)      \
+          -DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER) 
 
-DRIVER_CLASS_DIR = $(CLASS_DIR)/cubrid/jdbc/driver
-DRIVER_CLASS_FILES = $(DRIVER_CLASS_DIR)/CUBRIDCancelQueryThread.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDBlob.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDClob.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDGloInputStream.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDGloOutputStream.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDGloWriter.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDGloReader.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDComparator.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDConnection.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDDatabaseMetaData.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDInputStream.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDJDBCErrorCode.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDPreparedStatement.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDReader.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDResultSet.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDResultSetMetaData.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDResultSetWithoutQuery.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDStatement.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDDriver.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDCallableStatement.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDDataSource.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDDataSourceObjectFactory.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDConnectionWrapperPooling.class \
-		$(DRIVER_CLASS_DIR)/CUBRIDPooledConnection.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDDataSourceBase.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDPoolDataSourceBase.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDConnectionPoolDataSource.class \
-		$(DRIVER_CLASS_DIR)/CUBRIDConnectionPoolManager.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDConnectionEventListener.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDXADataSource.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDXAConnection.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDConnectionWrapperXA.class	\
-		$(DRIVER_CLASS_DIR)/CUBRIDXid.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDXAResource.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDXidTable.class		\
-		$(DRIVER_CLASS_DIR)/CUBRIDXidInfo.class			\
-		$(DRIVER_CLASS_DIR)/CUBRIDException.class               \
-		$(DRIVER_CLASS_DIR)/CUBRIDOutResultSet.class
+CPP_DEF_JSP = -DJDBC_DRIVER_MAJOR_VERSION=$(JDBC_DRIVER_MAJOR_VERSION)      \
+          -DJDBC_DRIVER_MINOR_VERSION=$(JDBC_DRIVER_MINOR_VERSION)      \
+          -DJDBC_DRIVER_PATCH_VERSION=$(JDBC_DRIVER_PATCH_VERSION)      \
+          -DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER)      \
+	  -DSERVER_SIDE_JDBC
 
-JCI_CLASS_DIR = $(CLASS_DIR)/cubrid/jdbc/jci
-JCI_CLASS_FILES = $(JCI_CLASS_DIR)/UAParameter.class			\
-		$(JCI_CLASS_DIR)/UBatchResult.class			\
-		$(JCI_CLASS_DIR)/UBindParameter.class			\
-		$(JCI_CLASS_DIR)/UColumnInfo.class			\
-		$(JCI_CLASS_DIR)/UConnection.class			\
-		$(JCI_CLASS_DIR)/UError.class				\
-		$(JCI_CLASS_DIR)/UErrorCode.class			\
-		$(JCI_CLASS_DIR)/UFunctionCode.class			\
-		$(JCI_CLASS_DIR)/UGetTypeConvertedValue.class		\
-		$(JCI_CLASS_DIR)/UInputBuffer.class			\
-		$(JCI_CLASS_DIR)/UJCIManager.class			\
-		$(JCI_CLASS_DIR)/UJCIUtil.class				\
-		$(JCI_CLASS_DIR)/UOutputBuffer.class			\
-		$(JCI_CLASS_DIR)/UParameter.class			\
-		$(JCI_CLASS_DIR)/UPutByOIDParameter.class		\
-		$(JCI_CLASS_DIR)/UResultInfo.class			\
-		$(JCI_CLASS_DIR)/UResultTuple.class			\
-		$(JCI_CLASS_DIR)/USchType.class				\
-		$(JCI_CLASS_DIR)/UStatement.class			\
-		$(JCI_CLASS_DIR)/UJciException.class			\
-		$(JCI_CLASS_DIR)/UUType.class				\
-		$(JCI_CLASS_DIR)/UUpdateParameter.class			\
-		$(JCI_CLASS_DIR)/CUBRIDArray.class			\
-		$(JCI_CLASS_DIR)/CUBRIDCommandType.class		\
-		$(JCI_CLASS_DIR)/UUrlCache.class        		\
-		$(JCI_CLASS_DIR)/UUrlHostKey.class         		\
-		$(JCI_CLASS_DIR)/UStmtCache.class        		\
-		$(JCI_CLASS_DIR)/UBindKey.class         		\
-		$(JCI_CLASS_DIR)/UResCache.class        		\
-		$(JCI_CLASS_DIR)/UStatementCacheData.class     		\
-		$(JCI_CLASS_DIR)/CUBRIDIsolationLevel.class
 
+CPP_OPT_DRIVER = -C -P $(CPP_DEF_DRIVER)
+CPP_OPT_JSP = -C -P $(CPP_DEF_JSP)
+
+VERSION_FILE = CUBRID-JDBC-$(JDBC_DRIVER_MAJOR_VERSION).$(JDBC_DRIVER_MINOR_VERSION).$(JDBC_DRIVER_PATCH_VERSION).$(JDBC_DRIVER_SERIAL_NUMBER)
+
+MAKE_DRIVER_JAR = (cd $(CLASS_DIR) ; touch $(VERSION_FILE);jar cf $(DRIVER) cubrid $(VERSION_FILE); /bin/rm -f cubridjdbc.jar ; ln -s $(DRIVER) cubridjdbc.jar)
+
+MAKE_JSP_JAR = (cd $(JSP_CLASS_DIR) ; jar cf $(JSP_OUTPUT) com cubrid)
+
+
+JDBC_SRCS =	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConnection.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIManager.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnection.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDriver.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDCancelQueryThread.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDBlob.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDClob.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDGloInputStream.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDGloOutputStream.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDGloWriter.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDGloReader.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDComparator.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDatabaseMetaData.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDInputStream.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDJDBCErrorCode.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPreparedStatement.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDReader.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSet.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetMetaData.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetWithoutQuery.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDStatement.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDCallableStatement.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDataSource.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDataSourceObjectFactory.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionWrapperPooling.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPooledConnection.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDataSourceBase.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPoolDataSourceBase.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionPoolDataSource.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionPoolManager.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionEventListener.java\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXADataSource.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXAConnection.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionWrapperXA.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXid.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDOutResultSet.java	        \
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXAResource.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXidTable.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDXidInfo.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDException.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDKeyTable.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionKey.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UStatement.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UErrorCode.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UAParameter.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UBatchResult.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UBindParameter.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UColumnInfo.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UError.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UFunctionCode.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UGetTypeConvertedValue.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UInputBuffer.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIUtil.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UOutputBuffer.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UParameter.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UPutByOIDParameter.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UResultInfo.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UResultTuple.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/USchType.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJciException.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UUType.java			\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UUpdateParameter.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/CUBRIDArray.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/CUBRIDCommandType.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/CUBRIDIsolationLevel.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UUrlCache.java           	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UUrlHostKey.java	        \
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UStmtCache.java          	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UBindKey.java	                \
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UResCache.java	                \
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UStatementCacheData.java        \
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConKey.java                	\
+		$(JDBC_SRC_DIR)/cubrid/sql/CUBRIDOID.java
+
+
+JSPSERVER_SRCS = \
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/Server.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/SpSecurityManager.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/StoredProcedure.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/StoredProcedureClassLoader.java	\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/TargetMethod.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/TargetMethodCache.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/ExecuteThread.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/exception/TypeMismatchException.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/exception/ExecuteException.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/BooleanValue.java	        	\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/ByteValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/DateValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/DoubleValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/FloatValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/IntValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/LongValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/NullValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/NumericValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/OidValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/ResultSetValue.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/SetValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/ShortValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/StringValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/TimeValue.java			\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/TimestampValue.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/Value.java
+
+LOGGING_PROPERTIES = $(JSPSERVER_SRC_DIR)/logging.properties

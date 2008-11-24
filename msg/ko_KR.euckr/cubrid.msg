@@ -1,5 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$
+$   This program is free software; you can redistribute it and/or modify 
+$   it under the terms of the GNU General Public License as published by 
+$   the Free Software Foundation; version 2 of the License. 
+$
+$  This program is distributed in the hope that it will be useful, 
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+$  GNU General Public License for more details. 
+$
+$  You should have received a copy of the GNU General Public License 
+$  along with this program; if not, write to the Free Software 
+$  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+$
+
 $
 $ $Id$
 $
@@ -10,7 +26,6 @@ $set 1 MSGCAT_SET_GENERAL
 1 \n%s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 3 저작권 정보\n
-4 CUBRID 2008 R1.0
 5 `%s'은(는) integer 인자 값이 아닙니다
 6 `%s'은(는) floating 인자 값이 아닙니다
 7 인자 `%s' 이(가) 없습니다
@@ -47,9 +62,8 @@ $set 4 MSGCAT_SET_PARAMETER
 21 키워드 = '%s'    값 = %f    기본 설정 값 = %f\n
 
 $set 5 MSGCAT_SET_ERROR
-1 내부시스템 에러: 더 이상 자세한 정보가 없습니다.
-2 가상메모리 할당 에러: %1$d 바이트의 메모리를 할당할 수 없습니다.
-3 "%1$s"는 정의되지 않은 환경 변수입니다.
+2 내부시스템 에러: 더 이상 자세한 정보가 없습니다.
+3 가상메모리 할당 에러: %1$d 바이트의 메모리를 할당할 수 없습니다.
 4 인터럽트.
 5 키 = "%1$s" 은(는) 해쉬 테이블 "%2$s" 내에 존재하지 않습니다.
 6 해쉬 테이블 함수에 NULL 해쉬 테이블이 제공되었습니다. 

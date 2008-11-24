@@ -42,7 +42,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS;_USE_32BIT_TIME_T"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -117,7 +117,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS;_USE_32BIT_TIME_T"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -177,7 +177,23 @@
 				Name="broker"
 				>
 				<File
-					RelativePath="..\..\src\broker\as_util.c"
+					RelativePath="..\..\src\broker\broker_filename.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_list.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_shm.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_util.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_wsa_init.c"
 					>
 				</File>
 				<File
@@ -185,7 +201,39 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\broker\cas_execute.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_function.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_handle.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\broker\cas_log.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_net_buf.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_network.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_schema_info.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_sql_log2.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_str_like.c"
 					>
 				</File>
 				<File
@@ -194,54 +242,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\broker\cas_xa.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\exec_db.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\file_name.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\func.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\handle_mng.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\link_list.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\net_buf.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\net_cas.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\schema_info.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\shm.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\sql_log2.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\str_like.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\wsa_init.c"
 					>
 				</File>
 			</Filter>

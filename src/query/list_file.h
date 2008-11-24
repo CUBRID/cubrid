@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * List files (Server Side)
  */
 
-#ifndef _QP_LSSR_H_
-#define _QP_LSSR_H_
+#ifndef _LIST_FILE_H_
+#define _LIST_FILE_H_
 
 #ident "$Id$"
 
@@ -15,13 +31,13 @@
 #include <stdio.h>
 
 #include "dbtype.h"
-#include "common.h"
+#include "storage_common.h"
 #include "system_parameter.h"
 #include "external_sort.h"
-#include "qp_xasl.h"
-#include "qp_list.h"
+#include "query_executor.h"
+#include "query_list.h"
 #include "query_evaluator.h"
-#include "logcp.h"
+#include "log_comm.h"
 #include "object_domain.h"
 #include "thread_impl.h"
 
@@ -66,7 +82,7 @@ struct qfile_list_cache_entry
 };
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 /* TODO: fix header file */
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
 				      VOLID volid, PAGEID pageid,
@@ -233,4 +249,4 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl,
 							  int index,
 							  char **tpl_val,
 							  int *val_size);
-#endif /* _QP_LSSR_H_ */
+#endif /* _LIST_FILE_H_ */

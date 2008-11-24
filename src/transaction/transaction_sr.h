@@ -1,22 +1,34 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * tmsr.h -
- * 									       
- * 	Overview: TRANSACTION MANAGER (AT SERVER) -- Interface -- 	       
- * See .c file for overview and description of the interface functions.	       
- * 									       
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _TMSR_H_
-#define _TMSR_H_
+
+/*
+ * transaction_sr.h - transaction manager (at server)
+ */
+
+#ifndef _TRANSACTION_SR_H_
+#define _TRANSACTION_SR_H_
 
 #ident "$Id$"
 
-#include "common.h"
-#include "logcp.h"
-#include "defs.h"
+#include "storage_common.h"
+#include "log_comm.h"
+#include "connection_defs.h"
 #include "thread_impl.h"
 
 #if defined(SERVER_MODE)
@@ -58,4 +70,4 @@ extern TRAN_STATE tran_server_unilaterally_abort (THREAD_ENTRY * thread_p,
 extern int xtran_get_local_transaction_id (THREAD_ENTRY * thread_p,
 					   DB_VALUE * trid);
 
-#endif /* _TMSR_H_ */
+#endif /* _TRANSACTION_SR_H_ */

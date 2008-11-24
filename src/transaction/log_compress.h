@@ -1,18 +1,34 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * zip_util.h - log compression functions
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * log_compress.h - log compression functions
  *
  * Note: Using lzo2 library
  */
 
-#ifndef _ZIP_UTIL_H_
-#define _ZIP_UTIL_H_
+#ifndef _LOG_COMPRESS_H_
+#define _LOG_COMPRESS_H_
 
 #ident "$Id$"
 
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "lzoconf.h"
 #include "lzo1x.h"
 
@@ -48,4 +64,4 @@ extern bool log_unzip (LOG_ZIP * log_unzip, size_t length, void *data);
 extern bool log_diff (size_t undo_length, const void *undo_data,
 		      size_t redo_length, void *redo_data);
 
-#endif /* _ZIP_UTIL_H_ */
+#endif /* _LOG_COMPRESS_H_ */

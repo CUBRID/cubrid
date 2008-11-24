@@ -1037,7 +1037,7 @@ else
   export CUBRID_LANG
 fi
 print_mes STEP6
-$rootdir/bin/repl_change_param $master_db_name $distdb_name
+$rootdir/bin/repl_change_param $master_db_name $slave_db_name $distdb_name
 
 print_mes STEP7    # set the replication group 
 exec 5< .class.tmp

@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * thrdwrap.h - threads wrapper for pthreads and WIN32 threads.
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
  */
 
-#ifndef _THRDWRAP_H_
-#define _THRDWRAP_H_
+
+/*
+ * thread.h - threads wrapper for pthreads and WIN32 threads.
+ */
+
+#ifndef _THREAD_H_
+#define _THREAD_H_
 
 #ident "$Id$"
 
@@ -327,4 +343,4 @@ extern HANDLE css_Internal_mutex_for_mutex_initialize;
 
 #endif /* WINDOWS */
 
-#endif /* _THRDWRAP_H_ */
+#endif /* _THREAD_H_ */

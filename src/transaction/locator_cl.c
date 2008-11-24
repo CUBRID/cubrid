@@ -1,177 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * lccl.c - Transaction object locator (at client)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: A portion of this module also resides at the server (see lcsr.c file).
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * The transaction object locator provides concurrent access and recovery
- * capabilities to objects, by using the locking and recovery algorithms
- * provided by the transaction subsystem. The transaction object locator
- * controls the flow of objects between workspaces on the clients and the page
- * buffer pool/disk on the server. The object locator takes advantage of
- * cached objects and granted locks in the workspace/client for fast
- * retrieval. A cached lock on an object O1, is used to avoid invoking the
- * lock manager on the server when the object is accessed again in the same or
- * less restrictive form as before by the original transaction that acquired
- * the lock. Objects are cached for fast access. Cached objects are validated
- * by the object locator by comparing the cache coherence number of the copy
- * of the object in the workspace against such number in the copy of the
- * object in the page buffer pool/disk. If these numbers are different, the
- * object in the client workspace is obsolete. An object which is cached in
- * the workspace of one client becomes invalid when a transaction in another
- * client commits to the database an update to the object. The cache coherence
- * number of an object is incremented by one when the object is flushed to the
- * page buffer pool on the server.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * A cached object is only validated the first time the object is accessed by
- * a transaction. Once the object is validated, it remains valid for the
- * duration of the transaction. Lock request and object validation are
- * requested at the same time. That is,  when a transaction accesses an
- * object, the object locator checks if the desired lock and the object
- * are both cached. If they are cached, the object can be accessed
- * immediately; otherwise, a lock and object request is sent to the object
- * locator on the server. In the request prefetching of some objects may also
- * be be suggested. The request of the lock is processed by the lock manager.
- * Once the lock is granted, the cache coherence number of the object in the
- * workspace is compared against the one on the database. If they differ, a
- * new copy of the object is returned to substitute for the old copy in the
- * workspace and some prefetching may take place. Some other objects such as
- * the class of the object, and neighbors objects may also be returned in the
- * communication area when prefetching was also requested by the object
- * locator on the client. Prefetching is usually requested when the class of
- * the desired object has been locked with a query scan operation lock.
- * The object locator on the client may also suggest some specific objects for
- * prefetching. It is up to the object locator on the client if the additional
- * received objects are cached (e.g., if there is space available in the
- * workspace). The object locator on the client cached the granted lock and
- * if any object was received, the are cached in the workspace.
- *
- * If a class object in the workspace becomes obsolete, all its instances in
- * the workspace are decached since they may be in an obsolete representation.
- * A class object becomes obsolete if a schema change operation was performed
- * by a transaction in another client. Even though the cache coherence number
- * of the instances in the workspace may be identical to the ones int the
- * database (server), the objects must be decached because of possible
- * structural changes to their representation.
- *
- * The transaction object locator amortizes communication overhead between
- * the client and the server by packing fetch and flush operations. That is,
- * during a fetch operation, some dirty objects may be flushed and several
- * neighboring objects of the requested object may be prefetched into the
- * client according to some heuristics. The object locator on the server
- * accepts advice on what objects to prefetch. For example, the query
- * processor may request the prefetching of several objects during the
- * navigation of the cursor.
- *
- * At the end of a transaction all locks acquired by the transaction are
- * released and the cached locks are cleared. However, (possibly all) objects
- * accessed by the transaction are left cached in the workspace for access by
- * subsequent transactions. When a transaction aborts, the dirty objects in
- * the workspace are decached.
- *
- * We have described that the operation of the workspace is tightly controlled
- * by the transaction object locator. When the contents of an object is
- * required, the object locator is called to fetch the object. The object
- * locator decides if a cached object is valid or not. When an object is
- * brought from the database/server, the object locator first calls the
- * representation manager to translate the object from disk representation to
- * in-memory representation. Next, a workspace MOP structure is allocated if
- * one does not already exist. Finally, the content of the object is cached in
- * the workspace and a pointer to the object is placed in the MOP. In this
- * process the acquired lock is also placed in the MOP.	Once an object is
- * cached, the object may be decached at any time. An object is generally
- * decached when its state is not consistent with the one stored in the
- * database and when the transaction abort and the object is dirty. The
- * CUBRID garbage collector may decide to decache an object if it determines
- * that it is not referenced through its MOP by the client application and by
- * other cached objects. In this case the MOP is also decached. An emergency
- * decache may also be forced by the garbage collector when the free space in
- * the workspace falls below a certain level after the normal garbage
- * collection technique is applied. The following heuristics are employed:
- * First, any objects that have not been referenced (no cached locks) by the
- * current transaction are decached. Second, if we are still below the desired
- * level, objects that have been accessed in shared mode are decached. Third,
- * if the space is still low, all dirty objects are flushed, and then any
- * set of objects is decached until the desired space level is acquired. MOPs
- * are not decached by the emergency process, so after the emergency process
- * is performed, the normal garbage collection process is executed to
- * eliminate any unneeded MOPs.
- *
- * When an object is created, the object locator assigns a temporarily object
- * identifier, the permanent object identifier is actually assigned when the
- * object is flushed to the database (server). However, there are some cases
- * that an OID need to be assigned before the object is stored on its heap.
- * Examples of these cases are: when a newly created object references itself
- * or reference another newly created object that also reference the first
- * object. In these cases the objects cannot be flushed until the OIDs are
- * known. A permanent OID may also need to be assigned when an object being
- * fetched references an object with a temporarily OID.
- *
- * The transaction object locator is responsible for creating, deleting,
- * updating, and accessing objects without the knowledge of the class lattice
- * which is known by the schema manager.
- *
- * It is very important that BEFORE an object in the workspace is directly
- * updated (e.g., by the schema manager), the object locator is informed,
- * otherwise, the workspace may end up with a corrupted copy of the object in
- * case of failures. It is also very important the caller of this module,
- * realize the kind of operations being executed. He should restructure the
- * code according to such operation. For example, it is very bad if the caller
- * fetches an object in read mode and then in write mode, when he knows that
- * an update was going to happen. If the caller does not know that the object
- * was going to be updated.. before the object is read, it is better to fetch
- * the object in exclusive mode. The above kind of conversion modes may
- * produce deadlocks which must be avoided.
- *
- * A portion of the transaction object locator resides in the server (See
- * lcsr.c file).
- *
- * MODULE INTERFACE
- *
- * The following modules are called by the transaction object locator at the
- * client:
- *  Workspace manager:            To cache/decache objects and locks
- *                                To set dirty/clean objects
- *                                To assign a permanent OIDs to MOPs
- *                                To find cached objects
- *                                To scan/map for dirty objects
- *                                To find properties such as OIDs, class_mops,
- *                                   cache coherence number of cached objects
- *  Disk Representation/Transformation Manager:
- *                                To transform object from disk format to
- *                                   memory format, or vice versa.
- *  Trans. Object locator at server:
- *                                To fetch and flush objects
- *                                To lock objects
- *                                To find, delete, reserve classnames
- *
- *  Heap Manager (COMM AREAS):    To define fetch and flush copy areas for
- *                                   communication with tran. object locator
- *                                   in the server.
- *
- * At least the following modules call the tran. object locator at client:
- *  Authorization, Schema, and Object Accessor Managers:
- *                                To lock, find, insert, update, and delete
- *                                   objects.
- *                                To find if an object is a class or an
- *                                   instance
- *                                To find if an object exist.
- *                                To find all object of a class
- *  SQL/X API interface:          To lock, fetch, update, and delete objects
- *                                To find classes by name
- *  Query Parser:                 To find and lock classes by name
- *
- * REFERENCES :
- *
- * [CARE91] Carey, M, et al. "Data Caching Tradeoffs in Client/Server DBMS
- *          Architectures," SIGMOD May 1991, Denver Colorado.
- *
- * [WANG91] Wang, Y., and L. rowe, :Cache Consistency and Concurrency Control
- *          in Client/Server DBMS Architectures," SIGMOD May 1991,
- *          Denver Colorado.
- *
+ */
+
+/*
+ * locator_cl.c - Transaction object locator (at client)
  */
 
 #ident "$Id$"
@@ -184,24 +30,24 @@
 #include "environment_variable.h"
 #include "porting.h"
 #include "locator_cl.h"
-#include "memory_manager_2.h"
-#include "common.h"
+#include "memory_alloc.h"
+#include "storage_common.h"
 #include "work_space.h"
 #include "object_representation.h"
-#include "transform_sky.h"
+#include "transform_cl.h"
 #include "class_object.h"
-#include "schema_manager_3.h"
-#include "server.h"
-#include "locator_bt.h"
+#include "schema_manager.h"
+#include "server_interface.h"
+#include "locator.h"
 #include "boot_cl.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "dbi.h"
 #include "replication.h"
 #include "transaction_cl.h"
-#include "network_interface_sky.h"
-#include "execute_statement_11.h"
+#include "network_interface_cl.h"
+#include "execute_statement.h"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAXPMOPS 400
@@ -331,11 +177,11 @@ static void locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
 static int
 locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
-		       int *has_index, int *round_length_p,
+		       bool * has_index, int *round_length_p,
 		       WS_MAP_STATUS * map_status);
 static int
 locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
-		     int *has_index, int *round_length_p,
+		     bool * has_index, int *round_length_p,
 		     WS_MAP_STATUS * map_status);
 static void locator_mflush_set_dirty (MOP mop, MOBJ ignore_object,
 				      void *ignore_argument);
@@ -514,16 +360,6 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
 	}
     }
 
-  /*
-   * We would like to cache somekind of lock to avoid going to the
-   * server in the future regardless of the isolation level. This
-   * is not a violation form the isolation point of view since the
-   * rules indicates that it may or may no get the new copies of the
-   * objects. Usually, the new copies are obtained due that the server
-   * may indicate that some locks on objects may be decached when a
-   * new copy of the object is created. Currently, we only demote locks
-   * on classes
-   */
 
   if (cache_lock->isolation != TRAN_REP_CLASS_REP_INSTANCE
       && cache_lock->isolation != TRAN_SERIALIZABLE
@@ -721,16 +557,6 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 
   if (found == true)
     {
-      /*
-       * We would like to cache somekind of lock to avoid going to the
-       * server in the future regardless of the isolation level. This
-       * is not a violation form the isolation point of view since the
-       * rules indicates that it may or may no get the new copies of the
-       * objects. Usually, the new copies are obtained due that the server
-       * may indicate that some locks on objects may be decached when a
-       * new copy of the object is created. Currently, we only demote locks
-       * on classes
-       */
 
       if (TM_TRAN_ISOLATION () != TRAN_REP_CLASS_REP_INSTANCE
 	  && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE
@@ -1132,24 +958,6 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 	}
 
 #if defined (SA_MODE) && !defined (CUBRID_DEBUG)
-      /*
-       *
-       * Only one workspace (there is not multiple concurrent transactions),
-       * if the object is cached we do not need to check its state. We do not
-       * need to check for its state since if a transaction aborts in
-       * standalone, the workspace is cleared. This is done to avoid the
-       * following situation: An object is updated, flushed, and then
-       * transaction aborts. Next transaction may see the invalid object in
-       * the workspace, unless the workspace is cleared at abort time or
-       * objects are validated when they are accessed just like in multiple
-       * concurrent transactions. This technique used in client/server is
-       * simple, an object does not need to be validated if a lock on the
-       * object is cached in the workspace, otherwise, the object is validated
-       * by comparing the cache coherence number in the workspace against the
-       * one on the disk. We have adopted the first technique, that is clearing
-       * the workspace, since aborts should not be very frequent.
-       *
-       */
       if (object != NULL)
 	{
 	  /* The object is cached */
@@ -1287,16 +1095,6 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 
 	  if (fetch_area != NULL)
 	    {
-	      /*
-	       * Cache the objects that were brought from the server.
-	       *
-	       * Note that we do not add the locks until the very end, so a
-	       * function is not passed to the locator_cache (as it was done in the
-	       * old days). This is done to avoid doing some double work since
-	       * the locks must be reset/cached at the very end since some of
-	       * the requested objects may have not been sent to the client
-	       * since the cached objects are upto date.
-	       */
 	      error_code = locator_cache (fetch_area, class_mop, class_obj,
 					  NULL, NULL);
 	      locator_free_copy_area (fetch_area);
@@ -1527,16 +1325,6 @@ locator_get_rest_objects_classes (LC_LOCKSET * lockset,
 
       if (fetch_area != NULL)
 	{
-	  /*
-	   * Cache the objects that were brought from the server
-	   *
-	   * Note that we do not add the locks until the very end, so a
-	   *      function is not passed to the locator_cache (as it was done in
-	   *      the old days). This is done to avoid doing some double work
-	   *      since the locks must be reset/cached at the very end since
-	   *      some of the requested objects may have not been sent to the
-	   *      client since the cached objects are upto date.
-	   */
 	  error_code = locator_cache (*fetch_area, class_mop,
 				      class_obj, NULL, NULL);
 	  locator_free_copy_area (*fetch_area);
@@ -1711,16 +1499,6 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
 
   if (error_code == NO_ERROR && lockset != NULL && fetch_area != NULL)
     {
-      /*
-       * Cache the objects that were brought from the server
-       *
-       * Note that we do not add the locks until the very end, so a function
-       *      is not passed to the locator_cache (as it was done in the old days).
-       *      This is done to avoid doing some double work since the locks
-       *      must be reset/cached at the very end since some of the
-       *      requested objects may have not been sent to the client since
-       *      the cached objects are upto date.
-       */
       error_code =
 	locator_cache (fetch_area, class_mop, class_obj, NULL, NULL);
       locator_free_copy_area (fetch_area);
@@ -1908,24 +1686,6 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
     }
 
 #if defined (SA_MODE) && !defined (CUBRID_DEBUG)
-  /*
-   *
-   * Only one workspace (there is not multiple concurrent transactions),
-   * if the object is cached we do not need to check its state. We do not
-   * need to check for its state since if a transaction aborts in
-   * standalone, the workspace is cleared. This is done to avoid the
-   * following situation: An object is updated, flushed, and then
-   * transaction aborts. Next transaction may see the invalid object in
-   * the workspace, unless the workspace is cleared at abort time or
-   * objects are validated when they are accessed just like in multiple
-   * concurrent transactions. This technique used in client/server is
-   * simple, an object does not need to be validated if a lock on the
-   * object is cached in the workspace, otherwise, the object is validated
-   * by comparing the cache coherence number in the workspace against the
-   * one on the disk. We have adopted the first technique, that is clearing
-   * the workspace, since aborts should not be very frequent.
-   *
-   */
   if (*class_mop != NULL && class_obj != NULL)
     {
       lock = lock_Conv[lock][ws_get_lock (*class_mop)];
@@ -2094,22 +1854,6 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
     }
 
 #if defined (SA_MODE) && !defined (CUBRID_DEBUG)
-  /*
-   * Only one workspace (there is not multiple concurrent transactions),
-   * if the object is cached we do not need to check its state. We do not
-   * need to check for its state since if a transaction aborts in
-   * standalone, the workspace is cleared. This is done to avoid the
-   * following situation: An object is updated, flushed, and then
-   * transaction aborts. Next transaction may see the invalid object in
-   * the workspace, unless the workspace is cleared at abort time or
-   * objects are validated when they are accessed just like in multiple
-   * concurrent transactions. This technique used in client/server is
-   * simple, an object does not need to be validated if a lock on the
-   * object is cached in the workspace, otherwise, the object is validated
-   * by comparing the cache coherence number in the workspace against the
-   * one on the disk. We have adopted the first technique, that is clearing
-   * the workspace, since aborts should not be very frequent.
-   */
   if (object != NULL)
     {
       /* The object is cached */
@@ -3961,17 +3705,6 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
 	    }
 	  else
 	    {
-	      /*
-	       * It is likely that we have deferred caching the appropiate lock.
-	       * If the object is a class, it may not be good idea since the
-	       * class may be needed before the lock is cached and we will end
-	       * up going to the server (e.g., an instance of the class is
-	       * included in the reciving copy area).
-	       * To avoid this situation, we set the possible lowest type of
-	       * lock on classes when they do not have already a cached lock.
-	       * Remember the real lock is set at the end of the fetch
-	       * operation.
-	       */
 	      if (mop != NULL && ws_class_mop (mop) == sm_Root_class_mop
 		  && ws_get_lock (mop) == NULL_LOCK)
 		{
@@ -4001,8 +3734,7 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
  *
  * Note:Initialize the mflush structure which describes the objects in
  *              disk format to flush. A copy area of one page is defined to
- *              place the objects. This copy_area must be deallocated by the
- *              caller by calling the function lc_mflush_end.
+ *              place the objects.
  */
 static int
 locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop,
@@ -4310,7 +4042,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
  */
 static int
 locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
-		       int *has_index, int *round_length_p,
+		       bool * has_index, int *round_length_p,
 		       WS_MAP_STATUS * map_status)
 {
   TF_STATUS tfstatus;
@@ -4415,7 +4147,7 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
  */
 static int
 locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
-		     int *has_index, int *round_length_p,
+		     bool * has_index, int *round_length_p,
 		     WS_MAP_STATUS * map_status)
 {
   TF_STATUS tfstatus;
@@ -4525,7 +4257,7 @@ locator_mflush (MOP mop, void *mf)
 				 * rounded to alignments of size(int) */
   LC_COPYAREA_OPERATION operation;	/* Flush operation to be executed:
 					 * insert, update, delete, etc. */
-  int has_index;		/* is an index maintained on the instances? */
+  bool has_index;		/* is an index maintained on the instances? */
   int status;
   bool decache;
   WS_MAP_STATUS map_status;
@@ -4776,7 +4508,7 @@ locator_mflush (MOP mop, void *mf)
 
   mflush->mobjs->num_objs++;
   mflush->obj->operation = operation;
-  mflush->obj->has_index = has_index;
+  mflush->obj->has_index = has_index ? 1 : 0;
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->oid, oid);
   if (operation == LC_FLUSH_DELETE)
@@ -4930,17 +4662,6 @@ retry:
 	      if (mflush.mobjs->num_objs != 0)
 		{
 		  error_code = locator_mflush_force (&mflush);
-		  /*
-		   * Since the class is always flushed when it is dirty,
-		   * it could happen that the desired instance was not
-		   * flushed since it did not fit into one flush area.
-		   * We can't rely on the dirty bit to determine this,
-		   * because it will still be set if the object was
-		   * already pinned when we came in here.  Use the chn
-		   * to determine this: it gets bumped when the object
-		   * is actually flushed, so if it's unchanged, the
-		   * object we care about hasn't been flushed.
-		   */
 		  if (error_code == NO_ERROR && chn != -2
 		      && chn == WS_CHN (inst))
 		    {
@@ -5364,11 +5085,6 @@ locator_add_class (MOBJ class_obj, const char *classname)
 	  return NULL;
 	}
     }
-
-  /*
-   * Insert the class, set it dirty and cache the lock. The lock was acquired
-   * indirectly through out the lc_reserver_classname function.
-   */
 
   class_mop =
     ws_cache_with_oid (class_obj, &class_temp_oid, sm_Root_class_mop);
@@ -5940,33 +5656,6 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
  *                     error, such as a class does not exist or locks on some
  *                     of the classes may not be granted.
  *
- * Note: The classes associated with the given names and optionally the
- *              subclasses of these classes are fetched and locked with the
- *              corresponding lock. A subclass is locked with a combination
- *              lock of the locks of requested superclasses. If a class is
- *              also a subclass of other requested classes, a combination
- *              lock is requested, instead.
- *              The function does not quit when an error is found and the
- *              value of quit_on_errors is false. In this case the class
- *              with the error is not locked/fetched. The function tries to
- *              lock all the classes at once, however if this fails and the
- *              function is allowed to continue when errors are detected, the
- *              classes are locked individually.
- *
- *              The found subclasses, if any, were only guessed and they may
- *              not be fully accurate. That is, the subclasses were found in a
- *              dirty way by reading the class objects at the server
- *              regardless of client states or locks. In general this
- *              technique is needed to acquire all locks at once instead of
- *              class by class. If the found subclasses were not accurate,
- *              some locks will be acquired at a later point.
- *
- *              Currently, this function will call the server when subclasses
- *              are requested or the OID of a classname is not available on
- *              the client (e.g., there is not a lock acquired on one of the
- *              classes). Further improvements on this function are needed.
- *              This function should improve the performance of the system for
- *              common cases.
  */
 LC_FIND_CLASSNAME
 locator_lockhint_classes (int num_classes, const char **many_classnames,
@@ -6241,7 +5930,7 @@ error:
  */
 
 /*
- * Most of the LC_OIDSET code is in lcbt.c as it in theory could be used
+ * Most of the LC_OIDSET code is in locator.c as it in theory could be used
  * by either the client or server and the packing/unpacking code in fact
  * has to be shared.
  *
@@ -6251,11 +5940,6 @@ error:
  * workspace MOPs for the changes in OIDs.  This is an operation that
  * the client side locator should do as it requires access to workspace
  * internals.
- *
- * We therefore have a set of lc_oidset functions that are intended to be
- * used only on the client side and which will call the lc_oidset functions
- * in lcbt.c to do some of the lower level work.
- *
  *
  * The usual pattern for the client is this:
  *
@@ -6322,14 +6006,6 @@ error:
  *
  *   oidset(in): oidset to extend
  *   obj_mop(in): object to add
- *
- * Note:This is the primary function called on the client to populate an
- *    LC_OIDSET structure to be sent to the server.  It will eventually
- *    call the lower level lc_oidset_add to make the structure entry after
- *    it has determined the various server IDs for the object.  It also
- *    remembers the workspace handle for this object in the LC_OIDSET
- *    structure so that this object can be quickly updated later by
- *    lc_oidset_assign.
  */
 LC_OIDMAP *
 locator_add_oidset_object (LC_OIDSET * oidset, MOP obj_mop)
@@ -6342,7 +6018,6 @@ locator_add_oidset_object (LC_OIDSET * oidset, MOP obj_mop)
       return NULL;
     }
 
-  /* call the lower level oidset extension function in locator_bt.c */
   oid_map_p =
     locator_add_oid_set (NULL, oidset, sm_heap ((MOBJ) class_mop->object),
 			 WS_OID (class_mop), WS_OID (obj_mop));

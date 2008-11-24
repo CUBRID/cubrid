@@ -1,15 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- *      qf.c: Implementation of the Quick Fit storage allocation
- *                algorithm.
- *      NOTE:
- *      There is a lot of pointer arithmetic in this file.  I've tried to
- *      be careful but they may be some machine/compiler assumptions in a
- *      few places.  Most of this is done in the macros at the top of the
- *      file so check there if something is breaking.  The code itself
- *      should be machine independent.
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
+ * quick_fit.c: Implementation of the Quick Fit storage allocation algorithm.
  */
 
 #ident "$Id$"

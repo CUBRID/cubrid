@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * csect.c - critical section lock support
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * critical_section.c - critical section support
  */
 
 #ident "$Id$"
@@ -13,9 +27,9 @@
 #include <stdio.h>
 
 #include "critical_section.h"
-#include "defs.h"
+#include "connection_defs.h"
 #include "thread_impl.h"
-#include "csserror.h"
+#include "connection_error.h"
 
 #define CRITICAL_SECTION_COUNT	CSECT_LAST
 
@@ -323,8 +337,8 @@ csect_enter_critical_section_internal (THREAD_ENTRY * thread_p,
     {
       if (cs_ptr->rwlock < 0 && cs_ptr->owner == thread_p->tid)
 	{
-	  /* 
-	   * I am holding the csect, and reenter it again as writer. 
+	  /*
+	   * I am holding the csect, and reenter it again as writer.
 	   * Note that rwlock will be decremented.
 	   */
 	  break;
@@ -415,12 +429,12 @@ csect_enter_critical_section_internal (THREAD_ENTRY * thread_p,
 }
 
 /*
- * csect_enter() - lock out other threads from concurrent execution 
+ * csect_enter() - lock out other threads from concurrent execution
  * 		through a critical section of code
  *   return: 0 if success, or error code
- *   cs_index(in): identifier of the section to lock 
+ *   cs_index(in): identifier of the section to lock
  *   wait_secs(in): timeout second
- *   
+ *
  * Note: locks the critical section, or suspends the thread until the critical
  *       section has been freed by another thread
  */
@@ -563,9 +577,9 @@ csect_enter_critical_section_as_reader_internal (THREAD_ENTRY * thread_p,
 /*
  * csect_enter_as_reader() - acquire a read lock
  *   return: 0 if success, or error code
- *   cs_index(in): identifier of the section to lock 
+ *   cs_index(in): identifier of the section to lock
  *   wait_secs(in): timeout second
- *   
+ *
  * Note: Multiple readers go if there are no writers.
  */
 int
@@ -642,9 +656,9 @@ csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
       CSS_CHECK_RETURN_ERROR (ER_CS_UNLOCKED_BEFORE, ER_CS_UNLOCKED_BEFORE);
     }
 
-  /* 
+  /*
    * Keep flags that show if there are waiting readers or writers
-   * so that we can wake them up outside the monitor lock. 
+   * so that we can wake them up outside the monitor lock.
    */
   ww = (cs_ptr->waiting_writers && cs_ptr->rwlock == 0);
   wr = (cs_ptr->waiting_writers == 0);
@@ -667,10 +681,10 @@ csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
  * csect_exit() - free a lock that prevents other threads from
  *             concurrent execution through a critical section of code
  *   return: 0 if success, or error code
- *   cs_index(in): identifier of the section to unlock 
- *   
+ *   cs_index(in): identifier of the section to unlock
+ *
  * Note: unlocks the critical section, which may restart another thread that
- *       is suspended and waiting for the critical section. 
+ *       is suspended and waiting for the critical section.
  */
 int
 csect_exit (int cs_index)

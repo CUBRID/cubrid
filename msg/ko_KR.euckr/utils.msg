@@ -1,5 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$
+$   This program is free software; you can redistribute it and/or modify 
+$   it under the terms of the GNU General Public License as published by 
+$   the Free Software Foundation; version 2 of the License. 
+$
+$  This program is distributed in the hope that it will be useful, 
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+$  GNU General Public License for more details. 
+$
+$  You should have received a copy of the GNU General Public License 
+$  along with this program; if not, write to the Free Software 
+$  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+$
+
 $
 $ $Id$
 $
@@ -166,7 +182,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 사용법: %s repl_server <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       <데이터베이스 이름> <서버 네트워크 포트> [최대 agent 개수]\n\
+    start       <데이터베이스 이름> <서버 네트워크 포트> [-a 최대 agent 개수] [-e 에러 파일]\n\
     stop        <데이터베이스 이름>\n\
     status\n
 29 cubrid 유틸리티, 버전 %s\n\

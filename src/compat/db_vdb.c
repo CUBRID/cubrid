@@ -1,10 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * db_vdb.c - Stubs for SQLX interface functions.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
+
+/*
+ * db_vdb.c - Stubs for SQL interface functions.
+ */
+
 #ident "$Id$"
 
 #include "config.h"
@@ -19,19 +34,19 @@
 #include "chartype.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "parser.h"
-#include "msgexec.h"
+#include "parser_message.h"
 #include "object_domain.h"
-#include "schema_manager_3.h"
-#include "view_transform_1.h"
-#include "execute_statement_11.h"
-#include "xasl_generation_2.h"	/* TODO: remove */
+#include "schema_manager.h"
+#include "view_transform.h"
+#include "execute_statement.h"
+#include "xasl_generation.h"	/* TODO: remove */
 #include "locator_cl.h"
-#include "server.h"
+#include "server_interface.h"
 #include "query_manager.h"
 #include "api_compat.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 #define BUF_SIZE 1024
 
@@ -431,7 +446,7 @@ db_compile_statement_local (DB_SESSION * session)
   /* get type list describing the output columns titles of the given query */
   cmd_type = pt_node_to_cmd_type (statement);
   qtype = NULL;
-  if (cmd_type == SQLX_CMD_SELECT)
+  if (cmd_type == CUBRID_STMT_SELECT)
     {
       qtype = pt_get_titles (parser, statement);
       /* to prevent a memory leak, register the query type list to session */
@@ -479,7 +494,7 @@ db_compile_statement_local (DB_SESSION * session)
     }
 
   /* get type list describing the output columns titles of the given query */
-  if (cmd_type == SQLX_CMD_SELECT)
+  if (cmd_type == CUBRID_STMT_SELECT)
     {
       /* for a select-type query of the form:
          SELECT * FROM class c
@@ -563,7 +578,7 @@ db_compile_statement_local (DB_SESSION * session)
      everytime rather than using XASL cache. Also, it can be executed in
      the server without touching the XASL cache by calling
      query_prepare_and_execute(). */
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES >= 0 && statement->cannot_prepare == 0)
+  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && statement->cannot_prepare == 0)
     {
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -834,7 +849,9 @@ db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * linecol)
   if (!session || !session->parser || !pt_has_error (session->parser))
     {
       if (linecol)
-	linecol->err_lineno = linecol->err_posno = 0;
+	{
+	  linecol->err_lineno = linecol->err_posno = 0;
+	}
       return 0;
     }
   else
@@ -842,6 +859,7 @@ db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * linecol)
       PT_NODE *errors;
       int stmt_no;
       const char *msg;
+
       errors = pt_get_errors (session->parser);
       if (linecol)
 	pt_get_next_error (errors, &stmt_no, &linecol->err_lineno,
@@ -1128,7 +1146,7 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 
   /* make DB_QUERY_TYPE structure to return */
   cmd_type = pt_node_to_cmd_type (statement);
-  if (cmd_type == SQLX_CMD_SELECT)
+  if (cmd_type == CUBRID_STMT_SELECT)
     {
       PT_NODE *select_list = pt_get_select_list (session->parser, statement);
       if (pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS) > 0)
@@ -1149,18 +1167,18 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 	{
 	  switch (cmd_type)
 	    {
-	    case SQLX_CMD_CALL:
+	    case CUBRID_STMT_CALL:
 	      qtype->db_type = pt_node_to_db_type (statement);
 	      break;
-	    case SQLX_CMD_INSERT:
+	    case CUBRID_STMT_INSERT:
 	      /* the type of result of INSERT is object */
 	      qtype->db_type = DB_TYPE_OBJECT;
 	      break;
-	    case SQLX_CMD_GET_ISO_LVL:
-	    case SQLX_CMD_GET_TIMEOUT:
-	    case SQLX_CMD_GET_OPT_LVL:
-	    case SQLX_CMD_GET_TRIGGER:
-	    case SQLX_CMD_GET_LDB:
+	    case CUBRID_STMT_GET_ISO_LVL:
+	    case CUBRID_STMT_GET_TIMEOUT:
+	    case CUBRID_STMT_GET_OPT_LVL:
+	    case CUBRID_STMT_GET_TRIGGER:
+	    case CUBRID_STMT_GET_LDB:
 	      /* the type of result of some command is integer */
 	      qtype->db_type = DB_TYPE_INTEGER;
 	      break;
@@ -1311,6 +1329,7 @@ db_get_lock_classes (DB_SESSION * session)
     {
       return NULL;
     }
+
   return (char **) (session->parser->lcks_classes);
 }
 
@@ -1360,7 +1379,9 @@ db_set_session_mode_sync (DB_SESSION * session)
 	      0);
       return ER_IT_INVALID_SESSION;
     }
+
   db_set_sync_flag (session, SYNC_EXEC);
+
   return NO_ERROR;
 }
 
@@ -1378,12 +1399,14 @@ db_set_session_mode_async (DB_SESSION * session)
 	      0);
       return ER_IT_INVALID_SESSION;
     }
+
   db_set_sync_flag (session, ASYNC_EXEC);
+
   return NO_ERROR;
 }
 
 /*
- * db_execute_and_keep_statement_local() - This function executes the SQLX
+ * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
  *    The statement ID must have already been returned by a successful call
  *    to the db_open_file() function or the db_open_buffer() function that
@@ -1422,16 +1445,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
     }
   /* invalid parameter */
   stmt_ndx--;
-  if (stmt_ndx < 0 || stmt_ndx >= session->dimension ||
-      !session->statements[stmt_ndx])
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension
+      || !session->statements[stmt_ndx])
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 	      ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
     }
   /* no host variable was set before */
-  if (session->parser->host_var_count > 0 &&
-      session->parser->set_host_var == 0)
+  if (session->parser->host_var_count > 0
+      && session->parser->set_host_var == 0)
     {
       /* parsed statement has some host variable parameters
          (input marker '?'), but no host variable (DB_VALUE array) was set
@@ -1496,7 +1519,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
      the server without touching the XASL cache by calling
      query_prepare_and_execute(). */
   do_Trigger_involved = false;
-  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES >= 0 && statement->cannot_prepare == 0)
+  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
@@ -1542,9 +1565,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  sc_info.top_node = statement;
 	  sc_info.donot_fold = false;
 
-	  if (!(statement = pt_bind_values_to_hostvars (parser, statement)) ||
-	      !(statement = pt_resolve_names (parser, statement, &sc_info)) ||
-	      !(statement = pt_semantic_type (parser, statement, &sc_info)))
+	  if (!(statement = pt_bind_values_to_hostvars (parser, statement))
+	      || !(statement = pt_resolve_names (parser, statement, &sc_info))
+	      || !(statement = pt_semantic_type (parser, statement,
+						 &sc_info)))
 	    {
 	      /* something wrong */
 	      if (er_errid () == NO_ERROR)
@@ -1567,6 +1591,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
       err = do_statement (parser, statement);
     }
+
   do_Trigger_involved = false;
   if (err < 0)
     {
@@ -1575,7 +1600,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  pt_report_to_ersys_with_statement (parser, PT_EXECUTION, statement);
 	}
       /* free the allocated list_id area before leaving */
-      if (pt_node_to_cmd_type (statement) == SQLX_CMD_SELECT)
+      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_SELECT)
 	{
 	  pt_free_query_etc_area (statement);
 	}
@@ -1601,10 +1626,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
 	  switch (pt_node_to_cmd_type (statement))
 	    {
-	    case SQLX_CMD_SELECT:
+	    case CUBRID_STMT_SELECT:
 	      /* Check whether pt_new_query_result_descriptor() fails.
-	         Similar tests are required for SQLX_CMD_INSERT and
-	         SQLX_CMD_CALL cases. */
+	         Similar tests are required for CUBRID_STMT_INSERT and
+	         CUBRID_STMT_CALL cases. */
 	      qres = pt_new_query_result_descriptor (parser, statement);
 	      if (qres)
 		{
@@ -1620,32 +1645,22 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		}
 	      break;
 
-	    case SQLX_CMD_GET_ISO_LVL:
-	    case SQLX_CMD_GET_TIMEOUT:
-	    case SQLX_CMD_GET_OPT_LVL:
-	    case SQLX_CMD_GET_TRIGGER:
-	    case SQLX_CMD_GET_LDB:
-	    case SQLX_CMD_EVALUATE:
-	    case SQLX_CMD_CALL:
-	    case SQLX_CMD_INSERT:
-	    case SQLX_CMD_GET_STATS:
-	      /* usqlx (in iqcmd.c) may throw away any non-null *result,
+	    case CUBRID_STMT_GET_ISO_LVL:
+	    case CUBRID_STMT_GET_TIMEOUT:
+	    case CUBRID_STMT_GET_OPT_LVL:
+	    case CUBRID_STMT_GET_TRIGGER:
+	    case CUBRID_STMT_GET_LDB:
+	    case CUBRID_STMT_EVALUATE:
+	    case CUBRID_STMT_CALL:
+	    case CUBRID_STMT_INSERT:
+	    case CUBRID_STMT_GET_STATS:
+	      /* csql (in csql.c) may throw away any non-null *result,
 	         but we create a DB_QUERY_RESULT structure anyway for other
-	         callers of db_execute that use the *result like unici.c  */
+	         callers of db_execute that use the *result like esql_cli.c  */
 	      val = (DB_VALUE *) pt_node_etc (statement);
 	      if (val)
 		{
 		  /* got a result, so use it */
-		  /* Again, be careful here, because someone may be
-		     propagating a count of affected objects upward.
-		     INSERT is especially vulnerable here, because it may
-		     have actually inserted many objects (using INSERT,
-		     SELECT ...), but we've only put the first one in the
-		     DB_QUERY_RESULT gadget, so its count may not jive.
-		     If err is greater than zero, use that rather than
-		     the count from the DB_QUERY_RESULT.
-		     This whole interface needs to be formalized and
-		     cleaned up. */
 		  qres = db_get_db_value_query_result (val);
 		  if (qres)
 		    {
@@ -1728,7 +1743,7 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx,
 }
 
 /*
- * db_execute_statement_local() - This function executes the SQLX statement
+ * db_execute_statement_local() - This function executes the SQL statement
  *    identified by the stmt argument and returns the result. The
  *    statement ID must have already been returned by a previously successful
  *    call to the db_compile_statement() function.
@@ -2077,9 +2092,9 @@ db_get_all_vclasses (void)
 
 /*
  * db_validate_query_spec() - This function checks that a query_spec is
- *    compatible with a given {ldbvclass|vclass} object
+ *    compatible with a given {vclass} object
  * return  : an ER status code if an error was found, NO_ERROR otherwise.
- * vclass(in) : an {ldbvclass|vclass} object
+ * vclass(in) : an {vclass} object
  * query_spec(in) : a query specification string
  */
 int
@@ -2512,7 +2527,7 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
       return false;
     }
 
-  if (pt_node_to_cmd_type (statement) != SQLX_CMD_SELECT)
+  if (pt_node_to_cmd_type (statement) != CUBRID_STMT_SELECT)
     {
       return false;
     }

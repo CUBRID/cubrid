@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * repl_server.c - The main routine of Transaction Log Reader/Sender
  *                 process for replication
  *
@@ -23,13 +38,13 @@
 #endif
 
 #include "porting.h"
-#include "repl_comm.h"
+#include "repl_support.h"
 #include "system_parameter.h"
 #include "utility.h"
 #include "databases_file.h"
 #include "message_catalog.h"
 #include "repl_tp.h"
-#include "repl_svr.h"
+#include "repl_server.h"
 
 /* Global variables for argument parsing */
 const char *db_Name = "";	/* the target database name */
@@ -55,7 +70,7 @@ REPL_ACT_LOG repl_Log = { 0, NULL, NULL, REPL_DEF_LOG_PAGE_SIZE };
 REPL_ARV_LOG repl_Arv = { 0, NULL, NULL, 0 };
 REPL_ERR *err_Head = NULL;
 
-bool is_Debug = false;
+int debug_Dump_info = 0;
 
 
 #define REPLSERVER_ARG_DBNAME           1
@@ -272,7 +287,7 @@ repl_log_iopagesize (THREAD_ENTRY * thread_p, const char *db_Name,
   int error = NO_ERROR;
 
   /*
-   * set the global variables related log  (refer to log_pb.c)
+   * set the global variables related log  (refer to log_page_buffer.c)
    *  - log_Name_active
    *  - log_Name_info
    *  - log_Name_bkupinfo
@@ -335,7 +350,7 @@ repl_get_log_volume (THREAD_ENTRY * thread_p)
 
   sysprm_load_and_init (db_Name, NULL);
 
-  if ((cfg_read_directory (&dir, true) != true) || dir == NULL)
+  if ((cfg_read_directory (&dir, true) != NO_ERROR) || dir == NULL)
     REPL_ERR_LOG (REPL_FILE_SERVER, REPL_SERVER_CANT_OPEN_DBINFO);
 
   if (error == NO_ERROR)
@@ -520,6 +535,13 @@ main (int argc, char **argv)
       err_Log_fp = stdout;
     }
 
+  /* get the full name of active log file */
+  if ((error = repl_get_log_volume (NULL)) != NO_ERROR)
+    {
+      repl_svr_shutdown (false);
+      return (-1);
+    }
+
   /* to be a daemon process */
   env = envvar_get ("NO_DAEMON");
   if (env == NULL || strcmp (env, "no") == 0)
@@ -532,13 +554,6 @@ main (int argc, char **argv)
 
   /* signal processing & thread pool init */
   if (repl_svr_tp_init (MAX_WORKER_THREAD, 0) != NO_ERROR)
-    {
-      repl_svr_shutdown (false);
-      return (-1);
-    }
-
-  /* get the full name of active log file */
-  if ((error = repl_get_log_volume (NULL)) != NO_ERROR)
     {
       repl_svr_shutdown (false);
       return (-1);

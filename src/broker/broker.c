@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * broker.c -
  */
 
@@ -38,23 +54,23 @@
 #endif
 
 #include "cas_common.h"
-#include "error.h"
-#include "env_str_def.h"
-#include "shm.h"
-#include "disp_intf.h"
-#include "getsize.h"
-#include "util.h"
-#include "uw_acl.h"
-#include "file_name.h"
-#include "er_html.h"
+#include "broker_error.h"
+#include "broker_env_def.h"
+#include "broker_shm.h"
+#include "broker_msg.h"
+#include "broker_process_size.h"
+#include "broker_util.h"
+#include "broker_access_list.h"
+#include "broker_filename.h"
+#include "broker_er_html.h"
 
 #ifdef CAS_BROKER
 #include "cas_intf.h"
-#include "send_fd.h"
+#include "broker_send_fd.h"
 #endif
 
 #ifdef WIN32
-#include "wsa_init.h"
+#include "broker_wsa_init.h"
 #endif
 
 
@@ -354,7 +370,6 @@ int
 main (int argc, char *argv[])
 #endif
 {
-  char buf[PATH_MAX];
   char *p;
   int i;
   T_THREAD receiver_thread;
@@ -479,8 +494,7 @@ main (int argc, char *argv[])
     }
 #endif /* ifndef CAS_BROKER */
 
-  sprintf (buf, "%s/%s", shm_appl->log_dir, CUBRID_SQL_LOG_DIR);
-  set_cubrid_file (FID_SQL_LOG_DIR, buf);
+  set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
 
   THREAD_BEGIN (receiver_thread, receiver_thr_f, NULL);
   THREAD_BEGIN (dispatch_thread, dispatch_thr_f, NULL);
@@ -552,8 +566,8 @@ main (int argc, char *argv[])
       wait_job_cnt -= (cur_appl_server_num - num_busy_uts);
 
 #if 0
-      if ((wait_job_cnt >= 1) && (new_as_index > 1) &&
-	  (shm_appl->as_info[new_as_index - 1].service_flag != SERVICE_ON))
+      if ((wait_job_cnt >= 1) && (new_as_index > 1)
+	  && (shm_appl->as_info[new_as_index - 1].service_flag != SERVICE_ON))
 	{
 	  shm_appl->as_info[new_as_index - 1].service_flag = SERVICE_ON;
 	  continue;
@@ -749,9 +763,9 @@ receiver_thr_f (void *arg)
 	  ret_code = CAS_ER_QUERY_CANCEL;
 	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	    {
-	      if (shm_appl->as_info[i].service_flag == SERVICE_ON &&
-		  shm_appl->as_info[i].pid == pid &&
-		  shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
+	      if (shm_appl->as_info[i].service_flag == SERVICE_ON
+		  && shm_appl->as_info[i].pid == pid
+		  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 		{
 		  ret_code = 0;
 		  kill (pid, SIGUSR1);
@@ -785,8 +799,8 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 #else
-      read_len =
-	read_from_client (clt_sock_fd, magic, sizeof (UW_SOCKET_MAGIC));
+      read_len = read_from_client (clt_sock_fd, magic,
+				   sizeof (UW_SOCKET_MAGIC));
       if ((read_len <= 0) || strcmp (magic, UW_SOCKET_MAGIC) != 0)
 	{
 	  CLOSE_SOCKET (clt_sock_fd);
@@ -875,8 +889,8 @@ receiver_thr_f (void *arg)
 	  MUTEX_LOCK (session_mutex);
 	  for (session_index = -1, i = 0; i < shm_appl->num_appl_server; i++)
 	    {
-	      if ((shm_appl->as_info[i].session_keep == TRUE) &&
-		  (shm_appl->as_info[i].session_id == session_id))
+	      if ((shm_appl->as_info[i].session_keep == TRUE)
+		  && (shm_appl->as_info[i].session_id == session_id))
 		{
 		  session_index = i;
 		}
@@ -1181,8 +1195,8 @@ service_thr_f (void *arg)
 	  else
 	    {
 	      job_wait_count++;
-	      if (shm_br->br_info[br_index].session_timeout >= 0 &&
-		  job_wait_count >=
+	      if (shm_br->br_info[br_index].session_timeout >= 0
+		  && job_wait_count >=
 		  shm_br->br_info[br_index].session_timeout * 100)
 		{
 		  shm_appl->as_info[self_index].uts_status = UTS_STATUS_BUSY;
@@ -1233,8 +1247,8 @@ service_thr_f (void *arg)
 	    }
 	}
 
-      if ((strcmp (cur_job.script, "OPEN_SESSION") == 0) &&
-	  (strcmp (cur_job.prg_name, "OPEN_SESSION") == 0))
+      if ((strcmp (cur_job.script, "OPEN_SESSION") == 0)
+	  && (strcmp (cur_job.prg_name, "OPEN_SESSION") == 0))
 	{
 	  time_t session_id;
 	  char buf[32];
@@ -1273,8 +1287,8 @@ service_thr_f (void *arg)
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
-      else if ((strcmp (cur_job.script, "CLOSE_SESSION") == 0) &&
-	       (strcmp (cur_job.prg_name, "CLOSE_SESSION") == 0))
+      else if ((strcmp (cur_job.script, "CLOSE_SESSION") == 0)
+	       && (strcmp (cur_job.prg_name, "CLOSE_SESSION") == 0))
 	{
 	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_BUSY;
 	  shm_appl->as_info[self_index].session_keep = FALSE;
@@ -1628,8 +1642,8 @@ read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
   clt_info->content_length = 0;
   for (p = env_buf; p - env_buf < env_buf_size;)
     {
-      if ((strncmp (p, CONTENT_LENGTH_ENV_STR, length - 1) == 0) &&
-	  (p[length - 1] == '='))
+      if ((strncmp (p, CONTENT_LENGTH_ENV_STR, length - 1) == 0)
+	  && (p[length - 1] == '='))
 	{
 	  clt_info->content_length = atoi (p + length);
 	  if (clt_info->content_length < 0)
@@ -1643,8 +1657,8 @@ read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
   clt_info->path_info = "";
   for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
     {
-      if ((strncmp (p, PATH_INFO_ENV_STR, length - 1) == 0) &&
-	  (p[length - 1] == '='))
+      if ((strncmp (p, PATH_INFO_ENV_STR, length - 1) == 0)
+	  && (p[length - 1] == '='))
 	{
 	  clt_info->path_info = p + length;
 	  break;
@@ -1655,8 +1669,8 @@ read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
   clt_info->clt_appl_name = "";
   for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
     {
-      if ((strncmp (p, CLT_APPL_NAME_ENV_STR, length - 1) == 0) &&
-	  (p[length - 1] == '='))
+      if ((strncmp (p, CLT_APPL_NAME_ENV_STR, length - 1) == 0)
+	  && (p[length - 1] == '='))
 	{
 	  clt_info->clt_appl_name = p + length;
 	  break;
@@ -1678,8 +1692,8 @@ read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
   clt_info->delimiter_str = NULL;
   for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
     {
-      if ((strncmp (p, DELIMITER_ENV_STR, length - 1) == 0) &&
-	  (p[length - 1] == '='))
+      if ((strncmp (p, DELIMITER_ENV_STR, length - 1) == 0)
+	  && (p[length - 1] == '='))
 	{
 	  clt_info->delimiter_str = p + length;
 	  break;
@@ -1690,8 +1704,8 @@ read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
   clt_info->out_file_name = NULL;
   for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
     {
-      if ((strncmp (p, OUT_FILE_NAME_ENV_STR, length - 1) == 0) &&
-	  (p[length - 1] == '='))
+      if ((strncmp (p, OUT_FILE_NAME_ENV_STR, length - 1) == 0)
+	  && (p[length - 1] == '='))
 	{
 	  clt_info->out_file_name = p + length;
 	  break;
@@ -1747,8 +1761,8 @@ process_request (int clt_sock_fd, T_CLIENT_INFO * clt_info)
       WRITE_TO_SOCKET (srv_sock_fd, read_buf, read_len);
     }
 
-  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_C &&
-      clt_info->out_file_name == NULL)
+  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_C
+      && clt_info->out_file_name == NULL)
     {
       V3_WRITE_HEADER_OK_FILE_SOCK (clt_sock_fd);
     }
@@ -1978,9 +1992,9 @@ restart_appl_server (int as_index)
 	}
     }
 
-  if (shm_appl->as_info[as_index].psize <= 0 ||
-      shm_appl->as_info[as_index].psize >
-      shm_br->br_info[br_index].appl_server_max_size)
+  if (shm_appl->as_info[as_index].psize <= 0
+      || (shm_appl->as_info[as_index].psize >
+	  shm_br->br_info[br_index].appl_server_max_size))
     {
       if (shm_appl->as_info[as_index].pid > 0)
 	{
@@ -2778,8 +2792,8 @@ process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
 	}
 #endif
 
-      if (shm_appl->as_info[as_index].close_flag ||
-	  shm_appl->as_info[as_index].pid != cas_pid)
+      if (shm_appl->as_info[as_index].close_flag
+	  || shm_appl->as_info[as_index].pid != cas_pid)
 	{
 	  break;
 	}
@@ -2806,13 +2820,12 @@ retry:
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
   maxfd = sock_fd + 1;
-  nfound =
-    select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
-	    &timeout);
+  nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
+		   &timeout);
   if (nfound < 1)
     {
-      if (shm_appl->as_info[as_index].close_flag ||
-	  shm_appl->as_info[as_index].pid != cas_pid)
+      if (shm_appl->as_info[as_index].close_flag
+	  || shm_appl->as_info[as_index].pid != cas_pid)
 	{
 	  return -1;
 	}
@@ -2880,7 +2893,7 @@ find_idle_cas (void)
 	      wait_cas_id = i;
 	    }
 	}
-    }				/* end of for */
+    }
 
   if (wait_cas_id >= 0)
     {
@@ -2969,11 +2982,11 @@ find_drop_as_index (void)
 	    }
 	}
 
-      if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY &&
-	  shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN &&
-	  wait_time > max_wait_time &&
-	  wait_time > shm_br->br_info[br_index].time_to_kill &&
-	  exist_idle_cas == 0)
+      if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
+	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
+	  && wait_time > max_wait_time
+	  && wait_time > shm_br->br_info[br_index].time_to_kill
+	  && exist_idle_cas == 0)
 	{
 	  max_wait_time = wait_time;
 	  drop_as_index = i;

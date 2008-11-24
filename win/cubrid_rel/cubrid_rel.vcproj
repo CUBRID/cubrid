@@ -175,7 +175,7 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\..\src\executables\cosmos_version.c"
+					RelativePath="..\..\src\executables\cubrid_version.c"
 					>
 				</File>
 			</Filter>

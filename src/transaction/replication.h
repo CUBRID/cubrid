@@ -1,13 +1,29 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * repl.h - the header file of replication module 
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
+ * replication.h - the header file of replication module 
  * 
  */
 
-#ifndef _REPL_HEADER_
-#define _REPL_HEADER_
+#ifndef _REPLICATION_H_
+#define _REPLICATION_H_
 
 #ident "$Id$"
 
@@ -15,15 +31,15 @@
 
 #include "system_parameter.h"
 #include "oid.h"
-#include "log_prv.h"
-#include "memory_manager_2.h"
+#include "log_impl.h"
+#include "memory_alloc.h"
 #include "page_buffer.h"
 #include "error_manager.h"
 #include "thread_impl.h"
 
 
 /* Replication would be started only when 
- *    is_replicated is set by 1  (sqlx.init)
+ *    is_replicated is set by 1  (cubrid.conf)
  *    the target index is unique (would be replaced by primary key index)
  *    the caller wants to replicate
  *    the master has been backuped 
@@ -89,4 +105,4 @@ extern void repl_debug_info ();
 #endif /* !WINDOWS */
 #endif /* SERVER_MODE || SA_MODE */
 
-#endif
+#endif /* _REPLICATION_H_ */

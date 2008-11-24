@@ -1,11 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qp_vascn.c - Routines to implement scanning an array of values
- *              received by the comm interface
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: if you feel the need
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * method_scan.c - Routines to implement scanning an array of values
+ *                 received by the comm interface
  */
 
 #ident "$Id$"
@@ -14,17 +27,17 @@
 
 #include <string.h>
 
-#include "qp_mem.h"
+#include "xasl_support.h"
 #include "network.h"
-#include "network_interface_earth.h"
+#include "network_interface_sr.h"
 #ifndef	SERVER_MODE
 #include "object_accessor.h"
 #endif
 #include "authenticate.h"
-#include "jsp_earth.h"
+#include "jsp_sr.h"
 #include "scan_manager.h"
 #include "method_scan.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -199,9 +212,9 @@ method_close_scan (THREAD_ENTRY * thread_p,
 
   vacomm_buffer_p = scan_buffer_p->vacomm_buffer;
 
-  if ((vacomm_buffer_p) &&
-      ((vacomm_buffer_p->status == 0) ||
-       (vacomm_buffer_p->status == METHOD_SUCCESS)))
+  if ((vacomm_buffer_p)
+      && ((vacomm_buffer_p->status == 0)
+	  || (vacomm_buffer_p->status == METHOD_SUCCESS)))
     {
       vacomm_buffer_p->action = VACOMM_BUFFER_ABORT;
 
@@ -438,7 +451,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 
   method_sig_list = scan_buffer_p->s.method_ctl.method_sig_list;
 
-  EXIT_SERVER_IN_METHOD_CALL(save_heap_id);
+  EXIT_SERVER_IN_METHOD_CALL (save_heap_id);
 
   crs_result = cursor_next_tuple (&scan_buffer_p->crs_id);
   if (crs_result == DB_CURSOR_SUCCESS)
@@ -461,7 +474,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 				       scan_buffer_p->vallist) != NO_ERROR)
 	{
 	  method_clear_scan_buffer (scan_buffer_p);
-          ENTER_SERVER_IN_METHOD_CALL(save_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
 	  return S_ERROR;
 	}
 
@@ -483,7 +496,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 
 	  if (meth_sig->class_name != NULL)
 	    {
-	      /* Don't call the method if the object is NULL or it has been 
+	      /* Don't call the method if the object is NULL or it has been
 	       * deleted.  A method call on a NULL object is NULL.
 	       */
 	      if ((DB_IS_NULL (scan_buffer_p->valptrs[0])) ||
@@ -524,7 +537,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_DISABLE (turn_on_auth);
 	    }
 
-          ENTER_SERVER_IN_METHOD_CALL(save_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
 
 	  if (error != NO_ERROR)
 	    {
@@ -572,13 +585,13 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
   else if (crs_result == DB_CURSOR_END)
     {
-      ENTER_SERVER_IN_METHOD_CALL(save_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return S_END;
     }
   else
     {
-      ENTER_SERVER_IN_METHOD_CALL(save_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return crs_result;
     }
@@ -604,7 +617,7 @@ method_receive_results (THREAD_ENTRY * thread_p,
 #if !defined(SERVER_MODE)
 /*
  * method_clear_scan_buffer () -
- *   return: 
+ *   return:
  *   scan_buffer_p(in)       : Value array buffer
  */
 static void
@@ -635,7 +648,7 @@ method_clear_scan_buffer (METHOD_SCAN_BUFFER * scan_buffer_p)
 #else /* !SERVER_MODE */
 /*
  * method_free_vacomm_buffer () - Frees the comm buffer
- *   return: 
+ *   return:
  *   vacomm_buffer(in)  : Transmission buffer
  */
 static void
@@ -650,7 +663,7 @@ method_free_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p)
 
 /*
  * method_initialize_vacomm_buffer () - Initializes the method comm buffer
- *   return: 
+ *   return:
  */
 static VACOMM_BUFFER *
 method_initialize_vacomm_buffer (void)
@@ -683,12 +696,12 @@ method_initialize_vacomm_buffer (void)
  *   return: int (number of values received)
  *   dbval(in)  : value
  *   vacomm_buffer(in)  : Transmission buffer
- *                                                                             
- * Note: If there is a db_value in the transmission buffer,             
+ *
+ * Note: If there is a db_value in the transmission buffer,
  * unpack it & return 1.  Otherwise, if EOF is indicated return 0,
- * else receive the buffer from the client and then unpack     
- * the value and return 1.  If an error is indicated, return -1   
- * because the error has been set by the comm interface.          
+ * else receive the buffer from the client and then unpack
+ * the value and return 1.  If an error is indicated, return -1
+ * because the error has been set by the comm interface.
  */
 static SCAN_CODE
 method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,

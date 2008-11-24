@@ -1,42 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * cursor.c - cursor manager
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * This module is responsible for opening cursors on the query result list
- * files, scanning through them in any direction, fetching list file tuple
- * values at the current cursor position, and closing cursors.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * When a cursor opened on a query result list file, a cursor identifier is
- * formed and used as the basic communication parameter for the following
- * calls to the module. Each cursor identifier basically encapsulates the
- * corresponding list file identifier, a set of parameter to keep track of the
- * current cursor position on the list file and a cursor buffer to store list
- * file pages.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * When a cursor is opened, it points to before the first tuple in the list
- * file if there is any. A cursor can only be in 3 different position states:
- * it either points to before the first tuple, or points to a tuple of the
- * list file, or it points to after the last tuple of the list file. The tuple
- * currently pointed at by the cursor is the current active tuple of the list
- * file. The cursor can be moved in either forward or backward direction, by
- * the scanning functions of the cursor manager. When the cursor points to
- * before the first tuple or after the last tuple, an attempt to move the
- * cursor in backward or forward direction, respectively, will result in an
- * end_of_scan error indication and the cursor position remains unchanged.
- * The cursor manager does the scan operations among the tuples in the current
- * cursor buffer and makes requests to communication routines to bring other
- * list file pages as needed. Since list file pages are structured in a
- * doubly-linked manner, having only one list file page allows the cursor
- * manager to be able to request the next or previous list file page.
- *
- * In addition to providing cursor scan routines, the cursor manager also
- * provides routines to fetch the values in the current active cursor tuple.
- * The values in the current active cursor tuple are represented in disk value
- * representation form (which is essentially the same value representation of
- * heap file object instances) and therefore, transformed into the workspace
- * value representations during value fetch operations.
+ */
+
+/*
+ * esql_cursor.c - cursor manager
  */
 
 #ident "$Id$"
@@ -48,19 +29,19 @@
 #include <assert.h>
 
 #include "error_manager.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "db.h"
 #include "locator_cl.h"
-#include "server.h"
+#include "server_interface.h"
 #include "work_space.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "cursor.h"
-#include "qp_util.h"
-#include "virtual_object_1.h"
+#include "parser_support.h"
+#include "virtual_object.h"
 #include "page_buffer.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -120,7 +101,7 @@ cursor_initialize_current_tuple_value_position (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_copy_list_id () - Copy source list identifier into destination 
+ * cursor_copy_list_id () - Copy source list identifier into destination
  *                    list identifier
  *   return: true on ok, false otherwise
  *   dest_list_id(out): Destination list identifier
@@ -201,7 +182,7 @@ cursor_free_list_id (QFILE_LIST_ID * list_id_p, bool self)
 }
 
 /*
- * cursor_has_set_vobjs () - 
+ * cursor_has_set_vobjs () -
  *   return: nonzero iff set has some vobjs, zero otherwise
  *   seq(in): set/sequence db_value
  */
@@ -233,7 +214,7 @@ cursor_has_set_vobjs (DB_SET * set)
 }
 
 /*
- * cursor_fixup_set_vobjs() - if val is a set/seq of vobjs then 
+ * cursor_fixup_set_vobjs() - if val is a set/seq of vobjs then
  * 			    turn it into a set/seq of vmops
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   val(in/out): a db_value
@@ -328,7 +309,7 @@ cursor_fixup_set_vobjs (DB_VALUE * value_p)
 }
 
 /*
- * cursor_fixup_vobjs () - 
+ * cursor_fixup_vobjs () -
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   value(in/out): a db_value
  * Note: if value is an OID then turn it into an OBJECT type value
@@ -380,7 +361,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
 }
 
 /*
- * cursor_copy_vobj_to_dbvalue - The given tuple set value which is in disk 
+ * cursor_copy_vobj_to_dbvalue - The given tuple set value which is in disk
  *   representation form is copied to the db_value structure
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   buf(in)            : Pointer to set disk representation
@@ -420,7 +401,7 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
 }
 
 /*
- * cursor_get_tuple_value_to_dbvalue () - The given tuple value which is in disk 
+ * cursor_get_tuple_value_to_dbvalue () - The given tuple value which is in disk
  *   representation form is copied/peeked to the db_value structure
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *    buf(in)          : Pointer to the tuple value
@@ -473,7 +454,7 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p,
 }
 
 /*
- * cursor_get_tuple_value_from_list () - The tuple value at the indicated position is 
+ * cursor_get_tuple_value_from_list () - The tuple value at the indicated position is
  *   extracted and mapped to given db_value
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   c_id(in)   : Cursor Identifier
@@ -497,8 +478,8 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index,
   or_init (&buffer, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
 
   /* check for saved tplvalue position info */
-  if (cursor_id_p->current_tuple_value_index >= 0 &&
-      cursor_id_p->current_tuple_value_index <= index
+  if (cursor_id_p->current_tuple_value_index >= 0
+      && cursor_id_p->current_tuple_value_index <= index
       && cursor_id_p->current_tuple_value_p != NULL)
     {
       i = cursor_id_p->current_tuple_value_index;
@@ -531,7 +512,7 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index,
 }
 
 /*
- * cursor_get_first_tuple_value () - First tuple value is extracted and mapped to 
+ * cursor_get_first_tuple_value () - First tuple value is extracted and mapped to
  *                             given db_value
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   tuple(in): List file tuple
@@ -559,10 +540,10 @@ cursor_get_first_tuple_value (char *tuple_p,
 }
 
 /*
- * cursor_get_list_file_page () - 
- *   return: 
- *   cursor_id(in/out): Cursor identifier 
- *   vpid(in): 
+ * cursor_get_list_file_page () -
+ *   return:
+ *   cursor_id(in/out): Cursor identifier
+ *   vpid(in):
  */
 static int
 cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
@@ -763,8 +744,8 @@ cursor_construct_tuple_from_overflow_pages (CURSOR_ID * cursor_id_p,
   while (overflow_vpid.pageid != NULL_PAGEID);
 
   /* reset buffer as a head page of overflow page */
-  if (!VPID_EQ (vpid_p, &overflow_vpid) &&
-      cursor_get_list_file_page (cursor_id_p, vpid_p) != NO_ERROR)
+  if (!VPID_EQ (vpid_p, &overflow_vpid)
+      && cursor_get_list_file_page (cursor_id_p, vpid_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -777,10 +758,11 @@ cursor_construct_tuple_from_overflow_pages (CURSOR_ID * cursor_id_p,
 static bool
 cursor_has_first_hidden_oid (CURSOR_ID * cursor_id_p)
 {
-  return (cursor_id_p->is_oid_included && cursor_id_p->oid_ent_count > 0
+  return (cursor_id_p->is_oid_included
+	  && cursor_id_p->oid_ent_count > 0
 	  && cursor_id_p->list_id.type_list.domp
-	  && cursor_id_p->list_id.type_list.domp[0]->type->id ==
-	  DB_TYPE_OBJECT);
+	  && (cursor_id_p->list_id.type_list.domp[0]->type->id ==
+	      DB_TYPE_OBJECT));
 }
 
 static int
@@ -839,8 +821,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
 
-  /* 
-   * search through the current buffer to store interesting OIDs 
+  /*
+   * search through the current buffer to store interesting OIDs
    * in the oid_set area, eliminating duplicates.
    */
   for (i = 0; i < tupel_count; i++)
@@ -997,26 +979,26 @@ cursor_buffer_last_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
 }
 
 /*
- * cursor_fetch_page_having_tuple () - A request is made to the server side to 
- *   bring the specified list file page and copy the page to the cursor buffer 
- *   area   					       
+ * cursor_fetch_page_having_tuple () - A request is made to the server side to
+ *   bring the specified list file page and copy the page to the cursor buffer
+ *   area
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
- *   cursor_id(in): Cursor identifier                                             
- *   vpid(in): List File Real Page Identifier				       
+ *   cursor_id(in): Cursor identifier
+ *   vpid(in): List File Real Page Identifier
  *   position(in):
- *   offset(in):									       
- * Note: For performance reasons, this routine checks the cursor identifier    
- *       and if the cursor LIST FILE has a hidden OID column (for update)      
- *       or has preceding hidden OID columns, vector fetches those referred    
- *       objects from the server.                                              
- *                                                                             
- *       It also positions the tuple pointer to the desired tuple position.    
- *       If position = LAST_TPL, then the cursor is positioned to the LAST     
- *       tuple on the page.  If position = FIRST_TPL, then the cursor is       
- *       positioned to the FIRST tuple on the page.  Otherwise, position is    
- *       the tuple position in the fetched page and offset is used as the      
- *       byte offset to the tuple.  If positioning to the first or last tuple  
- *       on the page, the offset is ignored.                                   
+ *   offset(in):
+ * Note: For performance reasons, this routine checks the cursor identifier
+ *       and if the cursor LIST FILE has a hidden OID column (for update)
+ *       or has preceding hidden OID columns, vector fetches those referred
+ *       objects from the server.
+ *
+ *       It also positions the tuple pointer to the desired tuple position.
+ *       If position = LAST_TPL, then the cursor is positioned to the LAST
+ *       tuple on the page.  If position = FIRST_TPL, then the cursor is
+ *       positioned to the FIRST tuple on the page.  Otherwise, position is
+ *       the tuple position in the fetched page and offset is used as the
+ *       byte offset to the tuple.  If positioning to the first or last tuple
+ *       on the page, the offset is ignored.
  */
 int
 cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
@@ -1080,10 +1062,10 @@ cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
 }
 
 /*
- * cursor_print_list () - Dump the content of the list file to the standard output								       
- *   return: 
- *   query_id(in):					       
- *   list_id(in): List File Identifier					       
+ * cursor_print_list () - Dump the content of the list file to the standard output
+ *   return:
+ *   query_id(in):
+ *   list_id(in): List File Identifier
  */
 void
 cursor_print_list (int query_id, QFILE_LIST_ID * list_id_p)
@@ -1195,20 +1177,20 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_open () - 
+ * cursor_open () -
  *   return: true on all ok, false otherwise
  *   cursor_id(out): Cursor identifier
- *   list_id: List file identifier				       
- *   updatable: Flag which indicates if cursor is updatable	       
- *   is_oid_included: Flag which indicates if first column of the list file    
- *                 contains hidden object identifiers                       
- * 									       
- * Note: A cursor is opened to scan through the tuples of the given     
- *       list file. The cursor identifier is initialized and memory     
- *       buffer for the cursor identifier is allocated. If is_oid_included 
- *       flag is set to true, this indicates that the first column   
- *       of list file tuples contains the object identifier to be used  
- *       for cursor update/delete operations.                           
+ *   list_id: List file identifier
+ *   updatable: Flag which indicates if cursor is updatable
+ *   is_oid_included: Flag which indicates if first column of the list file
+ *                 contains hidden object identifiers
+ *
+ * Note: A cursor is opened to scan through the tuples of the given
+ *       list file. The cursor identifier is initialized and memory
+ *       buffer for the cursor identifier is allocated. If is_oid_included
+ *       flag is set to true, this indicates that the first column
+ *       of list file tuples contains the object identifier to be used
+ *       for cursor update/delete operations.
  */
 bool
 cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p,
@@ -1287,7 +1269,7 @@ cursor_set_prefetch_lock_mode (CURSOR_ID * cursor_id_p, DB_FETCH_MODE mode)
 }
 
 /*
- * cursor_set_copy_tuple_value () - Record the indicator for copy/peek tplvalue. 
+ * cursor_set_copy_tuple_value () - Record the indicator for copy/peek tplvalue.
  *   return: It returns the previous indicator.
  *   cursor_id(in/out): Cursor identifier
  *   copy(in):
@@ -1303,17 +1285,17 @@ cursor_set_copy_tuple_value (CURSOR_ID * cursor_id_p, bool is_copy)
 }
 
 /*
- * cursor_set_oid_columns () - 
- *   return:									       
- *   cursor_id(in/out): Cursor identifier			       
- *   oid_col_no(in): Array of int                                        
- *   oid_col_no_cnt(in): Size of oid_col_no                                       
- * 									       
- * returns/side-effects: int (true on success, false on failure)    
- * 									       
- * description: The caller indicates which columns of the list file            
- *              contain OID's which are to be pre-fetched when a list file     
- *              page is fetched.                                               
+ * cursor_set_oid_columns () -
+ *   return:
+ *   cursor_id(in/out): Cursor identifier
+ *   oid_col_no(in): Array of int
+ *   oid_col_no_cnt(in): Size of oid_col_no
+ *
+ * returns/side-effects: int (true on success, false on failure)
+ *
+ * description: The caller indicates which columns of the list file
+ *              contain OID's which are to be pre-fetched when a list file
+ *              page is fetched.
  */
 int
 cursor_set_oid_columns (CURSOR_ID * cursor_id_p, int *oid_col_no_p,
@@ -1416,14 +1398,14 @@ cursor_peek_tuple (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_get_current_oid () - 
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code                                                                              
- *   cursor_id(in): Cursor Identifier					       
- *   db_value(out): Set to the object identifier				       
- * Note: The object identifier stored in the first column of the        
- *       current cursor tuple is extracted and stored in the db_value   
- *       parameter. If cursor list file does not have an object         
- *       identifier column, an error code is set.                       
+ * cursor_get_current_oid () -
+ *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   cursor_id(in): Cursor Identifier
+ *   db_value(out): Set to the object identifier
+ * Note: The object identifier stored in the first column of the
+ *       current cursor tuple is extracted and stored in the db_value
+ *       parameter. If cursor list file does not have an object
+ *       identifier column, an error code is set.
  */
 int
 cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
@@ -1445,7 +1427,7 @@ cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
 }
 
 /*
- * cursor_next_tuple () - 
+ * cursor_next_tuple () -
  *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the next tuple in the LIST FILE referred by the cursor
@@ -1532,7 +1514,7 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_prev_tuple () - 
+ * cursor_prev_tuple () -
  *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the previous tuple in the LIST FILE referred by cursor
@@ -1614,9 +1596,9 @@ cursor_prev_tuple (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_first_tuple () - 
- * 									       
- * arguments:								       
+ * cursor_first_tuple () -
+ *
+ * arguments:
  *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the first tuple in the LIST FILE referred by the cursor
@@ -1657,7 +1639,7 @@ cursor_first_tuple (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_last_tuple () - 
+ * cursor_last_tuple () -
  *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the last tuple in the LIST FILE referred by the cursor
@@ -1691,7 +1673,7 @@ cursor_last_tuple (CURSOR_ID * cursor_id_p)
 }
 
 /*
- * cursor_get_tuple_value () - 
+ * cursor_get_tuple_value () -
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
  *   c_id(in): Cursor Identifier
  *   index(in):
@@ -1730,17 +1712,17 @@ cursor_get_tuple_value (CURSOR_ID * curor_id_p, int index, DB_VALUE * value_p)
 }
 
 /*
- * cursor_get_tuple_value_list () -					               
- *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise                                                                              
- *   cursor_id(in): Cursor Identifier                                                                          
- *   size(in): Number of values in the value list			       
- *   value_list(in/out): Set to the values fetched from the current tuple	       
- * Note: The data values of the current cursor tuple are fetched        
- *       and put the value_list in their originial order. The size      
- *       parameter must be equal to the number of values in the tuple   
- *       and the caller should allocate necessary space for the value   
- *       list. If the cursor is not currently pointing to tuple, an     
- *       error code is returned.                                        
+ * cursor_get_tuple_value_list () -
+ *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
+ *   cursor_id(in): Cursor Identifier
+ *   size(in): Number of values in the value list
+ *   value_list(in/out): Set to the values fetched from the current tuple
+ * Note: The data values of the current cursor tuple are fetched
+ *       and put the value_list in their originial order. The size
+ *       parameter must be equal to the number of values in the tuple
+ *       and the caller should allocate necessary space for the value
+ *       list. If the cursor is not currently pointing to tuple, an
+ *       error code is returned.
  */
 int
 cursor_get_tuple_value_list (CURSOR_ID * cursor_id_p, int size,

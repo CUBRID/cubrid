@@ -1,9 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * tcp.c - Open a TCP connection
- *
  */
 
 #ident "$Id$"
@@ -44,13 +59,13 @@
 
 #include "porting.h"
 #if defined(SERVER_MODE)
-#include "csserror.h"
-#include "conn.h"
+#include "connection_error.h"
+#include "connection_sr.h"
 #else /* SERVER_MODE */
-#include "general.h"
+#include "connection_cl.h"
 #endif /* SERVER_MODE */
 #include "error_manager.h"
-#include "globals.h"
+#include "connection_globals.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "tcp.h"
@@ -308,24 +323,6 @@ css_tcp_client_open_withretry (const char *host, int port, bool will_retry)
 	  if ((errno == ECONNREFUSED || errno == ETIMEDOUT)
 	      && will_retry == true)
 	    {
-	      /*
-	       * According to the Sun man page of connect & listen. When a connect
-	       * was forcefully rejected. The calling program must close the
-	       * socket descriptor, before another connect is retried.
-	       *
-	       * The server's host is probably overloaded. Sleep for a while, then
-	       * try again. We sleep a different number of seconds between 1 and 30
-	       * to avoid having the same situation with other processes that could
-	       * have reached the timeout/refuse connection.
-	       *
-	       * The sleep time is guessing that the server is not going to be
-	       * overloaded by connections in that amount of time.
-	       *
-	       * Similar things are suggested by R. Stevens Unix Network programming
-	       * book. See Remote Command execution example in Chapter 14
-	       *
-	       * See connect and listen MAN pages.
-	       */
 	      nsecs = (int) difftime (time (NULL), start_contime);
 	      nsecs -= PRM_TCP_CONNECTION_TIMEOUT;
 
@@ -779,29 +776,6 @@ css_tcp_master_datagram (char *path_name, int *sockfd)
 
 	  if (errno == ECONNREFUSED || errno == ETIMEDOUT)
 	    {
-	      /*
-	       * According to the Sun man page of connect & listen. When a connect
-	       * was forcefully rejected. The calling program must close the
-	       * socket descriptor, before another connect is retried.
-	       *
-	       * The server's host is probably overloaded. Sleep for a while, then
-	       * try again. We sleep a different number of seconds between 1 and 30
-	       * to avoid having the same situation with other processes that could
-	       * have reached the timeout/refuse connection.
-	       *
-	       * The sleep time is guessing that the server is not going to be
-	       * overloaded by connections in that amount of time.
-	       *
-	       * Similar things are suggested by R. Stevens Unix Network programming
-	       * book. See Remote Command execution example in Chapter 14
-	       *
-	       * See connect and listen MAN pages.
-	       *
-	       * Note that we do not retry by time (PRM_TCP_CONNECTION_TIMEOUT)
-	       * for the master connection. We do this to avoid waiting for a long
-	       * time when we are restarting a master process to find out if there
-	       * is one already running. That is, master-to-master connection.
-	       */
 
 	      if (num_retries > TCP_MIN_NUM_RETRIES)
 		{

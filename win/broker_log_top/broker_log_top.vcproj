@@ -173,43 +173,43 @@
 				Name="broker"
 				>
 				<File
-					RelativePath="..\..\src\broker\file_name.c"
+					RelativePath="..\..\src\broker\broker_filename.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\getopt.c"
+					RelativePath="..\..\src\broker\broker_getopt.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_time.c"
+					RelativePath="..\..\src\broker\broker_log_sql_list.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_top.c"
+					RelativePath="..\..\src\broker\broker_log_time.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_top_tran.c"
+					RelativePath="..\..\src\broker\broker_log_top.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_util.c"
+					RelativePath="..\..\src\broker\broker_log_top_tran.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\query_info.c"
+					RelativePath="..\..\src\broker\broker_log_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\sql_list.c"
+					RelativePath="..\..\src\broker\broker_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\t_string.c"
+					RelativePath="..\..\src\broker\cas_query_info.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\util.c"
+					RelativePath="..\..\src\broker\log_top_string.c"
 					>
 				</File>
 			</Filter>

@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * db_virt.c - API functions related to virtual class.
  */
 
@@ -14,20 +29,20 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
-#include "view_transform_2.h"
+#include "view_transform.h"
 
 #define ERROR_SET(error, code) \
   do {                     \
@@ -227,7 +242,7 @@ db_is_real_instance (DB_OBJECT * obj)
 
   if (obj->is_vid)
     {
-      retval = vid_is_base_instance (obj);
+      retval = vid_is_base_instance (obj) ? 1 : 0;
       return (retval);
     }
   else
@@ -312,7 +327,7 @@ db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2)
     }
   else if ((!obj1_is_updatable) && (!obj2_is_updatable))
     {
-      retval = vid_compare_non_updatable_objects (obj1, obj2);
+      retval = vid_compare_non_updatable_objects (obj1, obj2) ? 1 : 0;
       return (retval);
     }
   return 0;
@@ -687,7 +702,7 @@ db_is_vclass (DB_OBJECT * op)
 {
   SM_CLASS *class_;
   SM_CLASS_TYPE ct;
-  bool is_virtual_class = false;
+  int is_virtual_class = 0;
 
   CHECK_CONNECT_ZERO ();
 
@@ -700,7 +715,7 @@ db_is_vclass (DB_OBJECT * op)
 	      ct = sm_get_class_type (class_);
 	      if (ct == SM_VCLASS_CT)
 		{
-		  is_virtual_class = true;
+		  is_virtual_class = 1;
 		}
 	    }
 	}

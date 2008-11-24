@@ -1,8 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * j_char.c - parser supporting functions for double byte character set
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * double_byte_support.c - parser supporting functions for double byte character set
  */
 
 #ident "$Id$"
@@ -29,8 +44,8 @@
 #define DBCS_NEXT_CHAR(p)	((p->next_byte)(p))
 
 typedef enum
-{ SQLX_,			/* In SQLX language */
-  SQLX_BEGIN_,			/* Just before SQLX */
+{ CSQL_,			/* In CSQL language */
+  CSQL_BEGIN_,			/* Just before CSQL */
   C_COMMENT_,			/* Within C comment */
   C_COMMENT_BEGIN_,		/* Just before C comment */
   SQL_COMMENT_,			/* -- sql comment */
@@ -58,7 +73,7 @@ static DBCS_INPUT_STATUS dbcs_Input_status;
 static int dbcs_get_next_w_char (PARSER_CONTEXT * parser);
 static int dbcs_convert_w_char (int input_char);
 static int dbcs_get_next_token_wchar (PARSER_CONTEXT * parser);
-static int dbcs_process_sqlx (PARSER_CONTEXT * parser, int converted_char);
+static int dbcs_process_csql (PARSER_CONTEXT * parser, int converted_char);
 static int dbcs_process_double_quote_string (PARSER_CONTEXT * parser,
 					     int input_char,
 					     int converted_char);
@@ -85,7 +100,7 @@ void
 dbcs_start_input (void)
 {
   dbcs_Unget_buf = DBCS_UNGET_BUF;	/* Lead ahead buffer */
-  dbcs_Input_status = SQLX_;	/* Scanning status   */
+  dbcs_Input_status = CSQL_;	/* Scanning status   */
   dbcs_Latter_flag = 0;		/* Two byte code     */
 }
 
@@ -147,13 +162,13 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
 
   switch (dbcs_Input_status)
     {
-    case SQLX_:
-      /* Scanning over SQL/X part, not in comments or character string */
-      return (dbcs_process_sqlx (parser, converted_char));
+    case CSQL_:
+      /* Scanning over CSQL part, not in comments or character string */
+      return (dbcs_process_csql (parser, converted_char));
 
-    case SQLX_BEGIN_:
+    case CSQL_BEGIN_:
       /* Typically, the last character of C-style comment */
-      DBCS_STATUS_RETURN (SQLX_, converted_char);
+      DBCS_STATUS_RETURN (CSQL_, converted_char);
 
     case C_COMMENT_BEGIN_:
       /* Scanning latter part of the beginning of C-style comment */
@@ -173,7 +188,7 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
        * is the same, we have common source lines */
       if (converted_char == '\n')
 	{
-	  DBCS_STATUS_RETURN (SQLX_, converted_char);
+	  DBCS_STATUS_RETURN (CSQL_, converted_char);
 	}
       else
 	{
@@ -246,9 +261,9 @@ static int
 dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser,
 				       int input_char, int converted_char)
 {
-  if ((converted_char >= '0' && converted_char <= '9') ||
-      (converted_char >= 'A' && converted_char <= 'F') ||
-      (converted_char >= 'a' && converted_char <= 'f'))
+  if ((converted_char >= '0' && converted_char <= '9')
+      || (converted_char >= 'A' && converted_char <= 'F')
+      || (converted_char >= 'a' && converted_char <= 'f'))
     {
       return (converted_char);	/* Within the sequence */
     }
@@ -340,7 +355,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 
 	if ((c1 = dbcs_get_next_w_char (parser)) == EOF)
 	  {
-	    DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+	    DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	  }
 
 	switch (c1_c = dbcs_convert_w_char (c1))
@@ -373,7 +388,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	    else
 	      {
 		/* Contiguous double quote */
-		DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+		DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	      }
 	  default:
 	    /*
@@ -381,7 +396,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	     * terminate double quote string status and go back to SQL/X
 	     * statement status.
 	     */
-	    DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+	    DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	  }
       }
     case '\\':
@@ -508,7 +523,7 @@ dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
 
 	if ((c1 = dbcs_get_next_w_char (parser)) == EOF)
 	  {
-	    DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+	    DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	  }
 
 	switch (c1_c = dbcs_convert_w_char (c1))
@@ -529,12 +544,12 @@ dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
 	      }
 	    else
 	      {
-		DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+		DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	      }
 
 	  default:
 	    /* Terminate single quote string */
-	    DBCS_STATUS_UNGET_RETURN (SQLX_, c1, converted_char);
+	    DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	  }
       }
 
@@ -595,7 +610,7 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
 	     * returned so that this is recognized by the parser correctly.
 	     */
 	    *dbcs_Unget_buf++ = c1_c;
-	    DBCS_STATUS_RETURN (SQLX_BEGIN_, converted_char);
+	    DBCS_STATUS_RETURN (CSQL_BEGIN_, converted_char);
 	  }
 
 	/*
@@ -612,13 +627,13 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
 
 
 /*
- * dbcs_process_sqlx () - Scanning SQL/X language body
+ * dbcs_process_csql () - Scanning CSQL language body
  *   return:
  *   parser(in):
  *   converted_char(in):
  */
 static int
-dbcs_process_sqlx (PARSER_CONTEXT * parser, int converted_char)
+dbcs_process_csql (PARSER_CONTEXT * parser, int converted_char)
 {
   switch (converted_char)
     {

@@ -1,52 +1,26 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * pt_cnf.c - convert arbitrary boolean expressions to conjunctive normal form
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * cnf.c - convert arbitrary boolean expressions to conjunctive normal form
  */
 
 #ident "$Id$"
-
-/* conversion algorithms
- * -----------------------------
- * aof(and-or-form) :: Boolexp a -> Boolexp a
- * -----------------------------
- * aof b maps an unrestricted boolean expression to an equivalent "and-or"
- * form boolean expression. All nots occur at the leaves and all other
- * operators are "ands" or "ors".
- * ------------------------
- * aof x | isAtom x = x
- * aof (Not (Not a)) = aof a
- * aof (Not (a /\ b)) = aof (Not a) \/ aof (Not b)
- * aof (Not (a \/ b)) = aof (Not a) /\ aof (Not b)
- * aof (a /\ b) = aof a /\ aof b
- * aof (a \/ b) = aof a \/ aof b
- * ---------------------------------
- * aof2cnf :: Boolexp a -> Boolexp a
- * ---------------------------------
- * aof2cnf maps an and-or form  boolean expression to an
- * equivalent conjunctive normal form boolean expression.
- * ----------------------------------------------
- * aof2cnf x | isAtom x = x
- * aof2cnf (a /\ b) = aof2cnf a /\ aof2cnf b
- * aof2cnf (a \/ b) =
- *   distribute (aof2cnf a) (aof2cnf b)
- *   where distribute (a /\ b) c
- *           = aof2cnf (a \/ c)  /\  aof2cnf (b \/ c)
- *             distribute a (b /\ c)
- *           = aof2cnf (a \/ b)  /\  aof2cnf (a \/ c)
- *             distribute a b -- otherwise a and b are
- *                            -- disjuctions or atoms
- *           = a \/ b
- *
- * -----------------------------
- * cnf :: Boolexp a -> Boolexp a
- * -----------------------------
- * Map a boolean expression to one in CNF
- * -----------------------------
- * cnf = aof2cnf . aof
- */
 
 #include <stdarg.h>
 #include <ctype.h>
@@ -599,27 +573,6 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 	}
 
-      /* LHS CNF/DNF list AND RHS CNF/DNF list
-         ==> each node in LHS -(or_next)-> each node in RHS
-         Ex)
-         OR              ((a | b) & (c | d)) | ((w | x) & (y | z))
-         +--------/  \-+
-         |             |             (<1>   &   <2>)   |  (<3>    &   <4>)
-         (a) -> (c)    (w) -> (y)
-         |      |      |      |      (<1> | <3>) & (<1> | <4>)
-         v      v      v      v      & (<2> | <3>) & (<2> | <4>)
-         (b)    (d)    (x)    (z)
-         ==>
-         (a) -> (a) -> (c) -> (c)   (a | b | w | x) & (a | b | y | z)
-         |      |      |      |    & (c | d | w | x) & (c | d | y | z)
-         v      v      v      v
-         (b)    (b)    (d)    (d)
-         |      |      |      |
-         v      v      v      v
-         (w)    (y)    (w)    (y)
-         |      |      |      |
-         v      v      v      v
-         (x)    (z)    (x)    (z) */
 
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CONVERT_RANGE;

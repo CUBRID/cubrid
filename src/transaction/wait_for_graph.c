@@ -1,319 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * wfg.c - management of Wait-For-Graph 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: 
- *	Overview: Management of Wait-For-Graph (WFG)
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * 1. General
- *
- * In order to detect a deadlock, we maintain an explicit wait-for-graph (WFG)
- * [Bern87] in a memory region which can be accessible by all transactions.
- * A WFG is a graph G = (V,E), where V (set of vertices) represents set of
- * transactions and E (set of edges) contains an edge <ti,tj> iff ti
- * is waiting for tj. If there is a cycle t1 -> t2 ->,..., -> tn -> t1 (n>1),
- * any transaction ti (1<i<n) cannot proceed forever. This phenomenon is
- * called deadlock.
- *
- * The WFG module manages WFG and provides a function to detect all cycles
- * in a WFG.
- *
- * 2. Operations on WFG ( = Interfaces of WFG module )
- *
- * The WFG module provides the following operations.
- *
- * 	wfg_alloc_nodes - initialize (or expand) the # of nodes in WFG
- * 	wfg_free_nodes - free all memory of WFG
- * 	wfg_insert_out_edges - add outgoing edges to WFG
- * 	wfg_remove_out_edges - delete outgoing edges from WFG
- * 	wfg_get_status - obtain statistic of WFG
- * 	wfg_detect_cycle - detect all cycles in the WFG
- *      wfg_free_cycle - free memory allocated to store cycles
- * 	wfg_dump - display the WFG contents
- *
- * The system initializes WFG using 'wfg_alloc_nodes' with # of transactions, or it
- * can expand WFG with succeeding 'wfg_alloc_nodes' calls and terminates it with
- * 'wfg_free_nodes' when the system is terminated/shutted-down gracefully.
- * A transaction adds outgoing edges when the transaction becomes waiting for
- * (or waited by) other transactions using 'wfg_insert_out_edges'. When the
- * transaction does not wait any more on a transaction, the outgoing edge
- * is removed using 'wfg_remove_out_edges'.
- * Using 'wfg_get_status', the system can obtain the statistic of WFG which
- * is useful to determine the period of cycle detection invokes.
- * The system calls 'wfg_detect_cycle' function to detect deadlocks.
- *
- * 3. Synchronization of accesses to WFG
- *
- * All the above operations except 'wfg_get_status' and 'wfg_dump' access
- * the WFG mutually exclusively. This is achieved by a latch 'wfg_latch'
- *
- * 4. Cycle Detection Algorithm
- *
- * In order for the system to resolve all deadlocks at a time,
- * 'cycle' operation returns all elementary cycles in a WFG.
- * The basic idea of the algorithm is depth-first-search (DFS) with
- * marking. Initially, all nodes are marked NOTVISITED in its status.
- * In a DFS, when a node is being traversed, it is marked ONSTACK in
- * its status.
- * Once it is traversed, it is marked OFFSTACK.
- * When a DFS encounters a node whose status is ONSTACK (a cycle is found),
- * it lists the nodes involved in the cycle and assigns an appropriate number
- * to the node to specify that the nodes are involved in the cycle.
- * When a DFS encounters a node whose status is OFFSTACK and it was involved
- * in a cycle at the current DFS, it is pushed into stack again (traversed
- * again) and marked with REONSTACK. If a REONSTACK node is encountered, just
- * ignire it since the clycle is already listed.
- * 									      
- * The correctness of the algorithm is simple.				      
- * DFS will cover all nodes and edges. If there is a cycle,		      
- * the DFS encounters a node which is already in the stack (ONSTACK or	      
- * REONSTACK). Obviously, if a DFS finds a cycle, the cycle is indeed in the  
- * WFG. Furthermore, the algorithm does not list a cycle more than once by    
- * using REONSTACK marking.						      
- * 									      
- * In our algorithm, there is a possibility that an edge is traversed several 
- * times without any use. Suppose a DFS encounters a node with OFFSTACK and it
- * was involved in a cycle in this DFS. If the cycle and the current stack do 
- * not share any node, there can be no cycle which connects from the current  
- * node to one of nodes in the current stack. To avoid this useless traverse, 
- * [John75] presented an algorithm in which if a cycle is found, for each     
- * node in the cycle the system attaches edges to represent those nodes are   
- * involved in the same cycle. His algorithm has the worst time complexity    
- * O((n+e)(c+1)). However, the algorithm is more complex than ours and uses   
- * extra storage space.							      
- * 									      
- * Our algorithm has the worst time complexity O((n+e)(c*e' + 1)), where,     
- * n is # of nodes, e is # of edges, c is # of cycles and e' is		      
- * # of edges which are traversed in a DFS and are connected to a cycle       
- * which is found at the DFS. We think that a WFG is relatively small	      
- * and in most cases, there is no deadlock in a WFG. With this assumption,    
- * both the extra storage space in [John75] and 'e' factor in our algorithm   
- * are not expected to cause a severe problem.				      
- *                                                                            
- *                                                                            
- *     Example. #1							      
- *									      
- *     V =	{t1, t2, t3, t4, t5, t6}.                                     
- *     E = 	{t1 -> t2,                                                    
- * 		 t2 -> t3, t4                                                 
- *               t3 -> t4, t6                                                 
- *               t4 -> t6,                                                    
- *               t5 -> t1,                                                    
- *               t6 -> t1, t5}                                                
- * 				                                              
- *     C = {{1, 2, 3, 6, 5},                                                  
- *          {1, 2, 4, 6, 5},                                                  
- *          {1, 2, 3, 4, 6, 5},                                               
- *          {1, 2, 3, 6},                                                     
- *          {1, 2, 4, 6},                                                     
- *          {1, 2, 3, 4, 6}}                                                  
- *                                                                            
- *                                                                            
- *     Example. #2							      
- *									      
- *     V =	{t1, t2, t3, t4}.                                             
- *     E = 	{t1 -> t2, t4                                                 
- *               t2 -> t4                                                     
- *               t3 -> t1, t2, t4                                             
- *               t4 -> t3                                                     
- *                                                                            
- *     C = {{1, 4, 3},                                                        
- *          {1, 2, 4, 3},                                                     
- *          {3, 2, 4},                                                        
- *          {3, 4}}                                                           
- *                                                                            
- *                                                                            
- *                                                                            
- *	###################################				      
- *	Extending WFG for Transaction-Group				      
- *	###################################				      
- *									      
- * In order to provide a higher level to implement counting semaphore	      
- * which is a abstraction to synchronize accesses to multiple identical	      
- * resources such as buffer pages, we introduce a special group of	      
- * transactions which is associated with a counting semaphores. Using this new
- * concept, higher level module can say to WFG module "transaction A is       
- * waiting until pages (counting semaphore) are available and the pages are   
- * allocated to transaction B, C, and D". We also extend the cycle detection  
- * algorithm to cope with this special wait-for relationship.		      
- *									      
- * DEFINITION: TRANSACTION-GROUPS					      
- *									      
- * A transaction-group TG is a set of finite # of individual transactions,    
- * {t1, t2, t3, ...}. This set represents the transactions which hold	      
- * at least one resource which is controlled by a counting semaphore.	      
- *									      
- * WFG is naturally extended to have TGs in its transaction set V (vertices). 
- * No changes in the definition of edges E (i.e., E can have t -> TG if	      
- * t and TG belong to V).						      
- *									      
- * CONSTRAINTS (CHARACTERISTICS) OF TRANSACTION-GROUPS			      
- *									      
- *	- TG cannot have any out-going edge (TG itself cannot wait for	      
- *	  any transaction or group transaction).                              
- *	- the wait-for relation t -> TG represents			      
- *	  "t is waiting for at least one of TG members". For example,	      
- *	  suppose TG = {t1, t2}. Then,					      
- *									      
- *	  t -> TG =							      
- *		E implicitly has at least one edge of t -> t1, t -> t2.	      
- *									      
- * Traditional deadlock detection algorithm can still be used to detect	      
- * deadlocks which are not associated with TG. (The cycle gathered by this    
- * algorithm will never include TG because there is no out-going edge from    
- * a TG). In order to detect deadlocks caused by the new wait-for	      
- * relationship, we introduce the following theorem.			      
- *									      
- * THEOREM: There is a implicit cycle if V, E has set of transactions and     
- * edges such that t -> ... -> TG for all t belonging to a TG.		      
- *									      
- * PROOF.  Let TG = {t1, ..., tn}. Since E has t1 -> TG,		      
- * E implicitly has at least one of t1 -> (t2 |t3 ... | tn).		      
- * Similarly, we derive the followings:					      
- *									      
- *	t1 -> (t2 |t3 ... | tn).					      
- *	t2 -> (t1 |t3 ... | tn).					      
- *	...								      
- *	tn -> (t1 |t2 ... | tn-1).					      
- *									      
- * Since each ti should have at least one out-going edge and it should	      
- * belong to tj, 1 <= j <= n && j != i, there exist a cycle.		      
- *									      
- * DEADLOCK DETECTION / RESOLVE ALGORITHM				      
- *									      
- *     For each TG,							      
- *									      
- * 	1. For each t in TG, find the set of set of transactions, P(t) where  
- * 	   P(t) = set of { ti | t1 -> t2 -> ... -> tn -> TG, t1 = t}          
- * 	   P(t) can have more than one set as its element if there	      
- * 	   are two path from t to TG.					      
- * 	   Also, if there is no path from t to TG, P(t) will be empty.	      
- * 	2. If there exists a t such that P(t) is empty,			      
- * 	   no cycle and stop						      
- * 	3. Otherwise, there are cycles.					      
- *									      
- * 	    Suppose |TG| = n.						      
- * 	    Let's W(TG) = { <E1, E2, ..., En> | Ei belongs to P(ti), ti	      
- *						belongs to TG, 1 <= i <= n }. 
- * 	    Note that W(TG) is a Cartesian product of P(ti) for all i.	      
- * 	    C(TG) = { T | T is a union of Ei in <E1, E2, ..., En>	      
- * 			  belonging to W(TG)}.				      
- *									      
- * 	    Return C(TG).						      
- *									      
- *     Example.								      
- *									      
- *     V =	{t1, t2, t3, t4, t5, t6, t7, TG}.			      
- *     TG =	{t1, t2, t3}.						      
- *     E = 	{t1 -> TG,						      
- * 		 t2 -> t7,						      
- * 		 t3 -> t4, t5,						      
- * 		 t4 -> TG,						      
- * 		 t5 -> t6,						      
- * 		 t6 -> t1,						      
- * 		 t7 -> TG}						      
- *									      
- *     1. P(t1) = {{t1}}						      
- *        P(t2) = {{t2, t7}}						      
- *        P(t3) = {{t3, t4}, {t3, t5, t6, t1}}				      
- *									      
- *     2. no empty P(ti), therefore, deadlock.				      
- *     3. W(TG) = { <{t1}, {t2, t7}, {t3, t4}>,				      
- * 		    <{t1}, {t2, t7}, {t3, t5, t6, t1}}			      
- *        C(TG) = { {t1, t2, t3, t4, t7}, {t1, t2, t3, t5, t6, t7} }	      
- *									      
- *     the deadlock resolution can be achieved by removing all cycles         
- *     belonging to C(TG).						      
- *									      
- * --------------							      
- * IMPLEMENTATION							      
- * --------------							      
- *									      
- * DATA STRUCTURES							      
- *									      
- * 	- We keep two separate data structures: one is for original	      
- * 	  WFG and the other is to keep TG table. Each entry of TG table	      
- * 	  represents a transaction group.				      
- *									      
- * 	  struct transaction_group_table_entry {			      
- * 		set of transactions belonging to this TG;		      
- * 		set of transactions waiting for this TG			      
- * 	  }								      
- *									      
- * 	  The second field is to implement t -> TG without modifying	      
- * 	  original WFG. The deadlock detection algorithm can mark	      
- * 	  transactions t such that t -> TG as "WAITING_TG"		      
- * 	  before Step 1 in the above algorithm. It can be used to 	      
- * 	  terminate search algorithm in Step 2.				      
- * 	  The mark should be cleared after Step 2.			      
- *									      
- * 	- NOTE: TG table is only increasing.				      
- *									      
- * FUNCTION INTERFACES							      
- *									      
- *   int wfg_alloc_tran_group(void)						      
- *									      
- * 	- allocate a new TG and return non-negative id of the TG.	      
- * 	  this should be used in successive TG related functions.	      
- * 	- If failure, return negative.					      
- *									      
- *   int wfg_insert_holder_tran_group(int tran_group_index, int tran_index)
- *									      
- * 	- register a transaction (tran_index) into the TG (tg_index).	      
- * 	- returns NO_ERROR if all OK, ER status otherwise					      
- *									      
- *   int wfg_remove_holder_tran_group(int tg_index, int tran_index)		      
- *									      
- * 	- remove a transaction (tran_index) from the TG table (tran_group_index).      
- *									      
- *   int wfg_insert_waiter_tran_group(int tran_group_index, int waiter_tran_index)              
- *									      
- * 	- put an edge to WFG representing that the transaction                
- *        (waiter_tran_index) is waiting for TG (tran_group_index).                           
- *									      
- *   int wfg_remove_waiter_tran_group(int tran_group_index, int waiter_tran_index)                   
- *									      
- * 	- remove an edge from WFG which was representing the relationship     
- * 	  the transaction (waiter_tran_index) is waiting for TG (tran_group_index).         
- *									      
- * Existing wfg_free_nodes() will free TG table wfg_detect_cycle() returns cycles    
- * associated with TGs as well as the traditional ones. 		      
- * Wfg_dump() will also display TGs.					      
- *									      
- * Other functions are not changed.					      
- *									      
- * NOTE: The current implementation has some limitation as follows:	      
- *									      
- * Once it detects a deadlock which is associated with a TG, it just	      
- * returns set of transactions in the TG as a cycle instead of trying to      
- * find all elementary cycles to be resolved. Since all transactions in a TG  
- * are involved in all elementary cycles associated with the TG, it is        
- * sufficient to abort one of the transactions to resolve the deadlock.       
- * But, it is not necessarily efficient/fair.				      
- * However, the current time frame would not allow me to implement	      
- * such a complex/luxurious thing.					      
- *									      
- * 									      
- * MODULE INTERFACE							      
- * The WFG module is a self independent module.				      
- * 									      
- * At least the following modules call the WFG manager:			      
- *  Lock Manager:                 To maintain (insert, delete edges) WFG and  
- *                                To find cycles			      
- *  Log Manager:                  To initialize/terminate WFG areas	      
- * 									      
- * 									      
- * REFERENCES								      
- * 									      
- * [Bern87] P. Bernstein, V. Hadzilacos and N. Goodman, Concurrency Control   
- * 	 and Recovery in Database Systems, Addison-Wesley, Reading, MA, 1987. 
- * 									      
- * [John75] D. Johnson, "Finding All the Elementary Circuits of a Directed    
- *	Graph," SIAM J. Comput., 4(1), Mar. 1975, pp. 77-84.		      
- *									      
+ */
+
+/*
+ * wait_for_graph.c - management of Wait-For-Graph
  */
 
 #ident "$Id$"
@@ -324,12 +28,12 @@
 #include <assert.h>
 
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "wait_for_graph.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "thread_impl.h"
-#include "csserror.h"
+#include "connection_error.h"
 #endif /* SERVER_MODE */
 
 /* Prune the number of found cycles in a cycle group */
@@ -362,10 +66,10 @@ struct wfg_node
 {
   WFG_STACK_STATUS status;
   int cycle_group_no;		/* Group no in a cycle */
-  /* 
-   * Fun to call to solve a cycle. If NULL, the transaction will be aborted. 
-   * Assumption a transaction can be waiting for many transaction, 
-   * but it can only be waiting in one place. 
+  /*
+   * Fun to call to solve a cycle. If NULL, the transaction will be aborted.
+   * Assumption a transaction can be waiting for many transaction,
+   * but it can only be waiting in one place.
    */
   int (*cycle_fun) (int tran_index, void *args);
   void *args;			/* Arguments to be passed to cycle_fun */
@@ -477,14 +181,14 @@ static int
 wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
 				       WFG_EDGE ** holder_p);
 
-/* 
- * TODO : M2, error check 
+/*
+ * TODO : M2, error check
  * wfg_push_stack : push operation on WFG stack
- *  
+ *
  * return : NO_ERROR
- * 
- *   top_p(IN/OUT) : 
- *   node(IN)      :     
+ *
+ *   top_p(IN/OUT) :
+ *   node(IN)      :
  */
 static int
 wfg_push_stack (WFG_STACK ** top_p, int node)
@@ -496,13 +200,13 @@ wfg_push_stack (WFG_STACK ** top_p, int node)
   return NO_ERROR;
 }
 
-/* 
+/*
  * wfg_pop_stack : pop operation on WFG stack
- *  
+ *
  * return : NO_ERROR
- * 
- *   top_p(IN/OUT) : 
- *   bottom(IN)    :     
+ *
+ *   top_p(IN/OUT) :
+ *   bottom(IN)    :
  */
 static int
 wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p)
@@ -523,9 +227,9 @@ wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p)
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
- *   node_p(out) : 
- * 
- * Note:     
+ *   node_p(out) :
+ *
+ * Note:
  */
 static int
 wfg_initialize_node (WFG_NODE * node_p)
@@ -552,9 +256,9 @@ wfg_initialize_node (WFG_NODE * node_p)
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
  *   num_trans(IN) : number of transactions
- * 
+ *
  * NOTE: num_trans should not be decreased in succeeding calls, otherwise,
- *       behavior undefined.    
+ *       behavior undefined.
  */
 int
 wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
@@ -577,7 +281,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * allocate new nodes
    */
   if (wfg_Nodes == NULL)
@@ -628,7 +332,7 @@ end:
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
- * Note:     
+ * Note:
  */
 static int
 wfg_free_group_list (void)
@@ -710,7 +414,7 @@ wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders,
   int i;			/* loop counter */
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
@@ -746,7 +450,7 @@ end:
 }
 #endif /* WFG_DEBUG */
 /*
- * wfg_insert_out_edges : add edges from the node specified by waiter 
+ * wfg_insert_out_edges : add edges from the node specified by waiter
  *                        to each node in holders.
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -756,11 +460,11 @@ end:
  *   holder_tran_indices(IN) : array of holders
  *   cycle_resolution_fn(IN) : ptr to cycle resoultion function
  *   args(IN)                : arguments of cycle resolution function
- * 
+ *
  * NOTE: indexes in waiter, holders should fall into the interval
  *       [0, num_trans of the most recent wfg_alloc_nodes()]
  *       Otherwise, behavior is undefined
- *     
+ *
  */
 int
 wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
@@ -824,11 +528,11 @@ end:
 #if defined(WFG_DEBUG)
 /*
  * wfg_valid_tran_index :
- * 
+ *
  * returns : NO_ERROR if all OK, ER_ status otherwise
- *   
- *   holder_index(IN)            : 
- *   holder_transaction_index(IN) : 
+ *
+ *   holder_index(IN)            :
+ *   holder_transaction_index(IN) :
  *   waiter_transaction_index(IN) :
  */
 static int
@@ -860,14 +564,14 @@ wfg_valid_tran_index (const int holder_index,
 
 /*
  * check_duplication_holders :
- * 
+ *
  * returns : NO_ERROR if all OK, ER_ status otherwise
- * 
+ *
  *   holder_index(IN)        :
- *   holder_tran_indices(IN) : 
+ *   holder_tran_indices(IN) :
  *   num_holders(IN)         :
  *   waiter_tran_index(IN)   :
- *  
+ *
  */
 static int
 check_duplication_holders (const int holder_index,
@@ -911,15 +615,15 @@ check_duplication_holders (const int holder_index,
 
 /*
  * wfg_allocate_edges  : Allocate and initialize edges to have num_holders
- * 
+ *
  * returns : NO_ERROR if all OK, ER_ status otherwise
- * 
+ *
  *   first_edge_p(OUT)      : pointer to the first of allocated edges
  *   last_edge_p(OUT)       : pointer to the last of allocated edges
  *   holder_tran_indices(IN): array of holders
  *   num_holders(IN)        : # of transactions(holders)
  *   waiter_tran_index(IN)  : index of transaction which is waiting
- * 
+ *
  */
 static int
 wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
@@ -968,16 +672,16 @@ wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
 }
 
 /*
- * wfg_link_edge_holders_waiter_list : Link the list to the waiter as 
- *                           its holders and link each edge to holders' 
+ * wfg_link_edge_holders_waiter_list : Link the list to the waiter as
+ *                           its holders and link each edge to holders'
  *                           waiter list
- * 
+ *
  * returns : NO_ERROR if all OK, ER_ status otherwise
- * 
+ *
  *   first_edge_p(IN)      : pointer to the first of allocated edges
  *   last_edge_p(IN)       : pointer to the last of allocated edges
  *   waiter(IN)            : index of transaction which is waiting
- * 
+ *
  */
 static int
 wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
@@ -986,7 +690,7 @@ wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
   WFG_EDGE *edge_p;
   int holder;
 
-  /* 
+  /*
    * Link the list to the waiter as its holders
    */
   if (first_edge_p != NULL)
@@ -1036,7 +740,7 @@ wfg_check_remove_out_edges (const int waiter_tran_index,
   int i;
   WFG_EDGE *edge_p;		/* An edge                      */
 
-  /* 
+  /*
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
@@ -1081,13 +785,13 @@ wfg_check_remove_out_edges (const int waiter_tran_index,
 #endif /* WFG_DEBUG */
 
 /*
- * wfg_remove_waiter_list_of_holder_edge : 
- * 
+ * wfg_remove_waiter_list_of_holder_edge :
+ *
  * returns : NO_ERROR if all OK, ER_ status otherwise
- * 
- *   node_p(in/out): 
+ *
+ *   node_p(in/out):
  *   holder_p(in/out): pointer to prev. holder edge
- * 
+ *
  */
 static int
 wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
@@ -1126,21 +830,21 @@ wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
 }
 
 /*
- * wfg_remove_out_edges : remove edges from the node waiter_tran_index 
+ * wfg_remove_out_edges : remove edges from the node waiter_tran_index
  *              to each node in holders.
  *              If num_holders <= 0 or holders is NULL, it removes all
- *              outgoing edges of the node waiter_tran_index. 
+ *              outgoing edges of the node waiter_tran_index.
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
  *   waiter_tran_index(IN)    : index of transaction which is waiting
- *   num_holders(IN)          : # of transactions(holders) 
+ *   num_holders(IN)          : # of transactions(holders)
  *   holder_tran_indices_p(IN): array of holders
- * 
+ *
  * NOTE: indexes in waiter, holders should fall into the interval
  *       [0, num_trans of the most recent wfg_alloc_nodes()]
  *       Otherwise, behavior is undefined
- *     
+ *
  */
 int
 wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
@@ -1239,7 +943,7 @@ end:
  *
  *   edges(OUT)   : pointer to room to store # of edges
  *   waiters(OUT) : pointer to room to store # of waiting trans
- * 
+ *
  */
 int
 wfg_get_status (int *num_edges_p, int *num_waiters_p)
@@ -1254,16 +958,16 @@ wfg_get_status (int *num_edges_p, int *num_waiters_p)
 }
 
 /*
- * wfg_detect_cycle : finds all elementary cycles in the WFG and 
+ * wfg_detect_cycle : finds all elementary cycles in the WFG and
  *                    transaction groups.
  *
  * returns : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   cycle_case(OUT)       : cycle_case.. One of the following values:
  *                           WFG_CYCLE_YES_PRUNE
  *                           WFG_CYCLE_YES
  *                           WFG_CYCLE_NO
- *                           WFG_CYCLE_ERROR 
+ *                           WFG_CYCLE_ERROR
  *   list_cycles_p(IN/OUT) : address to list of cycles
  *                         Cycles is set as a side effect to point to list of
  *                         cycles.
@@ -1282,23 +986,23 @@ wfg_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case,
 }
 
 /*
- * wfg_internal_detect_cycle() : finds all elementary cycles in the WFG and 
+ * wfg_internal_detect_cycle() : finds all elementary cycles in the WFG and
  *                               transaction groups.
- * 
+ *
  * returns : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   cycle_case(OUT)       : cycle_case.. One of the following values:
  *                           WFG_CYCLE_YES_PRUNE
  *                           WFG_CYCLE_YES
  *                           WFG_CYCLE_NO
- *                           WFG_CYCLE_ERROR 
+ *                           WFG_CYCLE_ERROR
  *   list_cycles_p(IN/OUT) : address to list of cycles
  *                           Cycles is set as a side effect to point to list of
  *                           cycles.
- *   max_cycles_in_cycle_group(IN) : Prune the number of found cycles 
+ *   max_cycles_in_cycle_group(IN) : Prune the number of found cycles
  *                           in a cycle group
  *   max_cycles(IN)        : max cycles to report
- * 
+ *
  */
 static int
 wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
@@ -1390,11 +1094,11 @@ error:
 
 /*
  * wfg_free_cycle : free memory allocated to store cycles by wfg_detect_cycle().
- *		
+ *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *  list_cycles(IN/OUT) : address to list of cycles
- * 
+ *
  */
 int
 wfg_free_cycle (WFG_CYCLE * list_cycles_p)
@@ -1421,13 +1125,13 @@ wfg_free_cycle (WFG_CYCLE * list_cycles_p)
 }
 
 /*
- * wfg_print_given_cycles: 
- * 
+ * wfg_print_given_cycles:
+ *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
- *   out_fp(in) : out file 
+ *
+ *   out_fp(in) : out file
  *   list_cycles_p(IN) : address to list of cycles
- * 
+ *
  */
 static int
 wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p)
@@ -1437,7 +1141,7 @@ wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p)
 
   fprintf (out_fp, "----------------- CYCLES ------------------\n");
 
-  /* 
+  /*
    * There are deadlocks, we must select a victim for each cycle. We try
    * to break a cycle by timeing out a transaction whenever is possible.
    * In any other case, we select a victim for an unilaterally abort.
@@ -1466,13 +1170,13 @@ wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p)
 }
 
 /*
- * wfg_dump_holder_waiter: 
- * 
+ * wfg_dump_holder_waiter:
+ *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
- *   out_fp(in) : out file 
- *   node_index(in): 
- * 
+ *
+ *   out_fp(in) : out file
+ *   node_index(in):
+ *
  */
 static void
 wfg_dump_holder_waiter (FILE * out_fp, int node_index)
@@ -1519,13 +1223,13 @@ wfg_dump_holder_waiter (FILE * out_fp, int node_index)
 }
 
 /*
- * wfg_dump_holder_waiter_of_tran_group: 
- * 
+ * wfg_dump_holder_waiter_of_tran_group:
+ *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
- *   out_fp(in) : out file 
- *   group_index(in): 
- * 
+ *
+ *   out_fp(in) : out file
+ *   group_index(in):
+ *
  */
 static void
 wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index)
@@ -1558,10 +1262,10 @@ wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index)
 }
 
 /*
- * wfg_dump : 
- *	
+ * wfg_dump :
+ *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  */
 int
 wfg_dump (THREAD_ENTRY * thread_p)
@@ -1611,11 +1315,11 @@ wfg_dump (THREAD_ENTRY * thread_p)
 }
 
 /*
- * wfg_alloc_tran_group : 
- *		
- * return : if success, non-negative Transaction Group entry index, 
+ * wfg_alloc_tran_group :
+ *
+ * return : if success, non-negative Transaction Group entry index,
  *          otherwise, ER_FAILED  value
- *  
+ *
  */
 int
 wfg_alloc_tran_group (THREAD_ENTRY * thread_p)
@@ -1662,17 +1366,17 @@ end:
 }
 
 /*
- * wfg_insert_holder_tran_group : register the tran_index as a holder 
+ * wfg_insert_holder_tran_group : register the tran_index as a holder
  *                        of the Transaction Group tran_group_index.
- *	
+ *
  * return : NO_ERROR if all OK, ER status otherwise
  *
  *   tran_group_index(IN)  : Transaction Group entry index
  *   holder_tran_index(IN) : tran_index to be entered
- * 
- * NOTE: the behavior on invalid tran_group_index and holder_tran_index, 
+ *
+ * NOTE: the behavior on invalid tran_group_index and holder_tran_index,
  *       is undefined.
- * 
+ *
  */
 int
 wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
@@ -1743,17 +1447,17 @@ end:
 }
 
 /*
- * wfg_remove_holder_tran_group : delete holder_tran_index from the holder list 
+ * wfg_remove_holder_tran_group : delete holder_tran_index from the holder list
  *                        of Transaction Group tran_group_index
  *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   tran_group_index(IN)  : Transaction Group entry index
  *   holder_tran_index(IN) : tran_index to be removed
  *
- * NOTE: the behavior on invalid tran_group_index and holder_tran_index, 
+ * NOTE: the behavior on invalid tran_group_index and holder_tran_index,
  *       is undefined.
- * 
+ *
  */
 int
 wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
@@ -1832,22 +1536,22 @@ end:
 }
 
 /*
- * wfg_insert_waiter_tran_group : register the tran_index as a waiter 
+ * wfg_insert_waiter_tran_group : register the tran_index as a waiter
  *                                of the Transaction Group tran_group_index.
  *
  * return : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   tran_group_index(IN)    : Transaction Group entry index
  *   waiter_tran_index(IN)   : tran_index to be entered
- *   cycle_resolution_fn(IN) : 
- *   args(IN)                : 
+ *   cycle_resolution_fn(IN) :
+ *   args(IN)                :
  *
  * NOTE: the behavior on invalid tg_index and tran_index, is undefined.
- * 
+ *
  * The implementation of this function is almost identical as that of
  * wfg_insert_holder_tran_group(). The only difference is that this function
  * replaces holder by waiter.
- * 
+ *
  */
 int
 wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
@@ -1903,7 +1607,7 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
     }
 #endif /* WFG_DEBUG */
 
-  /* 
+  /*
    * allocate a node for the waiter_tran_index and insert it to the TG's waiter
    * list
    */
@@ -1930,21 +1634,21 @@ end:
 }
 
 /*
- * wfg_remove_waiter_tran_group : delete waiter tran_index from the waiter list 
+ * wfg_remove_waiter_tran_group : delete waiter tran_index from the waiter list
  *                        of Transaction Group tran_group_index
- * 
- * return : return : NO_ERROR if all OK, ER status otherwise 
- * 
+ *
+ * return : return : NO_ERROR if all OK, ER status otherwise
+ *
  *   tg_index(IN)          : Transaction Group entry index
  *   waiter_tran_index(IN) : tran_index to be removed
- * 
- * NOTE: the behavior on invalid tran_group_index and waiter_tran_index, 
+ *
+ * NOTE: the behavior on invalid tran_group_index and waiter_tran_index,
  *       is undefined.
- *  
+ *
  * The implementation of this function is almost identical as that of
  * wfg_remove_holder_tran_group(). The only difference is that this function
  * replaces holder by waiter.
- * 
+ *
  */
 int
 wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
@@ -2030,16 +1734,16 @@ end:
  *              transactions).
  *
  * returns : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   cycle_case(OUT)       : cycle_case.. One of the following values:
  *                           WFG_CYCLE_YES_PRUNE
  *                           WFG_CYCLE_YES
  *                           WFG_CYCLE_NO
- *                           WFG_CYCLE_ERROR 
- *   list_cycles_p(IN/OUT) : address to list of cycles, list_cycles_p is set 
- *                           as a side effect to point to list of cycles.   
- *   max_cycles_in_group(IN) : 
- *   max_cycles(IN)        : 
+ *                           WFG_CYCLE_ERROR
+ *   list_cycles_p(IN/OUT) : address to list of cycles, list_cycles_p is set
+ *                           as a side effect to point to list of cycles.
+ *   max_cycles_in_group(IN) :
+ *   max_cycles(IN)        :
  *
  * Note: the caller should be responsible for freeing memory allocated
  *	 to the cycles after usage. See wfg_free_cycle()
@@ -2116,7 +1820,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
       cycle_group_no++;
       num_cycles_in_group = 0;
 
-      /* 
+      /*
        * Optimization of special case. Used to avoid overhead of stack operations
        */
       if (wfg_Nodes[i].first_holder_edge_p == NULL)
@@ -2224,13 +1928,13 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		  /* already traversed */
 		  if (wfg_Nodes[htran_index].cycle_group_no == cycle_group_no)
 		    {
-		      /* 
+		      /*
 		       * need to traverse again
 		       *
-		       * We will skip on finding more cycles for 
-		       * the current cycle group when we have found many cycles. 
-		       * This is done to avoid finding many many combinations of 
-		       * cycles for the same transactions. 
+		       * We will skip on finding more cycles for
+		       * the current cycle group when we have found many cycles.
+		       * This is done to avoid finding many many combinations of
+		       * cycles for the same transactions.
 		       */
 
 		      if ((max_cycles_in_group > 0
@@ -2301,12 +2005,12 @@ error:
  * wfg_add_waiters_of_tg :
  *
  * returns : NO_ERROR
- * 
- *   smallest_onstack(in/out): 
- *   holder_node(in):   
- *   tg_index(in): 
  *
- * Note: 
+ *   smallest_onstack(in/out):
+ *   holder_node(in):
+ *   tg_index(in):
+ *
+ * Note:
  */
 static int
 wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
@@ -2317,7 +2021,7 @@ wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
   WFG_NODE *w_node_p;
 
   /*
-   * If the node i is a holder of any TG, 
+   * If the node i is a holder of any TG,
    * add the waiters of such TG to it.
    */
   for (; tg_index < wfg_Total_tran_groups; tg_index++)
@@ -2358,11 +2062,11 @@ wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
  * wfg_add_waiters_normal_wfg :
  *
  * returns : NO_ERROR
- * 
- *   smallest_onstack(in/out): 
+ *
+ *   smallest_onstack(in/out):
  *   node_index(in):
  *
- * Note: 
+ * Note:
  */
 static int
 wfg_add_waiters_normal_wfg (int *smallest_onstack, int node_index)
@@ -2390,13 +2094,13 @@ wfg_add_waiters_normal_wfg (int *smallest_onstack, int node_index)
  * wfg_get_all_waiting_and_add_waiter :
  *
  * returns : NO_ERROR
- * 
- *   all_waiting(out): 
+ *
+ *   all_waiting(out):
  *   add_waiter(out):
  *   tg1_index(in):
  *   tg2_index(in):
  *
- * Note: 
+ * Note:
  */
 static int
 wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
@@ -2457,7 +2161,7 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
 	  else if (w_tran_list_p->tran_index == h_tran_list_p->tran_index)
 	    {
 	      /*
-	       * The waiter is also a holder. Don't need to add 
+	       * The waiter is also a holder. Don't need to add
 	       * the waiter at a later point.
 	       */
 	      *add_waiter = false;
@@ -2476,33 +2180,12 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
  * wfg_get_all_waiting_and_add_waiter :
  *
  * returns : NO_ERROR
- * 
- *   all_waiting(out): 
+ *
+ *   all_waiting(out):
  *   add_waiter(out):
  *   tg1_index(in):
  *   tg2_index(in):
  *
- * Note: 
- *    If all TG holders are waiting (i.e., if all_waiting is true),
- *    there is a deadlock and it is SURE that all holders belong to
- *    ALL ELEMENTARY CYCLES related with this TG. 
- * 
- *    To find all the real cycles, we would have to expand the ordinary
- *    WFG with outedges from TG waiters to TG holders, then find the
- *    cycles, and at the end, remove the outedges that has been added.
- * 
- *    It is so expensive that we have decided not to perform an exact
- *    TG cycle. Instead, we are selecting all the TG holders and
- *    TG waiters that are know to be in cycles. This type of cycle is a
- *    virtual cycle composed of some nodes (i.e., TG holders and TG waiters)
- *    of the real TG cycles. The above implies that we will be selecting
- *    a victim to break some of the real cycles bias on the TG instead
- *    of the transaction outside the TG domain. It is also possible that
- *    selecting one victim (e.g., a TG waiter) may not break all the real
- *    TG cycles. If that was not enough, the other TG cycles will be
- *    solved at a later time.
- * 
- *    See description TG cycle detection on top of file.
  */
 static WFG_CYCLE *
 wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
@@ -2562,7 +2245,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
 	      waiter_p->args = wfg_Nodes[waiter_p->tran_index].args;
 	      cycle_p->num_trans++;
 	      /*
-	       * Avoid a possible duplication, 
+	       * Avoid a possible duplication,
 	       * it could be part of holder of another TG.
 	       */
 	      wfg_Nodes[h_tran_list_p->tran_index].status = WFG_ON_TG_CYCLE;
@@ -2590,20 +2273,20 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
 }
 
 /*
- * wfg_detect_tg_cycle : finds all elementary cycles related with 
+ * wfg_detect_tg_cycle : finds all elementary cycles related with
  *                       Transaction Groups.
- * 
+ *
  * returns : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   cycle_case(OUT)       : cycle_case. One of the following values:
  *                           WFG_CYCLE_YES_PRUNE
  *                           WFG_CYCLE_YES
  *                           WFG_CYCLE_NO
- *                           WFG_CYCLE_ERROR 
- *   list_cycles_p(IN/OUT) : address to list of cycles 
- *                           list_cycles is set as a side effect to point 
- *                           to list of cycles. 
- * 
+ *                           WFG_CYCLE_ERROR
+ *   list_cycles_p(IN/OUT) : address to list of cycles
+ *                           list_cycles is set as a side effect to point
+ *                           to list of cycles.
+ *
  * NOTE: the caller should be responsible for freeing memory allocated
  *	to the cycles after usage. See wfg_free_cycle()
  *
@@ -2658,7 +2341,7 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
   /* Go over each transaction group */
   for (tg1_index = 0; tg1_index < wfg_Total_tran_groups; tg1_index++)
     {
-      /* 
+      /*
        * Optimization of special case. Used to avoid overhead of stack operations
        */
       if (wfg_Tran_group[tg1_index].holder_tran_list_p == NULL
@@ -2667,7 +2350,7 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
-      /* 
+      /*
        * Mark status of TG waiters as WFG_ON_STACK
        */
       for (w_tran_list_p =
@@ -2675,7 +2358,7 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
 	   w_tran_list_p != NULL; w_tran_list_p = w_tran_list_p->next)
 	{
 	  /*
-	   * Skip if it has already been in another TG cycle. 
+	   * Skip if it has already been in another TG cycle.
 	   * Cycle or subcycle has already been listed.
 	   */
 	  if (wfg_Nodes[w_tran_list_p->tran_index].status == WFG_ON_TG_CYCLE)
@@ -2748,9 +2431,9 @@ error:
 /*
  * wfg_is_waiting: Find if transaction is waiting for a resource either regular
  *              or Transaction Group resource.
- * 
+ *
  * returns : NO_ERROR if all OK, ER status otherwise
- *  
+ *
  */
 int
 wfg_is_waiting (THREAD_ENTRY * thread_p, const int tran_index)
@@ -2791,7 +2474,7 @@ end:
  * wfg_is_tran_group_waiting: Find if transaction is waiting for a TG resource.
  *
  * returns : NO_ERROR if all OK, ER status otherwise
- * 
+ *
  *   tran_index(IN): Transaction index
  *
  */
@@ -2827,12 +2510,12 @@ end:
 }
 
 /*
- * wfg_get_tran_entries : 
- * 
+ * wfg_get_tran_entries :
+ *
  * return : returns : number of tran entries if all OK, ER status otherwise
- * 
+ *
  *   tran_index(IN) : Transaction index
- * 
+ *
  */
 int
 wfg_get_tran_entries (THREAD_ENTRY * thread_p, const int tran_index)

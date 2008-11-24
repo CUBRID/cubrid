@@ -1,3 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
 #include "stdafx.h"
 #include "util.h"
 #include "type.h"
@@ -487,7 +517,7 @@ bool CheckUpdatabilityFromProperties(ULONG cSets, const DBPROPSET rgSets[])
 }
 
 //Row에서 호출되는 경우
-HRESULT CColumnsInfo::GetColumnInfo(T_CCI_COL_INFO* info, T_CCI_SQLX_CMD cmd_type, int cCol, bool bBookmarks, ULONG ulMaxLen)
+HRESULT CColumnsInfo::GetColumnInfo(T_CCI_COL_INFO* info, T_CCI_CUBRID_STMT cmd_type, int cCol, bool bBookmarks, ULONG ulMaxLen)
 {
 	m_cColumns = cCol;
 
@@ -496,14 +526,14 @@ HRESULT CColumnsInfo::GetColumnInfo(T_CCI_COL_INFO* info, T_CCI_SQLX_CMD cmd_typ
 
 HRESULT CColumnsInfo::GetColumnInfo(int hReq, bool bBookmarks, ULONG ulMaxLen)
 {
-	T_CCI_SQLX_CMD cmd_type;
+	T_CCI_CUBRID_STMT cmd_type;
 	T_CCI_COL_INFO *info = cci_get_result_info(hReq, &cmd_type, &m_cColumns);
 	if(info==NULL) return E_FAIL;
 
 	return GetColumnInfoCommon(info, cmd_type, bBookmarks, ulMaxLen);
 }
 
-HRESULT CColumnsInfo::GetColumnInfoCommon(T_CCI_COL_INFO* info, T_CCI_SQLX_CMD cmd_type, bool bBookmarks, ULONG ulMaxLen)
+HRESULT CColumnsInfo::GetColumnInfoCommon(T_CCI_COL_INFO* info, T_CCI_CUBRID_STMT cmd_type, bool bBookmarks, ULONG ulMaxLen)
 {
 	// 북마크 컬럼 추가
 	if(bBookmarks) m_cColumns++;
@@ -549,7 +579,7 @@ HRESULT CColumnsInfo::GetColumnInfoCommon(T_CCI_COL_INFO* info, T_CCI_SQLX_CMD c
 
 		// method를 통해 생성된 result-set은 그 column-name을 "METHOD_RESULT"
 		// 로 설정하고 column-type은 varchar로 지정한다.
-		if (cmd_type == SQLX_CMD_CALL || cmd_type == SQLX_CMD_EVALUATE || cmd_type == SQLX_CMD_GET_STATS)
+		if (cmd_type == CUBRID_STMT_CALL || cmd_type == CUBRID_STMT_EVALUATE || cmd_type == CUBRID_STMT_GET_STATS)
 		{
 			m_pInfo[i].pwszName = _wcsdup(
 				iOrdinal==0 ? L"Bookmark" : L"METHOD_RESULT");
@@ -570,7 +600,7 @@ HRESULT CColumnsInfo::GetColumnInfoCommon(T_CCI_COL_INFO* info, T_CCI_SQLX_CMD c
 
 		// method를 통해 생성된 result-set은 그 column-name을 "METHOD_RESULT"
 		// 로 설정하고 column-type은 varchar로 지정한다.
-		if (cmd_type == SQLX_CMD_CALL || cmd_type == SQLX_CMD_EVALUATE || cmd_type == SQLX_CMD_GET_STATS)
+		if (cmd_type == CUBRID_STMT_CALL || cmd_type == CUBRID_STMT_EVALUATE || cmd_type == CUBRID_STMT_GET_STATS)
 			m_pInfo[i].wType = DBTYPE_STR;
 		else
 			m_pInfo[i].wType = sta_info.nOLEDBType;

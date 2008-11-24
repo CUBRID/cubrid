@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * wintcp.c - Open a TCP connection for Windows
- *
- * Note:
  */
 
 #ident "$Id$"
@@ -21,18 +35,18 @@
 
 #include "dbtype.h"
 #ifdef SERVER_MODE
-#include "csserror.h"
-#include "conn.h"
+#include "connection_error.h"
+#include "connection_sr.h"
 #else /* SERVER_MODE */
-#include "general.h"
+#include "connection_cl.h"
 #endif /* SERVER_MODE */
 #include "error_manager.h"
 #include "error_code.h"
-#include "globals.h"
+#include "connection_globals.h"
 #include "wintcp.h"
 #include "porting.h"
 #include "system_parameter.h"
-#include "top.h"
+#include "client_support.h"
 
 #define HOST_ID_ARRAY_SIZE 8
 

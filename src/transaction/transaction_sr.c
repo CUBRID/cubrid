@@ -1,52 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * tmsr.c -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *      Overview: TRANSACTION MANAGER (AT SERVER)                              
- *                                                                             
- * Note:
- * The goal of the transaction component is to ensure that all actions 	       
- * executed in a transaction are indivisible. That is, all actions are 	       
- * made permanent in the database, otherwise, all the effects of the 	       
- * transaction are undone (removed from the database.. just like if nothing    
- * had happened). In other words, the ACID properties of the transaction must  
- * be supported. These properties are:					       
- * Atomicity:   all-or-nothing reflected in the database. 		       
- * Consistency: A transaction reaching a commit preserves the consistency of   
- *              the database. In other words, each successful transaction      
- *              performs only legal results.				       
- * Isolation:   Events within transactions must be hidden from other 	       
- *              transactions running concurrently. 			       
- * Durability:  Once a transaction has been committed, the system must 	       
- *              guarantee that its effects survive any failures (media and     
- *              system crashes)						       
- * These properties are supported by adopting serializability as the criterion 
- * for concurrency correctness and a recovery protocol for its persistence.    
- * 									       
- * The transaction manager is split in two: a client transaction manager and   
- * a server transaction manager.					       
- * 
- * Refer to tmcl.c for an overview of the transaction manager and interface    
- * between the transaction manager in client and the server.		       
- * 									       
- * MODULE INTERFACE							       
- * 									       
- * The following modules are called by the transaction manager at server:      
- * Tran. Object locator at server: To drop any transient classname_to_OID      
- *                                    entries (all updates to class objects    
- *                                    are stored on disk).		       
- * Log Manager:                    To follow commit/abort protocol.	       
- * WFG Manager:                    To find if a transaction is blocked	       
- * 									       
- * At least the following modules call the transaction manager at server:      
- * Boot Manager at server:         To commit initialization of data disks.     
- *                                 To abort transactions when a client crashes 
- * Lock Manager:                   To abort a deadlocked transaction	       
- * Transaction Manager at client:  To commit/abort transactions		       
- *                                 To find state of transactions	       
- * 									       
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * transaction_sr.c -
  */
 
 #ident "$Id$"
@@ -57,14 +28,14 @@
 
 #include "transaction_sr.h"
 #include "locator_sr.h"
-#include "log.h"
-#include "log_prv.h"
+#include "log_manager.h"
+#include "log_impl.h"
 #include "wait_for_graph.h"
 #include "thread_impl.h"
 #if defined(SERVER_MODE)
-#include "srv_new.h"
+#include "server_support.h"
 #endif
-#include "xserver.h"
+#include "xserver_interface.h"
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -95,8 +66,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   TRAN_STATE state;
   int tran_index;
 
-  /* 
-   * Execute some few remaining actions before the log manager is notified of 
+  /*
+   * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -108,8 +79,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   /* We assume that this server thread has done everything to complete
    * this transaction except releasing any ldb drivers bound to this
-   * client. Early unbinding of drivers can awake waiting thread(s) 
-   * that may cause the server to reach an illegal state such as 
+   * client. Early unbinding of drivers can awake waiting thread(s)
+   * that may cause the server to reach an illegal state such as
    * trying to do a savepoint in the middle of a 2PC.
    */
 
@@ -141,8 +112,8 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   TRAN_STATE state;
   int tran_index;
 
-  /* 
-   * Execute some few remaining actions before the log manager is notified of 
+  /*
+   * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -158,7 +129,7 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 /*
  * tran_server_unilaterally_abort - Unilaterally abort the current transaction
  *
- * return: states of transactions  
+ * return: states of transactions
  *
  *   tran_index(in): Transaction index
  *
@@ -200,12 +171,12 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
 /*
- * tran_server_unilaterally_abort_tran - 
+ * tran_server_unilaterally_abort_tran -
  *
- * return: 
+ * return:
  *
  * NOTE:this function is used when pgbuf_fix() results in deadlock.
- * It is used by request handler functions to rollback gracefully, 
+ * It is used by request handler functions to rollback gracefully,
  */
 void
 tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
@@ -231,76 +202,6 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
  *
  *   topop_lsa(in/out): Address of top operation for rollback purposes
  *
- * NOTE: Prepare the system for a nested top operation which does not   
- *              depend on the destiny of the transaction, but the macro        
- *              operation itself.                                              
- *              Kind of a mini transaction for logging but no for concurrency  
- *              control.						       
- *                                                                             
- * NOTE 1:      A top nested operation will not conflict with any of its       
- *              ancestros (i.e., other nested top operations and the           
- *              transaction itself) or any of its decendents top nested        
- *              operations. The locks are acquired by the transaction and not  
- *              by top operation. The top operation was created only to make   
- *              certain operations independent of the fate of the transaction. 
- *              A top nested operation can be either committed or aborted      
- *              independetly of the transaction, or the top nested operations  
- *              can be attached to its immediate ancestor.                     
- * NOTE 2:      Distributed transaction stuff should not be done with system   
- *              operations.                                                    
- *                                                                             
- * WARNING:								       
- *              It is possible that an ancestor may undo the effects of a      
- *              committed  top operation if the operations are not planned     
- *              carefully. For example, if the ancestor has modified the same  
- *              data and such data is still transient (i.e., not committed)    
- *              For example,                                                   
- *                  -                                                          
- *                  -                                                          
- *                  -                                                          
- *                  update person SET age = age + 1;                           
- *                  -                                                          
- *                  -                                                          
- *                  -                                                          
- *                  Start sysop                                                
- *                  update person SET age = age + 1;                           
- *                  End sysop with commit..                                    
- *                                                                             
- *                  ABORT..                                                    
- *              In this case the objects are reverted as they were before the  
- *              transaction and not the system operation...                    
- *                                                                             
- *              In contrast,..                                                 
- *                  -                                                          
- *                  -                                                          
- *                  -                                                          
- *                  Start sysop                                                
- *                  update person SET age = age + 1;                           
- *                  End sysop with commit..                                    
- *                  -                                                          
- *                  -                                                          
- *                  -                                                          
- *                  update person SET age = age + 1;                           
- *                                                                             
- *                  ABORT..                                                    
- *                                                                             
- *              In this case the objects are reverted as they were after the   
- *              system operation                                               
- *                                                                             
- *              THAT IS WHY, WE DO NOT RECOMMEND THE USE OF TOP NESTED ACTIONS 
- *              WITH THE PURPOSE OF COMMITTING STUFF WITH USER PURPOSES. This  
- *              kind of purpose should be used for specific DBMS system        
- *              operations that do not depend on transactions. For example,    
- *              System R and ARIES use them to create files.                   
- *              CUBRID uses this capacibilty to create volumes that are      
- *              independent of the transaction and to update the disk map of   
- *              old file when pages are created. In this case the newly        
- *              allocated page and the new volume are immediately avaialble to 
- *              any transaction.                                               
- *              Top nested operation with the purpose of attach/join to parent 
- *              or abort if operation fails can be used for any kind of        
- *              operations (including user operations) without any             
- *              inconsistencies.                                               
  */
 int
 xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
@@ -309,7 +210,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
   int tran_index;
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -340,7 +241,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 /*
  * xtran_server_end_topop - End a macro nested top operation
  *
- * return: states of transactions  
+ * return: states of transactions
  *
  *   result(in): Result of the nested top action
  *   topop_lsa(in): Address where the top operation for rollback purposes
@@ -360,7 +261,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
   int tran_index;
   TRAN_STATE state;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -419,7 +320,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name,
   int tran_index;
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -663,7 +564,7 @@ xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 /*
  * xtran_is_blocked - Is transaction suspended ?
  *
- * return: 
+ * return:
  *
  *   tran_index(in): Transaction index
  *
@@ -683,7 +584,7 @@ xtran_is_blocked (THREAD_ENTRY * thread_p, int tran_index)
 /*
  * xtran_server_has_updated -  Has transaction updated the database ?
  *
- * return: 
+ * return:
  *
  * NOTE: Find if the transaction has dirtied the database. We say that
  *              a transaction has updated the database, if it has log
@@ -697,9 +598,9 @@ xtran_server_has_updated (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xtran_wait_server_active_trans - 
+ * xtran_wait_server_active_trans -
  *
- * return: 
+ * return:
  *
  * NOTE: wait for server threads with current tran index to finish
  */
@@ -740,11 +641,11 @@ loop:
   while ((thrd_cnt = thread_has_threads (tran_index, client_id))
 	 >= prev_thrd_cnt && thrd_cnt > 0)
     {
-      /* Some threads may wait for data from the m-driver. 
+      /* Some threads may wait for data from the m-driver.
        * It's possible from the fact that css_server_thread() is responsible
        * for
        * receiving every data from which is sent by a client and all
-       * m-drivers. 
+       * m-drivers.
        * We must have chance to receive data from them.
        */
       thread_sleep (0, 500);
@@ -766,7 +667,7 @@ end:
  * xtran_server_is_active_and_has_updated - Find if transaction is active and has
  *                                     updated the database ?
  *
- * return: 
+ * return:
  *
  * NOTE: Find if the transaction is active and has dirtied the
  *              database. We say that a transaction has updated the database,
@@ -780,11 +681,11 @@ xtran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xtran_get_local_transaction_id - 
+ * xtran_get_local_transaction_id -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   trid(in): 
+ *   trid(in):
  *
  * NOTE:
  */

@@ -1,14 +1,30 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  *  cubrid_esql.h : CUBRID Embedded C Program Inclusion Header File
  *  This file contains the definitions of type, macros, function prototypes,
  *  and variables which is exported to each ESQL C program file.
  *  Every ESQL C program should include this file.
  */
 
-#ifndef _ESQLX_H_
-#define _ESQLX_H_
+#ifndef _CUBRID_ESQL_H_
+#define _CUBRID_ESQL_H_
 
 #ident "$Id$"
 
@@ -24,10 +40,6 @@ extern "C"
 #endif
 #include        "dbi.h"
 
-/* NOTE: the name of the following macro should be consistent with
- * trans.h because translator emits codes which are referencing
- * to these macros.
- */
 #define SQL_NOT_FOUND           100	/* sqlcode for not found */
 #define SQL_WARNING_CHAR        'W'	/* to indicate warning */
 
@@ -36,7 +48,7 @@ extern "C"
                 struct {                \
                         int             sqlmax;  \
                         int             sqldesc; \
-                        SQLX_CMD_TYPE   sqlcmd;  \
+                        CUBRID_STMT_TYPE   sqlcmd;  \
                         CUBRIDVAR       sqlvar[(num_vars)]; \
                 }
 
@@ -78,7 +90,7 @@ extern "C"
   {
     int sqlmax;			/* # of sqlvar allocated */
     int sqldesc;		/* # of sqlvar described */
-    SQLX_CMD_TYPE sqlcmd;	/* type of sqlx statement */
+    CUBRID_STMT_TYPE sqlcmd;	/* type of csql statement */
     CUBRIDVAR sqlvar[1];	/* array of variable descriptions */
   } CUBRIDDA;
 
@@ -171,12 +183,8 @@ extern "C"
 			     DB_TYPE, int, int, DB_TYPE_C, void *, int);
   extern void uci_put_descriptor (CUBRIDDA *);
 
-/* A static variable to identify each ESQL/X C source file at run-time.
- * NOTE: the name of the following variable should be consistent with
- * trans.h because that translator emits code that references this
- * variable.
- */
-#if !defined(_ESQLX_KERNEL_)
+/* A static variable to identify each esql C source file at run-time. */
+#if !defined(_ESQL_KERNEL_)
   static char uci_esqlxc_file;
 #endif
 
@@ -184,4 +192,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _ESQLX_H_ */
+#endif				/* _CUBRID_ESQL_H_ */

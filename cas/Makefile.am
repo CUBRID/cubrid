@@ -1,4 +1,22 @@
 
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+#
+#   This program is free software; you can redistribute it and/or modify 
+#   it under the terms of the GNU General Public License as published by 
+#   the Free Software Foundation; version 2 of the License. 
+#
+#  This program is distributed in the hope that it will be useful, 
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+#  GNU General Public License for more details. 
+#
+#  You should have received a copy of the GNU General Public License 
+#  along with this program; if not, write to the Free Software 
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+#
+
+
 SRC = $(top_srcdir)/src
 COMPAT_DIR = $(SRC)/compat
 THREAD_DIR = $(SRC)/thread
@@ -26,19 +44,18 @@ DEFS = @SYS_DEFS@ @VERSION_DEFS@
 lib_LIBRARIES = libcas.a
 libcas_a_SOURCES = \
 	$(BROKER_DIR)/cas.c \
-	$(BROKER_DIR)/net_cas.c \
-	$(BROKER_DIR)/net_buf.c \
-	$(BROKER_DIR)/func.c \
-	$(BROKER_DIR)/exec_db.c \
-	$(BROKER_DIR)/handle_mng.c \
+	$(BROKER_DIR)/cas_network.c \
+	$(BROKER_DIR)/cas_net_buf.c \
+	$(BROKER_DIR)/cas_function.c \
+	$(BROKER_DIR)/cas_execute.c \
+	$(BROKER_DIR)/cas_handle.c \
 	$(BROKER_DIR)/cas_util.c \
-	$(BROKER_DIR)/str_like.c \
+	$(BROKER_DIR)/cas_str_like.c \
 	$(BROKER_DIR)/cas_xa.c \
-	$(BROKER_DIR)/schema_info.c \
+	$(BROKER_DIR)/cas_schema_info.c \
 	$(BROKER_DIR)/cas_log.c \
-	$(BROKER_DIR)/as_util.c \
-	$(BROKER_DIR)/sql_log2.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/cas_sql_log2.c \
+	$(BROKER_DIR)/broker_filename.c
 libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP
 
 lib_LTLIBRARIES = libcascci.la libbrokeradmin.la
@@ -51,22 +68,22 @@ libcascci_la_SOURCES = \
 	$(CCI_DIR)/cci_handle_mng.c \
 	$(CCI_DIR)/cci_t_set.c \
 	$(API_DIR)/api_util.c \
-    $(API_DIR)/api_value_indexer.c \
-    $(API_DIR)/api_handle.c \
-    $(API_DIR)/cci_stub.c
+	$(API_DIR)/api_value_indexer.c \
+	$(API_DIR)/api_handle.c \
+	$(API_DIR)/cci_stub.c
 	
 libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 
 libbrokeradmin_la_SOURCES = \
-	$(BROKER_DIR)/uc_admin.c \
-	$(BROKER_DIR)/admin_pub.c \
-	$(BROKER_DIR)/shm.c \
-	$(BROKER_DIR)/error.c \
-	$(BROKER_DIR)/util.c \
-	$(BROKER_DIR)/br_config.c \
-	$(BROKER_DIR)/max_heap.c \
-	$(BROKER_DIR)/getsize.c \
-	$(BROKER_DIR)/get_psinfo.c \
-	$(BROKER_DIR)/file_name.c
+	$(BROKER_DIR)/broker_admin_so.c \
+	$(BROKER_DIR)/broker_admin_pub.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/broker_config.c \
+	$(BROKER_DIR)/broker_max_heap.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_process_info.c \
+	$(BROKER_DIR)/broker_filename.c
 libbrokeradmin_la_CFLAGS = $(AM_CFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@

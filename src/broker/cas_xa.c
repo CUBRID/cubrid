@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * cas_xa.c -
  */
 
@@ -9,13 +25,13 @@
 
 #include "cas_common.h"
 #include "cas.h"
-#include "net_buf.h"
-#include "net_cas.h"
+#include "cas_net_buf.h"
+#include "cas_network.h"
 #include "cas_log.h"
-#include "func.h"
+#include "cas_function.h"
 
-#include "exec_db.h"
-#include "db_inc.h"
+#include "cas_execute.h"
+#include "cas_db_inc.h"
 
 #include "xa.h"
 #define CAS_SUPPORT_XA

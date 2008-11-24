@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * unloaddb.c - emits database object definitions in object loader format
  */
 
@@ -15,9 +30,9 @@
 #include "db.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "locator_cl.h"
-#include "ex.h"
+#include "unloaddb.h"
 #include "load_object.h"
 #include "utility.h"
 
@@ -32,19 +47,19 @@ int cached_pages = 100;
 int est_size = 0;
 char *hash_filename = NULL;
 int debug_flag = 0;
-int verbose_flag = 0;
-int include_references = 0;
+bool verbose_flag = false;
+bool include_references = false;
 
-int required_class_only = 0;
+bool required_class_only = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
 int lo_count = 0;
 
 char *output_prefix = NULL;
-int do_schema = 0;
-int do_objects = 0;
-int delimited_id_flag = false;
+bool do_schema = false;
+bool do_objects = false;
+bool delimited_id_flag = false;
 bool ignore_err_flag = false;
 
 /*
@@ -138,10 +153,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  db_set_lock_timeout (PRM_UNLOADDB_LOCK_TIMEOUT);
 	}
       if (!input_filename)
-	required_class_only = 0;
+	required_class_only = false;
       if (required_class_only && include_references)
 	{
-	  include_references = 0;
+	  include_references = false;
 	  fprintf (stdout, "warning: '-ir' option is ignored.\n");
 	  fflush (stdout);
 	}

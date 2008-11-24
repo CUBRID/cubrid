@@ -1,18 +1,33 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * ldr_disk.c - loader transformer disk access module
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * loader_disk.c - loader transformer disk access module
  */
 
 #ident "$Id$"
 
 #include "config.h"
 
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "class_object.h"
-#include "common.h"
+#include "storage_common.h"
 #include "locator_cl.h"
 #include "heap_file.h"
 #include "db.h"
@@ -25,12 +40,12 @@
 
 /* just for error constants until we can get this sorted out */
 #if defined(LDR_OLD_LOADDB)
-#include "ldr_o.h"
+#include "loader_old.h"
 #else /* !LDR_OLD_LOADDB */
 #include "loader.h"
 #endif /* LDR_OLD_LOADDB */
-#include "server.h"
-#include "transform_sky.h"
+#include "server_interface.h"
+#include "transform_cl.h"
 
 /*
  * Diskrec
@@ -305,7 +320,8 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 {
   int error = NO_ERROR;
   HFID *hfid;
-  int has_indexes, newsize;
+  int newsize;
+  bool has_indexes;
 
   Diskrec->length = 0;
   if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
@@ -359,8 +375,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 {
   int error = NO_ERROR;
   HFID *hfid;
-  int has_indexes = 0, newsize;
-  bool oldflag;
+  int newsize;
+  bool has_indexes = false, oldflag;
 
   Diskrec->length = 0;
   if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
@@ -421,7 +437,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
   int error = NO_ERROR;
   HFID *hfid;
   volatile int newsize = 0;
-  int has_indexes;
+  bool has_indexes;
   TF_STATUS tf_status = TF_SUCCESS;
 
   Diskrec->length = 0;
@@ -497,7 +513,7 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 {
   int error = NO_ERROR;
   HFID *hfid;
-  int has_indexes = 0;
+  bool has_indexes = false;
   volatile int newsize = 0;
   bool oldflag;
   TF_STATUS tf_status = TF_SUCCESS;

@@ -173,19 +173,19 @@
 				Name="broker"
 				>
 				<File
-					RelativePath="..\..\src\broker\getopt.c"
+					RelativePath="..\..\src\broker\broker_getopt.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_converter.c"
+					RelativePath="..\..\src\broker\broker_log_converter.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\log_util.c"
+					RelativePath="..\..\src\broker\broker_log_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\t_string.c"
+					RelativePath="..\..\src\broker\log_top_string.c"
 					>
 				</File>
 			</Filter>

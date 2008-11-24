@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * commdb.c - commdb main
  */
 
@@ -31,8 +46,8 @@
 #include <netdb.h>
 #endif /* SOLARIS || LINUX */
 
-#include "defs.h"
-#include "general.h"
+#include "connection_defs.h"
+#include "connection_cl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -41,7 +56,7 @@
 #include "master_util.h"
 #include "message_catalog.h"
 #include "utility.h"
-#include "dbu_misc.h"
+#include "util_support.h"
 #include "porting.h"
 
 #define COMM_CHAR_PRINT_CAPS             'P'
@@ -598,45 +613,45 @@ start_info (CSS_CONN_ENTRY * conn)
 			  MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
   if (fgets (input_buffer, sizeof (input_buffer), stdin) == NULL)
     return false;
-  if ((*input_buffer == COMM_CHAR_PRINT_CAPS) ||
-      (*input_buffer == COMM_CHAR_PRINT_LOWER))
+  if ((*input_buffer == COMM_CHAR_PRINT_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_LOWER))
     {
       process_status_query (host_name, conn, COMM_SERVER, NULL);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_PRINT_REPL_CAPS) ||
-      (*input_buffer == COMM_CHAR_PRINT_REPL_LOWER))
+  if ((*input_buffer == COMM_CHAR_PRINT_REPL_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_REPL_LOWER))
     {
       process_status_query (host_name, conn, COMM_REPL_SERVER, NULL);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_PRINT_ALL_CAPS) ||
-      (*input_buffer == COMM_CHAR_PRINT_ALL_LOWER))
+  if ((*input_buffer == COMM_CHAR_PRINT_ALL_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_ALL_LOWER))
     {
       process_status_query (host_name, conn, COMM_ALL, NULL);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_PRINT_DRIVER_CAPS) ||
-      (*input_buffer == COMM_CHAR_PRINT_DRIVER_LOWER))
+  if ((*input_buffer == COMM_CHAR_PRINT_DRIVER_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_DRIVER_LOWER))
     {
       process_status_query (host_name, conn, COMM_DRIVER, NULL);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_QUIT_CAPS) ||
-      (*input_buffer == COMM_CHAR_QUIT_LOWER))
+  if ((*input_buffer == COMM_CHAR_QUIT_CAPS)
+      || (*input_buffer == COMM_CHAR_QUIT_LOWER))
     {
       css_send_close_request (conn);
       return false;
     }
-  if ((*input_buffer == COMM_CHAR_MASTER_KILL_CAPS) ||
-      (*input_buffer == COMM_CHAR_MASTER_KILL_LOWER))
+  if ((*input_buffer == COMM_CHAR_MASTER_KILL_CAPS)
+      || (*input_buffer == COMM_CHAR_MASTER_KILL_LOWER))
     {
       process_master_kill (conn);
       css_send_close_request (conn);
       return false;
     }
-  if ((*input_buffer == COMM_CHAR_KILL_ALL_CAPS) ||
-      (*input_buffer == COMM_CHAR_KILL_ALL_LOWER))
+  if ((*input_buffer == COMM_CHAR_KILL_ALL_CAPS)
+      || (*input_buffer == COMM_CHAR_KILL_ALL_LOWER))
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING12));
@@ -649,14 +664,14 @@ start_info (CSS_CONN_ENTRY * conn)
 	      minutes);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_HALT_CAPS) ||
-      (*input_buffer == COMM_CHAR_HALT_LOWER))
+  if ((*input_buffer == COMM_CHAR_HALT_CAPS)
+      || (*input_buffer == COMM_CHAR_HALT_LOWER))
     {
       process_master_stop_shutdown (conn);
       return true;
     }
-  if ((*input_buffer == COMM_CHAR_SERVER_KILL_CAPS) ||
-      (*input_buffer == COMM_CHAR_SERVER_KILL_LOWER))
+  if ((*input_buffer == COMM_CHAR_SERVER_KILL_CAPS)
+      || (*input_buffer == COMM_CHAR_SERVER_KILL_LOWER))
     {
       int pid;
       char buffer2[512];
@@ -670,8 +685,8 @@ start_info (CSS_CONN_ENTRY * conn)
       if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
 	return false;
       sscanf (buffer2, "%d", &minutes);
-      pid =
-	process_server_info_pid (conn, host_name, input_buffer, COMM_SERVER);
+      pid = process_server_info_pid (conn, host_name, input_buffer,
+				     COMM_SERVER);
       process_slave_kill (conn, input_buffer, minutes, pid);
       return true;
     }
@@ -690,9 +705,8 @@ start_info (CSS_CONN_ENTRY * conn)
       if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
 	return false;
       sscanf (buffer2, "%d", &minutes);
-      pid =
-	process_server_info_pid (conn, host_name, input_buffer,
-				 COMM_REPL_SERVER);
+      pid = process_server_info_pid (conn, host_name, input_buffer,
+				     COMM_REPL_SERVER);
       process_repl_kill (conn, input_buffer, pid);
       return true;
     }
@@ -711,9 +725,8 @@ start_info (CSS_CONN_ENTRY * conn)
       if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
 	return false;
       sscanf (buffer2, "%d", &minutes);
-      pid =
-	process_server_info_pid (conn, host_name, input_buffer,
-				 COMM_REPL_AGENT);
+      pid = process_server_info_pid (conn, host_name, input_buffer,
+				     COMM_REPL_AGENT);
       process_repl_kill (conn, input_buffer, pid);
       return true;
     }

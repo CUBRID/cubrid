@@ -172,10 +172,10 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<Filter
-				Name="dbmt"
+				Name="cmserver"
 				>
 				<File
-					RelativePath="..\..\src\dbmt\class_info_sa.c"
+					RelativePath="..\..\src\cmserver\cm_class_info_sa.c"
 					>
 				</File>
 			</Filter>

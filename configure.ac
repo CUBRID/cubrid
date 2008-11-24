@@ -1,16 +1,32 @@
+
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; version 2 of the License.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+#
+
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
-# Copyright (C) 2008 NHN Corporation
-# Copyright (C) 2008 CUBRID Co., Ltd.
 #
 
 AC_PREREQ(2.59)
-AC_INIT([CUBRID], RELEASE, , cubrid)
+AC_INIT([CUBRID 2008], RELEASE, , cubrid)
 AC_CONFIG_SRCDIR([src/executables/server.c])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADERS([config.h])
 
-AM_INIT_AUTOMAKE([CUBRID], RELEASE)
+AM_INIT_AUTOMAKE([CUBRID 2008], RELEASE)
 
 # Checks for programs.
 remember_CFLAGS="$CFLAGS"
@@ -356,8 +372,8 @@ AH_BOTTOM([
 AC_CONFIG_FILES([Makefile
 	cas/Makefile
 	broker/Makefile
-	dbmt/Makefile
-	dbmt/conf/Makefile
+	cmserver/Makefile
+	cmserver/conf/Makefile
 	pccts/Makefile
 	pccts/antlrd/Makefile
 	pccts/dlg/Makefile
@@ -366,7 +382,6 @@ AC_CONFIG_FILES([Makefile
 	cubrid/Makefile
 	cs/Makefile
 	util/Makefile
-	qa/Makefile
 	conf/Makefile
 	msg/Makefile
 	msg/en_US/Makefile

@@ -1,8 +1,23 @@
 /*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
  *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * porting.h - Functions supporting platform porting
  */
 
@@ -69,18 +84,7 @@
 #endif
 #define O_SYNC                  0
 
-/*
- * Convert to MSVC's Unix compatibility definitions.
- *
- * NOTE: We add _O_BINARY to all the requested flags because text mode
- * appears to be the default under Windows.  This causes problems for
- * binary files such as bitmaps.  Rather than conditionalize all the
- * calls to open(), make sure they all use one of these flags.
- *
- * This will result in some warnings as O_CREAT will also be defined
- * in fcntl.h if __STDC__ is not being asserted.  We WANT these to be
- * redefined so the _O_BINARY flag gets put on.
- */
+
 
 #undef O_CREAT
 #undef O_RDWR

@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * language_support.c : Multi-language and character set support
- *
  */
 
 #ident "$Id$"
@@ -14,7 +28,7 @@
 #include <stdlib.h>
 
 #include "chartype.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "language_support.h"
 #include "authenticate.h"
 #include "environment_variable.h"
@@ -42,7 +56,7 @@ lang_init (void)
 
   if (lang_Initialized)
     {
-      return (lang_Initialized);
+      return lang_Initialized;
     }
 
   /* if the language setting is unset or unrecognized, assume English settings

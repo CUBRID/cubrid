@@ -9597,7 +9597,7 @@ public:
 	}
 };
 
-/*
+#if 0
 template <class Storage, class ContainedArray = CAtlArray<Storage> >
 class CUpdateArray : public ContainedArray
 {
@@ -9653,7 +9653,7 @@ public:
 
 	CSimpleValArray<long> m_rgRowLink;
 };
-*/
+#endif
 
 class CComSharedMutex
 {

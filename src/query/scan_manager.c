@@ -1,44 +1,26 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * qp_scan.c - scan management routines
- * 
- * Note: if you feel the need
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
+ * scan_manager.c - scan management routines
  */
 
 #ident "$Id$"
-
-/* Scan managemet routines are used to open scans on a set of items and use    
- * the created scans to access each element in the scanned set of items in     
- * an abstract manner. There are three type of scans:                          
- *                                                                             
- *   i - regular heap file scans: Each heap file object instance is accessed,  
- *                                successively.                                
- *                                                                             
- *  ii - indexed heap file scans: Discrete heap file object instances as       
- *                                indicated by an index are accessed.          
- *                                                                             
- * iii - list file scans: Each list file tuple is accessed succesively.        
- *                                                                             
- *  iv - set scans: Each element of the set is accessed successively           
- *                                                                             
- * Each scan may be associated with a value list and a predicate expression.   
- * The value list is used to fetch distinct values from each accessed scan     
- * item and the predicate expression, when defined, is used to identify the    
- * qualifying scan items.                                                      
- *                                                                             
- * After a scan is opened on one of the above mentioned scan items, a scan     
- * identifier is returned to the callers. The scan identifier is then used     
- * as the basic communication parameter to the scan routines to access and     
- * fetch values from each qualifying scan item. The scan can move only in      
- * forward direction. Once the end of scan is reached, the scan needs to be    
- * closed.                                                                     
- *                                                                             
- * Scan management routines are basically used by the XASL tree interpreter,   
- * and scan identifier structure contains pointer to various nodes of XASL     
- * trees.                                                                      
- */
 
 #include "config.h"
 
@@ -47,13 +29,13 @@
 #include <assert.h>
 
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "btree.h"
 #include "heap_file.h"
 #include "object_representation.h"
-#include "object_representation_earth.h"
+#include "object_representation_sr.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "set_scan.h"
@@ -278,7 +260,7 @@ rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right)
 
 /*
  * range_to_rop () - map range to left/right operator
- *   return: 
+ *   return:
  *   left(out): left-side range operator
  *   right(out): right-side range operator
  *   range(in): full-RANGE operator
@@ -304,12 +286,12 @@ range_to_rop (ROP_TYPE * left, ROP_TYPE * right, RANGE range)
 }
 
 /*
- * compare_val_op () - compare two values specified by range operator 
- *   return: 
- *   val1(in): 
- *   op1(in): 
- *   val2(in): 
- *   op2(in): 
+ * compare_val_op () - compare two values specified by range operator
+ *   return:
+ *   val1(in):
+ *   op1(in):
+ *   val2(in):
+ *   op2(in):
  */
 static ROP_TYPE
 compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
@@ -337,19 +319,6 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
   if (rc == DB_EQ)
     {
       /* (val1, op1) == (val2, op2) */
-      /* matrix when val1 == val2
-         op1/op2| EQ GE GT LT LE
-         -------|---------------
-         EQ | eq eq la ga eq
-         GE | eq eq la ga eq
-         GT | ga ga eq gt ga
-         LT | la la lt eq la
-         LE | eq eq la ga eq
-         lt -> (val1, op1) less than (val2, op2)
-         la -> (val1, op1) less than and adjacent to (val2, op2)
-         eq -> (val1, op1) equal (val2, op2)
-         ga -> (val1, op1) greater than and adjacent to (val2, op2)
-         gt -> (val1, op1) greater than (val2, op2) */
       if (op1 == op2)
 	{
 	  return ROP_EQ;
@@ -396,7 +365,7 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2)
 
 /*
  * key_val_compare () - key value sorting function
- *   return: 
+ *   return:
  *   p1 (in): pointer to key1 range
  *   p2 (in): pointer to key2 range
  */
@@ -518,11 +487,11 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	  key_cnt--;
 	  nextp++;
 	  next_n++;
-	}			/* while (next_n < key_cnt) */
+	}
 
       curp++;
       cur_n++;
-    }				/* while (key_cnt > 1 && cur_n < key_cnt - 1) */
+    }
 
   return key_cnt;
 }
@@ -549,7 +518,7 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt,
 }
 
 /*
- * xd_dbvals_to_midxkey () - 
+ * xd_dbvals_to_midxkey () -
  *   return: NO_ERROR or ER_code
  */
 static int
@@ -588,7 +557,7 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   midxkey.buf = NULL;
 
   /**************************
-   calculate midxkey's size 
+   calculate midxkey's size
   **************************/
 
   /* pointer to multi-column index key domain info. structure */
@@ -715,7 +684,7 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
 
   /****************************************************
-   generate multi columns key (values -> midxkey.buf) 
+   generate multi columns key (values -> midxkey.buf)
   ****************************************************/
 
   if (clear_value)
@@ -757,10 +726,10 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
       else
 	{
 	  val_type_id = PRIM_TYPE (val);
-	  if ((dom->type->id == DB_TYPE_CHAR ||
-	       dom->type->id == DB_TYPE_BIT ||
-	       dom->type->id == DB_TYPE_NCHAR) &&
-	      QSTR_IS_ANY_CHAR_OR_BIT (PRIM_TYPE (val)))
+	  if ((dom->type->id == DB_TYPE_CHAR
+	       || dom->type->id == DB_TYPE_BIT
+	       || dom->type->id == DB_TYPE_NCHAR)
+	      && QSTR_IS_ANY_CHAR_OR_BIT (PRIM_TYPE (val)))
 	    {
 	      val->domain.char_info.length = dom->precision;
 	    }
@@ -844,7 +813,7 @@ err_exit:
  * from the index associated with the scan identifier.
  *   return: NO_ERROR, or ER_code
  *   s_id(in): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 static int
@@ -907,8 +876,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_ranges[i].key1)
 	    {
-	      if (key_ranges[i].key1->type == TYPE_FUNC &&
-		  key_ranges[i].key1->value.funcp->ftype == F_MIDXKEY)
+	      if (key_ranges[i].key1->type == TYPE_FUNC
+		  && key_ranges[i].key1->value.funcp->ftype == F_MIDXKEY)
 		{
 		  ret = xd_dbvals_to_midxkey (thread_p, BTS,
 					      key_ranges[i].key1,
@@ -927,8 +896,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 	  if (key_ranges[i].key2)
 	    {
-	      if (key_ranges[i].key2->type == TYPE_FUNC &&
-		  key_ranges[i].key2->value.funcp->ftype == F_MIDXKEY)
+	      if (key_ranges[i].key2->type == TYPE_FUNC
+		  && key_ranges[i].key2->value.funcp->ftype == F_MIDXKEY)
 		{
 		  ret = xd_dbvals_to_midxkey (thread_p, BTS,
 					      key_ranges[i].key2,
@@ -948,7 +917,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  else
 	    {
 	      /* clone key1 to key2 in order to safe the key value of upper
-	         bound because bt.c:btree_range_search() might change its value
+	         bound because btree_range_search() might change its value
 	         if it is a partial key for multi-column index */
 	      if (pr_clone_value (&key_vals[i].key1, &key_vals[i].key2) !=
 		  NO_ERROR)
@@ -966,9 +935,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		{
 		  key_vals[i].range = NA_NA;	/* mark as empty range */
 		}
-	    }			/* if (key_ranges[i].key1 && key_ranges[i].key2) */
+	    }
 
-	}			/* for (i = 0; i < key_cnt; i++) */
+	}
 
       /* elimnating duplicated keys and merging ranges are required even
          though the query optimizer dose them because the search keys or
@@ -977,14 +946,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (indx_infop->range_type == R_KEYLIST)
 	{
 	  /* eliminate duplicated keys in the search key list */
-	  key_cnt = iscan_id->key_cnt =
-	    check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys);
+	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt,
+							eliminate_duplicated_keys);
 	}
       else if (indx_infop->range_type == R_RANGELIST)
 	{
 	  /* merge serach key ranges */
-	  key_cnt = iscan_id->key_cnt =
-	    check_key_vals (key_vals, key_cnt, merge_key_ranges);
+	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt,
+							merge_key_ranges);
 	}
 
       if (key_cnt < 0)
@@ -994,7 +963,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
       iscan_id->curr_keyno = 0;
 
-    }				/* if (iscan_id->curr_keyno == -1 && ...) */
+    }
 
   /*
    * init vars to execute B+tree key range search
@@ -1046,24 +1015,27 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
          the index scan context. They can be equal to NULL only in the
          "is NULL" context. */
       /* to fix multi-column index NULL problem */
-      if (BTREE_START_OF_SCAN (BTS) &&
-	  (PRIM_IS_NULL (key_val1p)
-	   || btree_multicol_key_has_null (key_val1p)))
+      if (BTREE_START_OF_SCAN (BTS)
+	  && (PRIM_IS_NULL (key_val1p)
+	      || btree_multicol_key_has_null (key_val1p)))
 	{
 	  iscan_id->curr_keyno++;
 	  break;
 	}
 
       /* calling 'btree_range_search()' */
-      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p, &indx_infop->indx_id.i.btid, s_id->readonly_scan, iscan_id->lock_hint, BTS, key_val1p,	/* key value or NULL pointer */
-						       key_val2p,	/* cloned value */
-						       GE_LE,	/* key value search */
-						       1,
+      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
+						       &indx_infop->indx_id.i.
+						       btid,
+						       s_id->readonly_scan,
+						       iscan_id->lock_hint,
+						       BTS, key_val1p,
+						       key_val2p, GE_LE, 1,
 						       &iscan_id->cls_oid,
 						       iscan_id->oid_list.
 						       oidp,
-						       DB_PAGESIZE *
-						       PRM_BT_OID_NBUFFERS,
+						       (DB_PAGESIZE *
+							PRM_BT_OID_NBUFFERS),
 						       &key_filter, iscan_id,
 						       false,
 						       iscan_id->
@@ -1108,10 +1080,10 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (range >= GE_LE && range <= GT_LT)
 	{
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS) &&
-	      (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p) ||
-	       btree_multicol_key_has_null (key_val1p) ||
-	       btree_multicol_key_has_null (key_val2p)))
+	  if (BTREE_START_OF_SCAN (BTS)
+	      && (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
+		  || btree_multicol_key_has_null (key_val1p)
+		  || btree_multicol_key_has_null (key_val2p)))
 	    {
 	      iscan_id->curr_keyno++;
 	      break;
@@ -1120,9 +1092,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (range >= GE_INF && range <= GT_INF)
 	{
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS) &&
-	      (PRIM_IS_NULL (key_val1p) ||
-	       btree_multicol_key_has_null (key_val1p)))
+	  if (BTREE_START_OF_SCAN (BTS)
+	      && (PRIM_IS_NULL (key_val1p)
+		  || btree_multicol_key_has_null (key_val1p)))
 	    {
 	      iscan_id->curr_keyno++;
 	      break;
@@ -1132,9 +1104,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (range >= INF_LE && range <= INF_LT)
 	{
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS) &&
-	      (PRIM_IS_NULL (key_val2p) ||
-	       btree_multicol_key_has_null (key_val2p)))
+	  if (BTREE_START_OF_SCAN (BTS)
+	      && (PRIM_IS_NULL (key_val2p)
+		  || btree_multicol_key_has_null (key_val2p)))
 	    {
 	      iscan_id->curr_keyno++;
 	      break;
@@ -1143,15 +1115,18 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
 
       /* calling 'btree_range_search()' */
-      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p, &indx_infop->indx_id.i.btid, s_id->readonly_scan, iscan_id->lock_hint, BTS, key_val1p,	/* key value or NULL pointer */
-						       key_val2p,	/* key value or NULL pointer */
-						       range,
-						       1,
+      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
+						       &indx_infop->indx_id.i.
+						       btid,
+						       s_id->readonly_scan,
+						       iscan_id->lock_hint,
+						       BTS, key_val1p,
+						       key_val2p, range, 1,
 						       &iscan_id->cls_oid,
 						       iscan_id->oid_list.
 						       oidp,
-						       DB_PAGESIZE *
-						       PRM_BT_OID_NBUFFERS,
+						       (DB_PAGESIZE *
+							PRM_BT_OID_NBUFFERS),
 						       &key_filter, iscan_id,
 						       false,
 						       iscan_id->
@@ -1192,9 +1167,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	     the index scan context. They can be equal to NULL only in the
 	     "is NULL" context. */
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS) &&
-	      (PRIM_IS_NULL (key_val1p) ||
-	       btree_multicol_key_has_null (key_val1p)))
+	  if (BTREE_START_OF_SCAN (BTS)
+	      && (PRIM_IS_NULL (key_val1p)
+		  || btree_multicol_key_has_null (key_val1p)))
 	    {
 	      /* skip this key value and continue to the next */
 	      iscan_id->curr_keyno++;
@@ -1202,15 +1177,21 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  /* calling 'btree_range_search()' */
-	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p, &indx_infop->indx_id.i.btid, s_id->readonly_scan, iscan_id->lock_hint, BTS, key_val1p,	/* key value or NULL pointer */
-							   key_val2p,	/* cloned value */
-							   GE_LE,	/* key value search */
+	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
+							   &indx_infop->
+							   indx_id.i.btid,
+							   s_id->
+							   readonly_scan,
+							   iscan_id->
+							   lock_hint, BTS,
+							   key_val1p,
+							   key_val2p, GE_LE,
 							   1,
 							   &iscan_id->cls_oid,
 							   iscan_id->oid_list.
 							   oidp,
-							   DB_PAGESIZE *
-							   PRM_BT_OID_NBUFFERS,
+							   (DB_PAGESIZE *
+							    PRM_BT_OID_NBUFFERS),
 							   &key_filter,
 							   iscan_id, false,
 							   iscan_id->
@@ -1233,7 +1214,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      break;
 	    }
 
-	}			/* while (iscan_id->curr_keyno < key_cnt) */
+	}
 
       break;
 
@@ -1265,10 +1246,10 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (range >= GE_LE && range <= GT_LT)
 	    {
 	      /* to fix multi-column index NULL problem */
-	      if (BTREE_START_OF_SCAN (BTS) &&
-		  (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p) ||
-		   btree_multicol_key_has_null (key_val1p) ||
-		   btree_multicol_key_has_null (key_val2p)))
+	      if (BTREE_START_OF_SCAN (BTS)
+		  && (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
+		      || btree_multicol_key_has_null (key_val1p)
+		      || btree_multicol_key_has_null (key_val2p)))
 		{
 		  /* skip this range and continue to the next */
 		  iscan_id->curr_keyno++;
@@ -1278,9 +1259,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (range >= GE_INF && range <= GT_INF)
 	    {
 	      /* to fix multi-column index NULL problem */
-	      if (BTREE_START_OF_SCAN (BTS) &&
-		  (PRIM_IS_NULL (key_val1p) ||
-		   btree_multicol_key_has_null (key_val1p)))
+	      if (BTREE_START_OF_SCAN (BTS)
+		  && (PRIM_IS_NULL (key_val1p)
+		      || btree_multicol_key_has_null (key_val1p)))
 		{
 		  /* skip this range and continue to the next */
 		  iscan_id->curr_keyno++;
@@ -1291,9 +1272,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (range >= INF_LE && range <= INF_LT)
 	    {
 	      /* to fix multi-column index NULL problem */
-	      if (BTREE_START_OF_SCAN (BTS) &&
-		  (PRIM_IS_NULL (key_val2p) ||
-		   btree_multicol_key_has_null (key_val2p)))
+	      if (BTREE_START_OF_SCAN (BTS)
+		  && (PRIM_IS_NULL (key_val2p)
+		      || btree_multicol_key_has_null (key_val2p)))
 		{
 		  /* skip this range and continue to the next */
 		  iscan_id->curr_keyno++;
@@ -1303,15 +1284,21 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  /* calling 'btree_range_search()' */
-	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p, &indx_infop->indx_id.i.btid, s_id->readonly_scan, iscan_id->lock_hint, BTS, key_val1p,	/* key value or NULL pointer */
-							   key_val2p,	/* key value or NULL pointer */
-							   range,
+	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
+							   &indx_infop->
+							   indx_id.i.btid,
+							   s_id->
+							   readonly_scan,
+							   iscan_id->
+							   lock_hint, BTS,
+							   key_val1p,
+							   key_val2p, range,
 							   1,
 							   &iscan_id->cls_oid,
 							   iscan_id->oid_list.
 							   oidp,
-							   DB_PAGESIZE *
-							   PRM_BT_OID_NBUFFERS,
+							   (DB_PAGESIZE *
+							    PRM_BT_OID_NBUFFERS),
 							   &key_filter,
 							   iscan_id, false,
 							   iscan_id->
@@ -1334,7 +1321,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      break;
 	    }
 
-	}			/* while (iscan_id->curr_keyno < key_cnt) */
+	}
 
       break;
 
@@ -1342,12 +1329,12 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto exit_on_error;
 
-    }				/* switch (iscan_id->indx_info->range_type) */
+    }
 
   if (iscan_id->oid_list.oid_cnt > 1)
     {				/* need to sort */
-      if (iscan_id->keep_iscan_order == false &&
-	  iscan_id->need_count_only == false)
+      if (iscan_id->keep_iscan_order == false
+	  && iscan_id->need_count_only == false)
 	{
 	  qsort (iscan_id->oid_list.oidp, iscan_id->oid_list.oid_cnt,
 		 sizeof (OID), oid_compare);
@@ -1386,13 +1373,13 @@ exit_on_error:
 }
 
 /*
- *                                                                           
- *                    SCAN MANAGEMENT ROUTINES                               
- *                                                                           
+ *
+ *                    SCAN MANAGEMENT ROUTINES
+ *
  */
 
 /*
- * scan_init_scan_id () - 
+ * scan_init_scan_id () -
  *   return:
  *   scan_id(out): Scan identifier
  *   readonly_scan(in):
@@ -1402,7 +1389,7 @@ exit_on_error:
  *   join_dbval(in):
  *   val_list(in):
  *   vd(in):
- * 
+ *
  * Note: If you feel the need
  */
 static void
@@ -1441,7 +1428,7 @@ scan_init_scan_id (SCAN_ID * scan_id,
 }
 
 /*
- * scan_open_heap_scan () - 
+ * scan_open_heap_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
  *   readonly_scan(in):
@@ -1463,7 +1450,7 @@ scan_init_scan_id (SCAN_ID * scan_id,
  *   num_attrs_rest(in):
  *   attrids_rest(in):
  *   cache_rest(in):
- * 
+ *
  * Note: If you feel the need
  */
 int
@@ -1533,7 +1520,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
- * scan_open_class_attr_scan () - 
+ * scan_open_class_attr_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
  *   grouped(in):
@@ -1552,7 +1539,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  *   num_attrs_rest(in):
  *   attrids_rest(in):
  *   cache_rest(in):
- * 
+ *
  * Note: If you feel the need
  */
 int
@@ -1618,7 +1605,7 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
- * scan_open_index_scan () - 
+ * scan_open_index_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
  *   readonly_scan(in):
@@ -1646,7 +1633,7 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  *   attrids_rest(in):
  *   cache_rest(in):
  *   keep_index_scan_order(in):
- * 
+ *
  * Note: If you feel the need
  */
 int
@@ -1676,7 +1663,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_pred,
 		      int num_attrs_rest,
 		      ATTR_ID * attrids_rest,
-		      HEAP_CACHE_ATTRINFO * cache_rest, int keep_iscan_order)
+		      HEAP_CACHE_ATTRINFO * cache_rest, bool keep_iscan_order)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -1912,7 +1899,7 @@ exit_on_error:
 }
 
 /*
- * scan_open_list_scan () - 
+ * scan_open_list_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
  *   grouped(in):
@@ -1966,7 +1953,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
- * scan_open_set_scan () - 
+ * scan_open_set_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
  *   grouped(in):
@@ -2015,7 +2002,7 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
- * scan_open_method_scan () - 
+ * scan_open_method_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
  *   grouped(in):
@@ -2025,7 +2012,7 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  *   vd(in):
  *   list_id(in):
  *   meth_sig_list(in):
- * 
+ *
  * Note: If you feel the need
  */
 int
@@ -2052,10 +2039,10 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
- * scan_start_scan () - Start the scan process on the given scan identifier. 
+ * scan_start_scan () - Start the scan process on the given scan identifier.
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 int
@@ -2264,10 +2251,10 @@ exit_on_error:
 }
 
 /*
- * scan_reset_scan_block () - Move the scan back to the beginning point inside the current scan block. 
- *   return: S_SUCCESS, S_END, S_ERROR 
+ * scan_reset_scan_block () - Move the scan back to the beginning point inside the current scan block.
+ *   return: S_SUCCESS, S_END, S_ERROR
  *   s_id(in/out): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 SCAN_CODE
@@ -2296,8 +2283,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_INDX_SCAN:
       if (s_id->grouped)
 	{
-	  if (s_id->direction == S_FORWARD &&
-	      s_id->s.isid.keep_iscan_order == false)
+	  if (s_id->direction == S_FORWARD
+	      && s_id->s.isid.keep_iscan_order == false)
 	    {
 	      s_id->s.isid.curr_oidno = s_id->s.isid.oid_list.oid_cnt;
 	      s_id->direction = S_BACKWARD;
@@ -2353,7 +2340,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
  * scan_next_scan_block () - Move the scan to the next scan block. If there are no more scan blocks left, S_END is returned.
  *   return: S_SUCCESS, S_END, S_ERROR
  *   s_id(in/out): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 SCAN_CODE
@@ -2373,40 +2360,40 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 	  if (s_id->direction == S_FORWARD)
 	    {
-	      sp_scan =
-		heap_scanrange_to_following (thread_p,
-					     &s_id->s.hsid.scan_range, NULL);
+	      sp_scan = heap_scanrange_to_following (thread_p,
+						     &s_id->s.hsid.scan_range,
+						     NULL);
 	    }
 	  else
 	    {
-	      sp_scan =
-		heap_scanrange_to_prior (thread_p, &s_id->s.hsid.scan_range,
-					 NULL);
+	      sp_scan = heap_scanrange_to_prior (thread_p,
+						 &s_id->s.hsid.scan_range,
+						 NULL);
 	    }
 
-	  return (sp_scan == S_SUCCESS) ? S_SUCCESS :
-	    (sp_scan == S_END) ? S_END : S_ERROR;
+	  return ((sp_scan == S_SUCCESS) ? S_SUCCESS :
+		  (sp_scan == S_END) ? S_END : S_ERROR);
 	}
       else
 	{
 
-	  return (s_id->direction == S_FORWARD) ?
-	    ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END) :
-	    ((s_id->position == S_AFTER) ? S_SUCCESS : S_END);
+	  return ((s_id->direction == S_FORWARD) ?
+		  ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END) :
+		  ((s_id->position == S_AFTER) ? S_SUCCESS : S_END));
 	}
 
     case S_INDX_SCAN:
       if (s_id->grouped)
 	{
 
-	  if ((s_id->direction == S_FORWARD && s_id->position == S_BEFORE) ||
-	      (!BTREE_END_OF_SCAN (&s_id->s.isid.bt_scan) ||
-	       s_id->s.isid.indx_info->range_type == R_KEYLIST ||
-	       s_id->s.isid.indx_info->range_type == R_RANGELIST))
+	  if ((s_id->direction == S_FORWARD && s_id->position == S_BEFORE)
+	      || (!BTREE_END_OF_SCAN (&s_id->s.isid.bt_scan)
+		  || s_id->s.isid.indx_info->range_type == R_KEYLIST
+		  || s_id->s.isid.indx_info->range_type == R_RANGELIST))
 	    {
 
-	      if (!(s_id->position == S_BEFORE &&
-		    s_id->s.isid.one_range == true))
+	      if (!(s_id->position == S_BEFORE
+		    && s_id->s.isid.one_range == true))
 		{
 		  /* get the next set of object identifiers specified in the range */
 		  if (scan_get_index_oidset (thread_p, s_id) != NO_ERROR)
@@ -2419,10 +2406,10 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		      return S_END;
 		    }
 
-		  if (s_id->position == S_BEFORE &&
-		      (BTREE_END_OF_SCAN (&s_id->s.isid.bt_scan) &&
-		       s_id->s.isid.indx_info->range_type != R_KEYLIST &&
-		       s_id->s.isid.indx_info->range_type != R_RANGELIST))
+		  if (s_id->position == S_BEFORE
+		      && BTREE_END_OF_SCAN (&s_id->s.isid.bt_scan)
+		      && s_id->s.isid.indx_info->range_type != R_KEYLIST
+		      && s_id->s.isid.indx_info->range_type != R_RANGELIST)
 		    {
 		      s_id->s.isid.one_range = true;
 		    }
@@ -2447,7 +2434,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       else
 	{
 
-	  return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
+	  return ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END);
 	}
 
     case S_CLASS_ATTR_SCAN:
@@ -2465,10 +2452,10 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 
 /*
- * scan_end_scan () - End the scan process on the given scan identifier. 
- *   return: 
+ * scan_end_scan () - End the scan process on the given scan identifier.
+ *   return:
  *   scan_id(in/out): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 void
@@ -2492,7 +2479,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_SCAN:
       hsidp = &scan_id->s.hsid;
 
-      /* do not free attr_cache here. 
+      /* do not free attr_cache here.
        * xs_clear_access_spec_list() will free attr_caches.
        */
 
@@ -2516,7 +2503,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_CLASS_ATTR_SCAN:
-      /* do not free attr_cache here. 
+      /* do not free attr_cache here.
        * xs_clear_access_spec_list() will free attr_caches.
        */
 
@@ -2524,7 +2511,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
-      /* do not free attr_cache here. 
+      /* do not free attr_cache here.
        * xs_clear_access_spec_list() will free attr_caches.
        */
 
@@ -2558,17 +2545,17 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       break;
-    }				/* switch (scan_id->type) */
+    }
 
   scan_id->status = S_ENDED;
 }
 
 
 /*
- * scan_close_scan () - The scan identifier is closed and allocated areas and page buffers are freed. 
- *   return: 
+ * scan_close_scan () - The scan identifier is closed and allocated areas and page buffers are freed.
+ *   return:
  *   scan_id(in/out): Scan identifier
- * 
+ *
  * Note: If you feel the need
  */
 void
@@ -2629,11 +2616,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
- * scan_next_scan_local () - The scan is moved to the next scan item. 
+ * scan_next_scan_local () - The scan is moved to the next scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
- * 
- * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.              
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
 scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
@@ -2972,8 +2959,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 						      isidp->curr_oidno);
 		    }
 		  else
-		    {		/* if (scan_id->position == S_BEFORE) */
-
+		    {
 		      if (isidp->curr_oidno < isidp->oid_list.oid_cnt - 1)
 			{
 			  isidp->curr_oidno++;
@@ -2984,9 +2970,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 		      else
 			{
-			  if (BTREE_END_OF_SCAN (&isidp->bt_scan) &&
-			      isidp->indx_info->range_type != R_RANGELIST &&
-			      isidp->indx_info->range_type != R_KEYLIST)
+			  if (BTREE_END_OF_SCAN (&isidp->bt_scan)
+			      && isidp->indx_info->range_type != R_RANGELIST
+			      && isidp->indx_info->range_type != R_KEYLIST)
 			    {
 			      return S_END;
 			    }
@@ -3014,8 +3000,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			    }
 			}
 
-		    }		/* if (scan_id->position == S_BEFORE) */
-
+		    }
 		}
 	      else if (scan_id->position == S_AFTER)
 		{
@@ -3027,7 +3012,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  ER_QPROC_UNKNOWN_CRSPOS, 0);
 		  return S_ERROR;
 		}
-	    }			/* if (scan_id->grouped) */
+	    }
 
 	  if (scan_id->fixed == false)
 	    {
@@ -3048,8 +3033,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	     are interested in. Index scans that use B-tree for unique
 	     attributes can return any class in the inheritence hierarchy
 	     since uniques span hierarchies. */
-	  if (sp_scan == S_DOESNT_EXIST ||
-	      !OID_EQ (&class_oid, &isidp->cls_oid))
+	  if (sp_scan == S_DOESNT_EXIST
+	      || !OID_EQ (&class_oid, &isidp->cls_oid))
 	    {
 	      continue;		/* continue to the next object */
 	    }
@@ -3111,9 +3096,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 		  /* read the key range the values from the heap into
 		   * the attribute cache */
-		  if (heap_attrinfo_read_dbvalues
-		      (thread_p, isidp->curr_oidp, &recdes,
-		       isidp->key_attrs.attr_cache) != NO_ERROR)
+		  if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp,
+						   &recdes,
+						   isidp->key_attrs.
+						   attr_cache) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
@@ -3129,12 +3115,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  continue;	/* skip and go ahead */
 			}
 
-		      if (fetch_peek_dbval
-			  (thread_p, &regup->value, scan_id->vd,
-			   NULL /*class_oid */ ,
-			   NULL /*obj_oid */ ,
-			   NULL /*tpl */ ,
-			   &dbvalp) != NO_ERROR)
+		      if (fetch_peek_dbval (thread_p, &regup->value,
+					    scan_id->vd, NULL, NULL,
+					    NULL, &dbvalp) != NO_ERROR)
 			{
 			  ev_res = V_ERROR;	/* error */
 			  break;
@@ -3146,14 +3129,14 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 
 		      regup = regup->next;
-		    }		/* for (i = 0; ...) */
+		    }
 
 		  if (ev_res == V_TRUE && i < isidp->num_vstr)
 		    {
 		      /* must be impossible. unknown error */
 		      ev_res = V_ERROR;
 		    }
-		}		/* if (isidp->num_vstr) */
+		}
 	    }
 
 	  if (ev_res == V_ERROR)
@@ -3172,9 +3155,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      /* read the rest of the values from the heap into the attribute
 	         cache */
-	      if (heap_attrinfo_read_dbvalues
-		  (thread_p, isidp->curr_oidp, &recdes,
-		   isidp->rest_attrs.attr_cache) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp,
+					       &recdes,
+					       isidp->rest_attrs.
+					       attr_cache) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -3182,19 +3166,19 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* fetch the rest of the values from the object instance */
 	      if (scan_id->val_list)
 		{
-		  if (fetch_val_list
-		      (thread_p, isidp->rest_regu_list, scan_id->vd,
-		       &isidp->cls_oid, isidp->curr_oidp, NULL,
-		       PEEK) != NO_ERROR)
+		  if (fetch_val_list (thread_p, isidp->rest_regu_list,
+				      scan_id->vd, &isidp->cls_oid,
+				      isidp->curr_oidp, NULL,
+				      PEEK) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
 		}
-	    }			/* if (isidp->rest_regu_list) */
+	    }
 
 	  return S_SUCCESS;
 
-	}			/* while (1) */
+	}
 
       break;			/* cannot reach to this line */
 
@@ -3205,17 +3189,16 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       tplrec.size = 0;
       tplrec.tpl = (QFILE_TUPLE) NULL;
 
-      while ((qp_scan =
-	      qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec,
-				    PEEK)) == S_SUCCESS)
+      while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid,
+					      &tplrec, PEEK)) == S_SUCCESS)
 	{
 
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL,
-		   NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list,
+				  scan_id->vd, NULL,
+				  NULL, tplrec.tpl, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -3225,10 +3208,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  ev_res = V_TRUE;
 	  if (llsidp->scan_pred.pr_eval_fnc && llsidp->scan_pred.pred_expr)
 	    {
-	      ev_res =
-		(*llsidp->scan_pred.pr_eval_fnc) (thread_p,
-						  llsidp->scan_pred.pred_expr,
-						  scan_id->vd, NULL);
+	      ev_res = (*llsidp->scan_pred.pr_eval_fnc) (thread_p,
+							 llsidp->scan_pred.
+							 pred_expr,
+							 scan_id->vd, NULL);
 	      if (ev_res == V_ERROR)
 		{
 		  return S_ERROR;
@@ -3238,7 +3221,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (scan_id->qualification == QPROC_QUALIFIED)
 	    {
 	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-		continue;	/* not qualified, continue to the next tuple */
+		{
+		  continue;	/* not qualified, continue to the next tuple */
+		}
 	    }
 	  else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
 	    {
@@ -3274,9 +3259,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the rest of the values from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL,
-		   tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list,
+				  scan_id->vd, NULL, NULL,
+				  tplrec.tpl, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -3289,7 +3274,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  return S_SUCCESS;
 
-	}			/* while ((qp_scan = ...) == S_SUCCESS) */
+	}
 
       return qp_scan;
 
@@ -3303,8 +3288,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  REGU_VARIABLE *func;
 
 	  func = ssidp->set_ptr;
-	  if (func->type == TYPE_FUNC &&
-	      func->value.funcp->ftype == F_SEQUENCE)
+	  if (func->type == TYPE_FUNC
+	      && func->value.funcp->ftype == F_SEQUENCE)
 	    {
 	      REGU_VARIABLE_LIST ptr;
 	      int size;
@@ -3320,9 +3305,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  else
 	    {
 	      pr_clear_value (&ssidp->set);
-	      if (fetch_copy_dbval
-		  (thread_p, ssidp->set_ptr, scan_id->vd, NULL, NULL, NULL,
-		   &ssidp->set) != NO_ERROR)
+	      if (fetch_copy_dbval (thread_p, ssidp->set_ptr, scan_id->vd,
+				    NULL, NULL, NULL,
+				    &ssidp->set) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -3339,10 +3324,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  ev_res = V_TRUE;
 	  if (ssidp->scan_pred.pr_eval_fnc && ssidp->scan_pred.pred_expr)
 	    {
-	      ev_res =
-		(*ssidp->scan_pred.pr_eval_fnc) (thread_p,
-						 ssidp->scan_pred.pred_expr,
-						 scan_id->vd, NULL);
+	      ev_res = (*ssidp->scan_pred.pr_eval_fnc) (thread_p,
+							ssidp->scan_pred.
+							pred_expr,
+							scan_id->vd, NULL);
 	      if (ev_res == V_ERROR)
 		{
 		  return S_ERROR;
@@ -3438,27 +3423,25 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  pr_clear_value (src_valp->val);
 	  free_and_init (src_valp->val);
 
-	}			/* for (src_valp = ...) */
+	}
 
       return S_SUCCESS;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
-
-    }				/* switch (s_id->type) */
-
+    }
 }
 
 /*
- * scan_handle_single_scan () - 
+ * scan_handle_single_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
- * 
+ *
  * Note: This second order function applies the given next-scan function,
  * then enforces the single_fetch , null_fetch semantics.
  * Note that when "single_fetch", "null_fetch" is asserted, at least one
- * qualified scan item, the NULL row, is returned.                             
+ * qualified scan item, the NULL row, is returned.
  */
 static SCAN_CODE
 scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
@@ -3498,7 +3481,6 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	}
       else
 	{
-
 	  result = (*next_scan) (thread_p, s_id);
 
 	  if (result == S_ERROR)
@@ -3607,7 +3589,7 @@ exit_on_error:
 }
 
 /*
- * scan_next_scan () - 
+ * scan_next_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  */
@@ -3621,8 +3603,8 @@ scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
  * scan_prev_scan_local () - The scan is moved to the previous scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
- * 
- * Note: If there are no more scan items, S_END is returned.  
+ *
+ * Note: If there are no more scan items, S_END is returned.
  * If an error occurs, S_ERROR is returned. This routine currently supports only LIST FILE scans.
  */
 static SCAN_CODE
@@ -3642,17 +3624,16 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       tplrec.size = 0;
       tplrec.tpl = (QFILE_TUPLE) NULL;
 
-      while ((qp_scan =
-	      qfile_scan_list_prev (thread_p, &llsidp->lsid, &tplrec,
-				    PEEK)) == S_SUCCESS)
+      while ((qp_scan = qfile_scan_list_prev (thread_p, &llsidp->lsid,
+					      &tplrec, PEEK)) == S_SUCCESS)
 	{
 
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL,
-		   NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list,
+				  scan_id->vd, NULL,
+				  NULL, tplrec.tpl, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -3662,10 +3643,10 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  ev_res = V_TRUE;
 	  if (llsidp->scan_pred.pr_eval_fnc && llsidp->scan_pred.pred_expr)
 	    {
-	      ev_res =
-		(*llsidp->scan_pred.pr_eval_fnc) (thread_p,
-						  llsidp->scan_pred.pred_expr,
-						  scan_id->vd, NULL);
+	      ev_res = (*llsidp->scan_pred.pr_eval_fnc) (thread_p,
+							 llsidp->scan_pred.
+							 pred_expr,
+							 scan_id->vd, NULL);
 	      if (ev_res == V_ERROR)
 		{
 		  return S_ERROR;
@@ -3747,8 +3728,8 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * scan_prev_scan () - The scan is moved to the previous scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
- * 
- * Note: If there are no more scan items, S_END is returned.  
+ *
+ * Note: If there are no more scan items, S_END is returned.
  * If an error occurs, S_ERROR is returned. This routine currently supports only LIST FILE scans.
  */
 SCAN_CODE
@@ -3759,10 +3740,10 @@ scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 /*
  * scan_save_scan_pos () - Save current scan position information.
- *   return: 
+ *   return:
  *   scan_id(in/out): Scan identifier
  *   scan_pos(in/out): Set to contain current scan position
- * 
+ *
  * Note: This routine currently assumes only LIST FILE scans.
  */
 void
@@ -3776,11 +3757,11 @@ scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos)
 
 
 /*
- * scan_jump_scan_pos () - Jump to the given scan position and move the scan from that point on in the forward direction. 
+ * scan_jump_scan_pos () - Jump to the given scan position and move the scan from that point on in the forward direction.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *   scan_pos(in/out): Set to contain current scan position
- * 
+ *
  * Note: This routine currently assumes only LIST FILE scans.
  */
 SCAN_CODE
@@ -3803,9 +3784,9 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
-  qp_scan =
-    qfile_jump_scan_tuple_position (thread_p, &llsidp->lsid,
-				    &scan_pos->ls_tplpos, &tplrec, PEEK);
+  qp_scan = qfile_jump_scan_tuple_position (thread_p, &llsidp->lsid,
+					    &scan_pos->ls_tplpos, &tplrec,
+					    PEEK);
   if (qp_scan != S_SUCCESS)
     {
       if (qp_scan == S_END)
@@ -3816,8 +3797,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
     }
 
   do
-    {				/* while ((qp_scan = ...) == S_SUCCESS) */
-
+    {
       /* fetch the value for the predicate from the tuple */
       if (s_id->val_list)
 	{
@@ -3832,10 +3812,10 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       ev_res = V_TRUE;
       if (llsidp->scan_pred.pr_eval_fnc && llsidp->scan_pred.pred_expr)
 	{
-	  ev_res =
-	    (*llsidp->scan_pred.pr_eval_fnc) (thread_p,
-					      llsidp->scan_pred.pred_expr,
-					      s_id->vd, NULL);
+	  ev_res = (*llsidp->scan_pred.pr_eval_fnc) (thread_p,
+						     llsidp->scan_pred.
+						     pred_expr, s_id->vd,
+						     NULL);
 	  if (ev_res == V_ERROR)
 	    {
 	      return S_ERROR;
@@ -3904,9 +3884,8 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	}
 
     }
-  while ((qp_scan =
-	  qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec,
-				PEEK)) == S_SUCCESS);
+  while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec,
+					  PEEK)) == S_SUCCESS);
 
   if (qp_scan == S_END)
     {
@@ -3931,7 +3910,6 @@ scan_initialize (void)
   /* pre-allocate oid buf list */
   for (i = 0; i < 10; i++)
     {
-      /* TODO: remove FIXME */
       oid_buf_p = alloc_oid_buf ();
       if (oid_buf_p == NULL)
 	{
@@ -3942,7 +3920,6 @@ scan_initialize (void)
       scan_Iscan_oid_buf_list = oid_buf_p;
       scan_Iscan_oid_buf_list_count++;
     }
-
 }
 
 /*

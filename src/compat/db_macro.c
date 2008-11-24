@@ -1,9 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * db_macro.c - API functions related to db_make and DB_GET
- *     
+ *
  */
 
 #ident "$Id$"
@@ -19,11 +34,11 @@
 #include "error_manager.h"
 #include "language_support.h"
 #include "db.h"
-#include "object_print_1.h"
-#include "intl.h"
-#include "qp_str.h"
+#include "object_print.h"
+#include "intl_support.h"
+#include "string_opfunc.h"
 #include "object_domain.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "cnv.h"
 #if !defined(SERVER_MODE)
 #include "object_accessor.h"
@@ -98,12 +113,12 @@ db_value_put_null (DB_VALUE * value)
 /*
  *  db_value_domain_init() - initialize value container with given type
  *                           and precision/scale.
- *  return : Error indicator. 
+ *  return : Error indicator.
  *  value(in/out) : DB_VALUE container to initialize.
  *  type(in)      : Type.
  *  precision(in) : Precision.
  *  scale(in)     : Scale.
- * 
+ *
  */
 
 int
@@ -424,7 +439,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
 	value->domain.general_info.is_null = 0;
       }
       break;
-      /* case DB_TYPE_DB_VALUE: special for esqlx */
+      /* case DB_TYPE_DB_VALUE: special for esql */
     case DB_TYPE_NUMERIC:
       {
 	char str[DB_MAX_NUMERIC_PRECISION + 2];
@@ -582,7 +597,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	value->domain.general_info.is_null = 0;
       }
       break;
-      /* case DB_TYPE_DB_VALUE: special for esqlx */
+      /* case DB_TYPE_DB_VALUE: special for esql */
     case DB_TYPE_NUMERIC:
       {
 	char str[DB_MAX_NUMERIC_PRECISION + 1];
@@ -641,7 +656,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
  * db_string_truncate() - truncate string in DB_TYPE_STRING value container
  * return         : Error indicator.
  * value(in/out)  : Pointer to a DB_VALUE
- * precision(in)  : value's precision after truncate. 
+ * precision(in)  : value's precision after truncate.
  */
 int
 db_string_truncate (DB_VALUE * value, const int precision)
@@ -794,7 +809,7 @@ db_value_scale (const DB_VALUE * value)
 }
 
 /*
- * db_value_type_is_collection() - 
+ * db_value_type_is_collection() -
  * return :
  * value(in) :
  */
@@ -807,13 +822,13 @@ db_value_type_is_collection (const DB_VALUE * value)
   CHECK_1ARG_FALSE (value);
 
   type = db_value_type (value);
-  is_collection = (type == DB_TYPE_SET || type == DB_TYPE_MULTISET ||
-		   type == DB_TYPE_SEQUENCE || type == DB_TYPE_VOBJ);
+  is_collection = (type == DB_TYPE_SET || type == DB_TYPE_MULTISET
+		   || type == DB_TYPE_SEQUENCE || type == DB_TYPE_VOBJ);
   return is_collection;
 }
 
 /*
- * db_value_is_null() - 
+ * db_value_is_null() -
  * return :
  * value(in) :
  */
@@ -826,7 +841,7 @@ db_value_is_null (const DB_VALUE * value)
 }
 
 /*
- * db_value_eh_key() - 
+ * db_value_eh_key() -
  * return :
  * value(in) :
  */
@@ -890,7 +905,7 @@ db_value_alter_type (DB_VALUE * value, const DB_TYPE type)
 }
 
 /*
- *  db_value_put() - see the note below.
+ *  db_value_put() -
  *
  *  return: an error indicator
  *     ER_DB_UNSUPPORTED_CONVERSION -
@@ -900,60 +915,15 @@ db_value_alter_type (DB_VALUE * value, const DB_TYPE type)
  *         An error occured while performing the requested conversion.
  *
  *     ER_OBJ_INVALID_ARGUMENTS - The value pointer is NULL.
- * 
+ *
  *  value(out)      : Pointer to a DB_VALUE.  The value container will need
  *                    to be initialized prior to entry as explained below.
  *  c_type(in)      : The type of the C destination buffer (and, therefore, an
  *                    indication of the type of coercion desired)
  *  input(in)       : Pointer to a C buffer
  *  input_length(in): The length of the buffer.  The buffer length is measured
- *                    in bit for C types DB_C_BIT and DB_C_VARBIT and is 
+ *                    in bit for C types DB_C_BIT and DB_C_VARBIT and is
  *                    measured in bytes for all other types.
- *
- *  Note:
- *    The C type, which is pointed to by <input>, is converted to the
- *    DB type of the DB VALUE containter and the result is placed in
- *    the value container.  The value container will need to have it's
- *    domain initialized (using db_value_domain_init()) prior to entry.
- *
- *    If the input length is -1, a NULL DB_VALUE is returned.
- *
- *    (example)
- *    To store a C double into a DB type monetary (DB_MONETARY) use;
- *
- *      DB_C_DOUBLE dval = 12.345;
- *      DB_VALUE    value;
- *
- *      db_value_domain_init(&value,
- *                           DB_TYPE_MONETARY,
- *                           DB_DEFAULT_PRECISION,
- *                           DB_DEFAULT_SCALE);
- *      db_value_put(&value, DB_TYPE_C_DOUBLE, &dval, 0);
- *
- *    Note that the <input_length> parameter is not required when dealing
- *    with known, fixed length C types.
- *
- *    (example)
- *
- *      DB_C_CHAR *str = "1234.56";
- *      DB_VALUE  value;
- *
- *      db_value_domain_init(&value, DB_TYPE_NUMERIC, 20, 2);
- *      db_value_put(&value, DB_TYPE_C_CHAR, str, strlen(str));
- *
- *    This will store the value 1234.56 as a DB_NUMERIC(20,2) in the value
- *    container.
- *
- *    (example)
- *
- *      DB_C_BIT *str = "\x01\x23\x45";
- *      DB_VALUE  value;
- *
- *      db_value_domain_init(&value, DB_TYPE_BIT, 1000, DB_DEFAULT_SCALE);
- *      db_value_put(&value, DB_TYPE_C_BIT, str, 20);
- *
- *    This will coerce the bit string <str> which is 20 bits long, into
- *    the value container as a padded, 1000 bit, fixed length bit string.
  *
  */
 int
@@ -1051,7 +1021,7 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input,
 }
 
 /*
- * db_make_null() - 
+ * db_make_null() -
  * return :
  * value(out) :
  */
@@ -1068,7 +1038,7 @@ db_make_null (DB_VALUE * value)
 }
 
 /*
- * db_make_int() - 
+ * db_make_int() -
  * return :
  * value(out) :
  * num(in):
@@ -1087,7 +1057,7 @@ db_make_int (DB_VALUE * value, const int num)
 }
 
 /*
- * db_make_short() - 
+ * db_make_short() -
  * return :
  * value(out) :
  * num(in) :
@@ -1106,7 +1076,7 @@ db_make_short (DB_VALUE * value, const short num)
 }
 
 /*
- * db_make_float() - 
+ * db_make_float() -
  * return :
  * value(out) :
  * num(in):
@@ -1125,7 +1095,7 @@ db_make_float (DB_VALUE * value, const float num)
 }
 
 /*
- * db_make_double() - 
+ * db_make_double() -
  * return :
  * value(out) :
  * num(in):
@@ -1144,7 +1114,7 @@ db_make_double (DB_VALUE * value, const double num)
 }
 
 /*
- * db_make_numeric() - 
+ * db_make_numeric() -
  * return :
  * value(out) :
  * num(in):
@@ -1178,7 +1148,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num,
 }
 
 /*
- * db_make_db_char() - 
+ * db_make_db_char() -
  * return :
  * value(out) :
  * codeset(in):
@@ -1194,12 +1164,12 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset,
 
   CHECK_1ARG_ERROR (value);
 
-  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR ||
-		  value->domain.general_info.type == DB_TYPE_CHAR ||
-		  value->domain.general_info.type == DB_TYPE_NCHAR ||
-		  value->domain.general_info.type == DB_TYPE_VARNCHAR ||
-		  value->domain.general_info.type == DB_TYPE_BIT ||
-		  value->domain.general_info.type == DB_TYPE_VARBIT);
+  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR
+		  || value->domain.general_info.type == DB_TYPE_CHAR
+		  || value->domain.general_info.type == DB_TYPE_NCHAR
+		  || value->domain.general_info.type == DB_TYPE_VARNCHAR
+		  || value->domain.general_info.type == DB_TYPE_BIT
+		  || value->domain.general_info.type == DB_TYPE_VARBIT);
 
   if (is_char_type)
     {
@@ -1222,8 +1192,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset,
 	   * kind of character string, assume the string is NULL
 	   * terminated.
 	   */
-	  if (size == DB_DEFAULT_STRING_LENGTH &&
-	      QSTR_IS_ANY_CHAR (value->domain.general_info.type))
+	  if (size == DB_DEFAULT_STRING_LENGTH
+	      && QSTR_IS_ANY_CHAR (value->domain.general_info.type))
 	    {
 	      value->data.ch.medium.size = str ? strlen (str) : 0;
 	    }
@@ -1245,8 +1215,9 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset,
 		}
 	      else
 		{
-		  value->data.ch.medium.size =
-		    MIN (size, value->domain.char_info.length);
+		  value->data.ch.medium.size = MIN (size,
+						    value->domain.char_info.
+						    length);
 		}
 	    }
 	  value->data.ch.medium.buf = (char *) str;
@@ -1285,7 +1256,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset,
 }
 
 /*
- * db_make_bit() - 
+ * db_make_bit() -
  * return :
  * value(out) :
  * bit_length(in):
@@ -1312,7 +1283,7 @@ db_make_bit (DB_VALUE * value, const int bit_length,
 }
 
 /*
- * db_make_varbit() - 
+ * db_make_varbit() -
  * return :
  * value(out) :
  * max_bit_length(in):
@@ -1340,7 +1311,7 @@ db_make_varbit (DB_VALUE * value, const int max_bit_length,
 }
 
 /*
- * db_make_string() - 
+ * db_make_string() -
  * return :
  * value(out) :
  * str(in):
@@ -1371,7 +1342,7 @@ db_make_string (DB_VALUE * value, const char *str)
 }
 
 /*
- * db_make_char() - 
+ * db_make_char() -
  * return :
  * value(out) :
  * char_length(in):
@@ -1397,7 +1368,7 @@ db_make_char (DB_VALUE * value, const int char_length,
 }
 
 /*
- * db_make_varchar() - 
+ * db_make_varchar() -
  * return :
  * value(out) :
  * max_char_length(in):
@@ -1423,7 +1394,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length,
 }
 
 /*
- * db_make_nchar() - 
+ * db_make_nchar() -
  * return :
  * value(out) :
  * nchar_length(in):
@@ -1449,7 +1420,7 @@ db_make_nchar (DB_VALUE * value, const int nchar_length,
 }
 
 /*
- * db_make_varnchar() - 
+ * db_make_varnchar() -
  * return :
  * value(out) :
  * max_nchar_length(in):
@@ -1475,7 +1446,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
 }
 
 /*
- * db_make_object() - 
+ * db_make_object() -
  * return :
  * value(out) :
  * obj(in):
@@ -1502,7 +1473,7 @@ db_make_object (DB_VALUE * value, DB_OBJECT * obj)
 }
 
 /*
- * db_make_set() - 
+ * db_make_set() -
  * return :
  * value(out) :
  * set(in):
@@ -1541,7 +1512,7 @@ db_make_set (DB_VALUE * value, DB_SET * set)
 }
 
 /*
- * db_make_multiset() - 
+ * db_make_multiset() -
  * return :
  * value(out) :
  * set(in):
@@ -1580,7 +1551,7 @@ db_make_multiset (DB_VALUE * value, DB_SET * set)
 }
 
 /*
- * db_make_sequence() - 
+ * db_make_sequence() -
  * return :
  * value(out) :
  * set(in):
@@ -1619,7 +1590,7 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
 }
 
 /*
- * db_make_collection() - 
+ * db_make_collection() -
  * return :
  * value(out) :
  * col(in):
@@ -1631,7 +1602,7 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
 
   CHECK_1ARG_ERROR (value);
 
-  /* Rather than being DB_TYPE_COLLECTION, the value type is taken from the 
+  /* Rather than being DB_TYPE_COLLECTION, the value type is taken from the
      base type of the collection. */
   if (col == NULL)
     {
@@ -1645,8 +1616,8 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
       value->data.set = col;
       /* note, we have been testing set->set for non-NULL here in order to set
          the is_null flag, this isn't appropriate, the set pointer can be NULL
-         if the set has been swapped out.The existance of a set handle alone 
-         determines the nullness of the value.  Actually, the act of calling 
+         if the set has been swapped out.The existance of a set handle alone
+         determines the nullness of the value.  Actually, the act of calling
          db_col_type above will have resulted in a re-fetch of the referenced
          set if it had been swapped out. */
       value->domain.general_info.is_null = 0;
@@ -1657,7 +1628,7 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
 }
 
 /*
- * db_make_midxkey() - 
+ * db_make_midxkey() -
  * return :
  * value(out) :
  * midxkey(in):
@@ -1691,7 +1662,7 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
 }
 
 /*
- * db_make_pointer() - 
+ * db_make_pointer() -
  * return :
  * value(out) :
  * ptr(in):
@@ -1717,7 +1688,7 @@ db_make_pointer (DB_VALUE * value, void *ptr)
 }
 
 /*
- * db_make_time() - 
+ * db_make_time() -
  * return :
  * value(out) :
  * hour(in):
@@ -1738,7 +1709,7 @@ db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
 }
 
 /*
- * db_value_put_encoded_time() - 
+ * db_value_put_encoded_time() -
  * return :
  * value(out):
  * time(in):
@@ -1764,7 +1735,7 @@ db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time)
 }
 
 /*
- * db_make_date() - 
+ * db_make_date() -
  * return :
  * value(out):
  * mon(in):
@@ -1785,7 +1756,7 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 }
 
 /*
- * db_value_put_encoded_date() - 
+ * db_value_put_encoded_date() -
  * return :
  * value(out):
  * date(in):
@@ -1811,7 +1782,7 @@ db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date)
 }
 
 /*
- * db_make_monetary() - 
+ * db_make_monetary() -
  * return :
  * value(out):
  * type(in):
@@ -1825,7 +1796,7 @@ db_make_monetary (DB_VALUE * value,
 
   CHECK_1ARG_ERROR (value);
 
-  /* check for valid currency type 
+  /* check for valid currency type
      don't put default case in the switch!!! */
   error = ER_INVALID_CURRENCY_TYPE;
   switch (type)
@@ -1856,7 +1827,7 @@ db_make_monetary (DB_VALUE * value,
 }
 
 /*
- * db_value_put_monetary_currency() - 
+ * db_value_put_monetary_currency() -
  * return :
  * value(out):
  * type(in):
@@ -1868,7 +1839,7 @@ db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
 
   CHECK_1ARG_ERROR (value);
 
-  /* check for valid currency type 
+  /* check for valid currency type
      don't put default case in the switch!!! */
   error = ER_INVALID_CURRENCY_TYPE;
   switch (type)
@@ -1898,7 +1869,7 @@ db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
 }
 
 /*
- * db_value_put_monetary_amount_as_double() - 
+ * db_value_put_monetary_amount_as_double() -
  * return :
  * value(out):
  * amount(in):
@@ -1917,7 +1888,7 @@ db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
 }
 
 /*
- * db_make_timestamp() - 
+ * db_make_timestamp() -
  * return :
  * value(out):
  * timeval(in):
@@ -1936,7 +1907,7 @@ db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
 }
 
 /*
- * db_make_error() - 
+ * db_make_error() -
  * return :
  * value(out):
  * errcode(in):
@@ -1955,7 +1926,7 @@ db_make_error (DB_VALUE * value, const int errcode)
 }
 
 /*
- * db_make_method_error() - 
+ * db_make_method_error() -
  * return :
  * value(out):
  * errcode(in):
@@ -1987,7 +1958,7 @@ db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
 }
 
 /*
- * db_get_method_error_msg() - 
+ * db_get_method_error_msg() -
  * return :
  */
 char *
@@ -2001,7 +1972,7 @@ db_get_method_error_msg (void)
 }
 
 /*
- * db_make_elo() - 
+ * db_make_elo() -
  * return :
  * value(out):
  * elo(in):
@@ -2027,7 +1998,7 @@ db_make_elo (DB_VALUE * value, DB_ELO * elo)
 }
 
 /*
- * db_make_oid() - 
+ * db_make_oid() -
  * return :
  * value(out):
  * oid(in):
@@ -2048,7 +2019,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
 }
 
 /*
- * db_make_resultset() - 
+ * db_make_resultset() -
  * return :
  * value(out):
  * handle(in):
@@ -2070,7 +2041,7 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
  *  OBTAIN DATA VALUES OF DB_VALUE
  */
 /*
- * db_get_int() - 
+ * db_get_int() -
  * return :
  * value(in):
  */
@@ -2083,7 +2054,7 @@ db_get_int (const DB_VALUE * value)
 }
 
 /*
- * db_get_short() - 
+ * db_get_short() -
  * return :
  * value(in):
  */
@@ -2096,7 +2067,7 @@ db_get_short (const DB_VALUE * value)
 }
 
 /*
- * db_get_string() - 
+ * db_get_string() -
  * return :
  * value(in):
  */
@@ -2106,8 +2077,8 @@ db_get_string (const DB_VALUE * value)
   char *str = NULL;
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2130,7 +2101,7 @@ db_get_string (const DB_VALUE * value)
 }
 
 /*
- * db_get_char() - 
+ * db_get_char() -
  * return :
  * value(in):
  * length(out):
@@ -2143,8 +2114,8 @@ db_get_char (const DB_VALUE * value, int *length)
   CHECK_1ARG_NULL (value);
   CHECK_1ARG_NULL (length);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2180,7 +2151,7 @@ db_get_char (const DB_VALUE * value, int *length)
 }
 
 /*
- * db_get_nchar() - 
+ * db_get_nchar() -
  * return :
  * value(in):
  * length(out):
@@ -2192,7 +2163,7 @@ db_get_nchar (const DB_VALUE * value, int *length)
 }
 
 /*
- * db_get_bit() - 
+ * db_get_bit() -
  * return :
  * value(in):
  * length(out):
@@ -2237,7 +2208,7 @@ db_get_bit (const DB_VALUE * value, int *length)
 }
 
 /*
- * db_get_string_size() - 
+ * db_get_string_size() -
  * return :
  * value(in):
  */
@@ -2263,8 +2234,8 @@ db_get_string_size (const DB_VALUE * value)
     }
 
   /* Convert the number of bits to the number of bytes */
-  if (value->domain.general_info.type == DB_TYPE_BIT ||
-      value->domain.general_info.type == DB_TYPE_VARBIT)
+  if (value->domain.general_info.type == DB_TYPE_BIT
+      || value->domain.general_info.type == DB_TYPE_VARBIT)
     {
       size = (size + 7) / 8;
     }
@@ -2273,7 +2244,7 @@ db_get_string_size (const DB_VALUE * value)
 }
 
 /*
- * db_get_string_codeset() - 
+ * db_get_string_codeset() -
  * return :
  * value(in):
  */
@@ -2286,7 +2257,7 @@ db_get_string_codeset (const DB_VALUE * value)
 }
 
 /*
- * db_get_numeric() - 
+ * db_get_numeric() -
  * return :
  * value(in):
  */
@@ -2295,8 +2266,8 @@ db_get_numeric (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2307,7 +2278,7 @@ db_get_numeric (const DB_VALUE * value)
 }
 
 /*
- * db_get_float() - 
+ * db_get_float() -
  * return :
  * value(in):
  */
@@ -2320,7 +2291,7 @@ db_get_float (const DB_VALUE * value)
 }
 
 /*
- * db_get_double() - 
+ * db_get_double() -
  * return :
  * value(in):
  */
@@ -2333,7 +2304,7 @@ db_get_double (const DB_VALUE * value)
 }
 
 /*
- * db_get_object() - 
+ * db_get_object() -
  * return :
  * value(in):
  */
@@ -2342,8 +2313,8 @@ db_get_object (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2354,7 +2325,7 @@ db_get_object (const DB_VALUE * value)
 }
 
 /*
- * db_get_set() - 
+ * db_get_set() -
  * return :
  * value(in):
  */
@@ -2363,8 +2334,8 @@ db_get_set (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2375,7 +2346,7 @@ db_get_set (const DB_VALUE * value)
 }
 
 /*
- * db_get_midxkey() - 
+ * db_get_midxkey() -
  * return :
  * value(in):
  */
@@ -2384,8 +2355,8 @@ db_get_midxkey (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2396,7 +2367,7 @@ db_get_midxkey (const DB_VALUE * value)
 }
 
 /*
- * db_get_pointer() - 
+ * db_get_pointer() -
  * return :
  * value(in):
  */
@@ -2405,8 +2376,8 @@ db_get_pointer (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null ||
-      value->domain.general_info.type == DB_TYPE_ERROR)
+  if (value->domain.general_info.is_null
+      || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -2417,7 +2388,7 @@ db_get_pointer (const DB_VALUE * value)
 }
 
 /*
- * db_get_time() - 
+ * db_get_time() -
  * return :
  * value(in):
  */
@@ -2426,11 +2397,11 @@ db_get_time (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  return (DB_TIME *) & (value->data.time);
+  return ((DB_TIME *) (&value->data.time));
 }
 
 /*
- * db_get_timestamp() - 
+ * db_get_timestamp() -
  * return :
  * value(in):
  */
@@ -2439,11 +2410,11 @@ db_get_timestamp (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  return (DB_TIMESTAMP *) & (value->data.utime);
+  return ((DB_TIMESTAMP *) (&value->data.utime));
 }
 
 /*
- * db_get_date() - 
+ * db_get_date() -
  * return :
  * value(in):
  */
@@ -2452,11 +2423,11 @@ db_get_date (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  return (DB_DATE *) & (value->data.date);
+  return ((DB_DATE *) (&value->data.date));
 }
 
 /*
- * db_get_monetary() - 
+ * db_get_monetary() -
  * return :
  * value(in):
  */
@@ -2465,11 +2436,11 @@ db_get_monetary (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  return (DB_MONETARY *) & (value->data.money);
+  return ((DB_MONETARY *) (&value->data.money));
 }
 
 /*
- * db_value_get_monetary_currency() - 
+ * db_value_get_monetary_currency() -
  * return :
  * value(in):
  */
@@ -2482,7 +2453,7 @@ db_value_get_monetary_currency (const DB_VALUE * value)
 }
 
 /*
- * db_value_get_monetary_amount_as_double() - 
+ * db_value_get_monetary_amount_as_double() -
  * return :
  * value(in):
  */
@@ -2495,7 +2466,7 @@ db_value_get_monetary_amount_as_double (const DB_VALUE * value)
 }
 
 /*
- * db_get_resultset() - 
+ * db_get_resultset() -
  * return :
  * value(in):
  */
@@ -2550,7 +2521,7 @@ db_value_copy (DB_VALUE * value)
 /*
  * db_value_clone() - Copies the contents of one value to another without
  *                    allocating a new container.
- *                    The destination container is NOT initialized prior    
+ *                    The destination container is NOT initialized prior
  *                    to the clone so it must be cleared before calling this
  *                    function.
  * return : Error indicator
@@ -2574,10 +2545,10 @@ db_value_clone (DB_VALUE * src, DB_VALUE * dest)
 }
 
 /*
- * db_value_clear() - the value container is initialized to an empty state       
- *        the internal type tag will be set to DB_TYPE_NULL.  Any external        
- *        allocations such as strings or sets will be freed.                      
- *        The container itself is not freed and may be reused.							      
+ * db_value_clear() - the value container is initialized to an empty state
+ *        the internal type tag will be set to DB_TYPE_NULL.  Any external
+ *        allocations such as strings or sets will be freed.
+ *        The container itself is not freed and may be reused.
  * return: Error indicator
  * value(out) : the value to clear
  *
@@ -2600,7 +2571,7 @@ db_value_clear (DB_VALUE * value)
  * db_value_free() - the value container is cleared and freed.  Any external
  *        allocations within the container such as strings or sets will also
  *        be freed.
- *									      
+ *
  * return     : Error indicator.
  * value(out) : The value to free.
  */
@@ -2657,7 +2628,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
  * db_type_to_db_domain() - see the note below.
  *
  * return : DB_DOMAIN of a primitive DB_TYPE, returns NULL otherwise
- * type(in) : a primitive DB_TYPE 
+ * type(in) : a primitive DB_TYPE
  *
  * note:
  *   This function is used only in special cases where we need to get the
@@ -2766,7 +2737,7 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
 
 /*
  * db_value_equal()- compare two values to see if they are equal.
- * return : non-zero if equal, zero if not equal									      
+ * return : non-zero if equal, zero if not equal
  * value1(in) : value container to compare.
  * value2(in) : value container to compare.
  *
@@ -2797,8 +2768,8 @@ db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2)
  *          DB_SUPERSET  - value1 is superset of value2
  *          DB_NE        - values are not both collections.
  *          DB_UNK       - collections contain NULLs preventing
- *                         a more certain answer.      
- *								      
+ *                         a more certain answer.
+ *
  * value1(in): A db_value of some collection type.
  * value2(in): A db_value of some collection type.
  *
@@ -2817,7 +2788,7 @@ db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 /*
  * db_value_compare() - Compares the two values for ordinal position
  *    It will attempt to coerce the two values to the most general
- *    of the two types passed in. Then a connonical comparison is done.							      
+ *    of the two types passed in. Then a connonical comparison is done.
  *
  * return : DB_EQ  - values are equal
  *          DB_GT  - value1 is cannonicaly before value2
@@ -2833,7 +2804,7 @@ db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 }
 
 /*
- * db_get_error() - 
+ * db_get_error() -
  * return :
  * value(in):
  */
@@ -2846,7 +2817,7 @@ db_get_error (const DB_VALUE * value)
 }
 
 /*
- * db_get_elo() - 
+ * db_get_elo() -
  * return :
  * value(in):
  */
@@ -2866,7 +2837,7 @@ db_get_elo (const DB_VALUE * value)
 }
 
 /*
- * db_get_oid() - 
+ * db_get_oid() -
  * return :
  * value(in):
  */
@@ -2881,7 +2852,7 @@ db_get_oid (const DB_VALUE * value)
 /*
  * db_get_currency_default() - This returns the value of the default currency
  *    identifier based on the current locale.  This was formerly defined with
- *    the variable DB_CURRENCY_DEFAULT in lang.c but for the PC, we need to
+ *    the variable DB_CURRENCY_DEFAULT but for the PC, we need to
  *    have this available through a function so it can be exported through
  *    the DLL.
  * return  : currency identifier.
@@ -2893,7 +2864,7 @@ db_get_currency_default ()
 }
 
 /*
- * transfer_string() - see the note below.
+ * transfer_string() - 
  * return     : an error indicator.
  *
  * dst(out)   : pointer to destination buffer area
@@ -2910,29 +2881,7 @@ db_get_currency_default ()
  *              or fixed)
  * codeset(in): International codeset for the character string.  This is needed
  *              to properly pad the strings.
- *
- * note:                                                               
- *    Transfers at most dstlen bytes to the region pointed at by dst.  If     
- *    c_type is DB_TYPE_C_CHAR or DB_TYPE_C_NCHAR, strings shorter than dstlen
- *    will be blank-padded out to dstlen-1 bytes.  All strings will be        
- *    null-terminated.  If truncation is necessary (i.e., if dstlen is less   
- *    than or equal to srclen), *outlen is set to srclen; if truncation is    
- *    is not necessary, *outlen is set to 0.  Thus, for example, if src has   
- *    the value {'a', 'b', 'c', 'd', '\0'} and srclen is 4, we'll see the     
- *    following results:                                                      
- *                                                                            
- *        dstlen   c_type    =>       dst                       outlen        
- *        ==================    ========================================      
- *            6   varying       {'a', 'b', 'c', 'd', '\0'}           0        
- *            6   fixed         {'a', 'b', 'c', 'd', ' ', '\0'}      0        
- *            5   varying       {'a', 'b', 'c', 'd', '\0'}           0        
- *            5   fixed         {'a', 'b', 'c', 'd', '\0'}           0        
- *            4   varying       {'a', 'b', 'c', '\0'}                4        
- *            4   fixed         {'a', 'b', 'c', '\0'}                4        
- *
- *    This code really needs to be made sensitive to multi-byte character     
- *    sets.  As it stands now, it will gladly lop off a multi-byte character  
- *    in mid-character.  That's probably uncool.                              
+ * 
  */
 static int
 transfer_string (char *dst, int *xflen, int *outlen,
@@ -3000,16 +2949,16 @@ transfer_string (char *dst, int *xflen, int *outlen,
 }
 
 /*
- * transfer_bit_string() - 
+ * transfer_bit_string() -
  *    Transfers at most buflen bytes to the region pointed at by buf.
  *    If c_type is DB_TYPE_C_BIT, strings shorter than dstlen will be
  *    blank-padded out to buflen-1 bytes.  All strings will be
  *    null-terminated.  If truncation is necessary (i.e., if buflen is
  *    less than or equal to length of src), *outlen is set to length of
  *    src; if truncation is is not necessary, *outlen is set to 0.
- * 
- * return     : an error indicator                                                                            
- *                                                                  
+ *
+ * return     : an error indicator
+ *
  * buf(out)   : pointer to destination buffer area
  * xflen(out) : Number of bits transfered from the src string to the buf.
  * outlen(out): pointer to a int field.  *outlen will equal 0 if no
@@ -3059,15 +3008,15 @@ transfer_bit_string (char *buf, int *xflen, int *outlen,
 }
 
 /*
- * db_value_get() - See the note below.
- * 
+ * db_value_get() -
+ *
  * return      : Error indicator.
  * value(in)   : Pointer to a DB_VALUE
  * c_type(in)  : The type of the C destination buffer (and, therefore, an
  *               indication of the type of coercion desired)
  * buf(out)    : Pointer to a C buffer
  * buflen(in)  : The length of that buffer in bytes.  The buffer should include
- *               room for a terminating NULL character which is appended to 
+ *               room for a terminating NULL character which is appended to
  *               character strings.
  * xflen(out)  : Pointer to a int field that will contain the number of
  *               elemental-units transfered into the buffer.  This value does
@@ -3081,29 +3030,6 @@ transfer_bit_string (char *buf, int *xflen, int *outlen,
  *               was too small to contain the value.
  *
  *
- * note:
- *    Extracts the data from a DB_VALUE and transfers it to a C buffer,
- *    translating it into the appropriate format along the way.  For example,
- *    to obtain a C double value from a DB_TYPE_NUMERIC DB_VALUE, use
- *
- *      DB_C_DOUBLE dval;
- *      int    length, indicator;
- *      ...
- *      db_value_get(db_value,
- *                   DB_TYPE_C_DOUBLE,
- *                   &dval,
- *                   sizeof(dval),
- *                   &length,
- *                   &indicator);
- *
- *    If the DB_VALUE is (SQL) NULL, *outlen will be set to -1.
- *
- *    Truncation:
- *    Truncation can occur if the coercion results in a string which is
- *    longer than the allocated buffer.  If this happens, <*outlen> 
- *    will be set to the length of the result string in bytes, <*xflen>
- *    will be set to the number of elemental-units transfered into the
- *    allocated buffer.
  */
 int
 db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
@@ -3931,7 +3857,7 @@ unsupported_conversion:
  *                type to convert to.
  * buf(in)      : Pointer to character buffer
  * buflen(in)   : Length of character buffer
- * 
+ *
  */
 static int
 coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
@@ -3951,9 +3877,9 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    precision = buflen;
 	  }
 
-	if ((precision == TP_FLOATING_PRECISION_VALUE) ||
-	    (db_type == DB_TYPE_VARCHAR && precision >= buflen) ||
-	    (db_type == DB_TYPE_CHAR && precision == buflen))
+	if ((precision == TP_FLOATING_PRECISION_VALUE)
+	    || (db_type == DB_TYPE_VARCHAR && precision >= buflen)
+	    || (db_type == DB_TYPE_CHAR && precision == buflen))
 	  {
 	    qstr_make_typed_string (db_type, value, precision, buf, buflen);
 	  }
@@ -3994,8 +3920,8 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    precision = char_count;
 	  }
 
-	if ((db_type == DB_TYPE_VARNCHAR && precision >= char_count) ||
-	    (db_type == DB_TYPE_NCHAR && precision == char_count))
+	if ((db_type == DB_TYPE_VARNCHAR && precision >= char_count)
+	    || (db_type == DB_TYPE_NCHAR && precision == char_count))
 	  {
 
 	    qstr_make_typed_string (db_type, value, precision, buf, buflen);
@@ -4117,7 +4043,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 }
 
 /*
- * coerce_numeric_to_dbvalue() - Coerce the C character number string 
+ * coerce_numeric_to_dbvalue() - Coerce the C character number string
  *              into the desired type and place in a DB_VALUE container.
  *
  * return :
@@ -4338,7 +4264,7 @@ coerce_numeric_to_dbvalue (DB_VALUE * value, char *buf,
 	  {
 	  case DB_TYPE_NUMERIC:
 	    /*
-	     *  We need a better way to convert a numerical C type 
+	     *  We need a better way to convert a numerical C type
 	     *  into a NUMERIC.  This will have to suffice for now.
 	     */
 	    {
@@ -4413,11 +4339,10 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    precision = buflen;
 	  }
 
-	if ((precision == TP_FLOATING_PRECISION_VALUE) ||
-	    (db_type == DB_TYPE_VARBIT && precision >= buflen) ||
-	    (db_type == DB_TYPE_BIT && precision == buflen))
+	if ((precision == TP_FLOATING_PRECISION_VALUE)
+	    || (db_type == DB_TYPE_VARBIT && precision >= buflen)
+	    || (db_type == DB_TYPE_BIT && precision == buflen))
 	  {
-
 	    qstr_make_typed_string (db_type, value, precision, buf, buflen);
 	  }
 	else
@@ -4551,7 +4476,7 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - The conversion to the db_value
  *                                         type is not supported
  *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion
- * 
+ *
  * value(in/out): DB_VALUE container for result. This also contains the DB
  *                type to convert to.
  * buf(in)      : Pointer to data buffer.
@@ -4624,9 +4549,9 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
 }
 
 /*
- * coerce_time_to_dbvalue() - Coerce a C time type into the desired type 
+ * coerce_time_to_dbvalue() - Coerce a C time type into the desired type
  *                               and place in a DB_VALUE container.
- * return : 
+ * return :
  *     C_TO_VALUE_NOERROR                - No errors occured.
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - If the conversion to the db_value
  *                                         type is not supported.
@@ -4712,7 +4637,7 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - If the conversion to the db_value
  *                                         type is not supported.
  *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion.
- * 
+ *
  * value(in/out) : DB_VALUE container for result.  This also contains the DB
  *                 type to convert to.
  * buf(in)       : Pointer to data buffer.
@@ -4801,14 +4726,14 @@ coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf)
 }
 
 /*
- * DOMAIN ACCESSORS 
+ * DOMAIN ACCESSORS
  */
 
 /*
  * db_domain_next() - This can be used to iterate through a list of domain
  *           descriptors returned by functions such as db_attribute_domain.
  * return : The next domain descriptor(or NULL if at end of list).
- * domain(in): domain descriptor.							      
+ * domain(in): domain descriptor.
  */
 DB_DOMAIN *
 db_domain_next (const DB_DOMAIN * domain)
@@ -4824,8 +4749,8 @@ db_domain_next (const DB_DOMAIN * domain)
 }
 
 /*
- * db_domain_type() - See the note below.							      
- * return    : type identifier constant.									      
+ * db_domain_type() - See the note below.
+ * return    : type identifier constant.
  * domain(in): domain descriptor.
  *
  * note:
@@ -4857,11 +4782,11 @@ db_domain_type (const DB_DOMAIN * domain)
 
 /*
  * db_domain_class() - see the note below.
- * 
+ *
  * return     : a class pointer
- * domain(in) : domain descriptor					      
+ * domain(in) : domain descriptor
  * note:
- *    This can be used to get the specific domain class for a domain whose 
+ *    This can be used to get the specific domain class for a domain whose
  *    basic type is DB_TYPE_OBJECT.  This value may be NULL indicating that
  *    the domain is the general object domain and can reference any type of
  *    object.
@@ -4887,7 +4812,7 @@ db_domain_class (const DB_DOMAIN * domain)
 }
 
 /*
- * db_domain_set() - see the note below.							      
+ * db_domain_set() - see the note below.
  * return : domain descriptor or NULL.
  * domain(in): domain descriptor.
  *

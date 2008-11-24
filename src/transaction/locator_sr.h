@@ -1,12 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * lcsr.h - Server transaction locator (interface) 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _LCSR_H_
-#define _LCSR_H_
+
+/*
+ * locator_sr.h - Server transaction locator (interface)
+ */
+
+#ifndef _LOCATOR_SR_H_
+#define _LOCATOR_SR_H_
 
 #ident "$Id$"
 
@@ -14,10 +30,10 @@
 
 #include "error_manager.h"
 #include "oid.h"
-#include "common.h"
-#include "locator_bt.h"
+#include "storage_common.h"
+#include "locator.h"
 #include "heap_file.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "extendible_hash.h"
 
 #include "disk_manager.h"
@@ -172,4 +188,4 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 				char *fk_name);
 #endif /* SERVER_MODE */
 
-#endif /* _LCSR_H_ */
+#endif /* _LOCATOR_SR_H_ */

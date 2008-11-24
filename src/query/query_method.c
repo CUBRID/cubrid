@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qp_meth.c - Method calls in queries
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: if you feel the need
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * query_method.c - Method calls in queries
  */
 
 #ident "$Id$"
@@ -12,14 +25,14 @@
 #include "config.h"
 
 #include "db.h"
-#include "qp_mem.h"
+#include "xasl_support.h"
 #include "query_method.h"
 #include "object_accessor.h"
-#include "jsp_earth.h"
+#include "jsp_sr.h"
 
 #include "object_representation.h"
 #include "network.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 #include "scan_manager.h"
 
 /* this must be the last header file included!!! */
@@ -35,7 +48,7 @@ static int method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer);
 
 /*
  * method_clear_vacomm_buffer () - Clears the comm buffer
- *   return: 
+ *   return:
  *   vacomm_buffer(in)  : Transmission buffer
  */
 static void
@@ -51,8 +64,8 @@ method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p)
 
 /*
  * method_initialize_vacomm_buffer () - Initializes the comm buffer
- *   return: 
- *   vacomm_buffer(in)  : 
+ *   return:
+ *   vacomm_buffer(in)  :
  *   rc(in)     : client transmission request ID
  *   host(in)   :
  *   server_name(in)    :
@@ -104,14 +117,14 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
 
 /*
  * method_send_value_to_server () -
- *   return: 
+ *   return:
  *   dbval(in)  : value
  *   vacomm_buffer(in)  : Transmission buffer
- *                                                                             
- * Note: If the db_value will fit into the transmission buffer,         
- * pack it into the buffer.  Otherwise, if the buffer is empty,   
- * expand it, else send the buffer to the server and then pack    
- * the value into the buffer.                                     
+ *
+ * Note: If the db_value will fit into the transmission buffer,
+ * pack it into the buffer.  Otherwise, if the buffer is empty,
+ * expand it, else send the buffer to the server and then pack
+ * the value into the buffer.
  */
 static int
 method_send_value_to_server (DB_VALUE * dbval_p,
@@ -199,10 +212,10 @@ method_send_value_to_server (DB_VALUE * dbval_p,
 
 /*
  * method_send_eof_to_server () -
- *   return: 
+ *   return:
  *   vacomm_buffer(in)  : Transmission buffer
- *                                                                             
- * Note: Send the transmission buffer to the server and indicate EOF.   
+ *
+ * Note: Send the transmission buffer to the server and indicate EOF.
  */
 static int
 method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
@@ -234,7 +247,7 @@ method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
 
 /*
  * method_send_error_to_server () - Send an error indication to the server
- *   return: 
+ *   return:
  *   rc(in)     : enquiry return code
  *   host(in)   : host name
  *   server_name(in)    : server name

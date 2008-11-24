@@ -1,10 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * db_class.c - API functions for schema definition.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
+
+/*
+ * db_class.c - API functions for schema definition.
+ */
+
 #ident "$Id$"
 
 #include "config.h"
@@ -15,20 +30,20 @@
 #include <ctype.h>
 
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
-#include "execute_schema_8.h"
+#include "execute_schema.h"
 
 /* Error signaling macros */
 static int drop_internal (MOP class_, const char *name,
@@ -1762,29 +1777,6 @@ db_drop_index (MOP classmop, const char *attname)
  * class_attributes(in): flag indicating class attribute status
  *                       (0 if this is not a class attribute,
  *                        non-zero if this is a class attribute)
- *
- * note: Since these constraints have different restrictions, it is important
- *    that the parameters be set appropriate for the type of constraint being
- *    added.
- *    Each constraint must be uniquely named.
- *    Adding a constraint to a class with existing instances may be an
- *    expensive operation since the attributes for all of those instances
- *    must be added to the b-tree after it is created.
- *
- *    UNIQUE, REVERSE_UNIQUE, PRIMARY_KEY Constraints
- *      - These constraints cannot be placed on class attributes, so it is
- *        important that the <class_attributes> flag must be zero.
- *        The <att_names> array should not contain the names of inherited
- *        attributes.
- *
- *    NOT NULL Constraints - Multi-column NOT NULL constraints are not
- *        currently supported (what ever they are) so it is important
- *        that the <att_names> array contain only one element.  This
- *        constraint cannot be applied to a class with existing instances.
- *
- *    INDEX(or REVERSE_UNIQUE) Constraints - Index constraints cannot be placed
- *        on class attributes, so it is important that the <class_attributes>
- *        flag must be zero.
  *
  */
 int

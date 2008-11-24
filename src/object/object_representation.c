@@ -1,32 +1,26 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *      or.c: Low level functions that manipulate the disk representation of
- *      objects and data values.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
- *      There are three basic categories of functions in this file:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *    	- disk representation information
- *        Functions like or_rep_id look at the disk representation of an
- *        object and extract information.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- *      - pack/unpack functions
- *
- *        These functions pack data values and complex structures into
- *        their "disk representation" which is used both for disk storage
- *        and construction of network communication buffers.  The "unpack"
- *        functions do the opposite.
- *
- *      - get/put functions
- *
- *        These functions are very similar to the pack/unpack functions
- *        but operate within the constraints of an OR_BUF data buffer.
- *        This provides a convenient mechanism for detecting buffer
- *        overflow and underflow when manipulating the disk representatiosn
- *        of complex variable length structures.
  */
+
+/*
+ * object_representation.c: Low level functions that manipulate
+ *                          the disk representation of
+ */
+
 #ident "$Id$"
 
 #include "config.h"
@@ -45,11 +39,11 @@
 #include "object_domain.h"
 #include "error_manager.h"
 #include "oid.h"
-#include "common.h"
-#include "qp_xdata.h"
+#include "storage_common.h"
+#include "query_opfunc.h"
 #include "class_object.h"
 #include "db.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #if defined (SERVER_MODE)
 #include "thread_impl.h"
 #endif /* !SERVER_MODE */
@@ -188,7 +182,7 @@ classobj_decompose_property_oid (const char *buffer,
  *    of this type, if they are fixed size.  A value of -1 indicates that
  *    the values are of variable size.
  *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the PR_TYPE structures in prim.h
+ *    This information is duplicated in the PR_TYPE structures 
  *    for use on the client.  Should consider using this on the client
  *    side as well to avoid the duplication.
  *
@@ -324,13 +318,16 @@ or_isinstance (RECDES * record, OID * class_oid)
 	}
       else
 	{
-	  if ((oid.volid == class_oid->volid) &&
-	      (oid.pageid == class_oid->pageid) &&
-	      (oid.slotid == class_oid->slotid))
-	    status = true;
+	  if (oid.volid == class_oid->volid
+	      && oid.pageid == class_oid->pageid
+	      && oid.slotid == class_oid->slotid)
+	    {
+	      status = true;
+	    }
 	}
     }
-  return (status);
+
+  return status;
 }
 
 /*
@@ -2657,7 +2654,7 @@ or_unpack_string_nocopy (char *ptr, char **string)
  * stored at the top.
  */
 int
-or_packed_string_length (char *string)
+or_packed_string_length (const char *string)
 {
   int total, len, bits, pad;
 
@@ -2684,10 +2681,6 @@ or_packed_string_length (char *string)
  * or_align_length - for a given length return aligned length
  *    return: aligned length
  *    length(in): given length
- *
- * Note:
- *    This routine is called from m_if.c and qp_xmsl.c.  There are some
- *    problems here that we don't understand.
  */
 int
 or_align_length (int length)
@@ -3806,13 +3799,6 @@ or_put_sub_domain (OR_BUF * buf)
  *    time if there seems to be some problem dealing with compressed sets.
  *    This may not need to be a public function, it is only called by
  *    or_put_set and or_packed_set_size.
- *
- *    This function encapsulates the rules that are described in the comments
- *    at the head of this section. DON'T cause this to build a set that
- *    does not follow the rules, there is some special hacked walker code,
- *    particularly in orsr.c and tfcl.c that have some built in assumptions
- *    about the set packing format so they can quickly navigate over the
- *    class objects and extract information.
  */
 void
 or_packed_set_info (DB_TYPE set_type,
@@ -4399,8 +4385,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
   fixed_element_size = -1;
   set_domain = setobj_domain (set);
 
-  if (set_domain != NULL && set_domain->setdomain != NULL &&
-      set_domain->setdomain->next == NULL)
+  if (set_domain != NULL && set_domain->setdomain != NULL
+      && set_domain->setdomain->next == NULL)
     {
       /* we only have one possible element domain */
       fixed_element_size = tp_domain_disk_size (set_domain->setdomain);
@@ -4582,8 +4568,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
    */
   element_domain = NULL;
   fixed_element_size = -1;
-  if (set_domain != NULL && set_domain->setdomain != NULL &&
-      set_domain->setdomain->next == NULL)
+  if (set_domain != NULL && set_domain->setdomain != NULL
+      && set_domain->setdomain->next == NULL)
     {
       /* we only have one possible element domain */
       fixed_element_size = tp_domain_disk_size (set_domain->setdomain);
@@ -4705,28 +4691,6 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    collapse_null(in): non-zero to "collapse" null values
  *    include_domain(in): non-zero to include a domain tag
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
- * Note:
- *    This is a generic function calculating the size of the packed
- *    representation of a value.  Any data type can be contained within
- *    the value.  The various flags are to customize the behavior depending
- *    on the context in which the value lives.
- *
- *    If "collapse_null" is on, and the value is logically NULL, the packed
- *    size will be zero, i.e., nothing will be packed.  If collapse_null
- *    is off and the value is NULL, the size will be the size of the
- *    domain IFF include_domain is on, otherwise, it will still be zero.
- *
- *    If include_domain is on, the value will be tagged with its domain.
- *    This is normally on for "standalone" value constants that don't
- *    live within some higher context.  It is sometimes off for values
- *    within a set if the domain of the packed values can be determined
- *    by examining the set header.
- *
- *    The include_domain_classoids flag is usually off, and will inhibit
- *    the storage of the class OIDs for domains that are "object" types.
- *    Since the tag domains are only used for unpacking a value, we don't
- *    usually need the domain class OID for this since an instance OID
- *    will always get us to the clas OID if we need it.
  */
 int
 or_packed_value_size (DB_VALUE * value,
@@ -4816,37 +4780,6 @@ or_packed_value_size (DB_VALUE * value,
  *    collapse_null(in): non-zero to "collapse" null values
  *    include_domain(in): non-zero to include a domain tag
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
- * Note:
- *    Generic function for packing a value.  The value contain contain
- *    any data type.
- *
- *    If "collapse_null" is on, and the value is logically NULL, the packed
- *    size will be zero, i.e., nothing will be packed.  If collapse_null
- *    is off and the value is NULL, the size will be the size of the
- *    domain IFF include_domain is on, otherwise, it will still be zero.
- *    When packing the domain of a collapsed NULL value, we set a special
- *    bit in the domain header to indicate that there is actually
- *    a "value" associated with this domain so the NULL bit can be set
- *    when the value is unpacked.  This is necessary only if we don't
- *    have the expected_size of the value in or_get_value.
- *
- *    If include_domain is on, the value will be tagged with its domain.
- *    This is normally on for "standalone" value constants that don't
- *    live within some higher context.  It is sometimes off for values
- *    within a set if the domain of the packed values can be determined
- *    by examining the set header.
- *
- *    The include_domain_classoids flag is usually off, and will inhibit
- *    the storage of the class OIDs for domains that are "object" types.
- *    Since the tag domains are only used for unpacking a value, we don't
- *    usually need the domain class OID for this since an instance OID
- *    will always get us to the clas OID if we need it.
- *
- *    Padding the packed value is currently a function of the
- *    "include_domain" flag, the idea being, places where domain tags aren't
- *    used are probably interpreted by something that wants tightly packed
- *    values, like homogeneous sets.  This is a hack, we'll need to
- *    generalize this but I need this to fix a problem today.
  */
 int
 or_put_value (OR_BUF * buf, DB_VALUE * value,
@@ -4869,17 +4802,6 @@ or_put_value (OR_BUF * buf, DB_VALUE * value,
 
   start = buf->ptr;
 
-  /*
-   * If the value is NULL, either pack nothing or pack the domain with the
-   * special null flag enabled.
-   *
-   * Note that the old pr_value_write() was substituting OR_TYPE_OID
-   * for the domain type if this was an object reference rather than
-   * DB_TYPE_OBJECT.
-   * This may not be necessary since or_get_value will do the right thing
-   * on the back end.  If it is important for some reason, the substitution
-   * can be done in or_pack_domain.
-   */
   if (DB_VALUE_TYPE (value) == DB_TYPE_NULL)
     {
       if (!collapse_null || include_domain)
@@ -5125,8 +5047,8 @@ or_unpack_value (char *buf, DB_VALUE * value)
  *    listid_ptr(in): QFILE_LIST_ID pointer
  * Note:
  *    This packs a QFILE_LIST_ID descriptor.  The arguments are passed as void*
- *    so we can avoid unfortunate circular dependencies between qp_list.h
- *    and or.h.  qp_list.h is included at the top of this file so we have
+ *    so we can avoid unfortunate circular dependencies between query_list.h
+ *    and or.h.  query_list.h is included at the top of this file so we have
  *    the information necessary for casting.
  *    The QFILE_LIST_ID doesn't have an OR_PUT macro because it is significantly
  *    more complex than the other types and may be of variable size.
@@ -5182,8 +5104,8 @@ or_pack_listid (char *ptr, void *listid_ptr)
  * Note:
  *    This unpacks a QFILE_LIST_ID descriptor from a buffer.
  *    Kludge, the arguments are passed in as void* so we can avoid
- *    unfortunate circular dependencies between qp_list.h and or.h
- *    qp_list.h is included at the top of this file so we have the
+ *    unfortunate circular dependencies between query_list.h and or.h
+ *    query_list.h is included at the top of this file so we have the
  *    information necesary for casting.
  */
 char *
@@ -5272,9 +5194,9 @@ error:
 
 /*
  * or_unpack_unbound_listid - This unpacks a QFILE_LIST_ID descriptor from a buffer.
- *    return: advanced buffer pointer 
+ *    return: advanced buffer pointer
  *    ptr(in): starting pointer
- *    listid_ptr(out): 
+ *    listid_ptr(out):
  * Note:
  *    This is a malloc used version for or_unpack_listid
  */
@@ -5371,8 +5293,8 @@ error:
  *    Calculates the number of bytes required to store the disk/comm
  *    representation of a QFILE_LIST_ID structure.  These are of variable size.
  *    Kludge, the arguments are passed in as void* so we can avoid
- *    unfortunate circular dependencies between qp_list.h and or.h
- *    qp_list.h is included at the top of this file so we have the
+ *    unfortunate circular dependencies between query_list.h and or.h
+ *    query_list.h is included at the top of this file so we have the
  *    information necesary for casting.
  */
 int
@@ -5527,7 +5449,7 @@ or_packed_key_length (DB_TYPE key_type, void *value)
       keysize = OR_MONETARY_SIZE;
       break;
     case DB_TYPE_STRING:
-      keysize = or_packed_string_length ((char *) value);
+      keysize = or_packed_string_length (value);
       break;
     default:
       keysize = 0;
@@ -5825,7 +5747,7 @@ or_elo_length (void *elo_ptr)
 
   int length = 0;
   length += OR_LOID_SIZE;
-  length += or_packed_string_length ((char *) elo->pathname);
+  length += or_packed_string_length (elo->pathname);
   length += OR_INT_SIZE;
   return length;
 }
@@ -5888,7 +5810,7 @@ or_packed_string_array_length (int count, const char **string_array)
 
   for (i = 0; i < count; i++)
     {
-      size += or_packed_string_length ((char *) string_array[i]);
+      size += or_packed_string_length (string_array[i]);
     }
 
   return (size);

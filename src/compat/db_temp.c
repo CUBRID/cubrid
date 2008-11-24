@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * db_temp.c - API functions for schema definition templates.
- * 
  */
 
 #ident "$Id$"
@@ -16,20 +30,20 @@
 #include <ctype.h>
 
 #include "system_parameter.h"
-#include "common.h"
+#include "storage_common.h"
 #include "db.h"
 #include "class_object.h"
-#include "object_print_1.h"
-#include "server.h"
+#include "object_print.h"
+#include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
-#include "set_object_1.h"
-#include "virtual_object_1.h"
+#include "set_object.h"
+#include "virtual_object.h"
 #include "parser.h"
-#include "execute_statement_10.h"
+#include "execute_statement.h"
 
 #define ERROR_SET(error, code) \
   do {                     \
@@ -48,7 +62,7 @@
  *    A class with the given name cannot already exist.
  * return : class template
  * name(in): new class name
- * 
+ *
  * note : When the template is no longer needed, it should be applied using
  *    dbt_finish_class() or destroyed using dbt_abort_class().
  */
@@ -71,7 +85,7 @@ dbt_create_class (const char *name)
  *    virtual class. A class with the specified name cannot already exist.
  * return : schema template
  * name(in): the name of a virtual class
- * 
+ *
  * note : The template can be applied using dbt_finish_class() or destroyed
  *   using dbt_abort_class().
  */
@@ -95,7 +109,7 @@ dbt_create_vclass (const char *name)
  *    class, and it is edited with the other class template functions.
  * return : class template
  * classobj(in): class object pointer
- * 
+ *
  * note : When finished, the class template can be applied with
  *    dbt_finish_class() or destroyed with dbt_abort_class().
  */
@@ -160,13 +174,13 @@ dbt_abort_class (DB_CTMPL * def)
 }
 
 /*
- * SCHEMA TEMPLATE OPERATIONS 
+ * SCHEMA TEMPLATE OPERATIONS
  * The descriptions of these functions is the same as that for the
  * non-template versions.
  */
 
 /*
- * dbt_add_attribute() - 
+ * dbt_add_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -191,7 +205,7 @@ dbt_add_attribute (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_shared_attribute() - 
+ * dbt_add_shared_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -216,7 +230,7 @@ dbt_add_shared_attribute (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_class_attribute() - 
+ * dbt_add_class_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -242,13 +256,13 @@ dbt_add_class_attribute (DB_CTMPL * def,
 
 
 /*
- * dbt_constrain_non_null() - 
+ * dbt_constrain_non_null() -
  * return:
  * def(in) :
  * name(in) :
  * class_attribute(in) :
  * on_or_off(in) :
- * 
+ *
  * note : Please consider using the newer functions dbt_add_constraint()
  *    and dbt_drop_constraint().
  */
@@ -280,12 +294,12 @@ dbt_constrain_non_null (DB_CTMPL * def,
 }
 
 /*
- * dbt_constrain_unique() - 
+ * dbt_constrain_unique() -
  * return:
  * def(in) :
  * attname(in) :
  * on_or_off(in) :
- * 
+ *
  * note : Please consider using the newer functions dbt_add_constraint()
  *    and dbt_drop_constraint().
  */
@@ -316,13 +330,13 @@ dbt_constrain_unique (DB_CTMPL * def, const char *attname, int on_or_off)
 }
 
 /*
- * dbt_add_constraint() - This function adds a constraint to one or more 
+ * dbt_add_constraint() - This function adds a constraint to one or more
  *    attributes if one does not already exist. This function is similar
  *    to the db_add_constraint() function, except that it operates on a
  *    schema template. Since INDEX'es are not manipulated via templates,
  *    this function should only be called for DB_CONSTRAINT_UNIQUE,
  *    DB_CONSTRAINT_NOT_NULL, and DB_CONSTRAINT_PRIMARY_KEY constraint types.
- * return : error code 
+ * return : error code
  * def(in): class template
  * constraint_type(in): constraint type.
  * constraint_name(in): optional name for constraint.
@@ -504,7 +518,7 @@ dbt_drop_constraint (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_foreign_key() - 
+ * dbt_add_foreign_key() -
  * return:
  * def(in) :
  * constraint_name(in) :
@@ -604,7 +618,7 @@ end:
 }
 
 /*
- * dbt_add_set_attribute_domain() - 
+ * dbt_add_set_attribute_domain() -
  * return:
  * def(in) :
  * name(in) :
@@ -629,7 +643,7 @@ dbt_add_set_attribute_domain (DB_CTMPL * def,
 }
 
 /*
- * dbt_change_domain() - 
+ * dbt_change_domain() -
  * return:
  * def(in) :
  * name(in) :
@@ -650,7 +664,7 @@ dbt_change_domain (DB_CTMPL * def,
 }
 
 /*
- * dbt_change_default() - 
+ * dbt_change_default() -
  * return:
  * def(in) :
  * name(in) :
@@ -673,7 +687,7 @@ dbt_change_default (DB_CTMPL * def,
 }
 
 /*
- * dbt_drop_set_attribute_domain() - 
+ * dbt_drop_set_attribute_domain() -
  * return:
  * def(in) :
  * name(in) :
@@ -698,7 +712,7 @@ dbt_drop_set_attribute_domain (DB_CTMPL * def,
 }
 
 /*
- * dbt_drop_attribute() - 
+ * dbt_drop_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -737,7 +751,7 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_drop_shared_attribute() - 
+ * dbt_drop_shared_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -757,7 +771,7 @@ dbt_drop_shared_attribute (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_drop_class_attribute() - 
+ * dbt_drop_class_attribute() -
  * return:
  * def(in) :
  * name(in) :
@@ -778,7 +792,7 @@ dbt_drop_class_attribute (DB_CTMPL * def, const char *name)
 
 
 /*
- * dbt_add_method() - 
+ * dbt_add_method() -
  * return:
  * def(in) :
  * name(in) :
@@ -799,7 +813,7 @@ dbt_add_method (DB_CTMPL * def, const char *name, const char *implementation)
 }
 
 /*
- * dbt_add_class_method() - 
+ * dbt_add_class_method() -
  * return:
  * def(in) :
  * name(in) :
@@ -821,7 +835,7 @@ dbt_add_class_method (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_argument() - 
+ * dbt_add_argument() -
  * return:
  * def(in) :
  * name(in) :
@@ -847,7 +861,7 @@ dbt_add_argument (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_set_argument_domain() - 
+ * dbt_add_set_argument_domain() -
  * return:
  * def(in) :
  * name(in) :
@@ -873,7 +887,7 @@ dbt_add_set_argument_domain (DB_CTMPL * def,
 }
 
 /*
- * dbt_change_method_implementation() - 
+ * dbt_change_method_implementation() -
  * return:
  * def(in) :
  * name(in) :
@@ -897,7 +911,7 @@ dbt_change_method_implementation (DB_CTMPL * def,
 }
 
 /*
- * dbt_drop_method() - 
+ * dbt_drop_method() -
  * return:
  * def(in) :
  * name(in) :
@@ -917,7 +931,7 @@ dbt_drop_method (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_drop_class_method() - 
+ * dbt_drop_class_method() -
  * return:
  * def(in) :
  * name(in) :
@@ -937,7 +951,7 @@ dbt_drop_class_method (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_add_super() - 
+ * dbt_add_super() -
  * return:
  * def(in) :
  * super(in) :
@@ -957,7 +971,7 @@ dbt_add_super (DB_CTMPL * def, MOP super)
 }
 
 /*
- * dbt_drop_super() - 
+ * dbt_drop_super() -
  * return:
  * def(in) :
  * super(in) :
@@ -977,7 +991,7 @@ dbt_drop_super (DB_CTMPL * def, MOP super)
 }
 
 /*
- * dbt_drop_super_connect() - 
+ * dbt_drop_super_connect() -
  * return:
  * def(in) :
  * super(in) :
@@ -997,7 +1011,7 @@ dbt_drop_super_connect (DB_CTMPL * def, MOP super)
 }
 
 /*
- * dbt_rename() - 
+ * dbt_rename() -
  * return:
  * def(in) :
  * name(in) :
@@ -1051,7 +1065,7 @@ dbt_rename (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_method_file() - 
+ * dbt_add_method_file() -
  * return:
  * def(in) :
  * name(in) :
@@ -1071,7 +1085,7 @@ dbt_add_method_file (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_drop_method_file() - 
+ * dbt_drop_method_file() -
  * return:
  * def(in) :
  * name(in) :
@@ -1091,7 +1105,7 @@ dbt_drop_method_file (DB_CTMPL * def, const char *name)
 }
 
 /*
- * dbt_drop_method_files() - 
+ * dbt_drop_method_files() -
  * return:
  * def(in) :
  */
@@ -1110,7 +1124,7 @@ dbt_drop_method_files (DB_CTMPL * def)
 }
 
 /*
- * dbt_rename_method_file() - 
+ * dbt_rename_method_file() -
  * return:
  * def(in) :
  * old_name(in) :
@@ -1132,7 +1146,7 @@ dbt_rename_method_file (DB_CTMPL * def, const char *old_name,
 }
 
 /*
- * dbt_set_loader_commands() - 
+ * dbt_set_loader_commands() -
  * return:
  * def(in) :
  * commands(in) :
@@ -1152,7 +1166,7 @@ dbt_set_loader_commands (DB_CTMPL * def, const char *commands)
 }
 
 /*
- * dbt_add_resolution() - 
+ * dbt_add_resolution() -
  * return:
  * def(in) :
  * super(in) :
@@ -1175,7 +1189,7 @@ dbt_add_resolution (DB_CTMPL * def,
 }
 
 /*
- * dbt_add_class_resolution() - 
+ * dbt_add_class_resolution() -
  * return:
  * def(in) :
  * super(in) :
@@ -1198,7 +1212,7 @@ dbt_add_class_resolution (DB_CTMPL * def,
 }
 
 /*
- * dbt_drop_resolution() - 
+ * dbt_drop_resolution() -
  * return:
  * def(in) :
  * super(in) :
@@ -1219,7 +1233,7 @@ dbt_drop_resolution (DB_CTMPL * def, MOP super, const char *name)
 }
 
 /*
- * dbt_drop_class_resolution() - 
+ * dbt_drop_class_resolution() -
  * return:
  * def(in) :
  * super(in) :
@@ -1240,7 +1254,7 @@ dbt_drop_class_resolution (DB_CTMPL * def, MOP super, const char *name)
 }
 
 /*
- * dbt_add_query_spec() - 
+ * dbt_add_query_spec() -
  * return:
  * def(in) :
  * query(in) :
@@ -1260,7 +1274,7 @@ dbt_add_query_spec (DB_CTMPL * def, const char *query)
 }
 
 /*
- * dbt_drop_query_spec() - 
+ * dbt_drop_query_spec() -
  * return:
  * def(in) :
  * query_no(in) :
@@ -1280,7 +1294,7 @@ dbt_drop_query_spec (DB_CTMPL * def, const int query_no)
 }
 
 /*
- * dbt_change_query_spec() - 
+ * dbt_change_query_spec() -
  * return:
  * def(in) :
  * new_query(in) :
@@ -1302,7 +1316,7 @@ dbt_change_query_spec (DB_CTMPL * def,
 }
 
 /*
- * dbt_set_object_id() - 
+ * dbt_set_object_id() -
  * return:
  * def(in) :
  * id_list(in) :

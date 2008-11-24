@@ -1,83 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * btree_load.c - B+-Tree Loader 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *               This module provides the functionality to create a B+tree    
- * index for classes with existing instances, and load this index with the    
- * attribute values of the exisiting instance objects. Therefore, this module 
- * is a complement to the B+tree module.                                      
- *                                                                            
- *      Algorithms :                                                          
- *      -----------                                                           
- *               B+Tree load operation is performed in two stages. In the     
- * first stage the leaf pages of the tree are created. This is done by using  
- * the sorting module. The pairs of (key, oid) values extracted from the      
- * instances of the class are provided to the sorting process as input. Once  
- * the sorting process is finished, the sorted (key, oid) pairs are used to   
- * build the leaf pages (including the overflow pages if there are too many   
- * OIDs associated with a key to fit onto a single page) of the index.        
- * In the second stage the non-leaf pages of the tree is constructed          
- * in a bottom-up fashion one level at a time. For the first non-leaf level   
- * of the tree the prefixes of keys (if the key-type is string) residing      
- * in the leaf level pages are used. For upper levels, the key values of the  
- * previous level are used without considering the prefixes. Once the highest 
- * level of tree is constructed, the one and only page at this highest level  
- * is declared as the root of the tree and this page identifier is used for   
- * the B+tree identifier.                                                     
- *                                                                            
- *       Data Structures :                                                    
- *       ----------------                                                     
- *               A queue (implemented as a linked list) of page identifiers   
- * is used to keep track of the non-leaf pages of the current level of the    
- * tree being built. This queue is used to recall these pages when building   
- * the next upper level of the tree.                                          
-                                                                              
- *       Interfaces :                                                         
- *       -----------                                                          
- *                                                                            
- * a) Callees of the module:                                                  
- *                                                                            
- *   Buffer Manager;        for management of page buffers in main memory     
- *   Slotted Page Manager;  for access to records in index pages              
- *   File Manager;          for management of index pages in auxiliary memory 
- *   Heap Manager;          for accessing the instance objects                
- *   Catalog Manager;       for learning disk representation of the class     
- *                          on which the index is to be built (this is used   
- *                          to extract the index attribute values from        
- *                          the instance objects of the class).               
- *   Sorting Manager;       for sorting the attribute values of the existing  
- *                          instances of the class                            
- *   Error Manager;         for reporting the error conditions                
- *   I/O Manager;           for printing out the volume name in error         
- *                          conditions                                        
- *                                                                            
- * b) Callers of the module:                                                  
- *                                                                            
- *    Schema Manager Module; for creating and loading a B+Tree index on a     
- *                           class with exisiting instances.                  
- *                                                                            
- *                                                                            
- *                                                                            
- *                                                                            
- *       Selling Points :                                                     
- *       --------------                                                       
- *                  Some other methods for bottom-up construction of B+Tree   
- * index (e.g., FOLK(87), and SALZBERG(88)) work on multiple levels of the    
- * index simultaneously and result in unstable nodes which need elimination   
- * by additional effort. This implementation works on only one level of the   
- * index at a time, requiring less I/O operations and thus yield higher       
- * performance.                                                               
- *                                                                            
- *                                                                            
- *        Relevant Literature :                                               
- *       --------------------                                                 
- *  a) FOLK, M.J., ZOELLICK, B., File Structures, Addision-Wesley, Reading,   
- *     Massachusetts, 1987.                                                   
- *  b) SALZBERG, B., File Structures, Prentice-Hall, Englewood Cliffs,        
- *     New Jersey, 1988.                                                      
- * 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * btree_load.c - B+-Tree Loader
  */
 
 #ident "$Id$"
@@ -88,7 +28,7 @@
 #include <string.h>
 
 #include "btree_load.h"
-#include "common.h"
+#include "storage_common.h"
 #include "locator_sr.h"
 #include "file_io.h"
 #include "page_buffer.h"
@@ -96,12 +36,11 @@
 #include "slotted_page.h"
 #include "heap_file.h"
 #include "file_manager.h"
-#include "fldesc.h"
 #include "disk_manager.h"
-#include "memory_manager_4.h"
+#include "memory_alloc.h"
 #include "db.h"
-#include "log_prv.h"
-#include "xserver.h"
+#include "log_impl.h"
+#include "xserver_interface.h"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -113,14 +52,14 @@ struct sort_args
   OID cur_oid;			/* Identifier of the current object */
   RECDES in_recdes;		/* Input record descriptor          */
   int n_attrs;			/* Number of attribute ID's         */
-  ATTR_ID *attr_ids;		/* Specification of the attribute(s) to 
+  ATTR_ID *attr_ids;		/* Specification of the attribute(s) to
 				 * sort on */
   TP_DOMAIN *key_type;
   HEAP_SCANCACHE hfscan_cache;	/* A heap scan cache                */
   HEAP_CACHE_ATTRINFO attr_info;	/* Attribute information            */
   int n_nulls;			/* Number of NULLs */
   int n_oids;			/* Number of OIDs */
-  int n_classes;		/* cardinality of the hfids, the class_ids, 
+  int n_classes;		/* cardinality of the hfids, the class_ids,
 				 * and (with n_attrs) the attr_ids arrays
 				 */
   int cur_class;		/* index into the hfids, class_ids, and
@@ -160,7 +99,7 @@ struct load_args
 				   "overflowing" */
   char *new_pos;
   DB_VALUE current_key;		/* Current key value */
-  int max_key_size;		/* The maximum key size encountered so far; 
+  int max_key_size;		/* The maximum key size encountered so far;
 				   used for string types */
   int cur_key_len;		/* The length of the current key */
 
@@ -179,7 +118,7 @@ struct load_args
 
   BTREE_PAGE ovf;
 
-  bool overflowing;		/* Currently, are we filling in an 
+  bool overflowing;		/* Currently, are we filling in an
 				   overflow page (then, true); or a regular
 				   leaf page (then, false) */
   int n_keys;			/* Number of keys */
@@ -229,32 +168,24 @@ static void print_list (const BTREE_NODE * this_list);
  * xbtree_load_index () - create & load b+tree index
  *   return: BTID * (btid on success and NULL on failure)
  *           btid is set as a side effect.
- *   btid(out): 
+ *   btid(out):
  *      btid: Set to the created B+tree index identifier
  *            (Note: btid->vfid.volid should be set by the caller)
  *   key_type(in): Key type corresponding to the attribute.
  *   class_oids(in): OID of the class for which the index will be created
- *   n_classes(in): 
- *   n_attrs(in): 
+ *   n_classes(in):
+ *   n_attrs(in):
  *   attr_ids(in): Identifier of the attribute of the class for which the index
  *                 will be created.
  *   hfids(in): Identifier of the heap file containing the instances of the
  *	        class
- *   unique_flag(in): 
- *   reverse_flag(in): 
- *   fk_refcls_oid(in): 
- *   fk_refcls_pk_btid(in): 
- *   cache_attr_id(in): 
- *   fk_name(in): 
- * 
- * Note: Creates a B+tree index for the specified attribute of the
- * given class, and loads this index with the attribute values
- * of the existing instances of the class. This is done
- * effectively with a bottom-up B+Tree load algorithm. First,
- * the leaf level of the tree is constructed by sorting the
- * attribute values and OIDs of instances of the class. Then the
- * non-leaf levels of the tree built on top of the leaf pages
- * sequentially (one level at a time) until the root page is obtained.
+ *   unique_flag(in):
+ *   reverse_flag(in):
+ *   fk_refcls_oid(in):
+ *   fk_refcls_pk_btid(in):
+ *   cache_attr_id(in):
+ *   fk_name(in):
+ *
  */
 BTID *
 xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
@@ -342,11 +273,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /*
    * Start a heap scancache for reading objects using the first nun-null heap
-   * We are guaranteed that such a heap exists, otherwise btree_load_index 
+   * We are guaranteed that such a heap exists, otherwise btree_load_index
    * would not have been called.
    */
-  while (sort_args->cur_class < sort_args->n_classes &&
-	 HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
+  while (sort_args->cur_class < sort_args->n_classes
+	 && HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
     {
       sort_args->cur_class++;
     }
@@ -371,7 +302,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     }
   sort_args->attrinfo_inited = 1;
 
-  /* get an estimate of number of index pages to be created 
+  /* get an estimate of number of index pages to be created
    * assume that all the objects have distinct keys.
    */
   for (i = 0, est_obj_cnt = 0; i < sort_args->n_classes; i++)
@@ -420,9 +351,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			    &sort_args->class_ids[cur_class],
 			    &sort_args->cur_oid, &sort_args->in_recdes,
 			    &sort_args->hfscan_cache, PEEK);
-      while (hf_scan == S_SUCCESS &&
-	     (OID_ISNULL (&prev_oid) ||
-	      sort_args->cur_oid.pageid == prev_oid.pageid))
+      while (hf_scan == S_SUCCESS
+	     && (OID_ISNULL (&prev_oid)
+		 || sort_args->cur_oid.pageid == prev_oid.pageid))
 	{
 	  /* still in first page */
 	  if (sort_args->n_attrs == 1)
@@ -474,14 +405,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 	  key_len = (int) (sum_key_len / key_cnt);
 	}
 
-      /* 
-       * Set the cyrrent oid for scan cache purpose back to NULL, so we can 
+      /*
+       * Set the cyrrent oid for scan cache purpose back to NULL, so we can
        * start the sort from the first heap object
        */
       OID_SET_NULL (&sort_args->cur_oid);
     }
 
-  /* 
+  /*
    * estimate number of index pages with no duplicates and 50% duplicates
    * The calculated number of pages without duplicates is a good estimate
    * for the first phase of the sort-merge. The 50% duplicates is used
@@ -506,16 +437,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       init_pgcnt = num_sort_pages;
     }
 
-  /* create a file descriptor, allocate the root page
-   * 
-   * Note: allocate the first page of the file to be reserved for ROOT
-   * page. After index is build, the root page content (last page)
-   * will be copied to this page.
-   *
-   * Note: We do not initialize the allocated pages during the allocation
-   *       since they belong to a new file and we do not perfom any undo 
-   *       logging on it.
-   */
   if (file_create
       (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes, &vpid,
        1) == NULL)
@@ -526,7 +447,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /*
    * Note: We do not initialize the allocated pages during the allocation
-   *       since they belong to a new file and we do not perfom any undo 
+   *       since they belong to a new file and we do not perfom any undo
    *       logging on it. In fact some of the pages may be returned to the
    *       file manager at a later point. We should not waste time and
    *       storage to initialize those pages at this moment. This is safe
@@ -638,9 +559,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       pr_clear_value (&load_args->current_key);
 
       /* deallocate unused pages from the index file */
-      if (load_args->used_pgcnt < load_args->init_pgcnt &&
-	  file_truncate_to_numpages (thread_p, &btid->vfid,
-				     load_args->used_pgcnt) != NO_ERROR)
+      if (load_args->used_pgcnt < load_args->init_pgcnt
+	  && file_truncate_to_numpages (thread_p, &btid->vfid,
+					load_args->used_pgcnt) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -668,19 +589,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			load_args->n_keys);
     }
 
-  /*
-   * Since the index file was created on a permanent volume, we must add
-   * a logical undo log record to remove the file in the case of a system 
-   * crash. 
-   * There is a small window of oportunity that the index file
-   * will not be removed as part of the user transaction if the system
-   * crashes after the commit of the system operation and before
-   * the logical undo is recorded on disk. This happens since the pages
-   * that were updated during the creation of the file were released 
-   * before the logical undo. That is, a system operation is completely
-   * independent of the user transaction. To reduce this window, we force
-   * the log after the logical undo log is recorded.
-   */
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
   addr.vfid = NULL;
@@ -741,7 +649,7 @@ error:
  * btree_save_last_leafrec () - save the last leaf record
  *   return: NO_ERROR
  *   load_args(in): Collection of info. for btree load operation
- * 
+ *
  * Note: Stores the last leaf record left in the load_args->out_recdes
  * area to the last leaf page (or to the last overflow page).
  * Then it saves the last leaf page (and the last overflow page,
@@ -800,7 +708,7 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	{
 
 	  /* New record does not fit into the current leaf page (within
-	   * the thresold value); so allocate a new leaf page and dump 
+	   * the thresold value); so allocate a new leaf page and dump
 	   * the current leaf page.
 	   */
 
@@ -888,8 +796,8 @@ exit_on_error:
  *            keys) of the child page to be connected.
  *   max_key_len(in): size of the biggest key in this leaf page
  *   pageid(in): identifier of this leaf page
- *   load_args(in): 
- * 
+ *   load_args(in):
+ *
  * Note: This function connects a page to its parent page. In the
  * parent level a new record is prepared with the given & pageid
  * parameters and inserted into current non-leaf page being
@@ -933,7 +841,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
     {
 
       /* New record does not fit into the current non-leaf page (within
-       * the thresold value); so allocate a new non-leaf page and dump 
+       * the thresold value); so allocate a new non-leaf page and dump
        * the current non-leaf page.
        */
 
@@ -997,15 +905,15 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
 }
 
 /*
- * btree_build_nleafs () - 
+ * btree_build_nleafs () -
  *   return: NO_ERROR
  *   load_args(in): Collection of information on how to build B+tree.
- *   n_nulls(in): 
- *   n_oids(in): 
- *   n_keys(in): 
- *   unique_flag(in): 
- *   reverse_flag(in): 
- * 
+ *   n_nulls(in):
+ *   n_oids(in):
+ *   n_keys(in):
+ *   unique_flag(in):
+ *   reverse_flag(in):
+ *
  * Note: This function builds the non-leaf level nodes of the B+Tree
  * index in three phases. In the first phase, the first non-leaf
  * level nodes of the tree are constructed. Then, the upper
@@ -1037,7 +945,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   NON_LEAF_REC nleaf_pnt;
   /* Variables for keeping keys */
   DB_VALUE last_key;		/* Last key of the current page */
-  DB_VALUE first_key;		/* First key of the next page; used only if 
+  DB_VALUE first_key;		/* First key of the next page; used only if
 				   key_type is one of the string types */
   DB_VALUE prefix_key;		/* Prefix key; prefix of last & first keys; used
 				   only if type is one of the string types */
@@ -1057,7 +965,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     }
 
   /*****************************************************
-      PHASE I : Build the first non_leaf level nodes 
+      PHASE I : Build the first non_leaf level nodes
    ****************************************************/
 
   /* Initilize the first non-leaf page */
@@ -1079,7 +987,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   /* Access to the first leaf page of the btree */
 
-  /* Initialize current_page to the first leaf page 
+  /* Initialize current_page to the first leaf page
    * Note: The first page is actually the second page, since
    *       first page is reserved for the root page.
    */
@@ -1122,8 +1030,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
       if (pr_is_string_type (load_args->btid->key_type->type->id))
 	{
-	  /* Key type is string. 
-	   * Should insert the prefix key to the parent level 
+	  /* Key type is string.
+	   * Should insert the prefix key to the parent level
 	   */
 
 	  /* Learn the first key of the next page */
@@ -1458,7 +1366,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   if (load_args->used_pgcnt > load_args->init_pgcnt)
     {
-      /* deallocate this last page of index file 
+      /* deallocate this last page of index file
        * Note: If used_pgcnt is less than init_pgcnt, this last page
        * will be deleted on page resource release at the end.
        */
@@ -1478,7 +1386,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   /* Note: Here ONLY Page ID ASSIGNMENT is made */
   load_args->btid->sys_btid->root_pageid = load_args->nleaf.vpid.pageid;
 
-  /* 
+  /*
    * The root page must be logged, otherwise, in the event of a crash. The
    * index may be gone.
    */
@@ -1535,7 +1443,7 @@ exit_on_error:
  *   return: nothing
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved
- * 
+ *
  * Note: This function logs the contents of the given page and frees
  * the page after setting on the dirty bit.
  */
@@ -1569,7 +1477,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
  *   init_pgcnt(in): The number of pages already allocated
  *   used_pgcnt(in): The number of in use pages that has been allocated
  *   nodup_pgcnt(in): The number of estimated pages without duplicates keys
- * 
+ *
  * Note: This function allocates a new page for the B+Tree index.
  * The page is initialized and the node header is inserted before
  * returning the page for further usage.
@@ -1600,19 +1508,6 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
     }
   else
     {
-      /* 
-       * If the estimate without duplicates has not been reached. 
-       * 1) Allocate 20% of the difference on the pages as long as the number
-       *    of pages is at least 500 pages.
-       * 2) Otherwise, allocate 500 pages as long as the difference on the pages
-       *    is above 500.
-       * 3) Otherwise, allocate the difference as long as the difference is
-       *    greater than 10.
-       * 4) Add 10 pages
-       * 
-       * This is done to avoid adding very few pages to index file and a bunch
-       * of pages at one time.
-       */
 
       if ((num_pages = (int) ((nodup_pgcnt - *init_pgcnt) * 0.20)) < 500)
 	{
@@ -1629,7 +1524,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
 
       /*
        * Note: We do not initialize the allocated pages during the allocation
-       *       since they belong to a new file and we do not perfom any undo 
+       *       since they belong to a new file and we do not perfom any undo
        *       logging on it. In fact some of the pages may be returned to the
        *       file manager at a later point. We should not waste time and
        *       storage to initialize those pages at this moment. This is safe
@@ -1707,7 +1602,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
  *   return: PAGE_PTR (pointer to the new leaf page, or NULL in
  *                     case of an error).
  *   load_args(in): Collection of information on how to build B+tree.
- * 
+ *
  * Note: This function proceeds the current leaf page pointer from a
  * full leaf page to a new (completely empty) one. It first
  * allocates a new leaf page and connects it to the current
@@ -1773,11 +1668,11 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
  * btree_first_oid () - Prepare record for the key and its first oid
  *   return: int
  *   this_key(in): Key
- *   class_oid(in): 
+ *   class_oid(in):
  *   first_oid(in): First OID associated with this key; inserted into the
  *                  record.
  *   load_args(in): Contains fields specifying where & how to create the record
- * 
+ *
  * Note: This function prepares the leaf record for the given key and
  * its first OID at the storage location specified by
  * load_args->out_recdes field.
@@ -1816,14 +1711,14 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
 }
 
 /*
- * btree_construct_leafs () - Output function for index sorting;constructs leaf 
+ * btree_construct_leafs () - Output function for index sorting;constructs leaf
  *                         nodes
  *   return: int
  *   in_recdes(in): specifies the next sort item in the sorting order.
  *   arg(in): output arguments; provides information about how to use the
  *            next item in the sorted list to construct the leaf nodes of
  *            the Btree.
- * 
+ *
  * Note: This function creates the btree leaf nodes. It is passed
  * by the "btree_index_sort" function to the "sort_listfile" function
  * to use the sort items to build the records and pages of the btree.
@@ -1834,7 +1729,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 {
   LOAD_ARGS *load_args;
   LEAF_REC leaf_rec;
-  DB_VALUE this_key;		/* Key value in this sorted item 
+  DB_VALUE this_key;		/* Key value in this sorted item
 				   (specified with in_recdes) */
   OID this_class_oid;		/* Class OID value in this sorted item */
   OID this_oid;			/* OID value in this sorted item */
@@ -1890,7 +1785,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
 
       /* Do not copy the string--just use the pointer.  The pr_ routines
-       * for strings and sets have different semantics for length.  
+       * for strings and sets have different semantics for length.
        */
       if (load_args->btid->key_type->type->id == DB_TYPE_MIDXKEY)
 	{
@@ -1945,7 +1840,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	{			/* This is not the first call to this function */
 	  /*
 	   * Compare the received key with the current one.
-	   * If different, then dump the current record and create a new record. 
+	   * If different, then dump the current record and create a new record.
 	   */
 
 	  same_key = !(*(load_args->btid->key_type->type->cmpval))
@@ -1973,18 +1868,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		   load_args->out_recdes.data) > load_args->max_recsize)
 		{		/* There is no space for the new oid */
 
-		  /* 
-		   *  if the current page is a leaf page then 
-		   *     1) try to insert the record to the current page
-		   *     2) if the record does not fit allocate a new leaf; 
-		   *        and insert it there
-		   *     3) Dump previous leaf page
-		   *     4) allocate an overflow page and set the current page type to 
-		   *        overflow
-		   *  else (current page is an overflow page) then
-		   *     1) dump the record to the current overflow page
-		   *     2) allocate a new overflow page, dump the current one
-		   */
 
 		  if (load_args->overflowing == true)
 		    {
@@ -2127,19 +2010,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	    {
 	      /* Current key is finished; dump this output record to the disk page */
 
-	      /* 
-	       *  if the current page is a leaf page then 
-	       *     1) try to insert the record to the current page      
-	       *     2) if the record does not fit allocate a new leaf, and insert 
-	       *        it there.
-	       *     3) dump the first leaf page
-	       *  else (current page is an overflow page) then
-	       *     1) insert into current overflow page,
-	       *     2) dump the overflow page
-	       *     3) allocate a new leaf page; dump the previous leaf page
-	       *        and make the new leaf page the current one. 
-	       *     4) set the current page type back to leaf page.
-	       */
 
 	      (load_args->n_keys)++;	/* Increment the key counter */
 
@@ -2156,7 +2026,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			  1))
 		    {
 		      /* New record does not fit into the current leaf page (within
-		       * the thresold value); so allocate a new leaf page and dump 
+		       * the thresold value); so allocate a new leaf page and dump
 		       * the current leaf page.
 		       */
 
@@ -2197,7 +2067,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		}
 	      else
 		{
-		  /* Insert the new record to the current overflow page 
+		  /* Insert the new record to the current overflow page
 		     and flush this page */
 
 		  /* Store the record in current overflow page */
@@ -2213,7 +2083,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 				  load_args->ovf.pgptr);
 		  load_args->ovf.pgptr = NULL;
 
-		  /* Proceed the current leaf page (i.e., flush the current leaf page 
+		  /* Proceed the current leaf page (i.e., flush the current leaf page
 		     which had some overflow pages connected to it; and obtain a new
 		     leaf page */
 
@@ -2282,14 +2152,14 @@ error:
 /*
  * btree_dump_sort_output () - Sample output function for index sorting
  *   return: NO_ERROR
- *   recdes(in): 
- *   load_args(in): 
- * 
+ *   recdes(in):
+ *   load_args(in):
+ *
  * Note: This function is a debugging function. It is passed by the
  * btree_index_sort function to the sort_listfile function to print
  * out the contents of the sort items once they are obtained in
  * the requested sorting order.
- * 
+ *
  */
 static int
 btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
@@ -2311,7 +2181,7 @@ btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
   buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
 
   /* Do not copy the string--just use the pointer.  The pr_ routines
-   * for strings and sets have different semantics for length.  
+   * for strings and sets have different semantics for length.
    */
   if (load_args->btid->key_type->type->id == DB_TYPE_MIDXKEY)
     {
@@ -2361,7 +2231,7 @@ exit_on_error:
  *   out_func(in): output function to utilize the sorted items as they are
  *                 produced
  *   out_args(in): arguments to the out_func.
- * 
+ *
  * Note: This function supports the initial loading phase of B+tree
  * indices by providing an ordered list of (index-attribute
  * value, object address) pairs. It uses the general sorting
@@ -2379,17 +2249,17 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
 }
 
 /*
- * btree_check_foreign_key () - 
- *   return: NO_ERROR 
- *   cls_oid(in): 
- *   hfid(in): 
- *   oid(in): 
- *   keyval(in): 
- *   n_attrs(in): 
- *   pk_cls_oid(in): 
- *   pk_btid(in): 
- *   cache_attr_id(in): 
- *   fk_name(in): 
+ * btree_check_foreign_key () -
+ *   return: NO_ERROR
+ *   cls_oid(in):
+ *   hfid(in):
+ *   oid(in):
+ *   keyval(in):
+ *   n_attrs(in):
+ *   pk_cls_oid(in):
+ *   pk_btid(in):
+ *   cache_attr_id(in):
+ *   fk_name(in):
  */
 int
 btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
@@ -2493,7 +2363,7 @@ exit_on_error:
  *                    next sort item.
  *   arg(in): sort arguments; provides information about how to produce
  *            the next sort item.
- * 
+ *
  * Note: This function is passed by the "btree_index_sort" function to
  * the "sort_listfile" function to obtain the value of the attribute
  * (on which the B+tree index for the class is to be created)
@@ -2531,15 +2401,15 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       int cur_class, attr_offset;
 
       /*
-       * This infinite loop will be exited when a satisfactory next value is 
-       * found (i.e., when an object belonging to this class with a non-null 
-       * attribute value is found), or when there are no more objects in the 
+       * This infinite loop will be exited when a satisfactory next value is
+       * found (i.e., when an object belonging to this class with a non-null
+       * attribute value is found), or when there are no more objects in the
        * heap files.
        */
 
-	/***************************
-	  RETRIEVE THE NEXT OBJECT 
-	  ***************************/
+      /*
+       * RETRIEVE THE NEXT OBJECT
+       */
 
       cur_class = sort_args->cur_class;
       attr_offset = cur_class * sort_args->n_attrs;
@@ -2566,8 +2436,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  /* Are we through with all the non-null heaps? */
 	  sort_args->cur_class++;
-	  while ((sort_args->cur_class < sort_args->n_classes) &&
-		 HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
+	  while ((sort_args->cur_class < sort_args->n_classes)
+		 && HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
 	    {
 	      sort_args->cur_class++;
 	    }
@@ -2592,10 +2462,11 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	      sort_args->scancache_inited = 1;
 
-	      if (heap_attrinfo_start
-		  (thread_p, &sort_args->class_ids[cur_class],
-		   sort_args->n_attrs, &sort_args->attr_ids[attr_offset],
-		   &sort_args->attr_info) != NO_ERROR)
+	      if (heap_attrinfo_start (thread_p,
+				       &sort_args->class_ids[cur_class],
+				       sort_args->n_attrs,
+				       &sort_args->attr_ids[attr_offset],
+				       &sort_args->attr_info) != NO_ERROR)
 		{
 		  return SORT_ERROR_OCCURRED;
 		}
@@ -2623,9 +2494,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (OID_EQ (&class_oid, &sort_args->class_ids[cur_class]))
 	{
-	    /****************************************
-	      Produce the sort item for this object 
-	      ***************************************/
+	  /*
+	   * Produce the sort item for this object
+	   */
 	  if (sort_args->n_attrs == 1)
 	    {			/* single-column index */
 	      if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
@@ -2637,12 +2508,13 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	    }
 
-	  dbvalue_ptr =
-	    heap_attrinfo_generate_key (thread_p, sort_args->n_attrs,
-					&sort_args->attr_ids[attr_offset],
-					&sort_args->attr_info,
-					&sort_args->in_recdes, &dbvalue,
-					midxkey_buf);
+	  dbvalue_ptr = heap_attrinfo_generate_key (thread_p,
+						    sort_args->n_attrs,
+						    &sort_args->
+						    attr_ids[attr_offset],
+						    &sort_args->attr_info,
+						    &sort_args->in_recdes,
+						    &dbvalue, midxkey_buf);
 	  if (dbvalue_ptr == NULL)
 	    {
 	      return (SORT_ERROR_OCCURRED);
@@ -2651,22 +2523,25 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  if (sort_args->fk_refcls_oid
 	      && !OID_ISNULL (sort_args->fk_refcls_oid))
 	    {
-	      if (btree_check_foreign_key
-		  (thread_p, &sort_args->class_ids[cur_class],
-		   &sort_args->hfids[cur_class], &sort_args->cur_oid,
-		   dbvalue_ptr, sort_args->n_attrs, sort_args->fk_refcls_oid,
-		   sort_args->fk_refcls_pk_btid, sort_args->cache_attr_id,
-		   sort_args->fk_name) != NO_ERROR)
+	      if (btree_check_foreign_key (thread_p,
+					   &sort_args->class_ids[cur_class],
+					   &sort_args->hfids[cur_class],
+					   &sort_args->cur_oid, dbvalue_ptr,
+					   sort_args->n_attrs,
+					   sort_args->fk_refcls_oid,
+					   sort_args->fk_refcls_pk_btid,
+					   sort_args->cache_attr_id,
+					   sort_args->fk_name) != NO_ERROR)
 		{
 		  return SORT_ERROR_OCCURRED;
 		}
 	    }
 
-	  if (db_value_is_null (dbvalue_ptr) ||
-	      btree_multicol_key_is_null (dbvalue_ptr))
+	  if (db_value_is_null (dbvalue_ptr)
+	      || btree_multicol_key_is_null (dbvalue_ptr))
 	    {
-	      (sort_args->n_oids)++;	/* Increment the OID counter */
-	      (sort_args->n_nulls)++;	/* Increment the NULL counter */
+	      sort_args->n_oids++;	/* Increment the OID counter */
+	      sort_args->n_nulls++;	/* Increment the NULL counter */
 	      if (dbvalue_ptr == &dbvalue)
 		{
 		  pr_clear_value (&dbvalue);
@@ -2688,8 +2563,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		   * backtrack this iteration
 		   */
 		  sort_args->cur_oid = prev_oid;
-		  temp_recdes->length =
-		    next_size + oid_size + key_len + MAX_ALIGN;
+		  temp_recdes->length = (next_size + oid_size
+					 + key_len + MAX_ALIGN);
 		  goto nofit;
 		}
 
@@ -2726,7 +2601,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	    }
 
-	  (sort_args->n_oids)++;	/* Increment the OID counter */
+	  sort_args->n_oids++;	/* Increment the OID counter */
 
 	  if (key_len > 0)
 	    {
@@ -2748,11 +2623,11 @@ nofit:
 }
 
 /*
- * compare_driver () - 
- *   return: 
- *   first(in): 
- *   second(in): 
- *   arg(in): 
+ * compare_driver () -
+ *   return:
+ *   first(in):
+ *   second(in):
+ *   arg(in):
  */
 static int
 compare_driver (const void *first, const void *second, void *arg)
@@ -2789,15 +2664,15 @@ compare_driver (const void *first, const void *second, void *arg)
 }
 
 /*
- * Linked list implementation                         
+ * Linked list implementation
  */
 
 /*
- * add_list () - 
+ * add_list () -
  *   return: NO_ERROR
  *   list(in): which list to add
  *   pageid(in): what value to put to the new node
- * 
+ *
  * Note: This function adds a new node to the end of the given list.
  */
 static int
@@ -2849,10 +2724,10 @@ exit_on_error:
 }
 
 /*
- * remove_first () - 
+ * remove_first () -
  *   return: nothing
- *   list(in): 
- * 
+ *   list(in):
+ *
  * Note: This function removes the first node of the given list (if it has one).
  */
 static void
@@ -2869,10 +2744,10 @@ remove_first (BTREE_NODE ** list)
 }
 
 /*
- * length_list () - 
+ * length_list () -
  *   return: int
  *   this_list(in): which list
- * 
+ *
  * Note: This function returns the number of elements kept in the
  * given linked list.
  */
@@ -2892,10 +2767,10 @@ length_list (const BTREE_NODE * this_list)
 
 #if defined(CUBRID_DEBUG)
 /*
- * print_list () - 
+ * print_list () -
  *   return: this_list
  *   this_list(in): which list to print
- * 
+ *
  * Note: This function prints the elements of the given linked list;
  * It is used for debugging purposes.
  */
@@ -2912,8 +2787,8 @@ print_list (const BTREE_NODE * this_list)
 
 
 /*
- * btree_load_foo_debug () - 
- *   return: 
+ * btree_load_foo_debug () -
+ *   return:
  *
  * Note: To avoid warning during development
  */
@@ -2929,7 +2804,7 @@ btree_load_foo_debug (void)
  * btree_rv_undo_create_index () - Undo the creation of an index file
  *   return: int
  *   rcv(in): Recovery structure
- * 
+ *
  * Note: The index file is destroyed completely.
  */
 int
@@ -2939,17 +2814,16 @@ btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vfid = (VFID *) rcv->data;
 
-  return ((file_destroy (thread_p, vfid) ==
-	   NO_ERROR) ? NO_ERROR : er_errid ());
-
+  return ((file_destroy (thread_p, vfid) == NO_ERROR)
+	  ? NO_ERROR : er_errid ());
 }
 
 /*
- * btree_rv_dump_create_index () - 
+ * btree_rv_dump_create_index () -
  *   return: int
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged
- * 
+ *
  * Note: Dump the information to undo the creation of an index file
  */
 void
@@ -2960,5 +2834,4 @@ btree_rv_dump_create_index (int length_ignore, void *data)
   vfid = (VFID *) data;
   (void) fprintf (stdout, "Undo creation of Index vfid: %d|%d\n",
 		  vfid->volid, vfid->fileid);
-
 }

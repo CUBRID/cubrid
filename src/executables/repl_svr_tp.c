@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * repl_svr_tp.c : hread handler routine for repl_server only.
  *
  * Note:
@@ -19,15 +34,15 @@
  *     3. READ threads
  *        - prefetch the transaction logs
  *        - when the mode of log copy is set "on-demand", exit
- *
  */
+
 #ident "$Id$"
 
 #include "porting.h"
 #include "utility.h"
-#include "repl_comm.h"
+#include "repl_support.h"
 #include "repl_tp.h"
-#include "repl_svr.h"
+#include "repl_server.h"
 
 REPL_TPOOL repl_tpool = NULL;
 
@@ -515,8 +530,8 @@ repl_pbfetch_from_archive (PAGEID pageid, char *data)
 	  fileio_make_log_archive_name (arv_name, log_Archive_path,
 					log_Prefix, repl_Arv.arv_num);
 	  /* open the archive file */
-	  if ((repl_Arv.log_vdes
-	       = repl_io_open (arv_name, O_RDONLY, 0)) == NULL_VOLDES)
+	  repl_Arv.log_vdes = repl_io_open (arv_name, O_RDONLY, 0);
+	  if (repl_Arv.log_vdes == NULL_VOLDES)
 	    {
 	      repl_Arv.arv_num++;
 	      repl_Arv.log_vdes = 0;
@@ -543,8 +558,8 @@ repl_pbfetch_from_archive (PAGEID pageid, char *data)
 	}
 
       /* is the right archive file ? */
-      if (pageid >= repl_Arv.log_hdr->fpageid &&
-	  pageid < repl_Arv.log_hdr->fpageid + repl_Arv.log_hdr->npages)
+      if (pageid >= repl_Arv.log_hdr->fpageid
+	  && pageid < repl_Arv.log_hdr->fpageid + repl_Arv.log_hdr->npages)
 	{
 	  error = repl_io_read (repl_Arv.log_vdes, data,
 				pageid - repl_Arv.log_hdr->fpageid + 1,
@@ -994,7 +1009,7 @@ repl_svr_tr_send ()
 	}
 
       /* Has a shutdown started while i was sleeping? */
-      if (repl_tpool->shutdown == 1)
+      if (repl_tpool->shutdown)
 	{
 	  PTHREAD_MUTEX_UNLOCK (repl_tpool->queue_lock);
 	  break;
@@ -1004,19 +1019,27 @@ repl_svr_tr_send ()
       my_workp = repl_tpool->queue_head;
       repl_tpool->cur_queue_size--;
       if (repl_tpool->cur_queue_size == 0)
-	repl_tpool->queue_head = repl_tpool->queue_tail = NULL;
+	{
+	  repl_tpool->queue_head = repl_tpool->queue_tail = NULL;
+	}
       else
-	repl_tpool->queue_head = my_workp->next;
+	{
+	  repl_tpool->queue_head = my_workp->next;
+	}
 
 
       /* Handle waiting add_work threads */
-      if ((!repl_tpool->do_not_block_when_full) &&
-	  (repl_tpool->cur_queue_size == (repl_tpool->max_queue_size - 1)))
-	PTHREAD_COND_BROADCAST (repl_tpool->queue_not_full);
+      if ((!repl_tpool->do_not_block_when_full)
+	  && (repl_tpool->cur_queue_size == (repl_tpool->max_queue_size - 1)))
+	{
+	  PTHREAD_COND_BROADCAST (repl_tpool->queue_not_full);
+	}
 
       /* Handle waiting destroyer threads */
       if (repl_tpool->cur_queue_size == 0)
-	PTHREAD_COND_BROADCAST (repl_tpool->queue_empty);
+	{
+	  PTHREAD_COND_BROADCAST (repl_tpool->queue_empty);
+	}
 
       PTHREAD_MUTEX_UNLOCK (repl_tpool->queue_lock);
 
@@ -1234,7 +1257,7 @@ repl_svr_tp_init (int thread_num, int do_not_block_when_full)
   repl_tpool->queue_head = NULL;
   repl_tpool->queue_tail = NULL;
   repl_tpool->queue_closed = 0;
-  repl_tpool->shutdown = 0;
+  repl_tpool->shutdown = false;
 
   /* initialize the mutex and condition variables */
   PTHREAD_MUTEX_INIT (repl_tpool->queue_lock);
@@ -1317,8 +1340,8 @@ repl_svr_tp_add_work (void (*routine) (void *), void *arg)
   PTHREAD_MUTEX_LOCK (repl_tpool->queue_lock);
 
   /* no space and this caller doesn't want to wait */
-  if ((repl_tpool->cur_queue_size == repl_tpool->max_queue_size) &&
-      repl_tpool->do_not_block_when_full)
+  if ((repl_tpool->cur_queue_size == repl_tpool->max_queue_size)
+      && repl_tpool->do_not_block_when_full)
     {
       REPL_ERR_LOG (REPL_FILE_SVR_TP, REPL_SERVER_REQ_QUEUE_IS_FULL);
       PTHREAD_MUTEX_UNLOCK (repl_tpool->queue_lock);
@@ -1326,9 +1349,11 @@ repl_svr_tp_add_work (void (*routine) (void *), void *arg)
     }
 
   /* queue is full and.. have to wait.. */
-  while ((repl_tpool->cur_queue_size == repl_tpool->max_queue_size) &&
-	 (!(repl_tpool->shutdown || repl_tpool->queue_closed)))
-    PTHREAD_COND_WAIT (repl_tpool->queue_not_full, repl_tpool->queue_lock);
+  while ((repl_tpool->cur_queue_size == repl_tpool->max_queue_size)
+	 && (!(repl_tpool->shutdown || repl_tpool->queue_closed)))
+    {
+      PTHREAD_COND_WAIT (repl_tpool->queue_not_full, repl_tpool->queue_lock);
+    }
 
   /* the pool is in the process of being destroyed */
   if (repl_tpool->shutdown || repl_tpool->queue_closed)
@@ -1400,7 +1425,7 @@ repl_svr_tp_destroy (int finish)
 	}
     }
 
-  repl_tpool->shutdown = 1;
+  repl_tpool->shutdown = true;
 
   /* Wake up any workers so they recheck shutdown flag */
   PTHREAD_COND_BROADCAST (repl_tpool->queue_not_empty);

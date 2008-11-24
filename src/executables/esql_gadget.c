@@ -1,46 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * dbgadget.c - Gadget Interface
- * 
- * note : The gadget interface provides a shortcut for performing repeated
- *      inserts.  It was designed to improve ESQLX performance, though it
- *      may find other uses.  The interface eliminates the need to compile
- *      a statement and repeatedly coerce input values to the correct data
- *      type. given a class name and a list of attributes, a reusable
- *      "gadget" is created to which values which will remain constant for
- *      all individual inserts may be pre-coerced and bound.  Variable
- *      values may be supplied at execution time via a DB_VALUE array.
- *      For example, if we have this schema:
- * 
- *          create class foo (a numeric, b int, c string);
- * 
- *      and we want to do repeated inserts like this:
- * 
- *          insert into foo(a, ...) values (1.0, ...);
- * 
- *      we would set up something like this:
- * 
- *          DB_GADGET  *gadget  = NULL;
- *          const char *attrs[] = {"a", "b", "c", NULL};
- *          DB_VALUE   dbval, vals[2];
- * 
- *          gadget = db_gadget_create("foo", attrs);
- *          db_make_double(&dbval, 1.0);
- *          db_gadget_bind(gadget, "a", &dbval);
- * 
- *          for (i = 0; i < 20; i++) {
- *              db_make_int(&vals[0], i);
- *              db_make_string(&vals[1], atoi(i));
- *              obj = db_gadget_exec(gadget, 2, vals);
- *          }
- * 
- *          db_gadget_destroy(gadget);
- * 
- *      Execution is performed using attribute descriptors and templates
- *      for maximum performance.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
+
+/*
+ * esql_gadget.c - Gadget Interface
+ */
+
 #ident "$Id$"
 
 #include "config.h"
@@ -56,26 +35,16 @@ static int gadget_attr_index (DB_GADGET * gadget, const char *attr_name);
 
 /*
  * db_gadget_create() - Look up the class and build attribute descriptors for
- *     all of the supplied attributes.  The user is obligated to supply
- *     DB_VALUEs for each of these attributes, either by "binding" them via
- *     db_gadget_bind (so they become, in essence, default values for
- *     db_gadget_exec) or by supplying them explicitly in the call to
- *     db_gadget_exec.
- * 
- *     If no attributes are supplied, assume that the user will be supplying
- *     values for all attributes (i.e. "insert into class values (x, y, z)")
- *     and build descriptors for all attributes of the class.
- * 
- *     Unspecified attributes will receive their appropriate default
- *     values when an instance is created.
+ *     all of the supplied attributes.  
  *
- * note : Using gadgets to insert into views is not supported due to
- *     the special casing and extra checks required and our inability to
- *     support check option.
  * return : gadget pointer
  * class_name(in): name of class for which to create gadget
  * attribute_names(in): NULL-terminated array containing names of attributes
  *    the user will supply values for
+ *
+ * note : Using gadgets to insert into views is not supported due to
+ *     the special casing and extra checks required and our inability to
+ *     support check option.
  */
 DB_GADGET *
 db_gadget_create (const char *class_name, const char *attribute_names[])
@@ -283,25 +252,8 @@ db_gadget_bind (DB_GADGET * gadget,
 
 /*
  * db_gadget_exec() - Creates a new instance using templates and the
- *     descriptors acquired when the DB_GADGET was initialized.  Any
- *     attributes that haven't had a DB_VALUE bound via db_gadget_bind
- *     *must* have a value supplied via the dbvals array.  The values in
- *     the dbvals array are in the same order as the attributes
- *     originally supplied in the db_gadget_create call.  For example,
- *     if a gadget was used like this:
- *          DB_GADGET  *gadget;
- *          const char *attr_names[] = {"a", "b", "c", "d", NULL};
- *          DB_VALUE   vals[4];
- *          gadget = db_gadget_create("foo", attr_names);
- *          db_gadget_bind(gadget, "a", ...);
- *          db_gadget_bind(gadget, "c", ...);
- *          for (...) {
- *              ...
- *              obj = db_gadget_exec(gadget, 2, vals);
- *          }
- *     then the value for "b" would be suppled in vals[0], and the value
- *     for "d" would be supplied in vals[1].
- * 
+ *     descriptors acquired when the DB_GADGET was initialized.   
+ *
  * return : pointer to inserted instance object
  * gadget(in): gadget containing insert data
  * num_dbvals(in): number of db_values in dbvals array

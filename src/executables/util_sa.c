@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * util_sa.c - Implementation for utilities that operate in standalone mode.
  */
 
@@ -25,19 +40,19 @@
 #include "boot_sr.h"
 #include "db.h"
 #include "authenticate.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "glo_class.h"
 #include "heap_file.h"
 #include "btree.h"
 #include "extendible_hash.h"
 #include "locator_sr.h"
-#include "log_prv.h"
-#include "xserver.h"
+#include "log_impl.h"
+#include "xserver_interface.h"
 #include "utility.h"
 #include "transform.h"
-#include "sqlx.h"
+#include "csql.h"
 #include "locator_cl.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 #define SR_CLASS_NAME           CT_SERIAL_NAME
 
@@ -362,8 +377,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *volume_path;
   const char *log_path;
   const char *host_name;
-  int overwrite;
-  int verbose;
+  bool overwrite;
+  bool verbose;
   const char *comment;
   int volume_page_count;
   const char *init_file_name;
@@ -547,7 +562,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql_arg.auto_commit = true;
       csql_arg.db_name = database_name;
       csql_arg.in_file_name = init_file_name;
-      sqlx (arg->argv0, &csql_arg);
+      csql (arg->argv0, &csql_arg);
     }
 
   return EXIT_SUCCESS;
@@ -580,7 +595,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   FILE *output_file = NULL;
   const char *output_file_name;
   const char *database_name;
-  int force_delete;
+  bool force_delete;
 
   output_file_name =
     utility_get_option_string_value (arg_map, DELETE_OUTPUT_FILE_S, 0);
@@ -947,7 +962,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* have to add it to the config before calling boot_restart */
-  if (!cfg_read_directory (&dir, 1))
+  if (cfg_read_directory (&dir, 1) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1434,18 +1449,6 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 	      if (tp_valid_indextype (type->id))
 		{
 
-		  /* For those types that take a precision - then
-		     if the precision field is greater than 1 use that
-		     information regardless of what the Avg_key_len value
-		     was specified as.  Clearly the user is confused and
-		     we need to compute a value using correct information.
-		     If the precision value is 1 but the Avg_key_len is
-		     something different then use the Avg_key_len value.
-		     We don't know the difference between the user
-		     entering char(1) or just char which has a default
-		     precision of 1 so we need to rely on the Avg_key_len
-		     as being the correct information.
-		   */
 
 		  switch (type->id)
 		    {
@@ -1627,14 +1630,14 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+      if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
 	{
 	  goto error;
 	}
     }
   else
     {
-      if (!cfg_read_directory (&dir, true))
+      if (cfg_read_directory (&dir, true) != NO_ERROR)
 	{
 	  goto error;
 	}

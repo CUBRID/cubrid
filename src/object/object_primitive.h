@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * object_primitive.h: Definitions related to primitive types.
  */
 
@@ -151,7 +167,7 @@ extern int pr_ordered_mem_size_total;
 
 /* PRIMITIVE TYPE MACROS
  *
- * These provide a shell around the calling of primitive type operators 
+ * These provide a shell around the calling of primitive type operators
  * so they look nicer.  We used to have "VAL" oriented functions here too
  * but with the new DB_VALUE system, these aren't really necessary any more.
  * It probably wouldn't hurt to phase these out either.
@@ -160,8 +176,8 @@ extern int pr_ordered_mem_size_total;
 /* PRIM_INITMEM
  *
  * Initialize an attribute value in instance memory
- * For fixed witdh attributes, it tries to zero out the memory.  This isn't a 
- * requirement but it makes the object block look cleaner in the debugger. 
+ * For fixed witdh attributes, it tries to zero out the memory.  This isn't a
+ * requirement but it makes the object block look cleaner in the debugger.
  * For variable width attributes, it makes sure the pointers are NULL.
  */
 #define PRIM_INITMEM(type, mem) (*((type)->initmem))(mem)
@@ -179,15 +195,15 @@ extern int pr_ordered_mem_size_total;
 
 /* PRIM_GETMEM_NOCOPY
  * The "nocopy" option for "getmem" is intended only for internal processes
- * that need to access the values but don't want the overhead of copying, 
- * particularly for strings.  The only user of this right now is the UNIQUE 
- * register logic in  obj.c.  
+ * that need to access the values but don't want the overhead of copying,
+ * particularly for strings.  The only user of this right now is the UNIQUE
+ * register logic.
  */
 #define PRIM_GETMEM_NOCOPY(type, domain, mem, value) \
   (*((type)->getmem))(mem, domain, value, false)
 
 /* PRIM_FREEMEM
- * Free any external storage in instance memory that may have been allocated on 
+ * Free any external storage in instance memory that may have been allocated on
  * behalf of a type.
  */
 #define PRIM_FREEMEM(type, mem) \
@@ -285,7 +301,6 @@ extern int pr_writeval_disk_size (DB_VALUE * value);
 extern void pr_writeval (OR_BUF * buf, DB_VALUE * value);
 extern int pr_estimate_size (DB_DOMAIN * domain, int avg_key_len);
 
-/* Kludge, only for migration utilities in desc.c, needs thought */
 extern int pr_Inhibit_oid_promotion;
 
 #if !defined (SERVER_MODE)

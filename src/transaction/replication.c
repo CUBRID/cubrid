@@ -1,73 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * repl.c - 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  Author    : Eunsook Jin
- *  Overview  : Functions related to the replication
- * 
- *  Description
- *  The replication of CUBRID works using the transaction logs.
- * 
- *  When the server commits a transaction, it flushes the replication
- *  data before writing the "LOG_COMMIT" record.
- * 
- *  Basic Algorithm
- *   Whever the server insert/update/delete data, the server makes the
- *   replication records and hangs them to the transaction descriptor.
- *   The replication records consists of the LSA of update log, class_name,
- *   and primary key value. So, we can find out the updated record
- *   description using replication records.
- * 
- *   When the server commits, it flushes the DONETIME log and COMMIT LOG.
- *   The replication records are flushed by the server just before the
- *   server flush the DONETIME.
- * 
- *  Data insert cases.
- *   OLD: Heap insert --> make undoredo log
- *                    --> add index
- *                    --> commit
- *   NEW: Heap insert --> make undoredo log
- *                    --> add index
- *                    --> **make repl log
- *                    --> **find out the undoredo log lsa
- *                    --> **flush repl log
- *                    --> commit
- * 
- * Data Delete cases
- *   OLD: Heap delete --> make undoredo log
- *                    --> remode index
- *                    --> commit
- *   NEW: Heap delete --> make undoredo log
- *                    --> remove index
- *                  --> **make repl log (we don't need to find out undoredo lsa)
- *                    --> **flush repl log
- *                    --> commit
- *  In case of delete, we have primary key.. it's enough to delete a row at the
- *  slave site.
- * 
- * Data Update cases
- *   OLD: index update --> heap update
- *                    --> make undoredo log
- *                    --> commit
- *   NEW: index update --> **make repl log
- *                    --> heap update
- *                    --> make undoredo log
- *                    --> **find out the repl log, update the undoredo lsa
- *                    --> **flush repl log
- *                    --> commit
- * 
- *  NOTES
- *    1. DBA can set the replication mode for DB unit.
- *       - using "is_replicated" parameter of cubrid.conf
- *    2. DBA can set the replication mode for class unit.
- *       - the attribute "is_replicated" of _db_class would be 1 if the
- *         class should be replicated.
- *    3. Only the class which has a primary key can be replicated.
- *    4. After backup the master db, the replication can be started.
- *       (replication module checks the bkup_level0_lsa of log header..)
- * 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * replication.c -
  */
 
 #ident "$Id$"
@@ -79,7 +29,7 @@
 #include "heap_file.h"
 
 /*
- * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE	       
+ * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE
  */
 
 #define 	REPL_LOG_IS_NOT_EXISTS(tran_index)                            \
@@ -100,7 +50,7 @@ static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size,
 /*
  * repl_data_insert_log_dump - dump the "DATA INSERT" replication log
  *
- * return: 
+ * return:
  *
  *   length(in): length of the data
  *   data(in): log data
@@ -127,7 +77,7 @@ repl_data_insert_log_dump (int length, void *data)
 /*
  * repl_data_udpate_log_dump - dump the "DATA UPDATE" replication log
  *
- * return: 
+ * return:
  *
  *   length(in): length of the data
  *   data(in): log data
@@ -146,7 +96,7 @@ repl_data_udpate_log_dump (int length, void *data)
 /*
  * repl_data_delete_log_dump - dump the "DATA DELETE" replication log
  *
- * return: 
+ * return:
  *
  *   length(in): length of the data
  *   data(in): log data
@@ -163,12 +113,12 @@ repl_data_delete_log_dump (int length, void *data)
 }
 
 /*
- * repl_schema_log_dump - 
+ * repl_schema_log_dump -
  *
- * return: 
+ * return:
  *
- *   length(in): 
- *   data(in): 
+ *   length(in):
+ *   data(in):
  *
  * NOTE:
  */
@@ -284,14 +234,14 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
  *     After Heap operation, we have to set the target LSA into the
  *     replication log.
  *
- *     For update case, this function is called by lc_update_force().
+ *     For update case, this function is called by locator_update_force().
  *     In the case of insert/delete cases, when the replication log info. is
  *     generated, the server already has the target transaction log(HEAP_INSERT
  *     or HEAP_DELETE).
  *     But, for the udpate case, the server doesn't has the target log when
  *     it generates the replication log. So, the server has to find out the
  *     location of replication record and match with the target transaction
- *     log after heap_update(). This is done by lc_update_force().
+ *     log after heap_update(). This is done by locator_update_force().
  */
 int
 repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
@@ -358,16 +308,19 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
   tdes = LOG_FIND_TDES (tran_index);
 
   /* check the replication log array status, if we need to alloc? */
-  if (REPL_LOG_IS_NOT_EXISTS (tran_index) &&
-      (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false))
-      != NO_ERROR)
-    return error;
+  if (REPL_LOG_IS_NOT_EXISTS (tran_index)
+      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
+					false)) != NO_ERROR))
+    {
+      return error;
+    }
   /* the replication log array is full? re-alloc? */
-  else if (REPL_LOG_IS_FULL (tran_index) &&
-	   (error =
-	    repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-				 true)) != NO_ERROR)
-    return error;
+  else if (REPL_LOG_IS_FULL (tran_index)
+	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
+					    true)) != NO_ERROR)
+    {
+      return error;
+    }
 
   repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
   repl_rec->repl_type = log_type;
@@ -412,7 +365,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
       break;
     case RVREPL_DATA_UPDATE:
       /*
-       * for the update case, this function is called before the heap 
+       * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
       LSA_SET_NULL (&repl_rec->lsa);
@@ -429,19 +382,23 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   tdes->cur_repl_record++;
 
-  /* if flush marking is started, mark "must_flush" at current log 
-   * except the log conflicts with previous logs due to same instance update 
+  /* if flush marking is started, mark "must_flush" at current log
+   * except the log conflicts with previous logs due to same instance update
    */
   if (tdes->fl_mark_repl_recidx != -1)
     {
       LOG_REPL_RECORD *recsp = tdes->repl_records;
       int i;
+
       for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
 	{
-	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH &&
-	      OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
-	    break;
+	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH
+	      && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+	    {
+	      break;
+	    }
 	}
+
       if (i >= tdes->fl_mark_repl_recidx)
 	{
 	  repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
@@ -452,12 +409,12 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
 }
 
 /*
- * repl_log_insert_schema - insert a replication info(schema) to the 
+ * repl_log_insert_schema - insert a replication info(schema) to the
  *                          transaction descriptor
  *
  * return: NO_ERROR or error code
  *
- *   repl_schema(in): 
+ *   repl_schema(in):
  *
  * NOTE:insert a replication log info(schema) to the transaction
  *      descriptor (tdes)
@@ -477,16 +434,19 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   tdes = LOG_FIND_TDES (tran_index);
 
   /* check the replication log array status, if we need to alloc? */
-  if (REPL_LOG_IS_NOT_EXISTS (tran_index) &&
-      (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false))
-      != NO_ERROR)
-    return error;
+  if (REPL_LOG_IS_NOT_EXISTS (tran_index)
+      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
+					false)) != NO_ERROR))
+    {
+      return error;
+    }
   /* the replication log array is full? re-alloc? */
-  else if (REPL_LOG_IS_FULL (tran_index) &&
-	   (error =
-	    repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-				 true)) != NO_ERROR)
-    return error;
+  else if (REPL_LOG_IS_FULL (tran_index)
+	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
+					    true)) != NO_ERROR)
+    {
+      return error;
+    }
 
   repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
   repl_rec->repl_type = LOG_REPLICATION_SCHEMA;
@@ -515,9 +475,9 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
 }
 
 /*
- * repl_start_flush_mark - 
+ * repl_start_flush_mark -
  *
- * return: 
+ * return:
  *
  * NOTE:start to mark "must_flush" for repl records to be appended after this
  */
@@ -543,11 +503,11 @@ repl_start_flush_mark (THREAD_ENTRY * thread_p)
 }
 
 /*
- * repl_end_flush_mark - 
+ * repl_end_flush_mark -
  *
- * return: 
+ * return:
  *
- *   need_undo(in): 
+ *   need_undo(in):
  *
  * NOTE:end to mark "must_flush" for repl records
  */
@@ -586,7 +546,7 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 /*
  * repl_debug_info - DEBUGGING Function, print out the replication log info.
  *
- * return: 
+ * return:
  *
  * NOTE:Dump the replication log info to the stdout.
  */

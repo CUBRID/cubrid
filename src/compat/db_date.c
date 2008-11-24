@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * db_date.c - Julian date conversion routines and added functions for 
  *             handling relative time values.
  */
@@ -12,13 +27,13 @@
 #include <math.h>
 #include <time.h>
 #include "chartype.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "error_manager.h"
 #include "dbtype.h"
 #include "db_date.h"
 #include "dbi.h"
 #include "system_parameter.h"
-#include "intl.h"
+#include "intl_support.h"
 
 /* used in conversion to julian */
 #define IGREG1     (15 + 31L * (10 + 12L * 1582))
@@ -368,16 +383,6 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
       return ER_DATE_CONVERSION;
     }
 
-  /*
-   * c_time_struct is now properly initialized for this moment in this
-   * timezone (with the current DST bias).
-   *
-   * We'll now try to override one or both parts (date and/or time) of
-   * that tm as requested by the luser.  We have to be careful here when
-   * the DST in effect on a given date is different from that in effect
-   * at this instant.  If they differ it's easy to lose an hour if the
-   * code isn't careful.
-   */
 
   if (date != NULL)
     {
@@ -404,17 +409,6 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
       c_time_struct->tm_sec = sec;
     }
 
-  /*
-   * Now try to normalize the date, particularly the timezone info
-   * and the tm's notion of daylight savings time.  The call to
-   * mktime() will doink the tm_isdst field of c_time_struct (and maybe
-   * others).  And because of mktime's update side-effects on the other
-   * fields (besides tm_isdst), we have to do this normalization in two
-   * steps. First to get the correct tm_isdst setting and a second call
-   * for the other fields besides tm_isdst.  This is necessary to allow
-   * correct datetime conversions in the drivers and in the sybase xa
-   * driver which uses a different version of mktime from DCE.
-   */
   loc = *c_time_struct;
 
   /* mktime() on Sun anomalously returns negative values other than -1. */

@@ -24,7 +24,7 @@
 ###############################################################################
 usage() {
   exec_name=`basename $0`
-  echo "usage: $exec_name master_db_name dist_db_name [-p passwd] [-n parameter_name -v parameter_value]" 1>&2
+  echo "usage: $exec_name master_db_name slave_db_name dist_db_name [-p passwd] [-n parameter_name -v parameter_value]" 1>&2
   exit 1
 }
 
@@ -315,10 +315,8 @@ change_param() {
 
   if [ -n "$sql" ]
   then
-    $rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql"  2> .dist.tmp
-    result=`eval cat .dist.tmp | grep ERROR`
-
-    if [ -z "$result" ]
+    $rootdir/bin/csql $dist_db_name -u DBA -p "$distpw" -c "$sql"
+    if [ "$?" = "0" ]
     then
       print_mes SUCCESS
       echo
@@ -337,22 +335,23 @@ CurDir=`eval pwd`
 # STEP 0 : read the parameters 
 ###############################################################################
 master_db_name=$1
-dist_db_name=$2
+slave_db_name=$2
+dist_db_name=$3
 
 while [ $# -ne 0 ]
 do
-  case $3 in 
+  case $4 in 
      -n) 
         shift
-        param_name=$3
+        param_name=$4
         ;;
      -v)
         shift
-        param_val=$3
+        param_val=$4
         ;;
      -p)
         shift
-        passwd=$3
+        distpw=$4
         ;;
      *)
         ;;
@@ -365,6 +364,12 @@ if [ -z "$master_db_name" ]
 then
   usage
 fi
+
+if [ -z "$slave_db_name" ]
+then
+  usage
+fi
+
 if [ -z "$dist_db_name" ]
 then
   usage

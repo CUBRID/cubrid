@@ -1,97 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * error_manager.c - Error module (both client & server)
- *
- * Note:
- *
- * Messages are kept in an external message catalog (admin/.../er.msg)
- * kept in catgets() format.  This module doesn't concern itself with the
- * retrieval of those messages, using util_get_message() to do that.
- * What is of concern here is the formatting of those messages.
- *
- * Messages are assumed to be sprintf-style format strings, and the bulk
- * of the work in this module is to take that format string and the
- * arguments supplied to er_set() and to turn them into a single
- * character string that can be printed or otherwise consumed by callers.
- *
- * Most of the complication in this module stems from the fact that
- * vsprintf() and friends are too braindead to take a length parameter
- * telling them where the end of the buffer receiving their output lies;
- * they will happily write off the end of the world if the buffer is too
- * short.  Thus, we are forced to study the formats and the actual
- * arguments to get an estimate of buffer space required before we call
- * vsprintf().  It sucks, but it works.
- *
- * The other thing we do in this module is cache the last few messages
- * that we have set.  Because the catgets() module is relatively slow to
- * find a message, and because we come in here frequently to set warnings
- * and errors, it is worthwhile to remember the last few error formats
- * that have been looked up, avoiding the lookup overhead.  Right now we
- * remember the 10 most recently fetched error codes, but that may need
- * some tuning.
- *
- * Functions set an error to indicate a failure of an operation.
- * Then, the function returns a recognizable value to indicate that it was an
- * error.
- * er_set function is called with the appropriate parameters to set for the
- * specific error.  The er_set function will call a logging function (if any)
- * to log or execute something when the error is set. The default logging
- * function logs the error in a way similar to sys_log of Unix. The module
- * provides a function (er_fnerlog) to modify the default at any time.
- *
- * The following protocol, similar to that of the Unix error protocol, is
- * used:
- *
- * a) The error information is set only when an error is encountered. If a
- *    If a function executes without an error, it does not set or clear the
- *    error structure, thus the previous error remains with the state it was
- *    prior to the execution of the function. The module provides a clear
- *    function that can be used at the application or functional
- *    level.
- * b) When a database error occurs in a function X, the function is in charge
- *    of setting the appropriate error. The function is also in charge of
- *    notifying its caller of a failure. The function does not have to
- *    say what error, just that it was an error. For example, the openfunction
- *    of Unix returns a non-negative file descriptor on success and a -1 on
- *    failure. In the case of a failure, the caller of open can decide to
- *    check the type of error and act according to the error. Similarly,
- *    malloc returns a pointer on success and a NULL on failure. Note that
- *    the above Unix functions do not return the error code to their callers,
- *    they just notify that there was an error. It is up to the caller to
- *    request the specific error identifier.
- * c) A function should not try to examine an error, unless the function that
- *    it calls notifies that there was an error. Remember the error is not
- *    reset until another error is found. That is, do not try to simply check
- *    the last error state to determine if a function call failed. You can
- *    only determine a failure by examining the return value of the function.
- *    If the return value indicates failure, then you are assured that the
- *    global error state will contain information about the error.
- *
- *    Example:
- *    A--->B--->C--->...--->X
- *
- *    If C returns an error value (e.g., -1) to its caller B. B can return
- *    something else (e.g., NULL) to A. Either B can decide to examine the
- *    error or to ignore the error and return something useful to A
- *    (in this case B is telling that there is not an error at its level). B
- *    can also decide to reset the error to another error. For example, an
- *    error can be changed from X to Y.
- *
- * In most cases, it is simply enough to know whether or not a function call
- * was successful (an error is an error is an error is an error). However, in
- * some cases it is convenient to design the software to anticipate and handle
- * some of the more common error conditions. In these cases, you can examine
- * the integer error code and compare it against one of the known error codes.
- *
- * The error module maintains a global structure which describes the last
- * error set by CUBRID. This global structure contains several fields which
- * describe the error such as the error identifier, the severity (warning,
- * error, fatal error, notification) of the error, the file and line where
- * the error was set, and an area to hold the message with the arguments
- * already substituted.
- *
  */
 
 #ident "$Id$"
@@ -128,8 +55,8 @@
 
 #include "chartype.h"
 #include "language_support.h"
-#include "memory_manager_2.h"
-#include "common.h"
+#include "memory_alloc.h"
+#include "storage_common.h"
 #include "system_parameter.h"
 #include "object_representation.h"
 #if !defined (SERVER_MODE)
@@ -225,7 +152,7 @@ static const char **er_severity_string = english_er_severity;
 
 
 #if !defined (CS_MODE)
-/* Used to point to the database name held in bosr.c(bo_Dbfullname[]) */
+/* Used to point to the database name held in boot_sr.c(bo_Dbfullname[]) */
 static const char *er_Db_fullname = NULL;
 #endif /* !CS_MODE */
 
@@ -440,18 +367,6 @@ er_init (const char *msglog_file_name, int exit_ask)
 
   er_severity_string = english_er_severity;
 
-  /*
-   * Set up default versions of the messages needed by the er_ module
-   * itself.  The localized versions of these messages should be found
-   * in the er.msg catalog, but if something goes way wrong, we'll use
-   * these English versions.  There shouldn't be any need to localize
-   * these; this situation shouldn't ever arise.  This will just make
-   * sure that someone gets *something* out if they delete their er.msg
-   * catalog.
-   *
-   * Be sure to do this before doing anything that might call
-   * er_log_debug(), or you'll lose big time.
-   */
   for (i = 0; i < DIM (er_builtin_msg); i++)
     {
       if (er_cached_msg[i] && er_cached_msg[i] != er_builtin_msg[i])
@@ -521,6 +436,39 @@ er_init (const char *msglog_file_name, int exit_ask)
   return NO_ERROR;
 }
 
+/*
+ * er_file_open - small utility function to open error log file
+ *   return: FILE *
+ *   path(in): file path
+ */
+static FILE *
+er_file_open (const char *path)
+{
+  FILE *fp;
+
+  assert (path != NULL);
+
+#if defined (CS_MODE)
+  fp = fopen (path, "r+");
+  if (fp != NULL)
+    {
+      fseek (fp, 0, SEEK_END);
+      if (fp != NULL && ftell (fp) > PRM_ER_LOG_SIZE)
+	{
+	  fclose (fp);
+	  fp = fopen (path, "w");
+	}
+    }
+  else
+    {
+      fp = fopen (path, "w");
+    }
+#else /* CS_MODE */
+  fp = fopen (path, "w");
+#endif /* !CS_MODE */
+  return fp;
+}
+
 #if defined (SERVER_MODE)
 
 /*
@@ -576,11 +524,11 @@ er_start (THREAD_ENTRY * th_entry)
 	    {
 	      char path[PATH_MAX];
 	      sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	      er_Msglog = fopen (path, "w");
+	      er_Msglog = er_file_open (path);;
 	    }
 	  else
 	    {
-	      er_Msglog = fopen (er_Msglog_file_name, "w");
+	      er_Msglog = er_file_open (er_Msglog_file_name);
 	    }
 	  if (er_Msglog == NULL)
 	    {
@@ -687,11 +635,11 @@ er_start (void)
 	{
 	  char path[PATH_MAX];
 	  sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	  er_Msglog = fopen (path, "w");
+	  er_Msglog = er_file_open (path);
 	}
       else
 	{
-	  er_Msglog = fopen (er_Msglog_file_name, "w");
+	  er_Msglog = er_file_open (er_Msglog_file_name);
 	}
 
       if (er_Msglog == NULL)
@@ -1007,42 +955,6 @@ er_is_enable_call_stack_dump (int err_id)
     }
 }
 
-/******************************************************************************
- * er_set_internal: SET AN ERROR & AN OPTIONALLY THE UNIX ERROR 	      *
- *									      *
- * arguments:								      *
- *       severity: May exit if severity == ER_FATAL_ERROR_SEVERITY	      *
- *      : File name setting the error				      *
- *         line_no: Line in file where the error is set.			      *
- *          errid: The error identifier					      *
- *       num_args: Number of arguments... All arguments for all levels must   *
- *                 be included.						      *
- *include_oserror: Include the Unix error ?				      *
- *	 va_alist: Pointer to Variable list of arguments (just like fprintf)  *
- *									      *
- * returns/side-effects: 0 (success (or things are so screwed up that the     *
- *			 caller shouldn't bother to retry)),		      *
- *			 1 (caller should retry)			      *
- *									      *
- * description: The error message associated with the given error identifier  *
- *              is parsed and the arguments are substituted for later 	      *
- *              retrieval. The caller must supply the exact number of	      *
- *              arguments to set all level messages. If the value of 	      *
- *              include_oserror is TRUE, the Unix latest error message is     *
- *              append to each message level of the error. The function calls *
- *              the error logging function for the indicated severity.	      *
- * 									      *
- *              This function was created to add the er_set_with_oserror      *
- *              without altering the  to er_set.		      *
- *									      *
- *		This function now assumes the responsibility for growing the  *
- *		internal message area, but it still requires the caller to    *
- *		retry the process after such a realloc takes place.	      *
- * 									      *
- * Note: FUNCTION MUST BE CALLED LIKE:					      *
- *       er_set_internal(severity, , line_no, errid, num_args, 	      *
- *                       include_oserror, arg1, arg2..);		      *
- *****************************************************************************/
 /*
  * er_set_internal - Set an error and an optionaly the Unix error
  *   return:
@@ -1239,8 +1151,8 @@ er_log (void)
   time_t er_time;
   struct tm er_tm;
   struct tm *er_tm_p = &er_tm;
+  struct timeval tv;
   char time_array[256];
-  char *time_array_p = time_array;
   int tran_index;
 
 #if defined (WINDOWS)
@@ -1262,8 +1174,8 @@ er_log (void)
    * top if need be.
    */
 
-  if (er_Msglog != stderr && er_Msglog != stdout &&
-      ftell (er_Msglog) > (int) PRM_ER_LOG_SIZE)
+  if (er_Msglog != stderr && er_Msglog != stdout
+      && ftell (er_Msglog) > (int) PRM_ER_LOG_SIZE)
     {
       (void) fflush (er_Msglog);
       (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_LOG_WRAPAROUND]);
@@ -1290,7 +1202,12 @@ er_log (void)
 #else /* SERVER_MODE && !WINDOWS */
   er_tm_p = localtime (&er_time);
 #endif /* SERVER_MODE && !WINDOWS */
-  strftime (time_array_p, 256, "%c", er_tm_p);
+  strftime (time_array, 256, "%c", er_tm_p);
+  gettimeofday (&tv, NULL);
+  time_array[255] = '\0';
+  snprintf (time_array +
+	    strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
+	    ".%d", tv.tv_usec / 1000);
 
 #if defined (SERVER_MODE)
   tran_index = thread_get_current_tran_index ();
@@ -1303,7 +1220,7 @@ er_log (void)
   if (PRM_ER_PRODUCTION_MODE)
     {
       (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER],
-		      time_array_p, ER_SEVERITY_STRING (severity),
+		      time_array, ER_SEVERITY_STRING (severity),
 		      ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
 		      msg);
       (void) fflush (er_Msglog);
@@ -1317,7 +1234,7 @@ er_log (void)
   else
     {
       (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D],
-		      time_array_p, ER_SEVERITY_STRING (severity), file_name,
+		      time_array, ER_SEVERITY_STRING (severity), file_name,
 		      line_no, ER_ERROR_WARNING_STRING (severity), err_id,
 		      tran_index, msg);
       (void) fflush (er_Msglog);
@@ -1940,19 +1857,6 @@ er_stack_clear (void)
 
   next_msg = er_Msg->stack;
 
-  /*
-   * We want to pop a level off of the error stack, but we want the new
-   * top to contain the info in the current top.  The clever way to do
-   * that would be just to free the frame pointed to by er_Msg->stack,
-   * but because the tail of the stack chain isn't malloc'ed (remember,
-   * it's the static struct "ermsg"), that gets complicated in the end
-   * case.  This never happens anyway, so we'll just do the
-   * straightforward thing and copy this levels info down into the next
-   * level and then free this level.
-   *
-   * Don't forget to free anything that is about to be forgotten in the
-   * lower level.
-   */
 #if defined (SERVER_MODE)
   ER_FREE_AREA (next_msg->msg_area, th_entry);
 #else /* SERVER_MODE */
@@ -2127,17 +2031,6 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
   code = *p++ = *q++;
   *p++ = '\0';
 
-  /*
-   * Now determine which of the five carrier types (int, long int,
-   * double, long double, or char *) we should be retrieving from the
-   * va_list at format time.
-   *
-   * If the class was previously determined to be a long ("l") or a
-   * Long ("L"), we use that.  Otherwise, we use the conversion code to
-   * map to a representative encoding of the class.  At the end, we
-   * should have mapped this spec to one of five carrier types: i, f,
-   * s, l, or L.
-   */
   if (class_ == 0)
     {
       switch (code)
@@ -2403,18 +2296,6 @@ er_find_fmt (int err_id)
 	}
     }
 
-  /*
-   * Well, it wasn't already cached, so now we're going to have to do
-   * some work.  Grab the message out of the message catalog; if it
-   * isn't in there, use this panicky message.  This shouldn't ever
-   * arise.
-   *
-   * Notice that we just use set #1 as the second arg to
-   * util_get_message().  There won't ever be another set in that
-   * particular catalog.  In theory we could probably add this as
-   * another set to some other catalog; that's probably what we ought
-   * to do eventually.
-   */
   msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -err_id);
   if (msg == NULL || msg[0] == '\0')
     {

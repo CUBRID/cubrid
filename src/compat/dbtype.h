@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * dbtype.h - Definitions related to the memory representations of database
  * attribute values. This is an application interface file. It should contain
  * only definitions available to CUBRID customer applications.
@@ -322,7 +338,7 @@
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and
    as value type tags in the DB_VALUE structures. */
-typedef enum 
+typedef enum
 {
   DB_TYPE_FIRST = 0,		/* first for iteration   */
   DB_TYPE_UNKNOWN = 0,
@@ -347,7 +363,7 @@ typedef enum
   DB_TYPE_SHORT = 18,
   DB_TYPE_VOBJ = 19,		/* internal use only */
   DB_TYPE_OID = 20,		/* internal use only */
-  DB_TYPE_DB_VALUE = 21,	/* special for esqlx */
+  DB_TYPE_DB_VALUE = 21,	/* special for esql */
   DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values      */
   DB_TYPE_BIT = 23,		/* SQL BIT(n) values            */
   DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values    */
@@ -507,7 +523,7 @@ union db_char
     unsigned char codeset;
     DB_LARGE_STRING *str;
   } large;
-} ;
+};
 
 typedef DB_CHAR DB_NCHAR;
 typedef DB_CHAR DB_BIT;
@@ -541,7 +557,7 @@ union db_data
   DB_NUMERIC num;
   DB_CHAR ch;
   DB_RESULTSET rset;
-} ;
+};
 
 /* This is the primary structure used for passing values in and out of
  * the db_ function layer. Values are always tagged with a datatype
@@ -554,7 +570,7 @@ struct db_value
   DB_DOMAIN_INFO domain;
   DB_DATA data;
   bool need_clear;
-} ;
+};
 
 /* This is used to chain DB_VALUEs into a list. */
 typedef struct db_value_list DB_VALUE_LIST;
@@ -562,16 +578,16 @@ struct db_value_list
 {
   struct db_value_list *next;
   DB_VALUE val;
-} ;
+};
 
 /* This is used to chain DB_VALUEs into a list.  It is used as an argument
    to db_send_arglist. */
 typedef struct db_value_array DB_VALUE_ARRAY;
 struct db_value_array
-{ 
+{
   int size;
   DB_VALUE *vals;
-} ;
+};
 
 /* This is used to gather stats about the workspace.
  * It contains the number of object descriptors used and
@@ -582,7 +598,7 @@ struct db_workspace_stats
 {
   int obj_desc_used;		/* number of object descriptors used */
   int obj_desc_total;		/* total # of object descriptors allocated  */
-} ;
+};
 
 /* This defines the C language type identifier constants.
  * These are used to describe the types of values used for setting
@@ -636,7 +652,7 @@ struct db_c_time
   int hour;
   int minute;
   int second;
-} ;
+};
 
 typedef struct db_c_date DB_C_DATE;
 struct db_c_date
@@ -644,7 +660,7 @@ struct db_c_date
   int year;
   int month;
   int day;
-} ;
+};
 
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
 typedef DB_MONETARY DB_C_MONETARY;

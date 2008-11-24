@@ -1,8 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * qo_xasl.c - Generate XASL trees from query optimizer plans
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * plan_generation.c - Generate XASL trees from query optimizer plans
  */
 
 #ident "$Id$"
@@ -11,17 +26,15 @@
 
 #include <assert.h>
 
-#include "qp_mem.h"
+#include "xasl_support.h"
 
 #include "parser.h"
-#include "xasl_generation_2.h"
+#include "xasl_generation.h"
 
 #include "optimizer.h"
-#include "query_graph_1.h"
-#include "query_graph_2.h"
-#include "query_planner_2.h"
-#include "bitset.h"
-#include "query_planner_1.h"
+#include "query_graph.h"
+#include "query_planner.h"
+#include "query_bitset.h"
 
 #define IS_DERIVED_TABLE(node) \
     (QO_NODE_ENTITY_SPEC(node)->info.spec.derived_table)
@@ -285,42 +298,6 @@ make_mergelist_proc (QO_ENV * env,
 	}
       ls_merge->ls_inner_unique[cnt] = false;	/* currently, unused */
 
-      /* Now that we've figured out the *real* column numbers of the
-       * attributes actually used in the join, override the columns
-       * that were originally decreed to be the sort columns for the
-       * incoming sorted lists.  Because of the recursive structure of
-       * the program, the column that was picked before was picked in
-       * ignorance of the fact that the sorted list would be used as
-       * input to a merge.  The column that was picked was just a
-       * member of an equivalence class, and if that equivalence class
-       * has more than one member coming up out of that plan, the
-       * selected column may not be the same as the column actually
-       * used in the join.  However, if the merge is to work correctly,
-       * we must sort on *exactly* the column being used in the join.
-       *
-       * The fundamental problem is that the equivalence professed by
-       * the equivalence class may not yet have been enforced at
-       * runtime when the merge is being done (it might be enforced by
-       * a sarged predicate that hasn't yet been applied).  For
-       * example, if the query had this search condition:
-       *
-       *      A.a1 = B.b1 and A.a2 = B.b1
-       *
-       * all three of the attributes (A.a1, A.a2, and B.b1) will be in
-       * the same equivalence class, but the XASL plan we'll generate
-       * will put one of those terms as a sarg on the list scan that
-       * eats the output of the merge.  Only after that sarg runs will
-       * we know for sure that every row in the output will have
-       * identical A.a1 and A.a2 columns.
-       *
-       * Time passes...
-       *
-       * And now that we know what the real columns are that will be
-       * used in the merge, recompute the domain information, too.
-       * make_sort_list_after_eqclass didn't have enough information to get the
-       * job right in the case of complex merges, so redo the work here
-       * to sure that it's correct.
-       */
       left_order->s_order = S_ASC;
       left_order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
       left_order->pos_descr.dom = pt_xasl_node_to_domain (parser, outer_attr);
@@ -774,28 +751,6 @@ add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * procs)
 static XASL_NODE *
 add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub)
 {
-  /*
-   * It is imperative that the new block be appended to the end of the
-   * aptr_list.  Consider this query:
-   *
-   *  select ...
-   *    from ...
-   *   where ... in (select ...
-   *                   from ...
-   *                  where ... in (select ...
-   *                                  from ...
-   *                                 where ... correlated to outermost ...))
-   *
-   * The innermost subquery isn't directly correlated to the middle
-   * subquery, but it clearly must be run before that query (because
-   * the middle subquery's search condition depends on it).  Because
-   * optimization of nested queries is bottom-up, we will optimize the
-   * innermost subquery first and (probably) tack it on some aptr_list
-   * somewhere.  Next we'll optimize the middle subquery and, under
-   * some circumstances, tack it on the same aptr_list.  If we prepend
-   * it, we'll evaluate it too early at runtime; if we append it, we'll
-   * preserve the proper order of evaluation.
-   */
 
   if (xasl && sub)
     {
@@ -817,7 +772,7 @@ add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub)
  *   subqueries(in): A bitset representing the correlated subqueries that
  *		     should be tacked onto xasl
  *
- * Note: Because of the way the outer driver (in pt_xasl.c) controls
+ * Note: Because of the way the outer driver controls
  *	things, we never have to worry about subqueries that nested
  *	deeper than one, so there is no ordering that needs to be
  *	maintained here; we can just put these guys on the d-list in
@@ -947,8 +902,6 @@ add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
     {
       parser = QO_ENV_PARSER (env);
 
-      /* set 'etc' field of PT_NODEs which belong to inst_num() expression
-         in order to use at pt_regu.c:pt_make_regu_numbering() */
       pt_set_numbering_node_etc (parser, pred, &xasl->instnum_val, NULL);
       flag = 0;
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
@@ -1660,18 +1613,6 @@ gen_outer (QO_ENV * env,
 	      /* FALL THROUGH */
 	    }
 	case QO_JOINMETHOD_IDX_JOIN:
-	  /* Push all of the accumulated subqueries down into the inner
-	   * plan; they are supposed to be recomputed whenever this
-	   * plan produces a new row, which it will do whenever the
-	   * inner plan produces a new row.
-	   *
-	   * Unless this is a DEP_LINK term, that is.  In that case we
-	   * told a white lie about those subqueries.  The inner is
-	   * really a dependent derived table based on those
-	   * subqueries, and we need to put the subqueries on the outer
-	   * rather than the inner (so that their results will be
-	   * available for the inner).
-	   */
 	  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
 	       i != -1; i = bitset_next_member (&bi))
 	    {
@@ -2126,19 +2067,6 @@ gen_inner (QO_ENV * env,
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      /*
-       * Unlike gen_outer(), this case needs to initialize a full-blown
-       * XASL node.  In particular, everything that pt_to_scan_proc
-       * does to initialize an XASL node from an entity spec needs to
-       * happen here.
-       *
-       * We're in luck: we've come straight to a scan with no
-       * intervening list files, etc., so we can take all of the
-       * predicates in predset and just use them as sargs for the
-       * access spec.  It's ok to destructively modify the SARGED_TERMS
-       * set of the plan here, since no one is ever going to look at it
-       * again anyway.
-       */
       bitset_union (&(plan->sarged_terms), predset);
       scan = init_class_scan_proc (env, scan, plan);
       scan = add_scan_proc (env, scan, inner_scans);
@@ -2181,18 +2109,6 @@ gen_inner (QO_ENV * env,
       /* check for sort type */
       QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP);
 
-      /*
-       * Too bad: the incoming predset can't be pushed down any
-       * further.  It will have to be pushed onto the access spec of
-       * the scan proc that scans the list file, rather than down into
-       * the procs that generate the list file.  That's because the
-       * attributes referenced in those predicates won't be set up
-       * properly when the list file is created.
-       *
-       * The same applies to the subqueries set:  they need to be
-       * attached to the scan proc that will eventually read the temp
-       * file.
-       */
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
@@ -2291,30 +2207,6 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
     {
       xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl);
 
-      /*
-       * For now we will put correlated subqueries in the select list
-       * on the innermost scan block.  This will ensure correctness
-       * until we can correctly analyze which block they belong to.
-       *
-       * This is less than wonderful, and probably ought to be fixed,
-       * because it means that select list subqueries that are
-       * correlated only to slowly varying classes will still be
-       * reevaluated (at least) once for every row produced by the
-       * query.  For example
-       *
-       *      select (subq(A))
-       *      from A, B
-       *
-       * will evaluate subq(A) a total of (card(A)*card(B)) times, even
-       * if A is selected as the outer term in the product.
-       *
-       * Worse, since the optimizer is completely unaware of these
-       * subqueries, it can't use their cost info to help it influence
-       * its choices.  In the preceding example, awareness of the
-       * subquery would probably cause it to make A be the outer class;
-       * without that info, we're just as likely to pick B, which is
-       * quite likely to be a bad choice.
-       */
       lastxasl = xasl;
       while (lastxasl)
 	{
@@ -2381,9 +2273,10 @@ qo_plan_iscan_sort_list (QO_PLAN * plan)
 bool
 qo_plan_skip_orderby (QO_PLAN * plan)
 {
-  return (plan->plan_type == QO_PLANTYPE_SORT &&
-	  (plan->plan_un.sort.sort_type == SORT_DISTINCT ||
-	   plan->plan_un.sort.sort_type == SORT_ORDERBY)) ? false : true;
+  return ((plan->plan_type == QO_PLANTYPE_SORT
+	   && (plan->plan_un.sort.sort_type == SORT_DISTINCT
+	       || plan->plan_un.sort.sort_type == SORT_ORDERBY))
+	  ? false : true);
 }
 
 /******************************************************************************

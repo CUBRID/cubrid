@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -116,7 +116,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -174,54 +174,54 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<Filter
-				Name="dbmt"
+				Name="cmserver"
 				>
 				<File
-					RelativePath="..\..\src\dbmt\cmd_exec.c"
+					RelativePath="..\..\src\cmserver\cm_broker_admin.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dbmt_config.c"
+					RelativePath="..\..\src\cmserver\cm_command_execute.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dbmt_user.c"
+					RelativePath="..\..\src\cmserver\cm_config.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\diag_util.c"
+					RelativePath="..\..\src\cmserver\cm_diag_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\dstring.c"
+					RelativePath="..\..\src\cmserver\cm_dstring.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\fserver_slave.c"
+					RelativePath="..\..\src\cmserver\cm_job_slave.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\fserver_task.c"
+					RelativePath="..\..\src\cmserver\cm_job_task.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\nameval.c"
+					RelativePath="..\..\src\cmserver\cm_nameval.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\server_util.c"
+					RelativePath="..\..\src\cmserver\cm_server_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\tea.c"
+					RelativePath="..\..\src\cmserver\cm_text_encryption.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\unicas_admin.c"
+					RelativePath="..\..\src\cmserver\cm_user.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\dbmt\wsa_init.c"
+					RelativePath="..\..\src\cmserver\cm_wsa_init.c"
 					>
 				</File>
 			</Filter>

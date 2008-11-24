@@ -1,35 +1,39 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
- *      obt.h - Definitions for the object manager
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
  *
  */
 
-#ifndef _OBT_H_
-#define _OBT_H_
+
+/*
+ *      object_template.h - Definitions for the object manager
+ *
+ */
+
+#ifndef _OBJECT_TEMPLATE_H_
+#define _OBJECT_TEMPLATE_H_
 
 #ident "$Id$"
 
 #include <stdarg.h>
 
-#include "memory_manager_1.h"
+#include "area_alloc.h"
 #include "object_representation.h"
 #include "class_object.h"
 
-/*
- * TEMPLATE BASE CLASS MACROS
- *
- * Note :
- *    These are used to access the base class/object from an object
- *    template.  The rule is, if the base_class fields are NULL then
- *    this is a normal template and the class & object fields point
- *    to the "real" objects.  If the base_class fields are non-NULL then
- *    this is a template on a virtual class.  The class & object fields
- *    then point to the virtual class/object and the base_class fields
- *    point to the "real" class & object.
- *
- */
+
 
 #define OBT_BASE_OBJECT(template_ptr) \
   (((template_ptr)->base_object != NULL) ? \
@@ -266,4 +270,4 @@ extern int obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 extern int obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr);
 extern void obt_retain_after_finish (OBJ_TEMPLATE * template_ptr);
 
-#endif /* _OBT_H */
+#endif /* _OBJECT_TEMPLATE_H_ */

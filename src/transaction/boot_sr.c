@@ -1,160 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * bosr.c - Boot management (at server)
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * A database is composed of data volumes, database backup files, and log
- * files. A data volume contains information on attributes, classes, indexes,
- * and objects created in the database. The log consists of a set of
- * sequential files that are created one after another by CUBRID. The most
- * recent log is called the active log, and the rest of the logs are called
- * archive logs. The logs contain records of changes to the database. When the
- * active log becomes full, its pages are archived in an archive log to
- * support media crashes and effects of changes that have not been recorded
- * on the data volumes. CUBRID declares archive logs that are no longer
- * needed for normal processing. However, archive logs are still needed to
- * support media crashes. A database backup is a fuzzy snapshot of the entire
- * set of data volumes. A backup is fuzzy because they can be taken online
- * when other transactions are updating the database. The log files and
- * database backups are used to recover committed and uncommitted transactions
- * in the event of system and media crashes. The logs are also used to support
- * user-initiated rollbacks.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * It is very important to take backup copies of a database at specific
- * intervals. The frequency of the backups is governed by the activity level
- * of updates to the database. When a backup is taken, CUBRID may indicate
- * which archive logs are no longer needed to restore a database using the
- * taken backup. CUBRID does not destroy the archive logs. The database
- * administrator can destroy backups and archive logs at his discretion. A lot
- * of care must be followed since in some cases, the most recent database
- * backup may also fail for circumstances beyond our control.
- * Backup and archive log information is recorded on the information log file
- * which is kept in the same directory as the backup and archive logs. The
- * information log file is a text file that can be edited to find out what
- * archive logs are no longer needed for normal processing (i.e, those not
- * including media crashes). These archive logs can be sent to tape and then
- * destroyed from disk. In the case of a media failure, they may need to be
- * restored to disk to restore a database.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
- * When a database is restarted after a normal shutdown or machine failure,
- * CUBRID automatically recovers the database. The recovery process
- * consists of redoing any changes that were previously committed and
- * currently missing from the database disk, and undoing any changes that were
- * not committed but that are stored in the database disk.
- *
- * When a database is restarted after a media failure, however, some user
- * intervention is needed. The process consists of installing a backup of the
- * database and the active and archive logs since the creation of the backup.
- * CUBRID then applies any committed changes missing from the backup and
- * undoes any uncommitted changes from the backup copy to restore the database
- * Once this process is done, the database can be restarted using the normal
- * restart process.
- *
- * The structure of the database is very flexible, it can look as any of the
- * following structures, the structure is defined at creation time.
- *
- * Case 1)
- *    data volumes
- *    active log
- *    archive logs
- *    data volume backups
- *    log information
- * Case 2)
- *    data-directory
- *      data volumes
- *      active log
- *      archive logs
- *      data volume backups
- *      log information
- * Case 3)
- *    data-directory
- *      data volumes
- *    logs/recovery-directory
- *      active log
- *      archive logs
- *      data volume backups
- *      log information
- * Case 4)
- *    Same as Case 3 but data and log/recovery directories are in different
- *    physical disk devices.
- *
- * We recommend maintaining backups and log files in a directory and disk
- * device that is separate from the directory and disk device of the data
- * volumes. That is case 4.
- *
- * This module performs general database server management tasks such as
- * connecting and disconnecting an application to a desired database. The
- * module provides functions to initialize, restart, and shutdown a CUBRID
- * server for a database, and to register (connect), and un_register a client
- * application to the database server. It also provides functions to copy,
- * delete, backup, and restore a database.
- *
- * The boot module in the server is also in charge of expanding a database
- * with additional permanent and temporary data volumes. A non-temporary data
- * volume is used to extend the storage of a database. A temporary data volume
- * is used for queries such as joins that require a lot of storage; that is,
- * queries that need more of the assigned space during the creation of the
- * database. The temporary volumes can be deleted during the server session by
- * the creator of the temporary volume, or at shutdown by the boot manager. In
- * case of a server crash, temporary volumes are removed at next restart of
- * the database. The permanent data volume identifier start with zero and is
- * increased by one when a new data volume is allocated. The temporary volume
- * identifier start with the maximum value of a volume identifier and is
- * decremented by one every time one is allocated. When the permanent and
- * temporary volume identifiers are encountered, no more volumes can be
- * allocated.
- *
- * Perm Vol 0 -------------->> <<--------------- Temp Vol 32767
- *
- * The boot manager maintains a database parameter structure to find out some
- * bootstrapping information such as the heap file where classes are stored,
- * the class name hash table, the catalog file, the query evaluation area,
- * name of the root class and the OID of the root class, number of temporary
- * and permanent volumes, and so on. The location of the database parameter
- * structure is located at the header page of the first data volume. The
- * structure looks like the following:
- *
- * --------------------------------------------------------------------------
- * | Heap | Heap of | Hash Table | Catalog | Query Area | Root OID | .....
- * |      | classes | classname  | File    |    File    |          |
- * --------------------------------------------------------------------------
- *
- * ---------------------------------------------------------------------
- * | ... Contd | Num Vols | Last Volid | Num Tmp Vols | Last Tmp Volid |
- * |           |          |            |              |                |
- * ---------------------------------------------------------------------
- *
- * MODULE INTERFACE
- *
- * The following modules are called by the boot manager at the server
- *      I/O Module:                 To mount, and dismount volumes
- *                                  To find space on the system
- *      Page buffer Manager:        To flush all dirty pages of a recently
- *                                     formatted volume.
- *      Disk Management Module:     To format/create data volumes (primary,
- *                                     extensions, and temporarily).
- *                                  To find system bootstrapping heap file
- *      Log Manager:                To assign/free transaction indices
- *                                  To create a log and initialize/recovery
- *                                     process and restore the database
- *                                  To backup, copy, and delete database
- *                                     volumes
- *      Heap File Manager:          To retrieve and update database system
- *                                     parameters
- *      Transaction Manager at server:
- *                                  To commit creation of volumes
- *      Configuration Manager:      To get/update database location
- *                                     information
- * Some other modules such as catalog and extendible managers are called for
- * initialization purposes.
- *
- * At least the following modules call the boot manager at server:
- *       boot manager at client:    To register clients and restart the
- *                                     database
- *       Query evaluator:           To create and destroy temporarily volumes
- *       CUBRID utilities:        To backup, restore, copy, delete databases
- *
+ */
+
+/*
+ * boot_sr.c - Boot management (at server)
  */
 
 #ident "$Id$"
@@ -180,49 +43,48 @@
 #include "porting.h"
 #include "chartype.h"
 #include "boot_sr.h"
-#include "ustring.h"
-#include "common.h"
-#include "memory_manager_2.h"
+#include "misc_string.h"
+#include "storage_common.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "file_io.h"
 #include "page_buffer.h"
-#include "log_prv.h"
-#include "log.h"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "disk_manager.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "locator_sr.h"
 #include "heap_file.h"
-#include "locator_bt.h"
+#include "locator.h"
 #include "slotted_page.h"
 #include "extendible_hash.h"
 #include "system_catalog.h"
 #include "transaction_sr.h"
 #include "transform.h"
 #include "release_string.h"
-#include "logcp.h"
+#include "log_comm.h"
 #include "critical_section.h"
 #include "databases_file.h"
 #include "query_manager.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "perf_monitor.h"
-#include "memory_manager_4.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "object_domain.h"
-#include "memory_manager_1.h"
+#include "area_alloc.h"
 #include "environment_variable.h"
 #include "util_func.h"
-#include "intl.h"
+#include "intl_support.h"
 #if defined(SERVER_MODE)
-#include "csserror.h"
-#include "conn.h"
+#include "connection_error.h"
+#include "connection_sr.h"
 #endif /* SERVER_MODE */
 
-#include "server.h"
-#include "jsp_earth.h"
+#include "server_interface.h"
+#include "jsp_sr.h"
 #include "thread_impl.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 #include "boot_cl.h"
 
 #if defined(WINDOWS)
@@ -256,7 +118,6 @@ struct boot_dbparm
 				 * from a higher number to a lower number */
 };
 
-/* TODO : remove ct_class.c */
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table ();
@@ -707,19 +568,6 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 	}
     }
 
-  /*
-   * Start a TOP SYSTEM OPERATION.
-   * This top system operation will be either ABORTED (case of failure) or
-   * COMMITTED independently of the current transaction, so that the volume
-   * become available immediately. We could have not allow a second transaction
-   * to use the new volume until the commit of the first transaction. If the
-   * first transaction aborts, the creation of the volume extension will be
-   * undone..and then, the second transaction will create it again.
-   * The rational for our approach is that if a volume is extended, it is
-   * likely that the current database was almost out of space.. and the
-   * creation of the volume is needed not matter what is the fate of the
-   * current transaction.
-   */
 
   if (log_start_system_op (thread_p) == NULL)
     {
@@ -2831,14 +2679,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+      if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
     }
   else
     {
-      if (!cfg_read_directory (&dir, true))
+      if (cfg_read_directory (&dir, true) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -2963,14 +2811,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+	      if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
 	    }
 	  else
 	    {
-	      if (!cfg_read_directory (&dir, true))
+	      if (cfg_read_directory (&dir, true) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -3204,27 +3052,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
       return ER_BO_UNKNOWN_DATABASE;
     }
 
-/* TODO: need to find something to subsititute for key_check_local_host()
- * because the file key.c os obsolete and removed. (Mar 18, 2008) */
-#if 0
-  /* Is this a valid host for running CUBRID server ? */
-  if (!key_check_local_host ())
-    {
-      /* This host is not authorized to run CUBRID */
-      char hostname[MAXHOSTNAMELEN];
-
-      if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-	{
-	  /* unknown error */
-	  strcpy (hostname, "???");
-	}
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNAUTHORIZED_HOST, 1,
-	      hostname);
-      return ER_BO_UNAUTHORIZED_HOST;
-    }
-#endif
-
   /*
    * Make sure that there is a database.txt and that the desired database
    * exists. We do not want to lock the database.txt at this point since we
@@ -3235,7 +3062,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
    * a lock of database.txt
    */
 
-  if (!cfg_read_directory (&dir, false))
+  if (cfg_read_directory (&dir, false) != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
@@ -3266,14 +3093,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
 	{
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      if (cfg_read_directory_ex (dbtxt_vdes, &dir, false))
+	      if (cfg_read_directory_ex (dbtxt_vdes, &dir, false) == NO_ERROR)
 		{
 		  db = cfg_find_db_list (dir, db_name);
 		}
 	    }
 	  else
 	    {
-	      if (cfg_read_directory (&dir, false))
+	      if (cfg_read_directory (&dir, false) == NO_ERROR)
 		{
 		  db = cfg_find_db_list (dir, db_name);
 		}
@@ -4008,62 +3835,6 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- * Note: Check the consistency of the database as much as possible.
- *       Currently we verify the following:
- *       1) Disk Manager: Disk header free and total number of pages
- *                        and sectors against bitmap of allocated pages
- *                        and sectors.
- *                        (Disk Manager vs Disk Manager)
- *
- *       2) File Manager: Allocation of pages and sectors of all files
- *                        against allocation bitmaps.
- *                        (File Manager vs Disk Manager)
- *
- *       3) Heap Manager: for all heap files which are obtained through
- *                        file manager, Make sure that any absolute
- *                        page identifier is part of the corresponding
- *                        file.
- *                        (Heap Manager vs File Manager)
- *
- *       4) Catalog Manager: Every class known by the catalog should
- *                        have at least one representation. If there
- *                        are n representations, there should be a
- *                        description for each representation.
- *                        Any absolute page identifer accessed by the
- *                        catalog manager must be part of catalog
- *                        file.
- *                        (catalog Manager vs File Manager)
- *
- *       5) Btree Manager: for all btree files which are obtained
- *                        through file manager, make sure that each
- *                        tree is constructed correctly.
- *                        - Keys/prefixKeys are sorted on all pages
- *                        - Nonleaf entries points to correct lower
- *                          levels (either nonleaf or leaf).
- *                        - Any absolute page identifier is part of
- *                          the corresponding file.
- *                          (Btree Manager vs File Manager)
- *
- *       6) Classname and OIDS:
- *                        - Class heap vs classname_to_OID hash and
- *                          viceversa.
- *                          + More entries
- *                          + Missing entries
- *                          + Different value entries
- *                          (Transaction Object locator, Heap Manager, and
- *                           extendible hash Manager)
- *
- *       7) Btree Entries:
- *                        - Heap vs Btree and vice versa
- *                          + More entries
- *                          + Missing entries
- *                          + Different value entries
- *                        (Transaction Object locator, Heap Manager, and
- *                         Btree Manager)
- * Currently, we are not checking for:
- *              - Classname Heap vs Catalog
- *              - Heap vs all kind of extendible hash (constrains)
- *              - Schema vs Catalog
  */
 int
 xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag)
@@ -4237,7 +4008,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool iserfinal)
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 	      FILEIO_BACKUP_LEVEL backup_level,
-	      int delete_unneeded_logarchives,
+	      bool delete_unneeded_logarchives,
 	      const char *backup_verbose_file, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
 	      int skip_activelog, PAGEID safe_pageid)
@@ -4281,23 +4052,6 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
  *                                 volid from_fullvolname to_fullvolname
  *   newdb_overwrite(in): Wheater to overwrite the new database if it already
  *                        exist.
- *
- * Note: Every information volume of the database is copied onto the
- *       new destinations specified by either "new_volext_path" or
- *       "fileof_vols_and_wherepaths". A new log is created to support
- *       the new database. Recovery information (i.e., information in
- *       backups, log active and archives) from the old database is not
- *       included onto the new database, thus a backup of the new
- *       database is recommended after the copy is done to avoid losing
- *       the new database after a media crash.
- *
- *       This function must be run offline, that is, it should not be
- *       run when there are multiusers in the system.
- *
- *       The copy of a database is a system operation that will be
- *       either aborted in case of failure or committed in case of
- *       success, independently on the destiny of the current
- *       transaction.
  */
 int
 xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
@@ -4418,17 +4172,17 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+      error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
 	  goto error;
 	}
     }
   else
     {
-      if (!cfg_read_directory (&dir, true))
+      error_code = cfg_read_directory (&dir, true);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
 	  goto error;
 	}
     }
@@ -4536,17 +4290,17 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 
       if (dbtxt_vdes != NULL_VOLDES)
 	{
-	  if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+	  error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+	  if (error_code != NO_ERROR)
 	    {
-	      error_code = ER_FAILED;
 	      goto error;
 	    }
 	}
       else
 	{
-	  if (!cfg_read_directory (&dir, true))
+	  error_code = cfg_read_directory (&dir, true);
+	  if (error_code != NO_ERROR)
 	    {
-	      error_code = ER_FAILED;
 	      goto error;
 	    }
 	}
@@ -4653,13 +4407,6 @@ error:
  *                        the enw database cannot exist in database.txt
  *   force_delete(in): Force delete backup volumes and information file
  *
- * Note: Every information volume of the database is renamed/moved onto
- *              the new destinations specified by either "new_volext_path" or
- *              "fileof_vols_and_wherepaths". The source and the destination
- *              must be part of the same disk partition (e.g., file system).
- *
- * Note: This function must be run offline, that is, it should not be
- *              run when there are multiusers in the system.
  */
 int
 xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
@@ -4823,17 +4570,17 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+      error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
 	  goto error;
 	}
     }
   else
     {
-      if (!cfg_read_directory (&dir, true))
+      error_code = cfg_read_directory (&dir, true);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
 	  goto error;
 	}
     }
@@ -4980,7 +4727,6 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
   DB_INFO *dir = NULL;
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  int r;
   int error_code = NO_ERROR;
 
   if (!BO_ISSERVER_RESTARTED ())
@@ -5004,27 +4750,6 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 	}
 
       er_clear ();
-
-      /* TODO: need to find something to subsititute for key_check_local_host()
-       * because the file key.c os obsolete and removed. (Mar 18, 2008) */
-#if 0
-      /* Is this a valid host for running CUBRID server ? */
-      if (!key_check_local_host ())
-	{
-	  /* This host is not authorized to run CUBRID */
-	  char hostname[MAXHOSTNAMELEN];
-
-	  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-	    {
-	      /* unknown error */
-	      strcpy (hostname, "???");
-	    }
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNAUTHORIZED_HOST,
-		  1, hostname);
-	  return ER_BO_UNAUTHORIZED_HOST;
-	}
-#endif
     }
 
   /* Find the prefix for the database */
@@ -5050,20 +4775,20 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      r = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+      error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
     }
   else
     {
-      r = cfg_read_directory (&dir, true);
+      error_code = cfg_read_directory (&dir, true);
     }
 
-  if (r < 0)
+  if (error_code != NO_ERROR)
     {
       /*
        * If I cannot obtain a Lock on database.txt, it is better to quite at
        * this moment. We will not even perform a dirty delete.
        */
-      return ER_FAILED;
+      return error_code;
     }
 
   if (dir == NULL || (db = cfg_find_db_list (dir, db_name)) == NULL)
@@ -5124,14 +4849,14 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 
       if (dbtxt_vdes != NULL_VOLDES)
 	{
-	  if (!cfg_read_directory_ex (dbtxt_vdes, &dir, true))
+	  if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
 	    {
 	      goto error_dirty_delete;
 	    }
 	}
       else
 	{
-	  if (!cfg_read_directory (&dir, true))
+	  if (cfg_read_directory (&dir, true) != NO_ERROR)
 	    {
 	      goto error_dirty_delete;
 	    }
@@ -5620,27 +5345,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   (void) msgcat_init ();
   (void) sysprm_load_and_init (NULL, NULL);
 
-  /* TODO: need to find somehting to subsititute for key_check_local_host()
-   * because the file key.c os obsolete and removed. (Mar 18, 2008) */
-#if 0
-  /* Is this a valid host for running CUBRID server ? */
-  if (!key_check_local_host ())
-    {
-      /* This host is not authorized to run CUBRID */
-      char hostname[MAXHOSTNAMELEN];
-
-      if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
-	{
-	  /* unknown error */
-	  strcpy (hostname, "???");
-	}
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNAUTHORIZED_HOST, 1,
-	      hostname);
-      return ER_BO_UNAUTHORIZED_HOST;
-    }
-#endif
-
 #if defined(SERVER_MODE)
   if (!lang_init ())
     {
@@ -5665,7 +5369,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   /*
    * Compose the full name of the database and find location of logs
    */
-  if (!cfg_read_directory (&dir, false))
+  if (cfg_read_directory (&dir, false) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
 	      DATABASES_FILENAME);
@@ -5695,14 +5399,14 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 	{
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      if (cfg_read_directory_ex (dbtxt_vdes, &dir, false))
+	      if (cfg_read_directory_ex (dbtxt_vdes, &dir, false) == NO_ERROR)
 		{
 		  db = cfg_find_db_list (dir, db_name);
 		}
 	    }
 	  else
 	    {
-	      if (cfg_read_directory (&dir, false))
+	      if (cfg_read_directory (&dir, false) == NO_ERROR)
 		{
 		  db = cfg_find_db_list (dir, db_name);
 		}

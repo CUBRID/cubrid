@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * authenticate.c - Authorization manager
  */
 
@@ -22,8 +37,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "ustring.h"
-#include "memory_manager_2.h"
+#include "misc_string.h"
+#include "memory_alloc.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "error_manager.h"
@@ -31,25 +46,24 @@
 #include "work_space.h"
 #include "object_primitive.h"
 #include "class_object.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "authenticate.h"
-#include "schema_manager_1.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "object_accessor.h"
 #include "encryption.h"
 #include "message_catalog.h"
-#include "qp_str.h"
+#include "string_opfunc.h"
 #include "locator_cl.h"
-#include "virtual_object_1.h"
+#include "virtual_object.h"
 #include "db.h"
 #include "trigger_manager.h"
 #include "transform.h"
 #include "environment_variable.h"
-#include "execute_schema_8.h"
-#include "jsp_sky.h"
-#include "object_print_1.h"
-#include "execute_statement_11.h"
-#include "qo.h"
+#include "execute_schema.h"
+#include "jsp_cl.h"
+#include "object_print.h"
+#include "execute_statement.h"
+#include "optimizer.h"
 #include "dbval.h"		/* this must be the last header file included */
 
 #if defined(SA_MODE)
@@ -429,7 +443,7 @@ static DB_METHOD_LINK au_static_links[] = {
   /*
    * qo_set_cost
    *
-   * This function is exported by qo/plan.c, and provides a backdoor that
+   * This function is exported by optimizer/query_planner.c, and provides a backdoor that
    * allows us some gross manipulation capabilities for the query
    * optimizer.  By adding it to the list of method implementations that
    * are statically linked we make it easy for us to add a method to an
@@ -444,11 +458,6 @@ static DB_METHOD_LINK au_static_links[] = {
    *      call set_cost('iscan', '0') on class foo;
    */
   {"qo_set_cost", (METHOD_LINK_FUNCTION) qo_set_cost},
-  /* get_attribute_number
-   *
-   * This function is moved from pt/pt_type.c, and provides a useful way to
-   * some QA test scenarios.
-   */
   {"get_attribute_number", (METHOD_LINK_FUNCTION) get_attribute_number},
   {"dbmeth_class_name", (METHOD_LINK_FUNCTION) dbmeth_class_name},
   {"dbmeth_print", (METHOD_LINK_FUNCTION) dbmeth_print},
@@ -538,9 +547,9 @@ static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user,
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
 static void issue_grant_statement (FILE * fp, CLASS_AUTH * auth,
 				   CLASS_GRANT * grant, int authbits,
-				   int quoted_id_flag);
+				   bool quoted_id_flag);
 static int class_grant_loop (CLASS_AUTH * auth, FILE * outfp,
-			     int quoted_id_flag);
+			     bool quoted_id_flag);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index,
@@ -569,9 +578,9 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
   error = obj_get (obj, attname, &value);
   if (error == NO_ERROR)
     {
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_SET &&
-	  DB_VALUE_TYPE (&value) != DB_TYPE_MULTISET &&
-	  DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE)
+      if (DB_VALUE_TYPE (&value) != DB_TYPE_SET
+	  && DB_VALUE_TYPE (&value) != DB_TYPE_MULTISET
+	  && DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE)
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	}
@@ -763,9 +772,6 @@ au_install_class_cache (SM_CLASS * class_)
  *                                and frees it.
  *   return: none
  *   cache(in): class cache
- *
- * Note: This can be called by the schema manager (class.c) when it frees
- *       a class structure
  */
 void
 au_free_authorization_cache (void *cache)
@@ -1256,8 +1262,8 @@ au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
   int error = NO_ERROR;
 
   db_make_null (returnval);
-  if (name != NULL && IS_STRING (name) &&
-      !DB_IS_NULL (name) && db_get_string (name) != NULL)
+  if (name != NULL && IS_STRING (name)
+      && !DB_IS_NULL (name) && db_get_string (name) != NULL)
     {
       user = au_find_user (db_get_string (name));
       if (user != NULL)
@@ -1942,8 +1948,8 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval,
 	    }
 	  else
 	    {
-	      if (password != NULL && IS_STRING (password) &&
-		  !DB_IS_NULL (password))
+	      if (password != NULL && IS_STRING (password)
+		  && !DB_IS_NULL (password))
 		{
 		  error = au_set_password (user, db_get_string (password));
 		  if (error != NO_ERROR)
@@ -2197,7 +2203,7 @@ au_set_password_internal (MOP user, const char *password, int encode)
 		    {
 		      /*
 		       * always add the prefix, the unload process strips it out
-		       * so the password can be read by the sqlx interpreter
+		       * so the password can be read by the csql interpreter
 		       */
 		      if (password == NULL)
 			{
@@ -2777,13 +2783,13 @@ au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
   if (memval != NULL)
     {
       member = NULL;
-      if (DB_VALUE_TYPE (memval) == DB_TYPE_OBJECT &&
-	  !DB_IS_NULL (memval) && db_get_object (memval) != NULL)
+      if (DB_VALUE_TYPE (memval) == DB_TYPE_OBJECT
+	  && !DB_IS_NULL (memval) && db_get_object (memval) != NULL)
 	{
 	  member = db_get_object (memval);
 	}
-      else if (IS_STRING (memval) &&
-	       !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
+      else if (IS_STRING (memval)
+	       && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
 	{
 	  member = au_find_user (db_get_string (memval));
 	}
@@ -2861,7 +2867,7 @@ au_drop_user (MOP user)
      * drop user command can be called only by dba group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", /*"ldb_proxies", */ NULL
+    "_db_class", "db_trigger", "db_serial", NULL
   };
   char query_buf[1024];
 
@@ -2880,7 +2886,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial/ldb_proxies */
+  /* check if user owns class/vclass/trigger/serial */
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf,
@@ -2993,12 +2999,11 @@ au_drop_user (MOP user)
 	  if (error > 0)
 	    {
 	      error = NO_ERROR;
-	      while (error == NO_ERROR &&
-		     db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+	      while (error == NO_ERROR
+		     && db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
 		{
-		  if ((error =
-		       db_query_get_tuple_value (result, 0,
-						 &user_val)) == NO_ERROR)
+		  error = db_query_get_tuple_value (result, 0, &user_val);
+		  if (error == NO_ERROR)
 		    {
 		      if (DB_IS_NULL (&user_val))
 			{
@@ -3011,17 +3016,17 @@ au_drop_user (MOP user)
 		      new_groups = set_create_basic ();
 		      if (new_groups)
 			{
-			  if ((error = au_get_set (auser, "direct_groups",
-						   &direct_groups))
-			      == NO_ERROR)
+			  error = au_get_set (auser, "direct_groups",
+					      &direct_groups);
+			  if (error == NO_ERROR)
 			    {
 			      /* compute closure */
 			      gcard = set_cardinality (direct_groups);
 			      for (g = 0; g < gcard && !error; g++)
 				{
-				  if ((error =
-				       set_get_element (direct_groups, g,
-							&gvalue)) == NO_ERROR)
+				  error = set_get_element (direct_groups, g,
+							   &gvalue);
+				  if (error == NO_ERROR)
 				    {
 				      error =
 					au_add_direct_groups (new_groups,
@@ -3236,32 +3241,6 @@ drop_grant_entry (DB_SET * grants, int index)
  *   grant_ptr(out): return grant set
  *   filter(in):
  *
- * Note:
- *    It should NOT be using vector fetch because that will
- *    end up getting read locks on every class that is in the list.
- *
- *    This is used to preprocess a grants sequence looking for elements
- *    that are associated with deleted objects.
- *    Assuming that the grant set was filtered for deleted objects using
- *    au_get_set, we will have elements where the source field
- *    is NULL rather than being a valid user pointer.
- *    I'm not sure what the behavior of this should be.  One approach is
- *    to make a drop_user behave as if it revokes all priviledges that
- *    were granted by that user.  This would however have to be done
- *    immediatey after the user is dropped, I don't think this can
- *    be done on the fly after the fact.  It may leave users with
- *    partially revoked stuff
- *    What is done here is that the grant remains in effect but the
- *    source of the grant is set to the owner of the class in question.
- *    Be careful to see if there is already a grant entry in the list for
- *    the class owner, merge them and delete the old one.
- *    Probably this should be changed so that drop_user does the right
- *    thing and cleans up after itself.
- *    That will however require write locks on a number of authorization
- *    objects.
- *    We probably should be checking for deleted class objects as well.
- *    Those will end up cluttering up the grant array until someone
- *    removes them.
  */
 static int
 get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
@@ -4420,8 +4399,8 @@ fail_end:
     {
       set_free (grants);
     }
-  if (savepoint_revoke && error != NO_ERROR &&
-      error != ER_LK_UNILATERALLY_ABORTED)
+  if (savepoint_revoke && error != NO_ERROR
+      && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
     }
@@ -4552,8 +4531,8 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   error = au_change_owner (classmop, user);
 
 fail_return:
-  if (savepoint_owner && error != NO_ERROR &&
-      error != ER_LK_UNILATERALLY_ABORTED)
+  if (savepoint_owner && error != NO_ERROR
+      && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
     }
@@ -4619,11 +4598,11 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval,
   int ok = 0;
 
   db_make_null (returnval);
-  if (trigger != NULL && IS_STRING (trigger) &&
-      !DB_IS_NULL (trigger) && db_get_string (trigger) != NULL)
+  if (trigger != NULL && IS_STRING (trigger)
+      && !DB_IS_NULL (trigger) && db_get_string (trigger) != NULL)
     {
-      if (owner != NULL && IS_STRING (owner) &&
-	  !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
+      if (owner != NULL && IS_STRING (owner)
+	  && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
 
 	  trigger_mop = tr_find_trigger (db_get_string (trigger));
@@ -4861,8 +4840,8 @@ au_change_sp_owner_method (MOP obj, DB_VALUE * returnval,
   int ok = 0;
 
   db_make_null (returnval);
-  if (sp != NULL && IS_STRING (sp) &&
-      !DB_IS_NULL (sp) && db_get_string (sp) != NULL)
+  if (sp != NULL && IS_STRING (sp)
+      && !DB_IS_NULL (sp) && db_get_string (sp) != NULL)
     {
       if (owner != NULL && IS_STRING (owner)
 	  && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
@@ -4970,8 +4949,7 @@ au_user_name (void)
 }
 
 /*
- * really au_user_password
- * io_relseek_temp - This returns the unencrypted password for the active user.
+ * au_user_password - This returns the unencrypted password for the active user.
  *    return: error code
  *    buffer(in): output password buffer (must be at least 9 chars)
  *
@@ -4981,12 +4959,10 @@ au_user_name (void)
  *    Note, we may only allow this to be called for the "original" user
  *    that logged in to the system.  If we allow it for all users,
  *    there is a potential hole where we could access the password
- *    while another user is temporarily active.   In order to do this
- *    however, a hacker would have to discover this function name
- *    in the nm output.  Probably worth mangling the name.
+ *    while another user is temporarily active.   
  */
 int
-io_relseek_temp (char *buffer)
+au_user_password (char *buffer)
 {
   int error;
   DB_VALUE value;
@@ -5095,8 +5071,8 @@ check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
     return NO_ERROR;
 
   /* try to catch attempts by even the dba to update a protected class */
-  if (class_->flags & SM_CLASSFLAG_SYSTEM &&
-      is_protected_class (classobj, class_, type))
+  if ((class_->flags & SM_CLASSFLAG_SYSTEM)
+      && is_protected_class (classobj, class_, type))
     {
       error = appropriate_error (0, type);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5117,8 +5093,8 @@ check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
 	  if (bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      if ((error =
-		   update_cache (classobj, class_, cache)) == NO_ERROR)
+	      error = update_cache (classobj, class_, cache);
+	      if (error == NO_ERROR)
 		{
 		  bits = cache->data[Au_cache_index];
 		  if ((bits & type) != type)
@@ -5146,12 +5122,6 @@ check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
  *   return_mop(out): returned class MOP
  *   return_class(out): returned class structure
  *   fetchmode(in): desired fetch/locking mode
- *
- * Note: This will call the lc_ layer in the appropriate manner to get
- *       a class from either a class MOP or an instance MOP.
- *       The interfaces need to be cleaned up here since there is redundant
- *       stuff going on in the locator_update_class call.  This logic should
- *       be made part of the lc_ layer since it is used all the time.
  */
 static int
 fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
@@ -5214,12 +5184,6 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 							  DB_FETCH_WRITE);
 	  break;
 	case AU_FETCH_UPDATE:
-	  /*
-	   * this shouldn't be this way, redundant fetches in locator_update_class
-	   * need to think about the definitions of DB_FETCH_MODE, the locator_fetch
-	   * functions and the lc_upd functions and the way they have come to
-	   * be used by the upper levels
-	   */
 	  class_ =
 	    (SM_CLASS *) locator_fetch_class_of_instance (op, &classmop,
 							  DB_FETCH_WRITE);
@@ -5280,30 +5244,6 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
  *   fetchmode(in): type of fetch/lock to obtain
  *   type(in): authorization type to check
  *
- * Note:
- *    All functions that aquire a pointer to a class structure must call
- *    this function.
- *    It will fetch the class from the database if necessary, update the
- *    authorization cache if necessary, and check for the appropriate
- *    authorization for the desired operation.
- *
- *    This was extended to handle dependent authorization checking
- *    for INDEX authorization, possibly should be doing this for others
- *    too.  When someone calls au_fetch_class() and it returns, they
- *    need to know that whatever they intend to do with the class can
- *    be done, in particular, they usually assume that they will also
- *    have SELECT authorization on the class in order to look at the class.
- *    Requiring the upper levels to check for this is possible but it results
- *    in unneecessary complexity that can be handled here.
- *    The following authorization types if requested, will also implicitly
- *    test for SELECT authorization.
- *
- *    INSERT
- *    UPDATE
- *    DELETE
- *    ALTER
- *    INDEX
- *    EXECUTE
  */
 int
 au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode,
@@ -5422,9 +5362,6 @@ au_check_authorization (MOP op, DB_AUTH auth)
  *   op(in): instance MOP
  *   obj_ptr(out): returned pointer to object
  *   fetchmode(in): desired operation
- *
- * Note: Calls the lc_ layer in the appropriate manner for the desired
- *       operation.
  */
 static int
 fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
@@ -5445,16 +5382,6 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
   /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_ENABLE */
   AU_DISABLE (save);
 
-  /*
-   * In extremely rare circumstances, we can hit a workspace panic
-   * while we are loading the objects that were prefetched along
-   * with the object we're requesting.  If the panic results in flushing
-   * all objects, the object we just cached will get freed.  What happens
-   * then is locator_fetch_instance returns with no error but the object is
-   * NULL because it was freed after it was cached.  To prevent this
-   * from happening, we must pin the MOP we are attempting to cache,
-   * even though it has no object
-   */
 
   pin = ws_pin (op, 1);
   if (op->is_vid)
@@ -5580,22 +5507,22 @@ au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
  */
 
 /*
- * au_vlist_entry_randomize -
+ * au_disable_passwords -
  *    return: none
  */
 void
-au_vlist_entry_randomize (void)
+au_disable_passwords (void)
 {
   Au_ignore_passwords = 1;
 }
 
 /*
- * au_calc_page_boundary -
+ * au_set_user -
  *   return: error code
  *   newuser(in):
  */
 int
-au_calc_page_boundary (MOP newuser)
+au_set_user (MOP newuser)
 {
   int error = NO_ERROR;
   int index;
@@ -5831,8 +5758,8 @@ au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user,
 
   if (user != NULL)
     {
-      if (IS_STRING (user) &&
-	  !DB_IS_NULL (user) && db_get_string (user) != NULL)
+      if (IS_STRING (user) && !DB_IS_NULL (user)
+	  && db_get_string (user) != NULL)
 	{
 	  if (password != NULL && IS_STRING (password))
 	    {
@@ -6011,9 +5938,11 @@ au_get_user_name (MOP obj)
   error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
-      if (IS_STRING (&value) &&
-	  !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
-	name = db_get_string (&value);
+      if (IS_STRING (&value) && !DB_IS_NULL (&value)
+	  && db_get_string (&value) != NULL)
+	{
+	  name = db_get_string (&value);
+	}
     }
   return (name);
 }
@@ -6511,7 +6440,7 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
  */
 static void
 issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
-		       int authbits, int quoted_id_flag)
+		       int authbits, bool quoted_id_flag)
 {
   const char *gtype, *classname;
   char *username;
@@ -6607,7 +6536,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
  * TODO : LP64
  */
 static int
-class_grant_loop (CLASS_AUTH * auth, FILE * outfp, int quoted_id_flag)
+class_grant_loop (CLASS_AUTH * auth, FILE * outfp, bool quoted_id_flag)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -6682,7 +6611,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp, int quoted_id_flag)
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (FILE * outfp, MOP class_mop, int quoted_id_flag)
+au_export_grants (FILE * outfp, MOP class_mop, bool quoted_id_flag)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -7177,7 +7106,7 @@ au_dump (void)
 
 /*
  * au_describe_user_method() - Method interface to au_dump_user.
- *                             Can only be called when using the sqlx
+ *                             Can only be called when using the csql
  *                             interpreter since it dumps to stdout
  *   return: none
  *   user(in): user object
@@ -7201,8 +7130,8 @@ au_describe_user_method (MOP user, DB_VALUE * returnval)
  *   info(in):
  *
  * Note: This should be conditionalized so it knows what kind of environment
- *       this is (sqlx, isqlx, esqlx).
- *       For now this is documented to only work within sqlx because it dumps
+ *       this is (csql, esql).
+ *       For now this is documented to only work within csql because it dumps
  *       to stdout.
  *       There are some hidden parameters that trigger other dump routines.
  *       This is a convenient hook for these things until we
@@ -7231,8 +7160,8 @@ au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info)
  *   info(in):
  *
  * Note: This should be conditionalized so it knows what kind of environment
- *       this is (sqlx, isqlx, esqlx).  For now this is documented to
- *       only work within sqlx because it dumps to stdout.
+ *       this is (csql, esql).  For now this is documented to
+ *       only work within csql because it dumps to stdout.
  *       There are some hidden parameters that trigger other dump routines.
  *       This is a convenient hook for these things until we
  *       have a more formal way to call them (if we ever do).  These
@@ -7543,10 +7472,6 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
  *   return:
  *   arg1(in):
  *   arg2(in):
- *
- * Note: This is a statically linked method. It was moved from pt_type.c.
- *       There's no 'extern' declaration of this function in the header file
- *       because it is used only in QA scenario.
  */
 void
 get_attribute_number (DB_OBJECT * target, DB_VALUE * result,

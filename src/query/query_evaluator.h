@@ -1,21 +1,37 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * Predicate evaluation
  */
 
-#ifndef _QP_EVAL_H_
-#define _QP_EVAL_H_
+#ifndef _QUERY_EVALUATOR_H_
+#define _QUERY_EVALUATOR_H_
 
 #ident "$Id$"
 
-#include "common.h"
+#include "storage_common.h"
 #include "dbtype.h"
 #include "object_domain.h"
-#include "qp_str.h"
-#include "qp_list.h"
-#include "qp_util.h"
+#include "string_opfunc.h"
+#include "query_list.h"
+#include "parser_support.h"
 #include "thread_impl.h"
 
 typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
@@ -46,12 +62,12 @@ typedef enum
   PT_GENERIC,
 
 /* from here down are function code common to parser and xasl */
-/* sqlx/sqlm "table" functions argument(s) are tables */
+/* "table" functions argument(s) are tables */
   F_TABLE_SET, F_TABLE_MULTISET, F_TABLE_SEQUENCE,
   F_TOP_TABLE_FUNC,
   F_MIDXKEY,
 
-/* sqlx/sqlm "normal" functions, arguments are values */
+/* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF
 } FUNC_TYPE;
 
@@ -245,8 +261,8 @@ struct function_node
   REGU_VARIABLE_LIST operand;	/* operands */
 };
 
-/*                                                                            
- * typedefs related to the predicate expression structure        
+/*
+ * typedefs related to the predicate expression structure
  */
 
 #ifdef V_FALSE
@@ -454,4 +470,4 @@ extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid,
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 				   FILTER_INFO * filter);
 
-#endif /* _QP_EVAL_H_ */
+#endif /* _QUERY_EVALUATOR_H_ */

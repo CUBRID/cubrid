@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * Cursor (Client Side)
  */
 
@@ -14,8 +29,8 @@
 
 #include "error_manager.h"
 #include "dbdef.h"
-#include "qp_list.h"
-#include "common.h"
+#include "query_list.h"
+#include "storage_common.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 
@@ -61,7 +76,7 @@ struct cursor_id
   int *oid_col_no;		/* Column numbers of OID's */
   int oid_col_no_cnt;		/* Number of values in oid_col_no */
   DB_FETCH_MODE prefetch_lock_mode;
-  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default), 
+  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
 				 *               false = peek */
   int current_tuple_value_index;	/* Current tplvalue index within current_tuple_p */
   char *current_tuple_value_p;	/* Current tplvalue pointer within current_tuple_p */

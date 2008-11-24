@@ -344,7 +344,7 @@ EXPORTS
     checkdb
     plandump
     unloaddb
-    sqlx
+    csql
 ;
 ; libesql reference's functions
 ;

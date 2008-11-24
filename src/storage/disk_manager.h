@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * disk_manager.h - Disk managment module (at server)
  */
 
@@ -13,7 +29,7 @@
 #include "config.h"
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "recovery.h"
 
 /* Special sector which can steal pages from other sectors */
@@ -47,14 +63,14 @@ typedef enum
 extern bool distk_Tempvol_shrink_enable;
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern INT32 xdisk_get_total_numpages (THREAD_ENTRY * thread_p, INT16 volid);
 extern INT32 xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid);
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, INT16 volid,
                                  char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid);
-extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p, 
+extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
                                                         VOLID volid,
 							DISK_VOLPURPOSE *
 							vol_purpose,

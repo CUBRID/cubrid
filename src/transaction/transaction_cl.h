@@ -1,24 +1,37 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * tmcl.h -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * 	Overview: TRANSACTION MANAGER (AT CLIENT) -- Interface --
- * See .c file for overview and description of the interface functions.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
-#ifndef TMCL_HEADER_
-#define TMCL_HEADER_
+
+/*
+ * transaction_cl.h - transaction manager (at client)
+ *
+ */
+
+#ifndef _TRANSACTION_CL_H_
+#define _TRANSACTION_CL_H_
 
 #ident "$Id$"
 
 #include "config.h"
 
 #include "error_manager.h"
-#include "common.h"
-#include "logcp.h"
+#include "storage_common.h"
+#include "log_comm.h"
 #include "dbdef.h"
 
 
@@ -68,4 +81,4 @@ extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,
 					       bool
 					       client_decache_only_insts);
 
-#endif
+#endif /* _TRANSACTION_CL_H_ */

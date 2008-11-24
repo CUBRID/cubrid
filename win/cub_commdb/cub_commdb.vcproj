@@ -181,11 +181,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\dbu_misc.c"
+					RelativePath="..\..\src\executables\master_util.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\master_util.c"
+					RelativePath="..\..\src\executables\util_support.c"
 					>
 				</File>
 			</Filter>

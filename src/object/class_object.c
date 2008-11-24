@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * class_object.c - Class Constructors
  */
 
@@ -13,7 +28,7 @@
 #include <string.h>
 
 #include "language_support.h"
-#include "memory_manager_1.h"
+#include "area_alloc.h"
 #include "work_space.h"
 #include "object_representation.h"
 #include "object_primitive.h"
@@ -21,16 +36,13 @@
 #include "boot_cl.h"
 #include "locator_cl.h"
 #include "authenticate.h"
-#include "set_object_1.h"
+#include "set_object.h"
 #include "object_accessor.h"
 #include "parser.h"
 #include "trigger_manager.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #if defined(WINDOWS)
-#include "ustring.h"
-#endif
-#if defined(WINDOWS)
-#include "ustring.h"
+#include "misc_string.h"
 #endif
 
 #include "dbval.h"		/* this must be the last header file included */
@@ -41,45 +53,6 @@
 
 const int SM_MAX_STRING_LENGTH = 1073741823;	/* 0x3fffffff */
 
-/*
- *    The schema template is visible directly to the interpreter so it
- *    must be allocated in storage that serves as roots to the garabge
- *    collector.
- *    KLUDGE: There is a problem if a MOP is given to the template as the
- *    default value of an attribute.  Since the attribute structures
- *    themselves are in the workspace, there is no GC root for these objects.
- *    If the caller immediately forgets about the MOP, it may be garbage
- *    collected out from under the template.  Options to avoid this problem
- *    include:
- *    1) keep a list of templates outstanding for a class connected to
- *       the class itself.  When the class is swept for GC, the templates
- *       are also swept.  Disadvantage is that there is a more complicated
- *       interconnection between classes and templates that has to be
- *       maintained.
- *    2) Allocate all storage related to templates outside the workspace.
- *       This is perhaps the safest way to do this but has the disadvantage
- *       that now there have to be two copies of all the allocation routines,
- *       one for structures in the workspace and one for structures outside
- *       the workspace.  We have to know where the structures were allocated
- *       so they can be freed.  Assuming we free the template in bulk,
- *       this isn't a problem but it is more complicated for the list copy
- *       routines which the templates use.
- *    3) Allocate the template outside the workspace and keep an external
- *       MOP list in the template for any MOP that is put inside the template.
- *       The external MOP list will serve as GC roots for the MOPs in the
- *       template.  When the template is destroyed, the MOP list is freed.
- *       This is the simplest to implement, the complexity is in remembering
- *       that for every MOP that goes into a template, we have to register
- *       it in the list.
- *    Selected option is 3.
- *    Number 2 is attractive in that it could also be used for the
- *    class information structures that can be returned by the db_ layer.
- *    This means that callers could get pointers to structures that
- *    are not directly connected to the class thereby allowing the classes
- *    to be swapped out without destroying the application pointers.
- *    This would be a nice long term solution but we have to address
- *    the "two allocation space" space problem for the functions in this file.
- */
 
 static AREA *Template_area = NULL;
 
@@ -167,8 +140,6 @@ classobj_area_init (void)
  * quick indexing but in addition have a link field at the top so they can be
  * traversed as lists.  This is particularly helpful during class definition
  * and makes it simpler for the class transformer to walk over the structures.
- *
- * This could go in wslist.c with the other list utilities.
  */
 
 /*
@@ -1169,9 +1140,10 @@ classobj_is_exist_foreign_key_ref (MOP refop, SM_FOREIGN_KEY_INFO * fk_info)
     {
       if (OID_EQ (&fk_ref->self_oid, &fk_info->self_oid))
 	{
-	  if (BTID_IS_EQUAL (&(fk_ref->self_btid), &(fk_info->self_btid)) &&
+	  if (BTID_IS_EQUAL (&(fk_ref->self_btid), &(fk_info->self_btid))
 	      /* although enough to BTID_IS_EQUAL, check for full match BTID structure */
-	      fk_ref->self_btid.root_pageid == fk_info->self_btid.root_pageid)
+	      && (fk_ref->self_btid.root_pageid ==
+		  fk_info->self_btid.root_pageid))
 	    {
 	      return true;
 	    }
@@ -1760,21 +1732,19 @@ classobj_cache_constraint_entry (const char *name,
       if (error == NO_ERROR)
 	{
 	  att = NULL;
-	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_STRING &&
-	      DB_GET_STRING (&att_val) != NULL)
+	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_STRING
+	      && DB_GET_STRING (&att_val) != NULL)
 	    {
-	      att =
-		classobj_find_attribute (class_, DB_GET_STRING (&att_val), 0);
+	      att = classobj_find_attribute (class_,
+					     DB_GET_STRING (&att_val), 0);
 	    }
 	  else if (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER)
 	    {
-	      att =
-		classobj_find_attribute_id (class_, DB_GET_INTEGER (&att_val),
-					    0);
+	      att = classobj_find_attribute_id (class_,
+						DB_GET_INTEGER (&att_val), 0);
 	    }
 	  if (att != NULL)
 	    {
-
 	      /*
 	       *  Add a new constraint node to the cache list
 	       */
@@ -2455,13 +2425,12 @@ classobj_make_class_constraints (DB_SET * class_props,
 		  goto memory_error;
 		}
 
-	      new_->asc_desc = (const int *) db_ws_alloc (sizeof (int) *
-							  att_cnt);
+	      new_->asc_desc = (int *) db_ws_alloc (sizeof (int) * att_cnt);
 	      if (new_->asc_desc == NULL)
 		{
 		  goto memory_error;
 		}
-	      asc_desc = (char *) new_->asc_desc;
+	      asc_desc = (int *) new_->asc_desc;
 
 	      att = NULL;
 	      /* Find each attribute referenced by the constraint. */
@@ -2528,7 +2497,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 		}
 
 	      /* If an attribute couldn't be found, then NULL out the entire
-	       * array. Otherwise (if all attributes were found), NULL 
+	       * array. Otherwise (if all attributes were found), NULL
 	       * terminate the array . */
 	      if (att == NULL)
 		{
@@ -2863,9 +2832,11 @@ classobj_find_cons_index (SM_CLASS_CONSTRAINT * cons_list, const char *name)
 
   for (cons = cons_list; cons; cons = cons->next)
     {
-      if ((SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type)) &&
-	  !SM_COMPARE_NAMES (cons->name, name))
-	break;
+      if ((SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
+	  && !SM_COMPARE_NAMES (cons->name, name))
+	{
+	  break;
+	}
     }
 
   return cons;
@@ -3139,16 +3110,16 @@ classobj_find_cons_index2 (SM_CLASS_CONSTRAINT * cons_list,
 	    }
 
 	  len = 0;		/* init */
-	  while (*attp && *namep &&
-		 !intl_mbs_casecmp ((*attp)->header.name, *namep))
+	  while (*attp && *namep
+		 && !intl_mbs_casecmp ((*attp)->header.name, *namep))
 	    {
 	      attp++;
 	      namep++;
 	      len++;		/* increase name number */
 	    }
 
-	  if (!*attp && !*namep &&
-	      !classobj_is_possible_constraint (cons->type, new_cons))
+	  if (!*attp && !*namep
+	      && !classobj_is_possible_constraint (cons->type, new_cons))
 	    {
 	      key_type = NULL;	/* init */
 	      if (asc_desc && stats)
@@ -3174,8 +3145,8 @@ classobj_find_cons_index2 (SM_CLASS_CONSTRAINT * cons_list,
 			{
 			  break;	/* not match */
 			}
-		    }		/* for (i = 0; ...) */
-		}		/* if (asc_desc && stats) */
+		    }
+		}
 
 	      if (key_type == NULL)
 		{
@@ -3329,11 +3300,6 @@ classobj_class_has_indexes (SM_CLASS * class_)
 
 
 /* SM_DOMAIN */
-/*
- * Domain handling has been removed and placed in tpcl.c so that it
- * can be more widely used.  The only thing we need here is a function
- * to calculate domain structure sizes for statistics.
- */
 
 /*
  * classobj_domain_size() - Caclassobj_domain_sizee number of bytes of memory required for
@@ -3984,7 +3950,7 @@ classobj_make_method_signature (const char *name)
 
   sig->next = NULL;
   sig->function_name = NULL;
-  sig->sqlx_definition = NULL;
+  sig->sql_definition = NULL;
   sig->function = NULL;
   sig->num_args = 0;
   sig->value = NULL;
@@ -4016,7 +3982,7 @@ classobj_free_method_signature (SM_METHOD_SIGNATURE * sig)
   if (sig != NULL)
     {
       ws_free_string (sig->function_name);
-      ws_free_string (sig->sqlx_definition);
+      ws_free_string (sig->sql_definition);
       ws_list_free ((DB_LIST *) sig->value,
 		    (LFREEER) classobj_free_method_arg);
       ws_list_free ((DB_LIST *) sig->args,
@@ -4044,7 +4010,7 @@ classobj_copy_method_signature (SM_METHOD_SIGNATURE * sig)
     }
   new_->value = NULL;
   new_->args = NULL;
-  new_->sqlx_definition = NULL;
+  new_->sql_definition = NULL;
   new_->num_args = sig->num_args;
   new_->function = sig->function;	/* should this be reset to NULL ? */
 
@@ -4074,10 +4040,10 @@ classobj_copy_method_signature (SM_METHOD_SIGNATURE * sig)
 	  goto memory_error;
 	}
     }
-  if (sig->sqlx_definition != NULL)
+  if (sig->sql_definition != NULL)
     {
-      new_->sqlx_definition = ws_copy_string (sig->sqlx_definition);
-      if (new_->sqlx_definition == NULL)
+      new_->sql_definition = ws_copy_string (sig->sql_definition);
+      if (new_->sql_definition == NULL)
 	{
 	  goto memory_error;
 	}
@@ -4110,9 +4076,9 @@ classobj_method_signature_size (SM_METHOD_SIGNATURE * sig)
     {
       size += strlen (sig->function_name) + 1;
     }
-  if (sig->sqlx_definition != NULL)
+  if (sig->sql_definition != NULL)
     {
-      size += strlen (sig->sqlx_definition) + 1;
+      size += strlen (sig->sql_definition) + 1;
     }
   size +=
     ws_list_total ((DB_LIST *) sig->value,
@@ -5363,10 +5329,6 @@ classobj_free_class (SM_CLASS * class_)
 
   /* this shouldn't happen here ? - make sure we can't GC this away
    * in the middle of an edit.
-   * KLUDGE: Don't free attached templates because if we unilaterally
-   * abort in the middle of a schema change, smu.c can get confused.
-   * May result in memory leaks in very rare circumstances, need to
-   * think of a better way to handle this.
    */
 #if 0
   if (class_->new_ != NULL)

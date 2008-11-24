@@ -1,23 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * system_parameter.c - system parameters
- *
- * Note:  This module reads and parses the parameter files and
- *        initializes the system parameter table accordingly.
- *        There is only one interface to this module. At system startup,
- *        sysprm_load_and_init() is called. It expects a single parameter,
- *        the name of the database volume. It always returns 0, although errors
- *        discovered in the parameter files are output to stderr.
- *        This module reads the following cubrid.conf files in the following
- *        order
- *        If the following files exist and the execution mode (client, server,
- *        or stand-alone) is appropriate they will also be read:
- *
- *        $CUBRID/conf/cubrid.conf   The installation cubrid.init
- *        ./cubrid.conf              The pwd cubrid.conf (Client Mode)
- *
  */
 
 #ident "$Id$"
@@ -45,72 +45,42 @@
 
 #include "porting.h"
 #include "chartype.h"
-#include "ustring.h"
+#include "misc_string.h"
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "system_parameter.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 #include "util_func.h"
-#include "logcp.h"
-#include "memory_manager_2.h"
+#include "log_comm.h"
+#include "memory_alloc.h"
 #include "environment_variable.h"
-#include "intl.h"
-#include "log.h"
-#include "intl.h"
+#include "intl_support.h"
+#include "log_manager.h"
 #include "message_catalog.h"
 #include "language_support.h"
 #if defined (SERVER_MODE)
-#include "srv_new.h"
+#include "server_support.h"
 #endif /* SERVER_MODE */
 #ifdef LINUX
 #include "stack_dump.h"
 #endif
 #include "ini_parser.h"
 
-/*
- * Data Structures
- *    prm_Def[] (note the 2 underscores) is an array of structures.
- *    The fields of these structures are
- *    { "name of parameter", the keyword in cubrid.conf
- *    (PARAMETER FLAGS),  These flags are OR'd to produce the status word.
- *    (void *) Address_of_system_default, The address of the data permanently
- *             stored as the system default value.  Note that parameters whose
- *             default is NULL do not have a storage location declared in this
- *             file but are initialized as NULL when declared in this array.
- *    (void *) Address_of_current_value,  This must be the address of the
- *             system default if there is one.  This will be assigned a new
- *             value if the default is changed by the user.
- *    (void *) Address_of_upper_bound, The address of the parameter's upper
- *             bound if there is one.  This should be (void *) NULL if there
- *             isn't one. If a user tries to set the parameter to a
- *             value > than this it will automatically be set to the system
- *             default.
- *    (void *) Address_of_lower_bound The address of the parameter's lower
- *             bound if there is one.  This should be (void *) NULL if there
- *             isn't one. If a user tries to set the parameter to a
- *             value < than this it will automatically be set to the system
- *             default.
- *  Thus, a parameter declaration looks like
- * { "name_of_parameter",
- *   (PARAMETER FLAGS),
- *   (void *) Address_of_system_default, (void *) Address_of_current_value,
- *   (void *) Address_of_upper_bound,(void *) Address_of_lower_bound
- *   }
- *
- * A set of macros is provided that allow other modules to access the
- * current value of the parameter by casting the appropriate field to the
- * expected type and "returning" that value.
- */
+
 
 
 #define CONF_FILE_DIR   "conf"
-#define ERROR_FILE_DIR  "log"
+#if defined (WINDOWS)
+#define ERROR_FILE_DIR  "log\\server"
+#else
+#define ERROR_FILE_DIR  "log/server"
+#endif
 #define ER_LOG_SUFFIX   ".err"
 
 #if !defined (CS_MODE)
-static const char sysprm_error_log_file[] = "userver.err";
+static const char sysprm_error_log_file[] = "cub_server.err";
 #else /* CS_MODE */
-static const char sysprm_error_log_file[] = "uclient.err";
+static const char sysprm_error_log_file[] = "cub_client.err";
 #endif /* CS_MODE */
 static const char sysprm_conf_file_name[] = "cubrid.conf";
 
@@ -540,50 +510,7 @@ static const char *prm_service_service_list_default = NULL;
 const char *PRM_SERVICE_SERVER_LIST = "";
 static const char *prm_service_server_list_default = NULL;
 
-/*
- *
- * The array of structures contains the data that other modules will
- * access when dealing with parameters.  The fields are:
- *
- * { "name of parameter", the keyword that should be looked for in cubrid.conf
- *
- * (PARAMETER FLAGS),  These flags are OR'd to produce the status word.  See
- * prm.h for details.
- *
- * (void *) Address_of_system_default, The address of the data permanently
- * stored as the system default value.  Note that paramters whose default is
- * NULL do not have a storage location declared in this file but are
- * initialized as NULL when declared in this array.
- *
- * (void *) Address_of_current_value,  The address of the real live parameter
- * value.  The value in this location may be changed by this module.
- *
- * (void *) Address_of_upper_bound, The address of the parameter's upper
- * bound if there is one.  This should be (void *) NULL if there isn't one.
- * If a user tries to set the parameter to a value > than this it will
- * automatically be set to the system default.
- *
- * (void *) Address_of_lower_bound The address of the parameter's lower
- * bound if there is one.  This should be (void *) NULL if there isn't one.
- * If a user tries to set the parameter to a value < than this it will
- * automatically be set to the system default.
- *
- * Thus, a parameter declaration looks like
- *
- *   { "name_of_parameter",
- *     (PARAMETER FLAGS),
- *     (void *) Address_of_system_default, (void *) Address_of_current_value,
- *     (void *) Address_of_upper_bound,(void *) Address_of_lower_bound
- *   }
- *
- *
- * TO ADD A NEW PARAMETER,
- *
- * 1.  Declare the system default value (DEFAULT_whatever).
- * 2.  Declare the parameter value (PRM_whatever; here and in prm.h).
- * 3.  Declare any upper and lower bounds.
- * 4.  Add the description to this array; order is unimportant.
- */
+
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -1395,8 +1322,8 @@ prm_dump_system_parameter_table (FILE * fp)
 
   for (i = 0; i < NUM_PRM; i++)
     {
-      if (PRM_IS_INTEGER (prm_Def[i].flag) ||
-	  PRM_IS_ISOLATION_LEVEL (prm_Def[i].flag))
+      if (PRM_IS_INTEGER (prm_Def[i].flag)
+	  || PRM_IS_ISOLATION_LEVEL (prm_Def[i].flag))
 	{
 	  format = int_format;
 	  sprintf (tmp_buf, format, prm_Def[i].name,
@@ -2229,8 +2156,8 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	{
 	  return PRM_ERR_BAD_VALUE;
 	}
-      if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val) ||
-	  (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
+      if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val)
+	  || (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
 	{
 	  if (PRM_HAS_DEFAULT (prm->flag))
 	    {
@@ -2262,8 +2189,8 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	{
 	  return PRM_ERR_BAD_VALUE;
 	}
-      if ((prm->upper_limit && PRM_GET_FLOAT (prm->upper_limit) < val) ||
-	  (prm->lower_limit && PRM_GET_FLOAT (prm->lower_limit) > val))
+      if ((prm->upper_limit && PRM_GET_FLOAT (prm->upper_limit) < val)
+	  || (prm->lower_limit && PRM_GET_FLOAT (prm->lower_limit) > val))
 	{
 	  if (PRM_HAS_DEFAULT (prm->flag))
 	    {
@@ -2346,8 +2273,8 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	      return PRM_ERR_BAD_VALUE;
 	    }
 	}
-      if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val) ||
-	  (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
+      if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val)
+	  || (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
 	{
 	  if (PRM_HAS_DEFAULT (prm->flag))
 	    {
@@ -2812,9 +2739,9 @@ prm_tune_parameters (void)
       if (PRM_GET_INT (max_plan_cache_clones_prm->value) >=
 	  PRM_GET_INT (max_plan_cache_entries_prm->value))
 #else
-      if (PRM_GET_INT (max_plan_cache_clones_prm->value) >=
-	  PRM_GET_INT (max_plan_cache_entries_prm->value) ||
-	  PRM_GET_INT (max_plan_cache_clones_prm->value) < 0)
+      if ((PRM_GET_INT (max_plan_cache_clones_prm->value) >=
+	   PRM_GET_INT (max_plan_cache_entries_prm->value))
+	  || (PRM_GET_INT (max_plan_cache_clones_prm->value) < 0))
 #endif
 	{
 	  sprintf (newval, "%d",

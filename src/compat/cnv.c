@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * cnv.c - String conversion functions
  */
 
@@ -20,11 +35,10 @@
 #include <wchar.h>
 
 #include "db.h"
-#include "adj_ar.h"
-#include "intl.h"
-#include "memory_manager_2.h"
-#include "qp_str.h"
-#include "memory_manager_4.h"
+#include "adjustable_array.h"
+#include "intl_support.h"
+#include "memory_alloc.h"
+#include "string_opfunc.h"
 #include "object_domain.h"
 #include "language_support.h"
 #include "object_primitive.h"
@@ -5959,29 +5973,6 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
  * format(in) :
  * value(out) :
  *
- * note : For the following value types, this function is equivalent to
- *        the following functions.
- *
- *    Type                Equivalent Function
- *    DB_TYPE_DATE        db_string_date
- *    DB_TYPE_DOUBLE      db_string_double
- *    DB_TYPE_FLOAT       db_string_float
- *    DB_TYPE_INTEGER     db_string_integer
- *    DB_TYPE_MONETARY    db_string_monetary
- *    DB_TYPE_SHORT       db_string_short
- *    DB_TYPE_TIME        db_string_time
- *    DB_TYPE_TIMESTAMP   db_string_timestamp
- *    DB_TYPE_BIT         db_string_bit
- *    DB_TYPE_VARBIT      db_string_bit
- *
- *   If the value type is DB_TYPE_NULL, then string and format are
- *   ignored and the value is unchanged.
- *
- *   If the value type is DB_TYPE_STRING, then format is ignored and the
- *   value is updated with a copy of string.
- *
- *   If type is not one of those mentioned above, then an error is
- *   returned.
  */
 const char *
 db_string_value (const char *string, const char *format, DB_VALUE * value)
@@ -6263,29 +6254,6 @@ db_string_to_value (const char *string, const char *format, DB_TYPE type, ...)
  * max_size(in) : the maximum number of chars that can be stored in the string
  *               (including final '\0' char)
  *
- * note : For the following types, this function is equivalent to the following
- *        functions.
- *
- *    Type                Equivalent Function
- *    DB_TYPE_DATE        db_date_string
- *    DB_TYPE_DOUBLE      db_double_string
- *    DB_TYPE_FLOAT       db_float_string
- *    DB_TYPE_INTEGER     db_integer_string
- *    DB_TYPE_MONETARY    db_monetary_string
- *    DB_TYPE_SHORT       db_short_string
- *    DB_TYPE_TIME        db_time_string
- *    DB_TYPE_TIMESTAMP   db_timestamp_string
- *    DB_TYPE_BIT         db_bit_string
- *    DB_TYPE_VARBIT      db_bit_string
- *
- *   If the value type is DB_TYPE_NULL, then format is ignored and
- *   the string is changed to an empty string.
- *
- *   If the value type is DB_TYPE_STRING, then format is ignored and
- *   the string is changed to a copy of the value.
- *
- *   If type is not one of those mentioned above, then an error is
- *   returned.
  */
 int
 db_value_string (const DB_VALUE * value, const char *format,
@@ -7844,9 +7812,6 @@ db_validate_format (const char *format, DB_TYPE type)
 void
 cnv_cleanup (void)
 {
-  /* there is a lex buffer kept in cnvlex.c */
   cnv_fmt_exit ();
-
-  /* we've got three adjustable arrays in cnvutil.c */
   cnvutil_cleanup ();
 }

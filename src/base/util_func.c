@@ -1,7 +1,22 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
  * util_func.c : miscellaneous utility functions
  *
  */
@@ -66,8 +81,8 @@ util_compare_filepath (const char *file1, const char *file2)
   char path1[PATH_MAX], path2[PATH_MAX];
   char *p;
 
-  if (GetLongPathName (file1, path1, sizeof (path1)) == 0 ||
-      GetLongPathName (file2, path2, sizeof (path2)) == 0)
+  if (GetLongPathName (file1, path1, sizeof (path1)) == 0
+      || GetLongPathName (file2, path2, sizeof (path2)) == 0)
     {
       return (stricmp (file1, file2));
     }
@@ -84,7 +99,6 @@ util_compare_filepath (const char *file1, const char *file2)
   return (strcmp (file1, file2));
 #endif /* !WINDOWS */
 }
-
 
 /*
  * Signal Handling
@@ -114,7 +128,9 @@ system_interrupt_handler (int sig)
 {
   (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
   if (user_interrupt_handler != NULL)
-    (*user_interrupt_handler) ();
+    {
+      (*user_interrupt_handler) ();
+    }
 }
 
 
@@ -135,7 +151,6 @@ system_quit_handler (int sig)
 #endif
 }
 
-
 /*
  * util_disarm_signal_handlers - Disarms the user interrpt and quit handlers
  *                               if any were specified
@@ -148,18 +163,21 @@ util_disarm_signal_handlers (void)
     {
       user_interrupt_handler = NULL;
       if (os_set_signal_handler (SIGINT, SIG_IGN) != SIG_IGN)
-	(void) os_set_signal_handler (SIGINT, SIG_DFL);
+	{
+	  (void) os_set_signal_handler (SIGINT, SIG_DFL);
+	}
     }
 #if !defined(WINDOWS)
   if (user_quit_handler != NULL)
     {
       user_quit_handler = NULL;
       if (os_set_signal_handler (SIGQUIT, SIG_IGN) != SIG_IGN)
-	(void) os_set_signal_handler (SIGQUIT, SIG_DFL);
+	{
+	  (void) os_set_signal_handler (SIGQUIT, SIG_DFL);
+	}
     }
 #endif
 }
-
 
 /*
  * util_arm_signal_handlers - Install signal handlers for the two most

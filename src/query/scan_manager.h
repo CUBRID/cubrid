@@ -1,24 +1,40 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * Scan (Server Side)
  */
 
-#include "btree.h"		/* TODO: for BTREE_SCAN */
+#include "btree.h"              /* TODO: for BTREE_SCAN */
 
-#ifndef _QP_SCAN_H_
-#define _QP_SCAN_H_
+#ifndef _SCAN_MANAGER_H_
+#define _SCAN_MANAGER_H_
 
 #ident "$Id$"
 
 #include "oid.h"		/* for OID */
-#include "common.h"		/* for PAGEID */
+#include "storage_common.h"		/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
 
 /*
- *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES                   
+ *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
  */
 
 typedef enum
@@ -153,10 +169,10 @@ struct scan_id_struct
   QPROC_QUALIFICATION qualification;	/* see QPROC_QUALIFICATION;
 					   used for both input and output
 					   parameter */
-  DB_VALUE *join_dbval;		/* A dbval from another table for 
+  DB_VALUE *join_dbval;		/* A dbval from another table for
 				   simple JOIN terms.
 				   if set, and unbound, no rows can match.
-				   row or end of scan will be returned 
+				   row or end of scan will be returned
 				   with no actual SCAN. */
   VAL_LIST *val_list;		/* value list */
   VAL_DESCR *vd;		/* value descriptor */
@@ -237,7 +253,7 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 int num_attrs_rest,
 				 ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest,
-				 int keep_iscan_order);
+				 bool keep_iscan_order);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped,
@@ -283,4 +299,4 @@ extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 extern void scan_initialize (void);
 extern void scan_finalize (void);
 
-#endif /* _QP_SCAN_H_ */
+#endif /* _SCAN_MANAGER_H_ */

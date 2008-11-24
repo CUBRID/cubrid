@@ -180,11 +180,11 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\..\src\executables\dbu_misc.c"
+					RelativePath="..\..\src\executables\csql_launcher.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\sqlx_launcher.c"
+					RelativePath="..\..\src\executables\util_support.c"
 					>
 				</File>
 			</Filter>

@@ -1,329 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * list_file.c - Query List File Manager
- *
- *
- * The query file manager module is responsible for:
- *
- *  (i) allocation/deallocation of disk page resources for queries, basically
- *      for XASL tree plans and query LIST FILEs,
- *
- * (ii) XASL tree plans store, load and destroy operations, and
- *
- * (ii) LIST FILE creation/destruction  and manipulation operations.
- *
- * The query file manager is built on top of existing SQL/X slotted page,
- * file and disk managers and interacts basically with query manager and query
- * evaluator modules. The query manager contacts the query file manager to
- * store XASL tree plans on disk, the load them back to main memory and to
- * destroy their disk storage. The query manager contacts the query file
- * manager also for the destruction of query result list files. The query
- * evaluator interacts with the query file manager for the creation,
- * destruction (in the case of temporary list files) and manipulation,  such
- * as sorting, of list files. The query file manager, depending on the
- * availability of the disk pahe resources, may contact the Query Manager or
- * directly the Scheduler modules for suspension or resume of transactions.
- *
- * The main data structure used by the Query File Manager is a Page Allocation
- * Table (PAT) structure. When the database is started for the first time, a
- * fixed portion of the database volume is allocated as the query file. The
- * PAT itself consists of a linked list of query file pages, which are
- * initially reserved at the beginning of the query file.  Each entry in the
- * PAT represents the corresponding query file page with same ordinal position
- * with the entry. Thus, the first entry represents the first query file page
- * which is the first PAT page itself, the second entry represents the second
- * the query file page and so on. Each PAT entry indicates whether
- * corresponding page is free or not. If the page is allocated, the PAT entry
- * value represents the next (following) page if there is any, or indicates
- * that the page is the last page in a chain of pages. The query file manager
- * also keeps a hinted free page pointer structure, which points to the next
- * free entry in the PAT and used for quick location of free pages in PAT
- * circular searches.
- *
- * Page Allocation/Deallocation Issues:
- *
- * During database initializations, restarts, the query file manager is called
- * by the query manager to  initialize query file structures. The query file
- * manager allocates n number of pages from the beginning of the query file,
- * n being dependent on the number of total query file pages, as its page
- * allocation table (PAT) and initializes the page allocation table. When a
- * new page is requested from the query file manager, it makes a circular
- * search on the PAT entries, starting from the hinted free page position.
- * If it finds a free page, it marks the corresponding PAT entry as allocated,
- * fetchs the page from disk and returns to the caller. If the page is the
- * last page of a chain pages, it also makes the proper connection between PAT
- * entries. It moves the hinted free page pointer for further quick locating
- * of the free pages. If there are no more pages left the query file, the
- * query file manager may need to make more decision and take more action,
- * together with the query manager as explained in the below peusodo code.
- *
- * The query manager and query file manager together manages the query file
- * page resources as explained in the below pseudo code:
- *
- *
- *     T: a transaction
- *     Q: a query issued by T
- *    Tg: a transaction index which denotes a set of transactions that occupy
- *        query file pages at a time
- *
- * A transaction can be in five situation:
- *    - RUNNING
- *    - BLOCKED
- *    - WAITING
- *    - TERMINATED
- *    - NULL
- *
- * A transaction may/may not have query file pages.
- *
- * wait_trans_cnt: Number of transactions waiting for a query file page freed.
- * other_run_trans_with_pg_cnt: Number of transactions, other than the current
- *                              one, which are running and have at least 1
- *                              query file page.
- *
- * Case: T issues a query Q
- * T->status = RUNNING
- * if (T is a new transaction && wait_trans_cnt > 0) {
- *    register T with WFG: T->Tg
- *    T->status = BLOCKED
- *    suspend T
- * }
- *
- * Case: T requests a query file page for Q
- * if (T has already created temporary volumes) {
- *    allocate a page from last temporary volume
- *    if (no more pages left for temporary volumes) {
- *         dealocate pages allocated for query Q
- *         reject query Q
- *    }
- * } else if (there is a free page in query file)
- *    allocate page for Q
- * else {
- *    if (wait_trans_with_pg_cnt == 0 &&
- *         other_run_trans_with_pg_cnt == 0) {
- *      if (query file volume is full) {
- *         create a temporary volume for T
- *         if (no more pages left for temporary volumes) {
- *              dealocate pages allocated for query Q
- *             reject query Q
- *         }
- *         allocate a page for Q from temporary volume
- *      } else {
- *         extend query file
- *         allocate a page for Q from query file
- *      }
- *    } else {
- *      if (other_run_trans_with_pg_cnt > 0) {
- *           register T with WFG: T->Tg
- *           wait_trans_cnt++
- *           T->status = WAITING
- *           suspend T
- *      } else {
- *           find a victim transaction with minumum number of pages
- *           out of waiting transactions and T and make transaction
- *           deallocate its pages and goto sleep
- *      }
- *   }
- * }
- *
- * Case: T deallocates all the pages for a list file for one of its queries
- * for each waiting transaction P do {
- *     remove P->Tg from WFG
- *     wait_trans_cnt--
- *     resume P
- *     P->status = RUNNING
- *     if (wait_trans_cnt == 0) {
- *        for each blocked transaction R do {
- *            resume R
- *            R->status = RUNNING
- *        }
- *     }
- * }
- *
- * Case: T allocates its first query file page
- * register T with WFG as another member of Tg: Tg = Tg + T
- *
- * Case: T deallocates its last query file page
- * remove T from WFG as another member of Tg: Tg = Tg - T
- *
- * Case: T allocates a query file page
- * T->pgcnt++
- *
- * Case: T deallocates a query file page
- * T->pgcnt--
- *
- * Case: T ends its last query
- * T->status = TERMINATED
- *
- * When a query ends, the query manager informs the query file manager and
- * the query file manager deallocates the allocated query pages and temporary
- * free volumes if any. It then asks the query manager to wake up sleeping
- * transactions waiting on query file page resource.
- *
- * There are basically 3 things stored in the query file: (i) the PAT itself,
- * (ii) XASL tree plans for queries and (iii) query LIST FILEs. Only the PAT
- * pages are shared among transactions and therefore locked during fetching
- * to avoid concurrency problems.
- *
- * XASL Tree Related Issues
- *
- * The Query File Manager receives an XASL tree plan in the form a large
- * main memory chunk and divides and stores it in several linked query file
- * pages and returns an XASL tree file identifier to the query manager.
- * The XASL tree load operation does the opposite, thus taking
- * each linked query file page content and forming a main memory XASL tree
- * representations. However, the loaded XASL tree is still not ready to
- * be interpreted by the query evaluator and needs to be processed for
- * pointer calculations by the query manager. The query file pages allocated
- * for an XASL tree are deallocated when requested so by the query manager.
- *
- * LIST FILE Related Issues
- *
- * A LIST FILE is a collection of zero or more tuples. Each tuple is a set of
- * one or more base types (e.g., string, integer, float, etc.). Below diagram
- * shows the structure of a LIST FILE:
- *
- *                     List File
- *                  +-------------+
- *                  | tuple count |
- *                  +-------------+
- *          +-------| type list   |
- *          |       +-------------+
- *          |       | column names|
- *          |       +-------------+
- *          |       | pages       |----+
- *          |       +-------------+    |
- *         \|/                         |     Pages (doubly linked list)
- * +----------+                       \|/
- * |  count   |            +---+------+---+------+     +---+------+---+------+
- * +----------+            |Pg |tuple |...|tuple | --> |Pg |tuple |...|tuple |
- * |db_type 1 |            |Hdr| 1    |   | n    | <-- |Hdr| 1    |   |  n   |
- * +----------+            +---+------+---+------+     +---+------+---+------+
- * |  ...     |              |    |
- * +----------+              |    +---------------+
- * |db_type n |             \|/                   |
- * +----------+         +---------------+        \|/
- *                      | tuple count   |    +----------------+
- *                      +---------------+    | tuple length   |
- *                      | next page id  |    +----------------+
- *                      +---------------+    | prev tuple len.|
- *                      | prev page id  |    +----------------+
- *                      +---------------+    | val flag  (1)  | (bound or not)
- *                      | last tpl. off.|    +----------------+
- *                      +---------------+    | val length (1) |
- *                                           +----------------+
- *                                           | <value>    (1) |
- *                                           +----------------+
- *                                           |    ...         |
- *                                           +----------------+
- *                                           | val flag (n)   |
- *                                           +----------------+
- *                                           | val length (n) |
- *                                           +----------------+
- *                                           | <value>    (n) |
- *                                           +----------------+
- *
- *
- * A list file is uniquely identified by a list file identifier. Whenever
- * requested by the query evaluator, the query manager creates a list file,
- * allocates its first pages and returns the list file identifier back to
- * the query evaluator. When created, a list file is in an open status and it
- * must be closed at the end. The last page of the list file is kept fixed
- * in the page buffer pool until a new page becomes the last page of the list
- * file or the list file is closed, for performance reasons. While the list
- * file is open, the query evaluator forms tuples and passes it to the query
- * file manager together with a list file identifier, for the tuple to be
- * added to the list file. The query file manager allocates new pages for
- * the list file as required and connects them to the previous pages. If
- * a tuple is larger than a page size, overflow pages which are single-linked
- * are allocated for the tuple. Thus the overall page linkage structure for
- * a list file may look like:
- *
- *  __________     __________                   __________
- *  | Page 0 |<--->| Page 1 |<---  .......  --->| Page n |
- *  ----------     ----------                   ----------
- *                     |
- *                     V
- *                 |--------|
- *                 | Ovfl 0 |
- *                 ----------
- *                     |
- *                     V
- *                 |--------|
- *                 | Ovfl 1 |
- *                 ----------
- *
- * The query file manager also provides routines for the manipulation of list
- * files. These include sorting list files, grouping list files, eliminating
- * duplicates from list files and taking union, difference, intersection of
- * list files.
- *
- * Technical Background and Issues
- *
- * The query file manager faced several critical design issues and evolved
- * with a set of improvements over a period of time.
- *
- * One of the design issues was whether to use a simple value format or the
- * complex heap file object instance format to represent tuples in the list
- * files. Representing tuples the same way heap file object instances are
- * represented in disk would give each tuple an object flavor and the list
- * file an heap file flavor which could be useful in treating list files
- * exactly like heap files. However, since the complex heap file object
- * instance representation would unnecessarily put a lot of space and speed
- * overhead, this approach was not taken. The list file tuples are
- * represented with a very simple, compact disk value format.
- *
- * Initially, each list file was created by directly calling the file manager
- * to create a file. That is, there was not query file manager responsible
- * for the allocation/deallocation of list file pages. This was causing
- * several problems:
- * - temporarily created list files are being deleted only after a
- *   transaction commits or aborts which might cause to have many list
- *   files around introducing big space problems on disk.
- *
- * - the list files pages are created independently in different parts of the
- *   disk, but not in a close area, which causes performance problems.
- *
- * - it is possible not to be able to run, or even start a query becuse disk
- *   pages are all occupied by other applications
- *
- * To alleviate these problems, it was decided that a fixed portion of the
- * database volume reserved to be shared by queries from all client
- * transactions and a query file manager was developed to manage the query
- * file page resources among query transactions.
- *
- * Then, a deadlock problem was faced: If a query transaction T goes to sleep
- * beacuse there are no more pages in the query file and waits for another
- * transaction P to be done and dealocate it pages in order for T to continue,
- * and if P needs to gain a resource locked by T in order to continue, these
- * two transactions fall into a deadlock situation. This is a special deadlock
- * situation because T is not actually waiting for P, but waiting for a
- * query file page to be available from any transaction. That is, T is
- * actually waiting for any of a set of transactions that hold query file
- * pages to release a page resource. This prompted an extension to the WFG
- * manager to introduce and handle Transaction Groups concept. This deadlock
- * problem is handled on the query manager side by registering transactions
- * that occupy query file pages as a transaction group with WFG manager and
- * forcing a transaction to deallocate its pages and goto sleep when the case
- * arises that all other transactions are waiting for query file pages to
- * become avaliable.
- *
- * The query file manager was then extended to keep statistics on the query
- * file page usage and extend or shrink the query file in the database volume.
- *
- * To handle very large queries, such as big join queries, which causes the
- * query file to be extended and occupy all the database volume pages and
- * still require more pages to be completed, the query file manager and
- * file manager were extended to create external temporary volumes for such
- * queries and destroy them at the end of queries.
- *
- * The callers of the module include Query Manager, Query Evalautor and
- * Sorting modules.
- *
- * The callees of the module include Buffer Manager, Slotted Page Manager,
- * File Manager, Disk Manager, Scheduler, Sorting Module, Log Manager,
- * WFG Manager and Query Manager Modules.
  */
 
 #ident "$Id$"
@@ -338,9 +32,9 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "db.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "page_buffer.h"
-#include "lock.h"
+#include "lock_manager.h"
 #include "external_sort.h"
 #include "file_io.h"
 #include "file_manager.h"
@@ -351,17 +45,16 @@
 #include "transaction_sr.h"
 #include "wait_for_graph.h"
 #include "environment_variable.h"
-#include "xserver.h"
+#include "xserver_interface.h"
 #if defined(SERVER_MODE)
 #include "thread_impl.h"
-#include "csserror.h"
+#include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "query_manager.h"
 #include "object_primitive.h"
-#include "memory_manager_4.h"
 #include "system_parameter.h"
 #include "memory_hash.h"
-#include "object_print_1.h"
+#include "object_print.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -517,8 +210,7 @@ static void qfile_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 				  int free_page, QMGR_TEMP_FILE * vfid_p);
 static PAGE_PTR qfile_allocate_new_page (THREAD_ENTRY * thread_p,
 					 QFILE_LIST_ID * list_id_p,
-					 PAGE_PTR page_p, int tuple_length,
-					 bool is_ovf_page);
+					 PAGE_PTR page_p, bool is_ovf_page);
 static PAGE_PTR qfile_allocate_new_ovf_page (THREAD_ENTRY * thread_p,
 					     QFILE_LIST_ID * list_id_p,
 					     PAGE_PTR page_p,
@@ -657,8 +349,10 @@ static int qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
 					  void *args);
 
 static int qfile_get_list_cache_entry_size_for_allocate (int nparam);
+#if defined(SERVER_MODE)
 static int
   *qfile_get_list_cache_entry_tran_index_array (QFILE_LIST_CACHE_ENTRY * ent);
+#endif /* SERVER_MODE */
 static DB_VALUE
   * qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent);
 
@@ -1191,8 +885,8 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, QFILE_LIST_ID * list_id2_p)
 	  type2 = list_id2_p->type_list.domp[i]->type->id;
 
 	  if (type2 != DB_TYPE_NULL
-	      && list_id1_p->type_list.domp[i] !=
-	      list_id2_p->type_list.domp[i])
+	      && (list_id1_p->type_list.domp[i] !=
+		  list_id2_p->type_list.domp[i]))
 	    {
 	      if (type1 == type2
 		  && pr_is_string_type (type1) && pr_is_variable_type (type1))
@@ -1799,7 +1493,7 @@ qfile_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page,
 
 static PAGE_PTR
 qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
-			 PAGE_PTR page_p, int tuple_length, bool is_ovf_page)
+			 PAGE_PTR page_p, bool is_ovf_page)
 {
   PAGE_PTR new_page_p;
   VPID new_vpid;
@@ -1899,9 +1593,8 @@ qfile_allocate_new_page_if_need (THREAD_ENTRY * thread_p,
   if (qfile_is_first_tuple (list_id_p)
       || qfile_is_last_page_full (list_id_p, tuple_length, is_ovf_page))
     {
-      new_page_p =
-	qfile_allocate_new_page (thread_p, list_id_p, *page_p, tuple_length,
-				 is_ovf_page);
+      new_page_p = qfile_allocate_new_page (thread_p, list_id_p, *page_p,
+					    is_ovf_page);
       if (new_page_p == NULL)
 	{
 	  return ER_FAILED;
@@ -2920,15 +2613,15 @@ qfile_advance_group (THREAD_ENTRY * thread_p,
   switch (last_scan_p->position)
     {
     case S_BEFORE:
-      status =
-	qfile_scan_list_next (thread_p, next_scan_p, next_tuple_p, PEEK);
+      status = qfile_scan_list_next (thread_p, next_scan_p, next_tuple_p,
+				     PEEK);
       break;
 
     case S_ON:
       do
 	{
-	  status =
-	    qfile_scan_list_next (thread_p, next_scan_p, next_tuple_p, PEEK);
+	  status = qfile_scan_list_next (thread_p, next_scan_p, next_tuple_p,
+					 PEEK);
 	  if (status != S_SUCCESS)
 	    {
 	      break;
@@ -2952,9 +2645,8 @@ qfile_advance_group (THREAD_ENTRY * thread_p,
       QFILE_TUPLE_POSITION next_pos;
 
       qfile_save_current_scan_tuple_position (next_scan_p, &next_pos);
-      status =
-	qfile_jump_scan_tuple_position (thread_p, last_scan_p, &next_pos,
-					last_tuple_p, PEEK);
+      status = qfile_jump_scan_tuple_position (thread_p, last_scan_p,
+					       &next_pos, last_tuple_p, PEEK);
     }
 
   return status;
@@ -3032,29 +2724,6 @@ qfile_advance (THREAD_ENTRY * thread_p, ADVANCE_FUCTION advance_func,
  *             the kind of combination desired (union, diff, or intersect) and
  *             whether to do 'all' or 'distinct'
  *
- * Note: Combines two list files in one of six ways.  UNION ALL is a
- *              special case: we just concatenate the two list files in that
- *              case.  All of the other cases are handled by first sorting the
- *              inputs and then combining them in a general merge loop.  The
- *              particular combination is determined by the following
- *              parameters:
- *                a) what to do when we have a lhs record that is not equal
- *                   to any rhs record;
- *                b) what to do when we have a rhs record that is not equal
- *                   to any lhs record;
- *                c) what to do when we have identical lhs and rhs records;
- *                   and
- *                d) how to move to the next record in a file.
- *
- *              For example, for DISTINCT processing we assume that all
- *              equal records in a file constitute a group, and whenever we
- *              advance we always move to the first record of the next
- *              group; in effect, this does on-the-fly unique-ization of the
- *              file.  The different combinations (union, difference,
- *              intersect) are determined by how we handle parameters a, b,
- *              and c: for union, we just use add the tuple to the result in
- *              all three cases, while difference adds the lhs tuple in case
- *              a and does nothing in cases b and c.
  */
 QFILE_LIST_ID *
 qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
@@ -3226,8 +2895,9 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 
       if (cmp < 0)
 	{
-	  if (act_left_func &&
-	      act_left_func (thread_p, dest_list_id_p, lhs.tpl) != NO_ERROR)
+	  if (act_left_func
+	      && act_left_func (thread_p, dest_list_id_p,
+				lhs.tpl) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3236,9 +2906,9 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 	}
       else if (cmp == 0)
 	{
-	  if (act_both_func &&
-	      act_both_func (thread_p, dest_list_id_p, lhs.tpl,
-			     rhs.tpl) != NO_ERROR)
+	  if (act_both_func
+	      && act_both_func (thread_p, dest_list_id_p, lhs.tpl,
+				rhs.tpl) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3248,8 +2918,9 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 	}
       else
 	{
-	  if (act_right_func &&
-	      act_right_func (thread_p, dest_list_id_p, rhs.tpl) != NO_ERROR)
+	  if (act_right_func
+	      && act_right_func (thread_p, dest_list_id_p,
+				 rhs.tpl) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3259,8 +2930,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 
   while (have_lhs)
     {
-      if (act_left_func &&
-	  act_left_func (thread_p, dest_list_id_p, lhs.tpl) != NO_ERROR)
+      if (act_left_func
+	  && act_left_func (thread_p, dest_list_id_p, lhs.tpl) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3274,8 +2945,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 
   while (have_rhs)
     {
-      if (act_right_func &&
-	  act_right_func (thread_p, dest_list_id_p, rhs.tpl) != NO_ERROR)
+      if (act_right_func
+	  && act_right_func (thread_p, dest_list_id_p, rhs.tpl) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4461,8 +4132,9 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 {
   int ls_flag;
 
-  if (sort_list_p &&
-      qfile_is_sort_list_covered (list_id_p->sort_list, sort_list_p) == true)
+  if (sort_list_p
+      && qfile_is_sort_list_covered (list_id_p->sort_list,
+				     sort_list_p) == true)
     {
       /* no need to sort here */
       return list_id_p;
@@ -5754,9 +5426,9 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   int i;
   unsigned int old_heap_id;
 
-  if (!data)
+  if (data == NULL)
     {
-      return false;
+      return ER_FAILED;
     }
 
   /*
@@ -5785,7 +5457,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	(pent - qfile_List_cache_entry_pool.pool);
     }
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -6053,11 +5725,11 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int tran_index = *((int *) args);
-  bool rc = false;
+  int error_code = ER_FAILED;
 
   if (!data || !args)
     {
-      return false;
+      return ER_FAILED;
     }
 
   /* mark it to be deleted */
@@ -6115,10 +5787,10 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
 	{
 	  qfile_delete_uncommitted_list_cache_entry (tran_index, lent);
 	}
-      rc = qfile_free_list_cache_entry (thread_p, lent, NULL);
+      error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
     }
 
-  return rc;
+  return error_code;
 }
 
 /*
@@ -6131,16 +5803,9 @@ static int
 qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data,
 					 void *args)
 {
-  if (qfile_end_use_of_list_cache_entry
-      (thread_p, (QFILE_LIST_CACHE_ENTRY *) data,
-       *((bool *) args)) == NO_ERROR)
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
+  return qfile_end_use_of_list_cache_entry (thread_p,
+                                            (QFILE_LIST_CACHE_ENTRY *) data,
+                                            *((bool *) args));
 }
 
 /*
@@ -6289,12 +5954,12 @@ qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
   if (info->include_in_use == false && lent->last_ta_idx > 0)
     {
       /* do not select one that is in use */
-      return true;
+      return NO_ERROR;
     }
   if (info->include_in_use == true && lent->last_ta_idx == 0)
     {
       /* this entry may be selected in the previous selection step */
-      return true;
+      return NO_ERROR;
     }
 #endif /* SERVER_MODE */
 
@@ -6366,10 +6031,10 @@ qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
   if (--info->selcnt <= 0)
     {
       /* due to the performance reason, stop traversing here */
-      return false;
+      return ER_FAILED;
     }
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -6454,7 +6119,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
       /* check if it is possible to delete the previous cached result */
       if (lent->deletion_marker)
 	{
-	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index))
+	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) == NO_ERROR)
 	    {
 	      lent = NULL;
 	    }
@@ -6466,7 +6131,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
          new entry with mine */
       if (lent->tran_isolation < tran_isolation)
 	{
-	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index))
+	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) == NO_ERROR)
 	    {
 	      lent = NULL;
 	    }
@@ -6502,17 +6167,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
       || qfile_List_cache.n_entries >= PRM_LIST_MAX_QUERY_CACHE_ENTRIES
       || qfile_List_cache.n_pages >= PRM_LIST_MAX_QUERY_CACHE_PAGES)
     {
-      /*
-       * Cache full!
-       * We need to remove some entries. Select candidates that are old aged
-       * and recently used. Number of cacndidates is 5% of total entries.
-       * At first, we make two candidate groups, one by time condition and
-       * other by frequency. If a candidate belongs to both group, it becomes
-       * a victim. If the number of victims is insufficient, that is lower
-       * than 2% or none, select what are most recently used within the old
-       * aged candiates and what are old aged within the recently used
-       * candidates.
-       */
 
       qfile_List_cache.full_counter++;	/* counter */
 
@@ -6754,10 +6408,9 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   do
     {
       /* find my tran_id */
-      p =
-	(int *) lfind (&tran_index, lent->tran_index_array,
-		       (unsigned int *) &lent->last_ta_idx, sizeof (int),
-		       qfile_compare_tran_id);
+      p = (int *) lfind (&tran_index, lent->tran_index_array,
+			 (unsigned int *) &lent->last_ta_idx, sizeof (int),
+			 qfile_compare_tran_id);
       if (p)
 	{
 	  *p = 0;
@@ -6797,11 +6450,13 @@ qfile_get_list_cache_entry_size_for_allocate (int nparam)
 #endif /* SERVER_MODE */
 }
 
+#if defined(SERVER_MODE)
 static int *
 qfile_get_list_cache_entry_tran_index_array (QFILE_LIST_CACHE_ENTRY * ent)
 {
   return (int *) ((char *) ent + sizeof (QFILE_LIST_CACHE_ENTRY));
 }
+#endif /* SERVER_MODE */
 
 static DB_VALUE *
 qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent)

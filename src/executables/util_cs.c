@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * util_cs.c : Implementations of utilities that operate in both
  *             client/server and standalone modes.
- *
  */
 
 #ident "$Id$"
@@ -26,11 +40,11 @@
 #include "boot_sr.h"
 #include "db.h"
 #include "authenticate.h"
-#include "server.h"
+#include "server_interface.h"
 #include "object_representation.h"
 #include "transaction_cl.h"
 #include "porting.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
 #define PASSBUF_SIZE 12
 
@@ -46,11 +60,11 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   const char *database_name;
   const char *backup_path = NULL;
-  int remove_log_archives = false;
+  bool remove_log_archives = false;
   int backup_level = FILEIO_BACKUP_FULL_LEVEL;
   const char *backup_verbose_file = NULL;
-  int no_check = false;
-  int check = true;
+  bool no_check = false;
+  bool check = true;
   int backup_num_threads;
   bool compress_flag;
   bool sa_mode;
@@ -168,8 +182,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	}
 #endif
 
-      if (backup_verbose_file &&
-	  *backup_verbose_file && *backup_verbose_file != '/')
+      if (backup_verbose_file
+	  && *backup_verbose_file && *backup_verbose_file != '/')
 	{
 	  /* resolve relative path */
 	  getcwd (verbose_file_realpath, PATH_MAX);
@@ -769,11 +783,12 @@ doesmatch_transaction (const struct one_traninfo *tran, int tran_index,
 {
   int match;
 
-  match = (isvalid_transaction (tran) &&
-	   (tran->tran_index == tran_index ||
-	    (username != NULL && strcmp (tran->username, username) == 0) ||
-	    (hostname != NULL && strcmp (tran->hostname, hostname) == 0) ||
-	    (progname != NULL && strcmp (tran->progname, progname) == 0)));
+  match = (isvalid_transaction (tran)
+	   && (tran->tran_index == tran_index
+	       || (username != NULL && strcmp (tran->username, username) == 0)
+	       || (hostname != NULL && strcmp (tran->hostname, hostname) == 0)
+	       || (progname != NULL
+		   && strcmp (tran->progname, progname) == 0)));
 
   return match;
 
@@ -1027,7 +1042,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   const char *kill_user;
   const char *kill_host;
   const char *dba_password;
-  int dump_trantab_flag;
+  bool dump_trantab_flag;
   bool verify = true;
   int isbatch;
   char *passbuf = NULL;
@@ -1254,7 +1269,7 @@ error_exit:
 }
 
 /*
- * sig_interrupt() - Interrupt handler for utildb
+ * sig_interrupt() - 
  *   return: none
  *   sig_no(in)
  */

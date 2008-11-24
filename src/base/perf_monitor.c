@@ -1,18 +1,28 @@
 /*
- * Copyright (C) 2008 NHN Corporation
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * perf_monitor.c - Monitor execution statistics at Client
  * 					Monitor execution statistics
  *                  Monitor execution statistics at Server
  * 					diag server module
- *
- * Note: This module is used to record execution statistics of client
- *       resources such as memory allocation, and client/server communications.
- *       The monitor package is logically divided into client and server.
- * Note: Used by both Server and Client
  */
 
-/* perf_monitor_2.c */
 #include <stdio.h>
 #include <time.h>
 #if !defined (WINDOWS)
@@ -20,16 +30,14 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 #include "perf_monitor.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 
-/* perf_monitor_sky_2.c */
 #if !defined(SERVER_MODE)
-#include "memory_manager_4.h"
+#include "memory_alloc.h"
 #include "error_manager.h"
-#include "server.h"
+#include "server_interface.h"
 #endif /* !SERVER_MODE */
 
-/* perf_monitor_earth_1.c */
 #if defined(SERVER_MODE)
 #include <string.h>
 #include <errno.h>
@@ -41,26 +49,23 @@
 #endif /* WINDOWS */
 
 #include <sys/stat.h>
-#include "defs.h"
+#include "connection_defs.h"
 #include "environment_variable.h"
-#include "csserror.h"
+#include "connection_error.h"
 #include "databases_file.h"
 #endif /* SERVER_MODE */
 #include "thread_impl.h"
 
-/* perf_monitor_earth_2.c */
 #if !defined(CS_MODE)
 #include <string.h>
 #include <assert.h>
 
-#include "memory_manager_2.h"
-#include "memory_manager_4.h"
 #include "error_manager.h"
-#include "log.h"
+#include "log_manager.h"
 #include "system_parameter.h"
 #if defined (SERVER_MODE)
 #include "thread_impl.h"
-#include "csserror.h"
+#include "connection_error.h"
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
@@ -75,7 +80,6 @@
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-/* perf_monitor_sky_2.c */
 #if !defined(SERVER_MODE)
 /* Client execution statistics */
 static MNT_EXEC_STATS mnt_Stats;
@@ -208,7 +212,6 @@ mnt_print_stats (FILE * stream)
 
 #endif /* !SERVER_MODE */
 
-/* perf_monitor_earth_1.c */
 #if defined(SERVER_MODE)
 #if defined(WINDOWS)
 #define strcasecmp _stricmp
@@ -1254,7 +1257,7 @@ set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype,
     }
 }
 #endif /* SERVER_MODE */
-/* from perf_monitor_earth_2.c */
+
 #if !defined(CS_MODE)
 int mnt_Num_tran_exec_stats = 0;
 
@@ -1866,7 +1869,6 @@ mnt_x_io_format_vols (THREAD_ENTRY * thread_p)
 }
 #endif
 
-/* from perf_monitor_2.c */
 /*
  * mnt_server_dump_stats - Print the given server statistics
  *   return: none

@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * log_2pc.c -
- *
  */
 
 #ident "$Id$"
@@ -18,16 +32,16 @@
 /* The following two are for getpid */
 #include <sys/types.h>
 
-#include "log.h"
-#include "log_prv.h"
-#include "logcp.h"
-#include "lock.h"
-#include "memory_manager_2.h"
-#include "common.h"
+#include "log_manager.h"
+#include "log_impl.h"
+#include "log_comm.h"
+#include "lock_manager.h"
+#include "memory_alloc.h"
+#include "storage_common.h"
 #include "page_buffer.h"
 #include "error_manager.h"
 #if defined(SERVER_MODE)
-#include "csserror.h"
+#include "connection_error.h"
 #include "thread_impl.h"
 #endif /* SERVER_MODE */
 #if !defined(WINDOWS)
@@ -51,9 +65,9 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (int block_length, void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
-  int (*send_commit) (int gtrid, int num_particps,
+    bool (*send_commit) (int gtrid, int num_particps,
 		      int *particp_indices, void *block_particps_ids);
-  int (*send_abort) (int gtrid, int num_particps, int *particp_indices,
+    bool (*send_abort) (int gtrid, int num_particps, int *particp_indices,
 		     void *block_particps_ids, int collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
@@ -153,10 +167,10 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 						void *block_particps_id),
 		     int (*send_prepare) (int gtrid, int num_particps,
 					  void *block_particps_ids),
-		     int (*send_commit) (int gtrid, int num_particps,
+		     bool (*send_commit) (int gtrid, int num_particps,
 					 int *particp_indices,
 					 void *block_particps_ids),
-		     int (*send_abort) (int gtrid, int num_particps,
+		     bool (*send_abort) (int gtrid, int num_particps,
 					int *particp_indices,
 					void *block_particps_ids,
 					int collect))
@@ -530,7 +544,7 @@ log_2pc_make_global_tran_id (TRANID tranid)
 }
 
 /*
- * log_2pc_check_duplicate_global_tran_id 
+ * log_2pc_check_duplicate_global_tran_id
  *
  * return:
  *
@@ -561,11 +575,11 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
 }
 
 /*
- * log_2pc_commit_first_phase 
+ * log_2pc_commit_first_phase
  *
  * return:
  *
- *   tdes(in): 
+ *   tdes(in):
  *
  * Note:
  */
@@ -637,11 +651,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_2pc_commit_second_phase 
+ * log_2pc_commit_second_phase
  *
  * return:
  *
- *   tdes(in): 
+ *   tdes(in):
  *
  * Note:
  */
@@ -802,38 +816,6 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *   decision(in/out): Wheater coordinator and its participants agree to
  *                       commit or abort the transaction
  *
- * NOTE: This function follows the two phase commit (2PC) protocol to
- *              commit the current distributed transaction. The current site
- *              is the coordinator of the distributed transaction.
- *              The following steps are followed by the coordinator:
- *              1) Log a 2PC_START record along with participants information.
- *                 (This log record must be flushed).
- *              2) Muticast a Prepare to commit message to all participants
- *                 of the transaction (Send Vote request)
- *              3) Wait for the respond message of each participants
- *                 If a message is not received from a participant (e.g., the
- *                 participant crashes), we assume that the participant cannot
- *                 commit (not willing to commit).
- *              4) If all participants are willing to commit (i.e., they have
- *                 promised not to unilaterally abort the transaction at their
- *                 sites.. A "YES" vote),
- *                 THEN
- *                   if this is not the root coordinator,
- *                      THEN
- *                         a) Finish, since this coordinator is only doing
- *                            prepare to commit. Its coordinator must inform
- *                            it of the decison.
- *                      ELSE
- *                         a) Log the commit decision
- *                            This log record must be flushed
- *                         b) Send commit to all participants
- *                 ELSE
- *                   a) Log the abort decision
- *                      This log record does not need to be flushed
- *                   b) Send abort to all participants that were not willing
- *                      to commit the transaction (A "NO" vote)
- *              5) Wait for the acknoledgment from all participnats of the
- *                 execution of the decsion.
  */
 TRAN_STATE
 log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
@@ -901,7 +883,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 /*
  * log_set_global_tran_info - SET GLOBAL TRANSACTION INFORMATION
  *
- * return: 
+ * return:
  *
  *   gtrid(in): global transaction identifier
  *   info(in): pointer to the user information to be set
@@ -1167,9 +1149,9 @@ log_2pc_recovery_prepared (THREAD_ENTRY * thread_p, int gtrids[], int size)
 }
 
 /*
- * log_2pc_find_tran_descriptor - 
+ * log_2pc_find_tran_descriptor -
  *
- * return: 
+ * return:
  *
  *   gtrid(in): global transaction identifier
  *
@@ -1200,9 +1182,9 @@ log_2pc_find_tran_descriptor (int gtrid)
 }
 
 /*
- * log_2pc_attach_client - 
+ * log_2pc_attach_client -
  *
- * return: 
+ * return:
  *
  *   gtrid(in): global transaction identifier
  *
@@ -1340,7 +1322,7 @@ error:
 /*
  * log_2pc_append_recv_ack - Acknowledgement received from a participant
  *
- * return: 
+ * return:
  *
  *   particp_index(in): index of the participant that sent the acknowledgement
  *
@@ -2049,12 +2031,12 @@ log_2pc_crash_participant (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_2pc_broadcast_decision_participant - 
+ * log_2pc_broadcast_decision_participant -
  *
- * return: 
+ * return:
  *
- *   tdes(in): 
- *   particp_index(in): 
+ *   tdes(in):
+ *   particp_index(in):
  *
  * Note:
  */
@@ -2196,13 +2178,13 @@ log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id)
 }
 
 /*
- * log_2pc_recovery_prepare - 
+ * log_2pc_recovery_prepare -
  *
- * return: 
+ * return:
  *
- *   tdes(in/out): 
+ *   tdes(in/out):
  *   lsa(in/out):
- *   log_page_p(in/out): 
+ *   log_page_p(in/out):
  *
  * Note:
  */
@@ -2237,13 +2219,13 @@ log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_2pc_recovery_start - 
+ * log_2pc_recovery_start -
  *
- * return: 
+ * return:
  *
- *   tdes(in/out): 
+ *   tdes(in/out):
  *   lsa(in/out):
- *   log_page_p(in/out): 
+ *   log_page_p(in/out):
  *   ack_list(in/out):
  *   ack_count(in/out):
  *
@@ -2354,14 +2336,14 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_2pc_expand_ack_list - 
+ * log_2pc_expand_ack_list -
  *
- * return: 
+ * return:
  *
- *   ack_list(in/out): 
+ *   ack_list(in/out):
  *   ack_count(in/out):
  *   size_ack_list(in/out):
- * 
+ *
  * Note:
  */
 static int *
@@ -2412,15 +2394,15 @@ log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list,
 }
 
 /*
- * log_2pc_recovery_recv_ack - 
+ * log_2pc_recovery_recv_ack -
  *
- * return: 
+ * return:
  *
- *   lsa(in/out): 
+ *   lsa(in/out):
  *   log_page_p(in/out):
  *   ack_list(in/out):
  *   ack_count(in/out):
- * 
+ *
  * Note:
  */
 static void
@@ -2442,11 +2424,11 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 }
 
 /*
- * log_2pc_recovery_analysis_record - 
+ * log_2pc_recovery_analysis_record -
  *
- * return: 
+ * return:
  *
- *   record_type(in): 
+ *   record_type(in):
  *   tdes(in/out):
  *   lsa(in/out):
  *   log_page_p(in/out):
@@ -2455,7 +2437,7 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
  *   size_ack_list(in/out):
  *   search_2pc_prepare(in/out):
  *   search_2pc_start(in/out):
- * 
+ *
  * Note:
  */
 static int
@@ -2722,7 +2704,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_2pc_recovery_collecting_participant_votes - 
+ * log_2pc_recovery_collecting_participant_votes -
  *
  * return: nothing
  *
@@ -2745,7 +2727,7 @@ log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_2pc_recovery_abort_decision - 
+ * log_2pc_recovery_abort_decision -
  *
  * return: nothing
  *
@@ -2814,7 +2796,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 }
 
 /*
- * log_2pc_recovery_commit_decision - 
+ * log_2pc_recovery_commit_decision -
  *
  * return: nothing
  *
@@ -2827,16 +2809,6 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   TRAN_STATE state;
 
-  /*
-   * A commit decision has already been taken and the system crash
-   * during the decsion. Retry the commit
-   *
-   * The transaction has been declared as 2PC commit. We can execute
-   * the LOCAL COMMIT AND THE REMOTE COMMITS IN PARALLEL, however our
-   * communication subsystem does not support asyncronous communication
-   * types. The commitment of the participants is done after the local
-   * commitment is completed.
-   */
 
   /* Save the state.. so it can be reverted to the 2pc state .. */
   state = tdes->state;
@@ -2872,7 +2844,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 }
 
 /*
- * log_2pc_recovery_committed_informing_participants - 
+ * log_2pc_recovery_committed_informing_participants -
  *
  * return: nothing
  *
@@ -2901,7 +2873,7 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_2pc_recovery_aborted_informing_participants - 
+ * log_2pc_recovery_aborted_informing_participants -
  *
  * return: nothing
  *

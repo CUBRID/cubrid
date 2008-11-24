@@ -1,3 +1,25 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * api_common.h -
+ */
+
 #ifndef _API_COMMON_H_
 #define _API_COMMON_H_
 
@@ -5,7 +27,7 @@
 #include "api_handle.h"
 
 /*
- * This file defines abstract structures that are used in CUBRID C API 
+ * This file defines abstract structures that are used in CUBRID C API
  * implementation. Each API sub-system (e.g. CCI or client C API) hides
  * their implementation detailes behind these structures.
  */
@@ -75,7 +97,7 @@ enum ci_stmt_status
   CI_HANDLE_TYPE handle_type
 
 /*
- * COMMON_API_STRUCTURE is base of the implementation structure of 
+ * COMMON_API_STRUCTURE is base of the implementation structure of
  * CUBRID API handle.
  */
 struct common_api_structure_s
@@ -87,7 +109,7 @@ struct common_api_structure_s
   COMMON_API_STRUCTURE_HEADER; \
   API_RESULTSET_META_IFS *ifs
 
-/* 
+/*
  * API_RESULTSET_META structure is COMMON_API_STRUCTURE that provides
  * API_RESULTSET_META_IFS in addition.
  */
@@ -161,8 +183,7 @@ struct api_object_resultset_pool_s
 		     CI_OID * glo);
   int (*glo_get_path_name) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
 			    char *buf, size_t bufsz, bool full_path);
-  int (*glo_do_compaction) (API_OBJECT_RESULTSET_POOL * pool,
-			    CI_OID * glo);
+  int (*glo_do_compaction) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo);
   int (*glo_insert) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
 		     const char *buf, size_t bufsz);
   int (*glo_delete) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
@@ -209,7 +230,7 @@ struct value_indexer_s
 
 /*
  * VALUE_INDEXER_IFS is abstract data structure that defines interface for
- * manipulating tuples of (VALUE_AREA, API_VALUE) pair indexed by unique 
+ * manipulating tuples of (VALUE_AREA, API_VALUE) pair indexed by unique
  * integer position.
  */
 struct value_indexer_ifs_s
@@ -240,7 +261,7 @@ struct value_bind_table_s
 };
 
 /*
- * VALUE_BIND_TABLE_IFS is abstract data structure that provides value 
+ * VALUE_BIND_TABLE_IFS is abstract data structure that provides value
  * containing and binding to actual implementation of target API sub-system.
  */
 struct value_bind_table_ifs_s
@@ -291,8 +312,8 @@ struct api_collection_ifs_s
 extern int array_indexer_create (int nvalue, VALUE_INDEXER ** rvi);
 extern int list_indexer_create (VALUE_INDEXER ** rvi);
 
-/* 
- * API sub-system CUBRID C API implemetation table 
+/*
+ * API sub-system CUBRID C API implemetation table
  */
 struct cubrid_api_function_table_s
 {
@@ -325,11 +346,9 @@ struct cubrid_api_function_table_s
   int (*stmt_execute_batch) (COMMON_API_STRUCTURE * stmt,
 			     CI_BATCH_RESULT * br);
   int (*stmt_get_option) (COMMON_API_STRUCTURE * stmt,
-			  CI_STATEMENT_OPTION option, void *arg,
-			  size_t size);
+			  CI_STATEMENT_OPTION option, void *arg, size_t size);
   int (*stmt_set_option) (COMMON_API_STRUCTURE * stmt,
-			  CI_STATEMENT_OPTION option, void *arg,
-			  size_t size);
+			  CI_STATEMENT_OPTION option, void *arg, size_t size);
   int (*stmt_prepare) (COMMON_API_STRUCTURE * stmt, const char *sql,
 		       size_t len);
   int (*stmt_register_out_parameter) (COMMON_API_STRUCTURE * stmt, int index);
@@ -342,11 +361,10 @@ struct cubrid_api_function_table_s
 			     size_t * outlen, bool * isnull);
   int (*stmt_set_parameter) (COMMON_API_STRUCTURE * stmt, int index,
 			     CI_TYPE type, void *val, size_t size);
-  int (*stmt_get_resultset) (COMMON_API_STRUCTURE * stmt,
-			     CI_RESULTSET * res);
+  int (*stmt_get_resultset) (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * res);
   int (*stmt_affected_rows) (COMMON_API_STRUCTURE * stmt, int *out);
   int (*stmt_get_query_type) (COMMON_API_STRUCTURE * stmt,
-			      SQLX_CMD_TYPE * type);
+			      CUBRID_STMT_TYPE * type);
   int (*stmt_get_start_line) (COMMON_API_STRUCTURE * stmt, int *line);
   int (*stmt_next_result) (COMMON_API_STRUCTURE * stmt, bool * exist_result);
   int (*stmt_get_first_error) (COMMON_API_STRUCTURE * stmt, int *line,

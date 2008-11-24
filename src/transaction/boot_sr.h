@@ -1,15 +1,31 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * bosr.h - Boot managment in the server (interface)
- * 		       
- * Note: See .c file for overview and description of the interface functions.
- * 									       
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
  */
 
-#ifndef _BOSR_H_
-#define _BOSR_H_
+
+/*
+ * boot_sr.h - Boot managment in the server (interface)
+ *
+ * Note: See .c file for overview and description of the interface functions.
+ *
+ */
+
+#ifndef _BOOT_SR_H_
+#define _BOOT_SR_H_
 
 #ident "$Id$"
 
@@ -18,10 +34,10 @@
 #include <time.h>
 
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "oid.h"
 #include "disk_manager.h"
-#include "logcp.h"
+#include "log_comm.h"
 #include "file_io.h"
 
 
@@ -31,7 +47,7 @@ extern int boot_Server_up;
 extern bool skip_to_check_ct_classes_for_rebuild;
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern int
 xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 			 bool db_overwrite, PGLENGTH db_desired_pagesize,
@@ -101,7 +117,7 @@ extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
 extern int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 	      FILEIO_BACKUP_LEVEL backup_level,
-	      int delete_unneeded_logarchives,
+	      bool delete_unneeded_logarchives,
 	      const char *backup_verbose_file, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
 	      int skip_activelog, PAGEID safe_pageid);
@@ -132,4 +148,4 @@ extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int check_flag);
 #endif /* SERVER_MODE */
 
-#endif /* _BOSR_H_ */
+#endif /* _BOOT_SR_H_ */

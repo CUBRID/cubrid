@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * btree_load.h: Contains private information of B+tree Module
  */
 
@@ -13,17 +29,17 @@
 #include "btree.h"
 #include "object_representation.h"
 #include "error_manager.h"
-#include "common.h"
+#include "storage_common.h"
 #include "oid.h"
 #include "system_parameter.h"
 #include "object_domain.h"
 
 /*
- * Constants related to b+tree structure                    
+ * Constants related to b+tree structure
  */
 
 /* The revision level of the the Btree should be incremented whenever there
- * is a disk representation change for the Btree structure. 
+ * is a disk representation change for the Btree structure.
  */
 #define BTREE_CURRENT_REV_LEVEL 1
 
@@ -66,15 +82,15 @@
   (btid)->root_pageid == NULL_PAGEID)
 
 /*
- * Overflow key related defines                        
+ * Overflow key related defines
  */
 
 #define SPHEADSIZE 48		/* Assume reserved for slotted page header info */
 
-/* We never want to store keys larger than an eighth of the pagesize 
+/* We never want to store keys larger than an eighth of the pagesize
  * directly on the btree page since this will make the btree too deep.
  * Large keys are automatically stored on overflow pages.  With prefix
- * keys this shouldn't be much of a problem anyway (when we get them 
+ * keys this shouldn't be much of a problem anyway (when we get them
  * turned back on).
  */
 #define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
@@ -244,7 +260,7 @@
   } while (0)
 
 /*
- * Type definitions related to b+tree structure and operations        
+ * Type definitions related to b+tree structure and operations
  */
 
 typedef struct btree_node_header BTREE_NODE_HEADER;
@@ -299,7 +315,7 @@ struct btree_node_info
 };				/* contains statistical data for testing purposes */
 
 /*
- * B+tree load structures                             
+ * B+tree load structures
  */
 
 typedef struct btree_node BTREE_NODE;
@@ -310,7 +326,7 @@ struct btree_node
 };
 
 #if defined(SERVER_MODE)
-/* in xserver.h */
+/* in xserver_interface.h */
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				TP_DOMAIN * key_type, OID * class_oids,
 				int n_classes, int n_attrs, int *attr_ids,
@@ -331,7 +347,6 @@ extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
 extern void btree_rv_dump_create_index (int length_ignore, void *data);
 
-/* in bt.c TODO: move to bt.h */
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_write_overflow_header (RECDES * Rec,
 					 VPID * next_overflow_page);

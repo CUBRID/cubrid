@@ -1,10 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * log_rcv.c -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
+ * log_recovery.c -
  */
 
 #ident "$Id$"
@@ -18,21 +31,21 @@
 #include <time.h>
 #include <assert.h>
 
-#include "log.h"
-#include "log_prv.h"
-#include "logcp.h"
+#include "log_manager.h"
+#include "log_impl.h"
+#include "log_comm.h"
 #include "recovery.h"
 #include "boot_sr.h"
 #include "disk_manager.h"
 #include "page_buffer.h"
 #include "file_io.h"
-#include "common.h"
+#include "storage_common.h"
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
 #if defined(SERVER_MODE)
-#include "csserror.h"
+#include "connection_error.h"
 #include "thread_impl.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
@@ -627,35 +640,6 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length,
  *   ismedia_crash(in):Are we recovering from a media crash ?
  *   stopat(in):
  *
- * NOTE: Recover the database after a system crash. The recovery
- *              process consists of redoing any changes that were previously
- *              committed and currently missing from the database disk, and
- *              undoing any changes that were not committed but that are
- *              stored in the database disk. This restart recovery process
- *              ensures the ACID properties of the transactions. The recovery
- *              is composed of three phases: analysis, redo, and undo.
- *
- *              In the analysis phase, the transaction table is built and we
- *              determine the transactions that need to be undone and which
- *              transactions need to be completed (client looses ends). This
- *              phase also determines the starting address for the redo phase.
- *
- *              In the redo phase, updates that are not reflected in the
- *              database are repeated for not only the committed transaction
- *              but also for all aborted transactions and the transactions
- *              that were in progress at the time of the failure. A redo
- *              log_record is ignored if its action is already in the
- *              reflected page. A redo action can be skipped if the LSA of the
- *              affected page is greater or equal than that of the LSA of the
- *              log record.
- *
- *              In the undo phase, all transactions that were in progress and
- *              not declared as committed at the time of the failure are
- *              rolled back, in reverse chronological order in a single sweep
- *              of the log. Unlike redos, undoes do not have conditions (LSA
- *              comparisons) for their executions, since the history was
- *              executed by the redo phase and undo records are executed only
- *              once.
  */
 void
 log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
@@ -1008,18 +992,6 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
   LOG_TDES *tdes;
   struct log_run_postpone *run_posp;
 
-  /*
-   * It would be a system error if this is the first time the
-   * transaction is seen. The transaction should be already in either
-   * of the following states:
-   *    TRAN_UNACTIVE_WILL_COMMIT
-   *    TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-   *    TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
-   *
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == NULL)
     {
@@ -1754,17 +1726,6 @@ log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p, int tran_id,
   LOG_TDES *tdes;
   struct log_run_client *run_client;
 
-  /*
-   * It would be a system error if this is the first time the
-   * transaction is seen. The transaction should be already in either
-   * of the following states:
-   *    TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS
-   *    TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS
-   *
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
 
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == NULL)
@@ -1775,8 +1736,8 @@ log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p, int tran_id,
     }
 
   if (tdes->state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS
-      && tdes->state !=
-      TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
+      && (tdes->state !=
+	  TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS))
     {
       /*
        * If we are comming from a checkpoint this is the result of a
@@ -1865,17 +1826,6 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
   LOG_TDES *tdes;
   struct log_run_client *run_client;
 
-  /*
-   * It would be a system error if this is the first time the
-   * transaction is seen. The transaction should be already in either
-   * of the following states:
-   *    TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS
-   *    TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS
-   *
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
 
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == NULL)
@@ -1885,10 +1835,10 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (tdes->state !=
-      TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS
-      && tdes->state !=
-      TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+  if ((tdes->state !=
+       TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+      && (tdes->state !=
+	  TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS))
     {
       /*
        * If we are comming from a checkpoint this is the result of a
@@ -1900,18 +1850,17 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
        */
       if (!LSA_ISNULL (check_point))
 	{
-	  er_log_debug
-	    (ARG_FILE_LINE,
-	     "log_recovery_analysis: SYSTEM ERROR\n"
-	     " Incorrect state = %s\n at log_rec at %d|%d\n"
-	     " for transaction = %d (index %d).\n"
-	     " State should have been either of\n" " %s\n %s\n",
-	     log_state_string (tdes->state), log_lsa->pageid, log_lsa->offset,
-	     tdes->trid, tdes->tran_index,
-	     log_state_string
-	     (TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS),
-	     log_state_string
-	     (TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS));
+	  er_log_debug (ARG_FILE_LINE,
+			"log_recovery_analysis: SYSTEM ERROR\n"
+			" Incorrect state = %s\n at log_rec at %d|%d\n"
+			" for transaction = %d (index %d).\n"
+			" State should have been either of\n" " %s\n %s\n",
+			log_state_string (tdes->state), log_lsa->pageid,
+			log_lsa->offset, tdes->trid, tdes->tran_index,
+			log_state_string
+			(TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS),
+			log_state_string
+			(TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS));
 	}
       /*
        * Continue the execution by guessing that the transaction has
@@ -1992,21 +1941,6 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
       goto end;
     }
 
-  /*
-   * Partial recovery is in effect up to the given time. All
-   * transactions committed after the given time are declared as
-   * aborted. This is like going back to the past.
-   *
-   * This feature can be used in the following cases:
-   * a) A user makes a serious error (i.e., update the database) and
-   *    commits. If later on the user finds the mistake and it is
-   *    very hard to revert the serious committed errors since these
-   *    information have also been used by other committed
-   *    transactions.
-   * b) There is a media crash, and a needed archive log is not
-   *    available any longer. We can restore the database upto a
-   *    specific point in time.
-   */
 
   /*
    * Need to read the donetime record to find out if we need to stop
@@ -2016,8 +1950,8 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa,
 				    log_page_p);
 
-  donetime =
-    (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
+  donetime = (struct log_donetime *) ((char *) log_page_p->area
+				      + log_lsa->offset);
   last_at_time = donetime->at_time;
   if (stop_at != NULL && *stop_at != (time_t) - 1
       && difftime (*stop_at, last_at_time) < 0)
@@ -3201,8 +3135,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	    {
 	      tdes = LOG_FIND_TDES (tran_index);
 	      if (tdes != NULL && LOG_ISTRAN_2PC (tdes))
-		log_2pc_recovery_analysis_info (thread_p, tdes,
-						&chkpt_trans[i].tail_lsa);
+		{
+		  log_2pc_recovery_analysis_info (thread_p, tdes,
+						  &chkpt_trans[i].tail_lsa);
+		}
 	    }
 	}
       if (area != NULL)
@@ -3336,8 +3272,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
-	  if (end_redolsa != NULL && !LSA_ISNULL (end_redolsa) &&
-	      LSA_GT (&lsa, end_redolsa))
+	  if (end_redolsa != NULL && !LSA_ISNULL (end_redolsa)
+	      && LSA_GT (&lsa, end_redolsa))
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
@@ -3348,8 +3284,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	   * log record. This log_record was completed later. Thus, we have to
 	   * find the offset by searching for the next log_record in the page
 	   */
-	  if (lsa.offset == NULL_OFFSET &&
-	      (lsa.offset = log_pgptr->hdr.offset) == NULL_OFFSET)
+	  if (lsa.offset == NULL_OFFSET
+	      && (lsa.offset = log_pgptr->hdr.offset) == NULL_OFFSET)
 	    {
 	      /* Continue with next pageid */
 	      if (logpb_is_page_in_archive (log_lsa.pageid))
@@ -3365,8 +3301,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
-	  log_rec =
-	    (struct log_rec *) ((char *) log_pgptr->area + log_lsa.offset);
+	  log_rec = (struct log_rec *) ((char *) log_pgptr->area
+					+ log_lsa.offset);
 
 	  /* Get the address of next log record to scan */
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
@@ -3443,9 +3379,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (rcv_vpid.pageid != NULL_PAGEID
 		  && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page
-		      (thread_p, rcv_vpid.volid,
-		       rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_isvalid_page (thread_p, rcv_vpid.volid,
+					 rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -3613,9 +3548,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (rcv_vpid.pageid != NULL_PAGEID
 		  && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page
-		      (thread_p, rcv_vpid.volid,
-		       rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_isvalid_page (thread_p, rcv_vpid.volid,
+					 rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -3683,9 +3617,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      ignore_redofunc = false;
 	      if (rcvindex == RVBT_OID_TRUNCATE)
 		{
-		  tdes =
-		    LOG_FIND_TDES (logtb_find_tran_index
-				   (thread_p, log_rec->trid));
+		  tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p,
+							       log_rec->
+							       trid));
 		  /* if RVBT_OID_TRUNCATE redo log is the last log of the tranx,
 		   * then NEVER redo it.
 		   */
@@ -3771,9 +3705,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (rcv_vpid.pageid != NULL_PAGEID
 		  && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page
-		      (thread_p, rcv_vpid.volid,
-		       rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_isvalid_page (thread_p, rcv_vpid.volid,
+					 rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -4144,21 +4077,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_ABORT:
 	      if (stopat != NULL && *stopat != -1)
 		{
-		  /*
-		   * Partial recovery is in effect up to the given time. All
-		   * transactions committed after the given time are declared as
-		   * aborted. This is like going back to the past.
-		   *
-		   * This feature can be used in the following cases:
-		   * a) A user makes a serious error (i.e., update the database) and
-		   *    commits. If later on the user finds the mistake and it is
-		   *    very hard to revert the serious committed errors since these
-		   *    information have also been used by other committed
-		   *    transactions.
-		   * b) There is a media crash, and a needed archive log is not
-		   *    available any longer. We can restore the database upto a
-		   *    specific point in time.
-		   */
 
 		  /*
 		   * Need to read the donetime record to find out if we need to stop
@@ -4230,7 +4148,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  LSA_SET_NULL (&lsa);
 		}
 	      break;
-	    }			/* swith */
+	    }
+
 	  /*
 	   * We can fix the lsa.pageid in the case of log_records without forward
 	   * address at this moment.
@@ -4240,9 +4159,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    {
 	      lsa.pageid = log_lsa.pageid;
 	    }
-
-	}			/* while */
-    }				/* while */
+	}
+    }
 
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
@@ -4257,8 +4175,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
 
   return;
-
-
 }
 
 /*
@@ -4355,29 +4271,6 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
  *
  * return: nothing
  *
- * NOTE: In the undo phase, all transactions that were in progress and
- *              not declared as committed at the time of the failure are
- *              rolled back, in reverse chronological order in a single sweep
- *              of the log. This is done by continually finding the maximum of
- *              the LSAs of the next log records to be undone for all of the
- *              transactions that remain to be undone. Unlike redos, undoes
- *              do not have conditions (LSA comparison) for their executions,
- *              since the history was executed by the redo phase and undo
- *              records are executed only once. In the process of rolling back
- *              an undo action, a CLR is written. The next record to process
- *              for a transaction is determined by looking at the previous LSA
- *              field in the log record. If a redo_only log record or a
- *              compensating log record is found during the redo phase, they
- *              are used just to determine the next log record to process. If
- *              a transaction was rolling back at the time of the failure or
- *              it has done partial rollbacks to return to a savepoint, the
- *              recovery manager will only rollback those actions that had not
- *              already been undone. At the end of this phase all dirty data
- *              pages are flushed.
- *
- *              Declared aborted transactions do not need to be undone at this
- *              time since they have been undone during the redo portion of
- *              the recovery process with REDO and CLRlog records.
  */
 static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
@@ -4476,8 +4369,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	{
 	  /* Find the log record */
 	  log_lsa.offset = lsa_ptr->offset;
-	  log_rec =
-	    (struct log_rec *) ((char *) log_pgptr->area + log_lsa.offset);
+	  log_rec = (struct log_rec *) ((char *) log_pgptr->area
+					+ log_lsa.offset);
 
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
@@ -4928,16 +4821,6 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
   int error_code;
 
 
-  /*
-   * Make sure that everything that it is referenced by the arhives is
-   * on disk. If it is not we cannot remove the archives. We must also
-   * make sure that we do not reference a checkpoint log record in an
-   * archive log. If we do, forward the location of a possible checkpoint
-   * log record to the first log record in the active log.
-   *
-   * This is not really needed since this function is called from logpb_checkpoint,
-   * but we are doing it just in case.
-   */
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {

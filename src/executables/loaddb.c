@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * loaddb.c - Main for database loader
- *
  */
 
 #ident "$Id$"
@@ -22,29 +36,25 @@
 
 #include "db.h"
 #include "utility.h"
-#include "ustring.h"
+#include "misc_string.h"
 #if defined (LDR_OLD_LOADDB)
-#include "ldr_o.h"
+#include "loader_old.h"
 #else /* !LDR_OLD_LOADDB */
 #include "loader.h"
 #include "load_object.h"
 #include "environment_variable.h"
 #endif /* LDR_OLD_LOADDB */
 #include "message_catalog.h"
-#include "log.h"
+#include "log_manager.h"
 #include "chartype.h"
-#include "schema_manager_3.h"
+#include "schema_manager.h"
 #include "transform.h"
-#include "server.h"
+#include "server_interface.h"
 #include "load_object.h"
 #include "authenticate.h"
 #include "dbi.h"
-#include "network_interface_sky.h"
+#include "network_interface_cl.h"
 #include "util_func.h"
-
-#if defined (WINDOWS)
-#include "pccurses.h"
-#endif
 
 #if defined (SA_MODE)
 extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
@@ -64,10 +74,10 @@ static const char *Error_file = "";
 static const char *User_name = NULL;
 static const char *Password = NULL;
 static const char *Ignore_class_file = NULL;
-static int Syntax_check = 0;
+static bool Syntax_check = false;
 /* No syntax checking performed */
-static int Load_only = 0;
-static int Verbose = 0;
+static bool Load_only = false;
+static bool Verbose = false;
 #if 0
 #if !defined(LDR_OLD_LOADDB)
 static int No_optimization = 0;
@@ -76,12 +86,12 @@ static int No_optimization = 0;
 static int Verbose_commit = 0;
 static int Estimated_size = 5000;
 static int Disable_statistics = 0;
-static int obsolete_Disable_statistics = 0;
+static bool obsolete_Disable_statistics = false;
 static int Periodic_commit = 0;
 /* Don't ignore logging */
 static int Ignore_logging = 0;
 static int Interrupt_type = LDR_NO_INTERRUPT;
-static int No_oid_hint = 0;
+static bool No_oid_hint = false;
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
 
@@ -97,7 +107,7 @@ static jmp_buf loaddb_jmp_buf;
 int interrupt_query = false;
 jmp_buf ldr_exec_query_status;
 
-static int ldr_validate_object_file (FILE * outfp, const char* argv0);
+static int ldr_validate_object_file (FILE * outfp, const char *argv0);
 static int ldr_check_file_name_and_line_no (void);
 static void signal_handler ();
 static void loaddb_report_num_of_commits (int num_committed);
@@ -110,8 +120,8 @@ static void ldr_exec_query_interrupt_handler (void);
 static int ldr_exec_query_from_file (const char *file_name, FILE * file,
 				     int *start_line, int commit_period);
 #if !defined (LDR_OLD_LOADDB)
-static int get_ignore_class_list(const char * filename);
-static void free_ignoreclasslist();
+static int get_ignore_class_list (const char *filename);
+static void free_ignoreclasslist ();
 #endif
 /*
  * print_log_msg - print log message
@@ -580,15 +590,17 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
 #if !defined (LDR_OLD_LOADDB)
-  if (Ignore_class_file) {
-    int retval;
-    retval = get_ignore_class_list(Ignore_class_file);
+  if (Ignore_class_file)
+    {
+      int retval;
+      retval = get_ignore_class_list (Ignore_class_file);
 
-    if (retval < 0) {
-      status = 2;
-      goto error_return;
+      if (retval < 0)
+	{
+	  status = 2;
+	  goto error_return;
+	}
     }
-  }
 #endif
 
   /* Disallow syntax only and load only options together */
@@ -712,9 +724,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       /* Check if we need to perform syntax checking. */
       if (!Load_only)
 	{
-	  print_log_msg (Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
-						  MSGCAT_UTIL_SET_LOADDB,
-						  LOADDB_MSG_CHECKING));
+	  print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
+							MSGCAT_UTIL_SET_LOADDB,
+							LOADDB_MSG_CHECKING));
 	  do_loader_parse (object_file);
 #if defined(LDR_OLD_LOADDB)
 	  ldr_stats (&errors, &objects, &defaults);
@@ -738,9 +750,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  object_file = fopen_ex (Object_file, "rb");	/* keep out ^Z */
 	  if (object_file != NULL)
 	    {
-	      print_log_msg (Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
-						      MSGCAT_UTIL_SET_LOADDB,
-						      LOADDB_MSG_INSERTING));
+	      print_log_msg ((int) Verbose,
+			     msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_LOADDB,
+					     LOADDB_MSG_INSERTING));
 
 	      /* make sure signals are caught */
 	      util_arm_signal_handlers (signal_handler, signal_handler);
@@ -821,7 +834,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						       MSGCAT_UTIL_SET_LOADDB,
 						       LOADDB_MSG_DEFAULT_COUNT),
 				       defaults);
-		      print_log_msg (Verbose,
+		      print_log_msg ((int) Verbose,
 				     msgcat_message (MSGCAT_CATALOG_UTILS,
 						     MSGCAT_UTIL_SET_LOADDB,
 						     LOADDB_MSG_COMMITTING));
@@ -844,7 +857,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				   * before the first commit and just have a
 				   * single commit ?
 				   */
-				  print_log_msg (Verbose,
+				  print_log_msg ((int) Verbose,
 						 msgcat_message
 						 (MSGCAT_CATALOG_UTILS,
 						  MSGCAT_UTIL_SET_LOADDB,
@@ -889,13 +902,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Index loading from %s finished.\n", Index_file);
       db_commit_transaction ();
     }
-  print_log_msg (Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
-					  MSGCAT_UTIL_SET_LOADDB,
-					  LOADDB_MSG_CLOSING));
+  print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
+						MSGCAT_UTIL_SET_LOADDB,
+						LOADDB_MSG_CLOSING));
   (void) db_shutdown ();
 
 #if !defined (LDR_OLD_LOADDB)
-  free_ignoreclasslist();
+  free_ignoreclasslist ();
 #endif
   return (status);
 error_return:
@@ -907,17 +920,11 @@ error_return:
     fclose (index_file);
 
 #if !defined (LDR_OLD_LOADDB)
-  free_ignoreclasslist();
+  free_ignoreclasslist ();
 #endif
 
   return status;
 }
-
-/* These differ only in the dba_mode flag.  Unfortunately the utildb
-   functioning calling frameword doesn't allow arguments to
-   be specified so we make the behavior visible through different
-   function names.
-   */
 
 /*
  * loaddb_dba - loaddb in dba mode
@@ -1079,7 +1086,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
 	  break;
 	}
 
-      if (stmt_type == SQLX_CMD_COMMIT_WORK ||
+      if (stmt_type == CUBRID_STMT_COMMIT_WORK ||
 	  (commit_period && (executed_cnt % commit_period == 0)))
 	{
 	  db_commit_transaction ();
@@ -1088,7 +1095,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
 			 executed_cnt, parser_end_line_no);
 	  *start_line = parser_end_line_no + 1;
 	}
-      print_log_msg (Verbose, "Total %8d statements executed.\r",
+      print_log_msg ((int) Verbose, "Total %8d statements executed.\r",
 		     executed_cnt);
       fflush (stdout);
     }
@@ -1109,7 +1116,8 @@ end:
 }
 
 #if !defined (LDR_OLD_LOADDB)
-static int get_ignore_class_list(const char * inputfile_name)
+static int
+get_ignore_class_list (const char *inputfile_name)
 {
   int inc_unit = 128;
   int list_size;
@@ -1130,7 +1138,7 @@ static int get_ignore_class_list(const char * inputfile_name)
     }
 
   ignoreClasslist = (char **) malloc (sizeof (char *) * inc_unit);
-  memset(ignoreClasslist, '\0', inc_unit);
+  memset (ignoreClasslist, '\0', inc_unit);
 
   if (ignoreClasslist == NULL)
     {
@@ -1141,34 +1149,34 @@ static int get_ignore_class_list(const char * inputfile_name)
   ignoreClassnum = 0;
 
   while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH,
-                input_file) != NULL)
+		input_file) != NULL)
     {
       if ((strchr (buffer, '\n') - buffer) >= 1)
-        {
-          if (ignoreClassnum >= list_size)
-            {
-              ignoreClasslist =
-                (char **) realloc (ignoreClasslist,
-                      sizeof(char*) * (list_size + inc_unit));
-              if (ignoreClasslist == NULL)
-                {
-                  free_ignoreclasslist();
-                  return -1;
-                }
-              list_size = list_size + inc_unit;
-            }
+	{
+	  if (ignoreClassnum >= list_size)
+	    {
+	      ignoreClasslist =
+		(char **) realloc (ignoreClasslist,
+				   sizeof (char *) * (list_size + inc_unit));
+	      if (ignoreClasslist == NULL)
+		{
+		  free_ignoreclasslist ();
+		  return -1;
+		}
+	      list_size = list_size + inc_unit;
+	    }
 
-          p = ignoreClasslist + ignoreClassnum;
-          sscanf ((char *) buffer, "%s\n", (char *) class_name);
-          *p = strdup (class_name);
-          if (*p == NULL)
-            {
-              free_ignoreclasslist();
-              return -1;
-            }
+	  p = ignoreClasslist + ignoreClassnum;
+	  sscanf ((char *) buffer, "%s\n", (char *) class_name);
+	  *p = strdup (class_name);
+	  if (*p == NULL)
+	    {
+	      free_ignoreclasslist ();
+	      return -1;
+	    }
 
-          ignoreClassnum++;
-        }
+	  ignoreClassnum++;
+	}
     }
 
   fclose (input_file);
@@ -1176,19 +1184,20 @@ static int get_ignore_class_list(const char * inputfile_name)
   return 0;
 }
 
-static void free_ignoreclasslist()
+static void
+free_ignoreclasslist ()
 {
   int i = 0;
 
   if (ignoreClasslist != NULL)
     {
-      for (i=0;i<ignoreClassnum ; i++)
-        {
-          if (*(ignoreClasslist+i) != NULL)
-            {
-              free (*(ignoreClasslist+i));
-            }
-        }
+      for (i = 0; i < ignoreClassnum; i++)
+	{
+	  if (*(ignoreClasslist + i) != NULL)
+	    {
+	      free (*(ignoreClasslist + i));
+	    }
+	}
       free (ignoreClasslist);
       ignoreClasslist = NULL;
     }

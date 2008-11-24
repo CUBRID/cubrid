@@ -1,10 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
  * file_io.h - I/O module at server
  *
- * Note:
  */
 
 #ifndef _FILE_IO_H_
@@ -18,7 +33,7 @@
 #include <time.h>
 
 #include "porting.h"
-#include "common.h"
+#include "storage_common.h"
 #include "release_string.h"
 #include "dbtype.h"
 #include "memory_hash.h"
@@ -126,16 +141,7 @@ struct fileio_page
   char page[1];			/* The user page area               */
 };
 
-/*
- * A backup iopage is as follows.  The pageid is stored on both sides
- * of the page data.  This is to provide a measure of security about
- * the integrity of the data when it is restored.  This is in lieu of
- * a true checksum.
- * +----+----- ....    ----+-----+
- * |page|    IOPAGE        | id  |
- * | id |                  | dup |
- * +----+----- ....    ----+-----+
- */
+
 typedef struct fileio_backup_page FILEIO_BACKUP_PAGE;
 struct fileio_backup_page
 {
@@ -510,4 +516,5 @@ extern int fileio_request_user_response (THREAD_ENTRY * thread_p,
 extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);
 #endif /* !WINDOWS */
+
 #endif /* _FILE_IO_H_ */

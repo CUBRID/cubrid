@@ -179,11 +179,11 @@
 				Name="executables"
 				>
 				<File
-					RelativePath="..\grammar\es.c"
+					RelativePath="..\grammar\esql_grammar.c"
 					>
 				</File>
 				<File
-					RelativePath="..\grammar\eserr.c"
+					RelativePath="..\grammar\esql_grammar_err.c"
 					>
 				</File>
 				<File
@@ -215,11 +215,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\grammar\esscan.c"
+					RelativePath="..\..\src\executables\esql_whenever.c"
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\executables\whenever.c"
+					RelativePath="..\grammar\esql_grammar_scan.c"
 					>
 				</File>
 			</Filter>

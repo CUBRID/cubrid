@@ -1,9 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+/*
  * optimizer.h - Prototypes for all public query optimizer declarations
- * TODO: include qo.h and remove it
  */
 
 #ifndef _OPTIMIZER_H_
@@ -11,12 +25,14 @@
 
 #ident "$Id$"
 
-#include "qo.h"
+#include <stdarg.h>
 
 #include "error_manager.h"
-#include "memory_manager_2.h"
+#include "memory_alloc.h"
 #include "parser.h"
 #include "release_string.h"
+#include "parser.h"
+#include "query_executor.h"
 
 /*
  * These #defines are used in conjunction with assert() to announce
@@ -149,7 +165,15 @@ typedef struct
 				 */
 } QO_ATTR_CUM_STATS;
 
-/* From build_graph.c */
+typedef struct qo_plan QO_PLAN;
+
+typedef struct qo_xasl_index_info QO_XASL_INDEX_INFO;
+
+typedef enum
+{
+  QO_PARAM_LEVEL,
+  QO_PARAM_COST
+} QO_PARAM;
 
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);
 
@@ -157,7 +181,30 @@ extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
 
 extern void qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result);
 
-/* From env.c */
+extern void qo_get_optimization_param (void *, QO_PARAM, ...);
+extern void qo_set_optimization_param (void *, QO_PARAM, ...);
+extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
+extern XASL_NODE *qo_to_xasl (QO_PLAN *, XASL_NODE *);
+extern void qo_plan_discard (QO_PLAN *);
+extern void qo_plan_dump (QO_PLAN *, FILE *);
+extern const char *qo_plan_set_cost_fn (const char *, int);
+extern int qo_plan_get_cost_fn (const char *);
+extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
+extern bool qo_plan_skip_orderby (QO_PLAN * plan);
+extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result,
+			 DB_VALUE * plan, DB_VALUE * cost);
+
+/*
+ *  QO_XASL support functions
+ */
+extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
+extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
+extern BTID *qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info);
+extern bool qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop);
+extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk);
+extern PT_NODE *mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0
 extern void *qo_malloc (QO_ENV *, unsigned, const char *, int);
@@ -165,11 +212,7 @@ extern void *qo_malloc (QO_ENV *, unsigned, const char *, int);
 extern void qo_abort (QO_ENV *, const char *, int);
 
 
-/* From selectivity.c */
 extern unsigned char qo_type_qualifiers[];
-
-
-/* From exprsel.c */
 
 extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 

@@ -1,14 +1,24 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * network.h -
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- * Note: Definitions for client/server network support.
- *       Be very careful about making any changes to this file.
- *       Every time a new revision goes in introduces
- *       incompatibility between client and server due to a
- *       change in the NET_CLIENT_SERVER_HANDSHAKE string.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * network.h -Definitions for client/server network support.
  */
 
 #ifndef _NETWORK_H_
@@ -16,10 +26,10 @@
 
 #ident "$Id$"
 
-#include "qp_xdata.h"
+#include "query_opfunc.h"
 #include "perf_monitor.h"
-#include "locator_bt.h"
-#include "logcp.h"
+#include "locator.h"
+#include "log_comm.h"
 #include "thread_impl.h"
 
 
@@ -236,12 +246,11 @@
 /* for the generated interface routines */
 typedef const char CONSTCHAR;
 
-/* TODO : remove, from intcl.c */
 extern unsigned int net_Interrupt_enabled;
 
 extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
-/* TODO : remove, from netsr.c */
+
 /* Server startup */
 extern int net_server_start (const char *name);
 

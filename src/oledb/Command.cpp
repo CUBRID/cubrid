@@ -1,3 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
 // Command.cpp : Implementation of CCUBRIDCommand
 
 #include "stdafx.h"
@@ -562,7 +592,7 @@ STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS
 		}
 		result_count = CCI_QUERY_RESULT_RESULT(qr, 1);
 	}
-	T_CCI_SQLX_CMD cmd_type = (T_CCI_SQLX_CMD)CCI_QUERY_RESULT_STMT_TYPE(qr, 1);
+	T_CCI_CUBRID_STMT cmd_type = (T_CCI_CUBRID_STMT)CCI_QUERY_RESULT_STMT_TYPE(qr, 1);
 
 
 	if (riid == IID_IMultipleResults || bMultiple)
@@ -573,21 +603,21 @@ STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS
 		bool isUpdateAll = true;
 		if (numQuery == 1)
 		{
-			if (cmd_type!=SQLX_CMD_SELECT &&
-				cmd_type!=SQLX_CMD_GET_STATS &&
-				cmd_type!=SQLX_CMD_CALL &&
-				cmd_type!=SQLX_CMD_EVALUATE)
+			if (cmd_type!=CUBRID_STMT_SELECT &&
+				cmd_type!=CUBRID_STMT_GET_STATS &&
+				cmd_type!=CUBRID_STMT_CALL &&
+				cmd_type!=CUBRID_STMT_EVALUATE)
 				GetSessionPtr()->AutoCommit(0);
 			
 		} else {
 
 			for (int i = 1; i <= numQuery; i++)
 			{
-				cmd_type = (T_CCI_SQLX_CMD)CCI_QUERY_RESULT_STMT_TYPE(qr, i);
-				if (cmd_type==SQLX_CMD_SELECT ||
-					cmd_type==SQLX_CMD_GET_STATS ||
-					cmd_type==SQLX_CMD_CALL ||
-					cmd_type==SQLX_CMD_EVALUATE)
+				cmd_type = (T_CCI_CUBRID_STMT)CCI_QUERY_RESULT_STMT_TYPE(qr, i);
+				if (cmd_type==CUBRID_STMT_SELECT ||
+					cmd_type==CUBRID_STMT_GET_STATS ||
+					cmd_type==CUBRID_STMT_CALL ||
+					cmd_type==CUBRID_STMT_EVALUATE)
 				{
 					isUpdateAll = false;
 					break;
@@ -644,10 +674,10 @@ STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS
 			return DB_E_NOTFOUND;
 
 		if(ppRowset && (
-			cmd_type==SQLX_CMD_SELECT ||
-			cmd_type==SQLX_CMD_GET_STATS ||
-			cmd_type==SQLX_CMD_CALL ||
-			cmd_type==SQLX_CMD_EVALUATE))
+			cmd_type==CUBRID_STMT_SELECT ||
+			cmd_type==CUBRID_STMT_GET_STATS ||
+			cmd_type==CUBRID_STMT_CALL ||
+			cmd_type==CUBRID_STMT_EVALUATE))
 		{
 			//Row object를 생성한다.
 			CComPolyObject<CCUBRIDRow> *pRow;
@@ -694,10 +724,10 @@ STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS
 	} else
 	{	
 		if(ppRowset && (
-			cmd_type==SQLX_CMD_SELECT ||
-			cmd_type==SQLX_CMD_GET_STATS ||
-			cmd_type==SQLX_CMD_CALL ||
-			cmd_type==SQLX_CMD_EVALUATE))
+			cmd_type==CUBRID_STMT_SELECT ||
+			cmd_type==CUBRID_STMT_GET_STATS ||
+			cmd_type==CUBRID_STMT_CALL ||
+			cmd_type==CUBRID_STMT_EVALUATE))
 		{
 			hr = CreateRowset<CCUBRIDRowset>(pUnkOuter, riid, pParams, pcRowsAffected, ppRowset, pRowset);	
 			

@@ -67,11 +67,11 @@ EXPORTS
 	loaddb_user
 	unloaddb
 	compactdb
-	sqlx
+	csql
 	csql_get_message
 	basename
 	au_set_password
-	au_vlist_entry_randomize
+	au_disable_passwords
 	er_set
 	log_get_db_compatibility
 ;

@@ -1,7 +1,23 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
  *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+
+/*
  * object_domain.h: data type definitions
  */
 
@@ -16,29 +32,10 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_primitive.h"
-#include "memory_manager_1.h"
+#include "area_alloc.h"
 
 
-/*
- * TP_DOMAIN
- *    This structure is used to describe ranges of allowable types.
- *    This is used to define the domain of attribute, set elements,
- *    method arguments and method return values.
- *    Normally, there is a single domain.  If the basic type is one of
- *    the set types, there may be a list of domains that describe the
- *    elements of the set.
- *    In theory, the domain can be hierarchical by allowing sets of sets
- *    but the language does not currently support this.
- *
- *    The class field in the domain structure is always NULL unless the
- *    type field is a pointer to tp_Type_object. In this case, it points
- *    to the MOP of the actual class named when the domain was defined.
- *    Note that class names are not stored in the domain.  This means
- *    that when classes are renamed we don't have to update all the domains
- *    that reference it since they point to the class directly though the
- *    class MOP.
- *
- */
+
 
 /*
  * TP_DOMAIN_SELF_REF is used as an argument
@@ -81,24 +78,7 @@ typedef struct tp_domain
 
 } TP_DOMAIN;
 
-/*
- * TP_FLOATING_PRECISION_VALUE
- *    This is a special value that can be used in the precision field
- *    of the "char" types to indicate the following:
- *
- *    DB_TYPE_CHAR
- *    DB_TYPE_NCHAR
- *    DB_TYPE_BIT
- *    	 The precision is determined from the associated value.
- *
- *    DB_TYPE_VARCHAR
- *    DB_TYPE_VARNCHAR
- *    DB_TYPE_VARBIT
- *       The precision is the implementation defined maximum value
- *       appropriate for this type.  See the various DB_MAX_ constants
- *       in dbtype.h for the definitinos of the maximums.
- *
- */
+
 
 /*
  * We probably should make this 0 rather than -1 so that we can more easily
@@ -211,17 +191,14 @@ typedef enum tp_match
 
 /*
  * TP_IS_SET_TYPE
- *    Belongs in tp.h when that comes on line.
  *    Macros for detecting the set types, saves a function call.
- *
  */
 /*
  * !!! DB_TYPE_VOBJ probably should be added to this macro as this
  * is now the behavior of pr_is_set_type() which we should try to
  * phase out in favor of the faster inlin macro.  Unfortunately, there
  * are a number of usages of both TP_IS_SET_TYPE that may break if
- * we change the semantics, particularly in obj.c.  Will have to think
- * carefully about this 
+ * we change the semantics.  Will have to think carefully about this 
  */
 
 #define TP_IS_SET_TYPE(typenum) \

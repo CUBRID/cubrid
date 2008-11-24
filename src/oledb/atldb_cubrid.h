@@ -6494,7 +6494,8 @@ public:
 					continue;
 			}
 
-/*			// GetData()로 이동
+#if 0
+			// GetData()로 이동
 
 			// 각 offset이 valid 한지 검사
 			// 일단 가변길이 타입의 obValue만 검사한다.
@@ -6514,7 +6515,7 @@ public:
 					break;
 				}
 			}
-*/
+#endif
 		}
 		return hr;
 	}
@@ -9836,7 +9837,7 @@ public:
 	}
 };
 
-/*
+#if 0
 template <class Storage, class ContainedArray = CAtlArray<Storage> >
 class CUpdateArray : public ContainedArray
 {
@@ -9892,7 +9893,7 @@ public:
 
 	CSimpleValArray<long> m_rgRowLink;
 };
-*/
+#endif
 
 class CComSharedMutex
 {

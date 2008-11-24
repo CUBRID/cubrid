@@ -1,9 +1,25 @@
 /*
- * Copyright (C) 2008 NHN Corporation
- * Copyright (C) 2008 CUBRID Co., Ltd.
- * 
- * hostvar.c - Routines for preparing statements from with
- *    the embedded SQLX parser.
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ */
+
+
+/*
+ * esql_host_variable.c - Routines for preparing statements
+ *                        with the esql parser.
  */
 
 #ident "$Id$"
@@ -15,14 +31,14 @@
 #include <stdlib.h>
 
 #include "util_func.h"
-#include "ustring.h"
+#include "misc_string.h"
 
 #include "esql_misc.h"
 #define   ZZ_PREFIX em_
 #include "zzpref.h"
 #define  INSIDE_SCAN_DOT_C
-#include "estokens.h"
-#include "memory_manager_2.h"
+#include "esql_grammar_tokens.h"
+#include "memory_alloc.h"
 
 #define BAD_C_TYPE		((C_TYPE) -1)
 #define UNINIT_C_TYPE		((C_TYPE) -2)
@@ -56,7 +72,7 @@ struct builtin_type_s
 };
 
 static BUILTIN_TYPE builtin_types[] = {
-  /* These are ESQL/X-specific types that the preprocessor needs to
+  /* These are esql-specific types that the preprocessor needs to
      know about to do its job. */
   {
    "CUBRIDDA", NULL, C_TYPE_SQLDA, true},
@@ -111,7 +127,7 @@ static SYMBOL *pp_find_field (STRUCTDEF * sdef, const char *field);
 static void pp_add_dummy_structdef (SYMBOL ** symp, const char *name);
 
 /*
- * pp_gather_input_refs() - 
+ * pp_gather_input_refs() -
  * return:
  */
 void
@@ -127,7 +143,7 @@ pp_gather_input_refs (void)
 }
 
 /*
- * pp_gather_output_refs() - 
+ * pp_gather_output_refs() -
  * return:
  */
 void
@@ -143,7 +159,7 @@ pp_gather_output_refs (void)
 }
 
 /*
- * pp_input_refs() - 
+ * pp_input_refs() -
  * return:
  */
 HOST_LOD *
@@ -153,7 +169,7 @@ pp_input_refs (void)
 }
 
 /*
- * pp_output_refs() - 
+ * pp_output_refs() -
  * return:
  */
 HOST_LOD *
@@ -204,7 +220,7 @@ pp_clear_host_refs (void)
 
 /*
  * pp_new_host_var() - Return a new host variable structure initialized
- *    with the given type. Allocate a new HOST_VAR if var is NULL. 
+ *    with the given type. Allocate a new HOST_VAR if var is NULL.
  * return : HOST_VAR *
  * var(in): A pointer to a host_var to be initialized, or NULL.
  * sym(in): The root symbol of the host variable reference.
@@ -264,7 +280,7 @@ pp_free_host_var (HOST_VAR * var)
 
 /*
  * pp_add_host_ref() - Add the var/indicator pair to the interface table for
- *    the translator. 
+ *    the translator.
  * return : a pointer to the HOST_REF if everything is ok, NULL otherwise.
  * var(in): The host variable proper.
  * indicator(in): An optional indicator variable.
@@ -326,8 +342,8 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
   if (pp_host_refs->n_refs >= pp_host_refs->max_refs)
     {
       HOST_REF *new_refs =
-	pp_malloc ((pp_host_refs->max_refs + 4)*sizeof (HOST_REF));
-      memset(new_refs, 0, (pp_host_refs->max_refs + 4)*sizeof (HOST_REF));
+	pp_malloc ((pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
+      memset (new_refs, 0, (pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
       if (pp_host_refs->real_refs != NULL)
 	{
 	  memcpy ((char *) new_refs,
@@ -377,10 +393,10 @@ bad_news:
 
 /*
  * pp_add_struct_field_refs() - Add a host ref for each of the fields in
- *    the structure definition, using prefix as the root. 
+ *    the structure definition, using prefix as the root.
  *    Set *n_refs to 0 or the number of fields added.
  * return : NULL if any of the fields causes a problem, a pointer to the last
- *          field otherwise 
+ *          field otherwise
  * var: A pointer to a HOST_VAR that is known to represent a struct.
  * n_refs(out) : A pointer to an integer to be updated with the number of
  *               references actually added.
@@ -554,7 +570,7 @@ pp_add_host_str (char *str)
  * ref(in): A pointer to a host reference variable.
  * typeset(in): A set of acceptable C_TYPE codes.
  * msg(in): A message fragment to be used if the type is not acceptable.
- * 
+ *
  * nore : This assumes that all types can be encoded in the number of bits
  *        provided by a BITSET.
  */
@@ -832,19 +848,6 @@ pp_get_output_size (HOST_REF * ref)
 
   if (ref->uci_type == C_TYPE_CHAR_POINTER)
     {
-      /*
-       * This one case is handled slightly differently. Because we'll
-       * be using strlen to compute the buffer size, we add one to
-       * compensate for the terminating null that is implicit in the
-       * length.  That char *must* be there (or else strlen won't
-       * terminate), and it can't make any difference if we deposit our
-       * own null on top of it during the transfer, so there is no
-       * point in not compensating for it.
-       *
-       * This also restores the property that you can use the same
-       * buffer over and over again without it growing 1 byte shorter
-       * on every output transfer.
-       */
       if (ref->output_size_buf == NULL)
 	{
 	  ref->output_size_buf = vs_new (NULL);
@@ -853,8 +856,8 @@ pp_get_output_size (HOST_REF * ref)
 	}
       size_str = vs_str (ref->output_size_buf);
     }
-  else if (ref->uci_type == C_TYPE_VARCHAR ||
-	   ref->uci_type == C_TYPE_VARBIT || ref->uci_type == C_TYPE_BIT)
+  else if (ref->uci_type == C_TYPE_VARCHAR
+	   || ref->uci_type == C_TYPE_VARBIT || ref->uci_type == C_TYPE_BIT)
     {
       if (ref->output_size_buf == NULL)
 	{
@@ -983,7 +986,7 @@ pp_get_ind_addr_expr (HOST_REF * ref)
 }
 
 /*
- * pp_print_host_ref() - 
+ * pp_print_host_ref() -
  * return : void
  * ref(in): The host reference to be printed.
  * fp(in): The stream to print it on.
@@ -1009,7 +1012,7 @@ pp_print_host_ref (HOST_REF * ref, FILE * fp)
 /*
  * pp_check() - Make sure that 'var' has an acceptable type for a host
  *    variable.
- * return : The ESQL/X type code for the type, or -1 if the type is not
+ * return : The esql type code for the type, or -1 if the type is not
  *          permitted.
  * var(in): A variable whose type should be checked.
  * structs_allowed(in): true if structures are permitted.
@@ -1146,7 +1149,7 @@ pp_expr (HOST_VAR * var)
 
 /*
  * pp_addr_expr() - Return a C expression for the location identified by the
- *   given host variable.  For most variables this is simply &var, i.e., 
+ *   given host variable.  For most variables this is simply &var, i.e.,
  *   the address of the storage of the variable. For string variables,
  *   however, this is the address of the string bytes themselves.
  * return : C expression.
@@ -1319,7 +1322,7 @@ pp_find_field (STRUCTDEF * sdef, const char *field)
  *    that would arise if we had encountered
  *           typedef struct <name> <name>;
  *    This adds an empty structdef for name, which is all we really
- *    care about, and allows ESQL/X programmers to declare DB_VALUE
+ *    care about, and allows esql programmers to declare DB_VALUE
  *    and CUBRIDDA types without any special effort.
  * return : void
  * symp(out): Address of a SYMBOL pointer to be initialized with the dummy
@@ -1346,12 +1349,12 @@ pp_add_dummy_structdef (SYMBOL ** symp, const char *name)
 }
 
 /*
- * pp_hv_init() - Initialize various static module data. 
- * 
+ * pp_hv_init() - Initialize various static module data.
+ *
  * arguments:
- * 
+ *
  * returns/side-effects: nothing
- * 
+ *
  * note : Make sure that all symbol table stuff is initialized before calling
  *    this, because it is going to try to deposit a typedef in the outermost
  *    level of the symbol table.
@@ -1411,7 +1414,7 @@ pp_hv_init (void)
 /*
  * pp_hv_finish() - Tear down various static module data.
  * return : void
- * 
+ *
  * note : The builtin struct definitions will be removed automatically when
  *   the symbol and struct tables are torn down.
  */

@@ -1,4 +1,27 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; version 2 of the License. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *
+ */
+
+/*
+ * cci_stub.c -
+ */
+
 #include "config.h"
+
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
@@ -77,8 +100,8 @@ struct statement_impl_s
   int status;
   bool opt_updatable_result;
   bool opt_async_query;
-  /* 
-   * parameter and parameter meta related fields 
+  /*
+   * parameter and parameter meta related fields
    * - PM : parameter meta data api structure header
    * - got_pm_handle : flag for indicating parameter related fields sanity
    * - pm_handle : handle
@@ -90,10 +113,10 @@ struct statement_impl_s
   bool got_pm_handle;
   BIND_HANDLE pm_handle;
   int num_col;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_CUBRID_STMT cmd_type;
   T_CCI_COL_INFO *col_info;
   VALUE_INDEXER *params;
-  /* 
+  /*
    * current result info (batch or multiple query in single statement)
    * - has_resultset : flag for field availablity
    * - res_handle : handle
@@ -101,7 +124,7 @@ struct statement_impl_s
    * - curr_query_result_index
    * - query_result : query_result array
    * NOTE
-   * cci_next_result() closes current result set 
+   * cci_next_result() closes current result set
    */
   bool has_resultset;
   BIND_HANDLE res_handle;
@@ -110,7 +133,7 @@ struct statement_impl_s
   T_CCI_QUERY_RESULT *query_result;
   int curr_query_result_index;	/* 0 start */
 
-  /* 
+  /*
    * fields for batch processing
    * batch : list of BATCH_SQL_ITEM or BATCH_ARY_ITEM w.r.t. status
    */
@@ -131,7 +154,7 @@ struct resultset_impl_s
   COMMON_RESULTSET_HEADER;
   RESULTSET_META_IMPL RM;
 
-  /* 
+  /*
    * provided (do not try to destroy them)
    * parent, bh, req_handle, err_buf, on_close
    */
@@ -145,19 +168,19 @@ struct resultset_impl_s
   /* called when this structure is to be destroyed by resultset_impl_dtor */
   void (*on_close) (RESULTSET_IMPL * pres, void *arg);
 
-  /* 
-   * result set cursor related 
+  /*
+   * result set cursor related
    */
   int offset;
   bool fetched;
   VALUE_INDEXER *updated_values;
-  /* 
-   * resultset meta fields (lazy initialized) 
+  /*
+   * resultset meta fields (lazy initialized)
    */
   bool got_rm_handle;
   BIND_HANDLE rm_handle;
   int num_col;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_CUBRID_STMT cmd_type;
   T_CCI_COL_INFO *col_info;
 };
 
@@ -215,9 +238,9 @@ struct cci_object_pool_s
 struct cci_collection_s
 {
   API_COLLECTION col;
-  CI_TYPE type;		/* only supports homogenious collection type */
+  CI_TYPE type;			/* only supports homogenious collection type */
   VALUE_INDEXER *indexer;	/* value is pointer to API_VAL */
-  CI_CONNECTION conn;	/* CCI_U_TYPE_OBJECT */
+  CI_CONNECTION conn;		/* CCI_U_TYPE_OBJECT */
 };
 
 /* ------------------- */
@@ -352,10 +375,8 @@ static void api_ores_destroy (API_RESULTSET * res);
 
 /* api object resultset pool implementation */
 static int opool_get_object_resultset (API_OBJECT_RESULTSET_POOL * poo,
-				       CI_OID * oid,
-				       API_RESULTSET ** rres);
-static int opool_oid_delete (API_OBJECT_RESULTSET_POOL * poo,
-			     CI_OID * oid);
+				       CI_OID * oid, API_RESULTSET ** rres);
+static int opool_oid_delete (API_OBJECT_RESULTSET_POOL * poo, CI_OID * oid);
 static int opool_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool,
 				    CI_OID * oid, char *name, size_t size);
 static void opool_destroy (API_OBJECT_RESULTSET_POOL * poo);
@@ -586,7 +607,7 @@ connection_impl_dtor (BH_BIND * bind)
  * init_connection_impl - initialize CONNECTION_IMPL structure
  *    return: void
  *    pconn(int): pointer to CONNECTION_IMPL
- *    rid(int): root id 
+ *    rid(int): root id
  *    conn(int): CI_CONNECTION
  *    bh(int): BH_INTERFACE
  *    conn_handle(int): CCI connection handle
@@ -610,7 +631,7 @@ init_connection_impl (CONNECTION_IMPL * pconn, int rid, CI_CONNECTION conn,
   pconn->opool = pool;
 }
 
-/* 
+/*
  * completes all incompleted object bound to this connection
  */
 
@@ -798,8 +819,8 @@ type_to_cci_u_type (CI_TYPE type)
  *    len(in): length of container pointed by addr field
  *    outlen(out): written size
  *    isnull(out): null indicator
- * 
- * NOTE : no non-trvial conversion is allowed between CUBRID C API native 
+ *
+ * NOTE : no non-trvial conversion is allowed between CUBRID C API native
  *        type values
  */
 static int
@@ -890,7 +911,7 @@ set_value_to_api_val (API_VAL * pv, CI_TYPE type, void *addr, size_t len)
  *    type(in): CI_TYPE
  *    len(out): 0 if type is variable size
  *              >0 if type value is fixed size
- *              <0 on error 
+ *              <0 on error
  */
 static int
 get_type_value_size (CI_TYPE type, int *len)
@@ -940,7 +961,7 @@ get_type_value_size (CI_TYPE type, int *len)
       *len = sizeof (CI_COLLECTION);
       break;
 
-    case CI_TYPE_NULL:	/* should be checked before */
+    case CI_TYPE_NULL:		/* should be checked before */
     default:
       *len = -1;
       return ER_INTERFACE_GENERIC;
@@ -1162,13 +1183,12 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
 /*
  * api_val_cci_bind_init - initialize API_VAL_CCI_BIND structure
  *    return: void
- *    bind(in/out): pointer to API_VAL_CCI_BIND 
+ *    bind(in/out): pointer to API_VAL_CCI_BIND
  *    conn(in): CI_CONNECTION handle
  *    flag(in): flag (get/set purpose)
  */
 static void
-api_val_cci_bind_init (API_VAL_CCI_BIND * bind, CI_CONNECTION conn,
-		       int flag)
+api_val_cci_bind_init (API_VAL_CCI_BIND * bind, CI_CONNECTION conn, int flag)
 {
   memset (bind, 0, sizeof (*bind));
   bind->conn = conn;
@@ -1285,10 +1305,10 @@ get_value_from_req_handle (CI_CONNECTION conn, int req_handle,
     {
       if (type == CI_TYPE_OID)
 	{
-	  /* 
-	   * this implies bind.atype == CCI_A_TYPE_STR so shoud be 
-	   * checked before other cases which binds results 
-	   * bind.atype == CCI_A_TYPE_STR 
+	  /*
+	   * this implies bind.atype == CCI_A_TYPE_STR so shoud be
+	   * checked before other cases which binds results
+	   * bind.atype == CCI_A_TYPE_STR
 	   */
 	  oidstr2xoid (bind.redirect.oid_buf, bind.conn, (CI_OID *) addr);
 	}
@@ -1341,7 +1361,7 @@ get_value_from_req_handle (CI_CONNECTION conn, int req_handle,
 /*
  * get_value_from_tset - get value of CCI set structure
  *    return: NO_ERROR if successful, error code otherwise
- *    utype(in): 
+ *    utype(in):
  *    tset(in): type of tset. precalcuated to prevent repeated function call
  *    type(in): dest type of pv
  *    conn(in): CI_CONNECTION handle
@@ -1350,8 +1370,7 @@ get_value_from_req_handle (CI_CONNECTION conn, int req_handle,
  */
 static int
 get_value_from_tset (T_CCI_U_TYPE utype, T_CCI_SET tset,
-		     CI_TYPE type, CI_CONNECTION conn, int i,
-		     API_VAL ** pv)
+		     CI_TYPE type, CI_CONNECTION conn, int i, API_VAL ** pv)
 {
   int res;
   void *ptr;
@@ -1565,7 +1584,7 @@ lazy_bind_qres_rmeta (RESULTSET_IMPL * pres)
 }
 
 /*
- * api_qres_get_resultset_metadata - API_RESULTSET::get_resultset_metadata 
+ * api_qres_get_resultset_metadata - API_RESULTSET::get_resultset_metadata
  *                                   implementation of CCI query result
  *    return: NO_ERROR if successful, error code otherwise
  *    rs(in): pointer to API_RESULTSET
@@ -1596,10 +1615,10 @@ api_qres_get_resultset_metadata (API_RESULTSET *
 }
 
 /*
- * api_qres_fetch - API_RESULTSET_IFS::fetch implementation of 
+ * api_qres_fetch - API_RESULTSET_IFS::fetch implementation of
  *                  CCI query result
  *    return:NO_ERROR if successful, error code otherwise
- *    rs(in): pointer to API_RESULTSET 
+ *    rs(in): pointer to API_RESULTSET
  *    offset(in): offset of cursor
  *    pos(in): start definition of cursor
  */
@@ -1643,7 +1662,7 @@ api_qres_fetch (API_RESULTSET * rs, int offset, CI_FETCH_POSITION pos)
 }
 
 /*
- * api_qres_tell - API_RESULTSET_IFS::tell() implementation of 
+ * api_qres_tell - API_RESULTSET_IFS::tell() implementation of
  *                 CCI query result
  *    return: NO_ERROR if successful, error code otherwise
  *    rs(in): pointer to API_RESULTSET
@@ -1731,7 +1750,7 @@ api_qres_delete_row (API_RESULTSET * res)
 }
 
 /*
- * api_qres_get_value - API_RESULTSET::get_value implementation of  
+ * api_qres_get_value - API_RESULTSET::get_value implementation of
  *                      CCI query result
  *    return: NO_ERROR if successful, error code otherwise
  *    rs(in): API_RESULTSET
@@ -1968,7 +1987,7 @@ api_qres_apply_update (API_RESULTSET * rs)
 }
 
 /*
- * api_qres_destroy - API_RESULTSET::destroy() implementation of 
+ * api_qres_destroy - API_RESULTSET::destroy() implementation of
  *                    CCI query result set
  *    return: void
  *    rs():
@@ -2005,7 +2024,7 @@ static API_RESULTSET_IFS QRES_IFS_ = {
  *    on_close(in): notification fucntion to parent COMMON_API_STRUCTURE called
  *                  when this RESULTSET_IMPL is to be destroyed
  *    resifs(in): API_RESULTSET_IFS implementation
- *    rmifs(in): API_RESULTSET_META_IFS implementation 
+ *    rmifs(in): API_RESULTSET_META_IFS implementation
  *    rpres(in): return pointer
  */
 static int
@@ -2022,7 +2041,7 @@ create_resultset_impl (CI_CONNECTION conn,
 		       RESULTSET_IMPL ** rpres)
 {
   T_CCI_COL_INFO *col_info;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_CUBRID_STMT cmd_type;
   int res, num_col;
   BIND_HANDLE handle;
   RESULTSET_IMPL *pres;
@@ -2077,7 +2096,7 @@ create_resultset_impl (CI_CONNECTION conn,
 /*
  * resultset_impl_dtor - RESULTSET_IMPL bind handle destructor
  *    return: void
- *    bind(in): pointer to RESULTSET_IMPL 
+ *    bind(in): pointer to RESULTSET_IMPL
  */
 static void
 resultset_impl_dtor (BH_BIND * bind)
@@ -2104,7 +2123,7 @@ resultset_impl_dtor (BH_BIND * bind)
  * api_qrmeta_get_count - API_RESULTSET_META::get_count implementation of
  *                        CCI query result
  *    return: NO_ERROR if successful, error code otherwise
- *    rm(in): API_RESULTSET_META 
+ *    rm(in): API_RESULTSET_META
  *    count(out): number of rows
  */
 static int
@@ -2121,7 +2140,7 @@ api_qrmeta_get_count (API_RESULTSET_META * rm, int *count)
 }
 
 /*
- * api_qrmeta_get_info - 
+ * api_qrmeta_get_info -
  *    return: NO_ERROR if successful, error code otherwise
  *    rm():
  *    index():
@@ -2254,7 +2273,7 @@ static API_RESULTSET_META_IFS QRMETA_IFS_ = {
 };
 
 /*
- * lazy_bind_pstmt_pmeta - 
+ * lazy_bind_pstmt_pmeta -
  *    return: NO_ERROR if successful, error code otherwise
  *    pstmt():
  */
@@ -2280,7 +2299,7 @@ lazy_bind_pstmt_pmeta (STATEMENT_IMPL * pstmt)
 }
 
 /*
- * statement_impl_dtor - 
+ * statement_impl_dtor -
  *    return: NO_ERROR if successful, error code otherwise
  *    bind():
  */
@@ -2306,7 +2325,7 @@ statement_impl_dtor (BH_BIND * bind)
 }
 
 /*
- * init_statement_impl - 
+ * init_statement_impl -
  *    return: void
  *    pstmt():
  *    pconn():
@@ -2332,7 +2351,7 @@ init_statement_impl (STATEMENT_IMPL * pstmt, CONNECTION_IMPL * pconn)
 }
 
 /*
- * statement_execute - 
+ * statement_execute -
  *    return: NO_ERROR if successful, error code otherwise
  *    pstmt():
  *    err_buf():
@@ -2636,8 +2655,8 @@ stmt_execute_batch_sql (STATEMENT_IMPL * pstmt)
       return ER_INTERFACE_NO_MORE_MEMORY;
     }
 
-  for (h = pstmt->batch.next, i = 0; (h != &pstmt->batch) &&
-       i < pstmt->num_batch; h = h->next, i++)
+  for (h = pstmt->batch.next, i = 0; (h != &pstmt->batch)
+       && i < pstmt->num_batch; h = h->next, i++)
     {
       BATCH_SQL_ITEM *bi = (BATCH_SQL_ITEM *) h;
 
@@ -2827,7 +2846,7 @@ static API_RESULTSET_META_IFS ORMETA_IFS_ = {
 };
 
 /*
- * api_ores_get_resultset_metadata - 
+ * api_ores_get_resultset_metadata -
  *    return: NO_ERROR if successful, error code otherwise
  *    res():
  *    rimpl():
@@ -3711,8 +3730,7 @@ opool_glo_seek (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
  *    offset():
  */
 static int
-opool_glo_tell (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
-		long *offset)
+opool_glo_tell (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo, long *offset)
 {
   CCI_OBJECT_POOL *pool = (CCI_OBJECT_POOL *) poo;
   GLO_OFFSET *off;
@@ -3761,7 +3779,7 @@ opool_glo_like_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
       return res;
     }
 
-  /* 
+  /*
    * offset : start of match from the start of glo.
    * curr_pos : right after match end
    */
@@ -3776,11 +3794,11 @@ opool_glo_like_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   off->offset = curr_pos;
   if (offset >= 0)
     {
-      *found = 1;
+      *found = true;
     }
   else
     {
-      *found = 0;
+      *found = false;
     }
 
   return NO_ERROR;
@@ -3818,7 +3836,7 @@ opool_glo_reg_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
       return res;
     }
 
-  /* 
+  /*
    * offset : start of match from the start of glo.
    * curr_pos : right after match end
    */
@@ -3833,11 +3851,11 @@ opool_glo_reg_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   off->offset = curr_pos;
   if (offset >= 0)
     {
-      *found = 1;
+      *found = true;
     }
   else
     {
-      *found = 0;
+      *found = false;
     }
 
   return NO_ERROR;
@@ -3875,7 +3893,7 @@ opool_glo_bin_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
       return res;
     }
 
-  /* 
+  /*
    * offset : start of match from the start of glo.
    * curr_pos : right after match end
    */
@@ -3890,11 +3908,11 @@ opool_glo_bin_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   off->offset = curr_pos;
   if (offset >= 0)
     {
-      *found = 1;
+      *found = true;
     }
   else
     {
-      *found = 0;
+      *found = false;
     }
 
   return NO_ERROR;
@@ -3908,8 +3926,7 @@ opool_glo_bin_search (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
  *    from():
  */
 static int
-opool_glo_copy (API_OBJECT_RESULTSET_POOL * poo, CI_OID * to,
-		CI_OID * from)
+opool_glo_copy (API_OBJECT_RESULTSET_POOL * poo, CI_OID * to, CI_OID * from)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -3922,8 +3939,7 @@ opool_glo_copy (API_OBJECT_RESULTSET_POOL * poo, CI_OID * to,
  *    cobj():
  */
 static int
-create_cci_object (CCI_OBJECT_POOL * pool, CI_OID * oid,
-		   CCI_OBJECT ** cobj)
+create_cci_object (CCI_OBJECT_POOL * pool, CI_OID * oid, CCI_OBJECT ** cobj)
 {
   int res, req_handle;
   char oid_buf[32];
@@ -4108,7 +4124,7 @@ opool_lazy_get_glo_offset (CCI_OBJECT_POOL * pool, CI_OID * glo,
 
   if (o == NULL)
     {
-      /* 
+      /*
        * check glo existance or not? (no check for now)
        * check : for exact operation.
        * no check : error will generated when actual operation performed
@@ -4363,8 +4379,7 @@ api_col_insert (API_COLLECTION * coo, long pos, CI_TYPE type,
   API_VAL *val;
   int res;
 
-  if (col->type != CI_TYPE_NULL && type != CI_TYPE_NULL
-      && col->type != type)
+  if (col->type != CI_TYPE_NULL && type != CI_TYPE_NULL && col->type != type)
     {
       return ER_INTERFACE_INVALID_ARGUMENT;
     }
@@ -4421,8 +4436,7 @@ api_col_update (API_COLLECTION * coo, long pos, CI_TYPE type,
   VALUE_AREA *va;
   int res;
 
-  if (col->type != CI_TYPE_NULL && type != CI_TYPE_NULL
-      && col->type != type)
+  if (col->type != CI_TYPE_NULL && type != CI_TYPE_NULL && col->type != type)
     {
       return ER_INTERFACE_INVALID_ARGUMENT;
     }
@@ -4767,8 +4781,8 @@ res_return:
 
   if (binds)
     {
-      /* 
-       * calloc'ed API_VAL_CCI_BIND is safe to pass to api_val_cci_bind_clear() 
+      /*
+       * calloc'ed API_VAL_CCI_BIND is safe to pass to api_val_cci_bind_clear()
        */
       for (i = 0; i < size; i++)
 	{
@@ -4788,8 +4802,7 @@ res_return:
  *    rcol():
  */
 static int
-cci_set_to_xcol (CI_CONNECTION conn, T_CCI_SET tset,
-		 CI_COLLECTION * rcol)
+cci_set_to_xcol (CI_CONNECTION conn, T_CCI_SET tset, CI_COLLECTION * rcol)
 {
   T_CCI_U_TYPE utype;
   CI_TYPE type;
@@ -4996,10 +5009,10 @@ ci_err_set_impl (int err_code)
  */
 static int
 ci_conn_connect_impl (COMMON_API_STRUCTURE * conn,
-			 const char *host,
-			 unsigned short port,
-			 const char *databasename,
-			 const char *user_name, const char *password)
+		      const char *host,
+		      unsigned short port,
+		      const char *databasename,
+		      const char *user_name, const char *password)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
   int res;
@@ -5038,7 +5051,7 @@ ci_conn_close_impl (COMMON_API_STRUCTURE * conn)
  */
 static int
 ci_conn_create_statement_impl (COMMON_API_STRUCTURE * conn,
-				  CI_STATEMENT * stmt)
+			       CI_STATEMENT * stmt)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
   STATEMENT_IMPL *pstmt;
@@ -5074,8 +5087,7 @@ ci_conn_create_statement_impl (COMMON_API_STRUCTURE * conn,
  */
 static int
 ci_conn_set_option_impl (COMMON_API_STRUCTURE * conn,
-			    CI_CONNECTION_OPTION option, void *arg,
-			    size_t size)
+			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
   int res;
@@ -5140,8 +5152,7 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * conn,
  */
 static int
 ci_conn_get_option_impl (COMMON_API_STRUCTURE * conn,
-			    CI_CONNECTION_OPTION option, void *arg,
-			    size_t size)
+			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
   int res;
@@ -5259,7 +5270,7 @@ ci_conn_rollback_impl (COMMON_API_STRUCTURE * conn)
  */
 static int
 ci_conn_get_error_impl (COMMON_API_STRUCTURE * conn, int *err,
-			   char *msg, size_t size)
+			char *msg, size_t size)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
 
@@ -5278,7 +5289,7 @@ ci_conn_get_error_impl (COMMON_API_STRUCTURE * conn, int *err,
  */
 static int
 ci_stmt_add_batch_query_impl (COMMON_API_STRUCTURE * stmt,
-				 const char *sql, size_t len)
+			      const char *sql, size_t len)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   BATCH_SQL_ITEM *bsi;
@@ -5424,7 +5435,7 @@ do {                                                                  \
  */
 static int
 ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * stmt, char *sql,
-				   size_t len, CI_RESULTSET * rs, int *r)
+				size_t len, CI_RESULTSET * rs, int *r)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -5498,8 +5509,7 @@ ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * stmt, char *sql,
  *    r():
  */
 static int
-ci_stmt_execute_impl (COMMON_API_STRUCTURE * stmt,
-			 CI_RESULTSET * rs, int *r)
+ci_stmt_execute_impl (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * rs, int *r)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -5579,8 +5589,7 @@ ci_stmt_execute_impl (COMMON_API_STRUCTURE * stmt,
  *    br():
  */
 static int
-ci_stmt_execute_batch_impl (COMMON_API_STRUCTURE * stmt,
-			       CI_BATCH_RESULT * br)
+ci_stmt_execute_batch_impl (COMMON_API_STRUCTURE * stmt, CI_BATCH_RESULT * br)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -5630,8 +5639,7 @@ ci_stmt_execute_batch_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_get_option_impl (COMMON_API_STRUCTURE * stmt,
-			    CI_STATEMENT_OPTION option, void *arg,
-			    size_t size)
+			 CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
 
@@ -5650,7 +5658,7 @@ ci_stmt_get_option_impl (COMMON_API_STRUCTURE * stmt,
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      *(int *) arg = pstmt->opt_async_query;
+      *(int *) arg = (pstmt->opt_async_query) ? 1 : 0;
       break;
 
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
@@ -5676,8 +5684,7 @@ ci_stmt_get_option_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_set_option_impl (COMMON_API_STRUCTURE * stmt,
-			    CI_STATEMENT_OPTION option, void *arg,
-			    size_t size)
+			 CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
 
@@ -5685,11 +5692,11 @@ ci_stmt_set_option_impl (COMMON_API_STRUCTURE * stmt,
     {
 
     case CI_STATEMENT_OPTION_UPDATABLE_RESULT:
-      pstmt->opt_updatable_result = *(int *) arg != 0 ? 1 : 0;
+      pstmt->opt_updatable_result = *(int *) arg != 0 ? true : false;
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      pstmt->opt_async_query = *(int *) arg != 0 ? 1 : 0;
+      pstmt->opt_async_query = *(int *) arg != 0 ? true : false;
       break;
 
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
@@ -5715,14 +5722,14 @@ ci_stmt_set_option_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_prepare_impl (COMMON_API_STRUCTURE * stmt, const char *sql,
-			 size_t len)
+		      size_t len)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
   char pp_flag = 0;
   int req_handle;
   T_CCI_COL_INFO *col_info;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_CUBRID_STMT cmd_type;
   int num_col;
 
   /* check status */
@@ -5773,8 +5780,7 @@ ci_stmt_prepare_impl (COMMON_API_STRUCTURE * stmt, const char *sql,
  *    index():
  */
 static int
-ci_stmt_register_out_parameter_impl (COMMON_API_STRUCTURE * stmt,
-					int index)
+ci_stmt_register_out_parameter_impl (COMMON_API_STRUCTURE * stmt, int index)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -5787,7 +5793,7 @@ ci_stmt_register_out_parameter_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * stmt,
-					CI_RESULTSET_METADATA * r)
+				     CI_RESULTSET_METADATA * r)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   RESULTSET_IMPL *pres;
@@ -5836,7 +5842,7 @@ ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * stmt,
-					CI_PARAMETER_METADATA * r)
+				     CI_PARAMETER_METADATA * r)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -5868,10 +5874,10 @@ ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * stmt,
-			       int index,
-			       CI_TYPE type,
-			       void *addr,
-			       size_t len, size_t * outlen, bool * isnull)
+			    int index,
+			    CI_TYPE type,
+			    void *addr,
+			    size_t len, size_t * outlen, bool * isnull)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -5925,8 +5931,7 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * stmt,
-			       int index, CI_TYPE type, void *val,
-			       size_t size)
+			    int index, CI_TYPE type, void *val, size_t size)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
   int res;
@@ -6004,8 +6009,7 @@ ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * stmt,
  *    r():
  */
 static int
-ci_stmt_get_resultset_impl (COMMON_API_STRUCTURE * stmt,
-			       CI_RESULTSET * r)
+ci_stmt_get_resultset_impl (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * r)
 {
   STATEMENT_IMPL *pstmt = (STATEMENT_IMPL *) stmt;
 
@@ -6106,8 +6110,8 @@ ci_stmt_next_result_impl (COMMON_API_STRUCTURE * stmt, bool * exist_result)
  */
 static int
 ci_stmt_get_first_error_impl (COMMON_API_STRUCTURE * stmt, int *line,
-				 int *col, int *errcode, char *err_msg,
-				 size_t size)
+			      int *col, int *errcode, char *err_msg,
+			      size_t size)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -6124,8 +6128,8 @@ ci_stmt_get_first_error_impl (COMMON_API_STRUCTURE * stmt, int *line,
  */
 static int
 ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * stmt,
-				int *line, int *col,
-				int *errcode, char *err_msg, size_t size)
+			     int *line, int *col,
+			     int *errcode, char *err_msg, size_t size)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -6138,7 +6142,7 @@ ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * stmt,
  */
 static int
 ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * stmt,
-				SQLX_CMD_TYPE * type)
+			     CUBRID_STMT_TYPE * type)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -6180,7 +6184,7 @@ ci_batch_res_query_count_impl (COMMON_API_STRUCTURE * br, int *count)
  */
 static int
 ci_batch_res_get_result_impl (COMMON_API_STRUCTURE * br, int index,
-				 int *ret, int *nr)
+			      int *ret, int *nr)
 {
   BATCH_RESULT_IMPL *pbr = (BATCH_RESULT_IMPL *) br;
   int r;
@@ -6211,7 +6215,7 @@ ci_batch_res_get_result_impl (COMMON_API_STRUCTURE * br, int index,
  */
 static int
 ci_batch_res_get_error_impl (COMMON_API_STRUCTURE * br, int index,
-				int *err_code, char *err_msg, size_t buf_size)
+			     int *err_code, char *err_msg, size_t buf_size)
 {
   BATCH_RESULT_IMPL *pbr = (BATCH_RESULT_IMPL *) br;
   int r;
@@ -6268,7 +6272,7 @@ ci_pmeta_get_count_impl (COMMON_API_STRUCTURE * pmeta, int *count)
  */
 static int
 ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pmeta, int index,
-			   CI_PMETA_INFO_TYPE type, void *arg, size_t size)
+			CI_PMETA_INFO_TYPE type, void *arg, size_t size)
 {
   PARAMETER_META_IMPL *pm = (PARAMETER_META_IMPL *) pmeta;
 
@@ -6315,14 +6319,14 @@ ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pmeta, int index,
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
-      
+
       *(int *) arg = pm->bptr->col_info[index - 1].is_non_null ? 0 : 1;
       break;
 
     default:
       return ER_INTERFACE_INVALID_ARGUMENT;
     }
-  
+
   return NO_ERROR;
 }
 
@@ -6335,10 +6339,10 @@ ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pmeta, int index,
  */
 static int
 ci_get_connection_opool_impl (COMMON_API_STRUCTURE * pst,
-				 API_OBJECT_RESULTSET_POOL ** rpool)
+			      API_OBJECT_RESULTSET_POOL ** rpool)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) pst;
-  
+
   *rpool = (API_OBJECT_RESULTSET_POOL *) pconn->opool;
   return NO_ERROR;
 }

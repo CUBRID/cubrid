@@ -1,3 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
+ *
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
+ *
+ */
+
 package cubridmanager.query.view;
 
 import java.io.BufferedReader;
@@ -1503,6 +1533,7 @@ public class QueryEditor extends ViewPart {
 		vectorQueryPlans.clear();
 		int cntResults = 0;
 		boolean hasModifyQuery = false;
+		boolean isIsolationHigher = false;
 		String msg = "";
 		String sql;
 		qVector = queriesToQuery(queries);
@@ -1515,6 +1546,9 @@ public class QueryEditor extends ViewPart {
 
 		try {
 			clearResult();
+			if (qVector.size() > 0)
+				isIsolationHigher = isIsolationHigherThanRepeatableRead(conn, isActive);
+			
 			for (i = 0; i < qVector.size(); i++) {
 				sql = qVector.get(i).toString();
 				beginTimestamp = System.currentTimeMillis();
@@ -1576,8 +1610,8 @@ public class QueryEditor extends ViewPart {
 
 					result = new QueryExecuter(this, cntResults, sql, rs);
 					switch (stmt.getStatementType()) {
-					case CUBRIDCommandType.SQLX_CMD_EVALUATE:
-					case CUBRIDCommandType.SQLX_CMD_CALL:
+					case CUBRIDCommandType.CUBRID_STMT_EVALUATE:
+					case CUBRIDCommandType.CUBRID_STMT_CALL:
 						hasModifyQuery = true;
 						break;
 					}
@@ -1637,43 +1671,43 @@ public class QueryEditor extends ViewPart {
 
 					hasModifyQuery = true;
 					switch (execType) {
-					case CUBRIDCommandType.SQLX_CMD_ALTER_CLASS:
-					case CUBRIDCommandType.SQLX_CMD_ALTER_SERIAL:
-					case CUBRIDCommandType.SQLX_CMD_RENAME_CLASS:
-					case CUBRIDCommandType.SQLX_CMD_RENAME_TRIGGER:
+					case CUBRIDCommandType.CUBRID_STMT_ALTER_CLASS:
+					case CUBRIDCommandType.CUBRID_STMT_ALTER_SERIAL:
+					case CUBRIDCommandType.CUBRID_STMT_RENAME_CLASS:
+					case CUBRIDCommandType.CUBRID_STMT_RENAME_TRIGGER:
 						msg += Messages.getString("QEDIT.ALTEROK");
 						break;
-					case CUBRIDCommandType.SQLX_CMD_CREATE_CLASS:
-					case CUBRIDCommandType.SQLX_CMD_CREATE_INDEX:
-					case CUBRIDCommandType.SQLX_CMD_CREATE_TRIGGER:
-					case CUBRIDCommandType.SQLX_CMD_CREATE_SERIAL:
+					case CUBRIDCommandType.CUBRID_STMT_CREATE_CLASS:
+					case CUBRIDCommandType.CUBRID_STMT_CREATE_INDEX:
+					case CUBRIDCommandType.CUBRID_STMT_CREATE_TRIGGER:
+					case CUBRIDCommandType.CUBRID_STMT_CREATE_SERIAL:
 						msg += Messages.getString("QEDIT.CREATEOK");
 						break;
-					case CUBRIDCommandType.SQLX_CMD_DROP_DATABASE:
-					case CUBRIDCommandType.SQLX_CMD_DROP_CLASS:
-					case CUBRIDCommandType.SQLX_CMD_DROP_INDEX:
-					case CUBRIDCommandType.SQLX_CMD_DROP_LABEL:
-					case CUBRIDCommandType.SQLX_CMD_DROP_TRIGGER:
-					case CUBRIDCommandType.SQLX_CMD_DROP_SERIAL:
-					case CUBRIDCommandType.SQLX_CMD_REMOVE_TRIGGER:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_DATABASE:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_CLASS:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_INDEX:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_LABEL:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_TRIGGER:
+					case CUBRIDCommandType.CUBRID_STMT_DROP_SERIAL:
+					case CUBRIDCommandType.CUBRID_STMT_REMOVE_TRIGGER:
 						msg += Messages.getString("QEDIT.DROPOK");
 						break;
-					case CUBRIDCommandType.SQLX_CMD_INSERT:
+					case CUBRIDCommandType.CUBRID_STMT_INSERT:
 						msg += cntModify + Messages.getString("QEDIT.INSERTOK");
 						break;
-					case CUBRIDCommandType.SQLX_CMD_SELECT:
+					case CUBRIDCommandType.CUBRID_STMT_SELECT:
 						break;
-					case CUBRIDCommandType.SQLX_CMD_UPDATE:
+					case CUBRIDCommandType.CUBRID_STMT_UPDATE:
 						msg += cntModify
 								+ Messages.getString("QEDIT.UPDATEOK2");
 						break;
-					case CUBRIDCommandType.SQLX_CMD_DELETE:
+					case CUBRIDCommandType.CUBRID_STMT_DELETE:
 						msg += cntModify + Messages.getString("QEDIT.DELETEOK");
 						break;
 					/* others are 'Successfully execution' */
 					/* Under two line works disable button when query's last command is commit/rollback */
-					case CUBRIDCommandType.SQLX_CMD_COMMIT_WORK:
-					case CUBRIDCommandType.SQLX_CMD_ROLLBACK_WORK:
+					case CUBRIDCommandType.CUBRID_STMT_COMMIT_WORK:
+					case CUBRIDCommandType.CUBRID_STMT_ROLLBACK_WORK:
 						hasModifyQuery = false;
 					default:
 						msg += Messages.getString("QEDIT.QUERYOK");
@@ -1737,8 +1771,7 @@ public class QueryEditor extends ViewPart {
 				// if query have only select query, isolation level is 
 				// lower then TRANSACTION_REPEATABLE_READ 
 				if (!hasModifyQuery
-						&& !QueryEditor.isIsolationHigherThanRepeatableRead(
-								conn, isActive)) {
+						&& !isIsolationHigher) {
 					conn.commit();
 					setActive(false);
 				} else
