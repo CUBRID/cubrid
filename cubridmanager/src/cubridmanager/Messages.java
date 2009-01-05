@@ -30,6 +30,7 @@
 
 package cubridmanager;
 
+import java.text.MessageFormat;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
@@ -46,6 +47,19 @@ public class Messages {
 		// TODO Auto-generated method stub
 		try {
 			return RESOURCE_BUNDLE.getString(key);
+		} catch (MissingResourceException e) {
+			return '!' + key + '!';
+		}
+	}
+	/**
+	 * get variable message({1})
+	 * @param key
+	 * @param obj
+	 * @return
+	 */
+	public static String getString(String key, Object[] obj) {
+		try {
+			return MessageFormat.format(RESOURCE_BUNDLE.getString(key), obj);
 		} catch (MissingResourceException e) {
 			return '!' + key + '!';
 		}

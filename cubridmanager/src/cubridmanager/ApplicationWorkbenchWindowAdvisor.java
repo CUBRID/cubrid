@@ -61,6 +61,7 @@ public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 		IWorkbenchWindowConfigurer configurer = getWindowConfigurer();
 		configurer.setShowCoolBar(true);
 		configurer.setShowStatusLine(true);
+		configurer.setShowProgressIndicator(true);
 		myconfigurer = configurer;
 	}
 
@@ -85,7 +86,8 @@ public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 		}
 
 		if (prop.getProperty(MainConstants.mainWindowMaximize) != null
-				&& prop.getProperty(MainConstants.mainWindowMaximize).equals("yes"))
+				&& prop.getProperty(MainConstants.mainWindowMaximize).equals(
+						"yes"))
 			Application.mainwindow.getShell().setMaximized(true);
 		else
 			Application.mainwindow.getShell().setMaximized(false);
@@ -115,6 +117,7 @@ public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 
 	public boolean preWindowShellClose() {
 		Shell sh = new Shell();
+		CommonTool.centerShell(sh);
 		if (CommonTool.MsgBox(sh, SWT.ICON_WARNING | SWT.YES | SWT.NO, Messages
 				.getString("MSG.WARNING"), Messages
 				.getString("MSG.QUIT_PROGRAM")) == SWT.YES) {
@@ -133,6 +136,10 @@ public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 						Integer.toString(Application.mainwindow.getShell()
 								.getSize().y));
 				CommonTool.SaveProperties(prop);
+			}
+			if (MainRegistry.cb != null) {
+				MainRegistry.cb.dispose();
+				MainRegistry.cb = null;
 			}
 			return true;
 		}

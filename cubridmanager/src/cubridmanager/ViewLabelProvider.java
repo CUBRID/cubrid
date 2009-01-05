@@ -43,6 +43,6 @@ public class ViewLabelProvider extends LabelProvider {
 
 		if (iconpath == null)
 			return null;
-		return CubridmanagerPlugin.getImageDescriptor(iconpath).createImage();
+		return CubridmanagerPlugin.getImage(iconpath);
 	}
 }

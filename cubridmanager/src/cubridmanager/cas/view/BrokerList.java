@@ -44,6 +44,7 @@ import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridLayout;
 
+import cubridmanager.CubridmanagerPlugin;
 import cubridmanager.MainConstants;
 import cubridmanager.MainRegistry;
 import cubridmanager.TreeObject;
@@ -125,9 +126,8 @@ public class BrokerList extends ViewPart {
 			cLabel.setText(casrec.broker_name);
 			cLabel.setBackground(Display.getCurrent().getSystemColor(
 					SWT.COLOR_WHITE));
-			cLabel.setImage(new Image(Display.getCurrent(),
-					getClass().getResourceAsStream(
-							"/cubridmanager/image/caslisticon.png")));
+			cLabel.setImage(CubridmanagerPlugin
+					.getImage("/image/caslisticon.png"));
 			cLabel.addMouseListener(new org.eclipse.swt.events.MouseAdapter() {
 				public void mouseDown(org.eclipse.swt.events.MouseEvent e) {
 					String lblname = ((CLabel) e.getSource()).getText();

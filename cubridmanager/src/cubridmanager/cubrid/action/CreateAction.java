@@ -268,8 +268,12 @@ class CreateActionWizard extends Wizard {
 							.getString("ERROR.INVALIDDBNAME"));
 					return page;
 				}
-				if (MainRegistry.hostOsInfo.equals("NT")
-						&& CreateAction.newdb.trim().length() > 6) {
+				//issue CUBRID-247
+				//on Windows and Linux platform, length of prefix logname is not more than 17,
+				//so remove the condition that whether OS is NT
+//				if (MainRegistry.hostOsInfo.equals("NT")
+//						&& CreateAction.newdb.trim().length() > 17) {
+				if( CreateAction.newdb.trim().length() > 17 ) {
 					CommonTool.ErrorBox(super.getShell(), Messages
 							.getString("ERROR.NT_DBNAME_LENGTH_TOOLONG"));
 					return page;

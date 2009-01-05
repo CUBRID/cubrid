@@ -44,6 +44,7 @@ import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.widgets.Control;
 
+import cubridmanager.CubridmanagerPlugin;
 import cubridmanager.MainConstants;
 import cubridmanager.MainRegistry;
 import cubridmanager.TreeObject;
@@ -125,10 +126,8 @@ public class DatabaseListInHost extends ViewPart {
 			cLabel.setText(authrec.dbname);
 			cLabel.setBackground(Display.getCurrent().getSystemColor(
 					SWT.COLOR_WHITE));
-			cLabel
-					.setImage(new Image(Display.getCurrent(), getClass()
-							.getResourceAsStream(
-									"/cubridmanager/image/dblisticon.png")));
+			cLabel.setImage(CubridmanagerPlugin
+					.getImage("/image/dblisticon.png"));
 			cLabel.addMouseListener(new org.eclipse.swt.events.MouseAdapter() {
 				public void mouseDown(org.eclipse.swt.events.MouseEvent e) {
 					String lblname = ((CLabel) e.getSource()).getText();

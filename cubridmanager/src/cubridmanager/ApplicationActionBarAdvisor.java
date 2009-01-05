@@ -713,7 +713,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				.getString("TOOL.TABLEDELETEACTION"), null);
 		tableImportAction = new TableImportAction(Messages
 				.getString("TOOL.TABLEIMPORTACTION"),
-				"src/cubridmanager/image/QueryEditor/qe_import.png");
+				"/image/QueryEditor/qe_import.png");
 		tableExportAction = new TableExportAction(Messages
 				.getString("TOOL.TABLEEXPORTACTION"), null);
 		tablePropertyAction = new TablePropertyAction(Messages
@@ -746,8 +746,10 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				.getString("MENU.CHANGE"));
 		protegoUserManagementRefreshAction = new ProtegoUserManagementRefreshAction(
 				Messages.getString("BUTTON.REFRESH"));
-		certificateLoginAction = new CertificateLoginAction("Certificate login", window);
-		idPasswordLoginAction = new IdPasswordLoginAction("Maintain ID login", window);
+		certificateLoginAction = new CertificateLoginAction(
+				"Certificate login", window);
+		idPasswordLoginAction = new IdPasswordLoginAction("Maintain ID login",
+				window);
 
 		// File
 		connectAction = new ConnectAction(Messages.getString("MENU.DOCONNECT"),
@@ -760,14 +762,12 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		register(newQueryAction = new QueryEditAction(Messages
 				.getString("MENU.NEWQUERY"), "icons/queryedit_16.png", false));
 		register(openQueryAction = new OpenQueryAction(Messages
-				.getString("MENU.OPENQUERY"),
-				"src/cubridmanager/image/QueryEditor/qe_open.png"));
+				.getString("MENU.OPENQUERY"), "/image/QueryEditor/qe_open.png"));
 		register(saveQueryAction = new SaveQueryAction(Messages
-				.getString("MENU.SAVEQUERY"),
-				"src/cubridmanager/image/QueryEditor/qe_save.png"));
+				.getString("MENU.SAVEQUERY"), "/image/QueryEditor/qe_save.png"));
 		register(saveAsQueryAction = new SaveAsQueryAction(Messages
 				.getString("MENU.SAVEASQUERY"),
-				"src/cubridmanager/image/QueryEditor/qe_saveas.png"));
+				"/image/QueryEditor/qe_saveas.png"));
 
 		managerExitAction = new ManagerExitAction(Messages
 				.getString("MENU.MANAGEREXIT"), window);
@@ -775,48 +775,46 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 
 		// Edit
 		register(undoAction = new UndoAction(Messages.getString("QEDIT.UNDO"),
-				"src/cubridmanager/image/QueryEditor/qe_undo.png"));
+				"/image/QueryEditor/qe_undo.png"));
 		register(redoAction = new RedoAction(Messages.getString("QEDIT.REDO"),
-				"src/cubridmanager/image/QueryEditor/qe_redo.png"));
+				"/image/QueryEditor/qe_redo.png"));
 
 		register(copyClipboardAction = new CopyClipboardAction(Messages
-				.getString("QEDIT.COPY"),
-				"src/cubridmanager/image/QueryEditor/qe_copy.png"));
+				.getString("QEDIT.COPY"), "/image/QueryEditor/qe_copy.png"));
 		register(cutAction = new CutAction(Messages.getString("QEDIT.CUT"),
-				"src/cubridmanager/image/QueryEditor/qe_cut.png"));
+				"/image/QueryEditor/qe_cut.png"));
 		register(pasteAction = new PasteAction(Messages
-				.getString("QEDIT.PASTE"),
-				"src/cubridmanager/image/QueryEditor/qe_paste.png"));
+				.getString("QEDIT.PASTE"), "/image/QueryEditor/qe_paste.png"));
 
 		register(findAction = new FindAction(Messages.getString("QEDIT.FIND"),
-				"src/cubridmanager/image/QueryEditor/qe_find.png"));
+				"/image/QueryEditor/qe_find.png"));
 		register(findNextAction = new FindNextAction(Messages
 				.getString("QEDIT.FINDNEXT"),
-				"src/cubridmanager/image/QueryEditor/qe_findnext.png"));
+				"/image/QueryEditor/qe_findnext.png"));
 		register(replaceAction = new ReplaceAction(Messages
 				.getString("QEDIT.REPLACE"),
-				"src/cubridmanager/image/QueryEditor/qe_replace.png"));
+				"/image/QueryEditor/qe_replace.png"));
 
 		register(commentAddAction = new CommentAddAction(Messages
 				.getString("QEDIT.COMMENT"),
-				"src/cubridmanager/image/QueryEditor/qe_comment_input.png"));
+				"/image/QueryEditor/qe_comment_input.png"));
 		register(commentDeleteAction = new CommentDeleteAction(Messages
 				.getString("QEDIT.UNCOMMENT"),
-				"src/cubridmanager/image/QueryEditor/qe_comment_delete.png"));
+				"/image/QueryEditor/qe_comment_delete.png"));
 
 		register(tabAddAction = new TabAddAction(Messages
 				.getString("QEDIT.INDENT"),
-				"src/cubridmanager/image/QueryEditor/qe_indent_remove.png"));
+				"/image/QueryEditor/qe_indent_remove.png"));
 		register(tabDeleteAction = new TabDeleteAction(Messages
 				.getString("QEDIT.UNINDENT"),
-				"src/cubridmanager/image/QueryEditor/qe_indent.png"));
+				"/image/QueryEditor/qe_indent.png"));
 
 		// Tools
 		scriptRunAction = new ScriptRunAction(Messages
 				.getString("MENU.EXECUTESCRIPT"),
-				"src/cubridmanager/image/QueryEditor/qe_script_go.png");
+				"/image/QueryEditor/qe_script_go.png");
 		oidNaviAction = new OidNaviAction(Messages.getString("MENU.OIDNAVI"),
-				"src/cubridmanager/image/QueryEditor/qe_oid_navi.png");
+				"/image/QueryEditor/qe_oid_navi.png");
 		managerLogAction = new ManagerLogAction(Messages
 				.getString("MENU.MANAGERLOG"), window);
 		register(managerLogAction);
@@ -824,7 +822,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				.getString("MENU.USERADMIN"), window);
 		protegoUserManagementAction = new ProtegoUserManagementAction(Messages
 				.getString("TITLE.PROTEGOUSERMANAGEMENT"),
-				"src/cubridmanager/image/QueryEditor/qe_indent.png");
+				"/image/QueryEditor/qe_indent.png");
 
 		if (!MainRegistry.isProtegoBuild()) {
 			register(userManagementAction);
@@ -1364,7 +1362,8 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 					manager.add(ApplicationActionBarAdvisor.deleteAction);
 				} else if (Current_select.equals(DBUsers.ID)) {
 					if (MainRegistry.Authinfo_find(Current_db).status == MainConstants.STATUS_START)
-						manager.add(ApplicationActionBarAdvisor.createNewUserAction);
+						manager
+								.add(ApplicationActionBarAdvisor.createNewUserAction);
 				} else if (Current_select.equals(DBUsers.RESERVED)) {
 					manager.add(ApplicationActionBarAdvisor.userPropertyAction);
 				} else if (Current_select.equals(DBUsers.USERS)) {
@@ -1373,20 +1372,27 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 					manager.add(ApplicationActionBarAdvisor.userPropertyAction);
 				} else if (Current_select.equals(JobAutomation.BACKJOBS)) {
 					manager.add(ApplicationActionBarAdvisor.backupPlanAction);
-					manager.add(ApplicationActionBarAdvisor.autoBackupErrorLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.autoBackupErrorLogAction);
 				} else if (Current_select.equals(JobAutomation.QUERYJOBS)) {
 					manager.add(ApplicationActionBarAdvisor.queryPlanAction);
 				} else if (Current_select.equals(JobAutomation.BACKJOB)) {
-					manager.add(ApplicationActionBarAdvisor.deleteBackupPlanAction);
+					manager
+							.add(ApplicationActionBarAdvisor.deleteBackupPlanAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.updateBackupPlanAction);
+					manager
+							.add(ApplicationActionBarAdvisor.updateBackupPlanAction);
 				} else if (Current_select.equals(JobAutomation.QUERYJOB)) {
-					manager.add(ApplicationActionBarAdvisor.deletequeryPlanAction);
+					manager
+							.add(ApplicationActionBarAdvisor.deletequeryPlanAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.updatequeryPlanAction);
+					manager
+							.add(ApplicationActionBarAdvisor.updatequeryPlanAction);
 				} else if (Current_select.equals(DBSpace.ID)) {
-					manager.add(ApplicationActionBarAdvisor.setAutoAddVolumeAction);
-					manager.add(ApplicationActionBarAdvisor.addedVolumeLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.setAutoAddVolumeAction);
+					manager
+							.add(ApplicationActionBarAdvisor.addedVolumeLogAction);
 				} else if (Current_select.equals(DBSpace.VOL_GENERAL)) {
 					manager.add(ApplicationActionBarAdvisor.addVolumeAction);
 				} else if (Current_select.equals(DBSchema.USER_TABLE)) {
@@ -1398,15 +1404,16 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				} else if (Current_select.equals(DBSchema.SYS_OBJECT)) {
 					try {
 						if (MainRegistry.Authinfo_find(Current_db).status == MainConstants.STATUS_START) {
-							TreeObject parent = ((TreeObject) ((IStructuredSelection) CubridView.viewer
-									.getSelection()).getFirstElement()).getParent();
-							tablePropertyAction.setText(parent.getName()
-									.concat(Messages.getString("TOOL.TABLEPROPERTYACTION")));
+							tablePropertyAction.setText(Messages
+									.getString("TOOL.TABLEPROPERTYACTION"));
 
-							manager.add(ApplicationActionBarAdvisor.tableSelectAllAction);
-							manager.add(ApplicationActionBarAdvisor.tableSelectCountAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tableSelectAllAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tableSelectCountAction);
 							manager.add(new Separator());
-							manager.add(ApplicationActionBarAdvisor.tablePropertyAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tablePropertyAction);
 						}
 					} catch (Exception e) {
 
@@ -1415,23 +1422,33 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 					try {
 						TreeObject parent = ((TreeObject) ((IStructuredSelection) CubridView.viewer
 								.getSelection()).getFirstElement()).getParent();
-						tablePropertyAction.setText(parent.getName().concat(Messages.getString("TOOL.TABLEPROPERTY_EDITACTION")));
+						tablePropertyAction.setText(Messages
+								.getString("TOOL.TABLEPROPERTY_EDITACTION"));
 						if (MainRegistry.Authinfo_find(Current_db).status == MainConstants.STATUS_START) {
-							manager.add(ApplicationActionBarAdvisor.tableSelectAllAction);
-							manager.add(ApplicationActionBarAdvisor.tableSelectCountAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tableSelectAllAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tableSelectCountAction);
 							manager.add(new Separator());
 							if (parent.getID().equals(DBSchema.USER_TABLE)) {
-								manager.add(ApplicationActionBarAdvisor.tableInsertAction);
-								manager.add(ApplicationActionBarAdvisor.tableDeleteAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tableInsertAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tableDeleteAction);
 								manager.add(new Separator());
-								manager.add(ApplicationActionBarAdvisor.tableImportAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tableImportAction);
 							}
-							manager.add(ApplicationActionBarAdvisor.tableExportAction);
+							manager
+									.add(ApplicationActionBarAdvisor.tableExportAction);
 							if (!parent.getID().equals(DBSchema.USER_OBJECT)) {
 								manager.add(new Separator());
-								manager.add(ApplicationActionBarAdvisor.tableDropAction);
-								manager.add(ApplicationActionBarAdvisor.tableRenameAction);
-								manager.add(ApplicationActionBarAdvisor.tablePropertyAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tableDropAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tableRenameAction);
+								manager
+										.add(ApplicationActionBarAdvisor.tablePropertyAction);
 							}
 						}
 					} catch (Exception e) {
@@ -1443,7 +1460,8 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 					manager.add(ApplicationActionBarAdvisor.dropTriggerAction);
 					manager.add(ApplicationActionBarAdvisor.alterTriggerAction);
 				} else if (Current_select.equals(DBLogs.ID)) {
-					manager.add(ApplicationActionBarAdvisor.removeAllErrLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.removeAllErrLogAction);
 				} else if (Current_select.equals(DBLogs.OBJ)) {
 					manager.add(ApplicationActionBarAdvisor.logViewAction);
 					manager.add(ApplicationActionBarAdvisor.removeErrLogAction);
@@ -1488,11 +1506,13 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				manager.add(new Separator());
 				manager.add(ApplicationActionBarAdvisor.refreshIntervalAction);
 			} else if (Current_select.equals(CASLogs.LOGS_ACCESS))
-				manager.add(ApplicationActionBarAdvisor.removeAllAccessLogAction);
+				manager
+						.add(ApplicationActionBarAdvisor.removeAllAccessLogAction);
 			else if (Current_select.equals(CASLogs.LOGS_ERROR))
 				manager.add(ApplicationActionBarAdvisor.removeAllErrLogAction);
 			else if (Current_select.equals(CASLogs.LOGS_SCRIPT))
-				manager.add(ApplicationActionBarAdvisor.removeAllScriptLogAction);
+				manager
+						.add(ApplicationActionBarAdvisor.removeAllScriptLogAction);
 			else if (Current_select.equals(CASLogs.ADMINOBJ)) {
 				manager.add(ApplicationActionBarAdvisor.logViewAction);
 				manager.add(ApplicationActionBarAdvisor.resetCASAdminLogAction);
@@ -1520,33 +1540,44 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 			manager.add(marker);
 
 			if (Current_select.equals(StatusTemplate.ID)) {
-				if (Current_job.equals(Messages.getString("TREE.STATUSMONITOR"))) {
-					manager.add(ApplicationActionBarAdvisor.diagNewStatusMonitorTemplateAction);
+				if (Current_job
+						.equals(Messages.getString("TREE.STATUSMONITOR"))) {
+					manager
+							.add(ApplicationActionBarAdvisor.diagNewStatusMonitorTemplateAction);
 					/*
 					 * manager.add(new Separator());
 					 * manager.add(ApplicationActionBarAdvisor.diagDefaultStatusMonitorAction);
 					 */
 				} else {
 					ApplicationActionBarAdvisor.diagUpdateStatusMonitorTemplateAction.dialogTemplateName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagUpdateStatusMonitorTemplateAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagUpdateStatusMonitorTemplateAction);
 					ApplicationActionBarAdvisor.diagStatusMonitorAction.dialogTemplateName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagStatusMonitorAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagStatusMonitorAction);
 					manager.add(new Separator());
 					ApplicationActionBarAdvisor.diagRemoveStatusTemplateAction.templateName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagRemoveStatusTemplateAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagRemoveStatusTemplateAction);
 				}
 			} else if (Current_select.equals(ActivityTemplate.ID)) {
-				if (Current_job.equals(Messages.getString("TREE.ACTIVITYMONITOR"))) {
-					
-				} else if (Current_job.equals(Messages.getString("TREE.ACTIVITYTEMPLATE"))) {
-					manager.add(ApplicationActionBarAdvisor.diagNewActivityMonitorTemplateAction);
+				if (Current_job.equals(Messages
+						.getString("TREE.ACTIVITYMONITOR"))) {
+
+				} else if (Current_job.equals(Messages
+						.getString("TREE.ACTIVITYTEMPLATE"))) {
+					manager
+							.add(ApplicationActionBarAdvisor.diagNewActivityMonitorTemplateAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagDefaultActivityMonitorAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagDefaultActivityMonitorAction);
 				} else {
 					ApplicationActionBarAdvisor.diagActivityMonitorAction.dialogTemplateName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagActivityMonitorAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityMonitorAction);
 					ApplicationActionBarAdvisor.diagUpdateActivityTemplateAction.dialogTemplateName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagUpdateActivityTemplateAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagUpdateActivityTemplateAction);
 					manager.add(new Separator());
 					ApplicationActionBarAdvisor.diagRemoveActivityTemplateAction.templateName = Current_job;
 					manager
@@ -1554,17 +1585,23 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				}
 			} else if (Current_select.equals(ActivityLogs.ID)) {
 				if (Current_job.equals(Messages.getString("TREE.ACTIVITYLOGS"))) {
-				} else if (Current_job.equals(Messages.getString("TREE.CASLOGS"))) {
+				} else if (Current_job.equals(Messages
+						.getString("TREE.CASLOGS"))) {
 					DiagActivityAnalyzeCASLogAction.logFile = "";
-					manager.add(ApplicationActionBarAdvisor.diagActivityAnalyzeCASLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityAnalyzeCASLogAction);
 				} else {
 					ApplicationActionBarAdvisor.diagActivityLogDisplayLogAction.logFileName = Current_job;
-					manager.add(ApplicationActionBarAdvisor.diagActivityLogDisplayLogAction);
-					manager.add(ApplicationActionBarAdvisor.diagActivityLogAnalyzeLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityLogDisplayLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityLogAnalyzeLogAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagActivityLogSetLoggingTimeAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityLogSetLoggingTimeAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagActivityLogRemoveLogAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagActivityLogRemoveLogAction);
 				}
 			} else if (Current_select.equals(CASLogs.SCRIPTOBJ)) {
 				ArrayList casinfo = MainRegistry.CASinfo;
@@ -1572,55 +1609,71 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				for (int i = 0, n = casinfo.size(); i < n; i++) {
 					ArrayList loginfo = ((CASItem) casinfo.get(i)).loginfo;
 					for (int j = 0, m = loginfo.size(); j < m; j++) {
-						if (((LogFileInfo) loginfo.get(j)).filename.equals(Current_job)) {
+						if (((LogFileInfo) loginfo.get(j)).filename
+								.equals(Current_job)) {
 							find = true;
-							DiagActivityAnalyzeCASLogAction.logFile 
-							= DiagActivityCASLogRunAction.logFile 
-							= ((LogFileInfo) loginfo.get(j)).path;
+							DiagActivityAnalyzeCASLogAction.logFile = DiagActivityCASLogRunAction.logFile = ((LogFileInfo) loginfo
+									.get(j)).path;
 							break;
 						}
 					}
 					if (find)
 						break;
 				}
-				manager.add(ApplicationActionBarAdvisor.diagActivityAnalyzeCASLogAction);
-				manager.add(ApplicationActionBarAdvisor.diagActivityCASLogRunAction);
+				manager
+						.add(ApplicationActionBarAdvisor.diagActivityAnalyzeCASLogAction);
+				manager
+						.add(ApplicationActionBarAdvisor.diagActivityCASLogRunAction);
 				// manager.add(new Separator());
 				// manager.add(ApplicationActionBarAdvisor.diagActivityImportCASLogAction);
 			} else if (Current_select.equals(DiagTemplate.ID)) {
-				if (Current_job.equals(Messages.getString("TREE.DIAGDIAGTEMPLATE"))) {
-					manager.add(ApplicationActionBarAdvisor.diagNewDiagReportTemplateAction);
+				if (Current_job.equals(Messages
+						.getString("TREE.DIAGDIAGTEMPLATE"))) {
+					manager
+							.add(ApplicationActionBarAdvisor.diagNewDiagReportTemplateAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagDefaultDiagReportAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagDefaultDiagReportAction);
 				} else {
-					manager.add(ApplicationActionBarAdvisor.diagRunDiagReportAction);
-					manager.add(ApplicationActionBarAdvisor.diagUpdateDiagReportTemplateAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagRunDiagReportAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagUpdateDiagReportTemplateAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagRemoveDiagReportTemplateAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagRemoveDiagReportTemplateAction);
 				}
 			} else if (Current_select.equals(DiagReport.ID)) {
-				if (Current_job.equals(Messages.getString("TREE.DIAGDIAGREPORT"))) {
+				if (Current_job.equals(Messages
+						.getString("TREE.DIAGDIAGREPORT"))) {
 
 				} else {
-					manager.add(ApplicationActionBarAdvisor.diagViewDiagReportAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagViewDiagReportAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagDiagReportSetStartTimeAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagDiagReportSetStartTimeAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagRemoveDiagReportAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagRemoveDiagReportAction);
 				}
 			} else if (Current_select.equals(StatusWarning.ID)) {
-				manager.add(ApplicationActionBarAdvisor.diagUpdateStatusWarningAction);
+				manager
+						.add(ApplicationActionBarAdvisor.diagUpdateStatusWarningAction);
 				manager.add(new Separator());
-				manager.add(ApplicationActionBarAdvisor.diagStatusWarningLogViewAction);
+				manager
+						.add(ApplicationActionBarAdvisor.diagStatusWarningLogViewAction);
 			} else if (Current_select.equals(LogAnalyze.ID)) {
 				// manager.add(ApplicationActionBarAdvisor.newAnalyzeAction);
 			} else if (Current_select.equals(ServiceReport.ID)) {
 				if (Current_job.equals(Messages.getString("TREE.TROUBLETRACE"))) {
 
 				} else {
-					manager.add(ApplicationActionBarAdvisor.diagTroubleTraceAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagTroubleTraceAction);
 					manager.add(new Separator());
-					manager.add(ApplicationActionBarAdvisor.diagRemoveTroubleAction);
+					manager
+							.add(ApplicationActionBarAdvisor.diagRemoveTroubleAction);
 				}
 			}
 		}

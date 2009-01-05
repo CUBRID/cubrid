@@ -33,25 +33,26 @@ package cubridmanager;
 import java.sql.SQLException;
 
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.IFolderLayout;
 import org.eclipse.ui.IPageLayout;
 import org.eclipse.ui.IViewLayout;
 import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IViewReference;
-import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.part.ViewPart;
 
+import cubridmanager.cas.view.BrokerJob;
 import cubridmanager.cas.view.CASLogs;
 import cubridmanager.cas.view.CASView;
-import cubridmanager.cas.view.BrokerJob;
 import cubridmanager.cubrid.DBUserInfo;
 import cubridmanager.cubrid.view.CubridView;
 import cubridmanager.cubrid.view.DBSchema;
-import cubridmanager.cubrid.view.JobAutomation;
 import cubridmanager.cubrid.view.DBSpace;
+import cubridmanager.cubrid.view.JobAutomation;
 import cubridmanager.diag.view.ActivityLogs;
 import cubridmanager.diag.view.ActivityTemplate;
 import cubridmanager.diag.view.DiagReport;
@@ -186,6 +187,16 @@ public class WorkView extends ViewPart {
 				BrokerJob.Current_broker = Selected;
 			}
 
+			ITreeObjectChangedListener viewPart = null;
+			IViewReference viewRef = workwindow.getActivePage()
+					.findViewReference(viewid, "query0");
+			if (viewRef != null) {
+				IWorkbenchPart viewPart1 = viewRef.getPart(false);
+				if (viewPart1 != null
+						&& viewPart1 instanceof ITreeObjectChangedListener) {
+					viewPart = ((ITreeObjectChangedListener) viewPart1);
+				}
+			}
 			IViewReference[] actviews = workwindow.getActivePage()
 					.getViewReferences();
 			for (int i = 0, n = actviews.length; i < n; i++) {
@@ -194,12 +205,18 @@ public class WorkView extends ViewPart {
 						&& !actviews[i].getId().equals(QueryEditor.ID)
 						&& !actviews[i].getId().equals(DiagView.ID)) {
 					try {
+						if (!(actviews[i].getId().equals(viewid) && viewPart != null))
 						workwindow.getActivePage().hideView(actviews[i]);
 					} catch (Exception e) {
 						;
 					}
 				}
 			}
+			if (viewPart != null) {
+				viewPart.refresh();
+				workwindow.getActivePage()
+						.bringToTop((IWorkbenchPart) viewPart);
+			} else
 			workwindow.getActivePage().showView(viewid, "query0",
 					IWorkbenchPage.VIEW_ACTIVATE);
 		} catch (PartInitException e) {

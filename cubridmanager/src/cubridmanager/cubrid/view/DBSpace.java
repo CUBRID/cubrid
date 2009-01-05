@@ -36,22 +36,23 @@ import java.util.ArrayList;
 import org.eclipse.jface.viewers.ColumnWeightData;
 import org.eclipse.jface.viewers.TableLayout;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.ui.part.ViewPart;
-import org.eclipse.swt.widgets.Table;
-import org.eclipse.swt.layout.FillLayout;
-import org.eclipse.swt.widgets.Display;
 
 import cubridmanager.CommonTool;
-import cubridmanager.MainRegistry;
+import cubridmanager.ITreeObjectChangedListener;
 import cubridmanager.MainConstants;
+import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
 import cubridmanager.cubrid.AuthItem;
 import cubridmanager.cubrid.VolumeInfo;
 
-public class DBSpace extends ViewPart {
+public class DBSpace extends ViewPart implements ITreeObjectChangedListener {
 
 	public static final String ID = "workview.DBSpace";
 	// TODO Needs to be whatever is mentioned in plugin.xml
@@ -113,18 +114,25 @@ public class DBSpace extends ViewPart {
 			setPartName(Messages.getString("TREE.GENERIC")
 					+ Messages.getString("STRING.INFORMATION"));
 
-		table = new Table(top, SWT.FULL_SELECTION);
-		table.setHeaderVisible(true);
-		table.setLinesVisible(true);
-		table
-				.setBounds(new org.eclipse.swt.graphics.Rectangle(10, 49, 272,
-						95));
+		if (table == null) {
+			table = new Table(top, SWT.FULL_SELECTION);
+			table.setHeaderVisible(true);
+			table.setLinesVisible(true);
+			table.setBounds(new org.eclipse.swt.graphics.Rectangle(10, 49, 272,
+					95));
 
-		TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
-		tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.VALUE"));
+			TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
+			tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.VALUE"));
 
+			TableLayout tlayout = new TableLayout();
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			table.setLayout(tlayout);
+		} else {
+			table.removeAll();
+		}
 		TableItem item;
 		item = new TableItem(table, SWT.NONE);
 		item.setText(0, Messages.getString("TABLE.VOLUMENAME"));
@@ -156,9 +164,24 @@ public class DBSpace extends ViewPart {
 		nf.setGroupingUsed(false);
 		item.setText(1, nf.format(mb));
 
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		table.setLayout(tlayout);
+	}
+
+	public void refresh() {
+		if (CubridView.Current_db.length() < 1 || CurrentSelect.length() < 1)
+			return;
+		else {
+			DB_Auth = MainRegistry.Authinfo_find(CubridView.Current_db);
+			Volinfo = DB_Auth.Volinfo;
+			for (int i = 0, n = Volinfo.size(); i < n; i++) {
+				if (((VolumeInfo) Volinfo.get(i)).spacename.equals(CurrentObj)) {
+					objrec = (VolumeInfo) Volinfo.get(i);
+					break;
+				}
+			}
+			if (objrec == null)
+				return;
+		}
+		createTable();
+		top.layout(true);
 	}
 }

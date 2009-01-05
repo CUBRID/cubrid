@@ -1314,17 +1314,31 @@ public class ClientSocket {
 							i += 6;
 						}
 					} else if (toks[i].equals("casauth")) {
+						String str = toks[i + 1];
+						String[] authPort = str.split(",");
+						String port = "";
+						String auth = "";
+						if(authPort.length==2)
+						{
+							auth = authPort[0];
+							port = authPort[1];
+						}
+						else 
+							auth = toks[i+1];
+						
 						if (isCurrentCMUser) {
-							if (toks[i + 1].equals("admin"))
+							MainRegistry.UserPort.put(MainRegistry.UserID, port);
+							if (auth.equals("admin"))
 								MainRegistry.CASAuth = MainConstants.AUTH_DBA;
-							else if (toks[i + 1].equals("monitor"))
+							else if (auth.equals("monitor"))
 								MainRegistry.CASAuth = MainConstants.AUTH_NONDBA;
 							else
 								MainRegistry.CASAuth = MainConstants.AUTH_NONE;
 						} else {
-							if (toks[i + 1].equals("admin"))
+							MainRegistry.UserPort.put(cmUserInfo.cmUser, port);
+							if (auth.equals("admin"))
 								cmUserInfo.CASAuth = MainConstants.AUTH_DBA;
-							else if (toks[i + 1].equals("monitor"))
+							else if (auth.equals("monitor"))
 								cmUserInfo.CASAuth = MainConstants.AUTH_NONDBA;
 							else
 								cmUserInfo.CASAuth = MainConstants.AUTH_NONE;

@@ -55,6 +55,6 @@ public class UserPropertyAction extends Action {
 		PROPPAGE_USER_GENERALDialog.DBUser = DBUsers.Current_select;
 		ApplicationActionBarAdvisor.createNewUserAction.runpage(false, this
 				.getText());
-		WorkView.SetView(DBUsers.ID, DBUsers.Current_select, DBUsers.ID);
+		//WorkView.SetView(DBUsers.ID, DBUsers.Current_select, DBUsers.ID);
 	}
 }

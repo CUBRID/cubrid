@@ -155,6 +155,7 @@ public class Import extends Dialog {
 			CommonTool.debugPrint(e);
 			sShell.setFocus();
 		}
+		sShell.pack();
 		CommonTool.centerShell(sShell);
 		sShell.open();
 
@@ -171,7 +172,6 @@ public class Import extends Dialog {
 	 */
 	private void createSShell() {
 		sShell = new Shell(getParent(), SWT.APPLICATION_MODAL | SWT.DIALOG_TRIM);
-		sShell.setSize(new Point(380, 550));
 		sShell.setText(Messages.getString("QEDIT.IMPORT"));
 		sShell.setLayout(new GridLayout());
 		createGrpTop();
@@ -186,7 +186,7 @@ public class Import extends Dialog {
 	private void createGrpTop() {
 		GridLayout gridLayout = new GridLayout();
 		gridLayout.numColumns = 3;
-		gridLayout.horizontalSpacing = 0;
+		gridLayout.horizontalSpacing = 5;
 
 		GridData gridData = new GridData();
 		gridData.grabExcessHorizontalSpace = true;
@@ -219,6 +219,7 @@ public class Import extends Dialog {
 							openFileDialog();
 							openFile();
 							setFromColumn();
+							sShell.pack();						
 						} catch (IOException e1) {
 							CommonTool.ErrorBox(sShell, e1.getMessage());
 							CommonTool.debugPrint(e1);
@@ -384,6 +385,7 @@ public class Import extends Dialog {
 							org.eclipse.swt.events.SelectionEvent e) {
 						try {
 							setToColumn(cmbTargetTable.getText());
+							sShell.pack();
 						} catch (SQLException e1) {
 							CommonTool.ErrorBox(sShell, e1.getErrorCode()
 									+ NEW_LINE + e1.getMessage());

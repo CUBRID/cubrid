@@ -31,21 +31,23 @@
 package cubridmanager.cubrid.view;
 
 import java.util.ArrayList;
+
 import org.eclipse.jface.viewers.ColumnWeightData;
 import org.eclipse.jface.viewers.TableLayout;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.ui.part.ViewPart;
 import org.eclipse.swt.layout.FillLayout;
-import org.eclipse.swt.widgets.Table;
+import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
+import org.eclipse.ui.part.ViewPart;
 
-import cubridmanager.cubrid.LogFileInfo;
+import cubridmanager.ITreeObjectChangedListener;
 import cubridmanager.Messages;
+import cubridmanager.cubrid.LogFileInfo;
 
-public class DBLogs extends ViewPart {
+public class DBLogs extends ViewPart implements ITreeObjectChangedListener {
 
 	public static final String ID = "workview.DBLogs";
 	public static final String OBJ = "DBLogsObj";
@@ -91,17 +93,25 @@ public class DBLogs extends ViewPart {
 	 * 
 	 */
 	private void createTable() {
-		table = new Table(top, SWT.FULL_SELECTION);
-		table.setHeaderVisible(true);
-		table.setLinesVisible(true);
-		table
-				.setBounds(new org.eclipse.swt.graphics.Rectangle(14, 16, 266,
-						124));
+		if (table == null) {
+			table = new Table(top, SWT.FULL_SELECTION);
+			table.setHeaderVisible(true);
+			table.setLinesVisible(true);
+			table.setBounds(new org.eclipse.swt.graphics.Rectangle(14, 16, 266,
+					124));
 
-		TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
-		tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.VALUE"));
+			TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
+			tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.VALUE"));
+
+			TableLayout tlayout = new TableLayout();
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			table.setLayout(tlayout);
+		} else {
+			table.removeAll();
+		}
 
 		TableItem item;
 		item = new TableItem(table, SWT.NONE);
@@ -120,9 +130,24 @@ public class DBLogs extends ViewPart {
 		item.setText(0, Messages.getString("TABLE.FILEPATH"));
 		item.setText(1, fileinfo.path);
 
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		table.setLayout(tlayout);
+	}
+
+	public void refresh() {
+		if (CubridView.Current_db.length() <= 0)
+			return;
+		else {
+			DBLoginfo = LogFileInfo.DBLogInfo_get(CubridView.Current_db);
+			for (int i = 0, n = DBLoginfo.size(); i < n; i++) {
+				if (((LogFileInfo) DBLoginfo.get(i)).filename
+						.equals(Current_select)) {
+					fileinfo = (LogFileInfo) DBLoginfo.get(i);
+					break;
+				}
+			}
+			if (fileinfo == null)
+				return;
+		}
+		createTable();
+		top.layout(true);
 	}
 }

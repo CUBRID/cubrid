@@ -37,16 +37,17 @@ import org.eclipse.jface.viewers.TableLayout;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.ui.part.ViewPart;
-import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
+import org.eclipse.ui.part.ViewPart;
 
+import cubridmanager.ITreeObjectChangedListener;
 import cubridmanager.Messages;
-import cubridmanager.cubrid.*;
+import cubridmanager.cubrid.Trigger;
 
-public class DBTriggers extends ViewPart {
+public class DBTriggers extends ViewPart implements ITreeObjectChangedListener {
 
 	public static final String ID = "workview.DBTriggers";
 	// TODO Needs to be whatever is mentioned in plugin.xml
@@ -89,22 +90,25 @@ public class DBTriggers extends ViewPart {
 	}
 
 	private void createTable() {
-		table = new Table(top, SWT.FULL_SELECTION);
-		table.setHeaderVisible(true);
-		table.setLinesVisible(true);
-		table
-				.setBounds(new org.eclipse.swt.graphics.Rectangle(12, 20, 263,
-						119));
+		if (table == null) {
+			table = new Table(top, SWT.FULL_SELECTION);
+			table.setHeaderVisible(true);
+			table.setLinesVisible(true);
+			table.setBounds(new org.eclipse.swt.graphics.Rectangle(12, 20, 263,
+					119));
 
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		tlayout.addColumnData(new ColumnWeightData(50, 200, true));
-		table.setLayout(tlayout);
+			TableLayout tlayout = new TableLayout();
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			tlayout.addColumnData(new ColumnWeightData(50, 200, true));
+			table.setLayout(tlayout);
 
-		TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
-		tblColumn = new TableColumn(table, SWT.LEFT);
-		tblColumn.setText(Messages.getString("TABLE.VALUE"));
+			TableColumn tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.PROPERTY"));
+			tblColumn = new TableColumn(table, SWT.LEFT);
+			tblColumn.setText(Messages.getString("TABLE.VALUE"));
+		} else {
+			table.removeAll();
+		}
 
 		TableItem item;
 		item = new TableItem(table, SWT.NONE);
@@ -134,6 +138,24 @@ public class DBTriggers extends ViewPart {
 		item = new TableItem(table, SWT.NONE);
 		item.setText(0, Messages.getString("TABLE.PRIORITY"));
 		item.setText(1, objrec.Priority);
+	}
+
+	public void refresh() {
+		if (CubridView.Current_db.length() <= 0)
+			return;
+		else {
+			triggerinfo = Trigger.TriggerInfo_get(CubridView.Current_db);
+			for (int i = 0, n = triggerinfo.size(); i < n; i++) {
+				if (((Trigger) triggerinfo.get(i)).Name.equals(Current_select)) {
+					objrec = (Trigger) triggerinfo.get(i);
+					break;
+				}
+			}
+			if (objrec == null)
+				return;
+		}
+		createTable();
+		top.layout(true);
 	}
 
 }

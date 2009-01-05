@@ -154,7 +154,7 @@ public class CommonTool {
 			out.close();
 			return true;
 		} catch (Exception e) {
-			e.printStackTrace();
+			CommonTool.debugPrint(e);
 		}
 		return false;
 	}
@@ -251,12 +251,25 @@ public class CommonTool {
 	}
 
 	public static boolean isValidDBName(String DBName) {
-		if (DBName == null)
+		if (DBName == null || DBName.equals(""))
 			return false;
+		//it is better that unix file name does not contain space(" ") character
 		if (DBName.indexOf(" ") >= 0)
 			return false;
+		//Unix file name is not allowed to begin with "#" character
 		if (DBName.charAt(0) == '#')
 			return false;
+		//Unix file name is not allowed to begin with "-" character
+		if (DBName.charAt(0) == '-')
+			return false;
+		//9 character(*&%$|^/~\) are not allowed in Unix file name
+		if (DBName.matches(".*[*&%$\\|^/~\\\\].*")){ 
+			return false;			
+		}
+		//Unix file name is not allowed to be named as "." or ".."
+		if (DBName.equals(".")||DBName.equals("..")){
+			return false;			
+		}
 		return true;
 	}
 
@@ -335,8 +348,8 @@ public class CommonTool {
 
 	public static void centerShell(Shell sShell) {
 		Rectangle mainBounds;
-		Rectangle displayBounds = sShell.getDisplay().getPrimaryMonitor()
-				.getBounds();
+		Rectangle displayBounds = sShell.getDisplay().getClientArea();
+
 		Rectangle shellBounds;
 
 		if (sShell == null)

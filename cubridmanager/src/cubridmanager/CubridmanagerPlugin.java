@@ -31,6 +31,7 @@
 package cubridmanager;
 
 import org.eclipse.jface.resource.ImageDescriptor;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
@@ -80,7 +81,34 @@ public class CubridmanagerPlugin extends AbstractUIPlugin {
 	 * @return the image descriptor
 	 */
 	public static ImageDescriptor getImageDescriptor(String path) {
-		return AbstractUIPlugin
-				.imageDescriptorFromPlugin("cubridmanager", path);
+		ImageDescriptor imageDesc = getDefault().getImageRegistry()
+				.getDescriptor(path);
+		if (imageDesc == null) {
+			imageDesc = AbstractUIPlugin.imageDescriptorFromPlugin(
+					"cubridmanager", path);
+			CubridmanagerPlugin.getDefault().getImageRegistry().put(path,
+					imageDesc);
+		}
+		return imageDesc;
+	}
+	/**
+	 * Returns an image for the image file at the given plug-in
+	 * relative path.
+	 * 
+	 * @param path
+	 *            the path
+	 * @return the image 
+	 */
+	public static Image getImage(String path) {
+		Image image = getDefault().getImageRegistry().get(path);
+		if (image == null || image.isDisposed()) {
+			ImageDescriptor imageDesc = AbstractUIPlugin
+					.imageDescriptorFromPlugin("cubridmanager", path);
+			CubridmanagerPlugin.getDefault().getImageRegistry().put(path,
+					imageDesc);
+			return CubridmanagerPlugin.getDefault().getImageRegistry()
+					.get(path);
+		}
+		return image;
 	}
 }

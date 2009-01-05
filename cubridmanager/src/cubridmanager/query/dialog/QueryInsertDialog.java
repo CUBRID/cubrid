@@ -60,6 +60,9 @@ import cubridmanager.cubrid.SchemaInfo;
 import cubridmanager.query.action.QueryInsertAction;
 import org.eclipse.swt.widgets.Label;
 
+import org.eclipse.swt.events.TraverseEvent;
+import org.eclipse.swt.events.TraverseListener;
+
 public class QueryInsertDialog extends Dialog {
 	private static final String NEW_LINE = System.getProperty("line.separator");
 	private Shell shlInsert = null; // @jve:decl-index=0:visual-constraint="13,7"
@@ -79,6 +82,12 @@ public class QueryInsertDialog extends Dialog {
 	private Label lblTotalInsertedCount = null;
 	private int cntTotalInsertedRecord = 0;
 	private String insertQuery = null;
+	
+	private TableEditor keyEditor;   
+	private int selItem = 0;
+	private Text keyText = null;
+	private TableItem keyItem;
+
 	public QueryInsertDialog(Shell parent, String dbName, String tableName) {
 		super(parent);
 
@@ -105,6 +114,7 @@ public class QueryInsertDialog extends Dialog {
 	private void createShlInsert() {
 		shlInsert = new Shell(super.getParent(), SWT.APPLICATION_MODAL
 				| SWT.SHELL_TRIM);
+
 		shlInsert.setText(Messages.getString("TITLE.TABLEINSERTACTION").concat(
 				": ").concat(tableName));
 		shlInsert.setLayout(new GridLayout());
@@ -130,7 +140,7 @@ public class QueryInsertDialog extends Dialog {
 		sashForm.setOrientation(org.eclipse.swt.SWT.VERTICAL);
 		sashForm.setLayoutData(gridData);
 		createTblInsert();
-		txtHistory = new Text(sashForm, SWT.BORDER | SWT.WRAP | SWT.V_SCROLL);
+		txtHistory = new Text(sashForm, SWT.BORDER | SWT.WRAP | SWT.V_SCROLL | SWT.READ_ONLY);
 		sashForm.setWeights(new int[] { 60, 40 });
 	}
 
@@ -163,7 +173,8 @@ public class QueryInsertDialog extends Dialog {
 		btnInsert = new Button(composite, SWT.NONE);
 		btnInsert.setText(Messages.getString("QEDIT.INSERT"));
 		btnInsert.setLayoutData(gridData4);
-		btnInsert.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
+		btnInsert
+				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						setTxtInsert();
@@ -181,16 +192,20 @@ public class QueryInsertDialog extends Dialog {
 							txtHistory.append("// ");
 							txtHistory.append(QueryInsertAction.resultMsg);
 							txtHistory.append(NEW_LINE);
+							txtHistory.append(NEW_LINE);
 						}
 					}
 				});
 		btnClear = new Button(composite, SWT.NONE);
 		btnClear.setText(Messages.getString("QEDIT.CLEAR"));
 		btnClear.setLayoutData(gridData3);
-		btnClear.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
+		btnClear
+				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						clearInsert();
+						clearHistory();
+						lblTotalInsertedCount.setText("");
 					}
 				});
 		btnClose = new Button(composite, SWT.NONE);
@@ -239,8 +254,27 @@ public class QueryInsertDialog extends Dialog {
 		editor.horizontalAlignment = SWT.LEFT;
 		editor.grabHorizontal = true;
 
+		//wuyingshi20081225
+        final Listener listener = new Listener(){
+			public void handleEvent(Event event) {		
+
+				QueryInsertDialog.this.handleEvent(event);
+
+			}
+        };		
+		
+        tblInsert.addListener(SWT.KeyDown, listener);
+        //wuyingshi20081225
 		tblInsert.addListener(SWT.MouseUp, new Listener() {
 			public void handleEvent(Event event) {
+				//wuyingshi20081225
+				if (keyText != null){
+					if (!keyText.isDisposed()){
+						keyText.dispose();
+						keyEditor.dispose();
+					}
+				}
+				//wuyingshi20081225
 				Rectangle clientArea = tblInsert.getClientArea();
 				Point pt = new Point(event.x, event.y);
 				int index = tblInsert.getTopIndex();
@@ -263,6 +297,7 @@ public class QueryInsertDialog extends Dialog {
 						// text.setEditable(false);
 						// else
 						// text.setEditable(true);
+
 						Listener textListener = new Listener() {
 							public void handleEvent(final Event e) {
 								switch (e.type) {
@@ -279,6 +314,19 @@ public class QueryInsertDialog extends Dialog {
 												item.getText(2))) {
 											item.setText(2, text.getText());
 										}
+										//wuyingshi20081225
+										int selItem =(tblInsert.getSelectionIndex() + 1) % tblInsert.getItemCount();
+										//int selItem = tblInsert.getSelectionIndex() + 1;
+										if (selItem == 0){
+											btnInsert.setFocus();											
+										}
+										else{
+											tblInsert.setSelection(selItem);											
+											Event nextLineFocusEvent = new Event();
+											nextLineFocusEvent.keyCode = 13;
+											listener.handleEvent(nextLineFocusEvent);
+										}
+										//wuyingshi20081225
 									case SWT.TRAVERSE_ESCAPE:
 										text.dispose();
 										e.doit = false;
@@ -316,10 +364,18 @@ public class QueryInsertDialog extends Dialog {
 		tblInsert.setLayout(tlayout);
 	}
 
+
+	
 	private void clearInsert() {
+		keyText.dispose();
+		keyEditor.dispose();
 		for (int i = 0; i < tblInsert.getItemCount(); i++) {
 			tblInsert.getItem(i).setText(2, "");
 		}
+	}
+
+	private void clearHistory() {
+		txtHistory.setText("");
 	}
 
 	private void setTxtInsert() {
@@ -355,7 +411,7 @@ public class QueryInsertDialog extends Dialog {
 						values.append("'");
 					}
 				} else if (type.startsWith("national")) {
-					if (value.startsWith("N'"))
+					if (value.toUpperCase().startsWith("N'"))
 						values.append(value);
 					else if (value.startsWith("'")) {
 						values.append("N");
@@ -366,7 +422,7 @@ public class QueryInsertDialog extends Dialog {
 						values.append("'");
 					}
 				} else if (type.startsWith("bit")) {
-					if (value.startsWith("X'") || value.startsWith("B'"))
+					if (value.toUpperCase().startsWith("X'") || value.toUpperCase().startsWith("B'"))
 						values.append(value);
 					else if (value.replaceAll("'", "").replaceAll("0", "")
 							.replaceAll("1", "").length() == 0) {
@@ -381,8 +437,24 @@ public class QueryInsertDialog extends Dialog {
 						values.append(value);
 						values.append("'");
 					}
-				} else if (type.startsWith("time") || type.startsWith("date")) {
-					if (value.startsWith("to_") || value.startsWith("'"))
+				} else if (type.startsWith("time")) {
+					if (value.toUpperCase().startsWith("TO_TIME")
+							|| value.startsWith("'")
+							|| value.toUpperCase().startsWith("SYS")
+							|| value.toUpperCase().startsWith("CURRENT")
+							|| value.toUpperCase().startsWith("TIME"))
+						values.append(value);
+					else {
+						values.append("'");
+						values.append(value);
+						values.append("'");
+					}
+				} else if (type.startsWith("date")) {
+					if (value.toUpperCase().startsWith("TO_DATE")
+							|| value.startsWith("'")
+							|| value.toUpperCase().startsWith("SYS")
+							|| value.toUpperCase().startsWith("CURRENT")
+							|| value.toUpperCase().startsWith("DATE"))
 						values.append(value);
 					else {
 						values.append("'");
@@ -402,5 +474,63 @@ public class QueryInsertDialog extends Dialog {
 			sql = new StringBuffer("");
 
 		insertQuery = new String(sql);
+	}
+
+	public void handleEvent(Event event) {
+		if (event.keyCode == 13) {
+			keyEditor = new TableEditor(tblInsert);
+			if (tblInsert.getItemCount() <= 0)
+				return;
+			keyText = new Text(tblInsert, SWT.NONE);
+			keyText.selectAll();
+			keyText.setFocus();
+			selItem = tblInsert.getSelectionIndex();
+			if (selItem < 0)
+			{
+				selItem = 0;
+				tblInsert.select(selItem);
+			}
+				
+			newIndex = curIndex = selItem;
+			if(selItem>=tblInsert.getItemCount())
+			{
+				newIndex = curIndex = selItem = 0;
+				return;
+			}
+			
+			keyItem = tblInsert.getItem(selItem);
+			keyText.addTraverseListener(new TraverseListener() {
+
+				public void keyTraversed(TraverseEvent e) {
+
+					if (e.character == SWT.CR) {
+						keyItem.setText(2,keyText.getText());
+						keyText.dispose();
+						keyEditor.dispose();
+						e.doit = true;
+						Event keyEvent = new Event();
+						//selItem ++;
+						selItem =(selItem + 1) % tblInsert.getItemCount();
+						if (selItem == 0){
+							btnInsert.setFocus();
+						}
+						else{
+						if(selItem>=tblInsert.getItemCount())
+						{
+							newIndex = curIndex = selItem = tblInsert.getItemCount()-1;
+							return;
+						}
+						tblInsert.setSelection(selItem);
+						keyEvent.keyCode = 13;
+						handleEvent(keyEvent);
+						}
+					}
+				}
+			});
+			keyEditor.minimumWidth = keyText.computeSize(SWT.DEFAULT,
+					SWT.DEFAULT).x;
+			keyEditor.grabHorizontal = true;
+			keyEditor.setEditor(keyText, keyItem, 2);
+		}
 	}
 }

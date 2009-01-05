@@ -57,6 +57,7 @@ import com.gpki.gpkiapi.storage.Disk;
 import com.gpki.gpkiapi.util.Base64;
 
 import cubridmanager.ApplicationWorkbenchWindowAdvisor;
+import cubridmanager.ClientSocket;
 import cubridmanager.CommonTool;
 import cubridmanager.CubridException;
 import cubridmanager.HostmonSocket;
@@ -483,7 +484,7 @@ public class ConnectDialog extends Dialog {
 		textPort.setText(row.getText(2));
 		if (!MainRegistry.isCertLogin()) {
 			textID.setText(row.getText(3));
-			textPassword.setText("admin");
+			textPassword.setText("");
 		}
 	}
 
@@ -598,7 +599,7 @@ public class ConnectDialog extends Dialog {
 		textAddr.setText(""); 
 		textPort.setText("8001"); 
 		textID.setText("admin"); 
-		textPassword.setText("admin"); 
+		textPassword.setText(""); 
 		textDesc.setFocus();
 	}
 
@@ -684,7 +685,53 @@ public class ConnectDialog extends Dialog {
 			CommonTool.ErrorBox(sShell, CubridException
 					.getErrorMessage(CubridException.ER_CONNECT));
 		}
+		if(MainRegistry.IsConnected && MainRegistry.UserID.equals("admin") && MainRegistry.UserPassword.equals("admin"))	
+		{
+			ChangePasswordDialog dialog = new ChangePasswordDialog(sShell,"admin");
+			String password = dialog.doModal();
+			if(!password.equals("admin"))
+			{
+				ClientSocket cs = new ClientSocket();
+				String setPasswdMsg = new String();
+				setPasswdMsg = "targetid:" + "admin" + "\n";
+				setPasswdMsg += "newpassword:" + password.toString();
+				if (!cs.SendBackGround(sShell, setPasswdMsg, "setdbmtpasswd",
+						Messages.getString("MENU.USERADMIN"))) {
+					return false;
+				}
+			}
+			else
+			{
+				MainRegistry.IsConnected = false;
+				for (int i = 0; i < MainRegistry.diagSiteDiagDataList.size(); i++) {
+					DiagSiteDiagData diagSiteData = (DiagSiteDiagData) MainRegistry.diagSiteDiagDataList
+							.get(i);
+					if (diagSiteData.site_name.equals(MainRegistry.HostDesc))
+						MainRegistry.diagSiteDiagDataList.remove(i);
+				}
 
+				// Environment initial
+				if (MainRegistry.soc != null)
+					MainRegistry.soc.stoploop();
+				MainRegistry.IsConnected = false;
+				MainRegistry.HostAddr = null;
+				MainRegistry.HostPort = 0;
+				MainRegistry.UserID = null;
+				MainRegistry.HostJSPort = 0;
+				MainRegistry.DiagAuth = MainConstants.AUTH_NONE;
+				MainRegistry.CASAuth = MainConstants.AUTH_NONE;
+				MainRegistry.Authinfo.clear();
+				MainRegistry.IsSecurityManager = false;
+				MainRegistry.NaviDraw_CUBRID = false;
+				MainRegistry.NaviDraw_CAS = false;
+				MainRegistry.NaviDraw_DIAG = false;
+				MainRegistry.IsDBAAuth = false;
+				MainRegistry.IsCASStart = false;
+				MainRegistry.IsCASinfoReady = false;
+				MainRegistry.CASinfo.clear();
+			}
+
+		}
 		if (!MainRegistry.IsConnected)
 			return false;
 		ApplicationWorkbenchWindowAdvisor.myconfigurer.setTitle(Messages
@@ -709,6 +756,7 @@ public class ConnectDialog extends Dialog {
 				.getProperty(MainConstants.queryEditorOptionAucoCommit), prop
 				.getProperty(MainConstants.queryEditorOptionGetQueryPlan), prop
 				.getProperty(MainConstants.queryEditorOptionRecordLimit), prop
+				.getProperty(MainConstants.queryEditorOptionPageLimit),prop
 				.getProperty(MainConstants.queryEditorOptionGetOidInfo), prop
 				.getProperty(MainConstants.queryEditorOptionCasPort), prop
 				.getProperty(MainConstants.queryEditorOptionCharSet), prop

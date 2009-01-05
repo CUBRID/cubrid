@@ -403,7 +403,12 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 								.getString("ERROR.NOATTRSELECTED"));
 						return;						
 					}
-
+							if (conname == null || conname.length() == 0) {
+								CommonTool.ErrorBox(dlgShell, Messages
+										.getString("ERROR.ADDCONSTRAINT.FK"));
+								g2_text.setFocus();
+								return;
+							}
 					String msg = "dbname:" + CubridView.Current_db + "\n";
 					msg += "classname:"
 							+ PROPPAGE_CLASS_PAGE1Dialog.si.name + "\n";
@@ -443,6 +448,15 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 						return;
 					}
 					String conname = g3_text.getText().trim();
+							if (conname == null || conname.length() == 0) {
+								CommonTool
+										.ErrorBox(
+												dlgShell,
+												Messages
+														.getString("ERROR.ADDCONSTRAINT.INDEX"));
+								g3_text.setFocus();
+								return;
+							}
 					String contype = g3_combo.getText();
 
 					boolean isclass = false;

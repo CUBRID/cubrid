@@ -30,33 +30,35 @@
 
 package cubridmanager.query.dialog;
 
-import java.util.*;
+import java.util.Hashtable;
+import java.util.StringTokenizer;
 import java.util.Vector;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Dialog;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.Tree;
+import org.eclipse.swt.widgets.TreeItem;
 
 import cubridmanager.CommonTool;
 import cubridmanager.Messages;
 import cubridmanager.query.StructQueryPlan;
-import cubridmanager.query.dialog.QueryPlanViewer;
 import cubridmanager.query.view.QueryEditor;
-import org.eclipse.swt.custom.SashForm;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Menu;
-import org.eclipse.swt.widgets.MenuItem;
-import org.eclipse.swt.widgets.Text;
-import org.eclipse.swt.widgets.Tree;
-import org.eclipse.swt.widgets.TreeItem;
-import org.eclipse.swt.widgets.Button;
-import org.eclipse.swt.layout.GridData;
 
 public class QueryPlan extends Dialog {
 	private QueryEditor qe;
@@ -395,12 +397,18 @@ public class QueryPlan extends Dialog {
 	}
 
 	private String node_modify(String str, String word) {
-		String temp[] = word.substring(word.lastIndexOf("(") + 1,
-				word.lastIndexOf(")")).split("/");
-
-		return str.substring(0, str.indexOf(" "))
-				+ word.substring(word.indexOf(" "), word.lastIndexOf("("))
-				+ " (card=" + temp[0] + ",page=" + temp[1] + ")";
+		String node = "";
+		String card = "";
+		String page = "";
+		Pattern pattern = Pattern.compile(".*:\\s+(.+)\\((\\d+)/(\\d+)\\).*");
+		Matcher m = pattern.matcher(word);
+		if (m.matches() && m.groupCount() == 3) {
+			node = m.group(1);
+			card = m.group(2);
+			page = m.group(3);
+		}
+		return str.substring(0, str.indexOf(" ")) + node + " (card=" + card
+				+ ",page=" + page + ")";
 	}
 
 	private String term_modify(String word) {

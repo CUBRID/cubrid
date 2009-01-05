@@ -54,18 +54,24 @@ public class QueryEditorConnection {
 	public QueryEditorConnection(DBUserInfo userinfo) throws SQLException,
 			ClassNotFoundException {
 		host = MainRegistry.HostAddr;
-		if (MainRegistry.CASinfo_find(MainRegistry.queryEditorOption.casport) == null) {
-			CASItem casitem = MainRegistry.CASinfo_find("query_editor");
-			if (casitem == null) {
-				if (MainRegistry.CASinfo != null) {
-					casitem = (CASItem)MainRegistry.CASinfo.get(0);
+		
+		if( MainRegistry.UserPort.get(MainRegistry.UserID) != null &&
+			!MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals("")) {
+			MainRegistry.queryEditorOption.casport = new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID)) ;
+		} else {
+			if (MainRegistry.CASinfo_find(MainRegistry.queryEditorOption.casport) == null) {
+				CASItem casitem = MainRegistry.CASinfo_find("query_editor");
+				if (casitem == null) {
+					if (MainRegistry.CASinfo != null) {
+						casitem = (CASItem)MainRegistry.CASinfo.get(0);
+					}
+				}
+				if (casitem != null) {
+					MainRegistry.queryEditorOption.casport = Integer.parseInt(casitem.port);
 				}
 			}
-			if (casitem != null) {
-				MainRegistry.queryEditorOption.casport = Integer.parseInt(casitem.port);
-			}
 		}
-
+		
 		port = Integer.toString(MainRegistry.queryEditorOption.casport);
 		ui = userinfo;
 

@@ -30,18 +30,18 @@
 
 package cubridmanager;
 
-import org.eclipse.core.runtime.IPlatformRunnable;
-import org.eclipse.core.runtime.Platform;
+import org.eclipse.equinox.app.IApplication;
+import org.eclipse.equinox.app.IApplicationContext;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
-
-import cubridmanager.dialog.ConnectDialog;
 
 /**
  * This class controls all aspects of the application's execution
  */
-public class Application implements IPlatformRunnable {
+public class Application implements IApplication {
 	public static IWorkbenchWindow mainwindow;
 
 	/*
@@ -49,36 +49,55 @@ public class Application implements IPlatformRunnable {
 	 * 
 	 * @see org.eclipse.core.runtime.IPlatformRunnable#run(java.lang.Object)
 	 */
-	public Object run(Object args) throws Exception {
+	public Object start(IApplicationContext context) throws Exception {
+
 		Display display = PlatformUI.createDisplay();
 
-		String[] cmds = Platform.getCommandLineArgs();
-
-		ConnectDialog.Cmd_site = null;
-		ConnectDialog.Cmd_pass = null;
-
-		if (cmds != null && cmds.length >= 2) {
-			if (cmds[cmds.length - 2].equals("CMDS")) {
-				ConnectDialog.Cmd_site = cmds[cmds.length - 1];
-				ConnectDialog.Cmd_pass = null;
-				ApplicationWorkbenchWindowAdvisor.myconfigurer = null;
-			} else if (cmds[cmds.length - 3].equals("CMDS")) {
-				ConnectDialog.Cmd_site = cmds[cmds.length - 2];
-				ConnectDialog.Cmd_pass = cmds[cmds.length - 1];
-				ApplicationWorkbenchWindowAdvisor.myconfigurer = null;
+		if (!jreVersionCheck()) {
+			try {			
+				CommonTool.ErrorBox(new Shell(display), Version.getUnsupportedJREMessage()) ;
+				return IApplication.EXIT_OK;
+			} finally {
+				display.dispose();
 			}
 		}
-		Platform.endSplash();
-
+		
 		try {
 			int returnCode = PlatformUI.createAndRunWorkbench(display,
 					new ApplicationWorkbenchAdvisor());
 			if (returnCode == PlatformUI.RETURN_RESTART) {
-				return IPlatformRunnable.EXIT_RESTART;
+				return IApplication.EXIT_RESTART;
 			}
-			return IPlatformRunnable.EXIT_OK;
+			return IApplication.EXIT_OK;
 		} finally {
 			display.dispose();
 		}
 	}
+
+	public void stop() {
+		final IWorkbench workbench = PlatformUI.getWorkbench();
+		if (workbench == null)
+			return;
+		final Display display = workbench.getDisplay();
+		display.syncExec(new Runnable() {
+			public void run() {
+				if (!display.isDisposed())
+					workbench.close();
+			}
+		});
+	}
+	
+	/*
+	 * Check the accepted version of the JRE.
+	 */
+	private boolean jreVersionCheck() {
+		
+		if(Version.isSupportsUsedJRE()) {
+			return true ;
+		} else {
+			System.out.println(Version.getUnsupportedJREMessage());
+			return false ;
+		}
+	}
+
 }

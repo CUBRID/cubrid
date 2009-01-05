@@ -34,7 +34,7 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 public class Version {
-	public static final boolean cmDebugMode = true;
+	public static final boolean cmDebugMode = false;
 
 	private static final String BUNDLE_NAME = "version";
 	private static final ResourceBundle RESOURCE_BUNDLE = ResourceBundle.getBundle(BUNDLE_NAME);
@@ -49,4 +49,44 @@ public class Version {
 			return '!' + key + '!';
 		}
 	}
+	/**
+	 * 지원되는 JRE 버전 체크. 1.4버전 이하는 지원하지 않는 것으로 false를 반환함.
+	 * @return boolean
+	 */
+	public static boolean isSupportsUsedJRE() {
+		String vmVersion = System.getProperty("java.vm.version");
+
+		if (vmVersion.startsWith("0") || vmVersion.startsWith("1.0")
+				|| vmVersion.startsWith("1.1") || vmVersion.startsWith("1.2")
+				|| vmVersion.startsWith("1.3") || vmVersion.startsWith("1.4")) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+	/**
+	 * 지원되지 않는 버전에 대한 ERROR 메지시 반환
+	 * @return String
+	 */
+	public static String getUnsupportedJREMessage() {
+		return "JRE " + System.getProperty("java.vm.version") + "\r\n"
+				+ Messages.getString("ERROR.UNSUPPORTEDJRE");
+	}
+
+	/**
+	 * 현재 JRE 버전이 1.5이상 버전인지를 확인함
+	 * @return boolean
+	 */
+	public static boolean isJRE15OrAbove() {
+		String vmVersion = System.getProperty("java.vm.version")
+				.substring(0, 3);
+
+		if (vmVersion.compareTo("1.5") >= 0) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
 }

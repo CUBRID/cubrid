@@ -89,6 +89,7 @@ public class QueryEditorOptionDialog extends Dialog {
 	private Label labelFontSize = null;
 	private Button buttonDefaultFont = null;
 	private Text textFontSize = null;
+	private Spinner spnPageLimit = null;
 
 	public QueryEditorOptionDialog(Shell parent) {
 		super(parent);
@@ -176,6 +177,16 @@ public class QueryEditorOptionDialog extends Dialog {
 		spnRecordLimit.setToolTipText(Messages
 				.getString("TOOLTIP.RECORDLIMIT2"));
 
+		Label pageLimit = new Label(cmpActionValueArea, SWT.NONE);
+		pageLimit.setText(Messages.getString("LABEL.PAGELIMIT"));
+
+		GridData gridData8 = new GridData();
+		gridData8.widthHint = 100;
+		spnPageLimit = new Spinner(cmpActionValueArea, SWT.BORDER);
+		spnPageLimit.setMinimum(1);
+		spnPageLimit.setMaximum(Integer.MAX_VALUE);
+		spnPageLimit.setLayoutData(gridData8);
+		spnPageLimit.setToolTipText(Messages.getString("TOOLTIP.PAGELIMIT"));
 		GridData gridData = new GridData();
 		gridData.horizontalSpan = 2;
 		chkGetQueryPlan = new Button(cmpActionValueArea, SWT.CHECK);
@@ -254,6 +265,18 @@ public class QueryEditorOptionDialog extends Dialog {
 						if (!checkValid())
 							return;
 
+						if (MainRegistry.UserID.equals("admin")) {
+							if (cmbCasPort.getText() != null
+									&& !cmbCasPort.getText().trim().equals("")) {
+								String port = cmbCasPort.getText().substring(
+										cmbCasPort.getText().indexOf('(') + 1,
+										cmbCasPort.getText().length() - 1);
+								MainRegistry.UserPort.put("admin", port);
+							} else {
+								MainRegistry.UserPort.put("admin", "30000");
+							}
+						}
+						
 						MainRegistry
 								.setQueryEditorOption(
 										CommonTool.BooleanYesNo(chkAutoCommit
@@ -263,10 +286,13 @@ public class QueryEditorOptionDialog extends Dialog {
 										(chkRecordLimit.getSelection() ? Integer
 												.toString(spnRecordLimit
 														.getSelection())
-												: "0"), CommonTool
+												: "0"), Integer
+												.toString(spnPageLimit
+														.getSelection()),
+										CommonTool
 												.BooleanYesNo(chkGetOidInfo
 														.getSelection()),
-										getPort(cmbCasPort.getText()),
+														(String)MainRegistry.UserPort.get(MainRegistry.UserID),
 										(chkCharSet.getSelection() ? txtCharSet
 												.getText() : ""), fontString,
 										String.valueOf(fontColorRed), String
@@ -320,6 +346,7 @@ public class QueryEditorOptionDialog extends Dialog {
 		chkGetQueryPlan
 				.setSelection(MainRegistry.queryEditorOption.getqueryplan);
 		spnRecordLimit.setSelection(MainRegistry.queryEditorOption.recordlimit);
+		spnPageLimit.setSelection(MainRegistry.queryEditorOption.pagelimit);
 		chkRecordLimit
 				.setSelection(MainRegistry.queryEditorOption.recordlimit > 0);
 		spnRecordLimit.setEnabled(chkRecordLimit.getSelection());
@@ -333,11 +360,20 @@ public class QueryEditorOptionDialog extends Dialog {
 					+ "("
 					+ (casItem.broker_port == 0 ? "stopped" : Integer
 							.toString(casItem.broker_port)) + ")");
-			if (casItem.broker_port == MainRegistry.queryEditorOption.casport)
+			if(MainRegistry.UserPort.get(MainRegistry.UserID)==null||MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals(""))
+				selectionItem = 0;
+			else if (casItem.broker_port == new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID)))
 				selectionItem = i;
 		}
 		cmbCasPort.select(selectionItem);
-
+		if(MainRegistry.UserID.equals("admin"))
+		{
+			cmbCasPort.setEnabled(true);
+		}
+		else
+		{
+			cmbCasPort.setEnabled(false);
+		}		
 		txtCharSet.setText(MainRegistry.queryEditorOption.charset);
 		chkCharSet.setSelection(txtCharSet.getText().length() > 0);
 		txtCharSet.setEnabled(chkCharSet.getSelection());
@@ -385,7 +421,7 @@ public class QueryEditorOptionDialog extends Dialog {
 		gridData15.widthHint = 30;
 		GridData gridData14 = new org.eclipse.swt.layout.GridData();
 		gridData14.horizontalAlignment = org.eclipse.swt.layout.GridData.END;
-		gridData14.widthHint = 120;
+		gridData14.widthHint = 130;
 		gridData14.verticalAlignment = org.eclipse.swt.layout.GridData.CENTER;
 		GridData gridData13 = new org.eclipse.swt.layout.GridData();
 		gridData13.grabExcessHorizontalSpace = true;
@@ -396,7 +432,7 @@ public class QueryEditorOptionDialog extends Dialog {
 		gridData12.verticalAlignment = org.eclipse.swt.layout.GridData.CENTER;
 		GridData gridData11 = new org.eclipse.swt.layout.GridData();
 		gridData11.horizontalAlignment = org.eclipse.swt.layout.GridData.END;
-		gridData11.widthHint = 120;
+		gridData11.widthHint = 130;
 		gridData11.grabExcessHorizontalSpace = true;
 		gridData11.verticalAlignment = org.eclipse.swt.layout.GridData.CENTER;
 		GridData gridData10 = new org.eclipse.swt.layout.GridData();

@@ -31,8 +31,10 @@
 package cubridmanager;
 
 import java.util.ArrayList;
+import java.util.Hashtable;
 import java.util.Properties;
 
+import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.ui.IWorkbenchPart;
 
 import cubrid.jdbc.driver.CUBRIDConnectionKey;
@@ -77,6 +79,7 @@ public class MainRegistry {
 	public static String HostDesc = new String("");
 	public static String HostAddr = new String("");
 	public static String HostToken = new String("");
+	public static Hashtable UserPort = new Hashtable();
 	public static int HostPort = 0;
 	public static int HostJSPort = 0;
 	public static int upaPort = 0;
@@ -127,6 +130,7 @@ public class MainRegistry {
 	public static StructQueryEditorOptions queryEditorOption = new StructQueryEditorOptions();
 	public static boolean isFindDlgOpen = false;
 
+	public static Clipboard cb = null;
 	public static QueryEditor getCurrentQueryEditor() {
 		IWorkbenchPart currentView = WorkView.workwindow.getActivePage()
 				.getActivePart();
@@ -456,9 +460,10 @@ public class MainRegistry {
 	 *            Cas's Character set : ex) euc_kr 
 	 */
 	public static void setQueryEditorOption(String isAutoCommit,
-			String doesGetQueryPlan, String recordLimit, String getOidInfo,
-			String casPort, String charSet, String fontString,
-			String fontColorRed, String fontColorGreen, String fontColorBlue) {
+			String doesGetQueryPlan, String recordLimit, String pageLimit,
+			String getOidInfo, String casPort, String charSet,
+			String fontString, String fontColorRed, String fontColorGreen,
+			String fontColorBlue) {
 		if (isAutoCommit == null)
 			isAutoCommit = "Yes";
 		if (doesGetQueryPlan == null)
@@ -476,6 +481,13 @@ public class MainRegistry {
 				queryEditorOption.recordlimit = 0;
 		} catch (Exception e) {
 			queryEditorOption.recordlimit = 10000;
+		}
+		try {
+			queryEditorOption.pagelimit = Integer.parseInt(pageLimit);
+			if (queryEditorOption.pagelimit < 1)
+				queryEditorOption.pagelimit = 100;
+		} catch (Exception e) {
+			queryEditorOption.pagelimit = 100;
 		}
 		try {
 			queryEditorOption.casport = Integer.parseInt(casPort);
@@ -536,7 +548,8 @@ public class MainRegistry {
 				CommonTool.BooleanYesNo(queryEditorOption.getqueryplan));
 		prop.setProperty(MainConstants.queryEditorOptionRecordLimit, Integer
 				.toString(queryEditorOption.recordlimit));
-
+		prop.setProperty(MainConstants.queryEditorOptionPageLimit, Integer
+				.toString(queryEditorOption.pagelimit));
 		CommonTool.SaveProperties(prop);
 	}
 

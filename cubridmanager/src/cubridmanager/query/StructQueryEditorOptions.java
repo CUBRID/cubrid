@@ -41,4 +41,5 @@ public class StructQueryEditorOptions {
 	public int fontColorRed = 0;
 	public int fontColorGreen = 0;
 	public int fontColorBlue = 0;
+	public int pagelimit = 100;
 }

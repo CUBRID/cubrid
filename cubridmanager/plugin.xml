@@ -220,7 +220,7 @@
          point="org.eclipse.core.runtime.products">
       <product
             application="cubridmanager.application"
-            name="%TITLE.CUBRIDMANAGER">
+            name="Cubrid Manager">
          <property
                name="aboutText"
                value="%aboutText"/>
@@ -230,6 +230,10 @@
          <property
                name="windowImages"
                value="icons/cubridmanager16.gif,icons/cubridmanager32.gif"/>
+         <property
+               name="appName"
+               value="Cubrid Manager">
+         </property>
       </product>
    </extension>
 </plugin>

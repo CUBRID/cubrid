@@ -333,7 +333,7 @@ public class CASView extends ViewPart {
 					if (oldobj != null && selobj.equals(oldobj))
 						return;
 
-					oldobj = selobj;
+					oldobj = null;
 
 					if (!Current_broker.equals(selbr)) {
 						Current_broker = selbr;
@@ -352,6 +352,7 @@ public class CASView extends ViewPart {
 									.BrokerLog_get(Current_broker);
 						LogViewAction.viewitem = selobj.getName();
 					}
+					oldobj = selobj;
 					ApplicationActionBarAdvisor
 							.setActionsMenu(ApplicationActionBarAdvisor.actionMenu);
 					if (selobj.getViewID() != null)

@@ -654,7 +654,7 @@ public class CubridView extends ViewPart {
 					public void mouseUp(org.eclipse.swt.events.MouseEvent e) {
 						if (actMouseUp == true && selobj != null
 								&& selobj.getViewID() != null
-								&& isHaveAuth == true)
+								&& isHaveAuth == true && e.button == 1)
 							WorkView.SetView(selobj.getViewID(),
 									selobj.getID(), null);
 					}

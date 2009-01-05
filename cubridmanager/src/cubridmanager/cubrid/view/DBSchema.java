@@ -35,30 +35,28 @@ import java.util.ArrayList;
 import org.eclipse.jface.viewers.ColumnWeightData;
 import org.eclipse.jface.viewers.TableLayout;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.ui.part.ViewPart;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Table;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
+import org.eclipse.ui.part.ViewPart;
 
-import cubridmanager.cubrid.SchemaInfo;
-import cubridmanager.cubrid.DBAttribute;
-import cubridmanager.cubrid.Constraint;
-//import cubridmanager.ApplicationActionBarAdvisor;
 import cubridmanager.ClientSocket;
 import cubridmanager.CommonTool;
-//import cubridmanager.ErrorPage;
+import cubridmanager.ITreeObjectChangedListener;
 import cubridmanager.MainConstants;
 import cubridmanager.Messages;
+import cubridmanager.cubrid.Constraint;
+import cubridmanager.cubrid.DBAttribute;
+import cubridmanager.cubrid.SchemaInfo;
 
-import org.eclipse.swt.graphics.Font;
-import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.layout.GridData;
-
-public class DBSchema extends ViewPart {
+public class DBSchema extends ViewPart implements ITreeObjectChangedListener {
 	public static final String ID = "workview.DBSchema";
 	// TODO Needs to be whatever is mentioned in plugin.xml
 	public static final String SYS_SCHEMA = "SYS_SCHEMA";
@@ -117,9 +115,9 @@ public class DBSchema extends ViewPart {
 			label1.setBackground(Display.getCurrent().getSystemColor(
 					SWT.COLOR_WHITE));
 			createTable();
-			label1 = new Label(top, SWT.LEFT | SWT.WRAP);
-			label1.setText(Messages.getString("LABEL.ATTRIBUTES1"));
-			label1.setBackground(Display.getCurrent().getSystemColor(
+			Label label = new Label(top, SWT.LEFT | SWT.WRAP);
+			label.setText(Messages.getString("LABEL.ATTRIBUTES1"));
+			label.setBackground(Display.getCurrent().getSystemColor(
 					SWT.COLOR_WHITE));
 			createTable2();
 
@@ -131,15 +129,7 @@ public class DBSchema extends ViewPart {
 				createTable3();
 			} else if (objrec.virtual.equals("view")) {
 				label2.setText(Messages.getString("TITLE.ADD_QUERYDIALOG"));
-				txtViewSpec = new Text(top, SWT.WRAP | SWT.BORDER);
-				txtViewSpec.setLayoutData(new GridData(GridData.FILL_BOTH));
-				txtViewSpec.setEditable(false);
-				txtViewSpec.setBackground(Display.getCurrent().getSystemColor(
-						SWT.COLOR_WHITE));
-				for (int i = 0, n = objrec.querySpecs.size(); i < n; i++) {
-					txtViewSpec.append((String) objrec.querySpecs.get(i));
-					txtViewSpec.append(MainConstants.NEW_LINE);
-				}
+				createTextViewSpec();
 			}
 		}
 		// }
@@ -166,9 +156,17 @@ public class DBSchema extends ViewPart {
 		new TableColumn(table, SWT.LEFT);
 		new TableColumn(table, SWT.LEFT);
 
-		if (objrec == null)
-			return;
+		TableLayout tlayout = new TableLayout();
+		tlayout.addColumnData(new ColumnWeightData(5, 80, true));
+		tlayout.addColumnData(new ColumnWeightData(95, true));
+		table.setLayout(tlayout);
+		fillTable();
+	}
 
+	private void fillTable() {
+		if (objrec == null || table == null || table.isDisposed())
+			return;
+		table.removeAll();
 		TableItem item;
 		item = new TableItem(table, SWT.NONE);
 		item.setText(0, Messages.getString("TABLE.SCHEMATYPE"));
@@ -194,10 +192,6 @@ public class DBSchema extends ViewPart {
 		setPartName(item.getText(1).concat(
 				Messages.getString("STRING.INFORMATION")));
 
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(5, 80, true));
-		tlayout.addColumnData(new ColumnWeightData(95, true));
-		table.setLayout(tlayout);
 	}
 
 	private void createTable2() {
@@ -228,9 +222,23 @@ public class DBSchema extends ViewPart {
 		tblColumn = new TableColumn(table2, SWT.LEFT);
 		tblColumn.setText(Messages.getString("TABLE.INHERITANCE"));
 
-		if (objrec == null)
-			return;
+		TableLayout tlayout = new TableLayout();
+		tlayout.addColumnData(new ColumnWeightData(20, true));
+		tlayout.addColumnData(new ColumnWeightData(20, true));
+		tlayout.addColumnData(new ColumnWeightData(0, 0, false));
+		tlayout.addColumnData(new ColumnWeightData(10, true));
+		tlayout.addColumnData(new ColumnWeightData(10, true));
+		tlayout.addColumnData(new ColumnWeightData(10, true));
+		tlayout.addColumnData(new ColumnWeightData(15, true));
+		tlayout.addColumnData(new ColumnWeightData(15, true));
+		table2.setLayout(tlayout);
+		fillTable2();
+	}
 
+	private void fillTable2() {
+		if (objrec == null || table2 == null || table2.isDisposed())
+			return;
+		table2.removeAll();
 		boolean color = false;
 		TableItem item;
 		for (int i = 0, n = objrec.classAttributes.size(); i < n; i++) {
@@ -265,19 +273,7 @@ public class DBSchema extends ViewPart {
 			else
 				item.setBackground(MainConstants.colorEvenLine);
 		}
-
 		table2.getColumn(1).pack();
-
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(20, true));
-		tlayout.addColumnData(new ColumnWeightData(20, true));
-		tlayout.addColumnData(new ColumnWeightData(0, 0, false));
-		tlayout.addColumnData(new ColumnWeightData(10, true));
-		tlayout.addColumnData(new ColumnWeightData(10, true));
-		tlayout.addColumnData(new ColumnWeightData(10, true));
-		tlayout.addColumnData(new ColumnWeightData(15, true));
-		tlayout.addColumnData(new ColumnWeightData(15, true));
-		table2.setLayout(tlayout);
 	}
 
 	private void createTable3() {
@@ -298,9 +294,19 @@ public class DBSchema extends ViewPart {
 		tblColumn = new TableColumn(table3, SWT.LEFT);
 		tblColumn.setText(Messages.getString("TABLE.RULE"));
 
-		if (objrec == null)
-			return;
+		TableLayout tlayout = new TableLayout();
+		tlayout.addColumnData(new ColumnWeightData(20, true));
+		tlayout.addColumnData(new ColumnWeightData(20, true));
+		tlayout.addColumnData(new ColumnWeightData(20, true));
+		tlayout.addColumnData(new ColumnWeightData(60, true));
+		table3.setLayout(tlayout);
+		fillTable3();
+	}
 
+	private void fillTable3() {
+		if (objrec == null || table3 == null || table3.isDisposed())
+			return;
+		table3.removeAll();
 		boolean color = false;
 		TableItem item;
 		for (int i = 0, n = objrec.constraints.size(); i < n; i++) {
@@ -318,12 +324,25 @@ public class DBSchema extends ViewPart {
 			}
 		}
 
-		TableLayout tlayout = new TableLayout();
-		tlayout.addColumnData(new ColumnWeightData(20, true));
-		tlayout.addColumnData(new ColumnWeightData(20, true));
-		tlayout.addColumnData(new ColumnWeightData(20, true));
-		tlayout.addColumnData(new ColumnWeightData(60, true));
-		table3.setLayout(tlayout);
+	}
+
+	private void createTextViewSpec() {
+		txtViewSpec = new Text(top, SWT.WRAP | SWT.BORDER);
+		txtViewSpec.setLayoutData(new GridData(GridData.FILL_BOTH));
+		txtViewSpec.setEditable(false);
+		txtViewSpec.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_WHITE));
+		fillTextViewSpec();
+	}
+
+	private void fillTextViewSpec() {
+		if (txtViewSpec == null || txtViewSpec.isDisposed())
+			return;
+		txtViewSpec.setText("");
+		for (int i = 0, n = objrec.querySpecs.size(); i < n; i++) {
+			txtViewSpec.append((String) objrec.querySpecs.get(i));
+			txtViewSpec.append(MainConstants.NEW_LINE);
+		}
 	}
 
 	private void getclassinfo() {
@@ -344,5 +363,52 @@ public class DBSchema extends ViewPart {
 				}
 			}
 		}
+	}
+
+	public void refresh() {
+		if (CubridView.Current_db.length() <= 0)
+			return;
+		else {
+			schemainfo = SchemaInfo.SchemaInfo_get(CubridView.Current_db);
+			for (int i = 0, n = schemainfo.size(); i < n; i++) {
+				if (((SchemaInfo) schemainfo.get(i)).name.equals(CurrentObj)) {
+					objrec = (SchemaInfo) schemainfo.get(i);
+					break;
+				}
+			}
+			if (objrec == null)
+				return;
+		}
+		getclassinfo();
+		if (label1 != null && !label1.isDisposed())
+			label1.setText(objrec.name);
+		fillTable();
+		fillTable2();
+		if (objrec.virtual.equals("normal")) {
+			if (label2 != null && !label2.isDisposed())
+				label2.setText(Messages.getString("LABEL.INDICES"));
+			if (table3 == null || table3.isDisposed()) {
+				if (txtViewSpec != null && !txtViewSpec.isDisposed()) {
+					txtViewSpec.dispose();
+					txtViewSpec = null;
+				}
+				createTable3();
+			} else {
+				fillTable3();
+			}
+		} else if (objrec.virtual.equals("view")) {
+			if (label2 != null && !label2.isDisposed())
+				label2.setText(Messages.getString("TITLE.ADD_QUERYDIALOG"));
+			if (txtViewSpec == null || txtViewSpec.isDisposed()) {
+				if (table3 != null && !table3.isDisposed()) {
+					table3.dispose();
+					table3 = null;
+				}
+				createTextViewSpec();
+			} else {
+				fillTextViewSpec();
+			}
+		}
+		top.layout(true);
 	}
 }

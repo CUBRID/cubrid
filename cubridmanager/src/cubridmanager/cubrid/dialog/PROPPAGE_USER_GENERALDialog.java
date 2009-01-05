@@ -35,6 +35,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Dialog;
 import org.eclipse.swt.SWT;
+import cubridmanager.CubridmanagerPlugin;
 import cubridmanager.Messages;
 import cubridmanager.CommonTool;
 import cubridmanager.cubrid.UserInfo;
@@ -170,8 +171,7 @@ public class PROPPAGE_USER_GENERALDialog extends Dialog {
 		gridData39.verticalAlignment = org.eclipse.swt.layout.GridData.CENTER;
 		gridData39.grabExcessHorizontalSpace = true;
 		clabel1 = new CLabel(groupUserGeneral, SWT.SHADOW_NONE);
-		clabel1.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream("/cubridmanager/image/dbuser.png")));
+		clabel1.setImage(CubridmanagerPlugin.getImage("/image/dbuser.png"));
 		clabel1.setLayoutData(gridData39);
 		label1 = new Label(groupUserGeneral, SWT.LEFT | SWT.WRAP);
 		label1.setText(Messages.getString("LABEL.LOGIN"));

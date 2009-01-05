@@ -82,6 +82,7 @@ public interface MainConstants {
 	public static final String queryEditorOptionAucoCommit = "autocommit";
 	public static final String queryEditorOptionGetQueryPlan = "getqueryplan";
 	public static final String queryEditorOptionRecordLimit = "recordlimit";
+	public static final String queryEditorOptionPageLimit = "pagelimit";
 	public static final String queryEditorOptionGetOidInfo = "oidinfo";
 	public static final String queryEditorOptionCasPort = "casport";
 	public static final String queryEditorOptionCharSet = "charset";

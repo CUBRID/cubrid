@@ -37,7 +37,6 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -47,6 +46,13 @@ import java.text.NumberFormat;
 import java.util.Vector;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.jface.action.IMenuListener;
+import org.eclipse.jface.action.IMenuManager;
+import org.eclipse.jface.action.MenuManager;
+import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DefaultUndoManager;
 import org.eclipse.jface.text.FindReplaceDocumentAdapter;
@@ -56,11 +62,13 @@ import org.eclipse.jface.text.IRegion;
 import org.eclipse.jface.text.IUndoManager;
 import org.eclipse.jface.text.contentassist.ContentAssistant;
 import org.eclipse.jface.text.rules.DefaultPartitioner;
+import org.eclipse.jface.text.source.CompositeRuler;
+import org.eclipse.jface.text.source.LineNumberRulerColumn;
 import org.eclipse.jface.text.source.SourceViewer;
-import org.eclipse.jface.text.source.VerticalRuler;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.custom.ViewForm;
 import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.DropTarget;
 import org.eclipse.swt.dnd.DropTargetAdapter;
@@ -71,9 +79,10 @@ import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.events.MenuEvent;
+import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
-import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
@@ -82,6 +91,7 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
@@ -95,7 +105,6 @@ import org.eclipse.ui.IEditorSite;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.part.ViewPart;
 
-import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDConnectionKey;
 import cubrid.jdbc.driver.CUBRIDException;
@@ -103,14 +112,15 @@ import cubrid.jdbc.driver.CUBRIDKeyTable;
 import cubrid.jdbc.driver.CUBRIDPreparedStatement;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.driver.CUBRIDStatement;
+import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.sql.CUBRIDOID;
 import cubridmanager.Application;
 import cubridmanager.ApplicationActionBarAdvisor;
 import cubridmanager.CommonTool;
+import cubridmanager.CubridmanagerPlugin;
 import cubridmanager.MainConstants;
 import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
-import cubridmanager.WaitingMsgBox;
 import cubridmanager.WorkView;
 import cubridmanager.query.ColorManager;
 import cubridmanager.query.CubridKeyWordContentAssistProcessor;
@@ -119,6 +129,7 @@ import cubridmanager.query.QueryCodeScanner;
 import cubridmanager.query.QueryEditorSourceViewerConfiguration;
 import cubridmanager.query.QueryPartitionScanner;
 import cubridmanager.query.QuerySyntax;
+import cubridmanager.query.QueryUtil;
 import cubridmanager.query.StructQueryPlan;
 import cubridmanager.query.WordTracker;
 import cubridmanager.query.dialog.QueryFindDialog;
@@ -133,6 +144,7 @@ public class QueryEditor extends ViewPart {
 	private String EditorCommand = null;
 	private Composite top = null;
 	private SashForm sashTop = null;
+	private SashForm sashBottom = null;
 	private Composite cmpHead = null;
 	private TabFolder tabMiddle = null;
 	private ToolBar toolBar1 = null;
@@ -140,15 +152,11 @@ public class QueryEditor extends ViewPart {
 	private static QueryEditor APP;
 	private QueryEditor qe;
 	private StyledText txaEdit = null;
-	private SashForm sashTail = null;
-	private Text txaRunQuery = null;
-	private StyledText txaMessagesArea = null;
 	private ToolItem itemCommit;
 	private ToolItem itemRollback;
 	private ToolItem itemRun;
 	private CUBRIDPreparedStatement stmt = null;
 	private CUBRIDResultSet rs = null;
-	private WaitingMsgBox waitDlg = null;
 	private boolean hasChanged = false;
 	private boolean isClosing = false;
 	private long endTimestamp = 0;
@@ -162,6 +170,7 @@ public class QueryEditor extends ViewPart {
 	private Vector curResult = new Vector();
 	private TabItem tabResult = null;
 	private Table tblResult = null;
+	private TabItem logTabResult = null;
 	private File file = null;
 	private String fileName = null;
 	private Connection conn;
@@ -190,6 +199,12 @@ public class QueryEditor extends ViewPart {
 	public boolean isQueryPlanDlgOpen = false;
 	private Vector vectorQueryPlans = new Vector();
 	private boolean useCompletions = true;
+	private Job runJob = null;
+	private Text logSqlText = null;
+	private StyledText logMessagesArea = null;
+	private int line = 0;
+	private Color lineNumColor = null;
+
 	public QueryEditor() throws SQLException, ClassNotFoundException {
 		super();
 
@@ -304,17 +319,15 @@ public class QueryEditor extends ViewPart {
 			String[] editorCommand = EditorCommand.split(":");
 			try {
 				if (editorCommand[1].equals("SELECTALL")) {
-					sashTop.getChildren()[0].setVisible(false);
-					sashTop.setWeights(new int[] { 0, 80, 20 });
 					setPartName(Messages.getString("TOOL.TABLESELECTALLACTION")
-							+ editorCommand[0]);
+							+ " " + editorCommand[0]);
 					conn
 							.setTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED);
 					((CUBRIDConnection) conn).setLockTimeout(1);
-					runQuery("select * from \"" + editorCommand[0] + "\";");
+					String sql = "select * from \"" + editorCommand[0] + "\";";
+					txaEdit.setText(sql);
+					runQuery(sql);
 				} else if (editorCommand[1].equals("SCRIPTRUN")) {
-					sashTop.getChildren()[0].setVisible(false);
-					sashTop.setWeights(new int[] { 0, 80, 20 });
 					setPartName(Messages.getString("TITLE.SCRIPTRUN"));
 					conn
 							.setTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED);
@@ -334,7 +347,12 @@ public class QueryEditor extends ViewPart {
 	}
 
 	public void dispose() {
+		super.dispose();
 		try {
+			if (runJob != null) {
+				runJob.cancel();
+				runJob = null;
+			}
 			if (conn != null)
 				conn.close();
 		} catch (Exception e) {
@@ -343,6 +361,13 @@ public class QueryEditor extends ViewPart {
 			conn = null;
 			if (font != null)
 				font.dispose();
+			if (document != null) {
+				document.clear();
+				document = null;
+			}
+			if (lineNumColor != null) {
+				lineNumColor.dispose();
+			}
 		}
 	}
 
@@ -361,8 +386,7 @@ public class QueryEditor extends ViewPart {
 		sashTop = new SashForm(top, SWT.VERTICAL);
 		createCmpHead();
 		createTabMiddle();
-		createCmpTail();
-		sashTop.setWeights(new int[] { 50, 35, 15 });
+		sashTop.setWeights(new int[] { 45, 55 });
 	}
 
 	/**
@@ -381,8 +405,16 @@ public class QueryEditor extends ViewPart {
 		createToolBar1();
 		createToolBar2();
 
-		textViewer = new SourceViewer(cmpHead, new VerticalRuler(0),
-				SWT.V_SCROLL | SWT.H_SCROLL);
+		CompositeRuler ruler = new CompositeRuler();
+		LineNumberRulerColumn lineCol = new LineNumberRulerColumn();
+		if (lineNumColor == null) {
+			lineNumColor = new Color(Display.getCurrent(), 236, 233, 216);
+		}
+		lineCol.setBackground(lineNumColor);
+		ruler.addDecorator(0, lineCol);
+
+		textViewer = new SourceViewer(cmpHead, ruler, SWT.V_SCROLL
+				| SWT.H_SCROLL);
 		textViewer.configure(new QueryEditorSourceViewerConfiguration());
 		textViewer.setDocument(document);
 
@@ -405,10 +437,33 @@ public class QueryEditor extends ViewPart {
 		textCanvas.setLayoutData(gridData);
 
 		txaEdit = (StyledText) textViewer.getTextWidget();
-
+		txaEdit.setIndent(6);
 		if (font != null)
 			txaEdit.setFont(font);
-
+		
+		MenuManager menuManager = new MenuManager();
+		menuManager.setRemoveAllWhenShown(true);
+		menuManager.addMenuListener(new IMenuListener() {
+			public void menuAboutToShow(IMenuManager manager) {
+				if (ApplicationActionBarAdvisor.copyClipboardAction != null) {
+					ApplicationActionBarAdvisor.copyClipboardAction
+							.setEnabled(true);
+					manager
+							.add(ApplicationActionBarAdvisor.copyClipboardAction);
+				}
+				if (ApplicationActionBarAdvisor.cutAction != null) {
+					ApplicationActionBarAdvisor.cutAction.setEnabled(true);
+					manager.add(ApplicationActionBarAdvisor.cutAction);
+				}
+				if (ApplicationActionBarAdvisor.pasteAction != null) {
+					ApplicationActionBarAdvisor.pasteAction.setEnabled(true);
+					manager.add(ApplicationActionBarAdvisor.pasteAction);
+				}
+			}
+		});
+		Menu contextMenu = menuManager.createContextMenu(txaEdit);
+		txaEdit.setMenu(contextMenu);
+		
 		txaEdit.addModifyListener(new org.eclipse.swt.events.ModifyListener() {
 			public void modifyText(org.eclipse.swt.events.ModifyEvent e) {
 				if (!hasChanged) {
@@ -538,10 +593,15 @@ public class QueryEditor extends ViewPart {
 	 */
 	private void createTabMiddle() {
 		tabMiddle = new TabFolder(sashTop, SWT.NONE);
+		sashBottom = new SashForm(tabMiddle, SWT.VERTICAL);
+		sashBottom.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
 		createTable();
+		createCmpTail();
+		sashBottom.setWeights(new int[] { 75, 25 });
 		tabResult = new TabItem(tabMiddle, SWT.NONE);
 		tabResult.setText(Messages.getString("QEDIT.RESULT"));
-		tabResult.setControl(tblResult);
+		tabResult.setControl(sashBottom);
 		TableColumn column = new TableColumn(tblResult, SWT.NONE);
 		column.setWidth(60);
 
@@ -550,15 +610,39 @@ public class QueryEditor extends ViewPart {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						if (curResult.size() > 0) {
-							QueryExecuter qe = (QueryExecuter) curResult
-									.get(tabMiddle.getSelectionIndex());
-							txaRunQuery.setText(qe.query);
-							// toolBar4.setVisible(qe.isNotEndOfTuple);
+							QueryExecuter qe = null;
+							if (logTabResult != null) {
+								if (tabMiddle.getSelectionIndex() == 0) {
+									tabResult = logTabResult;
+									tblResult = null;
+									return;
+								} else {
+									qe = (QueryExecuter) curResult
+											.get(tabMiddle.getSelectionIndex() - 1);
+								}
+							} else {
+								qe = (QueryExecuter) curResult.get(tabMiddle
+										.getSelectionIndex());
+							}
+							tabResult = tabMiddle.getItem(tabMiddle
+									.getSelectionIndex());
+							tblResult = qe.tblResult;
+						} else if (logTabResult != null) {
+							tabResult = logTabResult;
+							tblResult = null;
 						}
 					}
 				});
+		setDropTraget(tblResult);
+	}
 
-		DropTarget dt = new DropTarget(tabMiddle, DND.DROP_MOVE);
+	/**
+	 * set drop target for table
+	 * 
+	 * @param table
+	 */
+	private void setDropTraget(Table table) {
+		DropTarget dt = new DropTarget(table, DND.DROP_MOVE);
 		dt.setTransfer(new Transfer[] { TextTransfer.getInstance() });
 		dt.addDropListener(new DropTargetAdapter() {
 			public void drop(DropTargetEvent event) {
@@ -577,16 +661,18 @@ public class QueryEditor extends ViewPart {
 		GridData gridData = new GridData();
 		gridData.horizontalAlignment = SWT.FILL;
 		gridData.verticalAlignment = SWT.FILL;
-		sashTail = new SashForm(sashTop, SWT.NONE);
+		SashForm sashTail = new SashForm(sashBottom, SWT.HORIZONTAL);
+		sashTail.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
 		sashTail.setLayoutData(gridData);
-		txaRunQuery = new Text(sashTail, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL
-				| SWT.READ_ONLY);
+		Text txaRunQuery = new Text(sashTail, SWT.MULTI | SWT.WRAP
+				| SWT.V_SCROLL | SWT.READ_ONLY);
 		if (font != null)
 			txaEdit.setFont(font);
 		txaRunQuery.setBackground(Display.getCurrent().getSystemColor(
 				SWT.COLOR_INFO_BACKGROUND));
-		txaMessagesArea = new StyledText(sashTail, SWT.MULTI | SWT.WRAP
-				| SWT.V_SCROLL | SWT.READ_ONLY);
+		StyledText txaMessagesArea = new StyledText(sashTail, SWT.MULTI
+				| SWT.WRAP | SWT.V_SCROLL | SWT.READ_ONLY);
 	}
 
 	/**
@@ -599,9 +685,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemOpen = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemOpen.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_open.png")));
+		itemOpen.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_open.png"));
 		itemOpen.setToolTipText(Messages.getString("QEDIT.OPEN"));
 		itemOpen
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -613,9 +698,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemSave = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemSave.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_save.png")));
+		itemSave.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_save.png"));
 		itemSave.setToolTipText(Messages.getString("QEDIT.SAVE"));
 		itemSave
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -627,9 +711,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemSaveAs = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemSaveAs.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_saveas.png")));
+		itemSaveAs.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_saveas.png"));
 		itemSaveAs.setToolTipText(Messages.getString("QEDIT.SAVEAS"));
 		itemSaveAs
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -643,9 +726,8 @@ public class QueryEditor extends ViewPart {
 
 		itemRun = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemRun.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_go.png")));
+		itemRun.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_go.png"));
 		itemRun.setToolTipText(Messages.getString("QEDIT.RUN")
 				+ "(F5,Ctrl+Enter)");
 		itemRun
@@ -658,8 +740,8 @@ public class QueryEditor extends ViewPart {
 
 		// ToolItem itemScript = new ToolItem(toolBar1, SWT.PUSH);
 		// //TODO: Image
-		// itemScript.setImage(new Image(Display.getCurrent(),
-		// getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_script_go.png")));
+		// itemScript.setImage(CubridmanagerPlugin
+		// .getImage("/image/QueryEditor/qe_script_go.png"));
 		// itemScript.setToolTipText(Messages.getString("QEDIT.SCRIPTRUN"));
 		// itemScript.addSelectionListener(new
 		// org.eclipse.swt.events.SelectionAdapter() {
@@ -670,8 +752,8 @@ public class QueryEditor extends ViewPart {
 
 		// ToolItem itemImport = new ToolItem(toolBar1, SWT.PUSH);
 		// //TODO: Image
-		// itemImport.setImage(new Image(Display.getCurrent(),
-		// getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_import.png")));
+		// itemImport.setImage(CubridmanagerPlugin
+		// .getImage("/image/QueryEditor/qe_import.png"));
 		// itemImport.setToolTipText(Messages.getString("QEDIT.IMPORT"));
 		// itemImport.addSelectionListener(new
 		// org.eclipse.swt.events.SelectionAdapter() {
@@ -684,18 +766,10 @@ public class QueryEditor extends ViewPart {
 
 		itemCommit = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemCommit
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_commit_enable.png")));
-		itemCommit
-				.setDisabledImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_commit_disable.png")));
+		itemCommit.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_commit_enable.png"));
+		itemCommit.setDisabledImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_commit_disable.png"));
 		itemCommit.setToolTipText(Messages.getString("QEDIT.COMMIT"));
 		itemCommit.setEnabled(false);
 		itemCommit
@@ -717,18 +791,10 @@ public class QueryEditor extends ViewPart {
 
 		itemRollback = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemRollback
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_rollback_enable.png")));
-		itemRollback
-				.setDisabledImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_rollback_disable.png")));
+		itemRollback.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_rollback_enable.png"));
+		itemRollback.setDisabledImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_rollback_disable.png"));
 		itemRollback.setToolTipText(Messages.getString("QEDIT.ROLLBACK"));
 		itemRollback.setEnabled(false);
 		itemRollback
@@ -750,12 +816,8 @@ public class QueryEditor extends ViewPart {
 
 		final ToolItem itemAutocommit = new ToolItem(toolBar1, SWT.CHECK);
 		// TODO: Image
-		itemAutocommit
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_autocommit_enable.png")));
+		itemAutocommit.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_autocommit_enable.png"));
 		itemAutocommit.setToolTipText(Messages.getString("QEDIT.AUTOCOMMIT"));
 		itemAutocommit.setSelection(isAutocommit);
 		itemAutocommit
@@ -773,8 +835,8 @@ public class QueryEditor extends ViewPart {
 		/*
 		 * ToolItem itemSchemaNavi = new ToolItem(toolBar1, SWT.PUSH);
 		 * itemSchemaNavi.setWidth(25); //TODO: Image
-		 * itemSchemaNavi.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_schema_navi.png")));
+		 * itemSchemaNavi.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_schema_navi.png"));
 		 * itemSchemaNavi.setToolTipText(Messages.getString("QEDIT.SCHEMANAVIGATOR"));
 		 * itemSchemaNavi.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -785,8 +847,8 @@ public class QueryEditor extends ViewPart {
 		 * CommonTool.debugPrint(e1); } } });
 		 * 
 		 * ToolItem itemOIDNavi = new ToolItem(toolBar1, SWT.PUSH); //TODO:
-		 * Image itemOIDNavi.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_oid_navi.png")));
+		 * Image itemOIDNavi.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_oid_navi.png"));
 		 * itemOIDNavi.setToolTipText(Messages.getString("QEDIT.OIDNAVIGATOR"));
 		 * itemOIDNavi.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -796,12 +858,12 @@ public class QueryEditor extends ViewPart {
 		 * new ToolItem(toolBar1, SWT.SEPARATOR);
 		 * 
 		 * final ToolItem itemQueryPlanEnable = new ToolItem(toolBar1,
-		 * SWT.CHECK); //TODO: Image itemQueryPlanEnable.setImage(new
-		 * Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_queryplan_enable.png")));
+		 * SWT.CHECK); //TODO: Image
+		 * itemQueryPlanEnable.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_queryplan_enable.png"));
 		 * itemQueryPlanEnable.setToolTipText(Messages.getString("TOOLTIP.QUERYPLANENABLE"));
-		 * itemQueryPlanEnable.setSelection(doesGetQueryPlan); // Defalut value is false
-		 * itemQueryPlanEnable.addSelectionListener(new
+		 * itemQueryPlanEnable.setSelection(doesGetQueryPlan); // Defalut value
+		 * is false itemQueryPlanEnable.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
 		 * widgetSelected(org.eclipse.swt.events.SelectionEvent e) {
 		 * doesGetQueryPlan = itemQueryPlanEnable.getSelection(); } });
@@ -809,15 +871,10 @@ public class QueryEditor extends ViewPart {
 
 		itemQueryPlan = new ToolItem(toolBar1, SWT.PUSH);
 		// TODO: Image
-		itemQueryPlan.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_queryplan.png")));
-		itemQueryPlan
-				.setDisabledImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/disable/qe_queryplan.png")));
+		itemQueryPlan.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_queryplan.png"));
+		itemQueryPlan.setDisabledImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/disable/qe_queryplan.png"));
 		itemQueryPlan.setToolTipText(Messages.getString("TOOLTIP.QUERYPLAN")
 				+ "(Ctrl+L)");
 		itemQueryPlan
@@ -843,8 +900,8 @@ public class QueryEditor extends ViewPart {
 		/*
 		 * ToolItem itemQueryHistory = new ToolItem(toolBar1, SWT.PUSH);
 		 * itemQueryHistory.setWidth(25); //TODO: Image
-		 * itemQueryHistory.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_history.png")));
+		 * itemQueryHistory.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_history.png"));
 		 * itemQueryHistory.setToolTipText(Messages.getString("QEDIT.QUERYHISTORY"));
 		 * itemQueryHistory.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -852,15 +909,15 @@ public class QueryEditor extends ViewPart {
 		 * QueryHistory(); } });
 		 * 
 		 * ToolItem itemPrevQuery = new ToolItem(toolBar1, SWT.PUSH);
-		 * itemPrevQuery.setWidth(25); //TODO: Image itemPrevQuery.setImage(new
-		 * Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/empty.png")));
+		 * itemPrevQuery.setWidth(25); //TODO: Image
+		 * itemPrevQuery.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/empty.png"));
 		 * itemPrevQuery.setToolTipText(Messages.getString("QEDIT.PREVIOUSQUERY"));
 		 * 
 		 * ToolItem itemNextQuery = new ToolItem(toolBar1, SWT.PUSH);
-		 * itemNextQuery.setWidth(25); //TODO: Image itemNextQuery.setImage(new
-		 * Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/empty.png")));
+		 * itemNextQuery.setWidth(25); //TODO: Image
+		 * itemNextQuery.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/empty.png"));
 		 * itemNextQuery.setToolTipText(Messages.getString("QEDIT.NEXTQUERY"));
 		 */
 	}
@@ -875,9 +932,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemUndo = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemUndo.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_undo.png")));
+		itemUndo.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_undo.png"));
 		itemUndo.setToolTipText(Messages.getString("TOOLTIP.QEDIT.UNDO")
 				+ "(Ctrl+Z)");
 		itemUndo
@@ -890,9 +946,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemRedo = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemRedo.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_redo.png")));
+		itemRedo.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_redo.png"));
 		itemRedo.setToolTipText(Messages.getString("TOOLTIP.QEDIT.REDO")
 				+ "(Ctrl+Y)");
 		itemRedo
@@ -906,8 +961,8 @@ public class QueryEditor extends ViewPart {
 		new ToolItem(toolBar2, SWT.SEPARATOR);
 		/*
 		 * ToolItem itemCopy = new ToolItem(toolBar2, SWT.PUSH); //TODO: Image
-		 * itemCopy.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_copy.png")));
+		 * itemCopy.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_copy.png"));
 		 * itemCopy.setToolTipText(Messages.getString("QEDIT.COPY"));
 		 * itemCopy.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -915,8 +970,8 @@ public class QueryEditor extends ViewPart {
 		 * });
 		 * 
 		 * itemCut = new ToolItem(toolBar2, SWT.PUSH); //TODO: Image
-		 * itemCut.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_cut.png")));
+		 * itemCut.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_cut.png"));
 		 * itemCut.setToolTipText(Messages.getString("QEDIT.CUT"));
 		 * itemCut.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -924,8 +979,8 @@ public class QueryEditor extends ViewPart {
 		 * });
 		 * 
 		 * itemPaste = new ToolItem(toolBar2, SWT.PUSH); //TODO: Image
-		 * itemPaste.setImage(new Image(Display.getCurrent(),
-		 * getClass().getResourceAsStream("/cubridmanager/image/QueryEditor/qe_paste.png")));
+		 * itemPaste.setImage(CubridmanagerPlugin
+		 * .getImage("/image/QueryEditor/qe_paste.png"));
 		 * itemPaste.setToolTipText(Messages.getString("QEDIT.PASTE"));
 		 * itemPaste.addSelectionListener(new
 		 * org.eclipse.swt.events.SelectionAdapter() { public void
@@ -936,9 +991,8 @@ public class QueryEditor extends ViewPart {
 		 */
 		ToolItem itemFind = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemFind.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_find.png")));
+		itemFind.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_find.png"));
 		itemFind.setToolTipText(Messages.getString("TOOLTIP.QEDIT.FIND")
 				+ "(Ctrl+F)");
 		itemFind
@@ -951,9 +1005,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemFindNext = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemFindNext.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_findnext.png")));
+		itemFindNext.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_findnext.png"));
 		itemFindNext.setToolTipText(Messages
 				.getString("TOOLTIP.QEDIT.FINDNEXT")
 				+ "(F3)");
@@ -967,9 +1020,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemReplace = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemReplace.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_replace.png")));
+		itemReplace.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_replace.png"));
 		itemReplace.setToolTipText(Messages.getString("TOOLTIP.QEDIT.REPLACE"));
 		itemReplace
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -983,12 +1035,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemComment = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemComment
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_comment_input.png")));
+		itemComment.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_comment_input.png"));
 		itemComment.setToolTipText(Messages.getString("TOOLTIP.QEDIT.COMMENT"));
 		itemComment
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -1000,12 +1048,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemUncomment = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemUncomment
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_comment_delete.png")));
+		itemUncomment.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_comment_delete.png"));
 		itemUncomment.setToolTipText(Messages
 				.getString("TOOLTIP.QEDIT.UNCOMMENT"));
 		itemUncomment
@@ -1020,12 +1064,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemUnindent = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemUnindent
-				.setImage(new Image(
-						Display.getCurrent(),
-						getClass()
-								.getResourceAsStream(
-										"/cubridmanager/image/QueryEditor/qe_indent_remove.png")));
+		itemUnindent.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_indent_remove.png"));
 		itemUnindent.setToolTipText(Messages
 				.getString("TOOLTIP.QEDIT.UNINDENT"));
 		itemUnindent
@@ -1038,9 +1078,8 @@ public class QueryEditor extends ViewPart {
 
 		ToolItem itemIndent = new ToolItem(toolBar2, SWT.PUSH);
 		// TODO: Image
-		itemIndent.setImage(new Image(Display.getCurrent(), getClass()
-				.getResourceAsStream(
-						"/cubridmanager/image/QueryEditor/qe_indent.png")));
+		itemIndent.setImage(CubridmanagerPlugin
+				.getImage("/image/QueryEditor/qe_indent.png"));
 		itemIndent.setToolTipText(Messages.getString("TOOLTIP.QEDIT.INDENT"));
 		itemIndent
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
@@ -1056,7 +1095,7 @@ public class QueryEditor extends ViewPart {
 	 * 
 	 */
 	private void createTable() {
-		tblResult = new Table(tabMiddle, SWT.NONE);
+		tblResult = new Table(sashBottom, SWT.NONE);
 		tblResult.setHeaderVisible(true);
 		tblResult.setLinesVisible(true);
 	}
@@ -1150,7 +1189,7 @@ public class QueryEditor extends ViewPart {
 		if ((long) (e.time & 0xFFFFFFFFL) < execEndTime) {
 			return;
 		}
-		itemRun.setEnabled(false);
+
 		long startTime, endTime, timeInterval;
 		startTime = System.currentTimeMillis();
 		runQuery();
@@ -1158,7 +1197,7 @@ public class QueryEditor extends ViewPart {
 		timeInterval = endTime - startTime;
 
 		execEndTime = (long) (e.time & 0xFFFFFFFFL) + timeInterval;
-		itemRun.setEnabled(true);
+
 		RunQueryAction = true;
 	}
 
@@ -1184,7 +1223,7 @@ public class QueryEditor extends ViewPart {
 	}
 
 	public void copy() {
-		if (tblResult.isFocusControl())
+		if (tblResult != null && tblResult.isFocusControl())
 			QueryExecuter.tblItemCopy(tblResult.getSelection());
 		else if (txaEdit.isFocusControl())
 			txaEdit.copy();
@@ -1247,6 +1286,11 @@ public class QueryEditor extends ViewPart {
 					line = br.readLine();
 				}
 				br.close();
+				txaEdit.setText(buff.toString());
+				fileName = file.getName();
+				this.setPartName(Messages.getString("TITLE.SCRIPTRUN") + "- "
+						+ file.getName());
+				hasChanged = false;
 				runQuery(buff.toString());
 			} catch (FileNotFoundException e1) {
 				CommonTool.ErrorBox(e1.getMessage());
@@ -1256,8 +1300,7 @@ public class QueryEditor extends ViewPart {
 				CommonTool.debugPrint(e1);
 			}
 		}
-		this.setPartName(Messages.getString("TITLE.SCRIPTRUN") + "- "
-				+ file.getName());
+
 	}
 
 	public void scriptRun() {
@@ -1370,7 +1413,7 @@ public class QueryEditor extends ViewPart {
 					qVector.addElement(aQuery);
 			}
 		}
-		if (!isLineComment) {
+		if (end < queries.length() - 1) {
 			String aQuery = queries.substring(end, queries.length()).trim();
 
 			if (isNotEmptyQuery(aQuery))
@@ -1458,8 +1501,6 @@ public class QueryEditor extends ViewPart {
 	}
 
 	private void runQuery() {
-		txaMessagesArea.setText("");
-
 		String queries = new String();
 		if (txaEdit.getSelectionCount() > 0)
 			queries = txaEdit.getSelectionText();
@@ -1473,24 +1514,29 @@ public class QueryEditor extends ViewPart {
 	}
 
 	private void runQuery_PlanOnly(String queries) {
+		itemRun.setEnabled(false);
+		itemQueryPlan.setEnabled(false);
 		Vector qVector = null;
 		vectorQueryPlans.clear();
 		CUBRIDStatement statement = null;
 
-		String sql;
 		qVector = queriesToQuery(queries);
 		int i = 0;
-		NumberFormat nf = NumberFormat.getInstance();
-		nf.setMaximumFractionDigits(3);
-
 		try {
 			for (i = 0; i < qVector.size(); i++) {
-				sql = qVector.get(i).toString();
+				String sql = qVector.get(i).toString();
 				statement = (CUBRIDStatement) conn.createStatement();
 				vectorQueryPlans.add(new StructQueryPlan(sql, statement
 						.getQueryplan(sql)));
+				QueryUtil.freeQuery(statement);
 			}
-		} catch (CUBRIDException ee) {
+		} catch (Exception ee) {
+			int errorCode = 0;
+			if (ee instanceof CUBRIDException) {
+				errorCode = ((CUBRIDException) ee).getErrorCode();
+			} else if (ee instanceof SQLException) {
+				errorCode = ((SQLException) ee).getErrorCode();
+			}
 			String errmsg = "";
 
 			if (isAutocommit)
@@ -1502,75 +1548,102 @@ public class QueryEditor extends ViewPart {
 			txtFind((String) qVector.get(i), 0, false, false, true, false);
 			int line = txaEdit.getLineAtOffset(txaEdit.getSelection().x) + 1;
 
-			errmsg += Messages.getString("QEDIT.RUNERR") + ee.getErrorCode()
+			errmsg += Messages.getString("QEDIT.RUNERR") + errorCode
 					+ MainConstants.NEW_LINE + line
 					+ Messages.getString("QEDIT.ERRWHERE")
 					+ MainConstants.NEW_LINE
 					+ Messages.getString("QEDIT.ERRORHEAD") + ee.getMessage();
-
-			fillMessageArea(errmsg);
-			CommonTool.debugPrint(ee);
-		} catch (SQLException ee) {
-			if (isAutocommit)
-				try {
-					conn.rollback();
-				} catch (SQLException e1) {
+			if (logTabResult != null) {
+				tabMiddle.setSelection(0);
+				String logMessage = logMessagesArea.getText();
+				if (logMessage != null && logMessage.length() > 0) {
+					logMessage += MainConstants.NEW_LINE;
 				}
+				logSqlText.setText(logSqlText.getText()
+						+ MainConstants.NEW_LINE + qVector.get(i).toString());
+				logSqlText.setTopIndex(logSqlText.getLineCount() - 1);
+				logMessagesArea.setText(logMessage + MainConstants.NEW_LINE
+						+ errmsg);
+				logMessagesArea.setTopIndex(logMessagesArea.getLineCount() - 1);
+
+			} else {
+				while (tabMiddle.getItemCount() > 0) {
+					tabMiddle.getItem(0).dispose();
+				}
+				makeLogResult(qVector.get(i).toString(), errmsg);
+				for (int j = 0; j < curResult.size(); j++) {
+					makeResult((QueryExecuter) curResult.get(j));
+				}
+				tabMiddle.setSelection(0);
+			}
 			CommonTool.debugPrint(ee);
 		} finally {
-			try {
-				if (statement != null)
-					statement.close();
-			} catch (SQLException e) {
-				CommonTool.debugPrint(e);
-			}
+			QueryUtil.freeQuery(statement);
 		}
+		itemRun.setEnabled(true);
+		itemQueryPlan.setEnabled(true);
 		OnlyQueryPlan = false;
 	}
 
-	private void runQuery(String queries) {
-		Vector qVector = null;
-		vectorQueryPlans.clear();
-		int cntResults = 0;
-		boolean hasModifyQuery = false;
-		boolean isIsolationHigher = false;
-		String msg = "";
-		String sql;
-		qVector = queriesToQuery(queries);
-		int i = 0;
-		long beginTimestamp = 0;
-		double elapsedTime = 0.0;
-		NumberFormat nf = NumberFormat.getInstance();
-		nf.setMaximumFractionDigits(3);
-		QueryExecuter result = null;
-
-		try {
-			clearResult();
-			if (qVector.size() > 0)
-				isIsolationHigher = isIsolationHigherThanRepeatableRead(conn, isActive);
-			
-			for (i = 0; i < qVector.size(); i++) {
-				sql = qVector.get(i).toString();
-				beginTimestamp = System.currentTimeMillis();
-
-				stmt = (CUBRIDPreparedStatement) conn
-						.prepareStatement(
-								sql,
-								ResultSet.TYPE_SCROLL_INSENSITIVE,
-								(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
-										: ResultSet.CONCUR_READ_ONLY,
-								ResultSet.HOLD_CURSORS_OVER_COMMIT);
-
-				if (stmt.hasResultSet()) {
-					stmt.setQueryInfo(false);
-					stmt.setOnlyQueryPlan(false);
-
-					waitDlg = new WaitingMsgBox(Application.mainwindow
-							.getShell());
-					waitDlg.hStmt = stmt;
-					waitDlg.setJobEndState(false);
-					Thread execThread = new Thread() {
-						public void run() {
+	private void runQuery(final String queries) {
+		clearResult();
+		logTabResult = null;
+		itemRun.setEnabled(false);
+		itemQueryPlan.setEnabled(false);
+		if (runJob != null) {
+			runJob.cancel();
+			runJob = null;
+		}
+		runJob = new Job(Messages.getString("PROGRESSMONITOR.RUNQUERY")) {
+			public IStatus run(IProgressMonitor monitor) {
+				final Vector qVector = queriesToQuery(queries);
+				vectorQueryPlans.clear();
+				int i = 0;
+				int cntResults = 0;
+				String noSelectSql = "";
+				String logs = "";
+				boolean hasModifyQuery = false;
+				boolean isIsolationHigher = false;
+				long beginTimestamp = 0;
+				double elapsedTime = 0.0;
+				NumberFormat nf = NumberFormat.getInstance();
+				nf.setMaximumFractionDigits(3);
+				QueryExecuter result = null;
+				String multiQuerySql = null;
+				try {
+					if (qVector.size() > 0 && !monitor.isCanceled())
+						isIsolationHigher = isIsolationHigherThanRepeatableRead(
+								conn, isActive);
+					for (i = 0; i < qVector.size() && !monitor.isCanceled(); i++) {
+						String sql = qVector.get(i).toString();
+						multiQuerySql = SqlParser.parse(sql);
+						if (multiQuerySql == null) {
+							beginTimestamp = System.currentTimeMillis();
+							stmt = (CUBRIDPreparedStatement) conn
+									.prepareStatement(
+											sql,
+											ResultSet.TYPE_SCROLL_INSENSITIVE,
+											(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
+													: ResultSet.CONCUR_READ_ONLY,
+											ResultSet.HOLD_CURSORS_OVER_COMMIT);
+						}
+						if (multiQuerySql != null) {
+							result = new QueryExecuter(QueryEditor.this,
+									cntResults, "");
+							result.setMultiQuerySql(multiQuerySql);
+							result.setQueryMsg((i + 1)
+									+ Messages.getString("QEDIT.QUERYSEQ")
+									+ MainConstants.NEW_LINE);
+							try {
+								result.makeTable(1);
+							} catch (SQLException ee) {
+								throw ee;
+							}
+							curResult.addElement(result);
+							cntResults++;
+						} else if (stmt.hasResultSet()) {
+							stmt.setQueryInfo(false);
+							stmt.setOnlyQueryPlan(false);
 							try {
 								if (MainRegistry.isProtegoBuild()) {
 									CUBRIDKeyTable.putValue(conKey);
@@ -1578,252 +1651,288 @@ public class QueryEditor extends ViewPart {
 								stmt.executeQuery();
 								endTimestamp = System.currentTimeMillis();
 								rs = (CUBRIDResultSet) stmt.getResultSet();
-								waitDlg.setJobEndState(true);
 							} catch (SQLException ee) {
-								waitDlg.setJobEndState(true);
-								execException = ee;
+								throw ee;
 							}
-						}
-					};
-
-					execException = null;
-					execThread.start();
-
-					try {
-						execThread.join(1000);
-						if (!waitDlg.getJobEndState()) {
-							waitDlg.runForQueryExec();
-						}
-
-						if (execThread.isAlive())
-							execThread.join();
-					} catch (Exception e) {
-						CommonTool.debugPrint("Exception!!!" + e.toString());
-						CommonTool.debugPrint(e);
-					}
-
-					if (execException != null) {
-						throw execException;
-					}
-
-					elapsedTime = (endTimestamp - beginTimestamp) * 0.001;
-
-					result = new QueryExecuter(this, cntResults, sql, rs);
-					switch (stmt.getStatementType()) {
-					case CUBRIDCommandType.CUBRID_STMT_EVALUATE:
-					case CUBRIDCommandType.CUBRID_STMT_CALL:
-						hasModifyQuery = true;
-						break;
-					}
-					makeResult(result);
-					msg += (i + 1) + Messages.getString("QEDIT.QUERYSEQ")
-							+ "[ " + nf.format(elapsedTime)
-							+ Messages.getString("QEDIT.SECOND") + " , "
-							+ Messages.getString("MSG.TOTALROWS") + " : "
-							+ result.cntRecord + " ]" + MainConstants.NEW_LINE;
-					curResult.addElement(result);
-					cntResults++;
-				} else {
-					byte execType = stmt.getStatementType();
-					int cntModify;
-
-					threadExecResult = 0;
-					waitDlg = new WaitingMsgBox(Application.mainwindow
-							.getShell());
-					waitDlg.hStmt = stmt;
-					waitDlg.setJobEndState(false);
-					Thread execThread = new Thread() {
-						public void run() {
+							elapsedTime = (endTimestamp - beginTimestamp) * 0.001;
+							String elapsedTimeStr = nf.format(elapsedTime);
+							if (elapsedTime < 0.001) {
+								elapsedTimeStr = "0.000";
+							}
+							result = new QueryExecuter(QueryEditor.this,
+									cntResults, sql);
+							result.makeTable(rs);
+							String queryMsg = (i + 1)
+									+ Messages.getString("QEDIT.QUERYSEQ")
+									+ "[ " + elapsedTimeStr + " "
+									+ Messages.getString("QEDIT.SECOND")
+									+ " , "
+									+ Messages.getString("MSG.TOTALROWS")
+									+ " : " + result.cntRecord + " ]"
+									+ MainConstants.NEW_LINE;
+							result.setQueryMsg(queryMsg);
+							switch (stmt.getStatementType()) {
+							case CUBRIDCommandType.CUBRID_STMT_EVALUATE:
+							case CUBRIDCommandType.CUBRID_STMT_CALL:
+								hasModifyQuery = true;
+								break;
+							}
+							curResult.addElement(result);
+							cntResults++;
+						} else {
+							byte execType = stmt.getStatementType();
+							threadExecResult = 0;
 							try {
 								threadExecResult = stmt.executeUpdate();
 								endTimestamp = System.currentTimeMillis();
-								waitDlg.setJobEndState(true);
 							} catch (SQLException ee) {
-								waitDlg.setJobEndState(true);
-								execException = ee;
+								throw ee;
 							}
+							elapsedTime = (endTimestamp - beginTimestamp) * 0.001;
+							logs += (i + 1)
+									+ Messages.getString("QEDIT.QUERYSEQ")
+									+ " ";
+							int cntModify = threadExecResult;
+							noSelectSql += sql + MainConstants.NEW_LINE;
+							hasModifyQuery = true;
+							switch (execType) {
+							case CUBRIDCommandType.CUBRID_STMT_ALTER_CLASS:
+							case CUBRIDCommandType.CUBRID_STMT_ALTER_SERIAL:
+							case CUBRIDCommandType.CUBRID_STMT_RENAME_CLASS:
+							case CUBRIDCommandType.CUBRID_STMT_RENAME_TRIGGER:
+								logs += Messages.getString("QEDIT.ALTEROK");
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_CREATE_CLASS:
+							case CUBRIDCommandType.CUBRID_STMT_CREATE_INDEX:
+							case CUBRIDCommandType.CUBRID_STMT_CREATE_TRIGGER:
+							case CUBRIDCommandType.CUBRID_STMT_CREATE_SERIAL:
+								logs += Messages.getString("QEDIT.CREATEOK");
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_DROP_DATABASE:
+							case CUBRIDCommandType.CUBRID_STMT_DROP_CLASS:
+							case CUBRIDCommandType.CUBRID_STMT_DROP_INDEX:
+							case CUBRIDCommandType.CUBRID_STMT_DROP_LABEL:
+							case CUBRIDCommandType.CUBRID_STMT_DROP_TRIGGER:
+							case CUBRIDCommandType.CUBRID_STMT_DROP_SERIAL:
+							case CUBRIDCommandType.CUBRID_STMT_REMOVE_TRIGGER:
+								logs += Messages.getString("QEDIT.DROPOK");
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_INSERT:
+								logs += cntModify + " "
+										+ Messages.getString("QEDIT.INSERTOK");
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_SELECT:
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_UPDATE:
+								logs += cntModify + " "
+										+ Messages.getString("QEDIT.UPDATEOK2");
+								break;
+							case CUBRIDCommandType.CUBRID_STMT_DELETE:
+								logs += cntModify + " "
+										+ Messages.getString("QEDIT.DELETEOK");
+								break;
+							/* others are 'Successfully execution' */
+							/*
+							 * Under two line works disable button when query's
+							 * last command is commit/rollback
+							 */
+							case CUBRIDCommandType.CUBRID_STMT_COMMIT_WORK:
+							case CUBRIDCommandType.CUBRID_STMT_ROLLBACK_WORK:
+								hasModifyQuery = false;
+							default:
+								logs += Messages.getString("QEDIT.QUERYOK");
+								break;
+							}
+							String elapsedTimeStr = nf.format(elapsedTime);
+							if (elapsedTime < 0.001) {
+								elapsedTimeStr = "0.000";
+							}
+							logs += "[" + elapsedTimeStr + " "
+									+ Messages.getString("QEDIT.SECOND") + "]"
+									+ MainConstants.NEW_LINE;
+							if (MainRegistry.queryEditorOption.getqueryplan)
+								vectorQueryPlans.add(new StructQueryPlan(sql,
+										""));
 						}
-					};
-
-					execException = null;
-					execThread.start();
-
+						QueryUtil.freeQuery(stmt, rs);
+					}
+					if (isAutocommit && !monitor.isCanceled())
+						conn.commit();
+				} catch (final SQLException e) {
 					try {
-						execThread.join(1000);
-						if (!waitDlg.getJobEndState()) {
-							waitDlg.runForQueryExec();
-						}
-
-						if (execThread.isAlive())
-							execThread.join();
-					} catch (Exception e) {
-						CommonTool.debugPrint("Exception!!!" + e.toString());
+						if (isAutocommit && !monitor.isCanceled())
+							conn.rollback();
+					} catch (SQLException e1) {
+					}
+					if (multiQuerySql != null && result != null) {
+						noSelectSql += result.getQuerySql();
+						logs += result.getQueryMsg();
+					} else {
+						final String errorSql = (String) qVector.get(i);
+						Application.mainwindow.getShell().getDisplay()
+								.syncExec(new Runnable() {
+									public void run() {
+										if (txaEdit != null
+												&& !txaEdit.isDisposed()) {
+											txtFind(errorSql, 0, false, false,
+													true, false);
+											line = txaEdit
+													.getLineAtOffset(txaEdit
+															.getSelection().x) + 1;
+										}
+									}
+								});
+						noSelectSql += errorSql;
+						logs += Messages.getString("QEDIT.RUNERR")
+								+ e.getErrorCode() + MainConstants.NEW_LINE
+								+ line + Messages.getString("QEDIT.ERRWHERE")
+								+ MainConstants.NEW_LINE
+								+ Messages.getString("QEDIT.ERRORHEAD")
+								+ e.getMessage();
 						CommonTool.debugPrint(e);
 					}
+				} finally {
+					final String logsBak = logs;
+					final String noSelectSqlBak = noSelectSql;
+					final int cntResultsBak = i;
+					final boolean hasModifyQueryBak = hasModifyQuery;
+					final boolean isIsolationHigherBak = isIsolationHigher;
+					Application.mainwindow.getShell().getDisplay().syncExec(
+							new Runnable() {
+								public void run() {
+									if (tabMiddle != null
+											&& !tabMiddle.isDisposed()) {
+										if (cntResultsBak < 1
+												&& logsBak.trim().length() <= 0)
+											makeEmptyResult();
+										else {
+											if (logsBak.trim().length() > 0) {
+												makeLogResult(noSelectSqlBak,
+														logsBak);
+											}
+											for (int j = 0; j < curResult
+													.size(); j++) {
+												makeResult((QueryExecuter) curResult
+														.get(j));
+											}
+										}
 
-					if (execException != null) {
-						throw execException;
-					}
-
-					cntModify = threadExecResult;
-					elapsedTime = (endTimestamp - beginTimestamp) * 0.001;
-					msg += (i + 1) + Messages.getString("QEDIT.QUERYSEQ");
-
-					hasModifyQuery = true;
-					switch (execType) {
-					case CUBRIDCommandType.CUBRID_STMT_ALTER_CLASS:
-					case CUBRIDCommandType.CUBRID_STMT_ALTER_SERIAL:
-					case CUBRIDCommandType.CUBRID_STMT_RENAME_CLASS:
-					case CUBRIDCommandType.CUBRID_STMT_RENAME_TRIGGER:
-						msg += Messages.getString("QEDIT.ALTEROK");
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_CREATE_CLASS:
-					case CUBRIDCommandType.CUBRID_STMT_CREATE_INDEX:
-					case CUBRIDCommandType.CUBRID_STMT_CREATE_TRIGGER:
-					case CUBRIDCommandType.CUBRID_STMT_CREATE_SERIAL:
-						msg += Messages.getString("QEDIT.CREATEOK");
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_DROP_DATABASE:
-					case CUBRIDCommandType.CUBRID_STMT_DROP_CLASS:
-					case CUBRIDCommandType.CUBRID_STMT_DROP_INDEX:
-					case CUBRIDCommandType.CUBRID_STMT_DROP_LABEL:
-					case CUBRIDCommandType.CUBRID_STMT_DROP_TRIGGER:
-					case CUBRIDCommandType.CUBRID_STMT_DROP_SERIAL:
-					case CUBRIDCommandType.CUBRID_STMT_REMOVE_TRIGGER:
-						msg += Messages.getString("QEDIT.DROPOK");
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_INSERT:
-						msg += cntModify + Messages.getString("QEDIT.INSERTOK");
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_SELECT:
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_UPDATE:
-						msg += cntModify
-								+ Messages.getString("QEDIT.UPDATEOK2");
-						break;
-					case CUBRIDCommandType.CUBRID_STMT_DELETE:
-						msg += cntModify + Messages.getString("QEDIT.DELETEOK");
-						break;
-					/* others are 'Successfully execution' */
-					/* Under two line works disable button when query's last command is commit/rollback */
-					case CUBRIDCommandType.CUBRID_STMT_COMMIT_WORK:
-					case CUBRIDCommandType.CUBRID_STMT_ROLLBACK_WORK:
-						hasModifyQuery = false;
-					default:
-						msg += Messages.getString("QEDIT.QUERYOK");
-						break;
-					}
-
-					msg += "[" + nf.format(elapsedTime)
-							+ Messages.getString("QEDIT.SECOND") + "]"
-							+ MainConstants.NEW_LINE;
-					if (MainRegistry.queryEditorOption.getqueryplan)
-						vectorQueryPlans.add(new StructQueryPlan(sql, ""));
+										if (!hasModifyQueryBak
+												&& !isIsolationHigherBak) {
+											try {
+												if (conn != null
+														&& !conn.isClosed())
+													conn.commit();
+											} catch (SQLException e) {
+												CommonTool.debugPrint(e);
+											}
+											setActive(false);
+										} else
+											setActive(true);
+										itemRun.setEnabled(true);
+										if (MainRegistry.queryEditorOption.getqueryplan)
+											itemQueryPlan.setEnabled(true);
+									}
+								}
+							});
+					QueryUtil.freeQuery(stmt, rs);
 				}
-
-				if (rs != null)
-					rs.close();
-				if (stmt != null)
-					stmt.close();
+				return Status.OK_STATUS;
 			}
-			if (isAutocommit)
-				conn.commit();
-
-			fillMessageArea(msg);
-		} catch (SQLException e) {
-			String errmsg = "";
-			try {
-				StringReader msgReader = new StringReader(msg);
-				BufferedReader msgBuffer = new BufferedReader(msgReader);
-				for (int j = 0; j < i; j++)
-					errmsg += msgBuffer.readLine() + MainConstants.NEW_LINE;
-				msgBuffer.close();
-				msgReader.close();
-			} catch (IOException e1) {
-				CommonTool.debugPrint(e1);
-			}
-
-			if (isAutocommit)
-				try {
-					conn.rollback();
-				} catch (SQLException e1) {
-				}
-
-			txtFind((String) qVector.get(i), 0, false, false, true, false);
-			int line = txaEdit.getLineAtOffset(txaEdit.getSelection().x) + 1;
-
-			errmsg += Messages.getString("QEDIT.RUNERR") + e.getErrorCode()
-					+ MainConstants.NEW_LINE + line
-					+ Messages.getString("QEDIT.ERRWHERE")
-					+ MainConstants.NEW_LINE
-					+ Messages.getString("QEDIT.ERRORHEAD") + e.getMessage();
-
-			fillMessageArea(errmsg);
-			CommonTool.debugPrint(e);
-		} finally {
-			try {
-				if (cntResults < 1)
-					makeEmptyResult();
-				else
-					txaRunQuery
-							.setText(((QueryExecuter) curResult.get(0)).query);
-
-				// if query have only select query, isolation level is 
-				// lower then TRANSACTION_REPEATABLE_READ 
-				if (!hasModifyQuery
-						&& !isIsolationHigher) {
-					conn.commit();
-					setActive(false);
-				} else
-					setActive(true);
-
-				if (rs != null)
-					rs.close();
-				if (stmt != null)
-					stmt.close();
-			} catch (SQLException e) {
-				CommonTool.debugPrint(e);
-			}
-		}
+		};
+		runJob.schedule();
 	}
 
 	private void makeResult(QueryExecuter result) {
-		tblResult = new Table(tabMiddle, SWT.H_SCROLL | SWT.V_SCROLL
+		if (tabMiddle == null || tabMiddle.isDisposed()) {
+			return;
+		}
+		ViewForm viewForm = new ViewForm(tabMiddle, SWT.NONE);
+		SashForm bottomSash = new SashForm(viewForm, SWT.VERTICAL);
+		bottomSash.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
+		Table tbl = new Table(bottomSash, SWT.H_SCROLL | SWT.V_SCROLL
 				| SWT.FULL_SELECTION | SWT.MULTI);
+		setDropTraget(tbl);
 		if (font != null)
-			tblResult.setFont(font);
-		tblResult.setHeaderVisible(true);
-		tblResult.setLinesVisible(true);
+			tbl.setFont(font);
+		tbl.setHeaderVisible(true);
+		tbl.setLinesVisible(true);
 
-		result.makeResult(tblResult);
+		SashForm tailSash = new SashForm(bottomSash, SWT.HORIZONTAL);
+		tailSash.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
+		Text sqlText = new Text(tailSash, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL
+				| SWT.READ_ONLY);
+		sqlText.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_INFO_BACKGROUND));
+		StyledText messagesArea = new StyledText(tailSash, SWT.MULTI | SWT.WRAP
+				| SWT.V_SCROLL | SWT.READ_ONLY);
 
-		tabResult = new TabItem(tabMiddle, SWT.NONE);
-		tabResult
-				.setText(Messages.getString("QEDIT.RESULT") + (result.idx + 1));
-		tabResult.setControl(tblResult);
+		result.makeResult(tbl, sqlText, messagesArea);
+		bottomSash.setWeights(new int[] { 70, 30 });
+		TabItem tab = new TabItem(tabMiddle, SWT.NONE);
+		tab.setText(Messages.getString("QEDIT.RESULT") + (result.idx + 1));
+		ToolBar toolBar = new ToolBar(viewForm, SWT.FLAT);
+		ToolBarManager toolBarManager = new ToolBarManager(toolBar);
+		result.makeActions(toolBarManager);
+		viewForm.setContent(bottomSash);
+		viewForm.setTopRight(toolBar);
+		tab.setControl(viewForm);
 
 		// Auto set column size, maximum is 300px
-		for (int i = 1; i < tblResult.getColumnCount(); i++) {
-			tblResult.getColumns()[i].pack();
-			if (tblResult.getColumns()[i].getWidth() > 300)
-				tblResult.getColumns()[i].setWidth(300);
+		for (int i = 1; i < tbl.getColumnCount(); i++) {
+			tbl.getColumns()[i].pack();
+			if (tbl.getColumns()[i].getWidth() > 300)
+				tbl.getColumns()[i].setWidth(300);
 		}
 	}
 
-	private void makeEmptyResult() {
-		tblResult = new Table(tabMiddle, SWT.H_SCROLL | SWT.V_SCROLL
-				| SWT.FULL_SELECTION | SWT.MULTI);
-		tblResult.setHeaderVisible(true);
-		tblResult.setLinesVisible(true);
+	private void makeLogResult(String sqlStr, String messageStr) {
+		SashForm tailSash = new SashForm(tabMiddle, SWT.NONE);
+		tailSash.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
+		logSqlText = new Text(tailSash, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL
+				| SWT.READ_ONLY);
+		logSqlText.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_INFO_BACKGROUND));
+		logSqlText.setText(sqlStr);
+		logSqlText.setTopIndex(logSqlText.getLineCount() - 1);
+		logMessagesArea = new StyledText(tailSash, SWT.MULTI | SWT.WRAP
+				| SWT.V_SCROLL | SWT.READ_ONLY);
+		logMessagesArea.setText(messageStr);
+		logMessagesArea.setTopIndex(logMessagesArea.getLineCount() - 1);
+		logTabResult = new TabItem(tabMiddle, SWT.NONE);
+		logTabResult.setText(Messages.getString("QEDIT.LOGSRESULT"));
+		logTabResult.setControl(tailSash);
+	}
 
-		TableColumn column = new TableColumn(tblResult, SWT.NONE);
+	private void makeEmptyResult() {
+		SashForm bottomSash = new SashForm(tabMiddle, SWT.VERTICAL);
+		bottomSash.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
+		Table tbl = new Table(bottomSash, SWT.H_SCROLL | SWT.V_SCROLL
+				| SWT.FULL_SELECTION | SWT.MULTI);
+		setDropTraget(tbl);
+		tbl.setHeaderVisible(true);
+		tbl.setLinesVisible(true);
+
+		TableColumn column = new TableColumn(tbl, SWT.NONE);
 		column.setWidth(60);
 
-		tabResult = new TabItem(tabMiddle, SWT.NONE);
-		tabResult.setText(Messages.getString("QEDIT.RESULT"));
-		tabResult.setControl(tblResult);
-
-		txaRunQuery.setText("");
+		SashForm tailSash = new SashForm(bottomSash, SWT.NONE);
+		tailSash.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_GRAY));
+		Text sqlText = new Text(tailSash, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL
+				| SWT.READ_ONLY);
+		sqlText.setBackground(Display.getCurrent().getSystemColor(
+				SWT.COLOR_INFO_BACKGROUND));
+		StyledText messagesArea = new StyledText(tailSash, SWT.MULTI | SWT.WRAP
+				| SWT.V_SCROLL | SWT.READ_ONLY);
+		bottomSash.setWeights(new int[] { 70, 30 });
+		TabItem tab = new TabItem(tabMiddle, SWT.NONE);
+		tab.setText(Messages.getString("QEDIT.RESULT"));
+		tab.setControl(bottomSash);
 	}
 
 	// private void moreResult() {
@@ -1874,12 +1983,8 @@ public class QueryEditor extends ViewPart {
 
 		setActive(true);
 
-		CommonTool.InformationBox(Messages.getString("QEDIT.DELETE"), i
+		CommonTool.InformationBox(Messages.getString("QEDIT.DELETE"), i + " "
 				+ Messages.getString("QEDIT.DELETEOK"));
-	}
-
-	private void fillMessageArea(String message) {
-		txaMessagesArea.setText(message);
 	}
 
 	public Connection getConnection() {
@@ -1944,9 +2049,8 @@ public class QueryEditor extends ViewPart {
 	 * @param isCaseSensitive:
 	 *            Case sensitive
 	 * @param isWholeWord:
-	 *            Whole word 
-	 * @return boolean:
-	 *            Success : true, Nothing or faild : false
+	 *            Whole word
+	 * @return boolean: Success : true, Nothing or faild : false
 	 */
 	public boolean txtFind(String strFind, int curOffsetStart, boolean isWrap,
 			boolean isUp, boolean isCaseSensitive, boolean isWholeWord) {
@@ -2200,12 +2304,14 @@ public class QueryEditor extends ViewPart {
 	}
 
 	/**
-	 * Decide transaction close using by connection's isolation level for Select query. 
+	 * Decide transaction close using by connection's isolation level for Select
+	 * query.
 	 * 
 	 * @param conn
 	 *            isolation level validation connection
 	 * @param isActive
-	 *            Transaction is exist? (if transaction is exist, return value is always true.)
+	 *            Transaction is exist? (if transaction is exist, return value
+	 *            is always true.)
 	 * @return boolean
 	 *         <ul>
 	 *         <li>true: keep transaction </li>

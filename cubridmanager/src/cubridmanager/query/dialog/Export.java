@@ -39,6 +39,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
 
 import jxl.Workbook;
 import jxl.write.Label;
@@ -53,15 +55,16 @@ import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableItem;
 
-import cubrid.sql.CUBRIDOID;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.driver.CUBRIDResultSetMetaData;
+import cubrid.sql.CUBRIDOID;
 import cubridmanager.Application;
 import cubridmanager.CommonTool;
 import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
 import cubridmanager.WaitingMsgBox;
+import cubridmanager.query.view.ColumnInfo;
 import cubridmanager.query.view.QueryEditor;
 
 public class Export {
@@ -73,16 +76,28 @@ public class Export {
 	private Statement stmt = null;
 	private String thistableName = null;
 
-	public Export(Table tbl, boolean isSelection) {
+	public Export(Table tbl, boolean isSelection, boolean hasOid) {
 		fileName = getFileName(new String[] { "*.xls", "*.csv" }, new String[] {
 				"Excel(xls)", "Comma separated value(csv)" });
 		if (fileName == null)
 			return;
 
 		if (fileName.toLowerCase().endsWith(".xls"))
-			exportXls(tbl, isSelection);
+			exportXls(tbl, isSelection, hasOid);
 		else
-			exportCsv(tbl, isSelection);
+			exportCsv(tbl, isSelection, hasOid);
+	}
+	public Export(List<ColumnInfo> columnList,
+			List<Map<String, String>> dataList, boolean hasOid) {
+		fileName = getFileName(new String[] { "*.xls", "*.csv" }, new String[] {
+				"Excel(xls)", "Comma separated value(csv)" });
+		if (fileName == null)
+			return;
+
+		if (fileName.toLowerCase().endsWith(".xls"))
+			exportXls(columnList, dataList, hasOid);
+		else
+			exportCsv(columnList, dataList, hasOid);
 	}
 
 	public Export(Connection con, String tableName) throws SQLException {
@@ -193,7 +208,7 @@ public class Export {
 		return null;
 	}
 
-	private void exportXls(Table tbl, boolean isSelection) {
+	private void exportXls(Table tbl, boolean isSelection, boolean hasOid) {
 		try {
 			int sheetNum = 0;
 			WritableWorkbook workbook = Workbook.createWorkbook(file);
@@ -202,6 +217,9 @@ public class Export {
 			int rowLimit = 65536; // 65536: limit xls row number.
 			int columnLimit = 257; // 256: limit xls column number.
 			// it set 257. Because Tbl's first column is oid value that doesn't export.
+			if (hasOid) {
+				columnLimit++; // oid column does not export
+			}
 			StringBuffer addMsg = new StringBuffer("");
 
 			int colCount, itemCount;
@@ -229,7 +247,11 @@ public class Export {
 			}
 
 			for (int i = 0, xlsRecordNum = 0; i < itemCount; i++) {
-				for (int j = 1; j < colCount; j++) {
+				int start = 1;
+				if (hasOid) {
+					start++;
+				}
+				for (int j = start; j < colCount; j++) {
 					String colType = tbl.getColumns()[j].getData().toString();
 					String value = items[i].getText(j);
 					if (colType.equals("INTEGER") || colType.equals("TINYINT")
@@ -237,27 +259,27 @@ public class Export {
 							|| colType.equals("BIGINT")) {
 						if (!value
 								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
-							sheet.addCell(new Number(j - 1, xlsRecordNum,
+							sheet.addCell(new Number(j - start, xlsRecordNum,
 									Integer.parseInt(value)));
 					} else if (colType.equals("DOUBLE")
 							|| colType.equals("FLOAT")
 							|| colType.equals("REAL")) {
 						if (!value
 								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
-							sheet.addCell(new Number(j - 1, xlsRecordNum,
+							sheet.addCell(new Number(j - start, xlsRecordNum,
 									Double.parseDouble(value)));
 					} else if (colType.equals("NUMERIC")
 							|| colType.equals("DECIMAL")
 							|| colType.equals("MONETORY")) {
 						if (!value
 								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
-							sheet.addCell(new Number(j - 1, xlsRecordNum,
+							sheet.addCell(new Number(j - start, xlsRecordNum,
 									(new BigDecimal(value)).doubleValue()));
 					} else {
 						if (!value
 								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
-							sheet.addCell(new Label(j - 1, xlsRecordNum, value
-									.toString()));
+							sheet.addCell(new Label(j - start, xlsRecordNum,
+									value.toString()));
 					}
 				}
 				xlsRecordNum++;
@@ -283,7 +305,7 @@ public class Export {
 			}
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
-					itemCount + Messages.getString("QEDIT.EXPORTOK") + addMsg);
+					itemCount + " " +Messages.getString("QEDIT.EXPORTOK") + addMsg);
 		} catch (IOException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -397,7 +419,7 @@ public class Export {
 				addMsg.append(Messages.getString("QEDIT.EXPORTLIMIT3"));
 			}
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i + " "
 					+ Messages.getString("QEDIT.EXPORTOK") + addMsg);
 		} catch (IOException e) {
 			CommonTool.ErrorBox(e.getMessage());
@@ -421,7 +443,7 @@ public class Export {
 
 	}
 
-	private void exportCsv(Table tbl, boolean isSelection) {
+	private void exportCsv(Table tbl, boolean isSelection, boolean hasOid) {
 		try {
 			FileOutputStream fs = new FileOutputStream(file);
 			TableItem[] tblItem;
@@ -432,7 +454,11 @@ public class Export {
 				tblItem = tbl.getItems();
 
 			for (int i = 0; i < tblItem.length; i++) {
-				for (int j = 1; j < tbl.getColumnCount(); j++) {
+				int j = 1;
+				if (hasOid) {
+					j++;
+				}
+				for (; j < tbl.getColumnCount(); j++) {
 					String colType = tbl.getColumns()[j].getData().toString();
 					if (colType.equals("MONETARY") || colType.equals("INTEGER")
 							|| colType.equals("TINYINT")
@@ -462,7 +488,7 @@ public class Export {
 			fs.close();
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
-					tblItem.length + Messages.getString("QEDIT.EXPORTOK"));
+					tblItem.length + " " + Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -530,7 +556,7 @@ public class Export {
 			fs.close();
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
-					+ Messages.getString("QEDIT.EXPORTOK"));
+					+ " " + Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -624,7 +650,7 @@ public class Export {
 			fs.flush();
 			fs.close();
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i +  " "
 					+ Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
@@ -731,7 +757,7 @@ public class Export {
 			fs.flush();
 			fs.close();
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i + " "
 					+ Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
@@ -740,6 +766,177 @@ public class Export {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
 		} catch (SQLException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		}
+	}
+	/**
+	 * export all data in Query Editor result table cache as xls
+	 * 
+	 * @param columnList
+	 * @param dataList
+	 */
+	private void exportXls(List<ColumnInfo> columnList,
+			List<Map<String, String>> dataList, boolean hasOid) {
+		try {
+			int sheetNum = 0;
+			WritableWorkbook workbook = Workbook.createWorkbook(file);
+			WritableSheet sheet = workbook.createSheet("Sheet " + sheetNum,
+					sheetNum);
+			int rowLimit = 65536; // 65536: limit xls row number.
+			int columnLimit = 256; // 256: limit xls column number..
+			if (hasOid) {
+				columnLimit++;
+			}
+			StringBuffer addMsg = new StringBuffer("");
+
+			int colCount = columnList.size();
+			int itemCount = dataList.size();
+
+			if (colCount > columnLimit) {
+				if (CommonTool.MsgBox(Application.mainwindow.getShell(),
+						SWT.ICON_WARNING | SWT.APPLICATION_MODAL | SWT.YES
+								| SWT.NO, Messages.getString("MSG.WARNING"),
+						Messages.getString("WARNING.COLUMNCOUNTOVER")) == SWT.NO)
+					return;
+				colCount = columnLimit;
+				addMsg.append(NEW_LINE);
+				addMsg.append(NEW_LINE);
+				addMsg.append(Messages.getString("MESSAGE.COLUMNCOUNTOVER"));
+			}
+
+			for (int i = 0, xlsRecordNum = 0; i < itemCount; i++) {
+				int start = 0;
+				if (hasOid) {
+					start++;
+				}
+				for (int j = start; j < colCount; j++) {
+					String colType = columnList.get(j).getType();
+					String colName = columnList.get(j).getName();
+					String value = dataList.get(i).get(colName);
+					if (colType.equals("INTEGER") || colType.equals("TINYINT")
+							|| colType.equals("SMALLINT")
+							|| colType.equals("BIGINT")) {
+						if (!value
+								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
+							sheet.addCell(new Number(j - start, xlsRecordNum,
+									Integer.parseInt(value)));
+					} else if (colType.equals("DOUBLE")
+							|| colType.equals("FLOAT")
+							|| colType.equals("REAL")) {
+						if (!value
+								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
+							sheet.addCell(new Number(j - start, xlsRecordNum,
+									Double.parseDouble(value)));
+					} else if (colType.equals("NUMERIC")
+							|| colType.equals("DECIMAL")
+							|| colType.equals("MONETORY")) {
+						if (!value
+								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
+							sheet.addCell(new Number(j - start, xlsRecordNum,
+									(new BigDecimal(value)).doubleValue()));
+					} else {
+						if (!value
+								.equals(cubridmanager.query.view.QueryEditor.STR_NULL))
+							sheet.addCell(new Label(j - start, xlsRecordNum,
+									value.toString()));
+					}
+				}
+				xlsRecordNum++;
+
+				if (((i + 1) % rowLimit) == 0) {
+					sheetNum++;
+					xlsRecordNum -= rowLimit;
+					sheet = workbook.createSheet("Sheet " + sheetNum, sheetNum);
+				}
+			}
+			workbook.write();
+			workbook.close();
+
+			if (sheetNum > 0) {
+				addMsg.append(NEW_LINE);
+				addMsg.append(NEW_LINE);
+				addMsg.append(Messages.getString("QEDIT.EXPORTLIMIT1"));
+				addMsg.append(rowLimit);
+				addMsg.append(Messages.getString("QEDIT.EXPORTLIMIT2"));
+				addMsg.append(NEW_LINE);
+				addMsg.append(sheetNum + 1);
+				addMsg.append(Messages.getString("QEDIT.EXPORTLIMIT3"));
+			}
+
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
+					itemCount + " " + Messages.getString("QEDIT.EXPORTOK")
+							+ addMsg);
+		} catch (IOException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		} catch (RowsExceededException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		} catch (NumberFormatException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		} catch (WriteException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		} catch (OutOfMemoryError e) {
+			CommonTool.ErrorBox(e.toString());
+			CommonTool.debugPrint(e);
+		}
+	}
+
+	/**
+	 * export all data in Query Editor result table cache as csv
+	 * 
+	 * @param columnList
+	 * @param dataList
+	 */
+	private void exportCsv(List<ColumnInfo> columnList,
+			List<Map<String, String>> dataList, boolean hasOid) {
+		try {
+			FileOutputStream fs = new FileOutputStream(file);
+
+			for (int i = 0; i < dataList.size(); i++) {
+				int j = 0;
+				if (hasOid) {
+					j++;
+				}
+				for (; j < columnList.size(); j++) {
+					String colType = columnList.get(j).getType();
+					String colName = columnList.get(j).getName();
+					if (colType.equals("MONETARY") || colType.equals("INTEGER")
+							|| colType.equals("TINYINT")
+							|| colType.equals("SMALLINT")
+							|| colType.equals("BIGINT")
+							|| colType.equals("DOUBLE")
+							|| colType.equals("FLOAT")
+							|| colType.equals("REAL")
+							|| colType.equals("NUMERIC")
+							|| colType.equals("DECIMAL")) {
+						fs.write(dataList.get(i).get(colName).getBytes());
+					}
+
+					else {
+						fs.write(("\""
+								+ dataList.get(i).get(colName).replaceAll("\"",
+										"\"\"") + "\"").getBytes());
+					}
+					if (j != columnList.size() - 1) {
+						fs.write(',');
+					}
+				}
+				fs.write('\n');
+			}
+			fs.flush();
+			fs.close();
+
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
+					dataList.size() + " "
+							+ Messages.getString("QEDIT.EXPORTOK"));
+		} catch (FileNotFoundException e) {
+			CommonTool.ErrorBox(e.getMessage());
+			CommonTool.debugPrint(e);
+		} catch (IOException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
 		}

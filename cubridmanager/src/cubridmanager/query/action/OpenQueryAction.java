@@ -55,34 +55,30 @@ public class OpenQueryAction extends Action {
 	}
 
 	public void run() {
-		QueryEditor qe = MainRegistry.getCurrentQueryEditor();
-		if (qe == null) {
-			AuthItem aurec = null;
-			DBUserInfo selUserInfo = null;
+		AuthItem aurec = null;
+		DBUserInfo selUserInfo = null;
 
-			aurec = MainRegistry.Authinfo_find(CubridView.Current_db);
-			if (MainRegistry.Current_Navigator == MainConstants.NAVI_CUBRID
-					&& CubridView.Current_db.length() > 0) {
-				if (aurec.dbuser != null && aurec.dbuser.length() > 0)
-					selUserInfo = MainRegistry.getDBUserInfo(aurec.dbname);
-				else {
-					Shell sh = new Shell(Application.mainwindow.getShell());
-					ActiveDatabaseSelectDialog dlg = new ActiveDatabaseSelectDialog(
-							sh, CubridView.Current_db);
-					selUserInfo = dlg.doModal();
-				}
-			} else {
+		aurec = MainRegistry.Authinfo_find(CubridView.Current_db);
+		if (MainRegistry.Current_Navigator == MainConstants.NAVI_CUBRID
+				&& CubridView.Current_db.length() > 0) {
+			if (aurec.dbuser != null && aurec.dbuser.length() > 0)
+				selUserInfo = MainRegistry.getDBUserInfo(aurec.dbname);
+			else {
 				Shell sh = new Shell(Application.mainwindow.getShell());
 				ActiveDatabaseSelectDialog dlg = new ActiveDatabaseSelectDialog(
-						sh);
+						sh, CubridView.Current_db);
 				selUserInfo = dlg.doModal();
 			}
-			if (selUserInfo == null)
-				return;
-
-			WorkView.SetView(QueryEditor.ID, selUserInfo, null);
-			qe = MainRegistry.getCurrentQueryEditor();
+		} else {
+			Shell sh = new Shell(Application.mainwindow.getShell());
+			ActiveDatabaseSelectDialog dlg = new ActiveDatabaseSelectDialog(sh);
+			selUserInfo = dlg.doModal();
 		}
+		if (selUserInfo == null)
+			return;
+
+		WorkView.SetView(QueryEditor.ID, selUserInfo, null);
+		QueryEditor qe = MainRegistry.getCurrentQueryEditor();
 		qe.openFile();
 	}
 }

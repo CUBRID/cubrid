@@ -66,6 +66,7 @@ import cubridmanager.CubridManagerUserInfo;
 import cubridmanager.MainConstants;
 import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
+import cubridmanager.cas.CASItem;
 import cubridmanager.cubrid.DBUserInfo;
 
 import org.eclipse.swt.layout.GridData;
@@ -83,6 +84,7 @@ public class UserManagementDialog extends Dialog {
 	private ArrayList listUserTable = new ArrayList();
 	private int beforeSelectionIndex = -1;
 	private int currentSelectionIndex = -1;
+	private boolean btnSaveEnable = false;
 
 	public UserManagementDialog(Shell parent) {
 		super(parent);
@@ -130,6 +132,7 @@ public class UserManagementDialog extends Dialog {
 		tlayout.addColumnData(new ColumnWeightData(30, 30, true));
 		tlayout.addColumnData(new ColumnWeightData(20, 30, true));
 		tlayout.addColumnData(new ColumnWeightData(20, 30, true));
+		tlayout.addColumnData(new ColumnWeightData(20, 30, true));
 		tblUsers.setLayout(tlayout);
 
 		TableColumn tblCol = new TableColumn(tblUsers, SWT.LEFT);
@@ -140,6 +143,8 @@ public class UserManagementDialog extends Dialog {
 		tblCol.setText(Messages.getString("TABLE.DBAAUTH"));
 		tblCol = new TableColumn(tblUsers, SWT.LEFT);
 		tblCol.setText(Messages.getString("TABLE.CASAUTH"));
+		tblCol = new TableColumn(tblUsers, SWT.LEFT);
+		tblCol.setText(Messages.getString("TABLE.BROKERPORT"));
 
 		final TableEditor editor = new TableEditor(tblUsers);
 		editor.horizontalAlignment = SWT.LEFT;
@@ -246,6 +251,44 @@ public class UserManagementDialog extends Dialog {
 							combo.add("monitor");
 						combo.add("none");
 
+						combo.select(combo.indexOf(item.getText(column)));
+
+						editor.minimumWidth = combo.computeSize(SWT.DEFAULT,
+								SWT.DEFAULT).x;
+						tblUsers.getColumn(column)
+								.setWidth(editor.minimumWidth);
+
+						combo.setFocus();
+						editor.setEditor(combo, item, column);
+
+						final int col = column;
+						combo.addSelectionListener(new SelectionAdapter() {
+							public void widgetSelected(SelectionEvent event) {
+								String preValue = item.getText(col);
+								item.setText(col, combo.getText());
+								if (!preValue.equals(item.getText(col)))
+									btnSave.setEnabled(true);
+
+								combo.dispose();
+							}
+						});
+					}
+					
+					else if (column == 4) {
+
+						final CCombo combo = new CCombo(tblUsers, SWT.READ_ONLY);
+//						Hashtable userPort = MainRegistry.UserPort;
+						for(int i=0;i<MainRegistry.CASinfo.size();i++)
+						{
+							CASItem casItem = (CASItem)MainRegistry.CASinfo.get(i);
+							combo.add(new Integer(casItem.broker_port).toString());
+						}
+//						Enumeration enu = userPort.keys();
+//						while(enu.hasMoreElements())
+//						{
+//							String user=(String)enu.nextElement();
+//							combo.add((String)userPort.get(user));
+//						}
 						combo.select(combo.indexOf(item.getText(column)));
 
 						editor.minimumWidth = combo.computeSize(SWT.DEFAULT,
@@ -428,7 +471,7 @@ public class UserManagementDialog extends Dialog {
 		btnSave = new Button(cmpBtnArea, SWT.NONE);
 		btnSave.setLayoutData(gridData4);
 		btnSave.setText(Messages.getString("BUTTON.APPLY"));
-		btnSave.setEnabled(false);
+		btnSave.setEnabled(btnSaveEnable);
 		btnSave.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
@@ -457,6 +500,22 @@ public class UserManagementDialog extends Dialog {
 		item.setData("passwd", cmPassword);
 		item.setText(2, dbaAuth);
 		item.setText(3, casAuth);
+		String port = "30000";
+		if(MainRegistry.UserPort.get(cmUser)==null||MainRegistry.UserPort.get(cmUser).toString().trim().equals(""))
+		{
+			btnSaveEnable = true;
+			CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
+			if(casItem != null)
+				port = new Integer(casItem.broker_port).toString();
+		}	
+		else
+		{
+			port = MainRegistry.UserPort.get(cmUser).toString();
+			btnSaveEnable = false;
+		}
+			
+
+		item.setText(4,port);
 		item.setData("dbUserInfo", MainRegistry.listDBUserInfo);
 
 		for (int i = 0; i < MainRegistry.listOtherCMUserInfo.size(); i++) {
@@ -473,6 +532,20 @@ public class UserManagementDialog extends Dialog {
 			item.setData("passwd", cmPassword);
 			item.setText(2, dbaAuth);
 			item.setText(3, casAuth);
+			String port1 = "30000";
+			if(MainRegistry.UserPort.get(cmUser)==null||MainRegistry.UserPort.get(cmUser).toString().trim().equals(""))
+			{
+				btnSaveEnable = true;
+				CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
+				if(casItem != null)
+					port1 = new Integer(casItem.broker_port).toString();
+			}	
+			else
+			{
+				port1 = MainRegistry.UserPort.get(cmUser).toString();
+				btnSaveEnable = false;
+			}
+			item.setText(4,port1);
 			item.setData("dbUserInfo", cmui.listDBUserInfo.clone());
 		}
 	}
@@ -498,9 +571,10 @@ public class UserManagementDialog extends Dialog {
 		TableItem item = null;
 		for (int i = 0; i < tblUsers.getItemCount(); i++) {
 			item = tblUsers.getItem(i);
+
 			listUserTable.add(new StructUserTable(item.getText(0), item
 					.getData("passwd").toString(), item.getText(2), item
-					.getText(3)));
+					.getText(3),item.getText(4)));
 		}
 	}
 
@@ -551,6 +625,8 @@ public class UserManagementDialog extends Dialog {
 				return true;
 			if (!currItem.getText(3).equals(beforeItem.cas))
 				return true;
+			if (!currItem.getText(4).equals(beforeItem.port))
+				return true;
 		}
 		return false;
 	}
@@ -596,7 +672,18 @@ public class UserManagementDialog extends Dialog {
 				}
 			} else
 				cmd = "updatedbmtuser";
-			msg += "casauth:" + item.getText(3) + "\n";
+			String port = "30000";
+			if(item.getText(4)==null&&item.getText(4).trim().equals(""))
+			{
+				CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
+				if(casItem != null)
+					port = new Integer(casItem.broker_port).toString();
+			}
+			else
+			{
+				port = item.getText(4);
+			}
+			msg += "casauth:" + item.getText(3) +","+port+ "\n";
 			msg += "dbcreate:" + item.getText(2) + "\n";
 
 			if (!cs.SendBackGround(sShell, msg, cmd, Messages
@@ -635,11 +722,14 @@ class StructUserTable {
 	public String dba;
 
 	public String cas;
+	
+	public String port;
 
-	StructUserTable(String id, String pw, String dba, String cas) {
+	StructUserTable(String id, String pw, String dba, String cas,String port) {
 		this.id = id;
 		this.pw = pw;
 		this.dba = dba;
 		this.cas = cas;
+		this.port = port;
 	}
 }

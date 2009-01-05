@@ -174,6 +174,16 @@ public class CreateNewUserAction extends Action {
 							Useredit = PROPPAGE_USER_GENERALDialog.DBUser;
 							uiedit = UserInfo.UserInfo_find(userinfo, Useredit);
 						}
+						
+						/*
+						 * @Wanglei: Check User Name && Pass Can't be user && test
+						 * */
+						if(Userpass.trim().toLowerCase().indexOf("test")>=0 && Useredit.trim().toLowerCase().indexOf("user")>=0)
+						{
+							CommonTool.ErrorBox(sShell,Messages
+									.getString("ERROR.USERPASSSETTING"));
+							return;
+						}
 
 						String message = "";
 
