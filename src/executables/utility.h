@@ -202,10 +202,12 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_SPACEDB */
 typedef enum
 {
-  SPACEDB_OUTPUT_TITLE = 15,
+  SPACEDB_OUTPUT_SUMMARY = 15,
   SPACEDB_OUTPUT_FORMAT = 16,
   SPACEDB_MSG_BAD_OUTPUT = 17,
-  SPACEDB_OUTPUT_TITLE1 = 18,
+  SPACEDB_OUTPUT_SUMMARY_TMP_VOL = 18,
+  SPACEDB_OUTPUT_TITLE_PAGE = 19,
+  SPACEDB_OUTPUT_TITLE_SIZE = 20,
   SPACEDB_MSG_USAGE = 60
 } MSGCAT_SPACEDB_MSG;
 
@@ -737,6 +739,8 @@ typedef struct
 #define SPACE_SA_MODE_L                         "SA-mode"
 #define SPACE_CS_MODE_S                         'C'
 #define SPACE_CS_MODE_L                         "CS-mode"
+#define SPACE_SIZE_UNIT_S                       10803
+#define SPACE_SIZE_UNIT_L                       "size-unit"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'

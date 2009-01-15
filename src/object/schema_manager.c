@@ -541,7 +541,7 @@ static char *sm_default_constraint_name (const char *class_name,
 static int sm_drop_index (MOP classop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_,
-                    const char *function);
+					  const char *function);
 
 static void sm_method_final ();
 
@@ -558,10 +558,10 @@ static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
 static int sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain);
 static const char *sm_type_name (DB_TYPE id);
 static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions,
-                int only, int update);
+				  int only, int update);
 static int sm_update_trigger_cache (DB_OBJECT * class_,
-                  const char *attribute,
-                  int class_attribute, void *cache);
+				    const char *attribute,
+				    int class_attribute, void *cache);
 
 
 static void sm_reset_descriptors (MOP class_);
@@ -2755,41 +2755,43 @@ sm_rename_class (MOP op, const char *new_name)
 	      ws_dirty (op);
 	    }
 
-	  /* rename related auto_increment serial obj name */
-	  FOR_ATTRIBUTES (class_->attributes, att)
-	  {
-	    if (att->auto_increment != NULL)
-	      {
-		DB_VALUE name_val;
-		char *class_name;
-
-		if (db_get (att->auto_increment, "class_name", &name_val) !=
-		    NO_ERROR)
-		  break;
-
-		class_name = DB_GET_STRING (&name_val);
-		if (class_name != NULL
-		    && (strcmp (class_->header.name, class_name) == 0))
-		  {
-		    error =
-		      do_update_auto_increment_serial_on_rename (att->
-								 auto_increment,
-								 newname,
-								 att->
-								 header.name);
-		  }
-		db_value_clear (&name_val);
-
-		if (error != NO_ERROR)
-		  break;
-	      }
-	  }
-
 	  class_->header.name = newname;
-	  ws_free_string (current);
-/*      tr_after(trstate); */
+	  error = sm_flush_objects (op);
+
 	  if (error == NO_ERROR)
-	    error = sm_flush_objects (op);
+	    {
+	      /* rename related auto_increment serial obj name */
+	      FOR_ATTRIBUTES (class_->attributes, att)
+	      {
+		if (att->auto_increment != NULL)
+		  {
+		    DB_VALUE name_val;
+		    char *class_name;
+
+		    if (db_get (att->auto_increment, "class_name", &name_val)
+			!= NO_ERROR)
+		      break;
+
+		    class_name = DB_GET_STRING (&name_val);
+		    if (class_name != NULL
+			&& (strcmp (current, class_name) == 0))
+		      {
+			error =
+			  do_update_auto_increment_serial_on_rename (att->
+								     auto_increment,
+								     newname,
+								     att->
+								     header.
+								     name);
+		      }
+		    db_value_clear (&name_val);
+
+		    if (error != NO_ERROR)
+		      break;
+		  }
+	      }
+	    }
+	  ws_free_string (current);
 	}
     }
   if (subren && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
@@ -11013,7 +11015,7 @@ sm_delete_class_mop (MOP op)
 
 	  pk = classobj_find_cons_primary_key (class_->constraints);
 	  if (pk && pk->fk_info
-	      && classobj_is_pk_refer_other (op, pk->fk_info))
+	      && classobj_is_pk_referred (op, pk->fk_info, false))
 	    {
 	      ERROR (error, ER_FK_CANT_DROP_PK_REFERRED);
 	      goto fail_end;

@@ -1322,6 +1322,7 @@ net_server_request (THREAD_ENTRY * thrd, unsigned int rid, int request,
 
       /* clear memory to be used at request handling */
       db_clear_private_heap (thrd, 0);
+      db_clear_instant_heap (thrd, 0);
     }
 
   return (status);

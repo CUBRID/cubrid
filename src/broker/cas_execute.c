@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -447,8 +447,9 @@ ux_database_shutdown ()
 }
 
 int
-ux_prepare (char *sql_stmt, char flag, T_NET_BUF * net_buf,
-	    T_REQ_INFO * req_info, unsigned int query_seq_num)
+ux_prepare (char *sql_stmt, char flag, char auto_commit_mode,
+	    T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+	    unsigned int query_seq_num)
 {
   int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -470,6 +471,7 @@ ux_prepare (char *sql_stmt, char flag, T_NET_BUF * net_buf,
       goto prepare_error1;
     }
   srv_handle->schema_type = -1;
+  srv_handle->auto_commit_mode = auto_commit_mode;
 
   ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
@@ -656,6 +658,9 @@ prepare_result_set:
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
 
+  db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
+		    &srv_handle->use_query_cache);
+
   return srv_h_id;
 
 prepare_error1:
@@ -666,6 +671,12 @@ prepare_error2:
     hm_srv_handle_free (srv_h_id);
   if (session)
     db_close_session (session);
+#ifndef LIBCAS_FOR_JSP
+  if (srv_handle->auto_commit_mode)
+    {
+      need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+#endif
   return err_code;
 }
 
@@ -920,6 +931,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->cur_result_index = 1;
   srv_handle->num_q_result = 1;
   srv_handle->max_row = max_row;
+
+  db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
+		    &srv_handle->use_query_cache);
 
 #ifndef LIBCAS_FOR_JSP
   if (!(srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT
@@ -1176,6 +1190,9 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  srv_handle->q_result[q_res_idx].stmt_type = stmt_type;
 	  srv_handle->q_result[q_res_idx].stmt_id = stmt_id;
 	}
+
+      db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
+			&srv_handle->use_query_cache);
 
       srv_handle->q_result[q_res_idx].async_flag = async_flag;
       srv_handle->q_result[q_res_idx].result = result;
@@ -1440,6 +1457,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 {
   int i;
   int err_code, sql_size, res_count, stmt_id;
+  bool use_plan_cache, use_query_cache;
   char *sql_stmt, *err_msg;
   char stmt_type;
   char auto_commit_mode;
@@ -1463,13 +1481,19 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 
   for (i = 1; i <= argc; i++)
     {
+      use_plan_cache = false;
+      use_query_cache = false;
+
       NET_ARG_GET_STR (sql_stmt, sql_size, argv[i]);
-      cas_log_write (0, TRUE, "batch %d : %s", i, (sql_stmt ? sql_stmt : ""));
+
+      cas_log_write (0, FALSE, "batch %d : %s", i,
+		     (sql_stmt ? sql_stmt : ""));
 
       session = NULL;
 
       if (!(session = db_open_buffer (sql_stmt)))
 	{
+	  cas_log_write2 ("\n");
 	  goto batch_error;
 	}
 #ifndef LIBCAS_FOR_JSP
@@ -1478,10 +1502,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 #endif
       if ((stmt_id = db_compile_statement (session)) < 0)
 	{
+	  cas_log_write2 ("\n");
 	  goto batch_error;
 	}
       if ((stmt_type = db_get_statement_type (session, stmt_id)) < 0)
 	{
+	  cas_log_write2 ("\n");
 	  goto batch_error;
 	}
 
@@ -1489,6 +1515,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
 			   stmt_id);
 #endif
+      db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
+
+      cas_log_write2 (" %s\n", use_plan_cache ? "(PC)" : "");
+
       res_count = db_execute_statement (session, stmt_id, &result);
 #ifndef LIBCAS_FOR_JSP
       SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
@@ -1686,6 +1716,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	{
 	  goto exec_db_error;
 	}
+      db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
+			&srv_handle->use_query_cache);
 
       /* success; peek the values in tuples */
       (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
@@ -4166,6 +4198,19 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       else if (err_code == DB_CURSOR_END)
 	{
 	  net_buf_cp_int (net_buf, 0, NULL);
+
+#ifndef LIBCAS_FOR_JSP
+	  if (srv_handle->num_q_result < 2
+	      && (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT ||
+		  srv_handle->q_result->stmt_type == CUBRID_STMT_CALL ||
+		  srv_handle->q_result->stmt_type == CUBRID_STMT_GET_STATS ||
+		  srv_handle->q_result->stmt_type == CUBRID_STMT_EVALUATE)
+	      && srv_handle->auto_commit_mode == TRUE
+	      && srv_handle->forward_only_cursor == TRUE)
+	    {
+	      need_auto_commit = TRAN_AUTOCOMMIT;
+	    }
+#endif
 	  return 0;
 	}
       else
@@ -6846,7 +6891,8 @@ ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, 1, NULL);	/* fetchedTupleNumber */
   net_buf_cp_int (net_buf, 1, NULL);	/* index */
   NET_BUF_CP_OBJECT (net_buf, &t_object_autoincrement);	/* readOID 8 byte */
-  net_buf_cp_str (net_buf, tuple_buf->data, tuple_buf->data_size);
+  net_buf_cp_str (net_buf, tuple_buf->data + NET_BUF_HEADER_SIZE,
+		  tuple_buf->data_size);
   net_buf_clear (tuple_buf);
   net_buf_destroy (tuple_buf);
 

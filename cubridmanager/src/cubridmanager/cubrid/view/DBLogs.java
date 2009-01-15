@@ -133,6 +133,7 @@ public class DBLogs extends ViewPart implements ITreeObjectChangedListener {
 	}
 
 	public void refresh() {
+		fileinfo = null;
 		if (CubridView.Current_db.length() <= 0)
 			return;
 		else {

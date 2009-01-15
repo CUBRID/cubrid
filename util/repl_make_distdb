@@ -82,6 +82,9 @@ print_mes_h() {
     STEP64)
       printf "       4. 복제 지연 시간 log 파일의 크기(line 수)를 입력하시오. >> "
       ;;
+    STEP65)
+      printf "       5. 네트워크 오류시 복제의 재 시작 여부를 입력하시오.(y/n) >> "
+      ;;
   esac
 }
 
@@ -133,6 +136,9 @@ print_mes_e() {
       ;;
     STEP64)
       printf "       4. Please enter the file size(line number) of replication delay time log. >> "
+      ;;
+    STEP65)
+      printf "       5. Please enter restarting replication at network error.(y/n) >> "
       ;;
   esac
 }
@@ -581,11 +587,19 @@ if [ -z "$perf_log_size" ]
 then
   perf_log_size=10000
 fi
+echo
+print_mes STEP65
+read retry_connect
+if [ -z "$retry_connect" ]
+then
+  retry_connect="n"
+fi
 
 sql="insert into env_info values ('trail_log', '$trail_log'); 
      insert into env_info values ('error_log', '$error_log');
      insert into env_info values ('agent_port', '$agent_port');
      insert into env_info values ('perf_log_size', '$perf_log_size');
-     insert into env_info values ('commit_interval_msecs', '500');"
+     insert into env_info values ('commit_interval_msecs', '500');
+     insert into env_info values ('retry_connect', '$retry_connect');"
 
 $rootdir/bin/csql $dist_db_name -u DBA -p "$passwd" -c "$sql" > /dev/null

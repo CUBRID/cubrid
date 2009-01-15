@@ -361,9 +361,15 @@ public class QueryEditorOptionDialog extends Dialog {
 					+ (casItem.broker_port == 0 ? "stopped" : Integer
 							.toString(casItem.broker_port)) + ")");
 			if(MainRegistry.UserPort.get(MainRegistry.UserID)==null||MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals(""))
-				selectionItem = 0;
-			else if (casItem.broker_port == new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID)))
+			{
+				if(casItem.broker_name.equals("query_editor"))
+					selectionItem = i;
+				else
+					selectionItem = 0;
+			}
+			else if (casItem.broker_port == new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID))) {
 				selectionItem = i;
+			}
 		}
 		cmbCasPort.select(selectionItem);
 		if(MainRegistry.UserID.equals("admin"))

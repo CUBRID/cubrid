@@ -351,6 +351,7 @@ public class DBUsers extends ViewPart implements ITreeObjectChangedListener {
 	}
 
 	public void refresh() {
+		objrec = null;
 		if (CubridView.Current_db.length() <= 0)
 			return;
 		else {

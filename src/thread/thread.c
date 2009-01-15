@@ -328,7 +328,7 @@ thread_initialize_manager (int nthreads)
   else
     {
       /* destroy mutex and cond */
-      for (i = 0; i <= NUM_WORKER_THREADS_PLUS_DAEMON_THREADS; i++)
+      for (i = 1; i <= NUM_WORKER_THREADS_PLUS_DAEMON_THREADS; i++)
 	{
 	  r = thread_finalize_entry (&css_Thread_manager.thread_array[i]);
 	  if (r != NO_ERROR)
@@ -336,7 +336,11 @@ thread_initialize_manager (int nthreads)
 	      return r;
 	    }
 	}
-
+      r = thread_finalize_entry (&css_Thread_manager.thread_array[0]);
+      if (r != NO_ERROR)
+	{
+	  return r;
+	}
       free_and_init (css_Thread_manager.thread_array);
       css_Thread_manager.thread_array = NULL;
     }
@@ -374,9 +378,9 @@ thread_initialize_manager (int nthreads)
     {
       r = thread_initialize_entry (&css_Thread_manager.thread_array[i]);
       if (r != NO_ERROR)
-        {
-          return r;
-        }
+	{
+	  return r;
+	}
 
       css_Thread_manager.thread_array[i].index = i;
     }
@@ -698,9 +702,9 @@ thread_final_manager (void)
     {
       (void) thread_finalize_entry (&css_Thread_manager.thread_array[i]);
     }
-  db_destroy_private_heap (NULL, css_Thread_manager.
-			   thread_array[0].private_heap_id);
+  (void) thread_finalize_entry (&css_Thread_manager.thread_array[0]);
   free_and_init (css_Thread_manager.thread_array);
+  css_Thread_manager.thread_array = NULL;
 
 #ifndef HPUX
   TLS_KEY_FREE (css_Thread_key);
@@ -763,6 +767,12 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
       return ER_CSS_ALLOC;
     }
 
+  entry_p->instant_heap_id = db_create_instant_heap ();
+  if (entry_p->instant_heap_id == 0)
+    {
+      return ER_CSS_ALLOC;
+    }
+
   return NO_ERROR;
 }
 
@@ -805,7 +815,9 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   entry_p->resume_status = RESUME_OK;
 
   entry_p->check_interrupt = true;
+
   db_destroy_private_heap (entry_p, entry_p->private_heap_id);
+  db_destroy_instant_heap (entry_p, entry_p->instant_heap_id);
 
   return NO_ERROR;
 }
@@ -1464,8 +1476,9 @@ thread_dump_threads (void)
 }
 
 /*
- * thread_get_default_memory_manager() -
+ * css_get_private_heap () -
  *   return:
+ *   thread_p(in):
  */
 unsigned int
 css_get_private_heap (THREAD_ENTRY * thread_p)
@@ -1483,6 +1496,7 @@ css_get_private_heap (THREAD_ENTRY * thread_p)
 /*
  * css_set_private_heap() -
  *   return:
+ *   thread_p(in):
  *   heap_id(in):
  */
 unsigned int
@@ -1499,6 +1513,48 @@ css_set_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
 
   old_heap_id = thread_p->private_heap_id;
   thread_p->private_heap_id = heap_id;
+
+  return old_heap_id;
+}
+
+/*
+ * css_get_instant_heap () -
+ *   return:
+ *   thread_p(in):
+ */
+unsigned int
+css_get_instant_heap (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  CSS_ASSERT (thread_p != NULL);
+
+  return thread_p->instant_heap_id;
+}
+
+/*
+ * css_set_instant_heap() -
+ *   return:
+ *   thread_p(in):
+ *   heap_id(in):
+ */
+unsigned int
+css_set_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+{
+  unsigned int old_heap_id = 0;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  CSS_ASSERT (thread_p != NULL);
+
+  old_heap_id = thread_p->instant_heap_id;
+  thread_p->instant_heap_id = heap_id;
 
   return old_heap_id;
 }

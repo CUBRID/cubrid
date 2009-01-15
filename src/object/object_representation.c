@@ -2848,6 +2848,13 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_NUMERIC:
 	  precision = d->precision;
 	  scale = d->scale;
+	  /*
+	   * Safe guard for floating precision caused by incorrect type setting
+	   */
+	  if (precision <= TP_FLOATING_PRECISION_VALUE)
+	    {
+	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
 	  break;
 
 	case DB_TYPE_NCHAR:
@@ -3005,6 +3012,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
+	  /*
+	   * Safe guard for floating precision caused by incorrect type setting
+	   */
+	  if (precision <= TP_FLOATING_PRECISION_VALUE)
+	    {
+	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
 	  break;
 
 	case DB_TYPE_NCHAR:

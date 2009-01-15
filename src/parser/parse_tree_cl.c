@@ -1873,6 +1873,8 @@ parser_init_node (PT_NODE * node)
       node->si_tran_id = 0;
       node->clt_cache_check = 0;
       node->clt_cache_reusable = 0;
+      node->use_plan_cache = 0;
+      node->use_query_cache = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 

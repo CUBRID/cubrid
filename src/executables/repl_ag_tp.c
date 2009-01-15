@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -58,6 +58,7 @@ static bool ag_status_need_shutdown = false;
  * be occurred.
  */
 pthread_mutex_t file_Mutex;
+pthread_mutex_t error_Mutex;
 pthread_key_t slave_Key;
 
 #define APPLY_THREAD             1
@@ -75,6 +76,7 @@ pthread_key_t slave_Key;
 /* check the error code */
 #define REPL_CHECK_THREAD_ERROR(ttype, unlock, code, msg, arg)                \
   do {                                                                        \
+    if(retry_Connect && error == REPL_AGENT_SOCK_ERROR) restart_Agent = true; \
     if(error != NO_ERROR) {                                                   \
       if(unlock == true) PTHREAD_MUTEX_UNLOCK(pb->mutex);                     \
       if(msg == NULL) REPL_ERR_LOG(REPL_FILE_AG_TP, code);                    \
@@ -471,6 +473,7 @@ repl_ag_shutdown_by_signal ()
     }
 
   ag_status_need_shutdown = true;
+  retry_Connect = false;
 
   for (i = 0; i < repl_Master_num; i++)
     {
@@ -2178,9 +2181,30 @@ repl_tr_log_recv (void *arg)
   REPL_CHECK_THREAD_ERROR (RECV_THREAD, false, error, NULL, arg);
 
   /* get the agent id from the server */
-  error = repl_ag_sock_request_agent_id (*id);
+  error = repl_ag_sock_request_agent_info (*id);
   REPL_CHECK_THREAD_ERROR (RECV_THREAD, false, REPL_AGENT_GET_ID_FAIL,
 			   NULL, arg);
+
+  /* Now, we know the io page size .. initialize the io buffer */
+  /* if the size is different with old value.. we have to change the
+   * socket option */
+  if (minfo->io_pagesize > REPL_DEF_LOG_PAGE_SIZE)
+    {
+      error = repl_ag_sock_reset_recv_buf (minfo->conn.client_sock,
+					   minfo->io_pagesize);
+      REPL_CHECK_THREAD_ERROR (RECV_THREAD, false, REPL_AGENT_SOCK_ERROR,
+			       NULL, arg);
+
+      minfo->conn.resp_buffer = realloc (minfo->conn.resp_buffer,
+					 REPL_RESP_BUFFER_SIZE);
+      REPL_CHECK_THREAD_NULL (minfo->conn.resp_buffer, RECV_THREAD,
+			      false, REPL_AGENT_MEMORY_ERROR, NULL, arg);
+
+      pb->log_hdr_buffer = realloc (pb->log_hdr_buffer,
+				    REPL_RESP_BUFFER_SIZE);
+      REPL_CHECK_THREAD_NULL (pb->log_hdr_buffer, RECV_THREAD,
+			      false, REPL_AGENT_MEMORY_ERROR, NULL, arg);
+    }
 
   /* get the log header from the server */
   error = repl_ag_get_log_header (*(int *) id, first_time);
@@ -2212,23 +2236,6 @@ repl_tr_log_recv (void *arg)
   if (start_pageid > last_pageid)
     {
       on_demand = true;
-    }
-
-  /* Now, we know the io page size .. initialize the io buffer */
-  /* if the size is different with old value.. we have to change the
-   * socket option */
-  if (minfo->io_pagesize > REPL_DEF_LOG_PAGE_SIZE)
-    {
-      error =
-	repl_ag_sock_reset_recv_buf (minfo->conn.client_sock,
-				     minfo->io_pagesize);
-      REPL_CHECK_THREAD_ERROR (RECV_THREAD, false, REPL_AGENT_SOCK_ERROR,
-			       NULL, arg);
-
-      minfo->conn.resp_buffer = realloc (minfo->conn.resp_buffer,
-					 REPL_RESP_BUFFER_SIZE);
-      REPL_CHECK_THREAD_NULL (minfo->conn.resp_buffer, RECV_THREAD,
-			      false, REPL_AGENT_MEMORY_ERROR, NULL, arg);
     }
 
   /* Initialize the log buffer area */
@@ -2275,6 +2282,12 @@ repl_tr_log_recv (void *arg)
       old_pageid = start_pageid;
       if (result == REPL_REQUEST_NOPAGE || result == REPL_REQUEST_FAIL)
 	{
+	  if (first_time == true && in_archive == true)
+	    {
+	      REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_GET_LOG_PAGE_FAIL);
+	      restart_Agent = true;
+	      pb->need_shutdown = true;
+	    }
 	  continue;
 	}
       if (((LOG_PAGE *) minfo->conn.resp_buffer)->hdr.logical_pageid !=

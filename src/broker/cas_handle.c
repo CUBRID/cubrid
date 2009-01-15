@@ -93,6 +93,8 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   memset (srv_handle, 0, sizeof (T_SRV_HANDLE));
   srv_handle->id = new_handle_id;
   srv_handle->query_seq_num = seq_num;
+  srv_handle->use_plan_cache = false;
+  srv_handle->use_query_cache = false;
 
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;

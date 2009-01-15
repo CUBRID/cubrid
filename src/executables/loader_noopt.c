@@ -65,7 +65,7 @@ static GETOPT_LONG ua_Load_Option[] = {
 };
 
 static UTIL_MAP utility_Map[] = {
-  {LOADDB, SA_ONLY, "load", "loaddb_user",
+  {LOADDB, SA_ONLY, 1, "load_noopt", "loaddb_user",
    ua_Load_Option, ua_Load_Option_Map},
 };
 
@@ -86,7 +86,7 @@ main (int argc, char *argv[])
 				       MSGCAT_UTIL_SET_LOADDB,
 				       LOADDB_MSG_USAGE),
 	       utility_Map[0].utility_name);
-      msgcat_final();
+      msgcat_final ();
       return EXIT_FAILURE;
     }
 
@@ -94,6 +94,6 @@ main (int argc, char *argv[])
   util_func_arg.command_name = utility_Map[0].utility_name;
   util_func_arg.argv0 = argv[0];
   status = loaddb_user (&util_func_arg);
-  msgcat_final();
+  msgcat_final ();
   return status;
 }

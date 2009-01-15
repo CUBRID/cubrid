@@ -21,7 +21,7 @@
  * Scan (Server Side)
  */
 
-#include "btree.h"              /* TODO: for BTREE_SCAN */
+#include "btree.h"		/* TODO: for BTREE_SCAN */
 
 #ifndef _SCAN_MANAGER_H_
 #define _SCAN_MANAGER_H_
@@ -29,7 +29,7 @@
 #ident "$Id$"
 
 #include "oid.h"		/* for OID */
-#include "storage_common.h"		/* for PAGEID */
+#include "storage_common.h"	/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
 
@@ -103,7 +103,7 @@ struct indx_scan_id
   bool scancache_inited;
   int key_cnt;			/* number of valid ranges */
   KEY_VAL_RANGE *key_vals;	/* for eliminating duplicate ranges */
-  bool keep_iscan_order;	/* keep_index_scan_order flag */
+  bool iscan_oid_order;		/* index_scan_oid_order flag */
   int lock_hint;		/* lock hint */
   bool need_count_only;		/* get count only, no OIDs are copied */
 };				/* Indexed Heap File Scan Identifier */
@@ -253,7 +253,7 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 int num_attrs_rest,
 				 ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest,
-				 bool keep_iscan_order);
+				 bool iscan_oid_order);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped,

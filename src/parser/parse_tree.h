@@ -2226,6 +2226,8 @@ struct parser_node
   unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
   unsigned clt_cache_check:1;	/* check client cache validity */
   unsigned clt_cache_reusable:1;	/* client cache is reusable */
+  unsigned use_plan_cache:1;	/* used for plan cache */
+  unsigned use_query_cache:1;
   CACHE_TIME cache_time;	/* client or server cache time */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };

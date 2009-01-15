@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -148,8 +148,8 @@ extern int repl_svr_process_read_log_req (int agentid, PAGEID pageid,
 					  SIMPLE_BUF ** data);
 extern int repl_svr_process_log_hdr_req (int agentid, REPL_REQUEST * req,
 					 SIMPLE_BUF ** data);
-extern int repl_svr_process_agent_id_req (REPL_REQUEST * req, int port_id,
-					  int *agentid);
+extern int repl_svr_process_agent_info_req (REPL_REQUEST * req, int port_id,
+					    int *agentid);
 extern int repl_svr_tp_init (int thread_num, int do_not_block_when_full);
 extern int repl_svr_tp_add_work (void (*routine) (void *), void *arg);
 extern int repl_svr_tp_destroy (int finish);
@@ -185,6 +185,7 @@ extern int active_Conn_num;
 extern REPL_AGENT_INFO *agent_List;	/* agent list info */
 extern FILE *agent_List_fp;	/* agent list file */
 extern pthread_mutex_t file_Mutex;
+extern pthread_mutex_t error_Mutex;
 extern int max_Agent_num;
 
 #endif /* _REPL_SERVER_H_ */

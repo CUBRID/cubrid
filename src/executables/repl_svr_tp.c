@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -51,6 +51,7 @@ pthread_key_t d_key;
 pthread_mutex_t file_Mutex;	/* to access the common resource
 				 *  - repl_Log, err_Log_fp
 				 */
+pthread_mutex_t error_Mutex;
 
 /* for generation of agent id */
 int agent_ID = 1;
@@ -703,6 +704,7 @@ repl_svr_process_read_log_req (int agentid, PAGEID pageid, bool * in_archive,
     {
       return REPL_SERVER_INTERNAL_ERROR;
     }
+  *data = buf;
 
   pb = (REPL_PB *) repl_svr_find_conn_or_buf (agentid, true);
 
@@ -715,9 +717,6 @@ repl_svr_process_read_log_req (int agentid, PAGEID pageid, bool * in_archive,
       buf->result = (char *) (buf->data + repl_Log.pgsize);
       buf->length = REPL_SIMPLE_BUF_SIZE;
     }
-
-  /* read the target page from dist */
-  PTHREAD_MUTEX_LOCK (file_Mutex);
 
   /* check if the target page is in archive */
   if (REPL_LOG_IS_IN_ARCHIVE (pageid))
@@ -768,7 +767,6 @@ repl_svr_process_read_log_req (int agentid, PAGEID pageid, bool * in_archive,
 	}
       logpg = (LOG_PAGE *) buf->data;
     }
-  PTHREAD_MUTEX_UNLOCK (file_Mutex);
   REPL_CHECK_ERR_ERROR (REPL_FILE_SVR_TP, REPL_SERVER_IO_ERROR);
 
   if (pb)
@@ -782,8 +780,6 @@ repl_svr_process_read_log_req (int agentid, PAGEID pageid, bool * in_archive,
     {
       error = REPL_SERVER_IO_ERROR;
     }
-
-  *data = buf;
 
   return error;
 }
@@ -912,6 +908,7 @@ repl_svr_process_log_hdr_req (int agentid, REPL_REQUEST * req,
     {
       return REPL_SERVER_INTERNAL_ERROR;
     }
+  *data = buf;
 
   /* check the buffer size */
   if (buf->length < REPL_SIMPLE_BUF_SIZE)
@@ -942,13 +939,11 @@ repl_svr_process_log_hdr_req (int agentid, REPL_REQUEST * req,
   PTHREAD_COND_BROADCAST (pb->write_cond);
   PTHREAD_MUTEX_UNLOCK (pb->mutex);
 
-  *data = buf;
-
   return error;
 }
 
 /*
- * repl_svr_process_agent_id_req() - generate the agent id
+ * repl_svr_process_agent_info_req() - generate the agent id and io pagesize
  *   return: error code
  *
  *   req(in)           : request info.
@@ -962,14 +957,18 @@ repl_svr_process_log_hdr_req (int agentid, REPL_REQUEST * req,
  *    called by SEND thread
  */
 int
-repl_svr_process_agent_id_req (REPL_REQUEST * req, int agent_port_id,
-			       int *agentid)
+repl_svr_process_agent_info_req (REPL_REQUEST * req, int agent_port_id,
+				 int *agentid)
 {
   int error = NO_ERROR;
 
   /* we use global mutex */
   PTHREAD_MUTEX_LOCK (file_Mutex);
   *agentid = agent_ID++;
+
+  /* read the log header */
+  error = repl_fetch_log_hdr ();
+  REPL_CHECK_ERR_ERROR (REPL_FILE_SVR_TP, REPL_SERVER_INTERNAL_ERROR);
   PTHREAD_MUTEX_UNLOCK (file_Mutex);
   error = repl_svr_init_new_agent (*agentid, req->agent_fd, agent_port_id);
 
@@ -1266,6 +1265,7 @@ repl_svr_tp_init (int thread_num, int do_not_block_when_full)
   PTHREAD_COND_INIT (repl_tpool->queue_empty);
 
   PTHREAD_MUTEX_INIT (file_Mutex);
+  PTHREAD_MUTEX_INIT (error_Mutex);
 
   /* allocate worker threads */
   repl_tr_send_thread =

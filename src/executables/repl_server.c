@@ -178,7 +178,7 @@ repl_process_request (void *input_orderp)
       /* agentid is repl_agent port id */
       agent_port = agentid;
       agentid = -1;
-      (void) repl_svr_process_agent_id_req (req, agent_port, &agentid);
+      (void) repl_svr_process_agent_info_req (req, agent_port, &agentid);
       break;
 
       /* STEP2 : repl_agent requests the log header info, if this is the

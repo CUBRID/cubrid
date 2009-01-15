@@ -30,18 +30,20 @@
 
 package cubridmanager.dialog;
 
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.osgi.service.datalocation.Location;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Dialog;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 
 import cubridmanager.CommonTool;
 import cubridmanager.Messages;
-import org.eclipse.swt.layout.FillLayout;
-import org.eclipse.swt.browser.Browser;
-import org.eclipse.swt.SWT;
 
 public class HelpDialog extends Dialog {
 
@@ -107,32 +109,8 @@ public class HelpDialog extends Dialog {
 	 */
 	private void createBrowser() {
 		browser = new Browser(sShell, SWT.NONE);
-		String url = null;
-		try {
-			String[] tmp;
-			if (System.getProperty("os.name").startsWith("Window"))
-				tmp = System.getProperty("java.class.path").split(";");
-			else
-				tmp = System.getProperty("java.class.path").split(":");
-
-			int indexOfStartup = -1;
-			for (int i = 0; i < tmp.length; i++) {
-				indexOfStartup = tmp[i].indexOf("startup.jar");
-				if (indexOfStartup < 0)
-					continue;
-				else {
-					url = tmp[i].substring(0, indexOfStartup);
-					break;
-				}
-			}
-			url = url.concat("../doc/Index.htm");
-		} catch (Exception e) {
-			CommonTool.ErrorBox(sShell, "Sorry. Cannot find help.");
-			CommonTool.debugPrint(e);
-		} catch (Error e) {
-			CommonTool.ErrorBox(sShell, "Sorry. Cannot find help.");
-			CommonTool.debugPrint(e);
-		}
+		Location installLocation = Platform.getInstallLocation();
+		String url = installLocation.getURL().toString().concat("../doc/index.htm");
 		browser.setUrl(url);
 	}
 }

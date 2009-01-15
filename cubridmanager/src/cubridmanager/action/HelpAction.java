@@ -30,7 +30,9 @@
 
 package cubridmanager.action;
 
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.action.Action;
+import org.eclipse.osgi.service.datalocation.Location;
 import org.eclipse.ui.IWorkbenchWindow;
 
 import cubridmanager.Application;
@@ -54,19 +56,8 @@ public class HelpAction extends Action {
 	public void run() {
 		if (System.getProperty("os.name").startsWith("Linux")) {
 			boolean start_browser = false;
-			String url = null;
-			int indexOfStartup = -1;
-			String[] tmp = System.getProperty("java.class.path").split(":");
-			for (int i = 0; i < tmp.length; i++) {
-				indexOfStartup = tmp[i].indexOf("startup.jar");
-				if (indexOfStartup < 0)
-					continue;
-				else {
-					url = tmp[i].substring(0, indexOfStartup);
-					break;
-				}
-			}
-			url = url.concat("../../doc/Index.htm");
+			Location installLocation = Platform.getInstallLocation();
+			String url = installLocation.getURL().toString().concat("../../doc/index.htm");
 			String browsers[] = { "mozilla", "firefox", "netscape", "opera" };
 			Runtime rt = Runtime.getRuntime();
 			for (int i = 0; i < browsers.length; i++) {
@@ -90,5 +81,4 @@ public class HelpAction extends Action {
 		}
 
 	}
-
 }

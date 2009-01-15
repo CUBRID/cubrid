@@ -1173,7 +1173,7 @@ uRemoveDir (char *dir, int remove_file_in_dir)
     {
       if (remove_file_in_dir == REMOVE_DIR_FORCED)
 	{
-	  sprintf (command, "rm -rf %s", path);
+	  sprintf (command, "%s %s %s", DEL_DIR, DEL_DIR_OPT, path);
 	  if (system (command) == -1)
 	    return ERR_DIR_REMOVE_FAIL;
 	}

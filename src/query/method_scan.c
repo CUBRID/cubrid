@@ -43,16 +43,19 @@
 #include "dbval.h"
 #include "db.h"
 
-#define ENTER_SERVER_IN_METHOD_CALL(save_heap_id_) \
+#define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_, save_ins_heap_id_) \
   do { \
     db_on_server = 1; \
-    private_heap_id = save_heap_id_; \
+    private_heap_id = save_pri_heap_id_; \
+    instant_heap_id = save_ins_heap_id_; \
   } while (0)
 
-#define EXIT_SERVER_IN_METHOD_CALL(save_heap_id_) \
+#define EXIT_SERVER_IN_METHOD_CALL(save_pri_heap_id_, save_ins_heap_id_) \
   do { \
-     save_heap_id_ = private_heap_id; \
+     save_pri_heap_id_ = private_heap_id; \
      private_heap_id = 0; \
+     save_ins_heap_id_ = instant_heap_id; \
+     instant_heap_id = 0; \
      db_on_server = 0; \
   } while (0)
 
@@ -446,12 +449,12 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   int turn_on_auth = 1;
   DB_VALUE val;
   int error;
-  unsigned int save_heap_id;
+  unsigned int save_pri_heap_id, save_ins_heap_id;
   METHOD_SIG_LIST *method_sig_list;
 
   method_sig_list = scan_buffer_p->s.method_ctl.method_sig_list;
 
-  EXIT_SERVER_IN_METHOD_CALL (save_heap_id);
+  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
 
   crs_result = cursor_next_tuple (&scan_buffer_p->crs_id);
   if (crs_result == DB_CURSOR_SUCCESS)
@@ -474,7 +477,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 				       scan_buffer_p->vallist) != NO_ERROR)
 	{
 	  method_clear_scan_buffer (scan_buffer_p);
-	  ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
 	  return S_ERROR;
 	}
 
@@ -537,7 +540,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_DISABLE (turn_on_auth);
 	    }
 
-	  ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
 
 	  if (error != NO_ERROR)
 	    {
@@ -585,13 +588,13 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
   else if (crs_result == DB_CURSOR_END)
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return S_END;
     }
   else
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return crs_result;
     }

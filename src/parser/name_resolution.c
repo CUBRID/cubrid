@@ -5539,11 +5539,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 					    index->info.name.resolved))
 	    {
 	      classop = db_find_class (entity->info.name.original);
-	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_INDEX)
+	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
 		  != NO_ERROR)
 		{
 		  errid = er_errid ();
-		  if (errid == ER_AU_INDEX_FAILURE
+		  if (errid == ER_AU_SELECT_FAILURE
 		      || errid == ER_AU_AUTHORIZATION_FAILURE)
 		    {
 		      PT_ERRORc (parser, entity, er_msg ());
@@ -5595,11 +5595,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 	  if (range && entity)
 	    {
 	      classop = db_find_class (entity->info.name.original);
-	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_INDEX)
+	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
 		  != NO_ERROR)
 		{
 		  errid = er_errid ();
-		  if (errid == ER_AU_INDEX_FAILURE
+		  if (errid == ER_AU_SELECT_FAILURE
 		      || errid == ER_AU_AUTHORIZATION_FAILURE)
 		    {
 		      PT_ERRORc (parser, entity, er_msg ());

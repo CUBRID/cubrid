@@ -76,6 +76,11 @@
           db_destroy_private_heap (NULL, private_heap_id); \
         } \
       private_heap_id = db_create_private_heap (); \
+      if (instant_heap_id != 0) \
+        { \
+          db_destroy_instant_heap (NULL, instant_heap_id); \
+        } \
+      instant_heap_id = db_create_instant_heap (); \
     } \
   while (0)
 #else /* DEBUG_DB_ON_SERVER */
@@ -88,6 +93,11 @@
           db_destroy_private_heap (NULL, private_heap_id); \
         } \
       private_heap_id = db_create_private_heap (); \
+      if (instant_heap_id != 0) \
+        { \
+          db_destroy_instant_heap (NULL, instant_heap_id); \
+        } \
+      instant_heap_id = db_create_instant_heap (); \
     } \
   while (0)
 #endif /* DEBUG_DB_ON_SERVER */
@@ -99,6 +109,11 @@
         { \
           db_destroy_private_heap (NULL, private_heap_id); \
           private_heap_id = 0; \
+        } \
+      if (instant_heap_id != 0) \
+        { \
+          db_destroy_instant_heap (NULL, instant_heap_id); \
+          instant_heap_id = 0; \
         } \
       db_on_server = 0; \
     } \

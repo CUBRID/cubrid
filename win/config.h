@@ -177,28 +177,6 @@
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
 
-/* Define to the sub-directory in which libtool stores uninstalled libraries.
-   */
-#define LT_OBJDIR ".libs/"
-
-/* Name of package */
-#define PACKAGE "CUBRID"
-
-/* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT ""
-
-/* Define to the full name of this package. */
-#define PACKAGE_NAME "CUBRID 2008"
-
-/* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CUBRID 2008 R1.1"
-
-/* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "cubrid"
-
-/* Define to the version of this package. */
-#define PACKAGE_VERSION "R1.1"
-
 /* Max path length */
 /* #undef PATH_MAX */
 
@@ -231,9 +209,6 @@
 
 /* Define to 1 if your <sys/time.h> declares `struct tm'. */
 /* #undef TM_IN_SYS_TIME */
-
-/* Version number of package */
-#define VERSION "R1.1"
 
 /* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
    `char[]'. */

@@ -1049,6 +1049,7 @@ public class UConnection
       outBuffer.newRequest(out, UFunctionCode.PREPARE);
       outBuffer.addStringWithNull(sqlStatement);
       outBuffer.addByte(prepareFlag);
+      outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
       UInputBuffer inBuffer;
       inBuffer = send_recv_msg();

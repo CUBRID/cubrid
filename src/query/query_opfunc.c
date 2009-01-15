@@ -1728,11 +1728,12 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
 	       * actual tuple size without re-evaluating the expressions.  This
 	       * guarantees that we can at least get the next value into the tuple.
 	       */
-	      tpl_size = tuple_record_p->size + MAX (n_size, DB_PAGESIZE);
+	      tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
+	      tpl_size += MAX (n_size, DB_PAGESIZE);
 	      if (tuple_record_p->size == 0)
 		{
 		  tuple_record_p->tpl =
-		    (char *) db_private_alloc (thread_p, tpl_size);
+		    (char *) db_instant_alloc (thread_p, tpl_size);
 		  if (tuple_record_p->tpl == NULL)
 		    {
 		      return ER_FAILED;
@@ -1741,7 +1742,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
 	      else
 		{
 		  tuple_record_p->tpl =
-		    (char *) db_private_realloc (thread_p,
+		    (char *) db_instant_realloc (thread_p,
 						 tuple_record_p->tpl,
 						 tpl_size);
 		  if (tuple_record_p->tpl == NULL)
@@ -6041,10 +6042,10 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
        * clear the value, but do not set an error
        */
       if (error == SET_DUPLICATE_VALUE)
-        {
-          pr_clear_value (&dbval);
-          error = NO_ERROR;
-        }
+	{
+	  pr_clear_value (&dbval);
+	  error = NO_ERROR;
+	}
 
       if (error != NO_ERROR)
 	{
@@ -6395,8 +6396,8 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
 	  error = setobj_put_value (setobj_p, seq_pos++, &dbval);
 
 	  /*
-           * if we attempt to add a duplicate value to a set,
-           * clear the value, but do not set an error
+	   * if we attempt to add a duplicate value to a set,
+	   * clear the value, but do not set an error
 	   */
 	  if (error == SET_DUPLICATE_VALUE)
 	    {

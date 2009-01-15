@@ -131,6 +131,13 @@ fi
 ###############################################################################
 # STEP 2 : repl_agent status prints
 ###############################################################################
+which telnet 2> /dev/null > /dev/null
+if [ $? -ne 0 ]
+then
+  echo "telnet: command not found"
+  exit 1
+fi
+
 echo "    IP   MasterID SlaveID ForRecovery Status FinalLSA ReplCnt CurRepl SafePageID"
 echo "" > .tmp.out
 echo "" > .result.out

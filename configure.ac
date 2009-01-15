@@ -162,8 +162,8 @@ then
 	CFLAGS="$CFLAGS -ggdb -fno-inline"
 	CXXFLAGS="$CXXFLAGS -ggdb -fno-inline"
 else
-	CFLAGS="$CFLAGS -O2 -DNDEBUG -finline-functions"
-	CXXFLAGS="$CXXFLAGS -O2 -DNDEBUG -finline-functions"
+	CFLAGS="$CFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
+	CXXFLAGS="$CXXFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
 fi
 AM_CONDITIONAL([BUILD_DEBUG], [test "$enable_debug" = "yes"])
 
@@ -218,8 +218,10 @@ then
 	AC_CONFIG_SUBDIRS([external/lzo-2.03])
 	LZO_LIBS="\$(top_builddir)/external/lib/liblzo2.la"
 	LZO_INC="-I\$(top_builddir)/external/include/lzo"
+        LDFLAGS="$LDFLAGS $LZO_LIBS"
 else
 	LZO_LIBS="-llzo2"
+        LZO_INC="-I$with_lzo2/include/lzo"
 fi
 
 AC_ARG_WITH([pcre],

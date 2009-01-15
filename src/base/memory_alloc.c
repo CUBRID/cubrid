@@ -39,11 +39,13 @@
 #include "quick_fit.h"
 #endif /* SERVER_MODE */
 
-#define DEFAULT_OBSTACK_CHUNK_SIZE      32768 /* 1024 x 32 */
+#define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */
 
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
+
 unsigned int private_heap_id = 0;
+unsigned int instant_heap_id = 0;
 #endif /* SERVER_MODE */
 
 /*
@@ -269,7 +271,7 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
 }
 
 /*
- * db_change_private_heap -  change private heap
+ * db_change_private_heap () - change private heap
  *    return: old private heap id
  *    heap_id(in): heap id
  */
@@ -333,6 +335,113 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
       heap_id = css_get_private_heap (thread_p);
 #else /* SERVER_MODE */
       heap_id = private_heap_id;
+#endif /* SERVER_MODE */
+    }
+
+  if (heap_id)
+    {
+      hl_unregister_ostk_heap (heap_id);
+    }
+}
+
+/*
+ * db_create_instant_heap () - create a thread specific heap
+ *   return: memory heap identifier
+ */
+unsigned int
+db_create_instant_heap (void)
+{
+  return db_create_private_heap ();
+}
+
+/*
+ * db_clear_instant_heap () - clear a thread specific heap
+ *   return:
+ *   heap_id(in): memory heap identifier to clear
+ */
+void
+db_clear_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+{
+  if (heap_id == 0)
+    {
+#if defined (SERVER_MODE)
+      heap_id = css_get_instant_heap (thread_p);
+#else /* SERVER_MODE */
+      heap_id = instant_heap_id;
+#endif /* SERVER_MODE */
+    }
+
+  if (heap_id)
+    {
+      hl_clear_ostk_heap (heap_id);
+    }
+}
+
+/*
+ * db_change_instant_heap () - change instant heap
+ *    return: old instant heap id
+ *    heap_id(in): heap id
+ */
+unsigned int
+db_change_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+{
+  unsigned int old_heap_id;
+
+#if defined (SERVER_MODE)
+  old_heap_id = css_set_instant_heap (thread_p, heap_id);
+#else /* SERVER_MODE */
+  old_heap_id = instant_heap_id;
+  if (db_on_server)
+    {
+      instant_heap_id = heap_id;
+    }
+#endif
+  return old_heap_id;
+}
+
+/*
+ * db_replace_instant_heap () - replace a thread specific heap
+ *   return: old memory heap identifier
+ *
+ */
+unsigned int
+db_replace_instant_heap (THREAD_ENTRY * thread_p)
+{
+  unsigned int old_heap_id, heap_id;
+
+#if defined (SERVER_MODE)
+  old_heap_id = css_get_instant_heap (thread_p);
+#else /* SERVER_MODE */
+  old_heap_id = instant_heap_id;
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+  heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+  css_set_instant_heap (thread_p, heap_id);
+#else /* SERVER_MODE */
+  if (db_on_server)
+    {
+      heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+      instant_heap_id = heap_id;
+    }
+#endif /* SERVER_MODE */
+  return old_heap_id;
+}
+
+/*
+ * db_destroy_instant_heap () - destroy a thread specific heap
+ *   return:
+ *   heap_id(in): memory heap identifier to destroy
+ */
+void
+db_destroy_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+{
+  if (heap_id == 0)
+    {
+#if defined (SERVER_MODE)
+      heap_id = css_get_instant_heap (thread_p);
+#else /* SERVER_MODE */
+      heap_id = instant_heap_id;
 #endif /* SERVER_MODE */
     }
 
@@ -469,7 +578,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 	      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
 	    }
 #else /* NDEBUG */
-          new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
 #endif /* NDEBUG */
 	}
       else
@@ -522,6 +631,199 @@ db_private_free (void *thrd, void *ptr)
 	return;
 
       heap_id = private_heap_id;
+
+      if (heap_id)
+	{
+	  // hl_ostk_free (heap_id, ptr);
+	}
+      else
+	{
+	  free_and_init (ptr);
+	}
+    }
+#endif /* SA_MODE */
+}
+
+/*
+ * db_instant_alloc () - call allocation function for current instant heap
+ *   return: allocated memory pointer
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   size(in): size to allocate
+ */
+void *
+db_instant_alloc (void *thrd, size_t size)
+{
+#if defined (CS_MODE)
+  return db_ws_alloc (size);
+#elif defined (SERVER_MODE)
+  unsigned int heap_id;
+  void *ptr = NULL;
+
+  if (size <= 0)
+    return NULL;
+
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
+	     css_get_instant_heap (NULL));
+
+  if (heap_id)
+    {
+      ptr = hl_ostk_alloc (heap_id, size);
+    }
+  else
+    {
+      ptr = malloc (size);
+    }
+  return ptr;
+#else /* SA_MODE */
+  if (!db_on_server)
+    {
+      return db_ws_alloc (size);
+    }
+  else
+    {
+      unsigned int heap_id;
+      void *ptr = NULL;
+
+      if (size <= 0)
+	return NULL;
+
+      heap_id = instant_heap_id;
+
+      if (heap_id)
+	{
+	  ptr = hl_ostk_alloc (heap_id, size);
+	}
+      else
+	{
+	  ptr = malloc (size);
+	}
+      return ptr;
+    }
+#endif /* SA_MODE */
+}
+
+/*
+ * db_instant_realloc () - call re-allocation function for current instant heap
+ *   return: allocated memory pointer
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   ptr(in): memory pointer to reallocate
+ *   size(in): size to allocate
+ */
+void *
+db_instant_realloc (void *thrd, void *ptr, size_t size)
+{
+#if defined (CS_MODE)
+  return db_ws_realloc (ptr, size);
+#elif defined (SERVER_MODE)
+  unsigned int heap_id;
+  void *new_ptr = NULL;
+
+  if (size <= 0)
+    return NULL;
+
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
+	     css_get_instant_heap (NULL));
+
+  if (heap_id)
+    {
+#if defined(NDEBUG)
+      if (ptr == NULL)
+	{
+	  new_ptr = hl_ostk_alloc (heap_id, size);
+	}
+      else
+	{
+	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+	}
+#else /* NDEBUG */
+      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+#endif /* NDEBUG */
+    }
+  else
+    {
+      new_ptr = realloc (ptr, size);
+    }
+  return new_ptr;
+#else /* SA_MODE */
+  if (!db_on_server)
+    {
+      return db_ws_realloc (ptr, size);
+    }
+  else
+    {
+      unsigned int heap_id;
+      void *new_ptr = NULL;
+
+      if (size <= 0)
+	return NULL;
+
+      heap_id = instant_heap_id;
+
+      if (heap_id)
+	{
+#if defined(NDEBUG)
+	  if (ptr == NULL)
+	    {
+	      new_ptr = hl_ostk_alloc (heap_id, size);
+	    }
+	  else
+	    {
+	      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+	    }
+#else /* NDEBUG */
+	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+#endif /* NDEBUG */
+	}
+      else
+	{
+	  new_ptr = realloc (ptr, size);
+	}
+      return new_ptr;
+    }
+#endif /* SA_MODE */
+}
+
+/*
+ * db_instant_free () - call free function for current instant heap
+ *   return:
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   ptr(in): memory pointer to free
+ */
+void
+db_instant_free (void *thrd, void *ptr)
+{
+#if defined (CS_MODE)
+  db_ws_free (ptr);
+#elif defined (SERVER_MODE)
+  unsigned int heap_id;
+
+  if (ptr == NULL)
+    return;
+
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
+	     css_get_instant_heap (NULL));
+
+  if (heap_id)
+    {
+      // hl_ostk_free (heap_id, ptr);
+    }
+  else
+    {
+      free_and_init (ptr);
+    }
+#else /* SA_MODE */
+  if (!db_on_server)
+    {
+      db_ws_free (ptr);
+    }
+  else
+    {
+      unsigned int heap_id;
+
+      if (ptr == NULL)
+	return;
+
+      heap_id = instant_heap_id;
 
       if (heap_id)
 	{

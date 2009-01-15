@@ -124,6 +124,14 @@ extern void db_scramble (void *region, int size);
           } \
         } while (0)
 
+#define db_instant_free_and_init(thrd, ptr) \
+        do { \
+          if ((ptr)) { \
+            db_instant_free ((thrd), (ptr)); \
+            (ptr) = NULL; \
+          } \
+        } while (0)
+
 #define free_and_init(ptr) \
         do { \
           if ((ptr)) { \
@@ -135,6 +143,12 @@ extern void db_scramble (void *region, int size);
 #define db_private_free_and_init(thrd, ptr) \
         do { \
           db_private_free ((thrd), (ptr)); \
+          (ptr) = NULL; \
+	} while (0)
+
+#define db_instant_free_and_init(thrd, ptr) \
+        do { \
+          db_instant_free ((thrd), (ptr)); \
           (ptr) = NULL; \
 	} while (0)
 
@@ -150,6 +164,7 @@ extern int ansisql_strcasecmp (const char *s, const char *t);
 
 #if !defined (SERVER_MODE)
 extern unsigned int private_heap_id;
+extern unsigned int instant_heap_id;
 #endif /* SERVER_MODE */
 
 /*
@@ -183,9 +198,21 @@ extern void *db_private_alloc (void *thrd, size_t size);
 extern void *db_private_realloc (void *thrd, void *ptr, size_t size);
 extern void db_private_free (void *thrd, void *ptr);
 
+extern unsigned int db_create_instant_heap (void);
+extern void db_clear_instant_heap (THREAD_ENTRY * thread_p,
+				   unsigned int heap_id);
+extern unsigned int db_change_instant_heap (THREAD_ENTRY * thread_p,
+					    unsigned int heap_id);
+extern unsigned int db_replace_instant_heap (THREAD_ENTRY * thread_p);
+extern void db_destroy_instant_heap (THREAD_ENTRY * thread_p,
+				     unsigned int heap_id);
+extern void *db_instant_alloc (void *thrd, size_t size);
+extern void *db_instant_realloc (void *thrd, void *ptr, size_t size);
+extern void db_instant_free (void *thrd, void *ptr);
+
 extern unsigned int db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (unsigned int heap_id);
-extern void * db_fixed_alloc (unsigned int heap_id, size_t size);
+extern void *db_fixed_alloc (unsigned int heap_id, size_t size);
 extern void db_fixed_free (unsigned int heap_id, void *ptr);
 
 #endif /* _MEMORY_ALLOC_H_ */

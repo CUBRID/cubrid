@@ -186,9 +186,14 @@ make_mergelist_proc (QO_ENV * env,
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *left_order, *rght_order;
   QO_TERM *term;
+  QO_EQCLASS *order;
   BITSET_ITERATOR bi;
+  BITSET merge_eqclass;
+  BITSET merge_terms;
   BITSET term_segs;
 
+  bitset_init (&merge_eqclass, env);
+  bitset_init (&merge_terms, env);
   bitset_init (&term_segs, env);
 
   merge =
@@ -205,8 +210,25 @@ make_mergelist_proc (QO_ENV * env,
 
   ls_merge->join_type = plan->plan_un.join.join_type;
 
-  ncols = ls_merge->ls_column_cnt =
-    bitset_cardinality (&(plan->plan_un.join.join_terms));
+  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
+       i != -1; i = bitset_next_member (&bi))
+    {
+      term = QO_ENV_TERM (env, i);
+      order = QO_TERM_EQCLASS (term);
+
+      if (order != QO_UNORDERED)
+	{
+	  if (BITSET_MEMBER (merge_eqclass, QO_EQCLASS_IDX (order)))
+	    {
+	      continue;
+	    }
+	  bitset_add (&merge_eqclass, QO_EQCLASS_IDX (order));
+	}
+
+      bitset_add (&merge_terms, i);
+    }
+
+  ncols = ls_merge->ls_column_cnt = bitset_cardinality (&merge_terms);
   ls_merge->ls_outer_column =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
   ls_merge->ls_outer_unique =
@@ -221,7 +243,7 @@ make_mergelist_proc (QO_ENV * env,
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
+  for (i = bitset_iterate (&merge_terms, &bi);
        i != -1; i = bitset_next_member (&bi))
     {
 
@@ -441,6 +463,8 @@ make_mergelist_proc (QO_ENV * env,
 exit_on_end:
 
   bitset_delset (&term_segs);
+  bitset_delset (&merge_terms);
+  bitset_delset (&merge_eqclass);
 
   return merge;
 

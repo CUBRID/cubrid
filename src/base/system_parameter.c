@@ -1298,9 +1298,13 @@ static int prm_set_default (SYSPRM_PARAM * prm);
 static SYSPRM_PARAM *prm_find (const char *pname, const char *section);
 static const KEYVAL *prm_search (const char *pname, const KEYVAL * tbl,
 				 int dim);
-#if !defined (CS_MODE)
-static void prm_tune_parameters (void);
-#endif /* !CS_MODE */
+#if defined (SA_MODE) || defined (SERVER_MODE)
+static void prm_tune_server_parameters (void);
+#endif
+
+#if defined (SA_MODE) || defined (CS_MODE)
+static void prm_tune_client_parameters (void);
+#endif
 
 /*
  * prm_dump_system_parameter_table - Print out current system parameters
@@ -1566,9 +1570,13 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
    * Perform system parameter check and tuning.
    */
   prm_check_environment ();
-#if !defined (CS_MODE)
-  prm_tune_parameters ();
-#endif /* CS_MODE */
+#if defined (SA_MODE) || defined (SERVER_MODE)
+  prm_tune_server_parameters ();
+#endif
+
+#if defined (SA_MODE) || defined (CS_MODE)
+  prm_tune_client_parameters ();
+#endif
 
   /*
    * Perform forced system parameter setting.
@@ -2619,9 +2627,9 @@ sysprm_final (void)
 }
 
 
-#if !defined(CS_MODE)
+#if defined(SA_MODE) || defined (SERVER_MODE)
 /*
- * prm_tune_parameters - Sets the values of various system parameters depending
+ * prm_tune_server_parameters - Sets the values of various system parameters depending
  *                       on the value of other parameters
  *   return: none
  *
@@ -2631,7 +2639,7 @@ sysprm_final (void)
  *       value has been used.
  */
 static void
-prm_tune_parameters (void)
+prm_tune_server_parameters (void)
 {
   SYSPRM_PARAM *num_data_buffers_prm;
   SYSPRM_PARAM *num_log_buffers_prm;
@@ -2766,4 +2774,34 @@ prm_tune_parameters (void)
 
   return;
 }
-#endif /* !CS_MODE */
+#endif /* SA_MODE || SERVER_MODE */
+
+#if defined(SA_MODE) || defined (CS_MODE)
+/*
+ * prm_tune_client_parameters - Sets the values of various system parameters depending
+ *                       on the value of other parameters
+ *   return: none
+ *
+ * Note: Used for providing a mechanism for tuning various system parameters.
+ *       The parameters are only tuned if the user has not set them
+ *       explictly, this can be ascertained by checking if the default
+ *       value has been used.
+ */
+static void
+prm_tune_client_parameters (void)
+{
+  SYSPRM_PARAM *max_plan_cache_entries_prm;
+
+  /* Find the parameters that require tuning */
+  max_plan_cache_entries_prm = prm_find ("max_plan_cache_entries", NULL);
+
+  /* check Plan Cache and Query Cache parameters */
+  if (PRM_GET_INT (max_plan_cache_entries_prm->value) == 0)
+    {
+      /* 0 means disable plan cache */
+      (void) prm_set (max_plan_cache_entries_prm, "-1");
+    }
+
+  return;
+}
+#endif /* SA_MODE || CS_MODE */

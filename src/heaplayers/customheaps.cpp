@@ -122,7 +122,7 @@ extern "C" void * hl_ostk_realloc (unsigned int heap_id, void *ptr, size_t sz)
 
       // free at a time
       // if (ptr) th->free (ptr);
-     return new_ptr;
+      return new_ptr;
     }
   return NULL;
 }

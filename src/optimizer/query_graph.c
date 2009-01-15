@@ -317,7 +317,7 @@ static void qo_get_index_info (QO_ENV * env, QO_NODE * node);
 static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
 static void qo_free_node_index_info (QO_ENV * env,
-                                     QO_NODE_INDEX * node_indexp);
+				     QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
@@ -5973,7 +5973,7 @@ qo_assign_eq_classes (QO_ENV * env)
 	}
       else
 	{
-	  QO_TERM_EQCLASS (term) = NULL;
+	  QO_TERM_EQCLASS (term) = QO_UNORDERED;
 	}
     }
 }
@@ -6448,7 +6448,7 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_OID_SEG (term) = NULL;
   QO_TERM_HEAD (term) = NULL;
   QO_TERM_TAIL (term) = NULL;
-  QO_TERM_EQCLASS (term) = NULL;
+  QO_TERM_EQCLASS (term) = QO_UNORDERED;
   QO_TERM_NOMINAL_SEG (term) = NULL;
   QO_TERM_IDX (term) = idx;
 

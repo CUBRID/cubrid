@@ -86,6 +86,8 @@ struct t_srv_handle
   char need_force_commit;
   char auto_commit_mode;
   char forward_only_cursor;
+  bool use_plan_cache;
+  bool use_query_cache;
   int num_markers;
   int max_col_size;
   int cursor_pos;

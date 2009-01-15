@@ -4936,8 +4936,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
   if (status != DOMAIN_COMPATIBLE)
     {
       if (src != dest)
-	/* make sure this doesn't have any partial results */
-	db_make_null (dest);
+	{
+	  /* make sure this doesn't have any partial results */
+	  db_make_null (dest);
+	}
     }
   else if (src == dest)
     {
@@ -5034,7 +5036,9 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
   int i;
 
   if (type1 == type2)
-    return 0;
+    {
+      return 0;
+    }
   if ((unsigned) type1 > DB_TYPE_LAST)
     {
 #if defined (CUBRID_DEBUG)
@@ -5053,7 +5057,9 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
     {
       /* set up rank so we can do fast table lookup */
       for (i = 0; i <= DB_TYPE_LAST; i++)
-	rank[i] = 0;
+	{
+	  rank[i] = 0;
+	}
       for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
 	{
 	  rank[db_type_rank[i]] = i;

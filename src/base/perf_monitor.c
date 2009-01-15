@@ -1361,17 +1361,31 @@ xmnt_server_start_stats (THREAD_ENTRY * thread_p)
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
   /* Get an statistic block for current transaction if one is not available */
-  if (mnt_Server_table.num_tran_indices > tran_index
-      && mnt_Server_table.stats[tran_index] == NULL)
+  if (mnt_Server_table.num_tran_indices > tran_index)
     {
-      if ((mnt_Server_table.stats[tran_index] =
+      if (mnt_Server_table.stats[tran_index] == NULL)
+	{
+	  if ((mnt_Server_table.stats[tran_index] =
+	       malloc (sizeof (MNT_SERVER_EXEC_STATS))) == NULL)
+	    {
+	      MUTEX_UNLOCK (mnt_Server_table.lock);
+	      return ER_FAILED;
+	    }
+	  MUTEX_INIT (mnt_Server_table.stats[tran_index]->lock);
+	}
+    }
+
+  if (mnt_Server_table.stats[0] == NULL)
+    {
+      if ((mnt_Server_table.stats[0] =
 	   malloc (sizeof (MNT_SERVER_EXEC_STATS))) == NULL)
 	{
 	  MUTEX_UNLOCK (mnt_Server_table.lock);
 	  return ER_FAILED;
 	}
-      MUTEX_INIT (mnt_Server_table.stats[tran_index]->lock);
+      MUTEX_INIT (mnt_Server_table.stats[0]->lock);
     }
+
   /* Restart the statistics */
   mnt_server_reset_stats_internal (mnt_Server_table.stats[tran_index]);
 
@@ -1421,7 +1435,7 @@ mnt_server_get_stats (THREAD_ENTRY * thread_p)
   MNT_SERVER_EXEC_STATS *p;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index > 0);
+  assert (tran_index >= 0);
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
   if (mnt_Server_table.num_tran_indices > tran_index)

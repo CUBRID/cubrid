@@ -7173,6 +7173,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  free_and_init (stream);
 		}
+	      statement->use_plan_cache = 0;
 	    }
 	  else
 	    {			/* if (!xasl_id) */
@@ -7186,6 +7187,14 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      break;
 		    }
 		  flat = flat->next;
+		}
+	      if (err == NO_ERROR)
+		{
+		  statement->use_plan_cache = 1;
+		}
+	      else
+		{
+		  statement->use_plan_cache = 0;
 		}
 	    }
 	}
@@ -8170,6 +8179,18 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (stream)
 		{
 		  free_and_init (stream);
+		}
+	      statement->use_plan_cache = 0;
+	    }
+	  else
+	    {
+	      if (err == NO_ERROR)
+		{
+		  statement->use_plan_cache = 1;
+		}
+	      else
+		{
+		  statement->use_plan_cache = 0;
 		}
 	    }
 	}
@@ -10722,6 +10743,18 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (stream)
 	{
 	  free_and_init (stream);
+	}
+      statement->use_plan_cache = 0;
+    }
+  else
+    {
+      if (err == NO_ERROR)
+	{
+	  statement->use_plan_cache = 1;
+	}
+      else
+	{
+	  statement->use_plan_cache = 0;
 	}
     }
 

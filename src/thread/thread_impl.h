@@ -104,6 +104,7 @@ struct thread_entry
   int resume_status;		/* resume status */
 
   unsigned int private_heap_id;	/* id of thread private memory allocator */
+  unsigned int instant_heap_id;	/* id of thread instant memory allocator */
   ADJ_ARRAY *cnv_adj_buffer[3];	/* conversion buffer */
 
   struct css_conn_entry *conn_entry;	/* conn entry ptr */
@@ -225,7 +226,11 @@ extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
 
 extern unsigned int css_get_private_heap (THREAD_ENTRY * thread_p);
 extern unsigned int css_set_private_heap (THREAD_ENTRY * thread_p,
-                                          unsigned int heap_id);
+					  unsigned int heap_id);
+
+extern unsigned int css_get_instant_heap (THREAD_ENTRY * thread_p);
+extern unsigned int css_set_instant_heap (THREAD_ENTRY * thread_p,
+					  unsigned int heap_id);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

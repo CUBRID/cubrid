@@ -366,7 +366,7 @@ PHP_FUNCTION (cubrid_connect)
   char *real_userid, *real_passwd;
   T_CUBRID_CONNECT *connect;
   int res, res2;
-  char db_ver[16];
+  char isolation_level[4];
   T_CCI_ERROR error;
 
   init_error ();
@@ -452,23 +452,23 @@ PHP_FUNCTION (cubrid_connect)
       RETURN_FALSE;
     }
 
-  res2 = cci_get_db_version (res, db_ver, sizeof (db_ver));
+  res2 =
+    cci_get_db_parameter (res, CCI_PARAM_ISOLATION_LEVEL, isolation_level,
+			  &error);
   if (res2 < 0)
     {
-      /* CCI ¿¡·¯ */
-
+      handle_error (res2, &error);
       cci_disconnect (res, &error);
       efree (connect);
-      handle_error (res2, NULL);
       RETURN_FALSE;
     }
 
   res2 = cci_end_tran (res, CCI_TRAN_COMMIT, &error);
   if (res2 < 0)
     {
+      handle_error (res2, &error);
       cci_disconnect (res, &error);
       efree (connect);
-      handle_error (res2, &error);
       RETURN_FALSE;
     }
 

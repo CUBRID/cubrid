@@ -504,7 +504,21 @@ public class UserManagementDialog extends Dialog {
 		if(MainRegistry.UserPort.get(cmUser)==null||MainRegistry.UserPort.get(cmUser).toString().trim().equals(""))
 		{
 			btnSaveEnable = true;
-			CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
+			CASItem casItem = null;
+			for(int i=0;i<MainRegistry.CASinfo.size();i++)
+			{
+				CASItem tmp = (CASItem)MainRegistry.CASinfo.get(i);
+				if(tmp.broker_name.equals("query_editor"))
+					casItem = tmp;
+				else
+				{
+					if(MainRegistry.CASinfo.size()>0)
+						casItem = (CASItem)MainRegistry.CASinfo.get(0);
+					else
+						casItem = null;
+				}
+					
+			}			
 			if(casItem != null)
 				port = new Integer(casItem.broker_port).toString();
 		}	

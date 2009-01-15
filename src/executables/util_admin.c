@@ -206,6 +206,7 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {SPACE_OUTPUT_FILE_S, ARG_STRING, 0},
   {SPACE_SA_MODE_S, ARG_BOOLEAN, 0},
   {SPACE_CS_MODE_S, ARG_BOOLEAN, 0},
+  {SPACE_SIZE_UNIT_S, ARG_STRING, (void *) "page"},
   {0, 0, 0}
 };
 
@@ -213,6 +214,7 @@ static GETOPT_LONG ua_Space_Option[] = {
   {SPACE_OUTPUT_FILE_L, 1, 0, SPACE_OUTPUT_FILE_S},
   {SPACE_SA_MODE_L, 0, 0, SPACE_SA_MODE_S},
   {SPACE_CS_MODE_L, 0, 0, SPACE_CS_MODE_S},
+  {SPACE_SIZE_UNIT_L, 1, 0, SPACE_SIZE_UNIT_S},
   {0, 0, 0, 0}
 };
 

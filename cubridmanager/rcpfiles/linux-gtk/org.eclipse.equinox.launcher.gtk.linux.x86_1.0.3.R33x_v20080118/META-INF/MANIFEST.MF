@@ -1,0 +1,26 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Version: 1.0.3.R33x_v20080118
+Created-By: 1.4.2 (IBM Corporation)
+Bundle-SymbolicName: org.eclipse.equinox.launcher.gtk.linux.x86
+Bundle-Name: %pluginName
+Fragment-Host: org.eclipse.equinox.launcher;bundle-version="[1.0.0,1.1
+ .0)"
+Bundle-Localization: launcher.gtk.linux.x86
+Bundle-Vendor: %providerName
+Ant-Version: Apache Ant 1.7.0
+Eclipse-PlatformFilter: (& (osgi.ws=gtk) (osgi.os=linux) (osgi.arch=x8
+ 6))
+
+Name: about.html
+SHA1-Digest: a9lDHrGuLPkvHBUhsqWU+V2mhPw=
+
+Name: META-INF/eclipse.inf
+SHA1-Digest: KyT9FF7C7t86NoBoa2kZT3ZJBfw=
+
+Name: launcher.gtk.linux.x86.properties
+SHA1-Digest: BSbhScorws9R/DVRUdKNmymMSIU=
+
+Name: eclipse_1023.so
+SHA1-Digest: PJvtxaOZlVDP+DC5tKyY4JNSc7M=
+

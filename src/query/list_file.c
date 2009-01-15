@@ -3844,6 +3844,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 				QFILE_TUPLE_VALUE_TYPE_LIST * types)
 {
   int i, n;
+  SUBKEY_INFO *subkey;
 
   if (types == NULL)
     {
@@ -3884,7 +3885,6 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
       SORT_LIST *p;
       for (i = 0, p = list_p; p; i++, p = p->next)
 	{
-	  SUBKEY_INFO *subkey;
 	  subkey = &key_info_p->key[i];
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
@@ -5424,7 +5424,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   QFILE_POOLED_LIST_CACHE_ENTRY *pent;
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int i;
-  unsigned int old_heap_id;
+  unsigned int old_pri_heap_id, old_ins_heap_id;
 
   if (data == NULL)
     {
@@ -5435,12 +5435,14 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
    * Clear out parameter values. (DB_VALUE containers)
    * Remind that the parameter values are cloned in global heap context(0)
    */
-  old_heap_id = db_change_private_heap (thread_p, 0);
+  old_pri_heap_id = db_change_private_heap (thread_p, 0);
+  old_ins_heap_id = db_change_instant_heap (thread_p, 0);
   for (i = 0; i < lent->param_values.size; i++)
     {
       (void) pr_clear_value (&lent->param_values.vals[i]);
     }
-  (void) db_change_private_heap (thread_p, old_heap_id);
+  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   /* if this entry is from the pool return it, else free it */
   pent = POOLED_LIST_CACHE_ENTRY_FROM_LIST_CACHE_ENTRY (lent);
@@ -5804,8 +5806,8 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data,
 					 void *args)
 {
   return qfile_end_use_of_list_cache_entry (thread_p,
-                                            (QFILE_LIST_CACHE_ENTRY *) data,
-                                            *((bool *) args));
+					    (QFILE_LIST_CACHE_ENTRY *) data,
+					    *((bool *) args));
 }
 
 /*
@@ -6063,7 +6065,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
 #endif /* SERVER_MODE */
-  unsigned int n, old_heap_id;
+  unsigned int n;
+  unsigned int old_pri_heap_id, old_ins_heap_id;
   int i, j, k;
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6119,7 +6122,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
       /* check if it is possible to delete the previous cached result */
       if (lent->deletion_marker)
 	{
-	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) == NO_ERROR)
+	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) ==
+	      NO_ERROR)
 	    {
 	      lent = NULL;
 	    }
@@ -6131,7 +6135,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
          new entry with mine */
       if (lent->tran_isolation < tran_isolation)
 	{
-	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) == NO_ERROR)
+	  if (qfile_delete_list_cache_entry (thread_p, lent, &tran_index) ==
+	      NO_ERROR)
 	    {
 	      lent = NULL;
 	    }
@@ -6307,13 +6312,15 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
    * needed because cloned db values last beyond request processing time
    * boundary.
    */
-  old_heap_id = db_change_private_heap (thread_p, 0);
+  old_pri_heap_id = db_change_private_heap (thread_p, 0);
+  old_ins_heap_id = db_change_instant_heap (thread_p, 0);
   for (i = 0; i < lent->param_values.size; i++)
     {
       /*(void) pr_clear_value(&(lent->param_values.vals[i])); */
       (void) pr_clone_value (&params->vals[i], &lent->param_values.vals[i]);
     }
-  (void) db_change_private_heap (thread_p, old_heap_id);
+  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   /* copy the QFILE_LIST_ID */
   if (qfile_copy_list_id (&lent->list_id, list_id, false) != NO_ERROR)

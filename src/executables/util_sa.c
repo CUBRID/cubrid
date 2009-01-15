@@ -685,7 +685,7 @@ parse_up_to_date (char *date_string, struct tm *time_data)
 	  break;
 	case 1:		// month
 	  time_data->tm_mon = atoi (token) - 1;
-	  if (time_data->tm_mon < 1 || time_data->tm_mon > 12)
+	  if (time_data->tm_mon < 0 || time_data->tm_mon > 11)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
@@ -699,21 +699,21 @@ parse_up_to_date (char *date_string, struct tm *time_data)
 	  break;
 	case 3:		// hour
 	  time_data->tm_hour = atoi (token);
-	  if (time_data->tm_mon < 0 || time_data->tm_mon > 23)
+	  if (time_data->tm_hour < 0 || time_data->tm_hour > 23)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 4:		// minute
 	  time_data->tm_min = atoi (token);
-	  if (time_data->tm_mon < 0 || time_data->tm_mon > 59)
+	  if (time_data->tm_min < 0 || time_data->tm_min > 59)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 5:		// second
 	  time_data->tm_sec = atoi (token);
-	  if (time_data->tm_mon < 0 || time_data->tm_mon > 59)
+	  if (time_data->tm_sec < 0 || time_data->tm_sec > 59)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }

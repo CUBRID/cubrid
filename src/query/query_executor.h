@@ -531,7 +531,7 @@ struct xasl_node
   int *repr_id_list;		/* representation ids of the classes in the class OID list */
   int dbval_cnt;		/* number of host variables in this XASL */
 
-  bool iscan_order;		/* keep index scan order? */
+  bool iscan_oid_order;
 
   const char *qstmt;
 };

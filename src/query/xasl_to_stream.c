@@ -2855,7 +2855,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, xasl->projected_size);
   ptr = or_pack_double (ptr, xasl->cardinality);
 
-  ptr = or_pack_int (ptr, (int) xasl->iscan_order);
+  ptr = or_pack_int (ptr, (int) xasl->iscan_oid_order);
 
   if (xasl->qstmt)
     {
@@ -4626,7 +4626,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += OR_DOUBLE_SIZE;	/* cardinality */
 
-  size += OR_INT_SIZE;		/* iscan_order */
+  size += OR_INT_SIZE;		/* iscan_oid_order */
 
   size += PTR_SIZE;		/* qstmt */
 

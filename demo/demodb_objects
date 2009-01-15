@@ -8437,55 +8437,55 @@
 2004 'YEM' 0 0 0
 2004 'ZAM' 0 0 0
 %class olympic (host_year host_nation host_city opening_date closing_date mascot slogan introduction)
-1896 'Greece' 'Athens' date '04/06/1896' date '04/15/1896' '' '' 'Thirteen countries participated at the 1896 Athens Games with around 3'+
+1896 'Greece' 'Athens' date '04/06/1896' date '04/15/1896' NULL NULL 'Thirteen countries participated at the 1896 Athens Games with around 3'+
  '00 athletes taking part in the competition. There were 43 events conte'+
  'sted which fell into the following categories; athletics (track and fi'+
  'eld), cycling, fencing, gymnastics, shooting, swimming, tennis, weight'+
  'lifting and wrestling. Competition was open to any man who wanted to p'+
  'articipate. All medals were silver and they were only awarded to the w'+
  'inner of an event.'
-1900 'France' 'Paris' date '05/14/1900' date '10/28/1900' '' '' 'The 1900 Paris Games allowed women to compete and a total of nineteen '+
+1900 'France' 'Paris' date '05/14/1900' date '10/28/1900' NULL NULL 'The 1900 Paris Games allowed women to compete and a total of nineteen '+
  'countries participated at the Games. The Games were held at the same t'+
  'ime as the World Exhibition in Paris and were dragged out over five mo'+
  'nths. As a result the 1900 Paris Games were a flop.'
-1904 'USA' 'St. Louis' date '07/01/1904' date '11/23/1904' '' '' 'Not taking heed of the mistakes made at the previous Olympics, The 190'+
+1904 'USA' 'St. Louis' date '07/01/1904' date '11/23/1904' NULL NULL 'Not taking heed of the mistakes made at the previous Olympics, The 190'+
  '4 St Louis Games were also an unsuccessful event as they were combined'+
  ' with the Louisiana Purchase Exhibition. It was however the first Olym'+
  'pics that gold, silver and bronze medals were awarded to athletes.'
-1908 'United Kingdom' 'London' date '04/27/1908' date '10/31/1908' '' '' 'It was the 1908 London Games that athletes began to use the event as a'+
+1908 'United Kingdom' 'London' date '04/27/1908' date '10/31/1908' NULL NULL 'It was the 1908 London Games that athletes began to use the event as a'+
  'n international platform for protest. Irish athletes refused to compet'+
  'e under the British crown, Finnish athletes protested against the Russ'+
  'ian control of Finland and a U.S. athlete refused to salute the Englis'+
  'h king.'
-1912 'Sweden' 'Stockholm' date '05/05/1912' date '07/22/1912' '' '' '28 nations competed at the 1912 Stockholm Games where unofficial elect'+
+1912 'Sweden' 'Stockholm' date '05/05/1912' date '07/22/1912' NULL NULL '28 nations competed at the 1912 Stockholm Games where unofficial elect'+
  'rical timing equipment was introduced in athletic events for the first'+
  ' time. Sweden took a moral stand and would not allow the boxing event '+
  'to take place on their soil. As a result, after these Games, the IOC l'+
  'imited the power of host nations for future Games.'
-1920 'Belgium' 'Antwerp' date '04/20/1920' date '08/12/1920' '' '' 'The 1916 Berlin Games were cancelled due to World War I. The 1920 Game'+
+1920 'Belgium' 'Antwerp' date '04/20/1920' date '08/12/1920' NULL NULL 'The 1916 Berlin Games were cancelled due to World War I. The 1920 Game'+
  's were awarded to Belgium as acknowledgment of their suffering during '+
  'WWI. It was the Games of the VII Olympiad that saw the unveiling of th'+
  'e Olympic flag and the introduction of the Athletes'' Oath. These Game'+
  's also saw the exclusion of Austria, Bulgaria, Germany, Hungary and Tu'+
  'rkey due to the politics of World War I. The new Soviet Union did not '+
  'attend these Games either.'
-1924 'France' 'Paris' date '05/04/1924' date '07/27/1924' '' '' 'In 1924 the pioneer of the Modern Olympic Games, Frenchman Pierre de C'+
+1924 'France' 'Paris' date '05/04/1924' date '07/27/1924' NULL NULL 'In 1924 the pioneer of the Modern Olympic Games, Frenchman Pierre de C'+
  'oubertin, retired from the IOC and so the 1924 Games were held in Pari'+
  's. They were by far the biggest Games of the time with 44 nations send'+
  'ing athletes to compete.'
-1928 'Netherlands' 'Amsterdam' date '07/28/1928' date '08/12/1928' '' '' 'At the 1928 Games the number of participating nations grew by two to 4'+
+1928 'Netherlands' 'Amsterdam' date '07/28/1928' date '08/12/1928' NULL NULL 'At the 1928 Games the number of participating nations grew by two to 4'+
  '6 and the number of female athletes more than doubled as more sports w'+
  'ere introduced for female athletes. This year also saw the introductio'+
  'n of the first women''s track races'+
  '.'
-1932 'USA' 'Los Angeles' date '07/30/1932' date '08/14/1932' '' '' 'The 1932 Los Angles Games were held during the Great Depression so, du'+
+1932 'USA' 'Los Angeles' date '07/30/1932' date '08/14/1932' NULL NULL 'The 1932 Los Angles Games were held during the Great Depression so, du'+
  'e to financial hardship, international participation was halved. These'+
  ' Games saw the introduction of a few Olympic traditions; the dais and '+
  'the raising of the flag from the winning athlete''s country, the Olymp'+
  'ic village, official automatic timing for track events, the photo-fini'+
  'sh camera and finally the Games were completed in 14 days. Previously '+
  'they had never been finished in less than 79 days.'
-1936 'Germany' 'Berlin' date '08/01/1936' date '08/16/1936' '' '' 'The 1932 Berlin Games remain the most politically clouded Olympics of '+
+1936 'Germany' 'Berlin' date '08/01/1936' date '08/16/1936' NULL NULL 'The 1932 Berlin Games remain the most politically clouded Olympics of '+
  'all time. The Nazi Party used the Games to tell the world its politica'+
  'l ideals and the Nazi flag and swastika where displayed everywhere. Th'+
  'eir racist propaganda and policies incited international debate and th'+
@@ -8493,34 +8493,34 @@
  'te Jesse Owens, who won four gold medals, was the star of the Olympics'+
  ' and his German rival Luz Long publicly acknowledged their friendship '+
  'in front of the Nazis during the long jump competition.'
-1948 'England' 'London' date '07/29/1948' date '08/14/1948' '' '' 'Due to World War II there was no Olympic competition between 1936 and '+
+1948 'England' 'London' date '07/29/1948' date '08/14/1948' NULL NULL 'Due to World War II there was no Olympic competition between 1936 and '+
  '1948. Germany and Japan were not invited to participate and the Soviet'+
  ' Union refused to attend the 1948 London Games but Hungary, Yugoslavia'+
  ' and Poland competed for the first time. Although most people did not '+
  'own television sets, the 1948 Games were the first to be beamed into t'+
  'he comfort of our homes.'
-1952 'Finland' 'Helsinki' date '07/19/1952' date '08/03/1952' '' '' 'Japan and Germany were readmitted at the 1952 Helsinki Games and for t'+
+1952 'Finland' 'Helsinki' date '07/19/1952' date '08/03/1952' NULL NULL 'Japan and Germany were readmitted at the 1952 Helsinki Games and for t'+
  'he first time since 1912, the Soviet Union took their place at the Oly'+
  'mpic Games. It was at these Games that the Soviet Union''s women''s te'+
  'am won the gymnastics final and remained unbeatable at the Olympics fo'+
  'r forty years, until the Soviet Union broke up into numerous republics'+
  '. Despite the concern that Cold War tensions would cause problems at t'+
  'he 1952 Helsinki Games, the competition went off with out a hitch.'
-1956 'Australia' 'Melbourne' date '11/22/1956' date '12/08/1956' '' '' 'The 1956 Melbourne Games were the first Olympics to be held in the Sou'+
+1956 'Australia' 'Melbourne' date '11/22/1956' date '12/08/1956' NULL NULL 'The 1956 Melbourne Games were the first Olympics to be held in the Sou'+
  'thern Hemisphere however due to Australia''s strict quarantine laws, e'+
  'questrian events were held in Stockholm. Five nations withdrew from th'+
  'e Games as fears of a war in Egypt and Turkey heightened.'
-1960 'Italy' 'Rome' date '08/25/1960' date '09/11/1960' '' '' 'The 1960 Rome Games are best remembered for Italy''s use of its ancien'+
+1960 'Italy' 'Rome' date '08/25/1960' date '09/11/1960' NULL NULL 'The 1960 Rome Games are best remembered for Italy''s use of its ancien'+
  't landmarks as venues for competition. It was also the first time in d'+
  'ecades that the Games were not hindered by war or political problems.'
-1964 'Japan' 'Tokyo' date '10/10/1964' date '10/24/1964' '' '' 'The 1964 Tokyo Games were the first Olympics to be held in an Asian co'+
+1964 'Japan' 'Tokyo' date '10/10/1964' date '10/24/1964' NULL NULL 'The 1964 Tokyo Games were the first Olympics to be held in an Asian co'+
  'untry. Due to apartheid, South Africa was banned from entering in Olym'+
  'pic competition. The strongest image of the 1964 Tokyo Games was that '+
  'of the final torchbearer at the Opening Ceremony. Nineteen-year-old Yo'+
  'shinori Sakai was born on the 6th August 1945 in Hiroshima, the day it'+
  ' was devastated by an atomic bomb. Computers were used for the first t'+
  'ime to organise statistics.'
-1968 'Mexico' 'Mexico City' date '10/12/1968' date '10/27/1968' '' '' 'South Africa was once again excluded from Olympic competition after pr'+
+1968 'Mexico' 'Mexico City' date '10/12/1968' date '10/27/1968' NULL NULL 'South Africa was once again excluded from Olympic competition after pr'+
  'otests by several countries due to apartheid. It was also the first ti'+
  'me that East and West Germany competed separately. The fact that the a'+
  'ir in Mexico City contained thirty-percent less oxygen than at sea lev'+
@@ -8528,19 +8528,19 @@
  ' severely while the shorter disciplines were full of new Olympic recor'+
  'ds. The 1968 Mexico City Games also saw the introduction of drug testi'+
  'ng and sex testing for women.'
-1972 'Germany' 'Munich' date '08/26/1972' date '09/10/1972' 'Waldi' '' 'It is day eleven of the 1972 Munich Games that forever scared Germany'''+
+1972 'Germany' 'Munich' date '08/26/1972' date '09/10/1972' 'Waldi' NULL 'It is day eleven of the 1972 Munich Games that forever scared Germany'''+
  's attempt at a peaceful Games to show the world that World War II was '+
  'well behind them. Palestinian terrorists took advantage of the limited'+
  ' security and took 11 Israeli athletes hostage. As the horrific event '+
  'unfolded all eleven athletes, five of the terrorists and a West German'+
  ' policeman were killed. All competition was suspended for 34 hours and'+
  ' after a memorial service, the Games continued.'
-1976 'Canada' 'Montreal' date '07/17/1976' date '08/01/1976' 'Amik' '' 'Due to an earlier tour of apartheid South Africa by a New Zealand rugb'+
+1976 'Canada' 'Montreal' date '07/17/1976' date '08/01/1976' 'Amik' NULL 'Due to an earlier tour of apartheid South Africa by a New Zealand rugb'+
  'y union team, the 1976 Montreal Games were plagued with African countr'+
  'ies boycotting the competition due to New Zealand''s Olympic presence.'+
  ' Taiwan also boycotted as it was not acknowledged as part of the Repub'+
  'lic of China bt the IOC.'
-1980 'USSR' 'Moscow' date '07/19/1980' date '08/03/1980' 'Misha' '' 'These were the first Games to be held in a socialist country and due t'+
+1980 'USSR' 'Moscow' date '07/19/1980' date '08/03/1980' 'Misha' NULL 'These were the first Games to be held in a socialist country and due t'+
  'o the 1979 Soviet invasion of Afghanistan, dozens of nations boycotted'+
  ' the 1980 Moscow Games. The number of competing nations had not been s'+
  'o low since the 1956 Melbourne Games. That said, there were more than '+
@@ -8586,7 +8586,7 @@ Sydney 2000). Popularity in the Games soared'+
  ' won 6 
 
 gold medals and set a single-Games record with 8 total meda'+
- 'ls. Leontien Ziljaard-van Moorsel became the first female cyclist to '+
+ 'ls. Leontien Ziljaard-van Moorsel became the first female cyclist to '+
  '
 
 earn 4 career gold medals and 6 total medals, while canoeist Birgit'+
@@ -8597,7 +8597,7 @@ medals i'+
  'd the 5,000m, while on the women''''s side Kelly 
 
 Holmes triumphed '+
- 'in both the 800m and the 1,500m. In team play, Argentina won the men'''+
+ 'in both the 800m and the 1,500m. In team play, Argentina won the men'+
  '''s football tournament without giving up a 
 
 goal, and the U.S. sof'+
@@ -18043,7 +18043,7 @@ goal, and the U.S. sof'+
 2000 20005 13439 'G' '12.65' 'Time'
 2000 20006 11159 'G' '27:18.2' 'Time'
 2000 20006 12512 'B' '27:19.7' 'Time'
-2000 20006 13765 'a' '27:18.3' 'Time'
+2000 20006 13765 'S' '27:18.3' 'Time'
 2000 20007 13147 'B' '30:22.9' 'Time'
 2000 20007 13881 'G' '30:17.5' 'Time'
 2000 20007 14072 'S' '30:22.5' 'Time'

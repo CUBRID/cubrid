@@ -1201,7 +1201,8 @@ extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE
 extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION
 						   action);
 
-extern bool classobj_is_pk_refer_other (MOP clsop,
-					SM_FOREIGN_KEY_INFO * fk_info);
+extern bool classobj_is_pk_referred (MOP clsop,
+				     SM_FOREIGN_KEY_INFO * fk_info,
+				     bool include_self_ref);
 
 #endif /* _CLASS_OBJECT_H_ */

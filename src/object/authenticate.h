@@ -124,8 +124,8 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_DISABLE_PASSWORDS    au_disable_passwords
 #define AU_SET_USER     au_set_user
 
-#define AU_MAX_PASSWORD_CHARS   8
-#define AU_MAX_PASSWORD_BUF     128
+#define AU_MAX_PASSWORD_CHARS   31
+#define AU_MAX_PASSWORD_BUF     2048
 
 typedef enum au_fetchmode
 {

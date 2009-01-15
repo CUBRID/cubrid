@@ -13169,13 +13169,18 @@ ts_removecasrunnertmpfile (nvplist * cli_request, nvplist * cli_response,
   char command[2048];
 
   filename = nv_get_val (cli_request, "filename");
-
   if (filename)
     {
-      sprintf (command, "rm -rf %s*", filename);
-      system (command);
+      sprintf (command, "%s %s %s*", DEL_DIR, DEL_DIR_OPT, filename);
+      if (system (command) == -1)
+	{
+#ifdef WIN32
+	  sprintf (command, "%s %s %s*", DEL_FILE, DEL_FILE_OPT, filename);
+	  if (system (command) == -1)
+#endif
+	    return ERR_DIR_REMOVE_FAIL;
+	}
     }
-
   return ERR_NO_ERROR;
 }
 

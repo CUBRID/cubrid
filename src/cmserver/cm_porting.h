@@ -188,6 +188,18 @@ typedef int SOCKET;
 #define T_THREAD	pthread_t
 #endif
 
+#ifdef WIN32
+#define DEL_FILE	"del"
+#define DEL_FILE_OPT	"/F /Q"
+#define DEL_DIR		"rmdir"
+#define DEL_DIR_OPT	"/S /Q"
+#else
+#define DEL_FILE        "rm"
+#define DEL_FILE_OPT    "-f"
+#define DEL_DIR         "rm"
+#define DEL_DIR_OPT     "-rf"
+#endif
+
 /*
  * EXPORTED FUNCTION PROTOTYPES
  */

@@ -232,7 +232,7 @@ $set 5 MSGCAT_SET_ERROR
 169 Cannot remove user %s from the database.
 170 No user logged in.
 171 Incorrect or missing password.
-172 Password string cannot have more than 8 characters.
+172 Password string cannot have more than 31 characters.
 173 Could not locate database file "%1$s".
 174 Could not obtain write access to database file "%1$s".
 175 Badly formatted database file "%1$s".
@@ -1015,8 +1015,11 @@ $ LOADDB
 963 Broker error.
 964 The result set handle is closed.
 965 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
+968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 
-966 Last Error
+969 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

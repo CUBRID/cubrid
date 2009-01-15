@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -232,8 +232,10 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
 {
   char *sql_stmt;
   char flag;
+  char auto_commit_mode;
   int sql_size;
   int srv_h_id;
+  T_SRV_HANDLE *srv_handle;
 
   if (CAS_FN_ARG_ARGC < 2)
     {
@@ -243,6 +245,14 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
 
   NET_ARG_GET_STR (sql_stmt, sql_size, CAS_FN_ARG_ARGV[0]);
   NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
+  if (CAS_FN_ARG_ARGC > 2)
+    {
+      NET_ARG_GET_CHAR (auto_commit_mode, CAS_FN_ARG_ARGV[2]);
+    }
+  else
+    {
+      auto_commit_mode = 0;
+    }
 
   ut_trim (sql_stmt);
 
@@ -268,12 +278,17 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
     }
 #endif
   srv_h_id =
-    ux_prepare (sql_stmt, flag, CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
-		QUERY_SEQ_NUM_CURRENT_VALUE ());
+    ux_prepare (sql_stmt, flag, auto_commit_mode, CAS_FN_ARG_NET_BUF,
+		CAS_FN_ARG_REQ_INFO, QUERY_SEQ_NUM_CURRENT_VALUE ());
+
+  srv_handle = hm_find_srv_handle (srv_h_id);
 
   cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), TRUE,
-		 "prepare srv_h_id %s%d",
-		 (srv_h_id < 0) ? "error:" : "", srv_h_id);
+		 "prepare srv_h_id %s%d %s",
+		 (srv_h_id < 0) ? "error:" : "", srv_h_id, (srv_handle != NULL
+							    && srv_handle->
+							    use_plan_cache) ?
+		 "(PC)" : "");
 
   return 0;
 }
@@ -411,11 +426,12 @@ CAS_FUNC_PROTOTYPE (fn_execute)
     }
 #endif
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), TRUE,
-		 "%s %s%d tuple %d time %d.%03d %s",
+		 "%s %s%d tuple %d time %d.%03d %s %s",
 		 exec_func_name, (ret_code < 0) ? "error:" : "", ret_code,
 		 srv_handle->q_result->tuple_count,
 		 elapsed_sec, elapsed_msec,
-		 (client_cache_reusable == TRUE) ? "CACHE_REUSE" : "");
+		 (client_cache_reusable == TRUE) ? "CACHE_REUSE" : "",
+		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -1306,7 +1322,8 @@ CAS_FUNC_PROTOTYPE (fn_next_result)
   srv_handle = hm_find_srv_handle (srv_h_id);
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), TRUE,
-		 "next_result %d", srv_h_id);
+		 "next_result %d %s", srv_h_id,
+		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
   ux_next_result (srv_handle, flag, CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
 

@@ -177,7 +177,7 @@ static void qo_nljoin_cost (QO_PLAN *);
 static void qo_plans_teardown (QO_ENV * env);
 static void qo_plans_init (QO_ENV * env);
 static void qo_plan_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
-                          void (*)(QO_PLAN *, void *), void *);
+			  void (*)(QO_PLAN *, void *), void *);
 static QO_PLAN *qo_plan_finalize (QO_PLAN *);
 static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
@@ -186,16 +186,16 @@ static void qo_plan_free (QO_PLAN *);
 static QO_PLAN *qo_plan_malloc (QO_ENV *);
 static QO_PLAN *qo_worst_new (QO_ENV *);
 static QO_PLAN *qo_cp_new (QO_INFO *, QO_PLAN *, QO_PLAN *, BITSET *,
-                           BITSET *);
+			   BITSET *);
 static QO_PLAN *qo_follow_new (QO_INFO *, QO_PLAN *, QO_TERM *, BITSET *,
-                               BITSET *);
+			       BITSET *);
 static QO_PLAN *qo_join_new (QO_INFO *, JOIN_TYPE, QO_JOINMETHOD, QO_PLAN *,
-                             QO_PLAN *, BITSET *, BITSET *, BITSET *,
-                             BITSET *, BITSET *);
+			     QO_PLAN *, BITSET *, BITSET *, BITSET *,
+			     BITSET *, BITSET *);
 static QO_PLAN *qo_sort_new (QO_PLAN *, QO_EQCLASS *, SORT_TYPE);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *,
-                                   QO_NODE_INDEX_ENTRY *, BITSET *, BITSET *,
-                                   BITSET *);
+				   QO_NODE_INDEX_ENTRY *, BITSET *, BITSET *,
+				   BITSET *);
 static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *, BITSET *);
 
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
@@ -743,6 +743,12 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
   for (i = plan->plan_un.scan.equi ? nterms : nterms - 1;
        i < index_entryp->nsegs; i++)
     {
+      if (key_type)
+	{
+	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
+	  key_type = key_type->next;
+	}
+
       seg_idx = (index_entryp->seg_idxs[i]);
       if (seg_idx == -1)
 	{			/* not exist in query */
@@ -795,18 +801,12 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
 	  break;		/* give up */
 	}
 
-      if (key_type)
-	{
-	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
-	  key_type = key_type->next;
-	}
-
       sort->info.sort_spec.expr = pt_point (parser, col);
       sort->info.sort_spec.pos_descr = pos_descr;
       sort->info.sort_spec.asc_or_desc = asc_or_desc;
 
       sort_list = parser_append_node (sort, sort_list);
-    }				/* for (i = plan->plan_un.scan.equi ? nterms : nterms - 1; ... */
+    }
 
   root->iscan_sort_list = sort_list;
 

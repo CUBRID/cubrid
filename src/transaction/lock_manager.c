@@ -308,6 +308,9 @@ typedef enum
   LOCK_RESUMED,			/* Thread has been resumed */
   LOCK_RESUMED_TIMEOUT,		/* Thread has been resumed and notified of
 				   lock timeout */
+  LOCK_RESUMED_DEADLOCK_TIMEOUT,	/* Thread has been resumed and notified of
+					   lock timeout because the current transaction
+					   is selected as a deadlock victim */
   LOCK_RESUMED_ABORTED,		/* Thread has been resumed, however
 				   it must be aborted because of a deadlock */
   LOCK_RESUMED_ABORTED_FIRST,	/* in case of the first aborted thread */
@@ -2373,7 +2376,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   const char *fmt;
   int rv;
   bool free_mutex_flag = false;
-
+  bool isdeadlock_timeout = false;
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
   nwaits = 0;
@@ -2489,6 +2492,13 @@ set_error:
 					  &client_user_name,
 					  &client_host_name, &client_pid);
 
+  if ((entry_ptr->thrd_entry->lockwait_state == LOCK_RESUMED_DEADLOCK_TIMEOUT)
+      || (entry_ptr->thrd_entry->lockwait_state ==
+	  LOCK_RESUMED_ABORTED_OTHER))
+    {
+      isdeadlock_timeout = true;
+    }
+
   switch (entry_ptr->res_head->type)
     {
     case LOCK_RESOURCE_ROOT_CLASS:
@@ -2497,7 +2507,8 @@ set_error:
       if (classname != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LK_OBJECT_TIMEOUT_CLASS_MSG, 7, entry_ptr->tran_index,
+		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG :
+		   ER_LK_OBJECT_TIMEOUT_CLASS_MSG), 7, entry_ptr->tran_index,
 		  client_user_name, client_host_name, client_pid,
 		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 		  classname, waitfor_client_users);
@@ -2506,7 +2517,8 @@ set_error:
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG, 9, entry_ptr->tran_index,
+		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG :
+		   ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9, entry_ptr->tran_index,
 		  client_user_name, client_host_name, client_pid,
 		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 		  entry_ptr->res_head->oid.volid,
@@ -2521,8 +2533,10 @@ set_error:
       if (classname != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG, 10, entry_ptr->tran_index,
-		  client_user_name, client_host_name, client_pid,
+		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG
+		   : ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG), 10,
+		  entry_ptr->tran_index, client_user_name, client_host_name,
+		  client_pid,
 		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 		  entry_ptr->res_head->oid.volid,
 		  entry_ptr->res_head->oid.pageid,
@@ -2533,7 +2547,8 @@ set_error:
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG, 9, entry_ptr->tran_index,
+		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG :
+		   ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9, entry_ptr->tran_index,
 		  client_user_name, client_host_name, client_pid,
 		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
 		  entry_ptr->res_head->oid.volid,
@@ -2730,7 +2745,11 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
        * transaction abortion and the other threads are notified of timeout.
        */
       (void) lock_set_error_for_timeout (thread_p, entry_ptr);
-      return LOCK_RESUMED_TIMEOUT;
+      return LOCK_RESUMED_DEADLOCK_TIMEOUT;
+
+    case LOCK_RESUMED_DEADLOCK_TIMEOUT:
+      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
+      return LOCK_RESUMED_DEADLOCK_TIMEOUT;
 
     case LOCK_RESUMED_TIMEOUT:
       /* The lock entry does exist within the blocked holder list
@@ -2837,7 +2856,8 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
 	  && LK_IS_LOCKWAIT_THREAD (thrd_ptr))
 	{
 	  /* wake up the thread while notifying timeout */
-	  lock_resume ((LK_ENTRY *) thrd_ptr->lockwait, LOCK_RESUMED_TIMEOUT);
+	  lock_resume ((LK_ENTRY *) thrd_ptr->lockwait,
+		       LOCK_RESUMED_DEADLOCK_TIMEOUT);
 	  wakeup_first = true;
 	}
       else

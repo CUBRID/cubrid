@@ -104,9 +104,9 @@ repl_ag_sock_reset_recv_buf (int client_sock, int size)
 int
 repl_ag_sock_init (int m_idx)
 {
-  int try = NUM_OF_CONNECTION_TRIES;
   MASTER_INFO *minfo;
   int error = NO_ERROR;
+  int seconds = 1;
 
   minfo = mInfo[m_idx];
 
@@ -125,27 +125,32 @@ repl_ag_sock_init (int m_idx)
   minfo->conn.sock_name.sin_addr.s_addr = inet_addr (minfo->conn.master_IP);
   minfo->conn.sock_name.sin_port = htons (minfo->conn.portnum);
 
-  /* try to connect the server */
-  if (connect (minfo->conn.client_sock,
-	       (struct sockaddr *) &(minfo->conn.sock_name),
-	       DB_SIZEOF (minfo->conn.sock_name)) < 0)
+  while (connect (minfo->conn.client_sock,
+		  (struct sockaddr *) &(minfo->conn.sock_name),
+		  DB_SIZEOF (minfo->conn.sock_name)) < 0)
     {
-      /* allow N retry */
-      while (try > 0 && errno == ECONNREFUSED)
+      if (minfo->pb->need_shutdown)
 	{
-	  sleep (2);
-	  if (connect (minfo->conn.client_sock,
-		       (struct sockaddr *) &(minfo->conn.sock_name),
-		       DB_SIZEOF (minfo->conn.sock_name)) < 0)
-	    {
-	      try--;
-	      continue;
-	    }
+	  REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_REPL_SERVER_CONNECT);
 	}
-      REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_REPL_SERVER_CONNECT);
-    }
-  minfo->conn.sock_name_len = DB_SIZEOF (minfo->conn.sock_name);
 
+      if (retry_Connect && (errno == ECONNREFUSED || errno == ENETUNREACH
+          || errno == EHOSTUNREACH))
+	{
+	  if (seconds % 60 == 0)
+	    {
+	      REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_REPL_SERVER_CONNECT);
+	    }
+	  sleep (1);
+	  seconds++;
+	}
+      else
+	{
+	  REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_REPL_SERVER_CONNECT);
+	}
+    }
+
+  minfo->conn.sock_name_len = DB_SIZEOF (minfo->conn.sock_name);
   return error;
 }
 
@@ -292,7 +297,7 @@ repl_ag_srv_new_connection (void)
  * Note:
  *    call chain
  *        - repl_ag_get_log_header() <- repl_tr_log_recv()
- *        - repl_ag_sock_request_agent_id() <- repl_tr_log_recv()
+ *        - repl_ag_sock_request_agent_info() <- repl_tr_log_recv()
  *    called by log RECV thread
  */
 static int
@@ -365,21 +370,22 @@ repl_ag_sock_get_response (int m_idx, int *result, bool * in_archive)
 }
 
 /*
- * repl_ag_sock_recv_agent_id() - get the unique agent id from the respl_server
+ * repl_ag_sock_recv_agent_info() - get the unique agent id from the respl_server
  *   return: NO_ERROR or REPL_SOCK_ERROR
  *   m_idx: index of master info array
  *
  * Note:
- *    call chain: repl_ag_sock_request_agent_id() <- repl_tr_log_recv()
+ *    call chain: repl_ag_sock_request_agent_info() <- repl_tr_log_recv()
  *    called by log RECV thread
  */
 static int
-repl_ag_sock_recv_agent_id (int m_idx)
+repl_ag_sock_recv_agent_info (int m_idx)
 {
   MASTER_INFO *minfo = mInfo[m_idx];
   int error = NO_ERROR;
   int rc = -1;
   int length = COMM_RESP_BUF_SIZE;
+  int io_pagesize;
 
   rc = css_net_recv (minfo->conn.client_sock,
 		     minfo->conn.resp_buffer, &length);
@@ -388,15 +394,18 @@ repl_ag_sock_recv_agent_id (int m_idx)
       REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);
     }
 
-  sscanf (minfo->conn.resp_buffer, "%d", &minfo->agentid);
+  sscanf (minfo->conn.resp_buffer, "%d %d", &minfo->agentid, &io_pagesize);
 
   if (minfo->agentid == -1)
     {
       REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_INTERNAL_ERROR);
     }
+  else
+    {
+      minfo->io_pagesize = io_pagesize;
+    }
 
   return error;
-
 }
 
 /*
@@ -512,7 +521,7 @@ repl_ag_sock_request_log_hdr (int m_idx)
 }
 
 /*
- * repl_ag_sock_request_agent_id() - Get the agent id
+ * repl_ag_sock_request_agent_info() - Get the agent id
  *   return: NO_ERROR or REPL_SOCK_ERROR
  *   m_idx: the array index of the target master info
  *
@@ -524,7 +533,7 @@ repl_ag_sock_request_log_hdr (int m_idx)
  *    No one deosn't need to consider "mutex lock"
  */
 int
-repl_ag_sock_request_agent_id (int m_idx)
+repl_ag_sock_request_agent_info (int m_idx)
 {
   MASTER_INFO *minfo = mInfo[m_idx];
   int error = NO_ERROR;
@@ -539,7 +548,7 @@ repl_ag_sock_request_agent_id (int m_idx)
     return error;
 
   /* step3 : receive the result from repl_server */
-  if ((error = repl_ag_sock_recv_agent_id (m_idx)) != NO_ERROR)
+  if ((error = repl_ag_sock_recv_agent_info (m_idx)) != NO_ERROR)
     {
       return error;
     }

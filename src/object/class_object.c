@@ -1159,25 +1159,41 @@ classobj_is_exist_foreign_key_ref (MOP refop, SM_FOREIGN_KEY_INFO * fk_info)
  *   return:
  *   clsop(in):
  *   fk_info(in):
+ *   include_self_ref(in): include the class where PK is defined
  */
 
 bool
-classobj_is_pk_refer_other (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info)
+classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info,
+			 bool include_self_ref)
 {
-  SM_FOREIGN_KEY_INFO *fk_ref;
-  OID *cls_oid;
-
-  cls_oid = ws_oid (clsop);
-
-  for (fk_ref = fk_info; fk_ref; fk_ref = fk_ref->next)
+  if (include_self_ref)
     {
-      if (!OID_EQ (&fk_ref->self_oid, cls_oid))
+      if (fk_info != NULL)
 	{
 	  return true;
 	}
+      else
+	{
+	  return false;
+	}
     }
+  else
+    {
+      SM_FOREIGN_KEY_INFO *fk_ref;
+      OID *cls_oid;
 
-  return false;
+      cls_oid = ws_oid (clsop);
+
+      for (fk_ref = fk_info; fk_ref; fk_ref = fk_ref->next)
+	{
+	  if (!OID_EQ (&fk_ref->self_oid, cls_oid))
+	    {
+	      return true;
+	    }
+	}
+
+      return false;
+    }
 }
 
 /*

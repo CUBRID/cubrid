@@ -523,7 +523,7 @@ repl_error_push (int file_id, int line_num, int code, char *arg)
   if (temp == NULL)
     return;
 
-  PTHREAD_MUTEX_LOCK(file_Mutex);
+  PTHREAD_MUTEX_LOCK (error_Mutex);
 
   if (err_Head == NULL)
     {
@@ -561,14 +561,14 @@ repl_error_push (int file_id, int line_num, int code, char *arg)
 
   if (arg)
     {
-      strncpy (err_Head->arg, arg, sizeof(err_Head->arg));
+      strncpy (err_Head->arg, arg, sizeof (err_Head->arg));
     }
   else
     {
       err_Head->arg[0] = '\0';
     }
 
-  PTHREAD_MUTEX_UNLOCK(file_Mutex);
+  PTHREAD_MUTEX_UNLOCK (error_Mutex);
 }
 
 /*
@@ -588,7 +588,7 @@ repl_error_flush (FILE * fp, bool serveryn)
   struct tm *er_tm_p = &er_tm;
   char time_array[256];
 
-  PTHREAD_MUTEX_LOCK (file_Mutex);
+  PTHREAD_MUTEX_LOCK (error_Mutex);
 
   memset (&final_error, 0, DB_SIZEOF (REPL_ERR));
   if (err_Head)
@@ -605,7 +605,8 @@ repl_error_flush (FILE * fp, bool serveryn)
 	{			/* final messgae */
 	  final_error.code = err_Head->code;
 	  if (err_Head->arg[0] != '\0')
-	    strncpy (final_error.arg, err_Head->arg, sizeof(final_error.arg));
+	    strncpy (final_error.arg, err_Head->arg,
+		     sizeof (final_error.arg));
 	  final_error.line = err_Head->line;
 	  is_first = false;
 	}
@@ -655,5 +656,5 @@ repl_error_flush (FILE * fp, bool serveryn)
   fflush (fp);
   err_Head = NULL;
 
-  PTHREAD_MUTEX_UNLOCK (file_Mutex);
+  PTHREAD_MUTEX_UNLOCK (error_Mutex);
 }

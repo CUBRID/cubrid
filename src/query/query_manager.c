@@ -79,7 +79,8 @@ struct query_async
   THREAD_ENTRY *dbval_thread_p;
   int query_id;
   int tran_index;
-  unsigned int heap_id;
+  unsigned int pri_heap_id;
+  unsigned int ins_heap_id;
 };
 
 /*
@@ -219,8 +220,7 @@ static QFILE_LIST_ID *qmgr_process_async_select (THREAD_ENTRY * thread_p,
 						 XASL_CACHE_CLONE * clo,
 						 QMGR_QUERY_ENTRY * q_ptr,
 						 int dbval_cnt,
-						 const DB_VALUE * dbval_ptr,
-						 THREAD_ENTRY * dbval_thrd);
+						 const DB_VALUE * dbval_ptr);
 #endif
 
 static bool
@@ -1871,7 +1871,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	  /* start the query in asynchronous mode and get temporay QFILE_LIST_ID */
 	  list_id_p =
 	    qmgr_process_async_select (thread_p, cache_clone_p, query_p,
-				       dbval_count, dbvals_p, thread_p);
+				       dbval_count, dbvals_p);
 	  if (!list_id_p)
 	    {
 	      /* error while starting async query */
@@ -2210,7 +2210,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 #if defined (SERVER_MODE)
       list_id_p =
 	qmgr_process_async_select (thread_p, NULL, query_p, dbval_count,
-				   dbval_p, thread_p);
+				   dbval_p);
       if (list_id_p == NULL)
 	{
 	  goto async_error;
@@ -3837,18 +3837,18 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   XASL_NODE *xasl_p;
   int dbval_count;
   DB_VALUE *dbval_p, *tmp_dbval_p;
-  THREAD_ENTRY *dbval_thread_p, *current_thread_p;
+  THREAD_ENTRY *dbval_thread_p;
   int query_id, tran_index, i;
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
-  unsigned int heap_id;
+  unsigned int pri_heap_id;
+  unsigned int ins_heap_id;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  current_thread_p = thread_p;
   cache_clone_p = async_query_p->cache_clone_p;
   xasl_p = async_query_p->xasl;
   dbval_count = async_query_p->dbval_count;
@@ -3856,10 +3856,11 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   dbval_thread_p = async_query_p->dbval_thread_p;
   query_id = async_query_p->query_id;
   tran_index = async_query_p->tran_index;
-  heap_id = async_query_p->heap_id;
+  pri_heap_id = async_query_p->pri_heap_id;
+  ins_heap_id = async_query_p->ins_heap_id;
 
-  THREAD_SET_TRAN_INDEX (current_thread_p, tran_index);
-  MUTEX_UNLOCK (current_thread_p->tran_index_lock);
+  THREAD_SET_TRAN_INDEX (thread_p, tran_index);
+  MUTEX_UNLOCK (thread_p->tran_index_lock);
 
   free_and_init (async_query_p);
 
@@ -3903,9 +3904,9 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
   query_p->tid = thread_p->tid;
   /* save query entry pointer */
-  current_thread_p->query_entry = query_p;
+  thread_p->query_entry = query_p;
 
-  qmgr_check_active_query_and_wait (thread_p, tran_entry_p, current_thread_p,
+  qmgr_check_active_query_and_wait (thread_p, tran_entry_p, thread_p,
 				    ASYNC_EXEC);
   if (query_p->interrupt)
     {
@@ -3946,13 +3947,18 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   query_p->xasl = (XASL_NODE *) NULL;
   query_p->xasl_buf_info = NULL;
 
-  qmgr_check_waiter_and_wakeup (tran_entry_p, current_thread_p,
+  qmgr_check_waiter_and_wakeup (tran_entry_p, thread_p,
 				query_p->propagate_interrupt);
 
   /* Mark the Async Query as completed */
   qmgr_mark_query_as_completed (query_p);
 
-  db_destroy_private_heap (thread_p, heap_id);
+  db_destroy_private_heap (thread_p, pri_heap_id);
+  db_destroy_instant_heap (thread_p, ins_heap_id);
+
+  /* clear memory to be used at async worker thread */
+  db_clear_private_heap (thread_p, 0);
+  db_clear_instant_heap (thread_p, 0);
 
   return;
 }
@@ -4462,14 +4468,12 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
  *   q_ptr(in)  :
  *   dbval_count(in)      :
  *   dbval_p(in)      :
- *   dbval_thread_p(in)     :
  */
 static QFILE_LIST_ID *
 qmgr_process_async_select (THREAD_ENTRY * thread_p,
 			   XASL_CACHE_CLONE * cache_clone_p,
 			   QMGR_QUERY_ENTRY * query_p, int dbval_count,
-			   const DB_VALUE * dbval_p,
-			   THREAD_ENTRY * dbval_thread_p)
+			   const DB_VALUE * dbval_p)
 {
   QFILE_LIST_ID *tmp_list_p;
   XASL_NODE *xasl_p, *tmp_xasl_p;
@@ -4652,10 +4656,11 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
       async_query_p->xasl = xasl_p;
       async_query_p->dbval_count = dbval_count;
       async_query_p->dbval_p = dbval_p;
-      async_query_p->dbval_thread_p = dbval_thread_p;
+      async_query_p->dbval_thread_p = thread_p;
       async_query_p->query_id = query_p->query_id;
       async_query_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      async_query_p->heap_id = db_replace_private_heap (thread_p);
+      async_query_p->pri_heap_id = db_replace_private_heap (thread_p);
+      async_query_p->ins_heap_id = db_replace_instant_heap (thread_p);
 
       /*
        * setting query mode flag to ASYNC_MODE here to prevent a async

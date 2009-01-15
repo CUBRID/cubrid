@@ -107,6 +107,6 @@ public class CASItem implements Comparable {
 	}
 
 	public int compareTo(Object obj) {
-		return broker_name.compareTo(((CASItem)obj).broker_name);
+		return this.broker_port-((CASItem)obj).broker_port;
 	}
 }

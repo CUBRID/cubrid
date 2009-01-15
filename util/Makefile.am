@@ -46,14 +46,21 @@ DEFS += @SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ -DZZCOL -DLL_K=1 -DYY_CHAR=char 
 LIBS += @SYS_LIBS@
 
 BUILT_SOURCES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
-		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
+		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c \
+		loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg loader_old_grammar_tokens.h loader_old_grammar_mode.h loader_old_grammar_scan.c
 CLEANFILES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
-		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
+		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c \
+		loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg loader_old_grammar_tokens.h loader_old_grammar_mode.h loader_old_grammar_scan.c
 
 loader_grammar.c loader_grammar_err.c loader_grammar.dlg: $(EXECUTABLE_DIR)/loader_grammar.g
 	$(ANTLR) -ga -k 1 -fe loader_grammar_err.c -fl loader_grammar.dlg -ft loader_grammar_tokens.h -fm loader_grammar_mode.h $<
 loader_grammar_scan.c loader_grammar_mode.h: loader_grammar.dlg
 	$(DLG) -C2 -ga -m loader_grammar_mode.h $< loader_grammar_scan.c
+
+loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg: $(EXECUTABLE_DIR)/loader_old_grammar.g
+	$(ANTLR) -ga -k 1 -fe loader_old_grammar_err.c -fl loader_old_grammar.dlg -ft loader_old_grammar_tokens.h -fm loader_old_grammar_mode.h $<
+loader_old_grammar_scan.c loader_old_grammar_mode.h: loader_old_grammar.dlg
+	$(DLG) -C2 -ga -m loader_old_grammar_mode.h $< loader_old_grammar_scan.c
 
 esql_grammar.c esql_grammar_err.c esql_grammar.dlg: $(EXECUTABLE_DIR)/esql_grammar.g
 	$(ANTLR) -ga -k 1 -fe esql_grammar_err.c -fl esql_grammar.dlg -ft esql_grammar_tokens.h -fm esql_grammar_mode.h $<
@@ -93,7 +100,7 @@ get_disk_compat_LDFLAGS = @SA_LIB@
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDFLAGS = @SA_LIB@
 
-load_noopt_SOURCES = loader_grammar.c loader_grammar_err.c loader_grammar_scan.c \
+load_noopt_SOURCES = loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar_scan.c \
 		$(EXECUTABLE_DIR)/loader_old.c \
 		$(EXECUTABLE_DIR)/loader_object_table.c \
 		$(EXECUTABLE_DIR)/loader_action.c \
@@ -102,7 +109,7 @@ load_noopt_SOURCES = loader_grammar.c loader_grammar_err.c loader_grammar_scan.c
 		$(EXECUTABLE_DIR)/loaddb.c \
 		$(EXECUTABLE_DIR)/util_support.c \
 		$(EXECUTABLE_DIR)/loader_noopt.c
-dist_load_noopt_SOURCES=$(EXECUTABLE_DIR)/loader_grammar.g
+dist_load_noopt_SOURCES=$(EXECUTABLE_DIR)/loader_old_grammar.g
 load_noopt_CFLAGS = $(AM_CFLAGS) -DLDR_OLD_LOADDB
 load_noopt_LDFLAGS = @SA_LIB@
 

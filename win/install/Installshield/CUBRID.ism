@@ -242,7 +242,6 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>_eclipseproduct</td><td>CUBRIDMANAGER</td><td>.eclipseproduct</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\.eclipseproduct</td><td>1</td><td/></row>
 		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>autobackupdb.conf</td><td>CUBRID</td><td>autobackupdb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autobackupdb.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>autoexecquery.conf</td><td>CUBRID</td><td>autoexecquery.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autoexecquery.conf</td><td>1</td><td>NewSubFolder5</td></row>
@@ -263,7 +262,6 @@
 		<row><td>cm.conf</td><td>CUBRID</td><td>cm.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cm.pass</td><td>CUBRID</td><td>cm.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.pass</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cmdb.pass</td><td>CUBRID</td><td>cmdb.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cmdb.pass</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>config.ini</td><td>CUBRIDMANAGER</td><td>config.ini</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\configuration\config.ini</td><td>1</td><td>NewSubFolder2</td></row>
 		<row><td>convert_password.exe</td><td>CUBRID</td><td>convert_password.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\convert_password.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>csql.exe</td><td>CUBRID</td><td>csql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\csql.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>ctrlservice.exe</td><td>CUBRID</td><td>ctrlservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\ctrlservice.exe</td><td>1</td><td>NewSubFolder4</td></row>
@@ -290,8 +288,6 @@
 		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubridcs.dll</td><td>CUBRID</td><td>cubridcs.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubridcs.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubridcs.lib</td><td>CUBRID</td><td>cubridcs.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cubridcs.lib</td><td>1</td><td>NewSubFolder11</td></row>
-		<row><td>cubridmanager.exe</td><td>CUBRIDMANAGER</td><td>cubridmanager.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\cubridmanager.exe</td><td>1</td><td/></row>
-		<row><td>cubridmanager_.jar</td><td>CUBRIDMANAGER</td><td>cubridmanager_.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\cubridmanager_.jar</td><td>1</td><td>NewSubFolder3</td></row>
 		<row><td>cubridprovider.dll</td><td>OLEDB</td><td>CUBRIDProvider.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.dll</td><td>1</td><td/></row>
 		<row><td>cubridprovider.dll1</td><td>CUBRID</td><td>CUBRIDProvider.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubridprovider.tlb</td><td>OLEDB</td><td>CUBRIDProvider.tlb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.tlb</td><td>1</td><td/></row>
@@ -321,20 +317,7 @@
 		<row><td>msvcr90.dll</td><td>CUBRID</td><td>msvcr90.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>msvcr90d.dll</td><td>CUBRID</td><td>msvcr90d.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90d.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>msvcrt.dll</td><td>CUBRID</td><td>msvcrt.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcrt.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>org.eclipse.core.commands_3.</td><td>CUBRIDMANAGER</td><td>org.eclipse.core.commands_3.1.0.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.core.commands_3.1.0.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.core.expressions</td><td>CUBRIDMANAGER</td><td>org.eclipse.core.expressions_3.1.0.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.core.expressions_3.1.0.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.core.runtime_3.1</td><td>CUBRIDMANAGER</td><td>org.eclipse.core.runtime_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.core.runtime_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.help_3.1.0.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.help_3.1.0.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.help_3.1.0.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.jface.text_3.1.2</td><td>CUBRIDMANAGER</td><td>org.eclipse.jface.text_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.jface.text_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.jface_3.1.1.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.jface_3.1.1.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.jface_3.1.1.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.osgi_3.1.2.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.osgi_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.osgi_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.swt.win32.win32.</td><td>CUBRIDMANAGER</td><td>org.eclipse.swt.win32.win32.x86_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.swt.win32.win32.x86_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.swt_3.1.0.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.swt_3.1.0.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.swt_3.1.0.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.text_3.1.1.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.text_3.1.1.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.text_3.1.1.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.ui.workbench_3.1</td><td>CUBRIDMANAGER</td><td>org.eclipse.ui.workbench_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.ui.workbench_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
-		<row><td>org.eclipse.ui_3.1.2.jar</td><td>CUBRIDMANAGER</td><td>org.eclipse.ui_3.1.2.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\plugins\org.eclipse.ui_3.1.2.jar</td><td>1</td><td>NewSubFolder3</td></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\setupmanage.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>startup.jar</td><td>CUBRIDMANAGER</td><td>startup.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;\startup.jar</td><td>1</td><td/></row>
 		<row><td>xmlrpcepi.dll</td><td>CUBRID</td><td>xmlrpcepi.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\xmlrpcepi.dll</td><td>1</td><td>NewSubFolder4</td></row>
 	</table>
 
@@ -395,8 +378,6 @@
 		<row><td>NewSubFolder13</td><td>CCI</td><td/><td>lib</td></row>
 		<row><td>NewSubFolder14</td><td>CUBRID</td><td/><td>java</td></row>
 		<row><td>NewSubFolder15</td><td>CCI</td><td/><td>include</td></row>
-		<row><td>NewSubFolder2</td><td>CUBRIDMANAGER</td><td/><td>configuration</td></row>
-		<row><td>NewSubFolder3</td><td>CUBRIDMANAGER</td><td/><td>plugins</td></row>
 		<row><td>NewSubFolder4</td><td>CUBRID</td><td/><td>bin</td></row>
 		<row><td>NewSubFolder5</td><td>CUBRID</td><td/><td>conf</td></row>
 		<row><td>NewSubFolder6</td><td>CUBRID</td><td/><td>include</td></row>
@@ -448,6 +429,7 @@
 		<col def="S0">IncludeFiles</col>
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
+		<row><td>CUBRIDMANAGER</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 		<row><td>Document</td><td>&lt;PATH_TO_DOCUMENT_FILES&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 		<row><td>msg</td><td>&lt;PATH_TO_MSG_FILES&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 	</table>
@@ -1078,11 +1060,11 @@
 		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191057747</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
 		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191081907</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.1</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
 		<row><td>TITLE_CAPTIONBAR</td><td>1033</td><td>CUBRID 2008 ??</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1285339632</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,0`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838965902</td></row>
+		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,@`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>2115785803</td></row>
 		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 	</table>

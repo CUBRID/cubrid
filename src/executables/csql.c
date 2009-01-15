@@ -1098,8 +1098,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the server started "
-		       "with `histo_enable=1'\n");
+		       "is only allowed for the csql started "
+		       "with `communication_histogram=yes'\n");
 	    }
 	  break;
 
@@ -1118,8 +1118,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the server started "
-		       "with `histo_enable=1'\n");
+		       "is only allowed for the csql started "
+		       "with `communication_histogram=yes'\n");
 	    }
 	  break;
 
@@ -1139,8 +1139,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the server started "
-		       "with `histo_enable=1'\n");
+		       "is only allowed for the csql started "
+		       "with `communication_histogram=yes'\n");
 	    }
 	  break;
 
@@ -1161,8 +1161,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the server started "
-		       "with `histo_enable=1'\n");
+		       "is only allowed for the csql started "
+		       "with `communication_histogram=yes'\n");
 	    }
 	  break;
 

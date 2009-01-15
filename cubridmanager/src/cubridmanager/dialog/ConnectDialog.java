@@ -50,12 +50,6 @@ import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 
-import com.gpki.gpkiapi.cert.X509Certificate;
-import com.gpki.gpkiapi.cms.SignedData;
-import com.gpki.gpkiapi.crypto.PrivateKey;
-import com.gpki.gpkiapi.storage.Disk;
-import com.gpki.gpkiapi.util.Base64;
-
 import cubridmanager.ApplicationWorkbenchWindowAdvisor;
 import cubridmanager.ClientSocket;
 import cubridmanager.CommonTool;

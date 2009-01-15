@@ -1236,7 +1236,7 @@ error:
  *   tpl(in): Tuple
  *   dbval(out): Set to the value resulting from the fetch operation
  *
- * This routine uses the value description indicated by the regulator varible
+ * This routine uses the value description indicated by the regulator variable
  * to fetch the indicated value and store it in the dbval parameter.
  * The value may be fetched from either a heap file object instance,
  * or from a list file tuple, or from an all constants regulator variable

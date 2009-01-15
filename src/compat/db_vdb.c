@@ -433,6 +433,8 @@ db_compile_statement_local (DB_SESSION * session)
   parser = session->parser;
   stmt_ndx = session->stmt_ndx++;
   statement = session->statements[stmt_ndx];
+  statement->use_plan_cache = 0;
+  statement->use_query_cache = 0;
 
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
@@ -714,6 +716,58 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
     }
 
   return false;
+}
+
+/*
+ * db_get_useplancache() -
+ * return:
+ * session(in) :
+ * stmt_ndx(in) :
+ * life_time(out) :
+ */
+bool
+db_get_cacheinfo (DB_SESSION * session, int stmt_ndx,
+		  bool * use_plan_cache, bool * use_query_cache)
+{
+  PT_NODE *statement;
+
+  /* obvious error checking - invalid parameter */
+  if (!session
+      || !session->parser
+      || session->dimension == 0
+      || !session->statements
+      || stmt_ndx < 1
+      || stmt_ndx > session->dimension
+      || !(statement = session->statements[stmt_ndx - 1]))
+    {
+      return false;
+    }
+
+  if (use_plan_cache)
+    {
+      if (statement->use_plan_cache)
+	{
+	  *use_plan_cache = true;
+	}
+      else
+	{
+	  *use_plan_cache = false;
+	}
+    }
+
+  if (use_query_cache)
+    {
+      if (statement->use_query_cache)
+	{
+	  *use_query_cache = true;
+	}
+      else
+	{
+	  *use_query_cache = false;
+	}
+    }
+
+  return true;
 }
 
 /*
@@ -1296,13 +1350,13 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 {
   PARSER_CONTEXT *parser;
 
-  if (!session || !(parser = session->parser))
+  if (session)
     {
-      /* nothing */
-    }
-  else
-    {
-      pt_set_host_variables (parser, count, in_values);
+      parser = session->parser;
+      if (parser)
+	{
+	  pt_set_host_variables (parser, count, in_values);
+	}
     }
 }
 
@@ -1452,16 +1506,28 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	      ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
     }
-  /* no host variable was set before */
+
+  /* valid host variable was not set before */
   if (session->parser->host_var_count > 0
       && session->parser->set_host_var == 0)
     {
-      /* parsed statement has some host variable parameters
-         (input marker '?'), but no host variable (DB_VALUE array) was set
-         by db_push_values() API */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS, 0);
+      if (pt_has_error (session->parser))
+	{
+	  pt_report_to_ersys (session->parser, PT_SEMANTIC);
+	  /* forget about any previous compilation errors, if any */
+	  pt_reset_error (session->parser);
+	}
+      else
+	{
+	  /* parsed statement has some host variable parameters
+	     (input marker '?'), but no host variable (DB_VALUE array) was set
+	     by db_push_values() API */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS,
+		  0);
+	}
       return er_errid ();
     }
+
   /* if the parser already has something wrong - semantic error */
   if (session->stage[stmt_ndx] < StatementExecutedStage
       && pt_has_error (session->parser))

@@ -111,6 +111,7 @@ int create_Arv = false;
 REPL_ERR *err_Head = NULL;
 const char *log_dump_fn = "";	/* file name of replication copy log */
 int log_pagesize = 4096;	/* log page size for log dump */
+int retry_Connect = false;	/* try to connect to repl_server forever */
 
 extern int repl_Pipe_to_master;
 
@@ -4207,6 +4208,13 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
       if (agent_Max_size < 0)
 	agent_Max_size = 50;
     }
+  else if (env_name != NULL && strcmp (env_name, "retry_connect") == 0)
+    {
+      if (env_value[0] == 'y')
+	{
+	  retry_Connect = true;
+	}
+    }
 
   for (i = 0; i < col_cnt; i++)
     db_value_clear (&value[i]);
@@ -5026,11 +5034,12 @@ repl_restart_agent ()
       if (strlen (dist_Passwd) > 0)
 	{
 	  pid = execl (path, "repl_agent", "-d", dist_Dbname,
-		       "-p", dist_Passwd, NULL);
+		       "-p", dist_Passwd, retry_Connect ? "-r" : NULL, NULL);
 	}
       else
 	{
-	  pid = execl (path, "repl_agent", "-d", dist_Dbname, NULL);
+	  pid = execl (path, "repl_agent", "-d", dist_Dbname,
+		       retry_Connect ? "-r" : NULL, NULL);
 	}
       if (pid != 0)
 	{
@@ -5072,6 +5081,7 @@ main (int argc, char **argv)
     {"create-archive", 0, 0, 'a'},
     {"dump-file", 1, 0, 'f'},
     {"page-size", 1, 0, 's'},
+    {"retry", 1, 0, 'r'},
     {0, 0, 0, 0}
   };
   const char *env;
@@ -5099,6 +5109,7 @@ main (int argc, char **argv)
       debug_Dump_info = atoi (env);
     }
   PTHREAD_MUTEX_INIT (file_Mutex);
+  PTHREAD_MUTEX_INIT (error_Mutex);
 
   /* initialize message catalog for argument parsing and usage() */
   if (utility_initialize () != NO_ERROR)
@@ -5112,7 +5123,7 @@ main (int argc, char **argv)
       int option_index = 0;
       int option_key;
 
-      option_key = getopt_long (argc, argv, "hd:p:af:s:",
+      option_key = getopt_long (argc, argv, "hd:p:af:s:r",
 				agent_option, &option_index);
       if (option_key == -1)
 	{
@@ -5135,6 +5146,9 @@ main (int argc, char **argv)
 	  break;
 	case 's':
 	  log_pagesize = atoi (optarg);
+	  break;
+	case 'r':
+	  retry_Connect = true;
 	  break;
 	case 'h':
 	default:

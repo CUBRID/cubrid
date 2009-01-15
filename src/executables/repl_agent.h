@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -321,6 +321,8 @@ typedef struct repl_dump_node
 
 extern pthread_mutex_t file_Mutex;	/* mutex lock to access the
 					 * error log file */
+extern pthread_mutex_t error_Mutex;
+
 extern MASTER_INFO **mInfo;
 extern SLAVE_INFO **sInfo;
 extern FILE *err_Log_fp;
@@ -328,6 +330,7 @@ extern int repl_Slave_num;
 extern int repl_Master_num;
 extern int trail_File_vdes;
 extern int create_Arv;
+extern int retry_Connect;
 extern const char *dist_Dbname;
 extern const char *dist_Passwd;
 extern int perf_Commit_msec;
@@ -372,7 +375,7 @@ extern int repl_ag_sock_request_next_log_page (int m_idx, PAGEID pageid,
 					       bool from_disk, int *result,
 					       bool * in_archive);
 extern int repl_ag_sock_request_log_hdr (int m_idx);
-extern int repl_ag_sock_request_agent_id (int m_idx);
+extern int repl_ag_sock_request_agent_info (int m_idx);
 extern REPL_PB *repl_init_pb (void);
 extern int repl_ag_thread_init (void);
 extern void repl_ag_thread_end (void);

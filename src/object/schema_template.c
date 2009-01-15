@@ -1597,7 +1597,7 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 	  pk =
 	    classobj_find_cons_primary_key (template_->current->constraints);
 	  if (pk->fk_info
-	      && classobj_is_pk_refer_other (template_->op, pk->fk_info))
+	      && classobj_is_pk_referred (template_->op, pk->fk_info, true))
 	    {
 	      ERROR (error, ER_FK_CANT_DROP_PK_REFERRED);
 	      return error;

@@ -842,7 +842,8 @@ parser_main (PARSER_CONTEXT * parser)
 	}
       /* record input_host_index into parser->host_var_count for later use;
          e.g. pt_set_host_variables(), auto-parameterized query */
-      if ((parser->host_var_count = input_host_index) > 0)
+      parser->host_var_count = input_host_index;
+      if (parser->host_var_count > 0)
 	{
 	  /* allocate place holder for host variables */
 	  parser->host_variables = (DB_VALUE *)
@@ -3044,14 +3045,14 @@ attr_definition < [PT_MISC_TYPE normal_or_class] "attribute definition clause"
                 >>
           }
          << #endif /* 0 */ >>
-	  {shared_or_default_clause
-                << data_default = pt_pop(this_parser);
+          {shared_or_default_clause
+         << data_default = pt_pop(this_parser);
 		   if(node && data_default) {
 		     node->info.attr_def.data_default=data_default;
 		     if (data_default->info.data_default.shared == PT_SHARED)
 		       node->info.attr_def.attr_type = PT_SHARED;
 		   }
-		>>
+		 >>
            | AUTO_INCREMENT
                <<
                    if (normal_or_class == PT_META_ATTR) {

@@ -586,7 +586,7 @@ repl_svr_sock_send_result (int agent_fd, int result)
   int error = NO_ERROR;
   char resp_buf[COMM_RESP_BUF_SIZE];
 
-  sprintf (resp_buf, "%d", result);
+  sprintf (resp_buf, "%d %d", result, repl_Log.pgsize);
   error = repl_svr_send_data (agent_fd, resp_buf, COMM_RESP_BUF_SIZE);
   if (error != NO_ERROR)
     REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);

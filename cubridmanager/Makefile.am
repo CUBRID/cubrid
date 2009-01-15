@@ -1,68 +1,51 @@
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; version 2 of the License.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+#
 
 SRC = $(top_srcdir)/src
 CM_DIR = ${top_srcdir}/cubridmanager
 
-DROP_DIR = drop
-OUT_DIR = out
+PRODUCT_DIR = product
 WIN32_DIR = win32
-LINUX_DIR = cmclient.motif
-LINUX_GTK_DIR = cmclient.gtk
+LINUX_DIR = cmclient
 RCP_DIR = ${CM_DIR}/rcpfiles
-CONFIG = configuration
 CUBRIDMANAGER = cubridmanager
-WIN32_DEPLOY = $(WIN32_DIR)/$(CUBRIDMANAGER)
-LINUX_DEPLOY = $(LINUX_DIR)/$(CUBRIDMANAGER)
-LINUX_GTK_DEPLOY = $(LINUX_GTK_DIR)/$(CUBRIDMANAGER)
-WIN32_CONFIG = $(WIN32_DEPLOY)/$(CONFIG)
-LINUX_CONFIG = $(LINUX_DEPLOY)/$(CONFIG)
-LINUX_GTK_CONFIG = $(LINUX_GTK_DEPLOY)/$(CONFIG)
+WIN32_DEPLOY = .
+LINUX_DEPLOY = .
 
 cmdir = ${prefix}/${CUBRIDMANAGER}
 
-all: all-am ant-build win32 linux linux-gtk
+all: clean-am ant-build win32 linux
 
 ant-build:
-	ant dist -buildfile ${CM_DIR}/build.xml -Dbasedir=. -Dsrc=${CM_DIR}/src -Dcubridmanager.location=${CM_DIR} -Declipse.plugins=${CM_DIR}/rcpfiles -Djdbc.file=../jdbc/JDBC-@BUILD_NUMBER@.jar
+	ant all -buildfile ${CM_DIR}/build.xml -Dbasedir=. -Dcubridmanager.location=${CM_DIR} -Djdbc.file=../jdbc/JDBC-@BUILD_NUMBER@.jar
 
 win32: ant-build
-	mkdir -p $(WIN32_CONFIG)
-	mkdir -p $(WIN32_DEPLOY)/lib
-	cp -rf $(DROP_DIR)/* $(WIN32_DEPLOY)
-	cp $(RCP_DIR)/config.ini.win32 $(WIN32_CONFIG)/config.ini
-	cp $(RCP_DIR)/launcher.exe $(WIN32_DEPLOY)/cubridmanager.exe
-	cp $(RCP_DIR)/CertProcess.dll     $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/GPKICertManager.dll $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/cub_readcert.dll  $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/gpkiapi.dll       $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/gpkiapi_jni.dll   $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/mfc42.dll         $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/mfc71.dll         $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/msvcr71.dll       $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/msvcrt.dll        $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/nsldap32v11.dll   $(WIN32_DEPLOY)/lib
-	cp $(RCP_DIR)/upa_j.dll         $(WIN32_DEPLOY)/lib
+	mkdir -p ${WIN32_DEPLOY}
+	cp -rf $(PRODUCT_DIR)/win32 $(WIN32_DEPLOY)
 
 linux: ant-build
-	mkdir -p $(LINUX_CONFIG)
-	cp -rf $(DROP_DIR)/* $(LINUX_DEPLOY)
-	cp $(RCP_DIR)/config.ini.linux $(LINUX_CONFIG)/config.ini
-	cp $(RCP_DIR)/launcher.linux $(LINUX_DEPLOY)/.cmclient_bin
-	cp $(RCP_DIR)/launcher.motif.sh $(LINUX_DEPLOY)/cubridmanager
+	mkdir -p ${LINUX_DEPLOY}
+	cp -rf ${PRODUCT_DIR}/cmclient ${LINUX_DEPLOY}
 
-linux-gtk: ant-build
-	mkdir -p $(LINUX_GTK_CONFIG)
-	cp -rf $(DROP_DIR)/* $(LINUX_GTK_DEPLOY)
-	cp $(RCP_DIR)/config.ini.linux.gtk $(LINUX_GTK_CONFIG)/config.ini
-	cp $(RCP_DIR)/launcher.linux.gtk $(LINUX_GTK_DEPLOY)/.cmclient_bin
-	cp $(RCP_DIR)/libcairo.so.1 $(LINUX_GTK_DEPLOY)/libcairo.so.1
-	cp $(RCP_DIR)/launcher.gtk.sh $(LINUX_GTK_DEPLOY)/cubridmanager
-
-clean-am: clean-generic clean-libtool mostlyclean-am
-	ant clean -buildfile ${top_srcdir}/cubridmanager/build.xml -Dbasedir=.  
-	rm -rf ${WIN32_DIR} ${LINUX_DIR} ${LINUX_GTK_DIR} ${CUBRIDMANAGER}
+clean-am: 
+	ant clean -buildfile ${CM_DIR}/build.xml -Dbasedir=.
+	rm -rf ${WIN32_DIR} ${LINUX_DIR} ${CUBRIDMANAGER}
 
 install-exec-hook:
 	test -z "$(cmdir)" || mkdir -p "$(cmdir)"
 	rm -rf ${cmdir}/cmclient*
 	cp -r cmclient* ${cmdir}
-	cd $(cmdir) && $(LN_S) -f ${LINUX_GTK_DIR} cmclient

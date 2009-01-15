@@ -539,10 +539,12 @@ valid options:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%s' with pagesize %d.\n\nVolid  Purpose  total_pages  free_pages  Vol Name\n\n
-16 %5d %8s  %11d %11d  %s\n
+15 Space description for database '%s' with pagesize %d.\n\n
+16 %5d %8s  %s %s  %s\n
 17 Couldn't open output file `%s'\n
-18 Space description for temporary volumes for database '%s' with pagesize %d.\n\nVolid  Purpose  total_pages  free_pages  Vol Name\n\n
+18 Space description for temporary volumes for database '%s' with pagesize %d.\n\n
+19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose   total_size   free_size  Vol Name\n\n
 60 \
 spacedb: Display usage/free space of the database.\n\
 usage: %s spacedb [OPTION] database-name\n\
@@ -550,7 +552,9 @@ usage: %s spacedb [OPTION] database-name\n\
 valid options:\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
   -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -C, --CS-mode                client-server mode execution\n\
+      --size-unit={PAGE|M|G|T|H}\n\
+                               set the display unit (page, mega, giga, tera, human readable);default : PAGE\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

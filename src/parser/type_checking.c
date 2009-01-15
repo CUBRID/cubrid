@@ -131,8 +131,6 @@ static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 			      void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser,
 					PT_NODE * node);
-static PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
-				      PT_TYPE_ENUM new_type, int p, int s);
 static void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -451,8 +449,11 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  location = cnf_node->info.value.location;
 	  break;
 	default:
-	  /* impossible case. give up */
-	  return where;
+	  /* stupid where cond. treat it as false condition 
+	   * example: SELECT * FROM foo WHERE id; 
+	   */
+	  goto always_false;
+	  break;
 	}
 
       if (cnf_node->type_enum == PT_TYPE_NA
@@ -1361,7 +1362,7 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
  *   p(in):
  *   s(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 		      PT_TYPE_ENUM new_type, int p, int s)
 {
@@ -1614,12 +1615,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	       * DON'T set common_type here, or you'll surely screw up
 	       * the next case when you least expect it.
 	       */
-	      data_type =
-		(PT_IS_NUMERIC_TYPE (common_type)
-		 || PT_IS_STRING_TYPE (common_type))
-		? NULL
-		: (PT_IS_COLLECTION_TYPE (common_type))
-		? arg1->data_type : arg2->data_type;
+	      if (PT_IS_PARAMETERIZED_TYPE (arg1_type)
+		  && PT_IS_PARAMETERIZED_TYPE (common_type))
+		{
+		  data_type = NULL;
+		}
+	      else if (PT_IS_COLLECTION_TYPE (common_type))
+		{
+		  data_type = arg1->data_type;
+		}
+	      else
+		{
+		  data_type = arg2->data_type;
+		}
 
 	      pt_coerce_value (parser, arg1, arg1, common_type, data_type);
 	      arg1_type = arg1->type_enum;
@@ -1628,12 +1636,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg2 && arg2_type != common_type)
 	    {
 	      /* Same warning as above... */
-	      data_type =
-		(PT_IS_NUMERIC_TYPE (common_type)
-		 || PT_IS_STRING_TYPE (common_type))
-		? NULL
-		: (PT_IS_COLLECTION_TYPE (common_type))
-		? arg2->data_type : arg1->data_type;
+	      if (PT_IS_PARAMETERIZED_TYPE (arg2_type)
+		  && PT_IS_PARAMETERIZED_TYPE (common_type))
+		{
+		  data_type = NULL;
+		}
+	      else if (PT_IS_COLLECTION_TYPE (common_type))
+		{
+		  data_type = arg2->data_type;
+		}
+	      else
+		{
+		  data_type = arg1->data_type;
+		}
 
 	      pt_coerce_value (parser, arg2, arg2, common_type, data_type);
 	      arg2_type = arg2->type_enum;

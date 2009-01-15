@@ -52,6 +52,7 @@
 #include "object_representation.h"
 #include "query_opfunc.h"
 #include "parser_support.h"
+#include "system_parameter.h"
 
 #define DEFAULT_VAR "."
 
@@ -3284,6 +3285,7 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
 
   ptr->type = type;
   ptr->option = Q_ALL;
+  ptr->iscan_oid_order = PRM_BT_INDEX_SCAN_OID_ORDER;
 
   switch (type)
     {
@@ -3918,7 +3920,7 @@ regu_cache_attrinfo_alloc (void)
   HEAP_CACHE_ATTRINFO *ptr;
   size_t size;
 
-  size = sizeof(HEAP_CACHE_ATTRINFO);
+  size = sizeof (HEAP_CACHE_ATTRINFO);
   ptr = (HEAP_CACHE_ATTRINFO *) pt_alloc_packing_buf (size);
   if (ptr == NULL)
     {

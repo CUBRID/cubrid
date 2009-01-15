@@ -1188,6 +1188,10 @@
 #define  ER_INTERFACE_RESULTSET_CLOSED              -964
 #define  ER_SM_INDEX_ATTR_DUPLICATED                -965
 
-#define ER_LAST_ERROR                               -966
+#define ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG          -966
+#define ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG           -967
+#define ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG         -968
+
+#define ER_LAST_ERROR                               -969
 
 #endif /* _ERROR_CODE_H_ */

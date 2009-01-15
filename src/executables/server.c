@@ -49,7 +49,8 @@
 #include "perf_monitor.h"
 
 #if defined(WINDOWS)
-LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_name);
+LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException,
+			    char *db_name);
 #else /* WINDOWS */
 static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
@@ -103,65 +104,58 @@ register_fatal_signal_handler (int signo)
 
 #if defined(WINDOWS)
 
-LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_name)
+LONG WINAPI
+CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
 {
-	STARTUPINFO si;
-	PROCESS_INFORMATION pi;
-	BOOL fSuccess;
-	char cmd_line[PATH_MAX];
-    TCHAR        DumpPath[MAX_PATH] = {0,};
-    SYSTEMTIME    SystemTime;
-	HANDLE FileHandle ;
-	char * cubid_env;
+  STARTUPINFO si;
+  PROCESS_INFORMATION pi;
+  BOOL fSuccess;
+  char cmd_line[PATH_MAX];
+  TCHAR DumpPath[MAX_PATH] = { 0, };
+  SYSTEMTIME SystemTime;
+  HANDLE FileHandle;
+  char *cubid_env;
 
-    GetLocalTime(&SystemTime);
+  GetLocalTime (&SystemTime);
 
-    sprintf(DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
-		envvar_root(),
-		EXECUTABLE_BIN_DIR,
-        SystemTime.wYear,
-        SystemTime.wMonth,
-        SystemTime.wDay,
-        SystemTime.wHour,
-        SystemTime.wMinute,
-        SystemTime.wSecond);
+  sprintf (DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
+	   envvar_root (),
+	   EXECUTABLE_BIN_DIR,
+	   SystemTime.wYear,
+	   SystemTime.wMonth,
+	   SystemTime.wDay,
+	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
 
-    FileHandle = CreateFile(
-        DumpPath,
-        GENERIC_WRITE,
-        FILE_SHARE_WRITE,
-        NULL, CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL);
+  FileHandle = CreateFile (DumpPath,
+			   GENERIC_WRITE,
+			   FILE_SHARE_WRITE,
+			   NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (FileHandle != INVALID_HANDLE_VALUE)
+  if (FileHandle != INVALID_HANDLE_VALUE)
     {
-        MINIDUMP_EXCEPTION_INFORMATION MiniDumpExceptionInfo;
-		BOOL Success ;
+      MINIDUMP_EXCEPTION_INFORMATION MiniDumpExceptionInfo;
+      BOOL Success;
 
-        MiniDumpExceptionInfo.ThreadId            = GetCurrentThreadId();
-        MiniDumpExceptionInfo.ExceptionPointers    = pException;
-        MiniDumpExceptionInfo.ClientPointers    = FALSE;
+      MiniDumpExceptionInfo.ThreadId = GetCurrentThreadId ();
+      MiniDumpExceptionInfo.ExceptionPointers = pException;
+      MiniDumpExceptionInfo.ClientPointers = FALSE;
 
-        Success = MiniDumpWriteDump(
-            GetCurrentProcess(),
-            GetCurrentProcessId(),
-            FileHandle,
-            MiniDumpNormal,
-			(pException) ? &MiniDumpExceptionInfo : NULL,
-            NULL,
-            NULL);
+      Success = MiniDumpWriteDump (GetCurrentProcess (),
+				   GetCurrentProcessId (),
+				   FileHandle,
+				   MiniDumpNormal,
+				   (pException) ? &MiniDumpExceptionInfo :
+				   NULL, NULL, NULL);
     }
 
-    CloseHandle(FileHandle);
+  CloseHandle (FileHandle);
 
-	/* restart cub_server.exe */
-	GetStartupInfo (&si);
+  /* restart cub_server.exe */
+  GetStartupInfo (&si);
 
-	snprintf (cmd_line, PATH_MAX, "\"%s\" \"%s\"", executable_path,
-	    db_name);
+  snprintf (cmd_line, PATH_MAX, "\"%s\" \"%s\"", executable_path, db_name);
 
-	fSuccess = CreateProcess (executable_path, cmd_line,
+  fSuccess = CreateProcess (executable_path, cmd_line,
 			    /* Default process security attrs */
 			    NULL,
 			    /* Default thread security attrs */
@@ -177,7 +171,7 @@ LONG WINAPI CreateMiniDump(struct _EXCEPTION_POINTERS *pException, char * db_nam
 			    /* start up information */
 			    &si, &pi);
 
-	return EXCEPTION_EXECUTE_HANDLER;
+  return EXCEPTION_EXECUTE_HANDLER;
 }
 
 #else /* WINDOWS */
@@ -228,8 +222,10 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 	fd_max = MIN (1024, rlp.rlim_cur);
 #elif defined(HPUX)
       fd_max = _POSIX_OPEN_MAX;
-#else
+#elif defined(OPEN_MAX)
       fd_max = OPEN_MAX;
+#else
+      fd_max = sysconf (_SC_OPEN_MAX);
 #endif
 
       for (fd = 3; fd < fd_max; fd++)
@@ -274,7 +270,8 @@ main (int argc, char **argv)
 #endif
 
 #if defined(WINDOWS)
-  __try{
+  __try
+  {
 #else /* WINDOWS */
   register_fatal_signal_handler (SIGABRT);
   register_fatal_signal_handler (SIGILL);
@@ -312,8 +309,10 @@ main (int argc, char **argv)
   ret_val = net_server_start (argv[1]);
 
 #if defined(WINDOWS)
-  }__except(CreateMiniDump(GetExceptionInformation(), argv[1])){}
+} __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
+{
+}
 #endif
 
-  return ret_val;
+return ret_val;
 }

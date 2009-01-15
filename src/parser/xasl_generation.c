@@ -338,188 +338,188 @@ static XASL_NODE *pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser,
 					    XASL_NODE * xasl_to_scan);
 
 static REGU_VARIABLE_LIST pt_to_regu_variable_list (PARSER_CONTEXT * p,
-                          PT_NODE * node,
-                          UNBOX unbox,
-                          VAL_LIST * value_list,
-                          int *attr_offsets);
+						    PT_NODE * node,
+						    UNBOX unbox,
+						    VAL_LIST * value_list,
+						    int *attr_offsets);
 
 
 
 static REGU_VARIABLE *pt_attribute_to_regu (PARSER_CONTEXT * parser,
-                      PT_NODE * attr);
+					    PT_NODE * attr);
 
 
 
 static PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser,
-                    const struct db_value *val);
+					  const struct db_value *val);
 
 static TP_DOMAIN *pt_xasl_data_type_to_domain (PARSER_CONTEXT * parser,
-                         const PT_NODE * node);
+					       const PT_NODE * node);
 static DB_VALUE *pt_index_value (const VAL_LIST * value, int index);
 
 
 static REGU_VARIABLE *pt_join_term_to_regu_variable (PARSER_CONTEXT * parser,
-                           PT_NODE * join_term);
+						     PT_NODE * join_term);
 
 
 
 static PT_NODE *pt_query_set_reference (PARSER_CONTEXT * parser,
-                  PT_NODE * node);
+					PT_NODE * node);
 static PT_NODE *pt_compatible_post (PARSER_CONTEXT * parser, PT_NODE * tree,
-                  void *arg, int *continue_walk);
+				    void *arg, int *continue_walk);
 
 static REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser,
-                 PT_NODE * node_list, VAL_LIST * value_list,
-                 int *attr_offsets);
+				   PT_NODE * node_list, VAL_LIST * value_list,
+				   int *attr_offsets);
 
 static DB_VALUE *pt_regu_to_dbvalue (PARSER_CONTEXT * parser,
-                   REGU_VARIABLE * regu);
+				     REGU_VARIABLE * regu);
 
 static int look_for_unique_btid (DB_OBJECT * classop, const char *name,
-               BTID * btid);
+				 BTID * btid);
 
 static void pt_split_where_part (PARSER_CONTEXT * parser, PT_NODE * spec,
-               PT_NODE * where, PT_NODE ** ldb_part,
-               PT_NODE ** gdb_part);
+				 PT_NODE * where, PT_NODE ** ldb_part,
+				 PT_NODE ** gdb_part);
 
 static void pt_split_access_if_instnum (PARSER_CONTEXT * parser,
-                  PT_NODE * spec, PT_NODE * where,
-                  PT_NODE ** access_part,
-                  PT_NODE ** if_part,
-                  PT_NODE ** instnum_part);
+					PT_NODE * spec, PT_NODE * where,
+					PT_NODE ** access_part,
+					PT_NODE ** if_part,
+					PT_NODE ** instnum_part);
 
 static void pt_split_if_instnum (PARSER_CONTEXT * parser, PT_NODE * where,
-               PT_NODE ** if_part, PT_NODE ** instnum_part);
+				 PT_NODE ** if_part, PT_NODE ** instnum_part);
 
 static void pt_split_having_grbynum (PARSER_CONTEXT * parser,
-                   PT_NODE * having, PT_NODE ** having_part,
-                   PT_NODE ** grbynum_part);
+				     PT_NODE * having, PT_NODE ** having_part,
+				     PT_NODE ** grbynum_part);
 
 static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
-             PT_NODE * pred, PT_NODE ** pred_attrs,
-             PT_NODE ** rest_attrs, int **pred_offsets,
-             int **rest_offsets);
+			   PT_NODE * pred, PT_NODE ** pred_attrs,
+			   PT_NODE ** rest_attrs, int **pred_offsets,
+			   int **rest_offsets);
 
 static int pt_to_index_attrs (PARSER_CONTEXT * parser,
-                TABLE_INFO * table_info,
-                QO_XASL_INDEX_INFO * index_pred, PT_NODE * pred,
-                PT_NODE ** pred_attrs, int **pred_offsets);
+			      TABLE_INFO * table_info,
+			      QO_XASL_INDEX_INFO * index_pred, PT_NODE * pred,
+			      PT_NODE ** pred_attrs, int **pred_offsets);
 
 
 static PT_NODE *pt_pruning_and_flush_class_and_null_xasl (PARSER_CONTEXT *
-                            parser,
-                            PT_NODE * tree,
-                            void *void_arg,
-                            int *continue_walk);
+							  parser,
+							  PT_NODE * tree,
+							  void *void_arg,
+							  int *continue_walk);
 
 
 static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser,
-                  PT_NODE * attribute_list);
+				    PT_NODE * attribute_list);
 
 static AGGREGATE_TYPE *pt_to_aggregate (PARSER_CONTEXT * parser,
-                  PT_NODE * select_node,
-                  OUTPTR_LIST * out_list,
-                  VAL_LIST * value_list,
-                  REGU_VARIABLE_LIST regu_list,
-                  PT_NODE * out_names,
-                  DB_VALUE ** grbynum_valp,
-                  int flag_agg_optimize);
+					PT_NODE * select_node,
+					OUTPTR_LIST * out_list,
+					VAL_LIST * value_list,
+					REGU_VARIABLE_LIST regu_list,
+					PT_NODE * out_names,
+					DB_VALUE ** grbynum_valp,
+					int flag_agg_optimize);
 
 static SYMBOL_INFO *pt_push_symbol_info (PARSER_CONTEXT * parser,
-                   PT_NODE * select_node);
+					 PT_NODE * select_node);
 
 static void pt_pop_symbol_info (PARSER_CONTEXT * parser);
 
 static ACCESS_SPEC_TYPE *pt_make_class_access_spec (PARSER_CONTEXT * parser,
-                          PT_NODE * flat,
-                          DB_OBJECT * class_,
-                          TARGET_TYPE scan_type,
-                          ACCESS_METHOD access,
-                          int lock_hint,
-                          INDX_INFO * indexptr,
-                          PRED_EXPR * where_key,
-                          PRED_EXPR * where_pred,
-                          REGU_VARIABLE_LIST
-                          attr_list_key,
-                          REGU_VARIABLE_LIST
-                          attr_list_pred,
-                          REGU_VARIABLE_LIST
-                          attr_list_rest,
-                          HEAP_CACHE_ATTRINFO *
-                          cache_key,
-                          HEAP_CACHE_ATTRINFO *
-                          cache_pred,
-                          HEAP_CACHE_ATTRINFO *
-                          cache_rest);
+						    PT_NODE * flat,
+						    DB_OBJECT * class_,
+						    TARGET_TYPE scan_type,
+						    ACCESS_METHOD access,
+						    int lock_hint,
+						    INDX_INFO * indexptr,
+						    PRED_EXPR * where_key,
+						    PRED_EXPR * where_pred,
+						    REGU_VARIABLE_LIST
+						    attr_list_key,
+						    REGU_VARIABLE_LIST
+						    attr_list_pred,
+						    REGU_VARIABLE_LIST
+						    attr_list_rest,
+						    HEAP_CACHE_ATTRINFO *
+						    cache_key,
+						    HEAP_CACHE_ATTRINFO *
+						    cache_pred,
+						    HEAP_CACHE_ATTRINFO *
+						    cache_rest);
 
 static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl,
-                         ACCESS_METHOD access,
-                         INDX_INFO * indexptr,
-                         PRED_EXPR * where_pred,
-                         REGU_VARIABLE_LIST
-                         attr_list_pred,
-                         REGU_VARIABLE_LIST
-                         attr_list_rest);
+						   ACCESS_METHOD access,
+						   INDX_INFO * indexptr,
+						   PRED_EXPR * where_pred,
+						   REGU_VARIABLE_LIST
+						   attr_list_pred,
+						   REGU_VARIABLE_LIST
+						   attr_list_rest);
 
 static ACCESS_SPEC_TYPE *pt_make_set_access_spec (REGU_VARIABLE * set_expr,
-                        ACCESS_METHOD access,
-                        INDX_INFO * indexptr,
-                        PRED_EXPR * where_pred,
-                        REGU_VARIABLE_LIST
-                        attr_list);
+						  ACCESS_METHOD access,
+						  INDX_INFO * indexptr,
+						  PRED_EXPR * where_pred,
+						  REGU_VARIABLE_LIST
+						  attr_list);
 
 static ACCESS_SPEC_TYPE *pt_make_cselect_access_spec (XASL_NODE * xasl,
-                            METHOD_SIG_LIST *
-                            method_sig_list,
-                            ACCESS_METHOD access,
-                            INDX_INFO * indexptr,
-                            PRED_EXPR * where_pred,
-                            REGU_VARIABLE_LIST
-                            attr_list);
+						      METHOD_SIG_LIST *
+						      method_sig_list,
+						      ACCESS_METHOD access,
+						      INDX_INFO * indexptr,
+						      PRED_EXPR * where_pred,
+						      REGU_VARIABLE_LIST
+						      attr_list);
 
 
 
 static SORT_LIST *pt_to_after_iscan (PARSER_CONTEXT * parser,
-                   PT_NODE * iscan_list, PT_NODE * root);
+				     PT_NODE * iscan_list, PT_NODE * root);
 
 static SORT_LIST *pt_to_orderby (PARSER_CONTEXT * parser,
-               PT_NODE * order_list, PT_NODE * root);
+				 PT_NODE * order_list, PT_NODE * root);
 
 static SORT_LIST *pt_to_groupby (PARSER_CONTEXT * parser,
-               PT_NODE * group_list, PT_NODE * root);
+				 PT_NODE * group_list, PT_NODE * root);
 
 static SORT_LIST *pt_to_after_groupby (PARSER_CONTEXT * parser,
-                     PT_NODE * group_list, PT_NODE * root);
+				       PT_NODE * group_list, PT_NODE * root);
 
 static char *pt_get_original_name (const PT_NODE * expr);
 
 static TABLE_INFO *pt_find_table_info (UINTPTR spec_id,
-                     TABLE_INFO * exposed_list);
+				       TABLE_INFO * exposed_list);
 
 static METHOD_SIG_LIST *pt_to_method_sig_list (PARSER_CONTEXT * parser,
-                         PT_NODE * node_list,
-                         PT_NODE *
-                         subquery_as_attr_list);
+					       PT_NODE * node_list,
+					       PT_NODE *
+					       subquery_as_attr_list);
 
 static int pt_is_subquery (PT_NODE * node);
 
 static int *pt_make_identity_offsets (PT_NODE * attr_list);
 
 static void pt_to_pred_terms (PARSER_CONTEXT * parser,
-                PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
+			      PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
 
 static VAL_LIST *pt_make_val_list (PT_NODE * attribute_list);
 
 static TABLE_INFO *pt_make_table_info (PARSER_CONTEXT * parser,
-                     PT_NODE * table_spec);
+				       PT_NODE * table_spec);
 
 static SYMBOL_INFO *pt_symbol_info_alloc (void);
 
 
 static PRED_EXPR *pt_make_pred_expr_pred (const PRED_EXPR * arg1,
-                    const PRED_EXPR * arg2,
-                    const BOOL_OP bop);
+					  const PRED_EXPR * arg2,
+					  const BOOL_OP bop);
 
 
 
@@ -5872,7 +5872,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    && node->info.expr.op != PT_MONTHS_BETWEEN
 		    && node->info.expr.op != PT_TO_NUMBER)
 		  {
-		    domain = pt_xasl_node_to_domain (parser, node);
+		    if (node->type_enum == PT_TYPE_MAYBE)
+		      {
+			domain = node->expected_domain;
+		      }
+		    else
+		      {
+			domain = pt_xasl_node_to_domain (parser, node);
+		      }
 		    if (domain == NULL)
 		      {
 			goto end_expr_op_switch;
@@ -5907,7 +5914,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		if (node->info.expr.op != PT_LAST_DAY
 		    && node->info.expr.op != PT_CAST)
 		  {
-		    domain = pt_xasl_node_to_domain (parser, node);
+		    if (node->type_enum == PT_TYPE_MAYBE)
+		      {
+			domain = node->expected_domain;
+		      }
+		    else
+		      {
+			domain = pt_xasl_node_to_domain (parser, node);
+		      }
 		    if (domain == NULL)
 		      {
 			goto end_expr_op_switch;
@@ -5926,7 +5940,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					  node->info.expr.arg2, unbox);
 		r3 = pt_to_regu_variable (parser,
 					  node->info.expr.arg3, unbox);
-		domain = pt_xasl_node_to_domain (parser, node);
+		if (node->type_enum == PT_TYPE_MAYBE)
+		  {
+		    domain = node->expected_domain;
+		  }
+		else
+		  {
+		    domain = pt_xasl_node_to_domain (parser, node);
+		  }
 		if (domain == NULL)
 		  {
 		    goto end_expr_op_switch;
@@ -10692,8 +10713,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    }
 
 	  /* set index scan order */
-	  xasl->iscan_order = ((orderby_skip) ? true
-			       : PRM_BT_INDEX_SCAN_OID_ORDER);
+	  xasl->iscan_oid_order = ((orderby_skip) ? false
+				   : PRM_BT_INDEX_SCAN_OID_ORDER);
 
 	  /* save single tuple info */
 	  if (select_node->info.query.single_tuple == 1)

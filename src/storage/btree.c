@@ -14342,7 +14342,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
    * in case of reverse index,
    * we have to find the min/max key in opposite order.
    */
-  if (btid_int.reverse)
+  if (btid_int.reverse || btid_int.key_type->is_desc)
     {
       find_min_key = !find_min_key;
     }

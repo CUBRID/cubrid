@@ -48,8 +48,19 @@
 
 #define PASSBUF_SIZE 12
 
-static void sig_interrupt (int sig_no);
+typedef enum
+{
+  SPACEDB_SIZE_UNIT_PAGE = 0,
+  SPACEDB_SIZE_UNIT_MBYTES,
+  SPACEDB_SIZE_UNIT_GBYTES,
+  SPACEDB_SIZE_UNIT_TBYTES,
+  SPACEDB_SIZE_UNIT_HUMAN_READABLE
+} T_SPACEDB_SIZE_UNIT;
 
+static void sig_interrupt (int sig_no);
+static int
+spacedb_get_size_str (char *buf, int num_pages,
+		      T_SPACEDB_SIZE_UNIT size_unit);
 /*
  * backupdb() - backupdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -418,7 +429,9 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   int i;
+  const char *size_unit;
   DB_VOLPURPOSE vol_purpose;
+  T_SPACEDB_SIZE_UNIT size_unit_type;
   int vol_ntotal_pages;
   int vol_nfree_pages;
   char vol_label[PATH_MAX];
@@ -426,6 +439,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   FILE *outfp = NULL;
   int nvols;
   VOLID temp_volid;
+  char num_total_str[64], num_free_str[64];
+
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -436,6 +451,34 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   output_file =
     utility_get_option_string_value (arg_map, SPACE_OUTPUT_FILE_S, 0);
+  size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
+
+  size_unit_type = SPACEDB_SIZE_UNIT_PAGE;
+
+  if (size_unit != NULL)
+    {
+      if (strcasecmp (size_unit, "m") == 0)
+	{
+	  size_unit_type = SPACEDB_SIZE_UNIT_MBYTES;
+	}
+      else if (strcasecmp (size_unit, "g") == 0)
+	{
+	  size_unit_type = SPACEDB_SIZE_UNIT_GBYTES;
+	}
+      else if (strcasecmp (size_unit, "t") == 0)
+	{
+	  size_unit_type = SPACEDB_SIZE_UNIT_TBYTES;
+	}
+      else if (strcasecmp (size_unit, "h") == 0)
+	{
+	  size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
+	}
+      else if (strcasecmp (size_unit, "page") != 0)
+	{
+	  /* invalid option string */
+	  goto print_space_usage;
+	}
+    }
 
   sysprm_set_to_default ("data_buffer_pages");
 
@@ -472,8 +515,15 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   nvols = db_num_volumes ();
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				  MSGCAT_UTIL_SET_SPACEDB,
-				  SPACEDB_OUTPUT_TITLE), database_name,
+				  SPACEDB_OUTPUT_SUMMARY), database_name,
 	   IO_PAGESIZE);
+
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				  MSGCAT_UTIL_SET_SPACEDB,
+				  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ?
+				  SPACEDB_OUTPUT_TITLE_PAGE :
+				  SPACEDB_OUTPUT_TITLE_SIZE));
+
   db_ntotal_pages = db_nfree_pages = 0;
 
   for (i = 0; i < nvols; i++)
@@ -485,12 +535,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	  db_nfree_pages += vol_nfree_pages;
 	  if (db_vol_label (i, vol_label) == NULL)
 	    strcpy (vol_label, " ");
+
+	  spacedb_get_size_str (num_total_str, vol_ntotal_pages,
+				size_unit_type);
+	  spacedb_get_size_str (num_free_str, vol_nfree_pages,
+				size_unit_type);
+
 	  fprintf (outfp,
 		   msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_SPACEDB,
 				   SPACEDB_OUTPUT_FORMAT),
 		   i, VOL_PURPOSE_STRING (vol_purpose),
-		   vol_ntotal_pages, vol_nfree_pages, vol_label);
+		   num_total_str, num_free_str, vol_label);
 	}
       else
 	{
@@ -503,10 +559,14 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     {
       fprintf (outfp, "-------------------------------------------------");
       fprintf (outfp, "------------------------------\n");
+
+      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
+      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
+
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				      MSGCAT_UTIL_SET_SPACEDB,
 				      SPACEDB_OUTPUT_FORMAT), nvols, " ",
-	       db_ntotal_pages, db_nfree_pages, " ");
+	       num_total_str, num_free_str, " ");
     }
 
   /* Find info on temp volumes */
@@ -514,8 +574,15 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   temp_volid = boot_find_last_temp ();
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				  MSGCAT_UTIL_SET_SPACEDB,
-				  SPACEDB_OUTPUT_TITLE1), database_name,
-	   IO_PAGESIZE);
+				  SPACEDB_OUTPUT_SUMMARY_TMP_VOL),
+	   database_name, IO_PAGESIZE);
+
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				  MSGCAT_UTIL_SET_SPACEDB,
+				  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ?
+				  SPACEDB_OUTPUT_TITLE_PAGE :
+				  SPACEDB_OUTPUT_TITLE_SIZE));
+
   db_ntotal_pages = db_nfree_pages = 0;
 
   for (i = 0; i < nvols; i++)
@@ -528,11 +595,17 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	  db_nfree_pages += vol_nfree_pages;
 	  if (db_vol_label ((temp_volid + i), vol_label) == NULL)
 	    strcpy (vol_label, " ");
+
+	  spacedb_get_size_str (num_total_str, vol_ntotal_pages,
+				size_unit_type);
+	  spacedb_get_size_str (num_free_str, vol_nfree_pages,
+				size_unit_type);
+
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 					  MSGCAT_UTIL_SET_SPACEDB,
 					  SPACEDB_OUTPUT_FORMAT),
 		   (temp_volid + i), VOL_PURPOSE_STRING (vol_purpose),
-		   vol_ntotal_pages, vol_nfree_pages, vol_label);
+		   num_total_str, num_free_str, vol_label);
 	}
       else
 	{
@@ -545,10 +618,14 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     {
       fprintf (outfp, "-------------------------------------------------");
       fprintf (outfp, "------------------------------\n");
+
+      spacedb_get_size_str (num_total_str, vol_ntotal_pages, size_unit_type);
+      spacedb_get_size_str (num_free_str, vol_nfree_pages, size_unit_type);
+
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				      MSGCAT_UTIL_SET_SPACEDB,
 				      SPACEDB_OUTPUT_FORMAT), nvols, " ",
-	       db_ntotal_pages, db_nfree_pages, " ");
+	       num_total_str, num_free_str, " ");
     }
   db_shutdown ();
   if (outfp != stdout)
@@ -1278,3 +1355,51 @@ sig_interrupt (int sig_no)
 {
   db_set_interrupt (1);
 }
+
+static int
+spacedb_get_size_str (char *buf, int num_pages, T_SPACEDB_SIZE_UNIT size_unit)
+{
+  int pgsize, i;
+  double size;
+
+  assert (buf);
+
+  if (size_unit == SPACEDB_SIZE_UNIT_PAGE)
+    {
+      sprintf (buf, "%11d", num_pages);
+    }
+  else
+    {
+      pgsize = IO_PAGESIZE / 1024;
+      size = pgsize * num_pages;
+
+      if (size_unit == SPACEDB_SIZE_UNIT_HUMAN_READABLE)
+	{
+	  for (i = SPACEDB_SIZE_UNIT_MBYTES;
+	       i < SPACEDB_SIZE_UNIT_TBYTES; i++)
+	    {
+	      size /= 1024;
+
+	      if (size < 1024)
+		{
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  i = size_unit;
+	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; size_unit--)
+	    {
+	      size /= 1024;
+	    }
+	}
+
+      sprintf (buf, "%9.1f %c", size,
+	       (i == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' :
+	       (i == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T');
+    }
+
+  return NO_ERROR;
+}
+

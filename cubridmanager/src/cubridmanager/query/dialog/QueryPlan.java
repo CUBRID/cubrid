@@ -914,7 +914,7 @@ public class QueryPlan extends Dialog {
 			item.setText(Messages.getString("QUERYPLAN.CHECKQUERYPLANENABLE"));
 		}
 	}
-
+	
 	private void setButtonEnable() {
 		if (currIndex <= 0)
 			btnPrev.setEnabled(false);

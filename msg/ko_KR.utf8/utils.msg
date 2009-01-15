@@ -538,10 +538,12 @@ checkdb: 데이터베이스 일관성 검사.\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 데이터베이스 '%s'의 (페이지 크기 %d) 볼륨 정의\n\n 번호  용도        페이지수  여유페이지  볼륨이름\n\n
-16 %5d %8s  %11d %11d  %s\n
+15 데이터베이스 '%s'의 (페이지 크기 %d) 볼륨 정의\n\n
+16 %5d %8s  %s %s  %s\n
 17 출력파일 `%s' 을(를) 열 수 없습니다\n
-18 \n데이터베이스 '%s'의 (페이지크기 %d) 임시 볼륨\n\n 번호  용도       페이지수  여유페이지  볼륨이름\n\n
+18 \n데이터베이스 '%s'의 (페이지크기 %d) 임시 볼륨\n\n
+19 번호  용도       페이지수  여유페이지  볼륨이름\n\n
+20 번호  용도       전체크기    여유공간  볼륨이름\n\n
 60 \
 spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 사용법: %s spacedb [옵션] <데이터베이스 이름>\n\
@@ -549,7 +551,10 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 옵션:\n\
   -o, --output-file=FILE       파일로 출력을 재지정; 기본값: 재지정 하지 않음\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --size-unit={PAGE|M|G|T|H}\n\
+                               출력 단위(page, mega, giga, tera, human readable) 설정;\n\
+                               기본값 : PAGE\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

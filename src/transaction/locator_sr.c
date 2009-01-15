@@ -6902,7 +6902,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /* alloc index key copy_buf */
-  isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
+  isid.copy_buf = (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -6919,7 +6919,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       /* free index key copy_buf */
       if (isid.copy_buf)
 	{
-	  db_private_free_and_init (thread_p, isid.copy_buf);
+	  db_instant_free_and_init (thread_p, isid.copy_buf);
 	}
 
       return DISK_ERROR;
@@ -7020,7 +7020,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_private_free_and_init (thread_p, isid.copy_buf);
+      db_instant_free_and_init (thread_p, isid.copy_buf);
     }
 
   if (num_heap_oids != num_btree_oids)
@@ -7275,7 +7275,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
   /* alloc index key copy_buf */
-  isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
+  isid.copy_buf = (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -7416,7 +7416,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_private_free_and_init (thread_p, isid.copy_buf);
+      db_instant_free_and_init (thread_p, isid.copy_buf);
     }
 
   if (heap_scancache_end (thread_p, &isid.scan_cache) != NO_ERROR)
@@ -7496,7 +7496,7 @@ error:
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_private_free_and_init (thread_p, isid.copy_buf);
+      db_instant_free_and_init (thread_p, isid.copy_buf);
     }
   if (class_oids)
     {

@@ -94,7 +94,15 @@ static int css_fd_error (int fd);
 int
 css_tcp_client_open (const char *host, int port)
 {
-  return css_tcp_client_open_withretry (host, port, true);
+  int fd;
+  fd = css_tcp_client_open_withretry (host, port, true);
+
+  if (fd < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
+    }
+  return fd;
 }
 
 
@@ -261,6 +269,14 @@ css_tcp_client_open_withretry (const char *host, int port, bool will_retry)
       af = AF_INET;
     }
 
+#if 1
+  /* 
+   * Temporary fix 
+   * AF_UNIX does not support OOB message.
+   */
+  af = AF_INET;
+#endif
+
   start_contime = time (NULL);
   do
     {
@@ -379,8 +395,6 @@ css_tcp_client_open_withretry (const char *host, int port, bool will_retry)
 
   if (success < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "Failed with number of retries = %d during connection\n",

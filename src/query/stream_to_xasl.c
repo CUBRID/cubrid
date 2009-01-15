@@ -1687,7 +1687,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     stx_get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
-  xasl->query_in_progress = 0;
+  xasl->query_in_progress = false;
 
   ptr = or_unpack_int (ptr, (int *) &xasl->type);
 
@@ -2170,7 +2170,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_double (ptr, (double *) &xasl->cardinality);
 
   ptr = or_unpack_int (ptr, &tmp);
-  xasl->iscan_order = (bool) tmp;
+  xasl->iscan_oid_order = (bool) tmp;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

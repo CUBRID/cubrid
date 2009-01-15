@@ -41,7 +41,6 @@ import org.eclipse.ui.application.IActionBarConfigurer;
 import org.eclipse.ui.application.IWorkbenchWindowConfigurer;
 import org.eclipse.ui.application.WorkbenchWindowAdvisor;
 
-import com.gpki.gpkiapi.GpkiApi;
 
 public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 	public static IWorkbenchWindowConfigurer myconfigurer = null;
@@ -151,15 +150,7 @@ public class ApplicationWorkbenchWindowAdvisor extends WorkbenchWindowAdvisor {
 				.getActionBarConfigurer().getStatusLineManager();
 		statusline.setMessage("");
 		statusline.update(true);
-		if (MainRegistry.isProtegoBuild()) {
-			// API initialize
-			try {
-				GpkiApi.init(".");
-			} catch (Exception e) {
-				CommonTool.debugPrint(e);
-			}
 
-		}
 		if (MainRegistry.FirstLogin) {
 			ApplicationActionBarAdvisor.connectAction.run();
 			MainRegistry.FirstLogin = false;

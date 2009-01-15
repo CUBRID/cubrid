@@ -296,8 +296,8 @@ log_top (FILE * fp, char *filename)
       GET_CUR_DATE_STR (cur_date, linebuf);
       GET_MSG_START_PTR (msg_p, linebuf);
       if (strncmp (msg_p, "execute", 7) == 0
-          || strncmp (msg_p, "execute_all", 11) == 0
-          || strncmp (msg_p, "execute_call", 12) == 0)
+	  || strncmp (msg_p, "execute_all", 11) == 0
+	  || strncmp (msg_p, "execute_call", 12) == 0)
 	{
 	  /*
 	   * execute log format:
@@ -334,6 +334,15 @@ log_top (FILE * fp, char *filename)
 	    {
 	      break;
 	    }
+
+	  if (strncmp (msg_p, "query_cancel", 12) == 0)
+	    {
+	      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
+		{
+		  break;
+		}
+	    }
+
 	  query_info_buf[qi_idx].sql =
 	    (char *) REALLOC (query_info_buf[qi_idx].sql,
 			      t_string_len (sql_buf) + 1);

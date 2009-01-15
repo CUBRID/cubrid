@@ -313,8 +313,8 @@ Dlg_SdWelcome:
     if (nvCodePage = 949 ) then
     	szMsg   = "본 설치 프로그램은 컴퓨터에 큐브리드를 설치할 것입니다.\n\n"+
     	          "CUBRID 7.3 또는 이하 버전에서 생성된 큐브리드 데이터\n"+
-    	          "베이스는 CUBRID 2008 R1.1과 호환되지 않습니다. CUBRID\n"+
-    	          "2008 R1.1 에서 사용하려면 마이그레이션이 필요합니다.";
+    	          "베이스는 CUBRID " + ST_CUBRID_VERSION + "와 호환되지 않습니다. CUBRID " +
+    	          ST_CUBRID_VERSION + " 에서 사용하려면 마이그레이션이 필요합니다.";
     else
     	szMsg   = "\n\nThis program will install CUBRID on your computer\n";    	
 	endif;

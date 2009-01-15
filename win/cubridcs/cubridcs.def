@@ -118,6 +118,7 @@ EXPORTS
     db_get_attribute
     db_get_attributes
     db_get_bit
+    db_get_cacheinfo
     db_get_char
     db_get_class
     db_get_class_attribute

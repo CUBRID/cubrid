@@ -922,6 +922,15 @@ css_process_shutdown (char *time_buffer)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
+      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+	  temp->name && temp->name[0] == '&')
+	{
+	  css_send_term_signal (temp->pid);
+	}
+    }
+
+  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+    {
       /* do not send shutdown command to master and connector, only to servers:
        * cause connector crash
        */
@@ -947,7 +956,6 @@ css_process_shutdown (char *time_buffer)
 	{
 	  css_send_term_signal (temp->pid);
 	}
-
     }
 
   if (css_Master_timeout == NULL)

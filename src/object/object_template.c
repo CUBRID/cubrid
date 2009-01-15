@@ -2156,7 +2156,9 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 
   /* have we already been here ? */
   if (template_ptr->traversal == obj_Template_traversal)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
   template_ptr->traversal = obj_Template_traversal;
 
   if (validate_template (template_ptr))
@@ -2670,13 +2672,14 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 
   if (template_ptr != NULL)
     {
-      if (!(error = validate_template (template_ptr)))
+      error = validate_template (template_ptr);
+      if (error == NO_ERROR)
 	{
 	  /* allocate a new traversal counter for the check pass */
 	  begin_template_traversal ();
-	  if (!
-	      (error =
-	       obt_final_check (template_ptr, check_non_null, &has_uniques)))
+	  error =
+	    obt_final_check (template_ptr, check_non_null, &has_uniques);
+	  if (error == NO_ERROR)
 	    {
 
 	      /* Must perform savepoint to handle unique maintenance until the
@@ -2687,7 +2690,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	       * obt_apply_assignments().
 	       */
 	      if ((template_ptr->check_uniques && has_uniques)
-	          || template_ptr->is_fkeys_were_modified)
+		  || template_ptr->is_fkeys_were_modified)
 		{
 		  sprintf (savepoint_name, "%s-%ld",
 			   OBJ_INTERNAL_SAVEPOINT_NAME,

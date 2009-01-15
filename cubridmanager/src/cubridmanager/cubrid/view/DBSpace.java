@@ -167,6 +167,7 @@ public class DBSpace extends ViewPart implements ITreeObjectChangedListener {
 	}
 
 	public void refresh() {
+		objrec = null;
 		if (CubridView.Current_db.length() < 1 || CurrentSelect.length() < 1)
 			return;
 		else {

@@ -609,12 +609,9 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	  else
 	    {
-	      val = &temp_val;
-	      PRIM_SET_NULL (val);
-	      clear_value = true;
 	      ret =
-		fetch_copy_dbval (thread_p, &(operand->value), vd, NULL, NULL,
-				  NULL, val);
+		fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL,
+				  NULL, &val);
 	      if (ret != NO_ERROR)
 		{
 		  goto err_exit;
@@ -635,6 +632,13 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 		}
 	      else if (dom->type->id != val_type_id)
 		{
+		  if (!qdata_copy_db_value (&temp_val, val))
+		    {
+		      goto err_exit;
+		    }
+		  val = &temp_val;
+		  clear_value = true;
+
 		  save_val_is_null = val->domain.general_info.is_null;
 		  save_val_type = val->domain.general_info.type;
 		  save_need_clear = val->need_clear;
@@ -693,22 +697,18 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
       clear_value = false;
     }
 
-  val = &temp_val;
-  PRIM_SET_NULL (val);
   for (operand = func->value.funcp->operand, dom = setdomain, i = 0;
        operand && (i < n_atts); operand = operand->next, dom = dom->next, i++)
     {
-
       if (clear_value)
 	{
 	  pr_clear_value (val);
+	  clear_value = false;
 	}
 
-      clear_value = true;
-      /* must copy, do not peek */
       ret =
-	fetch_copy_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL,
-			  val);
+	fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL,
+			  &val);
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -735,6 +735,13 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	  else if (dom->type->id != val_type_id)
 	    {
+	      if (!qdata_copy_db_value (&temp_val, val))
+		{
+		  goto err_exit;
+		}
+	      val = &temp_val;
+	      clear_value = true;
+
 	      save_val_is_null = val->domain.general_info.is_null;
 	      save_val_type = val->domain.general_info.type;
 	      save_need_clear = val->need_clear;
@@ -1333,7 +1340,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
   if (iscan_id->oid_list.oid_cnt > 1)
     {				/* need to sort */
-      if (iscan_id->keep_iscan_order == false
+      if (iscan_id->iscan_oid_order == true
 	  && iscan_id->need_count_only == false)
 	{
 	  qsort (iscan_id->oid_list.oidp, iscan_id->oid_list.oid_cnt,
@@ -1663,7 +1670,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_pred,
 		      int num_attrs_rest,
 		      ATTR_ID * attrids_rest,
-		      HEAP_CACHE_ATTRINFO * cache_rest, bool keep_iscan_order)
+		      HEAP_CACHE_ATTRINFO * cache_rest, bool iscan_oid_order)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -1801,7 +1808,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       bool need_copy_buf;
 
       isidp->key_vals =
-	(KEY_VAL_RANGE *) db_private_alloc (thread_p,
+	(KEY_VAL_RANGE *) db_instant_alloc (thread_p,
 					    isidp->key_cnt *
 					    sizeof (KEY_VAL_RANGE));
       if (isidp->key_vals == NULL)
@@ -1840,7 +1847,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  /* alloc index key copy_buf */
 	  isidp->copy_buf =
-	    (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
+	    (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
 	  if (isidp->copy_buf == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1856,7 +1863,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       isidp->key_vals = NULL;
     }
 
-  isidp->keep_iscan_order = keep_iscan_order;
+  isidp->iscan_oid_order = iscan_oid_order;
   isidp->lock_hint = lock_hint;
 
 end:
@@ -1865,9 +1872,13 @@ end:
 
 exit_on_error:
 
+  if (isidp->key_vals)
+    {
+      db_instant_free (thread_p, isidp->key_vals);
+    }
   if (isidp->bt_attr_ids)
     {
-      db_private_free (thread_p, isidp->bt_attr_ids);
+      db_instant_free (thread_p, isidp->bt_attr_ids);
     }
   if (isidp->vstr_ids)
     {
@@ -1877,14 +1888,10 @@ exit_on_error:
     {
       db_private_free (thread_p, isidp->oid_list.oidp);
     }
-  if (isidp->key_vals)
-    {
-      db_private_free (thread_p, isidp->key_vals);
-    }
   /* free index key copy_buf */
   if (isidp->copy_buf)
     {
-      db_private_free (thread_p, isidp->copy_buf);
+      db_instant_free (thread_p, isidp->copy_buf);
     }
 
   if (ret == NO_ERROR)
@@ -2284,7 +2291,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (s_id->grouped)
 	{
 	  if (s_id->direction == S_FORWARD
-	      && s_id->s.isid.keep_iscan_order == false)
+	      && s_id->s.isid.iscan_oid_order == true)
 	    {
 	      s_id->s.isid.curr_oidno = s_id->s.isid.oid_list.oid_cnt;
 	      s_id->direction = S_BACKWARD;
@@ -2415,7 +2422,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		    }
 		}
 
-	      if (s_id->s.isid.keep_iscan_order == false)
+	      if (s_id->s.isid.iscan_oid_order == true)
 		{
 		  s_id->position = S_ON;
 		  s_id->direction = S_BACKWARD;
@@ -2577,10 +2584,14 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
+      if (isidp->key_vals)
+	{
+	  db_instant_free (thread_p, isidp->key_vals);
+	}
       /* free allocated memory for the scan */
       if (isidp->bt_attr_ids)
 	{
-	  db_private_free (thread_p, isidp->bt_attr_ids);
+	  db_instant_free (thread_p, isidp->bt_attr_ids);
 	}
       if (isidp->vstr_ids)
 	{
@@ -2590,14 +2601,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  free_iscan_oid_buf_list (isidp->oid_list.oidp);
 	}
-      if (isidp->key_vals)
-	{
-	  db_private_free (thread_p, isidp->key_vals);
-	}
       /* free index key copy_buf */
       if (isidp->copy_buf)
 	{
-	  db_private_free (thread_p, isidp->copy_buf);
+	  db_instant_free (thread_p, isidp->copy_buf);
 	}
       break;
 

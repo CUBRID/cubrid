@@ -164,7 +164,7 @@ struct groupby_state
   RECDES current_key;
   RECDES gby_rec;
   QFILE_TUPLE_RECORD input_tpl;
-  QFILE_TUPLE_RECORD output_tpl;
+  QFILE_TUPLE_RECORD *output_tplrec;
   int input_recs;
 
   SORT_CMP_FUNC *cmp_fn;
@@ -422,7 +422,9 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 						      g_outptr_list,
 						      XASL_STATE * xasl_state,
 						      QFILE_TUPLE_VALUE_TYPE_LIST
-						      * type_list);
+						      * type_list,
+						      QFILE_TUPLE_RECORD *
+						      tplrec);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p,
 				       GROUPBY_STATE * gbstate);
 static void qexec_gby_start_group (THREAD_ENTRY * thread_p,
@@ -438,7 +440,8 @@ static SORT_STATUS qexec_gby_get_next (THREAD_ENTRY * thread_p,
 static int qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 			       void *arg);
 static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-			  XASL_STATE * xasl_state);
+			  XASL_STATE * xasl_state,
+			  QFILE_TUPLE_RECORD * tplrec);
 static int qexec_collection_has_null (DB_VALUE * colval);
 static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE *
 							 left_tval,
@@ -481,7 +484,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 static int qexec_open_scan (THREAD_ENTRY * thread_p,
 			    ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list,
 			    VAL_DESCR * vd, int readonly_scan, int fixed,
-			    int grouped, bool keep_iscan_order,
+			    int grouped, bool iscan_oid_order,
 			    SCAN_ID * s_id);
 static void qexec_close_scan (THREAD_ENTRY * thread_p,
 			      ACCESS_SPEC_TYPE * curr_spec);
@@ -529,10 +532,12 @@ static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p,
 				      XASL_STATE * xasl_state);
 static int qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
 						 XASL_NODE * xasl,
-						 XASL_STATE * xasl_state);
+						 XASL_STATE * xasl_state,
+						 QFILE_TUPLE_RECORD * tplrec);
 static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl,
-					   XASL_STATE * xasl_state);
+					   XASL_STATE * xasl_state,
+					   QFILE_TUPLE_RECORD * tplrec);
 #if defined(SERVER_MODE)
 static int tranid_compare (const void *t1, const void *t2);	/* TODO: put to header ?? */
 #endif
@@ -772,6 +777,17 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	case QPROC_TPLDESCR_RETRY_SET_TYPE:
 	case QPROC_TPLDESCR_RETRY_BIG_REC:
 	  /* BIG QFILE_TUPLE or a SET-field is included */
+	  if (tplrec->tpl == NULL)
+	    {
+	      /* allocate tuple descriptor */
+	      tplrec->size = DB_PAGESIZE;
+	      tplrec->tpl =
+		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+	      if (tplrec->tpl == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
 	  if ((qdata_copy_valptr_list_to_tuple
 	       (thread_p, xasl->outptr_list, &xasl_state->vd,
 		tplrec) != NO_ERROR)
@@ -1242,7 +1258,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
    */
   query_save_state = xasl->query_in_progress;
 
-  xasl->query_in_progress = 1;
+  xasl->query_in_progress = true;
 
   /* clear the head node */
   pg_cnt += qexec_clear_xasl_head (thread_p, xasl);
@@ -2204,6 +2220,7 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
  *   g_outptr_list(in)  : Output pointer list
  *   xasl_state(in)     : XASL tree state information
  *   type_list(in)      :
+ *   tplrec(out) 	: Tuple record descriptor to store result tuples
  */
 static GROUPBY_STATE *
 qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
@@ -2218,7 +2235,8 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 				VAL_LIST * g_val_list,
 				OUTPTR_LIST * g_outptr_list,
 				XASL_STATE * xasl_state,
-				QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
+				QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				QFILE_TUPLE_RECORD * tplrec)
 {
   gbstate->state = NO_ERROR;
 
@@ -2248,8 +2266,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->gby_rec.length = 0;
   gbstate->gby_rec.type = 0;	/* Unused */
   gbstate->gby_rec.data = NULL;
-  gbstate->output_tpl.size = 0;
-  gbstate->output_tpl.tpl = 0;
+  gbstate->output_tplrec = NULL;
   gbstate->input_tpl.size = 0;
   gbstate->input_tpl.tpl = 0;
   gbstate->input_recs = 0;
@@ -2267,12 +2284,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
     }
   gbstate->current_key.area_size = DB_PAGESIZE;
 
-  gbstate->output_tpl.tpl = (char *) db_private_alloc (NULL, DB_PAGESIZE);
-  if (gbstate->output_tpl.tpl == NULL)
-    {
-      return NULL;
-    }
-  gbstate->output_tpl.size = DB_PAGESIZE;
+  gbstate->output_tplrec = tplrec;
 
   return gbstate;
 }
@@ -2306,12 +2318,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
       gbstate->gby_rec.data = NULL;
       gbstate->gby_rec.area_size = 0;
     }
-  if (gbstate->output_tpl.tpl)
-    {
-      db_private_free_and_init (thread_p, gbstate->output_tpl.tpl);
-      gbstate->output_tpl.tpl = NULL;
-      gbstate->output_tpl.size = 0;
-    }
+  gbstate->output_tplrec = NULL;
   /*
    * Don't cleanup gbstate->input_tpl; the memory it points to was
    * managed by the listfile manager (via input_scan), and it's not
@@ -2552,14 +2559,26 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	case QPROC_TPLDESCR_RETRY_SET_TYPE:
 	case QPROC_TPLDESCR_RETRY_BIG_REC:
 	  /* BIG QFILE_TUPLE or a SET-field is included */
+	  if (gbstate->output_tplrec->tpl == NULL)
+	    {
+	      /* allocate tuple descriptor */
+	      gbstate->output_tplrec->size = DB_PAGESIZE;
+	      gbstate->output_tplrec->tpl =
+		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+	      if (gbstate->output_tplrec->tpl == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
 	  if (qdata_copy_valptr_list_to_tuple
 	      (thread_p, gbstate->g_outptr_list, &gbstate->xasl_state->vd,
-	       &gbstate->output_tpl) != NO_ERROR)
+	       gbstate->output_tplrec) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  if (qfile_add_tuple_to_list (thread_p, gbstate->output_file,
-				       gbstate->output_tpl.tpl) != NO_ERROR)
+				       gbstate->output_tplrec->tpl) !=
+	      NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -2795,13 +2814,14 @@ exit_on_error:
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   :
  *   xasl_state(in)     : XASL tree state information
+ *   tplrec(out) : Tuple record descriptor to store result tuples
  *
  * Note: Apply the group_by clause to the given list file to group it
  * using the specified group_by parameters.
  */
 static int
 qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-	       XASL_STATE * xasl_state)
+	       XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
@@ -2830,7 +2850,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				      buildlist->g_regu_list,
 				      buildlist->g_val_list,
 				      buildlist->g_outptr_list, xasl_state,
-				      &list_id->type_list) == NULL)
+				      &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -4691,7 +4711,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   true,
 			   outer_spec->fixed_scan,
 			   outer_spec->grouped_scan,
-			   false, &outer_spec->s_id) != NO_ERROR)
+			   true, &outer_spec->s_id) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4702,7 +4722,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   true,
 			   inner_spec->fixed_scan,
 			   inner_spec->grouped_scan,
-			   false, &inner_spec->s_id) != NO_ERROR)
+			   true, &inner_spec->s_id) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4759,7 +4779,7 @@ exit_on_error:
  *   readonly_scan(in)  :
  *   fixed(in)  : Fixed scan flag
  *   grouped(in)        : Grouped scan flag
- *   keep_iscan_order(in)       :
+ *   iscan_oid_order(in)       :
  *   s_id(out)   : Set to the scan identifier
  *
  * Note: This routine is used to open a scan on an access specification
@@ -4768,7 +4788,7 @@ exit_on_error:
 static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		 VAL_LIST * val_list, VAL_DESCR * vd, int readonly_scan,
-		 int fixed, int grouped, bool keep_iscan_order, SCAN_ID * s_id)
+		 int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -4849,7 +4869,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				    curr_spec->s.cls_node.num_attrs_rest,
 				    curr_spec->s.cls_node.attrids_rest,
 				    curr_spec->s.cls_node.cache_rest,
-				    keep_iscan_order) != NO_ERROR)
+				    iscan_oid_order) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -6236,7 +6256,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
 		       &xasl_state->vd, true,
 		       specp->fixed_scan,
-		       specp->grouped_scan, false, &specp->s_id) != NO_ERROR)
+		       specp->grouped_scan, true, &specp->s_id) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -6901,7 +6921,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
 		       &xasl_state->vd, true,
 		       specp->fixed_scan,
-		       specp->grouped_scan, false, &specp->s_id) != NO_ERROR)
+		       specp->grouped_scan, true, &specp->s_id) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -7309,7 +7329,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (qexec_open_scan (thread_p, specp, xasl->val_list,
 			   &xasl_state->vd, true,
 			   specp->fixed_scan,
-			   specp->grouped_scan, false,
+			   specp->grouped_scan, true,
 			   &specp->s_id) != NO_ERROR)
 	{
 	  if (savepoint_used)
@@ -8373,6 +8393,8 @@ exit_on_error:
   err = er_errid ();
   if (err == ER_LK_UNILATERALLY_ABORTED ||
       err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG ||
+      err == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG ||
+      err == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG ||
       err == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -8530,6 +8552,7 @@ exit_on_error:
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree pointer
  *   xasl_state(in)     : XASL tree state information
+ *   tplrec(out) : Tuple record descriptor to store result tuples
  *
  * Note: This routines performs the finish-up operations for BUILDVALUE
  * block iteration.
@@ -8537,7 +8560,8 @@ exit_on_error:
 static int
 qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
 				      XASL_NODE * xasl,
-				      XASL_STATE * xasl_state)
+				      XASL_STATE * xasl_state,
+				      QFILE_TUPLE_RECORD * tplrec)
 {
   QFILE_LIST_ID *t_list_id = NULL;
   int status = NO_ERROR;
@@ -8547,7 +8571,6 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
   QPROC_TPLDESCR_STATUS tpldescr_status;
   DB_LOGICAL ev_res = V_UNKNOWN;
   QFILE_LIST_ID *output = NULL;
-  QFILE_TUPLE_RECORD tplrec = { 0, NULL };
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
 
@@ -8666,24 +8689,26 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
 
 	case QPROC_TPLDESCR_RETRY_SET_TYPE:
 	case QPROC_TPLDESCR_RETRY_BIG_REC:
-	  /* allocate tuple descriptor */
-	  tplrec.size = DB_PAGESIZE;
-	  tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
-	  if (tplrec.tpl == NULL)
+	  if (tplrec->tpl == NULL)
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      /* allocate tuple descriptor */
+	      tplrec->size = DB_PAGESIZE;
+	      tplrec->tpl =
+		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+	      if (tplrec->tpl == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 	  if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list,
 					       &xasl_state->vd,
-					       &tplrec) != NO_ERROR)
+					       tplrec) != NO_ERROR)
 	    {
-	      db_private_free_and_init (thread_p, tplrec.tpl);	/* free memory */
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  if (qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec.tpl) !=
-	      NO_ERROR)
+	  if (qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl)
+	      != NO_ERROR)
 	    {
-	      db_private_free_and_init (thread_p, tplrec.tpl);	/* free memory */
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  break;
@@ -8700,10 +8725,6 @@ end:
     {
       qfile_free_list_id (t_list_id);
       t_list_id = NULL;
-    }
-  if (tplrec.tpl)
-    {
-      db_private_free_and_init (thread_p, tplrec.tpl);
     }
   if (output)
     {
@@ -8723,6 +8744,7 @@ exit_on_error:
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
  *   xasl_state(in)     : XASL tree state information
+ *   tplrec(out) : Tuple record descriptor to store result tuples
  *
  * Note: This routines performs the finish-up operations for a main
  * procedure block iteration. The main procedure block nodes can
@@ -8731,7 +8753,8 @@ exit_on_error:
  */
 static int
 qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-				XASL_STATE * xasl_state)
+				XASL_STATE * xasl_state,
+				QFILE_TUPLE_RECORD * tplrec)
 {
   QFILE_LIST_ID *t_list_id = NULL;
   int status = NO_ERROR;
@@ -8769,7 +8792,8 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
     case BUILDVALUE_PROC:	/* end BUILDVALUE_PROC iterations */
       status =
-	qexec_end_buildvalueblock_iterations (thread_p, xasl, xasl_state);
+	qexec_end_buildvalueblock_iterations (thread_p, xasl, xasl_state,
+					      tplrec);
       break;
 
     case UNION_PROC:
@@ -8879,9 +8903,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int fixed_scan_flag;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl, *inner_xasl;
-  bool iscan_order;
+  bool iscan_oid_order;
   int old_waitsecs;
   int error;
+  unsigned int old_ins_heap_id;
+
+  /* create new instant heap memory and save old */
+  old_ins_heap_id = db_replace_instant_heap (thread_p);
 
   /*
    * Pre_processing
@@ -8945,16 +8973,6 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
     default:
 
-
-      /* allocate a tuple  descriptor */
-      tplrec.size = DB_PAGESIZE;
-      tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
-      if (tplrec.tpl == NULL)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
-	}
-
       if (xasl->composite_locking)
 	{
 	  readonly_scan = false;
@@ -8974,7 +8992,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      if (qexec_execute_start_node (s_node, xasl_state) != NO_ERROR)
 		{
-		  db_private_free_and_init (thread_p, tplrec.tpl);
+		  if (tplrec.tpl)
+		    {
+		      db_instant_free_and_init (thread_p, tplrec.tpl);
+		    }
+		  /* restore old instant heap memory */
+		  db_destroy_instant_heap (thread_p, 0);
+		  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 		  qexec_failure_line (__LINE__, xasl_state);
 		  return ER_FAILED;
 		}
@@ -9039,7 +9063,14 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state) !=
 		      NO_ERROR)
 		    {
-		      db_private_free_and_init (thread_p, tplrec.tpl);
+		      if (tplrec.tpl)
+			{
+			  db_instant_free_and_init (thread_p, tplrec.tpl);
+			}
+		      /* restore old instant heap memory */
+		      db_destroy_instant_heap (thread_p, 0);
+		      (void) db_change_instant_heap (thread_p,
+						     old_ins_heap_id);
 		      qexec_failure_line (__LINE__, xasl_state);
 		      return ER_FAILED;
 		    }
@@ -9048,7 +9079,14 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{		/* already executed. success or failure */
 		  if (xptr2->status != XASL_SUCCESS)
 		    {
-		      db_private_free_and_init (thread_p, tplrec.tpl);
+		      if (tplrec.tpl)
+			{
+			  db_instant_free_and_init (thread_p, tplrec.tpl);
+			}
+		      /* restore old instant heap memory */
+		      db_destroy_instant_heap (thread_p, 0);
+		      (void) db_change_instant_heap (thread_p,
+						     old_ins_heap_id);
 		      qexec_failure_line (__LINE__, xasl_state);
 		      return ER_FAILED;
 		    }
@@ -9188,7 +9226,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  specp->grouped_scan = false;
 			}
 
-		      iscan_order = xptr->iscan_order;
+		      iscan_oid_order = xptr->iscan_oid_order;
 
 		      /* open the scan for this access specification node */
 		      if (level == 0 && spec_level == 1)
@@ -9208,7 +9246,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       &xasl_state->vd, readonly_scan,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
-					       iscan_order,
+					       iscan_oid_order,
 					       &specp->s_id) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
@@ -9225,7 +9263,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  true))
 			    {
 			      specp->grouped_scan = false;
-			      iscan_order = true;
+			      iscan_oid_order = false;
 			    }
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
 			  SET_DIAG_VALUE_FULL_SCAN (diag_executediag, 1,
@@ -9242,7 +9280,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					       &xasl_state->vd, readonly_scan,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
-					       iscan_order,
+					       iscan_oid_order,
 					       &specp->s_id) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
@@ -9355,8 +9393,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
 
       /* end main block iterations */
-      if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state) !=
-	  NO_ERROR)
+      if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec)
+	  != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -9376,7 +9414,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (xasl->type == BUILDLIST_PROC	/* it is SELECT query */
 	  && xasl->proc.buildlist.groupby_list)	/* it has GROUP BY clause */
 	{
-	  if (qexec_groupby (thread_p, xasl, xasl_state) != NO_ERROR)
+	  if (qexec_groupby (thread_p, xasl, xasl_state, &tplrec) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -9464,8 +9502,12 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   if (tplrec.tpl)
     {
-      db_private_free_and_init (thread_p, tplrec.tpl);
+      db_instant_free_and_init (thread_p, tplrec.tpl);
     }
+
+  /* restore old instant heap memory */
+  db_destroy_instant_heap (thread_p, 0);
+  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   xasl->status = XASL_SUCCESS;
 
@@ -9487,10 +9529,14 @@ exit_on_error:
     {
       db_private_free_and_init (thread_p, func_vector);
     }
+
   if (tplrec.tpl)
     {
-      db_private_free_and_init (thread_p, tplrec.tpl);
+      db_instant_free_and_init (thread_p, tplrec.tpl);
     }
+  /* restore old instant heap memory */
+  db_destroy_instant_heap (thread_p, 0);
+  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   xasl->status = XASL_FAILURE;
 
@@ -9514,7 +9560,9 @@ exit_on_error:
  * NULL is returned.
  */
 
+#if 0
 #define QP_MAX_RE_EXECUTES_UNDER_DEADLOCKS 10
+#endif
 
 QFILE_LIST_ID *
 qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,

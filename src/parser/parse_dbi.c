@@ -2271,12 +2271,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
   DB_VALUE *val, *hv;
   DB_TYPE typ, val_typ;
   TP_DOMAIN *dom;
-  int i;
+  int num_errors, i;
 
   if (parser == NULL || count <= 0 || values == NULL)
     {
       return;
     }
+
+  num_errors = 0;
+  parser->set_host_var = 0;
 
   if (parser->host_var_count > count)
     {
@@ -2285,15 +2288,13 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 		     MSGCAT_SET_PARSER_RUNTIME,
 		     MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR, count,
 		     parser->host_var_count);
-      parser->set_host_var = 0;
+      num_errors++;
     }
   else
     {
-      count = parser->host_var_count;
-      parser->set_host_var = 1;
       /* cast and copy the given values to the place holder */
       for (val = (DB_VALUE *) values, hv = parser->host_variables, i = 0;
-	   i < count; val++, hv++, i++)
+	   i < parser->host_var_count; val++, hv++, i++)
 	{
 	  if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_NULL)
 	    {
@@ -2326,6 +2327,13 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 				   "host var",
 				   pt_type_enum_to_db_domain_name
 				   (pt_db_to_type_enum (typ)));
+		      num_errors++;
+		      if (dom)
+			{
+			  /* restore original type */
+			  db_value_domain_init (hv, dom->type->id,
+						dom->precision, dom->scale);
+			}
 		    }
 		}
 	    }
@@ -2333,7 +2341,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	    {
 	      /* hv: value is not null && type is not null
 	         host variable place holders are preset
-	         with the expected domains in pt_make_regu_hostvar() */
+	         with the expected domains */
 	      typ = DB_VALUE_DOMAIN_TYPE (hv);
 	      val_typ = DB_VALUE_DOMAIN_TYPE (val);
 	      dom = tp_domain_resolve_value (hv, NULL);
@@ -2352,9 +2360,21 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 			       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
 			       pt_type_enum_to_db_domain_name
 			       (pt_db_to_type_enum (typ)));
+		  num_errors++;
+		  if (dom)
+		    {
+		      /* restore original type */
+		      db_value_domain_init (hv, dom->type->id, dom->precision,
+					    dom->scale);
+		    }
 		}
 	    }
 	}
+    }
+
+  if (num_errors == 0)
+    {
+      parser->set_host_var = 1;	/* OK */
     }
 }
 

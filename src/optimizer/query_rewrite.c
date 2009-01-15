@@ -1630,21 +1630,26 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{		/* too big literal string */
-		  if ((temp = parser_new_node (parser, PT_EXPR)) == NULL)
+		  temp =
+		    pt_wrap_with_cast_op (parser,
+					  parser_copy_tree_list (parser,
+								 arg2),
+					  arg1->type_enum,
+					  ((arg1->data_type) ? arg1->
+					   data_type->info.data_type.
+					   precision :
+					   TP_FLOATING_PRECISION_VALUE),
+					  ((arg1->data_type) ? arg1->
+					   data_type->info.data_type.
+					   dec_precision :
+					   TP_FLOATING_PRECISION_VALUE));
+		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
 				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		      *wherep = save_where_next;
 		      continue;	/* give up */
 		    }
-
-		  new_dt = parser_copy_tree_list (parser, arg1->data_type);
-
-		  temp->type_enum = new_dt->type_enum;
-		  temp->info.expr.op = PT_CAST;
-		  temp->info.expr.cast_type = new_dt;
-		  temp->info.expr.arg1 = parser_copy_tree_list (parser, arg2);
-		  temp->data_type = parser_copy_tree_list (parser, new_dt);
 		}
 	    }
 	  else
@@ -1667,21 +1672,26 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{		/* create nested CAST node */
-		  if ((temp = parser_new_node (parser, PT_EXPR)) == NULL)
+		  temp =
+		    pt_wrap_with_cast_op (parser,
+					  parser_copy_tree_list (parser,
+								 arg2),
+					  arg1->type_enum,
+					  ((arg1->data_type) ? arg1->
+					   data_type->info.data_type.
+					   precision :
+					   TP_FLOATING_PRECISION_VALUE),
+					  ((arg1->data_type) ? arg1->
+					   data_type->info.data_type.
+					   dec_precision :
+					   TP_FLOATING_PRECISION_VALUE));
+		  if (temp == NULL)
 		    {
 		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
 				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		      *wherep = save_where_next;
 		      continue;	/* give up */
 		    }
-
-		  new_dt = parser_copy_tree_list (parser, arg1->data_type);
-
-		  temp->type_enum = new_dt->type_enum;
-		  temp->info.expr.op = PT_CAST;
-		  temp->info.expr.cast_type = new_dt;
-		  temp->info.expr.arg1 = parser_copy_tree_list (parser, arg2);
-		  temp->data_type = parser_copy_tree_list (parser, new_dt);
 		}
 	    }
 
