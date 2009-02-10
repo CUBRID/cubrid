@@ -95,6 +95,10 @@ extern const char *db_error_string (int level);
 extern int db_error_code (void);
 extern int db_error_init (const char *logfile);
 
+typedef void (*db_error_log_handler_t) (unsigned int);
+extern db_error_log_handler_t
+db_register_error_log_handler (db_error_log_handler_t f);
+
 extern int db_set_lock_timeout (int seconds);
 extern int db_set_isolation (DB_TRAN_ISOLATION isolation);
 extern void db_synchronize_cache (void);

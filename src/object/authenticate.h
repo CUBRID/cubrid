@@ -230,6 +230,9 @@ extern void au_set_password_method (MOP user, DB_VALUE * returnval,
 				    DB_VALUE * password);
 extern void au_set_password_encoded_method (MOP user, DB_VALUE * returnval,
 					    DB_VALUE * password);
+extern void au_set_password_encoded_sha1_method (MOP user,
+						 DB_VALUE * returnval,
+						 DB_VALUE * password);
 extern void au_add_member_method (MOP user, DB_VALUE * returnval,
 				  DB_VALUE * memval);
 extern void au_drop_member_method (MOP user, DB_VALUE * returnval,

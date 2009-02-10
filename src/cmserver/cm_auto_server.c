@@ -315,6 +315,30 @@ main (int argc, char **argv)
 	    }
 	}
     }
+  else if (strcmp (ars_cmd, "getpid") == 0)
+    {
+      if (access (pid_file_name, F_OK) < 0)
+	{
+	  exit (1);
+	}
+      else
+	{
+	  pidfile = fopen (pid_file_name, "rt");
+	  fscanf (pidfile, "%d", &pidnum);
+	  fclose (pidfile);
+
+	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
+	      (is_cmserver_process (pidnum, PSERVER_MODULE_NAME) == 0))
+	    {
+	      exit (1);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "%d\n", pidnum);
+	      exit (0);
+	    }
+	}
+    }
   else
     {
       fprintf (start_log_fp, "Error : Invalid command - %s\n", ars_cmd);

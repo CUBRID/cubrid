@@ -482,7 +482,8 @@ extern int fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
 					 int *vol_nbytes);
 extern int fileio_restore_volume (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session,
-				  char *to_vlabel, char *prev_vlabel,
+				  char *to_vlabel, char *verbose_to_vlabel,
+				  char *prev_vlabel,
 				  FILEIO_RESTORE_PAGE_CACHE * pages_cache,
 				  bool remember_pages);
 extern int fileio_skip_restore_volume (THREAD_ENTRY * thread_p,

@@ -152,6 +152,10 @@ extern void er_set (int severity, const char *file_name, const int line_no,
 extern void er_set_with_oserror (int severity, const char *file_name,
 				 const int line_no, int err_id, int num_args,
 				 ...);
+typedef void (*er_log_handler_t) (unsigned int);
+extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
+						 
+
 extern int er_errid (void);
 extern int er_severity (void);
 extern int er_nlevels (void);

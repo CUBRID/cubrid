@@ -68,8 +68,8 @@ static void or_get_att_index (char *ptr, BTID * btid);
 static int or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length);
 static int or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
 				  DB_VALUE * pvalue);
-static void or_install_btids_foreign_key (const char *cons_name,
-					  DB_SEQ * fk_seq, OR_INDEX * index);
+static void or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
+					  OR_INDEX * index);
 static void or_install_btids_foreign_key_ref (DB_SEQ * fk_container,
 					      OR_INDEX * index);
 static void or_install_btids_class (OR_CLASSREP * rep, BTID * id,
@@ -1242,12 +1242,12 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
 /*
  * or_install_btids_foreign_key () -
  *   return:
- *   cons_name(in):
+ *   fkname(in):
  *   fk_seq(in):
  *   index(in):
  */
 static void
-or_install_btids_foreign_key (const char *cons_name, DB_SEQ * fk_seq,
+or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
 			      OR_INDEX * index)
 {
   DB_VALUE val;
@@ -1263,7 +1263,7 @@ or_install_btids_foreign_key (const char *cons_name, DB_SEQ * fk_seq,
 	}
 
       index->fk->next = NULL;
-      index->fk->name = strdup (cons_name);
+      index->fk->fkname = strdup (fkname);
 
       args = classobj_decompose_property_oid (DB_GET_STRING (&val),
 					      &pageid, &slotid, &volid);
@@ -1328,7 +1328,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
   int pageid, slotid, volid, fileid;
   DB_SEQ *fk_seq;
   OR_FOREIGN_KEY *fk, *p;
-  char *fk_name;
+  char *fkname;
 
   size = set_size (fk_container);
 
@@ -1387,8 +1387,8 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  fk->upd_action = DB_GET_INT (&val);
 
 	  set_get_element_nocopy (fk_seq, 4, &val);
-	  fk_name = DB_GET_STRING (&val);
-	  fk->name = strdup (fk_name);
+	  fkname = DB_GET_STRING (&val);
+	  fk->fkname = strdup (fkname);
 
 	  set_get_element_nocopy (fk_seq, 5, &val);
 	  fk->cache_attr_id = DB_GET_INT (&val);
@@ -1495,6 +1495,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 	       */
 	      e++;
 	    }
+	  index->btname = strdup (cons_name);
 
 	  if (type == BTREE_FOREIGN_KEY)
 	    {
@@ -1744,14 +1745,11 @@ or_install_btids (OR_CLASSREP * rep, DB_SET * props)
 	  for (j = 0; j < property_vars[i].length && error == NO_ERROR;
 	       j += 2)
 	    {
-	      if (property_vars[i].type == BTREE_FOREIGN_KEY)
+	      error = set_get_element_nocopy (property_vars[i].seq, j,
+					      &cons_name_val);
+	      if (error == NO_ERROR)
 		{
-		  error = set_get_element_nocopy (property_vars[i].seq, j,
-						  &cons_name_val);
-		  if (error == NO_ERROR)
-		    {
-		      cons_name = DB_GET_STRING (&cons_name_val);
-		    }
+		  cons_name = DB_GET_STRING (&cons_name_val);
 		}
 
 	      error = set_get_element_nocopy (property_vars[i].seq, j + 1,
@@ -2525,12 +2523,20 @@ or_free_classrep (OR_CLASSREP * rep)
 		  free_and_init (index->atts);
 		}
 
+	      if (index->btname != NULL)
+		{
+		  free_and_init (index->btname);
+		}
+
 	      if (index->fk)
 		{
 		  for (fk = index->fk; fk; fk = fk_next)
 		    {
 		      fk_next = fk->next;
-		      free_and_init (fk->name);
+		      if (fk->fkname)
+			{
+			  free_and_init (fk->fkname);
+			}
 		      free_and_init (fk);
 		    }
 		}

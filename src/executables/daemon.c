@@ -33,6 +33,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -45,9 +46,9 @@ void
 css_daemon_start (void)
 {
   int childpid, fd;
-#if defined (sun)
+#if defined(HAVE_GETRLIMIT)
   struct rlimit rlp;
-#endif /* sun */
+#endif /* HAVE_GETRLIMIT */
   int fd_max;
   int ppid = getpid ();
 
@@ -135,14 +136,16 @@ out:
    * could be a shell. For now, leave in/out/err open
    */
 
-#if defined (sun)
+#if defined (HAVE_GETRLIMIT)
   fd_max = 0;
   if (getrlimit (RLIMIT_NOFILE, &rlp) == 0)
     fd_max = MIN (1024, rlp.rlim_cur);
-#elif defined(LINUX)
+#elif defined (OPEN_MAX)
+  fd_max = OPEN_MAX;
+#elif defined(HAVE_SYSCONF) && defined (_SC_OPEN_MAX)
   fd_max = sysconf (_SC_OPEN_MAX);
-#else /* HPUX */
-  fd_max = _POSIX_OPEN_MAX;
+#else
+#error "There's no known way to get the maxium number of file descriptors!"
 #endif
   for (fd = 3; fd < fd_max; fd++)
     close (fd);

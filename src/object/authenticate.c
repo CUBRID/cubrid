@@ -126,8 +126,11 @@ const char *AU_DBA_USER_NAME = "dba";
 #define GRANT_ENTRY_CACHE(index) 	((index) + 2)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
-#define ENCODE_PREFIX                   (char)1
-#define IS_ENCODED(string)              (string[0] == ENCODE_PREFIX)
+#define ENCODE_PREFIX_DEFAULT		(char)0
+#define ENCODE_PREFIX_DES               (char)1
+#define ENCODE_PREFIX_SHA1              (char)2
+#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
+#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
 
 
 /* Macro to determine if a dbvalue is a character strign type. */
@@ -429,6 +432,8 @@ static DB_METHOD_LINK au_static_links[] = {
   {"au_set_password_method", (METHOD_LINK_FUNCTION) au_set_password_method},
   {"au_set_password_encoded_method",
    (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
+  {"au_set_password_encoded_sha1_method",
+   (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
   {"au_describe_user_method", (METHOD_LINK_FUNCTION) au_describe_user_method},
   {"au_describe_root_method", (METHOD_LINK_FUNCTION) au_describe_root_method},
   {"au_info_method", (METHOD_LINK_FUNCTION) au_info_method},
@@ -502,10 +507,12 @@ static int au_propogate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 
 static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
+static void encrypt_password_sha1 (const char *pass, int add_prefix,
+				   char *dest);
 static int io_relseek (const char *pass, int has_prefix, char *dest);
 static int match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password,
-				     int encode);
+				     int encode, char encrypt_prefix);
 
 static int au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value);
 static int au_compute_groups (MOP member, char *name);
@@ -1998,7 +2005,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval,
  */
 
 /*
- * encrypt_password -  Encrypts a password string
+ * encrypt_password -  Encrypts a password string using DES
  *   return: none
  *   pass(in): string to encrypt
  *   add_prefix(in): non-zero to add the prefix char
@@ -2019,7 +2026,33 @@ encrypt_password (const char *pass, int add_prefix, char *dest)
       else
 	{
 	  crypt_encrypt_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
-	  dest[0] = ENCODE_PREFIX;
+	  dest[0] = ENCODE_PREFIX_DES;
+	}
+    }
+}
+
+/*
+ * encrypt_password_sha1 -  hashing a password string using SHA1
+ *   return: none
+ *   pass(in): string to encrypt
+ *   add_prefix(in): non-zero to add the prefix char
+ *   dest(out): destination buffer
+ */
+static void
+encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
+{
+  if (pass == NULL)
+    strcpy (dest, "");
+  else
+    {
+      if (!add_prefix)
+	{
+	  crypt_encrypt_sha1_printable (pass, dest, AU_MAX_PASSWORD_BUF);
+	}
+      else
+	{
+	  crypt_encrypt_sha1_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
+	  dest[0] = ENCODE_PREFIX_SHA1;
 	}
     }
 }
@@ -2094,23 +2127,31 @@ match_password (const char *user, const char *database)
   char buf2[AU_MAX_PASSWORD_BUF + 4];
 
   /* get both passwords into an encrypted format */
-
-  if (IS_ENCODED (user))
+  /* if database's password was encrypted with DES,
+   * then, user's password should be encrypted with DES,
+   * 
+   * DATABASE                   USER
+   * DES  -> NO TRANS           PLAIN -> DES
+   * SHA1 -> NO TRANS           PLAIN -> SHA1
+   * PLAINTEXT -> TRANS to SHA1 PLAIN -> SHA1
+   */
+  if (IS_ENCODED_DES (database))
     {
-      strcpy (buf1, user);
-    }
-  else
-    {
+      /* DB: DES, USER:PLAINTEXT */
+      strcpy (buf2, database);
       encrypt_password (user, 1, buf1);
     }
-
-  if (IS_ENCODED (database))
+  else if (IS_ENCODED_SHA1 (database))
     {
+      /* DB:SHA1, USER:PLAINTEXT */
       strcpy (buf2, database);
+      encrypt_password_sha1 (user, 1, buf1);
     }
   else
     {
-      encrypt_password (database, 1, buf2);
+      /* DB:PLAIN, USER:PLAINTEXT */
+      encrypt_password_sha1 (database, 1, buf2);
+      encrypt_password_sha1 (user, 1, buf1);
     }
 
   return strcmp (buf1, buf2) == 0;
@@ -2123,9 +2164,16 @@ match_password (const char *user, const char *database)
  *   user(in):  user object
  *   password(in): new password
  *   encode(in): flag to enable encryption of the string in the database
+ *   encrypt_prefix(in): If encode flag is 0, then we assume that the 
+ *                      given password have been encrypted. So, All I have
+ *                      to do is add prefix(DES or SHA1) to given password.
+ *                       If encode flag is 1, then we should encrypt 
+ *                      password with sha1 and add prefix (SHA1) to it.
+ *                      So, I don't care what encrypt_prefix value is.
  */
 static int
-au_set_password_internal (MOP user, const char *password, int encode)
+au_set_password_internal (MOP user, const char *password, int encode,
+			  char encrypt_prefix)
 {
   int error = NO_ERROR;
   DB_VALUE value;
@@ -2195,7 +2243,7 @@ au_set_password_internal (MOP user, const char *password, int encode)
 		{
 		  if (encode && password != NULL)
 		    {
-		      encrypt_password (password, 1, pbuf);
+		      encrypt_password_sha1 (password, 1, pbuf);
 		      db_make_string (&value, pbuf);
 		      error = obj_set (pass, "password", &value);
 		    }
@@ -2212,7 +2260,7 @@ au_set_password_internal (MOP user, const char *password, int encode)
 		      else
 			{
 			  strcpy (pbuf + 1, password);
-			  pbuf[0] = ENCODE_PREFIX;
+			  pbuf[0] = encrypt_prefix;
 			  db_make_string (&value, pbuf);
 			}
 		      error = obj_set (pass, "password", &value);
@@ -2234,7 +2282,8 @@ au_set_password_internal (MOP user, const char *password, int encode)
 int
 au_set_password (MOP user, const char *password)
 {
-  return (au_set_password_internal (user, password, 1));
+  return (au_set_password_internal
+	  (user, password, 1, ENCODE_PREFIX_DEFAULT));
 }
 
 /*
@@ -2307,7 +2356,56 @@ au_set_password_encoded_method (MOP user, DB_VALUE * returnval,
 	    }
 	}
 
-      error = au_set_password_internal (user, string, 0);
+      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_DES);
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	}
+    }
+  else
+    {
+      error = ER_AU_INVALID_PASSWORD;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      db_make_error (returnval, error);
+    }
+}
+
+/*
+ * au_set_password_encoded_sha1_method - Method interface for setting
+ *                                      sha1 passwords.
+ *   return: none
+ *   user(in): user object
+ *   returnval(out): return value of this object
+ *   password(in): new password
+ *
+ * Note: We don't check for the 8 character limit here because this is intended
+ *       to be used only by the schema generated by unloaddb.  For this
+ *       application, the password length was validated when it was first
+ *       created.
+ */
+void
+au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval,
+				     DB_VALUE * password)
+{
+  int error;
+  const char *string = NULL;
+
+  db_make_null (returnval);
+  if (password != NULL)
+    {
+      if (IS_STRING (password))
+	{
+	  if (DB_IS_NULL (password))
+	    {
+	      string = NULL;
+	    }
+	  else
+	    {
+	      string = db_get_string (password);
+	    }
+	}
+
+      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -5725,11 +5823,8 @@ au_login (const char *name, const char *password)
 	}
       else
 	{
-	  /*
-	   * store the password encrypted so we don't have buffers lying
-	   * around with the obvious passwords in it
-	   */
-	  encrypt_password (password, 1, Au_user_password);
+	  /* store the password */
+	  strcpy (Au_user_password, password);
 	}
     }
   else
@@ -5969,6 +6064,7 @@ au_export_users (FILE * outfp)
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
   const char *qp1 = "select %s from %s;";
+  char encrypt_mode = 0x00;
 
   query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
   if (!query)
@@ -5998,6 +6094,7 @@ au_export_users (FILE * outfp)
 	    }
 	  uname = au_get_user_name (user);
 	  strcpy (passbuf, "");
+	  encrypt_mode = 0x00;
 	  if ((error = obj_get (user, "password", &value)) == NO_ERROR)
 	    {
 	      if (DB_IS_NULL (&value))
@@ -6021,15 +6118,22 @@ au_export_users (FILE * outfp)
 			   * copy password string using malloc
 			   * to be consistent with encrypt_password
 			   */
-			  if (IS_ENCODED (str))
+			  if (IS_ENCODED_DES (str))
 			    {
 			      /* strip off the prefix so its readable */
 			      strcpy (passbuf, str + 1);
+			      encrypt_mode = ENCODE_PREFIX_DES;
+			    }
+			  else if (IS_ENCODED_SHA1 (str))
+			    {
+			      /* strip off the prefix so its readable */
+			      strcpy (passbuf, str + 1);
+			      encrypt_mode = ENCODE_PREFIX_SHA1;
 			    }
 			  else if (strlen (str))
 			    {
-			      /* encrypt without prefix */
-			      encrypt_password (str, 0, passbuf);
+			      /* sha1 hashing without prefix */
+			      encrypt_password_sha1 (str, 0, passbuf);
 			    }
 			  ws_free_string (str);
 			}
@@ -6049,10 +6153,18 @@ au_export_users (FILE * outfp)
 		      fprintf (outfp,
 			       "call add_user('%s', '') on class db_root to auser;\n",
 			       uname);
-		      fprintf (outfp,
-			       "call set_password_encoded('%s') on auser;\n",
-			       passbuf);
-
+		      if (encrypt_mode == ENCODE_PREFIX_DES)
+			{
+			  fprintf (outfp,
+				   "call set_password_encoded('%s') on auser;\n",
+				   passbuf);
+			}
+		      else
+			{
+			  fprintf (outfp,
+				   "call set_password_encoded_sha1('%s') on auser;\n",
+				   passbuf);
+			}
 		    }
 		}
 	      else
@@ -6062,9 +6174,18 @@ au_export_users (FILE * outfp)
 		      fprintf (outfp,
 			       "call find_user('%s') on class db_user to auser;\n",
 			       uname);
-		      fprintf (outfp,
-			       "call set_password_encoded('%s') on auser;\n",
-			       passbuf);
+		      if (encrypt_mode == ENCODE_PREFIX_DES)
+			{
+			  fprintf (outfp,
+				   "call set_password_encoded('%s') on auser;\n",
+				   passbuf);
+			}
+		      else
+			{
+			  fprintf (outfp,
+				   "call set_password_encoded_sha1('%s') on auser;\n",
+				   passbuf);
+			}
 		    }
 		}
 	    }
@@ -7293,6 +7414,8 @@ au_install (void)
   smt_add_method (def, "set_password", "au_set_password_method");
   smt_add_method (def, "set_password_encoded",
 		  "au_set_password_encoded_method");
+  smt_add_method (def, "set_password_encoded_sha1",
+		  "au_set_password_encoded_sha1_method");
   smt_add_method (def, "add_member", "au_add_member_method");
   smt_add_method (def, "drop_member", "au_drop_member_method");
   smt_add_method (def, "print_authorizations", "au_describe_user_method");

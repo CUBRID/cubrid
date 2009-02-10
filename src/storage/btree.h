@@ -260,7 +260,9 @@ extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern int btree_get_stats (THREAD_ENTRY * thread_p, BTID * btid,
 			    BTREE_STATS * stat_info, bool get_pkeys);
-extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, BTID * btid);
+extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p,
+				      const OID * class_oid_p, BTID * btid,
+				      const char *btname);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
 extern int btree_keyoid_checkscan_start (BTID * btid,
 					 BTREE_CHECKSCAN * btscan);

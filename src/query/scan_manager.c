@@ -1735,9 +1735,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   /* attribute information of the index key */
-  if (heap_get_attrids_of_btid_key
+  if (heap_get_indexinfo_of_btid
       (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type,
-       &isidp->bt_num_attrs, &isidp->bt_attr_ids) != NO_ERROR)
+       &isidp->bt_num_attrs, &isidp->bt_attr_ids, NULL) != NO_ERROR)
     {
       goto exit_on_error;
     }

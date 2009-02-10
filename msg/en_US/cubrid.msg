@@ -600,9 +600,9 @@ $set 5 MSGCAT_SET_ERROR
 541 Number of free pages for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
 542 Number of free sectors for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
 543 Disk header for volume "%1$s" is inconsistent.
-544 Internal error: Btree key %1$s entry for object OID: %2$d|%3$d|%4$d was not found on B+tree: %5$d|%6$d|%7$d.
-545 Internal error: Key and OID: %1$d|%2$d|%3$d entry on B+tree: %4$d|%5$d|%6$d is incorrect.The object does not exist.
-546 Internal error: expecting %1$d OID entry values, but %2$d were found on B+tree: %3$d|%4$d|%5$d.
+544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Btree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
+545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect.The object does not exist.
+546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 Server release %1$s is different from client release %2$s.
 548 There is no object_id defined for proxy class "%1$s".
 549 The proxy instance was not found.
@@ -1036,12 +1036,12 @@ $set 6 MSGCAT_SET_INTERNAL
 12 er_study_fmt: suspect message for error code %d.
 13 er_estimate_size: unknown conversion code (%d).
 14 \n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n
-15 \nTime: %s - %s *** %s CODE = %d, Tran = %d\n%s\n
+15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
 16 System (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
-17 \nTime: %s - %s *** file %s, line %d %s CODE = %d Tran = %d\n%s\n
+17 \nTime: %s - %s *** file %s, line %d %s CODE = %d Tran = %d%s\n%s\n
 18 System (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s
 19 \n*** The previous error message is the last one. ***\n\n
-20 \nDEBUG/NOTIFICATION *** file %s, line %d\n
+20 \nTime: %s DEBUG *** file %s, line %d\n
 21 Mail -s "Server has been stopped"
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d

@@ -1,8 +1,0 @@
-Makefile
-.deps
-elements
-.libs
-sample
-client
-server
-server_compliance_test

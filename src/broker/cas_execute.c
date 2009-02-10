@@ -56,6 +56,10 @@
 
 #include "release_string.h"
 
+#ifdef DIAG_DEVEL
+#include "perf_monitor.h"
+#endif
+
 #define SIZE_DATE       6
 #define SIZE_TIME       6
 #define SIZE_OBJECT     8
@@ -667,16 +671,16 @@ prepare_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 prepare_error2:
-  if (srv_handle)
-    hm_srv_handle_free (srv_h_id);
-  if (session)
-    db_close_session (session);
 #ifndef LIBCAS_FOR_JSP
-  if (srv_handle->auto_commit_mode)
+  if (auto_commit_mode == TRUE)
     {
       need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
+  if (srv_handle)
+    hm_srv_handle_free (srv_h_id);
+  if (session)
+    db_close_session (session);
   return err_code;
 }
 
@@ -831,6 +835,10 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     }
 
   n = db_execute_and_keep_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
+  shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
   if (n < 0)
     {
       DB_ERR_MSG_SET (net_buf, n);
@@ -1098,6 +1106,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 			   stmt_id);
 #endif
       n = db_execute_and_keep_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+      shm_appl->as_info[shm_as_index].num_query_processed %=
+	MAX_DIAG_DATA_VALUE;
+      shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
 #ifndef LIBCAS_FOR_JSP
       SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
 			 stmt_id, n);
@@ -1312,6 +1325,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   jsp_set_prepare_call ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
+  shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
   jsp_unset_prepare_call ();
 
   if (n < 0)
@@ -1520,6 +1537,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       cas_log_write2 (" %s\n", use_plan_cache ? "(PC)" : "");
 
       res_count = db_execute_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+      shm_appl->as_info[shm_as_index].num_query_processed %=
+	MAX_DIAG_DATA_VALUE;
+      shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
+
 #ifndef LIBCAS_FOR_JSP
       SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
 			 stmt_id, res_count);
@@ -1708,6 +1731,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 			   stmt_id);
 #endif
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+      shm_appl->as_info[shm_as_index].num_query_processed %=
+	MAX_DIAG_DATA_VALUE;
+      shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
 #ifndef LIBCAS_FOR_JSP
       SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
 			 stmt_id, res_count);
@@ -6405,6 +6433,10 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
     }
   stmt_type = db_get_statement_type (session, stmt_id);
   num_result = db_execute_statement (session, stmt_id, &result);
+#ifdef DIAG_DEVEL
+  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
+  shm_appl->as_info[shm_as_index].num_query_processed++;
+#endif
   if (num_result < 0)
     {
       DB_ERR_MSG_SET (net_buf, stmt_id);

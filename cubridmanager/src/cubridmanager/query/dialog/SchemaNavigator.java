@@ -289,7 +289,7 @@ public class SchemaNavigator {
 			throws SQLException {
 		String sql;
 		Statement stmt = conn.createStatement(
-				ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+				ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		CUBRIDResultSet rs;
 
 		txtInfo.append(Messages.getString("QEDIT.NAME") + ": " + name);

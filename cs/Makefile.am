@@ -112,6 +112,7 @@ BASE_SOURCES = \
         $(BASE_DIR)/memory_alloc.c \
 	$(BASE_DIR)/databases_file.c \
 	$(BASE_DIR)/encryption.c \
+	$(BASE_DIR)/sha1.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
 	$(BASE_DIR)/memory_hash.c \
@@ -146,7 +147,7 @@ CONNECTION_SOURCES = \
 COMMUNICATION_SOURCES = \
 	$(COMMUNICATION_DIR)/network_interface_cl.c \
 	$(COMMUNICATION_DIR)/network_cl.c \
-	$(COMMUNICATION_DIR)/network.c \
+	$(COMMUNICATION_DIR)/network.c
 PARSER_SOURCES = \
 	$(PARSER_DIR)/parser_support.c \
 	$(PARSER_DIR)/double_byte_support.c \
@@ -241,7 +242,7 @@ libcubridcs_la_SOURCES = \
 	$(JSP_SOURCES) \
 	$(TRANSACTION_SOURCES) \
 	$(STORAGE_SOURCES)
-dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/sqlx_grammar.g $(EXECUTABLE_DIR)/ld.g
+dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/ld.g
 libcubridcs_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridcs_la_LIBADD = $(LIBADD_DL)
 libcubridcs_la_LINK = $(LINK)

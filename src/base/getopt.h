@@ -13,13 +13,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *        This product includes software developed by the NetBSD
- *        Foundation, Inc. and its contributors.
- * 4. Neither the name of The NetBSD Foundation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
@@ -42,8 +35,7 @@
 #endif
 
 /*
- * GNU-like getopt_long()/getopt_long_only() with 4.4BSD optreset extension.
- * getopt() is declared here too for GNU programs.
+ * Gnu like getopt_long() and BSD4.4 getsubopt()/optreset extensions
  */
 #define no_argument        0
 #define required_argument  1
@@ -64,20 +56,29 @@ struct option
   int val;
 };
 
-extern int getopt_long (int, char *const *, const char *,
-			const struct option *, int *);
-extern int getopt_long_only (int, char *const *, const char *,
-			     const struct option *, int *);
-#ifndef _GETOPT_DECLARED
-#define	_GETOPT_DECLARED
-extern int getopt (int, char *const[], const char *);
-
-extern char *optarg;		/* getopt(3) external variables */
-extern int optind, opterr, optopt;
+#ifdef __cplusplus
+extern "C"
+{
 #endif
+
+  int getopt_long (int, char *const *, const char *,
+		   const struct option *, int *);
+
+/* On some platforms, this is in libc, but not in a system header */
 #ifndef _OPTRESET_DECLARED
-#define	_OPTRESET_DECLARED
-extern int optreset;		/* getopt(3) external variable */
+#define _OPTRESET_DECLARED
+  extern int optreset;
+#endif
+#ifndef _GETOPT_DECLARED
+#define _GETOPT_DECLARED
+  extern char *optarg;
+  extern int opterr;
+  extern int optind;
+  extern int optopt;
+#endif
+
+#ifdef __cplusplus
+};
 #endif
 
 #endif /* !_GETOPT_H_ */

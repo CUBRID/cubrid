@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -315,6 +315,11 @@ repl_handle_new_connection (void)
 	  REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
 	}
 
+      if (repl_set_socket_tcp_nodelay (new_fd) != NO_ERROR)
+	{
+	  REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
+	}
+
       conn_p = repl_svr_get_new_repl_connection ();
       if (conn_p == NULL)
 	{
@@ -371,79 +376,55 @@ repl_handle_new_connection (void)
 static int
 repl_handle_new_request (int fd, char *req_bufp)
 {
-  int i;
-  int nread_bytes;
-  int error = NO_ERROR;
-  REPL_CONN *conn_p;
+  int remain_len = COMM_REQ_BUF_SIZE;
+  int read_count;
 
-  /* Read from it */
-  nread_bytes = recv (fd, req_bufp, COMM_REQ_BUF_SIZE, 0);
-  if (nread_bytes != COMM_REQ_BUF_SIZE)
+  while (remain_len > 0)
     {
-      /* Handle non-data read cases */
-      if (nread_bytes == 0)
+      read_count = recv (fd, req_bufp, remain_len, 0);
+      if (read_count <= 0)
 	{
-	  /* Close socket down */
 	  close (fd);
-	  REPL_ERR_LOG (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
+	  repl_svr_remove_conn (fd);
+	  REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
 	}
-      else if (nread_bytes < 0)
-	{
-	  REPL_ERR_LOG (REPL_FILE_SVR_SOCK,
-			REPL_SERVER_CLIENT_CONNECTION_FAIL);
-	}
-      else
-	{
-	  REPL_ERR_LOG (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
-	}
-      repl_svr_remove_conn (fd);
-      error = REPL_SERVER_SOCK_ERROR;
+      req_bufp += read_count;
+      remain_len -= read_count;
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 static int
-repl_svr_vector_send (int fd, struct iovec *vec[], int *len,
-		      int bytes_written)
+repl_svr_vector_send (int fd, struct iovec *vector, int vector_len)
 {
-  int i, rc;
-  int num_retries = 0, sleep_nsecs = 1;
+  size_t remain_len;
+  int i, write_count;
+  char *current_ptr;
 
-  if (bytes_written)
+  for (i = 0; i < vector_len; i++)
     {
-      for (i = 0; i < *len; i++)
-	if ((int) (*vec)[i].iov_len <= bytes_written)
-	  bytes_written -= (*vec)[i].iov_len;
-	else
-	  break;
-      (*vec)[i].iov_len -= bytes_written;
-#if defined(HPUX) || defined(AIX) || (defined(LINUX) && defined(I386))
-      (*vec)[i].iov_base = ((char *) ((*vec)[i].iov_base)) + bytes_written;
-#else
-      (*vec)[i].iov_base += bytes_written;
-#endif
-      (*vec) += i;
-      *len -= i;
-    }
-again:
-  errno = 0;
-  if ((rc = writev (fd, *vec, *len)) <= 0)
-    {
-      if (errno == EINTR)
+      current_ptr = (char *) vector[i].iov_base;
+      remain_len = vector[i].iov_len;
+      while (remain_len > 0)
 	{
-	  goto again;
-	}
-      else if ((errno == EAGAIN || errno == EACCES)
-	       && num_retries < TCP_MIN_NUM_RETRIES)
-	{
-	  num_retries++;
-	  (void) sleep (sleep_nsecs);
-	  sleep_nsecs *= 2;	/* Go 1, 2, 4, 8, etc */
-	  goto again;
+	  write_count = write (fd, current_ptr, remain_len);
+	  if (write_count < 0)
+	    {
+	      if (errno == EINTR)
+		{
+		  continue;
+		}
+	      else
+		{
+		  return REPL_SERVER_SOCK_ERROR;
+		}
+	    }
+	  current_ptr += write_count;
+	  remain_len -= write_count;
 	}
     }
-  return (rc);
+  return NO_ERROR;
 }
 
 char *
@@ -462,10 +443,9 @@ repl_svr_get_ip (int sock_fd)
 static int
 repl_svr_send_data (int fd, char *buff, int len)
 {
-  register int rc;
+  int rc;
   int templen;
   struct iovec iov[2];
-  struct iovec *temp_vec = iov;
   int total_len, vector_length = 2;
 
   templen = htonl (len);
@@ -476,16 +456,12 @@ repl_svr_send_data (int fd, char *buff, int len)
   total_len = len + sizeof (int);
   rc = 0;
 
-  while (total_len)
+  rc = repl_svr_vector_send (fd, iov, vector_length);
+  if (rc < 0)
     {
-      rc = repl_svr_vector_send (fd, &temp_vec, &vector_length, rc);
-      if (rc < 0)
-	{
-	  return (REPL_SERVER_SOCK_ERROR);
-	}
-      total_len -= rc;
+      return (REPL_SERVER_SOCK_ERROR);
     }
-  return (NO_ERROR);
+  return NO_ERROR;
 }
 
 static void

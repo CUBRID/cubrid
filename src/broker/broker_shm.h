@@ -193,6 +193,7 @@ struct t_appl_server_info
 #ifdef DIAG_DEVEL
   long long num_requests_received;
   long long num_transactions_processed;
+  long long num_query_processed;
 #endif
   char auto_commit_mode;
 };

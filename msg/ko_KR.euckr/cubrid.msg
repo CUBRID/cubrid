@@ -604,9 +604,9 @@ $set 5 MSGCAT_SET_ERROR
 541 볼륨 %1$s"에 대한 free 페이지 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다. 
 542 용량 "%1$s"에 대한 free 섹터 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다.
 543 볼륨 "%1$s"에 대한 디스크 헤더가 불완전합니다.
-544 내부 에러: Btree key %1$s entry  for object OID: %2$d|%3$d|%4$d  was not found on B+tree: %5$d|%6$d|%7$d.
-545 내부 에러: Key and OID: %1$d|%2$d|%3$d entry on B+tree: %4$d|%5$d|%6$d is incorrect. The object does not exist.
-546 내부 에러: expecting %1$d OID entry values, but %2$d were found on B+tree: %3$d|%4$d|%5$d.
+544 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Btree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
+545 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect.The object does not exist.
+546 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 서버 release %1$s은(는) 클라이언트 release %2$s와(과) 다릅니다.
 548 프락시 클래스 "%1$s"에 object_id가 정의되지 않았습니다.
 549 프락시 인스턴스를 찾을 수 없습니다.
@@ -1040,12 +1040,12 @@ $set 6 MSGCAT_SET_INTERNAL
 12 er_study_fmt: suspect message for error code %d.
 13 er_estimate_size: 알 수 없는 변환 코드 (%d).
 14 \n\n***  메시지 로그 wraparound. 메시지들은 파일에서 다시 시작됩니다. ***\n\n
-15 \n--->>>Time: %s \n*** %s *** %s 코드 = %d, Tran = %d\n%s\n<<<---\n
+15 \nTime: %s *** %s *** %s 코드 = %d, Tran = %d%s\n%s\n
 16 System (pid:%d) *** %s *** %s 코드 = %d, Tran = %d %s
-17 \n--->>>Time: %s \n*** %s *** 파일 %s, 라인 %d %s 코드 = %d Tran = %d\n%s\n<<<---\n
+17 \n--->>>Time: %s \n*** %s *** 파일 %s, 라인 %d %s 코드 = %d Tran = %d%s\n%s\n<<<---\n
 18 System (pid: %d) *** %s *** 파일 %s, 라인 %d, %s 코드 = %d, Tran = %d. %s
 19 \n*** 이전 에러 메시지가 마지막 입니다.  ***\n\n
-20 \n--->>>\n*** DEBUG/NOTIFICATION *** 파일 %s, 라인 %d\n<<<---\n
+20 \nTime: %s DEBUG *** 파일 %s, 라인 %d\n
 21 Mail -s "Server가 멈추었습니다."
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d

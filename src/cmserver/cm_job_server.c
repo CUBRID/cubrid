@@ -794,6 +794,35 @@ main (int argc, char **argv)
 	    unlink (tmpfile);
 	}
     }
+  else if (strcmp (ars_cmd, "getpid") == 0)
+    {
+      char tmpfile[512];
+
+      conf_get_dbmt_file (FID_FSERVER_PID, tmpfile);
+      strcpy (g_pidfile_path, tmpfile);
+
+      if (access (tmpfile, F_OK) < 0)
+	{
+	  exit (1);
+	}
+      else
+	{
+	  pidfile = fopen (tmpfile, "rt");
+	  fscanf (pidfile, "%d", &pidnum);
+	  fclose (pidfile);
+
+	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
+	      (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
+	    {
+	      exit (1);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "%d\n", pidnum);
+	      exit (0);
+	    }
+	}
+    }
   else
     {
       fprintf (start_log_fp, "Error : Invalid command - %s\n", ars_cmd);

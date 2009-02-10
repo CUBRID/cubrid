@@ -1060,11 +1060,11 @@
 		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191057747</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.3</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
 		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191081907</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.3</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
 		<row><td>TITLE_CAPTIONBAR</td><td>1033</td><td>CUBRID 2008 ??</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1285339632</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,@`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>2115785803</td></row>
+		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,P`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>421362166</td></row>
 		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 	</table>

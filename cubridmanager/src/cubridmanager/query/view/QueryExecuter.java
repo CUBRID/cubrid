@@ -630,7 +630,7 @@ public class QueryExecuter {
 			stmt = (CUBRIDPreparedStatement) conn
 					.prepareStatement(
 							sql,
-							ResultSet.TYPE_SCROLL_INSENSITIVE,
+							ResultSet.TYPE_FORWARD_ONLY,
 							(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
 									: ResultSet.CONCUR_READ_ONLY,
 							ResultSet.HOLD_CURSORS_OVER_COMMIT);

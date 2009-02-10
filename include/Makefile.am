@@ -26,6 +26,6 @@ include_HEADERS = \
 	$(CCI_DIR)/cas_cci.h \
 	$(EXEC_DIR)/cubrid_esql.h
 
-install-exec-hook:
-	test -z "$(includedir)" || mkdir -p "$(includedir)"
-	cp $(COMPAT_DIR)/dbi_compat.h $(includedir)/dbi.h
+install-data-hook:
+	test -z "$(DESTDIR)$(includedir)" || mkdir -p "$(DESTDIR)$(includedir)"
+	cp $(COMPAT_DIR)/dbi_compat.h $(DESTDIR)$(includedir)/dbi.h

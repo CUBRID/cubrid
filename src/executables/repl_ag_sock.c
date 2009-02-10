@@ -113,12 +113,17 @@ repl_ag_sock_init (int m_idx)
   /* Create the socket */
   if ((minfo->conn.client_sock =
        socket (PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-    REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);
+    {
+      REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);
+    }
 
+  error = repl_set_socket_tcp_nodelay (minfo->conn.client_sock);
   error = repl_ag_sock_reset_recv_buf (minfo->conn.client_sock,
 				       minfo->io_pagesize);
   if (error != NO_ERROR)
-    return REPL_AGENT_SOCK_ERROR;
+    {
+      return REPL_AGENT_SOCK_ERROR;
+    }
 
   /* Make connection to the named server socket */
   minfo->conn.sock_name.sin_family = AF_INET;
@@ -135,7 +140,7 @@ repl_ag_sock_init (int m_idx)
 	}
 
       if (retry_Connect && (errno == ECONNREFUSED || errno == ENETUNREACH
-          || errno == EHOSTUNREACH))
+			    || errno == EHOSTUNREACH))
 	{
 	  if (seconds % 60 == 0)
 	    {
@@ -303,17 +308,23 @@ repl_ag_srv_new_connection (void)
 static int
 repl_ag_sock_send_request (int m_idx)
 {
-  int bw = 0;
+  int sent_len;
+  int remain_len = COMM_REQ_BUF_SIZE;
   MASTER_INFO *minfo = mInfo[m_idx];
-  int error = NO_ERROR;
+  char *current_ptr = minfo->conn.req_buf;
 
-  bw = send (minfo->conn.client_sock,
-	     minfo->conn.req_buf, COMM_REQ_BUF_SIZE, 0);
+  while (remain_len > 0)
+    {
+      sent_len = send (minfo->conn.client_sock, current_ptr, remain_len, 0);
+      if (sent_len <= 0)
+	{
+	  REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);
+	}
+      remain_len -= sent_len;
+      current_ptr += sent_len;
+    }
 
-  if (bw != COMM_REQ_BUF_SIZE)
-    REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);
-
-  return error;
+  return NO_ERROR;
 }
 
 /*
@@ -343,8 +354,8 @@ repl_ag_sock_get_response (int m_idx, int *result, bool * in_archive)
 
   /* get result and data */
   length = length + minfo->io_pagesize;
-  rc =
-    css_net_recv (minfo->conn.client_sock, minfo->conn.resp_buffer, &length);
+  rc = css_net_recv (minfo->conn.client_sock, minfo->conn.resp_buffer,
+		     &length);
 
   if (rc != RECORD_TRUNCATED && rc != NO_ERRORS)
     {

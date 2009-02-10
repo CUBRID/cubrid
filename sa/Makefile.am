@@ -39,7 +39,7 @@ DBMT_DIR = $(SRC)/dbmt
 ANTLR = $(top_builddir)/pccts/antlrd/antlr
 DLG = $(top_builddir)/pccts/dlg/dlg
 
-INCLUDES = @SRC_INC@ -I$(top_srcdir)/pccts/h @EXT_INC@
+INCLUDES = @SRC_INC@ -I$(top_srcdir)/pccts/h @EXT_INC@ @JAVA_INC@
 DEFS += @SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @OTHER_DEFS@ -DLL_K=2 -DZZCOL
 LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
 
@@ -114,6 +114,7 @@ BASE_SOURCES = \
 	$(BASE_DIR)/memory_alloc.c \
 	$(BASE_DIR)/databases_file.c \
 	$(BASE_DIR)/encryption.c \
+	$(BASE_DIR)/sha1.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
 	$(BASE_DIR)/memory_hash.c \
@@ -147,7 +148,7 @@ CONNECTION_SOURCES = \
 	$(CONNECTION_DIR)/client_support.c \
 	$(CONNECTION_DIR)/connection_support.c
 COMMUNICATION_SOURCES = \
-	$(COMMUNICATION_DIR)/network_interface_cl.c \
+	$(COMMUNICATION_DIR)/network_interface_cl.c
 PARSER_SOURCES = \
 	$(PARSER_DIR)/parser_support.c \
 	$(PARSER_DIR)/double_byte_support.c \

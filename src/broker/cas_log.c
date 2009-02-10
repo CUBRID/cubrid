@@ -61,6 +61,7 @@ static void sql_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
 static void sql_log_backup (char *br_name, int as_index);
 static FILE *sql_log_open (char *log_file_name);
+static void cas_log_error_handler (unsigned int eid);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -70,6 +71,16 @@ static FILE *log_fp = NULL;
 
 static FILE *log_fp_qp, *log_fp_qh;
 static int saved_fd1;
+
+/* log error handler related fields */
+typedef struct cas_error_log_handle_context_s CAS_ERROR_LOG_HANDLE_CONTEXT;
+struct cas_error_log_handle_context_s
+{
+  unsigned int from;
+  unsigned int to;
+};
+
+static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 
 void
 cas_log_init (T_TIMEVAL * start_time)
@@ -223,7 +234,8 @@ cas_log_end (T_TIMEVAL * start_time, char *br_name, int as_index,
 }
 
 void
-cas_log_write (unsigned int seq_num, char print_new_line, const char *fmt, ...)
+cas_log_write (unsigned int seq_num, char print_new_line, const char *fmt,
+	       ...)
 {
 #ifndef LIBCAS_FOR_JSP
   if (log_fp)
@@ -573,4 +585,124 @@ sql_log_open (char *log_file_name)
 	}
     }
   return fp;
+}
+
+
+static void
+cas_log_error_handler (unsigned int eid)
+{
+  if (cas_EHCTX == NULL)
+    {
+      return;
+    }
+
+  if (cas_EHCTX->from == 0)
+    {
+      cas_EHCTX->from = eid;
+    }
+  else
+    {
+      cas_EHCTX->to = eid;
+    }
+}
+
+void
+cas_log_error_handler_begin ()
+{
+  CAS_ERROR_LOG_HANDLE_CONTEXT *ectx;
+
+  ectx = malloc (sizeof (*ectx));
+  if (ectx == NULL)
+    {
+      return;
+    }
+
+  ectx->from = 0;
+  ectx->to = 0;
+
+  if (cas_EHCTX != NULL)
+    {
+      free (cas_EHCTX);
+    }
+
+  cas_EHCTX = ectx;
+  (void) db_register_error_log_handler (cas_log_error_handler);
+}
+
+void
+cas_log_error_handler_end (void)
+{
+  if (cas_EHCTX != NULL)
+    {
+      free (cas_EHCTX);
+      cas_EHCTX = NULL;
+      (void) db_register_error_log_handler (NULL, NULL);
+    }
+}
+
+void
+cas_log_error_handler_clear (void)
+{
+  if (cas_EHCTX == NULL)
+    {
+      return 0;
+    }
+
+  cas_EHCTX->from = 0;
+  cas_EHCTX->to = 0;
+}
+
+
+char *
+cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
+{
+  char *buf_p;
+  unsigned int from, to;
+
+  if (buf == NULL || bufsz <= 0)
+    {
+      return NULL;
+    }
+
+  if (cas_EHCTX == NULL || cas_EHCTX->from == 0)
+    {
+      buf[0] = '\0';
+      return buf;
+    }
+
+  from = cas_EHCTX->from;
+  to = cas_EHCTX->to;
+
+  if(clear)
+  {
+    cas_EHCTX->from = 0;
+    cas_EHCTX->to = 0;
+  }
+
+  /* ", EID = <int> ~ <int>" : 32 bytes suffice */
+  if (bufsz < 32)
+    {
+      buf_p = malloc (32);
+
+      if (buf_p == NULL)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      buf_p = buf;
+    }
+
+  /* actual print */
+  if(to != 0)
+  {
+    snprintf(buf_p, 32, ", EID = %u ~ %u", from, to);
+  }
+  else
+  {
+    snprintf(buf_p, 32,  ", EID = %u", from);
+  }
+
+  return buf_p;
 }

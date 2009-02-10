@@ -137,10 +137,10 @@ bin_SCRIPTS = \
 compat_SCRIPTS = start_cubrid stop_cubrid
 
 install-exec-hook:
-	test -z "$(compatdir)" || mkdir -p "$(compatdir)"
-	cd $(compatdir) && $(LN_S) -f ../bin/cub_server$(EXEEXT) server$(EXEEXT)
-	cd $(compatdir) && $(LN_S) -f start_cubrid start_server
-	cd $(compatdir) && $(LN_S) -f stop_cubrid stop_server
+	test -z "$(DESTDIR)$(compatdir)" || mkdir -p "$(DESTDIR)$(compatdir)"
+	cd $(DESTDIR)$(compatdir) && $(LN_S) -f ../bin/cub_server$(EXEEXT) server$(EXEEXT)
+	cd $(DESTDIR)$(compatdir) && $(LN_S) -f start_cubrid start_server
+	cd $(DESTDIR)$(compatdir) && $(LN_S) -f stop_cubrid stop_server
 
 lib_LTLIBRARIES = libcubridesql.la
 libcubridesql_la_SOURCES = $(EXECUTABLE_DIR)/esql_gadget.c $(EXECUTABLE_DIR)/esql_cli.c

@@ -30,10 +30,12 @@
 
 package cubridmanager.query.dialog;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -87,6 +89,7 @@ public class Export {
 		else
 			exportCsv(tbl, isSelection, hasOid);
 	}
+
 	public Export(List<ColumnInfo> columnList,
 			List<Map<String, String>> dataList, boolean hasOid) {
 		fileName = getFileName(new String[] { "*.xls", "*.csv" }, new String[] {
@@ -216,7 +219,8 @@ public class Export {
 					sheetNum);
 			int rowLimit = 65536; // 65536: limit xls row number.
 			int columnLimit = 257; // 256: limit xls column number.
-			// it set 257. Because Tbl's first column is oid value that doesn't export.
+			// it set 257. Because Tbl's first column is oid value that doesn't
+			// export.
 			if (hasOid) {
 				columnLimit++; // oid column does not export
 			}
@@ -305,7 +309,8 @@ public class Export {
 			}
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
-					itemCount + " " +Messages.getString("QEDIT.EXPORTOK") + addMsg);
+					itemCount + " " + Messages.getString("QEDIT.EXPORTOK")
+							+ addMsg);
 		} catch (IOException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -332,7 +337,8 @@ public class Export {
 					sheetNum);
 			int rowLimit = 65536; // 65536: limit xls row number.
 			int columnLimit = 257; // 256: limit xls column number.
-			// it set 257. Because Tbl's first column is oid value that doesn't export.
+			// it set 257. Because Tbl's first column is oid value that doesn't
+			// export.
 			StringBuffer addMsg = new StringBuffer("");
 			CUBRIDResultSetMetaData rsmt = (CUBRIDResultSetMetaData) rs
 					.getMetaData();
@@ -419,8 +425,8 @@ public class Export {
 				addMsg.append(Messages.getString("QEDIT.EXPORTLIMIT3"));
 			}
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i + " "
-					+ Messages.getString("QEDIT.EXPORTOK") + addMsg);
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+					+ " " + Messages.getString("QEDIT.EXPORTOK") + addMsg);
 		} catch (IOException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -445,7 +451,16 @@ public class Export {
 
 	private void exportCsv(Table tbl, boolean isSelection, boolean hasOid) {
 		try {
-			FileOutputStream fs = new FileOutputStream(file);
+			BufferedWriter fs = null;
+			if (MainRegistry.queryEditorOption.charset != null
+					&& MainRegistry.queryEditorOption.charset.trim().length() > 0) {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file),
+						MainRegistry.queryEditorOption.charset.trim()));
+			} else {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file)));
+			}
 			TableItem[] tblItem;
 
 			if (isSelection)
@@ -469,26 +484,27 @@ public class Export {
 							|| colType.equals("REAL")
 							|| colType.equals("NUMERIC")
 							|| colType.equals("DECIMAL")) {
-						fs.write(tblItem[i].getText(j).getBytes());
+						fs.write(tblItem[i].getText(j));
 					}
 
 					else {
 						fs.write(("\""
 								+ tblItem[i].getText(j)
-										.replaceAll("\"", "\"\"") + "\"")
-								.getBytes());
+										.replaceAll("\"", "\"\"") + "\""));
 					}
 					if (j != tbl.getColumnCount() - 1) {
 						fs.write(',');
 					}
 				}
 				fs.write('\n');
+				fs.flush();
 			}
-			fs.flush();
 			fs.close();
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),
-					tblItem.length + " " + Messages.getString("QEDIT.EXPORTOK"));
+			CommonTool
+					.InformationBox(Messages.getString("QEDIT.EXPORT"),
+							tblItem.length + " "
+									+ Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -500,7 +516,16 @@ public class Export {
 
 	private void exportCsv(CUBRIDResultSet rs) {
 		try {
-			FileOutputStream fs = new FileOutputStream(file);
+			BufferedWriter fs = null;
+			if (MainRegistry.queryEditorOption.charset != null
+					&& MainRegistry.queryEditorOption.charset.trim().length() > 0) {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file),
+						MainRegistry.queryEditorOption.charset.trim()));
+			} else {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file)));
+			}
 			CUBRIDResultSetMetaData rsmt = (CUBRIDResultSetMetaData) rs
 					.getMetaData();
 
@@ -524,7 +549,7 @@ public class Export {
 							}
 							value.append("}");
 							fs.write(("\"".concat(value.toString().replaceAll(
-									"\"", "\"\"")).concat("\"")).getBytes());
+									"\"", "\"\"")).concat("\"")));
 						} else if (colType.equals("MONETARY")
 								|| colType.equals("INTEGER")
 								|| colType.equals("TINYINT")
@@ -535,24 +560,24 @@ public class Export {
 								|| colType.equals("REAL")
 								|| colType.equals("NUMERIC")
 								|| colType.equals("DECIMAL")) {
-							fs.write(rs.getString(j).getBytes());
+							fs.write(rs.getString(j));
 						} else {
 							fs
 									.write(("\""
 											+ rs.getString(j).replaceAll("\"",
-													"\"\"") + "\"").getBytes());
+													"\"\"") + "\""));
 						}
 					} else
-						fs.write(QueryEditor.STR_NULL.getBytes());
+						fs.write(QueryEditor.STR_NULL);
 
 					if (j != rsmt.getColumnCount()) {
 						fs.write(',');
 					}
 				}
 				fs.write('\n');
+				fs.flush();
 				i++;
 			}
-			fs.flush();
 			fs.close();
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
@@ -571,7 +596,16 @@ public class Export {
 
 	private void exportSql(CUBRIDResultSet rs, String tableName) {
 		try {
-			FileOutputStream fs = new FileOutputStream(file);
+			BufferedWriter fs = null;
+			if (MainRegistry.queryEditorOption.charset != null
+					&& MainRegistry.queryEditorOption.charset.trim().length() > 0) {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file),
+						MainRegistry.queryEditorOption.charset.trim()));
+			} else {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file)));
+			}
 			CUBRIDResultSetMetaData rsmt = (CUBRIDResultSetMetaData) rs
 					.getMetaData();
 
@@ -644,14 +678,14 @@ public class Export {
 				}
 				values.append(");\n");
 				i++;
-				fs.write(insert.toString().getBytes());
-				fs.write(values.toString().getBytes());
+				fs.write(insert.toString());
+				fs.write(values.toString());
+				fs.flush();
 			}
-			fs.flush();
 			fs.close();
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i +  " "
-					+ Messages.getString("QEDIT.EXPORTOK"));
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+					+ " " + Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -666,7 +700,16 @@ public class Export {
 
 	private void exportLoad(CUBRIDResultSet rs, String tableName) {
 		try {
-			FileOutputStream fs = new FileOutputStream(file);
+			BufferedWriter fs = null;
+			if (MainRegistry.queryEditorOption.charset != null
+					&& MainRegistry.queryEditorOption.charset.trim().length() > 0) {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file),
+						MainRegistry.queryEditorOption.charset.trim()));
+			} else {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file)));
+			}
 			CUBRIDResultSetMetaData rsmt = (CUBRIDResultSetMetaData) rs
 					.getMetaData();
 
@@ -681,7 +724,7 @@ public class Export {
 				header.append("\"");
 			}
 			header.append(")\n");
-			fs.write(header.toString().getBytes());
+			fs.write(header.toString());
 
 			// for (int i = 0; i < tblItem.length; i++) {
 			int i = 0;
@@ -752,13 +795,13 @@ public class Export {
 				}
 				values.append("\n");
 
-				fs.write(values.toString().getBytes());
+				fs.write(values.toString());
+				fs.flush();
 			}
-			fs.flush();
 			fs.close();
 
-			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i + " "
-					+ Messages.getString("QEDIT.EXPORTOK"));
+			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"), i
+					+ " " + Messages.getString("QEDIT.EXPORTOK"));
 		} catch (FileNotFoundException e) {
 			CommonTool.ErrorBox(e.getMessage());
 			CommonTool.debugPrint(e);
@@ -770,6 +813,7 @@ public class Export {
 			CommonTool.debugPrint(e);
 		}
 	}
+
 	/**
 	 * export all data in Query Editor result table cache as xls
 	 * 
@@ -894,7 +938,16 @@ public class Export {
 	private void exportCsv(List<ColumnInfo> columnList,
 			List<Map<String, String>> dataList, boolean hasOid) {
 		try {
-			FileOutputStream fs = new FileOutputStream(file);
+			BufferedWriter fs = null;
+			if (MainRegistry.queryEditorOption.charset != null
+					&& MainRegistry.queryEditorOption.charset.trim().length() > 0) {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file),
+						MainRegistry.queryEditorOption.charset.trim()));
+			} else {
+				fs = new BufferedWriter(new OutputStreamWriter(
+						new FileOutputStream(file)));
+			}
 
 			for (int i = 0; i < dataList.size(); i++) {
 				int j = 0;
@@ -913,21 +966,21 @@ public class Export {
 							|| colType.equals("REAL")
 							|| colType.equals("NUMERIC")
 							|| colType.equals("DECIMAL")) {
-						fs.write(dataList.get(i).get(colName).getBytes());
+						fs.write(dataList.get(i).get(colName));
 					}
 
 					else {
 						fs.write(("\""
 								+ dataList.get(i).get(colName).replaceAll("\"",
-										"\"\"") + "\"").getBytes());
+										"\"\"") + "\""));
 					}
 					if (j != columnList.size() - 1) {
 						fs.write(',');
 					}
 				}
 				fs.write('\n');
+				fs.flush();
 			}
-			fs.flush();
 			fs.close();
 
 			CommonTool.InformationBox(Messages.getString("QEDIT.EXPORT"),

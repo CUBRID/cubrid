@@ -5033,6 +5033,15 @@ fileio_initialize_backup (const char *db_full_name_p,
   session_p->dbfile.nbytes = -1;
   FILEIO_SET_BACKUP_PAGE_ID (session_p->dbfile.area, NULL_PAGEID,
 			     io_page_size);
+
+#if defined(CUBRID_DEBUG)
+  fprintf (stdout, "fileio_initialize_backup: %d\t%d,\t%d\n",
+	   ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
+	   *(PAGEID *) (((char *) (session_p->dbfile.area)) +
+			offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
+	   io_page_size);
+#endif
+
   if (fileio_initialize_backup_thread (session_p, num_threads) != NO_ERROR)
     {
       return NULL;
@@ -6021,6 +6030,17 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
 	  node_p->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
 	  FILEIO_SET_BACKUP_PAGE_ID_COPY (node_p->area, node_p->pageid,
 					  backup_header_p->bkpagesize);
+
+#if defined(CUBRID_DEBUG)
+	  fprintf (stdout, "fileio_read_backup_volume: %d\t%d,\t%d\n",
+		   ((FILEIO_BACKUP_PAGE *) (node_p->area))->iopageid,
+		   *(PAGEID *) (((char *) (node_p->area)) +
+				offsetof (FILEIO_BACKUP_PAGE,
+					  iopage) +
+				backup_header_p->bkpagesize),
+		   backup_header_p->bkpagesize);
+#endif
+
 	  if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD
 	      && fileio_compress_backup_node (node_p,
 					      backup_header_p) != NO_ERROR)
@@ -6525,6 +6545,17 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
 	      node_p->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
 	      FILEIO_SET_BACKUP_PAGE_ID_COPY (node_p->area, node_p->pageid,
 					      backup_header_p->bkpagesize);
+
+#if defined(CUBRID_DEBUG)
+	      fprintf (stdout, "fileio_backup_volume: %d\t%d,\t%d\n",
+		       ((FILEIO_BACKUP_PAGE *) (node_p->area))->iopageid,
+		       *(PAGEID *) (((char *) (node_p->area)) +
+				    offsetof (FILEIO_BACKUP_PAGE,
+					      iopage) +
+				    backup_header_p->bkpagesize),
+		       backup_header_p->bkpagesize);
+#endif
+
 	      if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD
 		  && fileio_compress_backup_node (node_p,
 						  backup_header_p) !=
@@ -6571,6 +6602,16 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
   FILEIO_SET_BACKUP_PAGE_ID (node_p->area,
 			     FILEIO_BACKUP_FILE_END_PAGE_ID,
 			     backup_header_p->bkpagesize);
+
+#if defined(CUBRID_DEBUG)
+  fprintf (stdout, "io_backup_volume: %d\t%d,\t%d\n",
+	   ((FILEIO_BACKUP_PAGE *) (node_p->area))->iopageid,
+	   *(PAGEID *) (((char *) (node_p->area)) +
+			offsetof (FILEIO_BACKUP_PAGE,
+				  iopage) + backup_header_p->bkpagesize),
+	   backup_header_p->bkpagesize);
+#endif
+
   if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD
       && fileio_compress_backup_node (node_p, backup_header_p) != NO_ERROR)
     {
@@ -6835,6 +6876,15 @@ fileio_read_backup (FILEIO_BACKUP_SESSION * session_p, int page_id)
   /* Read until you acumulate io_pagesize or the EOF mark is reached. */
   nread = 0;
   FILEIO_SET_BACKUP_PAGE_ID (session_p->dbfile.area, page_id, io_page_size);
+
+#if defined(CUBRID_DEBUG)
+  fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n",
+	   ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
+	   *(PAGEID *) (((char *) (session_p->dbfile.area)) +
+			offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
+	   io_page_size);
+#endif
+
   buffer_p = (char *) &session_p->dbfile.area->iopage;
   while (nread < io_page_size)
     {
@@ -8227,10 +8277,13 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
   FILEIO_QUEUE *queue_p;
   FILEIO_BACKUP_HEADER *backup_header_p;
   FILEIO_BACKUP_PAGE *save_area_p;
+  FILEIO_NODE *node;
 
   thread_info_p = &session_p->read_thread_info;
   queue_p = &thread_info_p->io_queue;
   backup_header_p = session_p->bkup.bkuphdr;
+
+  node = NULL;
 
   switch (backup_header_p->zip_method)
     {
@@ -8246,7 +8299,6 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 
     case FILEIO_ZIP_LZO1X_METHOD:
       {
-	FILEIO_NODE *node;
 	int rv;
 	/* alloc queue node */
 	node = fileio_allocate_node (queue_p, backup_header_p);
@@ -8335,9 +8387,6 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 		goto exit_on_error;
 	      }
 	  }
-
-	/* free node */
-	(void) fileio_free_node (queue_p, node);
       }
       break;
 
@@ -8351,7 +8400,14 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 
 exit_on_end:
 
+  /* free node */
+  if (node)
+    {
+      (void) fileio_free_node (queue_p, node);
+    }
+
   return error;
+
 exit_on_error:
 
   if (error == NO_ERROR)
@@ -8364,21 +8420,22 @@ exit_on_error:
 /*
  * fileio_restore_volume () - Restore a volume/file of given database
  *   return:
- *   session(in/out):  The session array
- *   to_vlabel(in): Restore the next file using this name
- *   prev_vlabel(in): Previous restored file name
- *   pages_cache(in): Page and volume cache to record which pages have
+ *   session_p(in/out):  The session array
+ *   to_vlabel_p(in): Restore the next file using this name
+ *   verbose_to_vlabel_p(in): Printable volume name
+ *   prev_vlabel_p(in): Previous restored file name
+ *   pages_cache_p(in): Page and volume cache to record which pages have
  *                    already been restored
- *   remember_pages(in): true if we need to track which pages are restored
- *   reformat_needed(in):
+ *   is_remember_pages(in): true if we need to track which pages are restored
  */
 int
 fileio_restore_volume (THREAD_ENTRY * thread_p,
 		       FILEIO_BACKUP_SESSION * session_p,
 		       char *to_vol_label_p,
+		       char *verbose_to_vol_label_p,
 		       char *prev_vol_label_p,
-		       FILEIO_RESTORE_PAGE_CACHE *
-		       pages_cache_p, bool is_remember_pages)
+		       FILEIO_RESTORE_PAGE_CACHE * pages_cache_p,
+		       bool is_remember_pages)
 {
   int next_page_id = 0;
   int total_nbytes = 0;
@@ -8418,7 +8475,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
   if (restore_verbose_file_p)
     {
       fprintf (restore_verbose_file_p, " %-28s | %10d | ",
-	       fileio_get_base_file_name (to_vol_label_p), npages);
+	       fileio_get_base_file_name (verbose_to_vol_label_p), npages);
       check_ratio = 1;
       check_npages = (int) (((float) npages / 25.0) * check_ratio);
     }
@@ -8494,6 +8551,15 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 		  from_npages, session_p->dbfile.volid);
 	  goto error;
 	}
+
+#if defined(CUBRID_DEBUG)
+      fprintf (stdout, "fileio_restore_volume: %d\t%d,\t%d\n",
+	       ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
+	       *(PAGEID *) (((char *) (session_p->dbfile.area)) +
+			    offsetof (FILEIO_BACKUP_PAGE,
+				      iopage) + backup_header_p->bkpagesize),
+	       backup_header_p->bkpagesize);
+#endif
 
       if (!FILEIO_CHECK_RESTORE_PAGE_ID (session_p->dbfile.area,
 					 backup_header_p->bkpagesize))
@@ -8738,6 +8804,15 @@ fileio_skip_restore_volume (THREAD_ENTRY * thread_p,
 	  /* End of FILE */
 	  break;
 	}
+
+#if defined(CUBRID_DEBUG)
+      fprintf (stdout, "fileio_skip_restore_volume: %d\t%d,\t%d\n",
+	       ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
+	       *(PAGEID *) (((char *) (session_p->dbfile.area)) +
+			    offsetof (FILEIO_BACKUP_PAGE,
+				      iopage) + backup_header_p->bkpagesize),
+	       backup_header_p->bkpagesize);
+#endif
 
       if (!FILEIO_CHECK_RESTORE_PAGE_ID (session_p->dbfile.area,
 					 backup_header_p->bkpagesize))

@@ -33,6 +33,8 @@
 #include "log_manager.h"
 #include "oid.h"
 
+#define FILE_DUMP_DES_AREA_SIZE 100
+
 typedef enum
 {
   FILE_TRACKER,

@@ -92,7 +92,7 @@ extern int locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid,
 				       TP_DOMAIN * key_type, int n_attrs,
 				       int *attr_ids, OID * pk_cls_oid,
 				       BTID * pk_btid, int cache_attr_id,
-				       char *fk_name);
+				       char *fkname);
 extern int heap_create (HFID * hfid, const OID * class_oid);
 extern int heap_destroy (const HFID * hfid);
 extern int heap_destroy_newly_created (const HFID * hfid);
@@ -242,7 +242,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		  int n_classes, int n_attrs, int *attr_ids, HFID * hfids,
 		  int unique_flag, int reverse_flag, OID * fk_refcls_oid,
 		  BTID * fk_refcls_pk_btid, int cache_attr_id,
-		  const char *fk_name);
+		  const char *fkname);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid,

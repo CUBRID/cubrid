@@ -143,6 +143,8 @@ public class CREATE_TRIGGERDialog extends Dialog {
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
+						String CR = "\r";
+						String NL = "\n";
 						String evtime = COMBO_TRIGGER_EVENTTIME.getText();
 						String evtype = COMBO_TRIGGER_EVENTTYPE.getText();
 						String dlytime = COMBO_TRIGGER_DELAYED_TIME.getText();
@@ -150,12 +152,18 @@ public class CREATE_TRIGGERDialog extends Dialog {
 						String trigstat = COMBO_TRIGGER_STATUS.getText();
 						String edittrigact = EDIT_TRIGGER_ACTION.getText()
 								.trim();
+						edittrigact = edittrigact.replaceAll(CR,"");
+						edittrigact = edittrigact.replaceAll(NL," ");
 						int trigpri = SPIN_TRIGGER_PRIORITY.getSelection();
 						String trigname = EDIT_TRIGGER_NAME.getText().trim();
 						String trigdest = EDIT_TRIGGER_EVENTTARGET.getText()
 								.trim();
+						trigdest = trigdest.replaceAll(CR,"");
+						trigdest = trigdest.replaceAll(NL," ");
 						String trigcond = EDIT_TRIGGER_CONDITION.getText()
 								.trim();
+						trigcond = trigcond.replaceAll(CR,"");
+						trigcond = trigcond.replaceAll(NL," ");
 
 						if (trigact.equals("OTHER STATEMENT")) {
 							trigact = edittrigact;

@@ -333,14 +333,14 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				HFID * hfids, int unique_flag,
 				int reverse_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fk_name);
+				const char *fkname);
 #endif /* SERVER_MODE */
 
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid,
 				    HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid,
 				    BTID * pk_btid, int cache_attr_id,
-				    const char *fk_name);
+				    const char *fkname);
 
 /* Recovery routines */
 extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
@@ -376,7 +376,8 @@ extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (BTREE_ROOT_HEADER * root_header,
 					 BTID_INT * btid);
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
-				       BTID_INT * btid);
+				       const OID * class_oid_p,
+				       BTID_INT * btid, const char *btname);
 extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
 			     DB_VALUE * prefix_key, int is_reverse);
 extern char *btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr);

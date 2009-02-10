@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -79,7 +79,7 @@ public class CUBRIDOID
    * <code>this</code> object가 가리키고 있는 database의 object로부터 주어진
    * attribute들의 값들을 가져온다. <code>attrNames</code>가 <code>null</code>
    * 이면 모든 attribute들의 값을 가져온다.
-   * 
+   *
    * @param attrNames
    *          값을 가져오고자 하는 attribute들의 이름을 담은 array
    * @return 1개의 row에 <code>attrNames.length</code>개 또는 모든 column을 담은
@@ -108,7 +108,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 database의 object의 값을 주어진
    * 값으로 수정한다.
-   * 
+   *
    * @param attrNames
    *          값을 수정하고자 하는 attribute들의 이름을 담은 array
    * @param values
@@ -150,7 +150,7 @@ public class CUBRIDOID
 
   /**
    * <code>this</code> object가 가리키고 있는 database의 object를 삭제한다.
-   * 
+   *
    * @exception SQLException
    *              if a database access error occurs
    */
@@ -166,12 +166,18 @@ public class CUBRIDOID
     }
 
     checkError();
+
+    if (u_con.getAutoCommit())
+    {
+      u_con.turnOnAutoCommitBySelf();
+    }
+
   }
 
   /**
    * transaction isolation level의 제약하에서 <code>this</code> object가
    * 가리키고 있는 database의 object가 삭제되었는지 아닌지 판단한다.
-   * 
+   *
    * @return <code>true</code> if not deleted, <code>false</code> otherwise
    * @exception SQLException
    *              if a database access error occurs
@@ -199,7 +205,7 @@ public class CUBRIDOID
    * <code>this</code> object가 가리키고 있는 database의 object의 read lock을
    * set한다. 다른 transaction에 의해 write lock이 set되어 있을때에는 reset될
    * 때까지 block된다.
-   * 
+   *
    * @exception SQLException
    *              if a database access error occurs
    */
@@ -221,7 +227,7 @@ public class CUBRIDOID
    * <code>this</code> object가 가리키고 있는 database의 object의 write lock을
    * set한다. 다른 transaction에 의해 read lock이나 write lock이 set되어
    * 있을때에는 reset될 때까지 block된다.
-   * 
+   *
    * @exception SQLException
    *              if a database access error occurs
    */
@@ -242,7 +248,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 database의 GLO object로부터 값을
    * 읽어와서 stream으로 보낸다.
-   * 
+   *
    * @param stream
    *          값을 내보낼 <code>OutputStream</code> object
    * @exception IllegalArgumentException
@@ -277,7 +283,7 @@ public class CUBRIDOID
   /**
    * stream으로부터 값을 읽어와서 <code>this</code> object가 가리키고 있는
    * database의 GLO object로 보낸다.
-   * 
+   *
    * @param stream
    *          값을 읽어들일 <code>InputStream</code> object
    * @exception IllegalArgumentException
@@ -293,7 +299,7 @@ public class CUBRIDOID
   /**
    * stream으로부터 값을 읽어와서 <code>this</code> object가 가리키고 있는
    * database의 GLO object로 보낸다.
-   * 
+   *
    * @param stream
    *          값을 읽어들일 <code>InputStream</code> object
    * @param length
@@ -333,7 +339,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 object의 set column에 값을
    * 추가한다.
-   * 
+   *
    * @param attrName
    *          값을 추가하고자 하는 set column의 이름
    * @param value
@@ -366,7 +372,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 object의 set column에서 값을
    * 삭제한다.
-   * 
+   *
    * @param attrName
    *          값을 삭제하고자 하는 set column의 이름
    * @param value
@@ -399,7 +405,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 object의 sequence column에 값을
    * 추가한다.
-   * 
+   *
    * @param attrName
    *          값을 추가하고자 하는 sequence column의 이름
    * @param index
@@ -434,7 +440,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 object의 sequence column에 값을
    * 수정한다.
-   * 
+   *
    * @param attrName
    *          값을 수정하고자 하는 sequence column의 이름
    * @param index
@@ -469,7 +475,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가리키고 있는 object의 sequence column에 값을
    * 삭제한다.
-   * 
+   *
    * @param attrName
    *          값을 삭제하고자 하는 sequence column의 이름
    * @param index
@@ -502,7 +508,7 @@ public class CUBRIDOID
   /**
    * <code>this</code> object가 가지고 있는 oid string값을 return한다. oid
    * string의 format은 "@page_id|slot_id|volumn_id"이다.
-   * 
+   *
    * @return a <code>String</code> object containing oid string
    * @exception IllegalArgumentException
    *              if <code>attrName</code> is <code>null</code>
@@ -542,7 +548,7 @@ public class CUBRIDOID
   /**
    * 다른 connection에서 사용할 수 있는 <code>CUBRIDOID</code> object를
    * 생성한다.
-   * 
+   *
    * @param con
    *          사용하고자 하는 <code>CUBRIDConnection</code> object
    * @param oidStr

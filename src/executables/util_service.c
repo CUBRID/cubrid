@@ -172,7 +172,7 @@ static void finalize_properties (void);
 static const char *get_property (int property_type);
 static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type);
-static int process_server (int command_type, char *name);
+static int process_server (int command_type, char *name, bool show_usage);
 static int process_broker (int command_type, int argc, const char **argv);
 static int process_manager (int command_type);
 static int process_repl_server (int command_type, char *name, char *repl_port,
@@ -347,7 +347,8 @@ main (int argc, const char **argv)
       break;
     case SERVER:
       status =
-	process_server (command_type, argc > 3 ? (char *) argv[3] : NULL);
+	process_server (command_type, argc > 3 ? (char *) argv[3] : NULL,
+			true);
       break;
     case BROKER:
       status = process_broker (command_type, argc - 3, &argv[3]);
@@ -637,7 +638,7 @@ process_service (int command_type)
       status = process_master (command_type);
       if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	{
-	  status = process_server (command_type, NULL);
+	  status = process_server (command_type, NULL, false);
 	}
       if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 	{
@@ -660,7 +661,7 @@ process_service (int command_type)
       {
 	if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	  {
-	    status = process_server (command_type, NULL);
+	    status = process_server (command_type, NULL, false);
 	  }
 	if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 	  {
@@ -703,7 +704,7 @@ process_service (int command_type)
 
       {
 	const char *args[] = { "-b" };
-	status = process_server (command_type, NULL);
+	status = process_server (command_type, NULL, false);
 	status = process_broker (command_type, 1, args);
 	status = process_manager (command_type);
 	status = process_repl_server (command_type, NULL, 0, 0, 0);
@@ -808,11 +809,12 @@ is_server_running (const char *type, const char *server_name, int pid)
  *
  *      command_type(in):
  *      name(in):
+ *      show_usage(in): 
  *
  * NOTE:
  */
 static int
-process_server (int command_type, char *name)
+process_server (int command_type, char *name, bool show_usage)
 {
   char buf[4096];
   char *list, *token, *save;
@@ -831,7 +833,10 @@ process_server (int command_type, char *name)
 
   if (command_type != STATUS && strlen (buf) == 0)
     {
-      /* print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT); */
+      if (show_usage)
+	{
+	  util_service_usage (SERVER);
+	}
       return ER_GENERIC_ERROR;
     }
 
@@ -895,8 +900,8 @@ process_server (int command_type, char *name)
 	}
       break;
     case RESTART:
-      status = process_server (STOP, name);
-      status = process_server (START, name);
+      status = process_server (STOP, name, show_usage);
+      status = process_server (START, name, show_usage);
       break;
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
@@ -1050,20 +1055,42 @@ process_broker (int command_type, int argc, const char **argv)
 static bool
 is_manager_running (unsigned int sleep_time)
 {
-  char buf[PATH_MAX];
+  FILE *input;
+  char buf[16];
 
   sleep (sleep_time);
-  sprintf (buf, "%s/%s/%s", ROOT_DIR, DBMT_PID_DIR, DBMT_CUB_JS_PID);
-  if (access (buf, F_OK) == -1)
+
+  /* check cub_auto */
+  input = popen (UTIL_CUB_AUTO_NAME " " "getpid", "r");
+  if (input == NULL)
     {
       return false;
     }
 
-  sprintf (buf, "%s/%s/%s", ROOT_DIR, DBMT_PID_DIR, DBMT_CUB_AUTO_PID);
-  if (access (buf, F_OK) == -1)
+  memset (buf, '\0', sizeof (buf));
+  if ((fgets (buf, 16, input) == NULL) || atoi (buf) <= 0)
+    {
+      pclose (input);
+      return false;
+    }
+
+  pclose (input);
+
+  /* chech cub_js */
+  input = popen (UTIL_CUB_JS_NAME " " "getpid", "r");
+  if (input == NULL)
     {
       return false;
     }
+
+  memset (buf, '\0', sizeof (buf));
+  if ((fgets (buf, 16, input) == NULL) || atoi (buf) <= 0)
+    {
+      pclose (input);
+      return false;
+    }
+
+  pclose (input);
 
   return true;
 }

@@ -94,7 +94,7 @@ struct or_foreign_key
   int upd_action;
   bool is_cache_obj;
   int cache_attr_id;
-  char *name;
+  char *fkname;			/* foreign key name */
 };
 
 typedef struct or_index OR_INDEX;
@@ -105,6 +105,7 @@ struct or_index
   BTREE_TYPE type;		/* btree type */
   int n_atts;			/* Number of associated attributes */
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
+  char *btname;			/* index( or constraint) name */
   OR_FOREIGN_KEY *fk;
 };
 

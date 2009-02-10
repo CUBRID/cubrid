@@ -803,10 +803,13 @@ br_monitor (char *br_vector)
   char time_str[32];
 #endif
   static unsigned long *num_tx_olds = NULL;
+  static unsigned long *num_qx_olds = NULL;
   static time_t time_old;
   unsigned long num_tx_cur;
+  unsigned long num_qx_cur;
   time_t time_cur;
   int tps;
+  int qps;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
@@ -821,6 +824,7 @@ br_monitor (char *br_vector)
 #endif
   buf_len += sprintf (buf + buf_len, "%9s", "REQ");
   buf_len += sprintf (buf + buf_len, "%4s", "TPS");
+  buf_len += sprintf (buf + buf_len, "%4s", "QPS");
   buf_len += sprintf (buf + buf_len, "%5s", "AUTO");
   buf_len += sprintf (buf + buf_len, "%5s", "SES");
   buf_len += sprintf (buf + buf_len, "%5s", "SQLL");
@@ -837,6 +841,14 @@ br_monitor (char *br_vector)
 	(unsigned long *) calloc (sizeof (unsigned long), shm_br->num_broker);
       (void) time (&time_old);
     }
+
+  if (num_qx_olds == NULL)
+    {
+      num_qx_olds =
+	(unsigned long *) calloc (sizeof (unsigned long), shm_br->num_broker);
+      (void) time (&time_old);
+    }
+
   (void) time (&time_cur);
 
   for (i = 0; i < shm_br->num_broker; i++)
@@ -883,19 +895,30 @@ br_monitor (char *br_vector)
 	      if (refresh_sec > 0)
 		{
 		  num_tx_cur = 0;
+		  num_qx_cur = 0;
 		  for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		    {
 		      num_tx_cur +=
 			(unsigned long) shm_appl->as_info[j].
 			num_transactions_processed;
+		      num_qx_cur +=
+			(unsigned long) shm_appl->as_info[j].
+			num_query_processed;
+
 		    }
-		  tps = (int) ((num_tx_cur - num_tx_olds[i]) / 
-                                difftime (time_cur, time_old));
+		  tps = (int) ((num_tx_cur - num_tx_olds[i]) /
+			       difftime (time_cur, time_old));
+		  qps =
+		    (int) ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
+								     time_old));
 		  num_tx_olds[i] = num_tx_cur;
+		  num_qx_olds[i] = num_qx_cur;
 		  STR_OUT (" %3d", tps);
+		  STR_OUT (" %3d", qps);
 		}
 	      else
 		{
+		  STR_OUT (" %3s", "---");
 		  STR_OUT (" %3s", "---");
 		}
 

@@ -4869,7 +4869,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
- *   fk_name(in):
+ *   fkname(in):
  *
  * NOTE:
  */
@@ -4879,7 +4879,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		  int *attr_ids, HFID * hfids,
 		  int unique_flag, int reverse_flag,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		  int cache_attr_id, const char *fk_name)
+		  int cache_attr_id, const char *fkname)
 {
 #if defined(CS_MODE)
   int error, req_error, request_size, domain_size;
@@ -4897,7 +4897,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     + (n_classes * n_attrs * OR_INT_SIZE) + (n_classes * OR_HFID_SIZE)
     + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
     + or_align_length_for_btree (OR_BTID_SIZE) + OR_INT_SIZE
-    + or_packed_string_length (fk_name);
+    + or_packed_string_length (fkname);
 
   request = (char *) malloc (request_size);
 
@@ -4935,7 +4935,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   ptr = or_pack_btid (ptr, fk_refcls_pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_pack_int (ptr, cache_attr_id);
-  ptr = or_pack_string (ptr, (char *) fk_name);
+  ptr = or_pack_string (ptr, (char *) fkname);
 
   req_error = net_client_request (SERVER_BTREE_LOADINDEX,
 				  request, request_size, reply,
@@ -4964,7 +4964,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     xbtree_load_index (NULL, btid, key_type, class_oids, n_classes, n_attrs,
 		       attr_ids, hfids, unique_flag, reverse_flag,
 		       fk_refcls_oid, fk_refcls_pk_btid, cache_attr_id,
-		       fk_name);
+		       fkname);
   if (btid == NULL)
     {
       error = er_errid ();
@@ -7209,14 +7209,14 @@ repl_set_info (REPL_INFO * repl_info)
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fk_name(in):
+ *   fkname(in):
  *
  * NOTE:
  */
 int
 locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 			    int n_attrs, int *attr_ids, OID * pk_cls_oid,
-			    BTID * pk_btid, int cache_attr_id, char *fk_name)
+			    BTID * pk_btid, int cache_attr_id, char *fkname)
 {
 #if defined(CS_MODE)
   int error, req_error, request_size, domain_size;
@@ -7233,7 +7233,7 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   request_size = OR_OID_SIZE + OR_HFID_SIZE + domain_size + OR_INT_SIZE
     + (n_attrs * OR_INT_SIZE) + OR_OID_SIZE
     + or_align_length_for_btree (OR_BTID_SIZE) + OR_INT_SIZE
-    + or_packed_string_length (fk_name);
+    + or_packed_string_length (fkname);
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -7255,7 +7255,7 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   ptr = or_pack_btid (ptr, pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_pack_int (ptr, cache_attr_id);
-  ptr = or_pack_string (ptr, fk_name);
+  ptr = or_pack_string (ptr, fkname);
 
   req_error = net_client_request (SERVER_LC_BUILD_FK_OBJECT_CACHE,
 				  request, request_size, reply,
@@ -7275,7 +7275,7 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 
   error = xlocator_build_fk_object_cache (NULL, cls_oid, hfid, key_type,
 					  n_attrs, attr_ids, pk_cls_oid,
-					  pk_btid, cache_attr_id, fk_name);
+					  pk_btid, cache_attr_id, fkname);
   if (error == ER_FAILED)
     {
       error = er_errid ();

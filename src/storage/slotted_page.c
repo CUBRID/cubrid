@@ -1385,7 +1385,7 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   page_header_p->num_records++;
   page_header_p->total_free -= space;
   page_header_p->cont_free -= space;
-  page_header_p->offset_to_free_area += record_length + waste;
+  page_header_p->offset_to_free_area += (record_length + waste);
 
   *out_slot_p = slot_p;
   *out_space_p = space;
@@ -1614,7 +1614,7 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   page_header_p->num_records++;
   page_header_p->total_free -= space;
   page_header_p->cont_free -= space;
-  page_header_p->offset_to_free_area += record_length + waste;
+  page_header_p->offset_to_free_area += (record_length + waste);
 
   *out_slot_p = slot_p;
   *out_space_p = space;
@@ -2233,13 +2233,13 @@ spage_update_record_after_compact (PAGE_PTR page_p,
        */
       old_offset = slot_p->offset_to_record;
       slot_p->offset_to_record = NULL_OFFSET;
-      page_header_p->total_free += old_waste + slot_p->record_length;
+      page_header_p->total_free += (old_waste + slot_p->record_length);
       page_header_p->num_records--;
 
       if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
-	  page_header_p->total_free -= old_waste + slot_p->record_length;
+	  page_header_p->total_free -= (old_waste + slot_p->record_length);
 	  page_header_p->num_records++;
 	  return SP_ERROR;
 	}
@@ -2256,9 +2256,9 @@ spage_update_record_after_compact (PAGE_PTR page_p,
 
   /* Adjust the header */
   page_header_p->total_free -= space;
-  page_header_p->cont_free -= record_descriptor_p->length + new_waste;
+  page_header_p->cont_free -= (record_descriptor_p->length + new_waste);
   page_header_p->offset_to_free_area +=
-    record_descriptor_p->length + new_waste;
+    (record_descriptor_p->length + new_waste);
 
   return SP_SUCCESS;
 }
@@ -2575,13 +2575,14 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 
 	  /* Adjust some of the space for the compaction, then return the
 	     space back. That is, second part is gone for now. */
-	  page_header_p->total_free += space + remain_length + new_waste;
+	  page_header_p->total_free += (space + remain_length + new_waste);
 	  page_header_p->num_records--;
 
 	  if (spage_compact (page_p) != NO_ERROR)
 	    {
 	      slot_p->record_length += remain_length;
-	      page_header_p->total_free -= space + remain_length + new_waste;
+	      page_header_p->total_free -=
+		(space + remain_length + new_waste);
 	      (void) spage_delete_for_recovery (thread_p, page_p,
 						*out_new_slot_id_p);
 	      *out_new_slot_id_p = NULL_SLOTID;
@@ -2743,7 +2744,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
     }
 
   slot_p->record_length -= takeout_length;
-  page_header_p->total_free += takeout_length + old_waste - new_waste;
+  page_header_p->total_free += (takeout_length + old_waste - new_waste);
 
   if (page_header_p->is_saving
       && spage_save_space (thread_p, page_header_p, page_p,
@@ -2913,13 +2914,13 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       /* For now indicate that it has an empty slot */
       old_offset = slot_p->offset_to_record;
       slot_p->offset_to_record = NULL_OFFSET;
-      page_header_p->total_free += slot_p->record_length + old_waste;
+      page_header_p->total_free += (slot_p->record_length + old_waste);
       page_header_p->num_records--;
 
       if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
-	  page_header_p->total_free -= old_waste + slot_p->record_length;
+	  page_header_p->total_free -= (old_waste + slot_p->record_length);
 	  page_header_p->num_records++;
 	  free_and_init (copyarea);
 	  return SP_ERROR;
@@ -3111,9 +3112,9 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 
       /* Don't increase waste here */
       page_header_p->total_free -=
-	first_slot_p->record_length - first_old_waste;
+	(first_slot_p->record_length - first_old_waste);
       page_header_p->cont_free -=
-	first_slot_p->record_length - first_old_waste;
+	(first_slot_p->record_length - first_old_waste);
       first_old_waste = 0;
     }
   else
@@ -3144,8 +3145,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       first_slot_p->offset_to_record = NULL_OFFSET;
       second_slot_p->offset_to_record = NULL_OFFSET;
       page_header_p->total_free +=
-	first_slot_p->record_length + second_slot_p->record_length +
-	first_old_waste + second_old_waste;
+	(first_slot_p->record_length + second_slot_p->record_length +
+	 first_old_waste + second_old_waste);
       page_header_p->num_records -= 2;
 
       if (spage_compact (page_p) != NO_ERROR)

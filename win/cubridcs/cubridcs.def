@@ -233,6 +233,7 @@ EXPORTS
     db_query_spec_string
     db_query_sync
     db_query_tuple_count
+    db_register_error_log_handler
     db_rename
     db_rename_class
     db_resolution_alias

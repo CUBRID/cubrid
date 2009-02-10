@@ -1622,7 +1622,7 @@ public class QueryEditor extends ViewPart {
 							stmt = (CUBRIDPreparedStatement) conn
 									.prepareStatement(
 											sql,
-											ResultSet.TYPE_SCROLL_INSENSITIVE,
+											ResultSet.TYPE_FORWARD_ONLY,
 											(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
 													: ResultSet.CONCUR_READ_ONLY,
 											ResultSet.HOLD_CURSORS_OVER_COMMIT);
@@ -1941,7 +1941,7 @@ public class QueryEditor extends ViewPart {
 	// (QueryExecuter)curResult.get(tabMiddle.getSelectionIndex());
 	// try {
 	// stmt = conn.prepareStatement(qe.query,
-	// ResultSet.TYPE_SCROLL_INSENSITIVE,
+	// ResultSet.TYPE_FORWARD_ONLY,
 	// ResultSet.CONCUR_UPDATABLE,
 	// ResultSet.HOLD_CURSORS_OVER_COMMIT);
 	// qe.rs = (CUBRIDResultSet) stmt.executeQuery();

@@ -25,7 +25,7 @@
 #include <sys/stat.h>
 #if defined(LINUX)
 #include <sys/resource.h>
-#include <asm/page.h>
+#include <unistd.h>
 #endif
 
 #include "porting.h"
@@ -69,6 +69,7 @@ pthread_key_t slave_Key;
 #define RECONNECT_COUNT          3
 #define RECONNECT_SLEEP_SEC      3
 
+#define ONE_K                 1024
 /* Macros to processing final errors of each thread ..
  * So, you have to use these things only in the top routine of a thread
  */
@@ -1701,6 +1702,7 @@ repl_tr_log_apply (void *arg)
   PAGEID old_pageid = -1;
   struct timeval time_reconnect, time_commit, time_now;
   bool is_connect = true;
+  bool is_idle;
 
   /* set slave info (thread specific data) to connect */
   repl_ag_set_slave_info (*(int *) arg);
@@ -1883,10 +1885,10 @@ repl_tr_log_apply (void *arg)
 		  SLEEP_USEC (0, 100 * 1000);
 		}
 
+	      is_idle = repl_ag_is_idle (sinfo, i);
 	      gettimeofday (&time_now, NULL);
-	      if ((time_now.tv_sec - time_reconnect.tv_sec)
-		  > sinfo->masters[i].restart_interval
-		  && repl_ag_is_idle (sinfo, i))
+	      if (is_idle && (time_now.tv_sec - time_reconnect.tv_sec)
+		  > sinfo->masters[i].restart_interval)
 		{
 		  gettimeofday (&time_reconnect, NULL);
 		  error = repl_tr_log_update_distdb (sinfo, i, pb);
@@ -1894,7 +1896,7 @@ repl_tr_log_apply (void *arg)
 					   REPL_AGENT_CANT_CONNECT_TO_SLAVE,
 					   sinfo->conn.dbname, arg);
 		}
-	      if (repl_ag_get_resource_size () > agent_Max_size * 1024)
+	      if (is_idle && repl_ag_get_resource_size () > agent_Max_size)
 		{
 		  restart_Agent = true;
 		  pb->need_shutdown = true;
@@ -1982,9 +1984,9 @@ repl_ag_get_resource_size ()
   mem = strtoul (current_p, &current_p, 10);	/* rss */
 
   /* page to kbyte */
-  mem = mem << (PAGE_SHIFT - 10);
+  mem = mem * (sysconf (_SC_PAGESIZE) / ONE_K);
 
-  return mem;
+  return mem / 1024;
 
 #elif defined(SOLARIS)
   unsigned long mem;
@@ -2019,7 +2021,7 @@ repl_ag_get_resource_size ()
 
 #endif
 
-  return mem;
+  return mem / 1024;
 
 #endif
 }

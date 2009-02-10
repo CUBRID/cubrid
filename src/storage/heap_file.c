@@ -13368,9 +13368,30 @@ heap_find_value_position (RECDES * recdes, OR_ATTRIBUTE * att,
   disk_bound = false;
   *val_len = 0;
 
-  /* Does attribute exist in this disk representation?  */
   if (recdes != NULL && recdes->data != NULL && att != NULL)
     {
+      if (or_rep_id (recdes) != attr_info->last_classrepr->id)
+	{
+	  int i;
+	  bool found = false;	/* Does attribute(att) exist in
+				   this disk representation? */
+
+	  for (i = 0; i < attr_info->read_classrepr->n_attributes; i++)
+	    {
+	      if (attr_info->read_classrepr->attributes[i].id == att->id)
+		{
+		  att = &attr_info->read_classrepr->attributes[i];
+		  found = true;
+		  break;
+		}
+	    }
+
+	  if (found == false)
+	    {
+	      return NULL;
+	    }
+	}
+
       /* Is it a fixed size attribute ? */
       if (att->is_fixed != 0)
 	{			/* A fixed attribute.  */
@@ -15083,7 +15104,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	}
     }
 
-  index = &(idx_attrinfo->read_classrepr->indexes[btid_index]);
+  index = &(idx_attrinfo->last_classrepr->indexes[btid_index]);
   n_atts = index->n_atts;
   *btid = index->btid;
 
@@ -15205,18 +15226,19 @@ heap_indexinfo_get_attrids (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo,
 }
 
 /*
- * heap_get_attrids_of_btid_key () -
+ * heap_get_indexinfo_of_btid () -
  *   return: NO_ERROR
  *   class_oid(in):
  *   btid(in):
  *   type(in):
  *   num_attrs(in):
  *   attr_ids(in):
+ *   btnamepp(in);
  */
 int
-heap_get_attrids_of_btid_key (THREAD_ENTRY * thread_p, OID * class_oid,
-			      BTID * btid, BTREE_TYPE * type, int *num_attrs,
-			      ATTR_ID ** attr_ids)
+heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
+			    BTID * btid, BTREE_TYPE * type, int *num_attrs,
+			    ATTR_ID ** attr_ids, char **btnamepp)
 {
   OR_CLASSREP *classrepp;
   OR_INDEX *indexp;
@@ -15225,8 +15247,20 @@ heap_get_attrids_of_btid_key (THREAD_ENTRY * thread_p, OID * class_oid,
   int ret = NO_ERROR;
 
   /* initial value of output parameters */
-  *num_attrs = 0;
-  *attr_ids = NULL;
+  if (num_attrs)
+    {
+      *num_attrs = 0;
+    }
+
+  if (attr_ids)
+    {
+      *attr_ids = NULL;
+    }
+
+  if (btnamepp)
+    {
+      *btnamepp = NULL;
+    }
 
   /* get the class representation so that we can access the indexes */
   classrepp = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
@@ -15245,23 +15279,38 @@ heap_get_attrids_of_btid_key (THREAD_ENTRY * thread_p, OID * class_oid,
   indexp = &classrepp->indexes[idx];
 
   /* get the type of this index */
-  *type = indexp->type;
+  if (type)
+    {
+      *type = indexp->type;
+    }
 
   /* get the number of attributes associated with this index */
-  *num_attrs = n = indexp->n_atts;
+  if (num_attrs)
+    {
+      *num_attrs = n = indexp->n_atts;
+    }
   /* allocate a new attribute ID array */
-  *attr_ids = (ATTR_ID *) db_instant_alloc (thread_p, n * sizeof (ATTR_ID));
-  if (*attr_ids == NULL)
+  if (attr_ids)
     {
-      goto exit_on_error;
+      *attr_ids =
+	(ATTR_ID *) db_instant_alloc (thread_p, n * sizeof (ATTR_ID));
+
+      if (*attr_ids == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      /* fill the array with the attribute ID's */
+      for (i = 0; i < n; i++)
+	{
+	  (*attr_ids)[i] = indexp->atts[i]->id;
+	}
     }
 
-  /* fill the array with the attribute ID's */
-  for (i = 0; i < n; i++)
+  if (btnamepp)
     {
-      (*attr_ids)[i] = indexp->atts[i]->id;
+      *btnamepp = strdup (indexp->btname);
     }
-
   /* free the class representation */
   ret = heap_classrepr_free (classrepp, &idx_in_cache);
   if (ret != NO_ERROR)
@@ -15275,10 +15324,23 @@ end:
 
 exit_on_error:
 
-  if (*attr_ids)
+  if (attr_ids)
     {
-      db_instant_free_and_init (thread_p, *attr_ids);
+      if (*attr_ids)
+	{
+	  db_instant_free_and_init (thread_p, *attr_ids);
+	}
+      *attr_ids = NULL;
     }
+
+  if (btnamepp)
+    {
+      if (*btnamepp)
+	{
+	  free_and_init (*btnamepp);
+	}
+    }
+
   if (classrepp)
     {
       (void) heap_classrepr_free (classrepp, &idx_in_cache);

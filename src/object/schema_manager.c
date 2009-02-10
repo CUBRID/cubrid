@@ -477,14 +477,14 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   int unique, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			   int cache_attr_id, const char *fk_name);
+			   int cache_attr_id, const char *fkname);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int build_fk_obj_cache (MOP classop, SM_CLASS * class_,
 			       SM_ATTRIBUTE ** key_attrs,
 			       const int *asc_desc, OID * pk_cls_oid,
 			       BTID * pk_btid, int cache_attr_id,
-			       char *fk_name);
+			       char *fkname);
 static int update_foreign_key_ref (MOP ref_clsop,
 				   SM_FOREIGN_KEY_INFO * fk_info);
 static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
@@ -8821,7 +8821,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
- *   fk_name(in):
+ *   fkname(in):
  */
 
 static int
@@ -8829,7 +8829,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		SM_ATTRIBUTE ** attrs, const int *asc_desc, int unique,
 		int reverse, const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		int cache_attr_id, const char *fk_name)
+		int cache_attr_id, const char *fkname)
 {
   int error = NO_ERROR;
   DB_TYPE type;
@@ -8929,7 +8929,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	    error = btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, hfids, unique, reverse,
 				      fk_refcls_oid, fk_refcls_pk_btid,
-				      cache_attr_id, fk_name);
+				      cache_attr_id, fkname);
 
 	  free_and_init (attr_ids);
 	  free_and_init (oids);
@@ -9020,13 +9020,13 @@ rem_class_from_index (OID * oid, BTID * index, HFID * heap)
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fk_name(in):
+ *   fkname(in):
  */
 
 static int
 build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 		    const int *asc_desc, OID * pk_cls_oid, BTID * pk_btid,
-		    int cache_attr_id, char *fk_name)
+		    int cache_attr_id, char *fkname)
 {
   int error = NO_ERROR;
   int i, n_attrs;
@@ -9061,7 +9061,7 @@ build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 
       error = locator_build_fk_obj_cache (cls_oid, hfid, domain, n_attrs,
 					  attr_ids, pk_cls_oid, pk_btid,
-					  cache_attr_id, fk_name);
+					  cache_attr_id, fkname);
 
       free_and_init (attr_ids);
     }

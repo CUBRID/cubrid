@@ -128,7 +128,8 @@ public class SqlParser {
 				|| isHasOuterClause(lowerSql, tokenList, "difference")
 				|| isHasOuterClause(lowerSql, tokenList, "intersect")
 				|| isHasOuterJoinClause(lowerSql, tokenList, "left")
-				|| isHasOuterJoinClause(lowerSql, tokenList, "right")) {
+				|| isHasOuterJoinClause(lowerSql, tokenList, "right")
+				|| isHasAggregationFunction(lowerSql, tokenList)) {
 			return null;
 		}
 		int insertPos = lowerSql.length();
@@ -272,6 +273,46 @@ public class SqlParser {
 						if (isHasOuterLeftOuterJoinClause) {
 							return true;
 						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * 
+	 * @param sql
+	 * @param tokenList
+	 * @return
+	 */
+	private static boolean isHasAggregationFunction(String sql,
+			List<SqlToken> tokenList) {
+		String[] functionArr = { "sum", "count", "min", "max", "avg", "stddev",
+				"variance" };
+		for (int k = 0; k < functionArr.length; k++) {
+			String functionName = functionArr[k];
+			int i = 0;
+			int pos = 0;
+			while (i < sql.length() && (pos = sql.indexOf(functionName, i)) > 0) {
+				i = pos + functionName.length();
+				String preStr = " ";
+				if (pos > 1)
+					preStr = String.valueOf(sql.charAt(pos - 1));
+				String afterStr = " ";
+				if (i < sql.length())
+					afterStr = String.valueOf(sql.charAt(i));
+				if (preStr.matches("\\s")
+						&& (afterStr.matches("\\s") || afterStr.matches("\\("))) {
+					boolean isOuterFunctionSql = true;
+					for (int j = 0; j < tokenList.size(); j++) {
+						SqlToken sqlToken = tokenList.get(j);
+						if (sqlToken.start < pos && pos < sqlToken.end) {
+							isOuterFunctionSql = false;
+						}
+					}
+					if (isOuterFunctionSql) {
+						return true;
 					}
 				}
 			}

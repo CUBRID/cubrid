@@ -46,7 +46,6 @@ import jxl.read.biff.BiffException;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
-import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
@@ -324,7 +323,7 @@ public class Import extends Dialog {
 		GridLayout gridLayout = new GridLayout();
 		gridLayout.numColumns = 2;
 		gridLayout.makeColumnsEqualWidth = true;
-		gridLayout.horizontalSpacing = 0;
+		gridLayout.horizontalSpacing = 5;
 		GridData gridData = new GridData();
 		gridData.horizontalAlignment = GridData.END;
 		gridData.verticalAlignment = GridData.FILL;
@@ -332,7 +331,6 @@ public class Import extends Dialog {
 		cmpBottom.setLayoutData(gridData);
 		cmpBottom.setLayout(gridLayout);
 
-		gridData = new GridData();
 		btnImport = new Button(cmpBottom, SWT.NONE);
 		// TODO: image
 		btnImport.setText(Messages.getString("QEDIT.IMPORT2"));
@@ -355,7 +353,6 @@ public class Import extends Dialog {
 						}
 					}
 				});
-		btnImport.setLayoutData(gridData);
 
 		btnCancel = new Button(cmpBottom, SWT.NONE);
 		// TODO: image
@@ -366,7 +363,6 @@ public class Import extends Dialog {
 						sShell.dispose();
 					}
 				});
-		btnCancel.setLayoutData(gridData);
 	}
 
 	/**
@@ -724,7 +720,7 @@ public class Import extends Dialog {
 			return true;
 		}
 
-		String insert = "insert into " + cmbTargetTable.getText() + " (";
+		String insert = "insert into \"" + cmbTargetTable.getText() + "\" (";
 		String values = "values (";
 
 		for (int i = 0; i < listTo.getItemCount(); i++) {
@@ -733,7 +729,7 @@ public class Import extends Dialog {
 				values += ", ";
 			}
 
-			insert += listTo.getItem(i);
+			insert += "\"" + listTo.getItem(i) + "\"";
 
 			String type = colType.get(colName.indexOf(listTo.getItem(i)))
 					.toString();

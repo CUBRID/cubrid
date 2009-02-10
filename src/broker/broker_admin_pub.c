@@ -1736,6 +1736,7 @@ static int
 #ifdef DIAG_DEVEL
       shm_appl->as_info[i].num_requests_received = 0;
       shm_appl->as_info[i].num_transactions_processed = 0;
+      shm_appl->as_info[i].num_query_processed = 0;
 #endif
       CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
     }

@@ -1,4 +1,3 @@
-
 #
 # Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 #
@@ -26,7 +25,7 @@ AC_CONFIG_SRCDIR([src/executables/server.c])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADERS([config.h])
 
-AM_INIT_AUTOMAKE([CUBRID 2008], RELEASE)
+AM_INIT_AUTOMAKE
 
 # Checks for programs.
 remember_CFLAGS="$CFLAGS"
@@ -81,6 +80,7 @@ AC_CHECK_LIB([dl], [main])
 AC_CHECK_LIB([pthread], [main])
 AC_CHECK_LIB([curses], [main])
 AC_CHECK_LIB([stdc++], [main])
+AC_CHECK_LIB([gcrypt], [main])
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -93,7 +93,7 @@ AC_CHECK_HEADERS([limits.h],
 AC_CHECK_HEADERS([limits.h],
 	[],
 	[AC_DEFINE([NAME_MAX], [255], [Max file name length])])
-AC_CHECK_HEADERS([sys/param.h sys/socket.h nl_types.h regex.h getopt.h libgen.h])
+AC_CHECK_HEADERS([sys/param.h sys/socket.h nl_types.h regex.h getopt.h libgen.h rpc/des_crypt.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 #AC_TYPE_INT8_T
@@ -129,6 +129,7 @@ AC_STRUCT_TM
 
 # Checks for library functions.
 AC_FUNC_VPRINTF
+AC_CHECK_FUNCS([getrlimit sysconf])
 
 # Checks for system functions for which we have replacements.
 AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \
@@ -192,6 +193,94 @@ then
 	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lhoard -lstdc++ -ldl -lpthread"
 fi
 
+AC_CHECK_PROG(ANT, ant, ant)
+AC_ARG_WITH(jdk,
+	AS_HELP_STRING([--with-jdk=DIR],
+		       [JDK HOME you want to use @<:@default=check@:>@]),
+	[JDK_HOME=${with_jdk}],
+	[with_jdk=check])
+
+AS_IF([test "x$with_jdk" != "xno"],
+    [if test "x$with_jdk" = "xcheck"
+    then
+	AC_MSG_CHECKING(java home)
+        if test "x$JAVA_HOME" != "x"
+	then
+	    JDK_HOME=$JAVA_HOME
+	    JDK_BIN=$JAVA_HOME/bin
+	    JAVAC=$JDK_BIN/javac
+	else
+	    AC_MSG_ERROR(set your JAVA_HOME enviroment variable.)
+	    #AC_PATH_TOOL(JAVAC, javac, [AC_MSG_ERROR(Could not find javac in the PATH])
+	    #JDK_BIN=`dirname $JAVAC`
+	    #JDK_HOME=`dirname $JDK_BIN`
+	fi
+	AC_MSG_RESULT($JDK_HOME)
+    else
+	JAVA_HOME=$JDK_HOME
+	JDK_BIN=$JDK_HOME/bin
+	JAVAC=$JDK_BIN/javac
+    fi
+
+    if test -x $JDK_BIN/javac
+    then
+	JAVAC=$JDK_BIN/javac
+    else
+	AC_MSG_ERROR(javac not found at $JDK_HOME)
+    fi
+
+    AC_MSG_CHECKING(javac version)
+    JAVAC_VERSION=`$JAVAC -version 2>&1|head -1|sed -e 's/.*javac \(.*\).*/\1/'`
+    if test -n "$JAVAC_VERSION"
+    then
+	AC_MSG_RESULT($JAVAC_VERSION)
+	if expr 1.4 ">" "$JAVAC_VERSION" > /dev/null
+	then
+	    AC_MSG_ERROR(Java 1.5 or later is required)
+	fi
+
+	if expr 1.6 "<=" "$JAVAC_VERSION" > /dev/null
+	then
+	    JDK6_DEFINE=-DJDK6
+	fi
+
+	JDBC_DIR=jdbc
+	JSP_DIR=java
+    else
+	AC_MSG_ERROR(Java 1.5 or later is required)
+    fi
+
+    AC_CHECK_FILE($JDK_HOME/include/jni.h,[JAVA_INC="-I$JDK_HOME/include"],
+		  AC_MSG_ERROR(jni.h is required.))
+    case ${host_os} in
+      linux*)
+	    mddir="linux";;
+      solaris*)
+	    mddir="solaris";;
+      *)
+	    mddir=""
+    esac
+    AC_CHECK_FILE($JDK_HOME/include/$mddir/jni_md.h,
+		  [JAVA_INC="$JAVA_INC -I$JDK_HOME/include/$mddir"],
+		  AC_MSG_ERROR(jni_md.h is required.))
+
+    AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
+    remember_CFLAGS="$CFLAGS"
+    CFLAGS="$CFLAGS $JAVA_INC"
+    AC_LINK_IFELSE([
+#include <jni.h>
+int main(void) { return 0; }
+		   ],[AC_MSG_RESULT(yes)],
+		   [AC_MSG_ERROR([Cannot compile a JNI program. See config.log for details.])])
+    CFLAGS="$remember_CFLAGS"
+    ],
+    [SYS_DEFS="$SYS_DEFS -DDISABLE_JSP"])
+AC_SUBST(JDK6_DEFINE)
+AC_SUBST(JDBC_DIR)
+AC_SUBST(JSP_DIR)
+AC_SUBST(JAVA_INC)
+AC_SUBST(JAVA_HOME)
+
 AC_ARG_WITH([libedit],
 	AS_HELP_STRING([--with-libedit=PATH],
 		[prefix for installed editline @<:@default=builtin@:>@]),
@@ -204,7 +293,8 @@ then
 	LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
 	LIBEDIT_INC="-I\$(top_builddir)/external/include/editline"
 else
-	LIBEDIT_LIBS="-ledit"
+	LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
+	LIBEDIT_INC="-I$with_libedit/include/editline"
 fi
 
 AC_ARG_WITH([lzo2],
@@ -218,10 +308,10 @@ then
 	AC_CONFIG_SUBDIRS([external/lzo-2.03])
 	LZO_LIBS="\$(top_builddir)/external/lib/liblzo2.la"
 	LZO_INC="-I\$(top_builddir)/external/include/lzo"
-        LDFLAGS="$LDFLAGS $LZO_LIBS"
+	LDFLAGS="$LDFLAGS $LZO_LIBS"
 else
-	LZO_LIBS="-llzo2"
-        LZO_INC="-I$with_lzo2/include/lzo"
+	LZO_LIBS="-L$with_lzo2/lib -llzo2"
+	LZO_INC="-I$with_lzo2/include/lzo"
 fi
 
 AC_ARG_WITH([pcre],
@@ -234,8 +324,10 @@ if test "$with_pcre" = "builtin"
 then
 	AC_CONFIG_SUBDIRS([external/pcre-7.6])
 	PCRE_LIBS="\$(top_builddir)/external/lib/libpcre.la"
+	PCRE_INC="-I\$(top_builddir)/external/include"
 else
-	PCRE_LIBS="-lpcre"
+	PCRE_LIBS="-L$with_pcre/lib -lpcre"
+	PCRE_INC="-I$with_pcre/include"
 fi
 
 AC_ARG_WITH([gc],
@@ -248,57 +340,15 @@ if test "$with_gc" = "builtin"
 then
 	AC_CONFIG_SUBDIRS([external/gc6.7])
 	GC_LIBS="\$(top_builddir)/external/lib/libgc.la"
+	GC_INC="-I\$(top_builddir)/external/include"
 else
-	GC_LIBS="-lgc"
+	GC_LIBS="-L$with_gc/lib -lgc"
+	GC_INC="-I$with_gc/include"
 fi
 
-AC_ARG_WITH([openssl],
-	AS_HELP_STRING([--with-openssl=PATH],
-		[prefix for installed OpenSSL @<:@default=builtin@:>@]),
-	[with_openssl=$withval],
-	[with_openssl=builtin])
-
-if test "$with_openssl" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/openssl-0.9.8g])
-	OPENSSL_LIBS="\$(top_builddir)/external/lib/libssl.a \$(top_builddir)/external/lib/libcrypto.a"
-else
-	OPENSSL_LIBS="-lssl -lcrypto"
-fi
-
-#AC_ARG_WITH([expat],
-#	AS_HELP_STRING([--with-expat=PATH],
-#		[prefix for installed Expat @<:@default=builtin@:>@]),
-#	[with_expat=$withval],
-#	[with_expat=builtin])
-#
-#if test "$with_expat" = "builtin"
-#then
-#	AC_CONFIG_SUBDIRS([external/expat-2.0.1])
-#	EXPAT_LIBS="\$(top_builddir)/external/lib/libexpat.la"
-#else
-#	EXPAT_LIBS="-lexpat"
-#fi
-
-#AC_ARG_WITH([xmlrpc-epi],
-#	AS_HELP_STRING([--with-xmlrpc-epi=PATH],
-#		[prefix for installed XMLRPC-EPI @<:@default=builtin@:>@]),
-#	[with_xmlrpc_epi=$withval],
-#	[with_xmlrpc_epi=builtin])
-#
-#if test "$with_xmlrpc_epi" = "builtin"
-#then
-#	AC_CONFIG_SUBDIRS([external/xmlrpc-epi-0.54])
-#	XMLRPCEPI_LIBS="\$(top_builddir)/external/lib/libxmlrpc-epi.la"
-#else
-#	XMLRPCEPI_LIBS="-lxmlrpc-epi -lexpat"
-#fi
-
-
-#
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
-BUILD_NUMBER=`cat $ac_confdir/BUILD_NUMBER`
+BUILD_NUMBER=`cat $srcdir/BUILD_NUMBER`
 RELEASE_STRING=`echo $BUILD_NUMBER | sed -e "s|\.[[0-9]]*$||"`
 MAJOR_RELEASE_STRING=`echo $RELEASE_STRING | sed -e "s|\.[[0-9]]*$||"`
 MAJOR_VERSION=`echo $RELEASE_STRING | cut -d \. -f 1`
@@ -319,7 +369,7 @@ VERSION_DEFS="-DMAJOR_VERSION=$MAJOR_VERSION -DMINOR_VERSION=$MINOR_VERSION \
 -DMAJOR_RELEASE_STRING=$MAJOR_RELEASE_STRING -DBUILD_NUMBER=$BUILD_NUMBER"
 
 SRC_INC="-I\$(top_srcdir)/include"
-DIR_LIST=`ls -l $ac_confdir/src | grep ^d | awk '{ print $9}'`
+DIR_LIST=`ls -l $srcdir/src | grep ^d | awk '{ print $9}'`
 for D in $DIR_LIST
 do
 	SRC_INC="$SRC_INC -I\$(top_srcdir)/src/$D"
@@ -332,20 +382,12 @@ CAS_LIB="-L\$(top_builddir)/cas -lcas"
 CCI_LIB="\$(top_builddir)/cas/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 
-EXT_LIBS="-L\$(top_builddir)/external/lib $LIBEDIT_LIBS $LZO_LIBS $OPENSSL_LIBS $GC_LIBS $XMLRPCEPI_LIBS $EXPAT_LIBS"
-EXT_INC="-I\$(top_builddir)/external/include $LIBEDIT_INC $LZO_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC"
 
 AC_SUBST([BUILD_NUMBER])
 AC_SUBST([SYS_DEFS])
 AC_SUBST([SYS_LIBS])
-AC_SUBST([LIBEDIT_LIBS])
-AC_SUBST([LIBEDIT_INC])
-AC_SUBST([LZO_LIBS])
-AC_SUBST([LZO_INC])
-AC_SUBST([PCRE_LIBS])
-AC_SUBST([GC_LIBS])
-AC_SUBST([OPENSSL_LIBS])
-AC_SUBST([XMLRPCEPI_LIBS])
 AC_SUBST([EXT_LIBS])
 AC_SUBST([EXT_INC])
 AC_SUBST([SERVER_DEFS])

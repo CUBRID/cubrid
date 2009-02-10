@@ -266,8 +266,8 @@ main (int argc, char *argv[])
 	tmp_db_user = "public";
       if (tmp_db_passwd == NULL)
 	tmp_db_passwd = "";
-      UX_DATABASE_CONNECT (db_name, tmp_db_user, tmp_db_passwd, NULL,
-			   req_info.isql);
+      UX_DATABASE_CONNECT (db_name, tmp_db_user,
+			   tmp_db_passwd, NULL, req_info.isql);
     }
 
   if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
@@ -384,8 +384,8 @@ main (int argc, char *argv[])
 	    cas_log_write (0, TRUE, "connect %s %s", db_name, db_user);
 
 	    err_code =
-	      UX_DATABASE_CONNECT (db_name, db_user, db_passwd, &db_err_msg,
-				   req_info.isql);
+	      UX_DATABASE_CONNECT (db_name, db_user,
+				   db_passwd, &db_err_msg, req_info.isql);
 	    if (err_code < 0)
 	      {
 		if (db_err_msg == NULL)
@@ -455,6 +455,7 @@ main (int argc, char *argv[])
 
 	    req_info.need_rollback = TRUE;
 
+	    cas_log_error_handler_begin ();
 	    while (1)
 	      {
 #ifndef WIN32
@@ -462,6 +463,8 @@ main (int argc, char *argv[])
 #endif
 		err_code =
 		  process_request (client_sock_fd, &net_buf, &req_info);
+
+		cas_log_error_handler_clear ();
 #ifndef WIN32
 		signal (SIGUSR1, SIG_IGN);
 #endif
@@ -484,13 +487,15 @@ main (int argc, char *argv[])
 	    if (xa_prepare_flag)
 	      {
 		UX_DATABASE_SHUTDOWN (req_info.isql);
-		UX_DATABASE_CONNECT (db_name, db_user, db_passwd, NULL,
-				     req_info.isql);
+		UX_DATABASE_CONNECT (db_name, db_user,
+				     db_passwd, NULL, req_info.isql);
 	      }
 	    else
 	      {
 		ux_end_tran (CCI_TRAN_ROLLBACK, FALSE);
 	      }
+
+	    cas_log_error_handler_end ();
 
 	    if (shm_appl->access_log == ON)
 	      cas_access_log (&tran_start_time, shm_as_index, client_ip_addr);
@@ -547,44 +552,48 @@ libcas_main (int jsp_sock_fd)
   BROKER_INFO_DBMS_TYPE (broker_info) = CCI_DBMS_CUBRID;
   client_sock_fd = jsp_sock_fd;
 
-#if 0 
-  net_write_int(client_sock_fd, 1);
+#if 0
+  net_write_int (client_sock_fd, 1);
 
   req_info.client_version = CAS_CUR_VERSION;
-  if (net_read_stream(client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) < 0) {
-    NET_WRITE_ERROR_CODE(client_sock_fd, CAS_ER_COMMUNICATION);
-  }
-  else {
-    BROKER_INFO_KEEP_CONNECTION(broker_info) = CAS_KEEP_CONNECTION_OFF;
+  if (net_read_stream (client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) < 0)
     {
-      char msgbuf[4 + BROKER_INFO_SIZE];
-      int tmpint = htonl(getpid());
-
-      BROKER_INFO_KEEP_CONNECTION(broker_info) = CAS_KEEP_CONNECTION_ON;
-      net_write_int(client_sock_fd, 4 + BROKER_INFO_SIZE);
-      memcpy(msgbuf, &tmpint, 4);
-      memcpy(msgbuf+4, broker_info, BROKER_INFO_SIZE);
-      net_write_stream(client_sock_fd, msgbuf, 4 + BROKER_INFO_SIZE);
+      NET_WRITE_ERROR_CODE (client_sock_fd, CAS_ER_COMMUNICATION);
     }
+  else
+    {
+      BROKER_INFO_KEEP_CONNECTION (broker_info) = CAS_KEEP_CONNECTION_OFF;
+      {
+	char msgbuf[4 + BROKER_INFO_SIZE];
+	int tmpint = htonl (getpid ());
+
+	BROKER_INFO_KEEP_CONNECTION (broker_info) = CAS_KEEP_CONNECTION_ON;
+	net_write_int (client_sock_fd, 4 + BROKER_INFO_SIZE);
+	memcpy (msgbuf, &tmpint, 4);
+	memcpy (msgbuf + 4, broker_info, BROKER_INFO_SIZE);
+	net_write_stream (client_sock_fd, msgbuf, 4 + BROKER_INFO_SIZE);
+      }
 #endif
 
-  net_buf_init (&net_buf);
-  if ((net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE)) == NULL)
-    {
-      return 0;
-    }
-  net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
+      net_buf_init (&net_buf);
+      if ((net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE)) == NULL)
+	{
+	  return 0;
+	}
+      net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  while (1)
-    {
-      err_code = process_request (client_sock_fd, &net_buf, &req_info);
-      if (err_code < 0)
-	break;
-    }
+      while (1)
+	{
+	  err_code = process_request (client_sock_fd, &net_buf, &req_info);
+	  if (err_code < 0)
+	    break;
+	}
 
-  net_buf_clear (&net_buf);
-  net_buf_destroy (&net_buf);
-/*  }*/
+      net_buf_clear (&net_buf);
+      net_buf_destroy (&net_buf);
+#if 0
+    }
+#endif
 
   return 0;
 }
@@ -903,8 +912,8 @@ net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
 
       if (net_read_int (clt_sock_fd, msg_size) < 0)
 	{
-	  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_IN_TRAN
-	      || !net_timeout_flag)
+	  if (shm_appl->as_info[shm_as_index].con_status ==
+	      CON_STATUS_IN_TRAN || !net_timeout_flag)
 	    {
 	      ret_value = -1;
 	      break;
@@ -993,7 +1002,9 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
   PROCESS_INFORMATION pi;
   BOOL fSuccess;
   char cmd_line[PATH_MAX];
-  TCHAR DumpPath[MAX_PATH] = { 0, };
+  TCHAR DumpPath[MAX_PATH] = {
+    0,
+  };
   SYSTEMTIME SystemTime;
   HANDLE FileHandle;
   char *cubid_env;

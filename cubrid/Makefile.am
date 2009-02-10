@@ -64,6 +64,7 @@ BASE_SOURCES = \
         $(BASE_DIR)/memory_alloc.c \
 	$(BASE_DIR)/databases_file.c \
 	$(BASE_DIR)/encryption.c \
+	$(BASE_DIR)/sha1.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
 	$(BASE_DIR)/memory_hash.c \
@@ -96,7 +97,7 @@ CONNECTION_SOURCES = \
 COMMUNICATION_SOURCES = \
 	$(COMMUNICATION_DIR)/network_interface_sr.c \
 	$(COMMUNICATION_DIR)/network_sr.c \
-	$(COMMUNICATION_DIR)/network.c \
+	$(COMMUNICATION_DIR)/network.c
 PARSER_SOURCES = \
 	$(PARSER_DIR)/parse_tree.c
 QUERY_SOURCES = \

@@ -61,7 +61,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib libeay32.lib gc_debug.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -137,7 +137,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib libeay32.lib gc.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;;..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
@@ -262,6 +262,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\release_string.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\sha1.c"
 					>
 				</File>
 				<File

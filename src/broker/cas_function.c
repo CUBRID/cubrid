@@ -62,6 +62,7 @@ struct t_glo_cmd_info
 static char *get_schema_type_str (int schema_type);
 static char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value);
+static char *get_error_log_eids ();
 #ifndef LIBCAS_FOR_JSP
 static void bind_value_log (int start, int argc, void **argv, int, char *,
 			    unsigned int);
@@ -181,9 +182,10 @@ CAS_FUNC_PROTOTYPE (fn_end_tran)
     }
 #endif
 
-  cas_log_write (0, TRUE, "end_tran %s%d time %d.%03d",
+  cas_log_write (0, TRUE, "end_tran %s%d time %d.%03d%s",
 		 err_code < 0 ? "error:" : "",
-		 err_code, elapsed_sec, elapsed_msec);
+		 err_code, elapsed_sec, elapsed_msec,
+		 get_error_log_eids (err_code));
 
   if (err_code < 0)
     {
@@ -284,11 +286,11 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
   srv_handle = hm_find_srv_handle (srv_h_id);
 
   cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), TRUE,
-		 "prepare srv_h_id %s%d %s",
+		 "prepare srv_h_id %s%d%s%s",
 		 (srv_h_id < 0) ? "error:" : "", srv_h_id, (srv_handle != NULL
 							    && srv_handle->
 							    use_plan_cache) ?
-		 "(PC)" : "");
+		 " (PC)" : "", get_error_log_eids (srv_h_id));
 
   return 0;
 }
@@ -426,12 +428,13 @@ CAS_FUNC_PROTOTYPE (fn_execute)
     }
 #endif
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), TRUE,
-		 "%s %s%d tuple %d time %d.%03d %s %s",
+		 "%s %s%d tuple %d time %d.%03d%s%s%s",
 		 exec_func_name, (ret_code < 0) ? "error:" : "", ret_code,
 		 srv_handle->q_result->tuple_count,
 		 elapsed_sec, elapsed_msec,
-		 (client_cache_reusable == TRUE) ? "CACHE_REUSE" : "",
-		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
+		 (client_cache_reusable == TRUE) ? " CACHE_REUSE" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
+		 get_error_log_eids (ret_code));
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -2073,4 +2076,39 @@ bind_value_print (char type, void *net_value)
       cas_log_write2 ("NULL");
       break;
     }
+}
+
+/*
+ * get_error_log_eids - get error identifier string
+ *    return: pointer to internal buffer
+ * NOTE:
+ * this function is not MT safe. Rreturned address is guaranteed to be valid
+ * until next get_error_log_eids() call.
+ *
+ */
+static char *
+get_error_log_eids (int err)
+{
+  static char *pending_alloc = NULL;
+  static char buffer[512];
+  char *buf;
+
+  if (err >= 0)
+    {
+      return "";
+    }
+
+  if (pending_alloc != NULL)
+    {
+      free (pending_alloc);
+      pending_alloc = NULL;
+    }
+
+  buf = cas_log_error_handler_asprint (buffer, sizeof (buffer), true);
+  if (buf != buffer)
+    {
+      pending_alloc = buf;
+    }
+
+  return buf;
 }

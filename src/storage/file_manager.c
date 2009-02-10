@@ -95,7 +95,6 @@
 #define FILE_NEXPECTED_NEW_FILES 53	/* Prime number */
 #define FILE_PREALLOC_MEMSIZE 20
 #define FILE_DESTROY_NUM_MARKED 10
-#define FILE_DUMP_DES_AREA_SIZE 100
 
 #define CAST_TO_SECTARRAY(asectid_ptr, pgptr, offset)\
   ((asectid_ptr) = (INT32 *)((char *)(pgptr) + (offset)))
@@ -595,26 +594,26 @@ static int file_rv_fhdr_last_allocset_helper (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv, int delta);
 
 static void file_descriptor_dump_heap (THREAD_ENTRY * thread_p,
-                                       const FILE_HEAP_DES * heap_file_des_p);
+				       const FILE_HEAP_DES * heap_file_des_p);
 static void file_descriptor_dump_multi_page_object_heap (const
-                                                         FILE_OVF_HEAP_DES *
-                                                         ovf_hfile_des_p);
+							 FILE_OVF_HEAP_DES *
+							 ovf_hfile_des_p);
 static void file_descriptor_dump_btree_overflow_key_file_des (const
-                                                              FILE_OVF_BTREE_DES
-                                                              *
-                                                              btree_ovf_des_p);
+							      FILE_OVF_BTREE_DES
+							      *
+							      btree_ovf_des_p);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p,
-                                      const OID * class_oid_p);
+				      const OID * class_oid_p);
 static void file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
-                                               const OID * inst_oid_p);
+					       const OID * inst_oid_p);
 static void file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
-                                                  const OID * class_oid_p,
-                                                  const int attr_id);
+						  const OID * class_oid_p,
+						  const int attr_id);
 
 static int file_descriptor_get_length (const FILE_TYPE file_type);
 static void file_descriptor_dump (THREAD_ENTRY * thread_p,
-                                  const FILE_TYPE file_type,
-                                  const void *file_descriptor_p);
+				  const FILE_TYPE file_type,
+				  const void *file_descriptor_p);
 
 /* check not use */
 //#if 0
@@ -13457,7 +13456,7 @@ file_descriptor_get_length (const FILE_TYPE file_type)
 
 static void
 file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
-                      const void *file_des_p)
+		      const void *file_des_p)
 {
   if (file_des_p == NULL)
     {
@@ -13471,46 +13470,46 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
 
     case FILE_HEAP:
       file_descriptor_dump_heap (thread_p,
-                                 (const FILE_HEAP_DES *) file_des_p);
+				 (const FILE_HEAP_DES *) file_des_p);
       break;
 
     case FILE_MULTIPAGE_OBJECT_HEAP:
       file_descriptor_dump_multi_page_object_heap ((const FILE_OVF_HEAP_DES *)
-                                                   file_des_p);
+						   file_des_p);
       break;
 
     case FILE_BTREE:
       {
-        const FILE_BTREE_DES *btree_des_p = (FILE_BTREE_DES *) file_des_p;
+	const FILE_BTREE_DES *btree_des_p = (FILE_BTREE_DES *) file_des_p;
 
-        file_print_name_of_class_with_attrid (thread_p,
-                                              &btree_des_p->class_oid,
-                                              btree_des_p->attr_id);
-        break;
+	file_print_name_of_class_with_attrid (thread_p,
+					      &btree_des_p->class_oid,
+					      btree_des_p->attr_id);
+	break;
       }
 
     case FILE_BTREE_OVERFLOW_KEY:
       file_descriptor_dump_btree_overflow_key_file_des ((const
-                                                         FILE_OVF_BTREE_DES *)
-                                                        file_des_p);
+							 FILE_OVF_BTREE_DES *)
+							file_des_p);
       break;
 
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
       {
-        const FILE_EHASH_DES *ext_hash_des_p = (FILE_EHASH_DES *) file_des_p;
+	const FILE_EHASH_DES *ext_hash_des_p = (FILE_EHASH_DES *) file_des_p;
 
-        file_print_name_of_class_with_attrid (thread_p,
-                                              &ext_hash_des_p->class_oid,
-                                              ext_hash_des_p->attr_id);
-        break;
+	file_print_name_of_class_with_attrid (thread_p,
+					      &ext_hash_des_p->class_oid,
+					      ext_hash_des_p->attr_id);
+	break;
       }
     case FILE_LONGDATA:
       {
-        const FILE_LO_DES *lo_des_p = (FILE_LO_DES *) file_des_p;
+	const FILE_LO_DES *lo_des_p = (FILE_LO_DES *) file_des_p;
 
-        file_print_class_name_of_instance (thread_p, &lo_des_p->oid);
-        break;
+	file_print_class_name_of_instance (thread_p, &lo_des_p->oid);
+	break;
       }
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
@@ -13526,28 +13525,28 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
 
 static void
 file_descriptor_dump_heap (THREAD_ENTRY * thread_p,
-                           const FILE_HEAP_DES * heap_file_des_p)
+			   const FILE_HEAP_DES * heap_file_des_p)
 {
   file_print_name_of_class (thread_p, &heap_file_des_p->class_oid);
 }
 
 static void
 file_descriptor_dump_multi_page_object_heap (const FILE_OVF_HEAP_DES *
-                                             ovf_hfile_des_p)
+					     ovf_hfile_des_p)
 {
   fprintf (stdout, "Overflow for HFID: %2d|%4d|%4d\n",
-           ovf_hfile_des_p->hfid.vfid.volid,
-           ovf_hfile_des_p->hfid.vfid.fileid, ovf_hfile_des_p->hfid.hpgid);
+	   ovf_hfile_des_p->hfid.vfid.volid,
+	   ovf_hfile_des_p->hfid.vfid.fileid, ovf_hfile_des_p->hfid.hpgid);
 }
 
 static void
 file_descriptor_dump_btree_overflow_key_file_des (const FILE_OVF_BTREE_DES *
-                                                  btree_ovf_des_p)
+						  btree_ovf_des_p)
 {
   fprintf (stdout, "Overflow keys for BTID: %2d|%4d|%4d\n",
-           btree_ovf_des_p->btid.vfid.volid,
-           btree_ovf_des_p->btid.vfid.fileid,
-           btree_ovf_des_p->btid.root_pageid);
+	   btree_ovf_des_p->btid.vfid.volid,
+	   btree_ovf_des_p->btid.vfid.fileid,
+	   btree_ovf_des_p->btid.root_pageid);
 }
 
 static void
@@ -13559,12 +13558,12 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
     {
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
       fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s)\n",
-               class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
-               (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
+	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
+	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p)
-        {
-          free_and_init (class_name_p);
-        }
+	{
+	  free_and_init (class_name_p);
+	}
     }
   else
     {
@@ -13574,7 +13573,7 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
 
 static void
 file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
-                                   const OID * inst_oid_p)
+				   const OID * inst_oid_p)
 {
   char *class_name_p = NULL;
 
@@ -13582,12 +13581,12 @@ file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
     {
       class_name_p = heap_get_class_name_of_instance (thread_p, inst_oid_p);
       fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s)\n",
-               inst_oid_p->volid, inst_oid_p->pageid, inst_oid_p->slotid,
-               (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
+	       inst_oid_p->volid, inst_oid_p->pageid, inst_oid_p->slotid,
+	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p)
-        {
-          free_and_init (class_name_p);
-        }
+	{
+	  free_and_init (class_name_p);
+	}
     }
   else
     {
@@ -13597,8 +13596,8 @@ file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
 
 static void
 file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
-                                      const OID * class_oid_p,
-                                      const int attr_id)
+				      const OID * class_oid_p,
+				      const int attr_id)
 {
   char *class_name_p = NULL;
 
@@ -13606,12 +13605,12 @@ file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
     {
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
       fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s), ATTRID: %2d\n",
-               class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
-               (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*", attr_id);
+	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
+	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*", attr_id);
       if (class_name_p)
-        {
-          free_and_init (class_name_p);
-        }
+	{
+	  free_and_init (class_name_p);
+	}
     }
   else
     {

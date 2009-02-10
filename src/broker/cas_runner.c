@@ -544,7 +544,7 @@ get_args (int argc, char *argv[])
 
 getargs_err:
   fprintf (stderr,
-	   "%s [-I <cas ip>] [-P <cas port>] [-d <dbname>] [-u <dbuser>] [-p <dbpasswd>] [-t <num thread>] [-r <repeat count>] [-o <result file>] exec_script_file\n",
+	   "usage : %s -I cas_ip -P cas_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-o result_file] exec_script_file\n",
 	   argv[0]);
   return -1;
 }

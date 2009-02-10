@@ -3917,7 +3917,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
   int cache_attr_id;
-  char *fk_name;
+  char *fkname;
   int n_classes, n_attrs, *attr_ids;
   TP_DOMAIN *key_type;
   char *ptr;
@@ -3942,14 +3942,14 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_btid (ptr, &fk_refcls_pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
-  ptr = or_unpack_string_nocopy (ptr, &fk_name);
+  ptr = or_unpack_string_nocopy (ptr, &fkname);
 
   error = 0;
   return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
 				   n_classes, n_attrs,
 				   attr_ids, hfids, unique_flag, reverse_flag,
 				   &fk_refcls_oid, &fk_refcls_pk_btid,
-				   cache_attr_id, fk_name);
+				   cache_attr_id, fkname);
   if (return_btid == NULL)
     {
       /* ER_LK_UNILATERALLY_ABORTED may not occur,
@@ -6943,7 +6943,7 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   int cache_attr_id;
   int n_attrs, *attr_ids;
   TP_DOMAIN *key_type;
-  char *fk_name;
+  char *fkname;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6957,12 +6957,12 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (ptr, &pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
-  ptr = or_unpack_string (ptr, &fk_name);
+  ptr = or_unpack_string (ptr, &fkname);
 
   if (xlocator_build_fk_object_cache (thread_p, &class_oid, &hfid, key_type,
 				      n_attrs, attr_ids, &pk_cls_oid,
 				      &pk_btid, cache_attr_id,
-				      fk_name) != NO_ERROR)
+				      fkname) != NO_ERROR)
     {
       if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
 	{
@@ -6976,5 +6976,5 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   db_private_free_and_init (thread_p, attr_ids);
-  db_private_free_and_init (thread_p, fk_name);
+  db_private_free_and_init (thread_p, fkname);
 }

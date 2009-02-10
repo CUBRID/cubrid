@@ -189,7 +189,7 @@ enum er_msg_no
   ER_LOG_MSG_WRAPPER_D,
   ER_LOG_SYSLOG_WRAPPER_D,
   ER_LOG_LAST_MSG,
-  ER_LOG_DEBUG_NOTIFY,
+  ER_LOG_DEBUG,
   ER_STOP_MAIL_SUBJECT,
   ER_STOP_MAIL_BODY,
   ER_STOP_SYSLOG
@@ -236,17 +236,17 @@ static const char *er_builtin_msg[] = {
   /* ER_LOG_WRAPAROUND */
   "\n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n",
   /* ER_LOG_MSG_WRAPPER */
-  "\nTime: %s --->>>\n*** %s *** %s CODE = %d, Tran = %d\n%s\n<<<---\n",
+  "\nTime: %s *** %s *** %s CODE = %d, Tran = %d%s\n%s\n",
   /* ER_LOG_SYSLOG_WRAPPER */
   "CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d, %s",
   /* ER_LOG_MSG_WRAPPER_D */
-  "\nTime: %s --->>>\n*** %s *** file %s, line %d %s CODE = %d, Tran = %d\n%s\n<<<---\n",
+  "\nTime: %s *** %s *** file %s, line %d %s CODE = %d, Tran = %d%s\n%s\n",
   /* ER_LOG_SYSLOG_WRAPPER_D */
   "CUBRID (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s",
   /* ER_LOG_LAST_MSG */
   "\n*** The previous error message is the last one. ***\n\n",
-  /* ER_LOG_DEBUG_NOTIFY */
-  "\n--->>>\n*** DEBUG/NOTIFICATION *** file %s, line %d\n<<<---\n",
+  /* ER_LOG_DEBUG */
+  "\nTime: %s DEBUG *** file %s, line %d\n",
   /* ER_STOP_MAIL_SUBJECT */
   "Mail -s \"CUBRID has been stopped\" ",
   /* ER_STOP_MAIL_BODY */
@@ -266,12 +266,19 @@ static ER_FMT_CACHE er_cache;
 static ER_MSG ermsg = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
 static ER_MSG *er_Msg = NULL;
 static char er_emergency_buf[256];	/* message when all else fails */
+
+static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
+static unsigned int er_Eid = 0;
 
 /* Other supporting global variables */
 static bool er_hasalready_initiated = false;
+static bool er_isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 
+static FILE *er_file_open (const char *path);
+static bool er_file_isa_null_device (const char *path);
+static FILE *er_file_backup (FILE * fp, const char *path);
 #if defined (SERVER_MODE)
 static bool logfile_opened = false;
 
@@ -436,6 +443,7 @@ er_init (const char *msglog_file_name, int exit_ask)
   return NO_ERROR;
 }
 
+
 /*
  * er_file_open - small utility function to open error log file
  *   return: FILE *
@@ -448,25 +456,63 @@ er_file_open (const char *path)
 
   assert (path != NULL);
 
-#if defined (CS_MODE)
+  /* note: in "a+" mode, output is alwarys appended */
   fp = fopen (path, "r+");
   if (fp != NULL)
     {
       fseek (fp, 0, SEEK_END);
-      if (fp != NULL && ftell (fp) > PRM_ER_LOG_SIZE)
+      if (ftell (fp) > PRM_ER_LOG_SIZE)
 	{
-	  fclose (fp);
-	  fp = fopen (path, "w");
+	  /* not a null device file */
+	  fp = er_file_backup (fp, path);
 	}
     }
   else
     {
       fp = fopen (path, "w");
     }
-#else /* CS_MODE */
-  fp = fopen (path, "w");
-#endif /* !CS_MODE */
   return fp;
+}
+
+/*
+ * er_file_isa_null_device - check if it is a null device
+ *    return: true if the path is a null device. false otherwise
+ *    path(in): path to the file
+ */
+static bool
+er_file_isa_null_device (const char *path)
+{
+#if defined(WINDOWS)
+  char *null_dev = "NUL";
+#else /* UNIX family */
+  char *null_dev = "/dev/null";
+#endif
+
+  if (path != NULL && strcmp (path, null_dev) == 0)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+static FILE *
+er_file_backup (FILE * fp, const char *path)
+{
+  char backup_file[PATH_MAX];
+
+  assert (fp != NULL);
+  assert (path != NULL);
+
+  fclose (fp);
+
+  sprintf (backup_file, "%s.bak", path);
+  (void) unlink (backup_file);
+  (void) rename (path, backup_file);
+
+  return fopen (path, "w");
 }
 
 #if defined (SERVER_MODE)
@@ -518,18 +564,21 @@ er_start (THREAD_ENTRY * th_entry)
     {
       if (er_Msglog_file_name)
 	{
-	  /* want to err on the side of doing production style error logs
-	   * because this may be getting set at some naive customer site. */
-	  if (!PRM_ER_PRODUCTION_MODE)
+	  er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
+
+	  if (er_isa_null_device || PRM_ER_PRODUCTION_MODE)
 	    {
+	      er_Msglog = er_file_open (er_Msglog_file_name);
+	    }
+	  else
+	    {
+	      /* want to err on the side of doing production style error logs
+	       * because this may be getting set at some naive customer site.*/
 	      char path[PATH_MAX];
 	      sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
 	      er_Msglog = er_file_open (path);;
 	    }
-	  else
-	    {
-	      er_Msglog = er_file_open (er_Msglog_file_name);
-	    }
+
 	  if (er_Msglog == NULL)
 	    {
 	      er_Msglog = stderr;
@@ -629,17 +678,19 @@ er_start (void)
 
   if (er_Msglog_file_name)
     {
-      /* want to err on the side of doing production style error logs
-       * because this may be getting set at some naive customer site. */
-      if (!PRM_ER_PRODUCTION_MODE)
+      er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
+
+      if (er_isa_null_device || PRM_ER_PRODUCTION_MODE)
 	{
-	  char path[PATH_MAX];
-	  sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	  er_Msglog = er_file_open (path);
+	  er_Msglog = er_file_open (er_Msglog_file_name);
 	}
       else
 	{
-	  er_Msglog = er_file_open (er_Msglog_file_name);
+	  /* want to err on the side of doing production style error logs
+	   * because this may be getting set at some naive customer site. */
+	  char path[PATH_MAX];
+	  sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
+	  er_Msglog = er_file_open (path);
 	}
 
       if (er_Msglog == NULL)
@@ -1154,6 +1205,9 @@ er_log (void)
   struct timeval tv;
   char time_array[256];
   int tran_index;
+  char *more_info_p;
+  int ret;
+  char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
 
 #if defined (WINDOWS)
   /* Check for an invalid output file    */
@@ -1170,7 +1224,7 @@ er_log (void)
   er_all (&err_id, &severity, &nlevels, &line_no, &file_name, &msg);
 
   /*
-   * Don't let the file of log messages get very long. Go back to the
+   * Don't let the file of log messages get very long. Backup or go back to the
    * top if need be.
    */
 
@@ -1180,8 +1234,23 @@ er_log (void)
       (void) fflush (er_Msglog);
       (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_LOG_WRAPAROUND]);
 
-      /* Rewind to limit the amount of error messages being logged */
-      (void) fseek (er_Msglog, 0L, SEEK_SET);
+      if (!er_isa_null_device)
+	{
+	  er_Msglog = er_file_backup (er_Msglog, er_Msglog_file_name);
+
+	  if (er_Msglog == NULL)
+	    {
+	      er_Msglog = stderr;
+	      er_log_debug (ARG_FILE_LINE,
+			    er_cached_msg[ER_LOG_MSGLOG_WARNING],
+			    er_Msglog_file_name);
+	    }
+	}
+      else
+	{
+	  /* Should be rewinded to avoid repeated limit check hitting */
+	  (void) fseek (er_Msglog, 0L, SEEK_SET);
+	}
     }
 
   if (er_Msglog == stderr || er_Msglog == stdout)
@@ -1209,12 +1278,55 @@ er_log (void)
 	    strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
 	    ".%d", tv.tv_usec / 1000);
 
+
+  more_info_p = "";
+
+  if (++er_Eid == 0)
+    {
+      er_Eid = 1;
+    }
+
 #if defined (SERVER_MODE)
   tran_index = thread_get_current_tran_index ();
+
+  do
+    {
+      char *prog_name = NULL;
+      char *user_name_dummy = NULL;
+      char *host_name = NULL;
+      int *pid = 0;
+
+      if (logtb_find_client_name_host_pid
+	  (tran_index, &prog_name, &user_name_dummy, &host_name,
+	   &pid) == NO_ERROR)
+	{
+	  ret = snprintf (more_info, sizeof (more_info),
+			  ", CLIENT = %s:%s(%d), EID = %u",
+			  host_name ? host_name : "unknown",
+			  prog_name ? prog_name : "unknown", pid, er_Eid);
+	  if (ret > 0)
+	    {
+	      more_info_p = &more_info[0];
+	    }
+	}
+
+    }
+  while (0);
 #elif defined (FOR_EVENT_HANDLER)
   tran_index = NULL_TRAN_INDEX;
 #else /* FOR_EVENT_HANDLER */
   tran_index = TM_TRAN_INDEX ();
+
+  ret = snprintf (more_info, sizeof (more_info), ", EID = %u", er_Eid);
+  if (ret > 0)
+    {
+      more_info_p = &more_info[0];
+    }
+
+  if (er_Handler != NULL)
+    {
+      (*er_Handler) (er_Eid);
+    }
 #endif /* SERVER_MODE, FOR_EVENT_HANDLER */
 
   if (PRM_ER_PRODUCTION_MODE)
@@ -1222,7 +1334,7 @@ er_log (void)
       (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER],
 		      time_array, ER_SEVERITY_STRING (severity),
 		      ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
-		      msg);
+		      more_info_p, msg);
       (void) fflush (er_Msglog);
       if (severity == ER_NOTIFICATION_SEVERITY)
 	(void) syslog (LOG_ALERT, er_cached_msg[ER_LOG_SYSLOG_WRAPPER],
@@ -1236,7 +1348,7 @@ er_log (void)
       (void) fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D],
 		      time_array, ER_SEVERITY_STRING (severity), file_name,
 		      line_no, ER_ERROR_WARNING_STRING (severity), err_id,
-		      tran_index, msg);
+		      tran_index, more_info_p, msg);
       (void) fflush (er_Msglog);
       if (severity == ER_NOTIFICATION_SEVERITY)
 	(void) syslog (LOG_ALERT, er_cached_msg[ER_LOG_SYSLOG_WRAPPER_D],
@@ -1285,6 +1397,21 @@ er_log (void)
 	  break;
 	}
     }
+}
+
+er_log_handler_t
+er_register_log_handler (er_log_handler_t handler)
+{
+#if !defined (SERVER_MODE)
+  er_log_handler_t prev;
+
+  prev = er_Handler;
+  er_Handler = handler;
+  return prev;
+#else
+  assert (0);
+  return NULL;
+#endif
 }
 
 /*
@@ -1587,21 +1714,39 @@ er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 	}
     }
 
-  va_start (ap, fmt);
-
   out = (er_Msglog != NULL) ? er_Msglog : stderr;
 
   if (er_Msg != NULL)
     {
-      (void) fprintf (out, er_cached_msg[ER_LOG_DEBUG_NOTIFY], file_name,
+      struct tm er_tm;
+      struct tm *er_tm_p = &er_tm;
+      char time_array[256];
+      struct timeval tv;
+
+      er_time = time (NULL);
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+      er_tm_p = localtime_r (&er_time, &er_tm);
+#else /* SERVER_MODE && !WINDOWS */
+      er_tm_p = localtime (&er_time);
+#endif /* SERVER_MODE && !WINDOWS */
+      strftime (time_array, 256, "%c", er_tm_p);
+      gettimeofday (&tv, NULL);
+      time_array[255] = '\0';
+      snprintf (time_array +
+		strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
+		".%d", tv.tv_usec / 1000);
+
+      (void) fprintf (out, er_cached_msg[ER_LOG_DEBUG], time_array, file_name,
 		      line_no);
     }
 
   /* Print out remainder of message */
+  va_start (ap, fmt);
   (void) vfprintf (out, fmt, ap);
+  va_end (ap);
+
   (void) fflush (out);
 
-  va_end (ap);
 #endif /* CUBRID_DEBUG */
 }
 

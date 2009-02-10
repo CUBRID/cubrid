@@ -216,13 +216,13 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 				      bool * is_cached,
 				      LC_COPYAREA ** copyarea);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
-					     OR_FOREIGN_KEY * fkref,
+					     OR_INDEX * index,
 					     DB_VALUE * key);
 static int locator_repair_object_cache (THREAD_ENTRY * thread_p,
-					OR_FOREIGN_KEY * fkref,
+					OR_INDEX * index,
 					DB_VALUE * key, OID * pk_oid);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p,
-					     OR_FOREIGN_KEY * fkref,
+					     OR_INDEX * index,
 					     DB_VALUE * key);
 static TP_DOMAIN *locator_make_midxkey_domain (OR_INDEX * index);
 static DISK_ISVALID
@@ -3870,7 +3870,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 				  &unique_oid, true) != BTREE_KEY_FOUND)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 1,
-		      index->fk->name);
+		      index->fk->fkname);
 
 	      if (key_dbvalue == &dbvalue)
 		{
@@ -3927,8 +3927,9 @@ error:
  */
 static int
 locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
-				  OR_FOREIGN_KEY * fkref, DB_VALUE * key)
+				  OR_INDEX * index, DB_VALUE * key)
 {
+  OR_FOREIGN_KEY *fkref;
   int oid_cnt, force_count, i;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
@@ -3943,7 +3944,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 
   db_make_null (&copied_key);
 
-  for (; fkref != NULL; fkref = fkref->next)
+  for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
     {
       if (fkref->del_action == SM_FOREIGN_KEY_NO_ACTION)
 	{
@@ -3955,7 +3956,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 				      &fkref->self_oid) > 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
-		      fkref->name);
+		      fkref->fkname);
 	      error_code = ER_FK_RESTRICT;
 	      goto error3;
 	    }
@@ -4041,7 +4042,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 				   LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_FK_NOT_GRANTED_LOCK, 1, fkref->name);
+			      ER_FK_NOT_GRANTED_LOCK, 1, fkref->fkname);
 		      error_code = ER_FK_NOT_GRANTED_LOCK;
 		      goto error1;
 		    }
@@ -4054,7 +4055,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 		  if (error_code != NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_FK_CANT_DELETE_INSTANCE, 1, fkref->name);
+			      ER_FK_CANT_DELETE_INSTANCE, 1, fkref->fkname);
 		      goto error1;
 		    }
 		}
@@ -4110,14 +4111,15 @@ error3:
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   fkref(in):
+ *   index(in):
  *   key(in):
  *   pk_oid(in):
  */
 static int
-locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_FOREIGN_KEY * fkref,
+locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 			     DB_VALUE * key, OID * pk_oid)
 {
+  OR_FOREIGN_KEY *fkref;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache, upd_scancache;
   HFID hfid;
@@ -4134,7 +4136,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_FOREIGN_KEY * fkref,
 
   db_make_null (&copied_key);
 
-  for (; fkref != NULL; fkref = fkref->next)
+  for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
     {
       if (fkref->cache_attr_id < 0)
 	{
@@ -4243,7 +4245,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_FOREIGN_KEY * fkref,
 		   LK_UNCOND_LOCK) != LK_GRANTED)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_FK_NOT_GRANTED_LOCK, 1, fkref->name);
+			  ER_FK_NOT_GRANTED_LOCK, 1, fkref->fkname);
 		  error_code = ER_FK_NOT_GRANTED_LOCK;
 		  goto error1;
 		}
@@ -4315,14 +4317,16 @@ error3:
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   fkref(in):
+ *   index(in):
  *   key(in):
  */
 static int
 locator_check_primary_key_update (THREAD_ENTRY * thread_p,
-				  OR_FOREIGN_KEY * fkref, DB_VALUE * key)
+				  OR_INDEX * index, DB_VALUE * key)
 {
-  for (; fkref != NULL; fkref = fkref->next)
+  OR_FOREIGN_KEY *fkref;
+
+  for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
     {
       if (fkref->upd_action == SM_FOREIGN_KEY_NO_ACTION)
 	{
@@ -4335,7 +4339,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 				      &fkref->self_oid) > 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
-		      fkref->name);
+		      fkref->fkname);
 	      return ER_FK_RESTRICT;
 	    }
 	}
@@ -5895,7 +5899,7 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 	{
 	  if (is_insert)
 	    {
-	      error_code = locator_repair_object_cache (thread_p, index->fk,
+	      error_code = locator_repair_object_cache (thread_p, index,
 							key_dbvalue,
 							inst_oid);
 	      if (error_code != NO_ERROR)
@@ -5906,7 +5910,7 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 	  else
 	    {
 	      error_code = locator_check_primary_key_delete (thread_p,
-							     index->fk,
+							     index,
 							     key_dbvalue);
 	      if (error_code != NO_ERROR)
 		{
@@ -6228,6 +6232,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  goto error;
 	}
 
+      dbval_type = DB_VALUE_DOMAIN_TYPE (old_key);
+      if (DB_VALUE_DOMAIN_TYPE (new_key) != dbval_type)
+	{
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+
       if (scan_cache == NULL)
 	{
 	  unique_stat_info = NULL;
@@ -6247,7 +6258,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
       new_isnull = db_value_is_null (new_key);
       old_isnull = db_value_is_null (old_key);
-      dbval_type = DB_VALUE_DOMAIN_TYPE (old_key);
       pr_type = PR_TYPE_FROM_ID (dbval_type);
 
       if (pr_type->id == DB_TYPE_MIDXKEY)
@@ -6268,14 +6278,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	      && index->type == BTREE_PRIMARY_KEY && index->fk)
 	    {
 	      error_code = locator_check_primary_key_update (thread_p,
-							     index->fk,
-							     old_key);
+							     index, old_key);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
 		}
 
-	      error_code = locator_repair_object_cache (thread_p, index->fk,
+	      error_code = locator_repair_object_cache (thread_p, index,
 							new_key, inst_oid);
 	      if (error_code != NO_ERROR)
 		{
@@ -6714,6 +6723,7 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
  *   class_oid(in): The class identifer
  *   n_attr_ids(in):  Number of attribute ids (size of the array).
  *   attr_ids(in): Attribute ID array.
+ *   btname(in) : 
  *   repair(in):
  *
  * Note: Check the consistency of the btree entries against the
@@ -6722,7 +6732,8 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
 DISK_ISVALID
 locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 			     HFID * hfid, OID * class_oid, int n_attr_ids,
-			     ATTR_ID * attr_ids, bool repair)
+			     ATTR_ID * attr_ids, const char *btname,
+			     bool repair)
 {
   DISK_ISVALID isvalid = DISK_VALID;
   DISK_ISVALID isallvalid = DISK_VALID;
@@ -6742,6 +6753,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   DB_VALUE dbvalue;
   DB_VALUE *dbvalue_ptr = NULL;
   char buf[DBVAL_BUFSIZE];
+  char *class_name_p = NULL;
+
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -6851,8 +6864,19 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 		      key_dmp = pr_valstring (dbvalue_ptr);
 
+		      if (class_oid && !OID_ISNULL (class_oid))
+			{
+			  class_name_p =
+			    heap_get_class_name (thread_p, class_oid);
+			}
+
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 7,
+			      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 12,
+			      (btname) ? btname : "*UNKNOWN-INDEX*",
+			      (class_name_p) ? class_name_p :
+			      "*UNKNOWN-CLASS*",
+			      class_oid->volid, class_oid->pageid,
+			      class_oid->slotid,
 			      (key_dmp) ? key_dmp : "_NULL_KEY",
 			      inst_oid.volid, inst_oid.pageid,
 			      inst_oid.slotid, btid->vfid.volid,
@@ -6860,6 +6884,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 		      if (key_dmp)
 			{
 			  free_and_init (key_dmp);
+			}
+
+		      if (class_name_p)
+			{
+			  free_and_init (class_name_p);
 			}
 
 		      if (isallvalid != DISK_INVALID)
@@ -6998,11 +7027,28 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 	      if (status != DISK_VALID)
 		{
+
+		  if (class_oid && !OID_ISNULL (class_oid))
+		    {
+		      class_name_p =
+			heap_get_class_name (thread_p, class_oid);
+		    }
+
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 6,
-			  oid_area[i].volid, oid_area[i].pageid,
-			  oid_area[i].slotid, btid->vfid.volid,
-			  btid->vfid.fileid, btid->root_pageid);
+			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
+			  (btname) ? btname : "*UNKNOWN-INDEX*",
+			  (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
+			  class_oid->volid, class_oid->pageid,
+			  class_oid->slotid, oid_area[i].volid,
+			  oid_area[i].pageid, oid_area[i].slotid,
+			  btid->vfid.volid, btid->vfid.fileid,
+			  btid->root_pageid);
+
+		  if (class_name_p)
+		    {
+		      free_and_init (class_name_p);
+		    }
+
 		  isallvalid = DISK_INVALID;
 		}
 	    }
@@ -7025,10 +7071,24 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
   if (num_heap_oids != num_btree_oids)
     {
+
+      if (class_oid && !OID_ISNULL (class_oid))
+	{
+	  class_name_p = heap_get_class_name (thread_p, class_oid);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE3, 5,
+	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE3, 10,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
+	      class_oid->volid, class_oid->pageid, class_oid->slotid,
 	      num_heap_oids, num_btree_oids,
 	      btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+      if (class_name_p)
+	{
+	  free_and_init (class_name_p);
+	}
       isallvalid = DISK_INVALID;
     }
 
@@ -7591,6 +7651,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 	      BTID *btid;
 	      ATTR_ID *attrids = NULL;
 	      int n_attrs;
+	      char *btname = NULL;
 
 	      /*
 	       * Check the indices in this class
@@ -7631,6 +7692,14 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 		      break;
 		    }
 
+		  if (heap_get_indexinfo_of_btid
+		      (thread_p, &class_oid, btid, NULL, NULL, NULL,
+		       &btname) != NO_ERROR)
+		    {
+		      isallvalid = DISK_ERROR;
+		      break;
+		    }
+
 		  if (btree_is_unique (thread_p, btid))
 		    {
 		      isvalid = locator_check_unique_btree_entries (thread_p,
@@ -7649,13 +7718,19 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 							     &class_hfid,
 							     &class_oid,
 							     n_attrs,
-							     attrids, repair);
+							     attrids, btname,
+							     repair);
 		      if (isvalid != DISK_VALID)
 			{
 			  isallvalid = isvalid;
 			}
 		    }
 		  free_and_init (attrids);
+
+		  if (btname)
+		    {
+		      free_and_init (btname);
+		    }
 		}
 	      heap_attrinfo_end (thread_p, &index_attrinfo);
 	    }
@@ -8839,14 +8914,14 @@ xrepl_log_get_append_lsa (void)
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fk_name(in):
+ *   fkname(in):
  */
 int
 xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 				HFID * hfid, TP_DOMAIN * key_type,
 				int n_attrs, int *attr_ids, OID * pk_cls_oid,
 				BTID * pk_btid, int cache_attr_id,
-				char *fk_name)
+				char *fkname)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -8898,7 +8973,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 
       error_code = btree_check_foreign_key (thread_p, cls_oid, hfid, &oid,
 					    key_val, n_attrs, pk_cls_oid,
-					    pk_btid, cache_attr_id, fk_name);
+					    pk_btid, cache_attr_id, fkname);
 
       if (key_val == &tmpval)
 	{

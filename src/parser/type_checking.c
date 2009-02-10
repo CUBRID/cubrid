@@ -440,6 +440,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
   while ((cnf_node = ((cnf_prev) ? cnf_prev->next : where)))
     {
       /* save location */
+      location = 0;
       switch (cnf_node->node_type)
 	{
 	case PT_EXPR:

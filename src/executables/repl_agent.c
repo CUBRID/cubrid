@@ -295,7 +295,7 @@ static bool repl_debug_check_data (char *str);
 static int
 repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 			  struct debug_string **record_data);
-static void repl_restart_agent ();
+static void repl_restart_agent (char *agent_pathname);
 
 /*
  * repl_ag_set_copy_log() - Set the end log info
@@ -1667,133 +1667,136 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
  *     APPLY thread processes the mutex lock
  */
 static int
-repl_ag_get_overflow_recdes (struct log_rec *lrec, void *logs,
+repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 			     char **area, int *length, int m_idx,
 			     unsigned int rcvindex)
 {
-  struct log_rec *t_lrec;
-  struct log_redo *redo;
-  void *v_redo;
-  VPID t_vpid;
-  LOG_LSA temp;
-  LOG_PAGE *pg;
-  int error = NO_ERROR;
-  PGLENGTH offset;
-  PGLENGTH t_offset;
-  PAGEID pageid;
-  int t_len = 0;
+  LOG_LSA current_lsa;
+  LOG_PAGE *current_log_page;
+  struct log_rec *current_log_record;
+  struct ovf_page_list *ovf_list_head = NULL;
+  struct ovf_page_list *ovf_list_tail = NULL;
+  struct ovf_page_list *ovf_list_data = NULL;
+  struct log_redo *redo_log;
+  VPID *temp_vpid;
+  VPID prev_vpid;
   bool first = true;
-  struct ovf_page_list *ovf_page_h = NULL;
-  struct ovf_page_list *ovf_page_t = NULL;
-  struct ovf_page_list *ovf_temp = NULL;
+  bool error_status = true;
+  int copyed_len;
+  int area_len;
+  int area_offset;
+  int error;
 
-  t_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
-  t_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
+  LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
+  prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
+  prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
 
-  LSA_COPY (&temp, &lrec->prev_tranlsa);
-
-  /* find out the start point of overflow page ..
-   * Traverse the log page inversely
-   */
-  *length = 0;
-  while (!LSA_ISNULL (&temp))
+  while (!LSA_ISNULL (&current_lsa))
     {
-      offset = temp.offset;
-      pageid = temp.pageid;
+      current_log_page = repl_ag_get_page (current_lsa.pageid, m_idx);
+      current_log_record =
+	(struct log_rec *) ((char *) current_log_page->area +
+			    current_lsa.offset);
 
-      pg = repl_ag_get_page (pageid, m_idx);
-
-      t_lrec = (struct log_rec *) ((char *) pg->area + offset);
-
-      if (t_lrec->trid != lrec->trid)
+      if (current_log_record->trid != log_record->trid)
 	{
-	  repl_ag_release_page_buffer (pageid, m_idx);
+	  repl_ag_release_page_buffer (current_lsa.pageid, m_idx);
 	  break;
 	}
-      if (t_lrec->type == LOG_REDO_DATA)
+
+      /* process only LOG_REDO_DATA */
+      if (current_log_record->type == LOG_REDO_DATA)
 	{
-	  ovf_temp = (struct ovf_page_list *)
+	  ovf_list_data =
+	    (struct ovf_page_list *)
 	    malloc (DB_SIZEOF (struct ovf_page_list));
-	  ovf_temp->data = NULL;
-	  ovf_temp->rec_type = NULL;
-	  ovf_temp->length = 0;
-	  error =
-	    repl_ag_get_log_data (t_lrec, &temp, pg, m_idx, rcvindex,
-				  NULL, &v_redo, NULL, &ovf_temp->data,
-				  &ovf_temp->length);
-
-	  if (error == NO_ERROR && v_redo && ovf_temp->data)
+	  if (ovf_list_data == NULL)
 	    {
-	      VPID *t;
+	      /* malloc failed */
+	      repl_ag_release_page_buffer (current_lsa.pageid, m_idx);
+	      return REPL_AGENT_MEMORY_ERROR;
+	    }
+	  memset (ovf_list_data, 0, DB_SIZEOF (struct ovf_page_list));
+	  error =
+	    repl_ag_get_log_data (current_log_record, &current_lsa,
+				  current_log_page, m_idx, rcvindex, NULL,
+				  &redo_log, NULL, &ovf_list_data->data,
+				  &ovf_list_data->length);
 
-	      t = (VPID *) (char *) ovf_temp->data;
-	      redo = (struct log_redo *) v_redo;
-
-	      if (first == true ||
-		  (t_vpid.pageid == t->pageid && t_vpid.volid == t->volid))
+	  if (error == NO_ERROR && redo_log && ovf_list_data->data)
+	    {
+	      temp_vpid = (VPID *) ovf_list_data->data;
+	      if (error_status == true
+		  || (temp_vpid->pageid == prev_vpid.pageid
+		      && temp_vpid->volid == prev_vpid.volid))
 		{
-		  if (ovf_page_t == NULL)
+		  /* add to linked-list */
+		  if (ovf_list_head == NULL)
 		    {
-		      ovf_page_t = ovf_page_h = ovf_temp;
-		      ovf_page_h->next = NULL;
+		      ovf_list_head = ovf_list_tail = ovf_list_data;
 		    }
 		  else
 		    {
-		      ovf_temp->next = ovf_page_h;
-		      ovf_page_h = ovf_temp;
+		      ovf_list_data->next = ovf_list_head;
+		      ovf_list_head = ovf_list_data;
 		    }
-		  t_vpid.pageid = redo->data.pageid;
-		  t_vpid.volid = redo->data.volid;
-		  *length += ovf_temp->length;
-		  first = false;
-		}
-	      else
-		{
-		  free_and_init (ovf_temp->data);
-		  free_and_init (ovf_temp);
+
+		  /* error check */
+		  if (temp_vpid->pageid == prev_vpid.pageid
+		      && temp_vpid->volid == prev_vpid.volid)
+		    {
+		      error_status = false;
+		    }
+		  memcpy (&prev_vpid, &temp_vpid, DB_SIZEOF (VPID));
+		  *length += ovf_list_data->length;
 		}
 	    }
 	  else
 	    {
-	      free_and_init (ovf_temp->data);
-	      free_and_init (ovf_temp);
+	      free_and_init (ovf_list_data);
 	    }
 	}
-      LSA_COPY (&temp, &t_lrec->prev_tranlsa);
-      repl_ag_release_page_buffer (pageid, m_idx);
+      repl_ag_release_page_buffer (current_lsa.pageid, m_idx);
+      LSA_COPY (&current_lsa, &current_log_record->prev_tranlsa);
     }
 
-  if ((*area = malloc (*length)) == NULL)
+  *area = malloc (*length);
+  if (*area == NULL)
     {
-      ovf_temp = ovf_page_h;
-      while (ovf_temp)
+      /* malloc failed: clear linked-list */
+      while (ovf_list_head)
 	{
-	  ovf_page_h = ovf_temp->next;
-	  free_and_init (ovf_temp->data);
-	  free_and_init (ovf_temp);
-	  ovf_temp = ovf_page_h;
+	  ovf_list_data = ovf_list_head;
+	  ovf_list_head = ovf_list_head->next;
+	  free_and_init (ovf_list_data->data);
+	  free_and_init (ovf_list_data);
 	}
+      return REPL_AGENT_MEMORY_ERROR;
     }
 
-  ovf_temp = ovf_page_h;
-  t_len = 0;
-  first = true;
-  *length = 0;
-  while (ovf_temp)
+  /* make record description */
+  copyed_len = 0;
+  while (ovf_list_head)
     {
-      if (first == true)
-	t_offset = offsetof (struct ovf_first_part, data);
+      ovf_list_data = ovf_list_head;
+      ovf_list_head = ovf_list_head->next;
+
+      if (first)
+	{
+	  area_offset = offsetof (struct ovf_first_part, data);
+	  first = false;
+	}
       else
-	t_offset = offsetof (struct ovf_rest_parts, data);
-      t_len = ovf_temp->length - t_offset;
-      memcpy (*area + *length, ovf_temp->data + t_offset, t_len);
-      *length += t_len;
-      free_and_init (ovf_temp->data);
-      ovf_page_h = ovf_temp->next;
-      free_and_init (ovf_temp);
-      ovf_temp = ovf_page_h;
-      if (first == true)
-	first = false;
+	{
+	  area_offset = offsetof (struct ovf_rest_parts, data);
+	}
+      area_len = ovf_list_data->length - area_offset;
+      memcpy (*area + copyed_len, ovf_list_data->data + area_offset,
+	      area_len);
+      copyed_len += area_len;
+
+      free_and_init (ovf_list_data->data);
+      free_and_init (ovf_list_data);
     }
 
   return error;
@@ -2942,9 +2945,11 @@ repl_ag_log_get_file_line (FILE * fp)
 
   fseek (fp, 0, SEEK_SET);
   while (fgets (line, 1024, fp) != NULL)
-    line_count++;
+    {
+      line_count++;
+    }
 
-  return line_count;
+  return line_count - 2;
 }
 
 /*
@@ -2961,65 +2966,42 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
 {
   static int line_count = 0;
   static bool reach_end_of_log = false;
+  static char perf_file_path[PATH_MAX], bak_file_path[PATH_MAX];
   struct tm *m_tm_p, *s_tm_p;
   char m_tm_array[256], s_tm_array[256];
   char *time_array_m = m_tm_array;
   char *time_array_s = s_tm_array;
-  char *old_file_path, *new_file_path;
   int error;
   int delay_time;
   bool append_message = false;
 
   if (perf_Log_fp == NULL)
     {
-      old_file_path = (char *) malloc (strlen (dist_LogPath)
-				       + strlen (dist_Dbname) + 10);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
-			   old_file_path);
-      sprintf (old_file_path, "%s/%s.perf", dist_LogPath, dist_Dbname);
-      perf_Log_fp = fopen (old_file_path, "r+");
-      if (perf_Log_fp != NULL)
+      snprintf (perf_file_path, PATH_MAX, "%s/%s.perf", dist_LogPath,
+		dist_Dbname);
+      snprintf (bak_file_path, PATH_MAX, "%s/%s.perf.bak", dist_LogPath,
+		dist_Dbname);
+
+      if ((perf_Log_fp = fopen (perf_file_path, "a+")) == NULL)
 	{
-	  line_count = repl_ag_log_get_file_line (perf_Log_fp);
+	  perf_Log_fp = stdout;
 	}
       else
 	{
-	  perf_Log_fp = fopen (old_file_path, "w");
-	  if (perf_Log_fp != NULL)
-	    {
-	      line_count = repl_ag_log_get_file_line (perf_Log_fp);
-	    }
-	  else
-	    {
-	      perf_Log_fp = stdout;
-	    }
+	  line_count = repl_ag_log_get_file_line (perf_Log_fp);
 	}
-
-      free_and_init (old_file_path);
     }
 
   if (line_count > perf_Log_size)
     {
       fclose (perf_Log_fp);
-      old_file_path = (char *) malloc (strlen (dist_LogPath)
-				       + strlen (dist_Dbname) + 10);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
-			   old_file_path);
-      sprintf (old_file_path, "%s/%s.perf", dist_LogPath, dist_Dbname);
-      new_file_path = (char *) malloc (strlen (dist_LogPath)
-				       + strlen (dist_Dbname) + 10);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
-			   new_file_path);
-      sprintf (new_file_path, "%s/%s.perf.bak", dist_LogPath, dist_Dbname);
-      rename (old_file_path, new_file_path);
-      perf_Log_fp = fopen (old_file_path, "w");
-      if (perf_Log_fp == NULL)
-	perf_Log_fp = stdout;
-      free_and_init (old_file_path);
-      free_and_init (new_file_path);
+      rename (perf_file_path, bak_file_path);
+      if ((perf_Log_fp = fopen (perf_file_path, "w")) == NULL)
+	{
+	  perf_Log_fp = stdout;
+	}
       line_count = 0;
     }
-
 
   if (line_count == 0)
     {
@@ -3041,6 +3023,7 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
     {
       sprintf (time_array_m, "----/--/-- --:--:--");
     }
+
   if (slave_time != NULL)
     {
       s_tm_p = localtime (slave_time);
@@ -5012,7 +4995,7 @@ usage (const char *argv0)
 }
 
 static void
-repl_restart_agent ()
+repl_restart_agent (char *agent_pathname)
 {
   int pid;
 
@@ -5020,26 +5003,26 @@ repl_restart_agent ()
   if (pid == 0)
     {
       int ppid;
-      char path[PATH_MAX];
 
       ppid = getppid ();
       while (1)
 	{
 	  if (kill (ppid, 0) < 0)
-	    break;
+	    {
+	      break;
+	    }
 	  sleep (1);
 	}
-      sprintf (path, "%s/bin/repl_agent", getenv ("CUBRID"));
 
       if (strlen (dist_Passwd) > 0)
 	{
-	  pid = execl (path, "repl_agent", "-d", dist_Dbname,
-		       "-p", dist_Passwd, retry_Connect ? "-r" : NULL, NULL);
+	  pid = execlp (agent_pathname, "repl_agent", "-d", dist_Dbname,
+			"-p", dist_Passwd, NULL);
 	}
       else
 	{
-	  pid = execl (path, "repl_agent", "-d", dist_Dbname,
-		       retry_Connect ? "-r" : NULL, NULL);
+	  pid =
+	    execlp (agent_pathname, "repl_agent", "-d", dist_Dbname, NULL);
 	}
       if (pid != 0)
 	{
@@ -5123,7 +5106,7 @@ main (int argc, char **argv)
       int option_index = 0;
       int option_key;
 
-      option_key = getopt_long (argc, argv, "hd:p:af:s:r",
+      option_key = getopt_long (argc, argv, "hd:p:af:s:",
 				agent_option, &option_index);
       if (option_key == -1)
 	{
@@ -5146,9 +5129,6 @@ main (int argc, char **argv)
 	  break;
 	case 's':
 	  log_pagesize = atoi (optarg);
-	  break;
-	case 'r':
-	  retry_Connect = true;
 	  break;
 	case 'h':
 	default:
@@ -5236,7 +5216,7 @@ error_exit:
 
   if (restart_Agent)
     {
-      repl_restart_agent ();
+      repl_restart_agent (argv[0]);
     }
 
   return error;

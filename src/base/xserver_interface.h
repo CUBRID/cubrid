@@ -170,7 +170,7 @@ extern int xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
 					   TP_DOMAIN * key_type, int n_attrs,
 					   int *attr_ids, OID * pk_cls_oid,
 					   BTID * pk_btid, int cache_attr_id,
-					   char *fk_name);
+					   char *fkname);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
@@ -275,7 +275,7 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				HFID * hfids, int unique_flag,
 				int reverse_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fk_name);
+				const char *fkname);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 					DB_VALUE * key, OID * class_oid,

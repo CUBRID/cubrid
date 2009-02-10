@@ -22,6 +22,8 @@
 
 #ident "$Id$"
 
+#include "config.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -33,11 +35,10 @@
 #include <dbgHelp.h>
 
 #else /* WINDOWS */
+#include <sys/resource.h>
 #include <unistd.h>
+#include <limits.h>
 #endif /* WINDOWS */
-#if defined(LINUX)
-#include <linux/limits.h>
-#endif
 
 #include "porting.h"
 #include "system_parameter.h"
@@ -213,19 +214,19 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       char err_log[PATH_MAX];
       int ppid;
       int fd, fd_max;
-#if defined (sun)
+#if defined(HAVE_GETRLIMIT)
       struct rlimit rlp;
-#endif
+#endif /* HAVE_GETRLIMIT */
 
-#if defined (sun)
+#if defined (HAVE_GETRLIMIT)
       if (getrlimit (RLIMIT_NOFILE, &rlp) == 0)
 	fd_max = MIN (1024, rlp.rlim_cur);
-#elif defined(HPUX)
-      fd_max = _POSIX_OPEN_MAX;
 #elif defined(OPEN_MAX)
       fd_max = OPEN_MAX;
-#else
+#elif defined(HAVE_SYSCONF) && defined(_SC_OPEN_MAX)
       fd_max = sysconf (_SC_OPEN_MAX);
+#else
+#error "There's no known way to get the maximum number of file descriptors!"
 #endif
 
       for (fd = 3; fd < fd_max; fd++)

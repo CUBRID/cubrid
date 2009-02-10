@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
 
@@ -316,7 +316,7 @@ ts_create_class (nvplist * in, nvplist * out, char *_dbmt_error)
 	}
     }
 
-  sprintf (sql, "CREATE CLASS %s", class_name);
+  sprintf (sql, "CREATE CLASS \"%s\"", class_name);
   if (db_execute (sql, &result, &query_error) < 0)
     {
       CUBRID_ERR_MSG_SET (_dbmt_error);
@@ -992,7 +992,7 @@ ts_add_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
   notnull = nv_get_val (in, "notnull");
   classobj = db_find_class (class_name);
 
-  sprintf (buf, "ALTER %s ADD %s ATTRIBUTE %s %s %s %s %s %s",
+  sprintf (buf, "ALTER \"%s\" ADD %s ATTRIBUTE \"%s\" %s %s %s %s %s",
 	   class_name,
 	   uStringEqual (category, "class") ? "CLASS" : "",
 	   attr_name,
@@ -1147,10 +1147,10 @@ ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
       DB_QUERY_RESULT *result;
 
       if (is_class)
-	sprintf (buf, "ALTER %s CHANGE CLASS %s DEFAULT %s",
+	sprintf (buf, "ALTER \"%s\" CHANGE CLASS \"%s\" DEFAULT %s",
 		 class_name, attr_name, defaultv);
       else
-	sprintf (buf, "ALTER %s CHANGE %s DEFAULT %s",
+	sprintf (buf, "ALTER \"%s\" CHANGE \"%s\" DEFAULT %s",
 		 class_name, attr_name, defaultv);
       if (db_execute (buf, &result, &error_stats) < 0)
 	goto update_attr_error;
@@ -1244,18 +1244,18 @@ ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
       if (class_name != NULL)
 	{
 	  memset (query, 0, sizeof (char) * 512);
-	  sprintf (query, "CREATE %s INDEX %s on %s ( ",
+	  sprintf (query, "CREATE %s INDEX \"%s\" on \"%s\" ( ",
 		   (!strcmp (type, "UNIQUE") ? type : " "), name, class_name);
 	  for (i = 0; i < attr_count; i++)
 	    {
 	      if (i == (attr_count - 1))
 		{
-		  sprintf (query + strlen (query), "%s %s );", attr_names[i],
+		  sprintf (query + strlen (query), "\"%s\" %s );", attr_names[i],
 			   attr_orders[i]);
 		}
 	      else
 		{
-		  sprintf (query + strlen (query), "%s %s ,", attr_names[i],
+		  sprintf (query + strlen (query), "\"%s\" %s ,", attr_names[i],
 			   attr_orders[i]);
 		}
 	    }
@@ -1292,18 +1292,18 @@ ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
       if (class_name != NULL)
 	{
 	  memset (query, 0, sizeof (char) * 512);
-	  sprintf (query, "ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY ( ",
+	  sprintf (query, "ALTER TABLE \"%s\" ADD CONSTRAINT \"%s\" FOREIGN KEY ( ",
 		   class_name, name);
 	  for (i = 0; i < attr_count; i++)
 	    {
 	      if (i == (attr_count - 1))
 		{
-		  sprintf (query + strlen (query), "%s ) references %s ( ",
+		  sprintf (query + strlen (query), "\"%s\" ) references \"%s\" ( ",
 			   foreign_key_names[i], reference_class_name);
 		}
 	      else
 		{
-		  sprintf (query + strlen (query), "%s ,",
+		  sprintf (query + strlen (query), "\"%s\" ,",
 			   foreign_key_names[i]);
 		}
 	    }
@@ -1312,12 +1312,12 @@ ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
 	    {
 	      if (i == (attr_count - 1))
 		{
-		  sprintf (query + strlen (query), "%s );",
+		  sprintf (query + strlen (query), "\"%s\" );",
 			   reference_key_names[i]);
 		}
 	      else
 		{
-		  sprintf (query + strlen (query), "%s ,",
+		  sprintf (query + strlen (query), "\"%s\" ,",
 			   reference_key_names[i]);
 		}
 	    }
@@ -1459,7 +1459,7 @@ ts_drop_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
 	{
 	  char query[512];
 	  memset (query, 0, sizeof (char) * 512);
-	  sprintf (query, "ALTER TABLE %s DROP CONSTRAINT %s ",
+	  sprintf (query, "ALTER TABLE \"%s\" DROP CONSTRAINT \"%s\" ",
 		   class_name, name);
 	  if (db_execute (query, &result, &query_error) < 0)
 	    {
@@ -4049,7 +4049,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* remove warning out of space message.
-   * judge creation failed if created page size is smaller then 
+   * judge creation failed if created page size is smaller then
    * 343 page, write message with volumn expend to error file.
    */
   if (0)
@@ -5050,7 +5050,7 @@ ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       if (classname == NULL)
 	strcpy (sql, "UPDATE STATISTICS ON ALL CLASSES");
       else
-	sprintf (sql, "UPDATE STATISTICS ON %s", classname);
+	sprintf (sql, "UPDATE STATISTICS ON \"%s\"", classname);
 
       if (db_execute (sql, &result, &query_error) < 0)
 	{
@@ -8741,7 +8741,8 @@ _tsAppendDBList (nvplist * res, char dbdir_flag)
 	continue;
       if ((hp = gethostbyname (dbinfo[2])) == NULL)
 	continue;
-      if (memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
+      if (*(int*)(hp->h_addr_list[0]) == htonl(0x7f000001) ||	// if the ip equals 127.0.0.1
+		  memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
 	{
 	  nv_add_nvp (res, "dbname", dbinfo[0]);
 

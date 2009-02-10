@@ -13,18 +13,11 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *        This product includes software developed by the NetBSD
- *	  Foundation, Inc. and its contributors.
- * 4. Neither the name of The NetBSD Foundation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
  * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS 
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -33,6 +26,13 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
+#if !defined(WINDOWS)
+#include <sys/cdefs.h>
+#endif
+#if defined(__RCSID) && !defined(lint)
+__RCSID ("$NetBSD: gencat.c,v 1.26 2008/11/04 03:14:46 ginsbach Exp $");
+#endif
 
 /***********************************************************
 Copyright 1990, by Alfalfa Software Incorporated, Cambridge, Massachusetts.
@@ -66,9 +66,12 @@ up-to-date.  Many thanks.
 
 ******************************************************************/
 
-#if !defined(WINDOWS)
-#include <sys/cdefs.h>
+#if HAVE_NBTOOL_CONFIG_H
+#include "nbtool_config.h"
 #endif
+
+#define _NLS_PRIVATE
+
 #include <sys/types.h>
 #if defined(WINDOWS)
 #include "queue.h"
@@ -77,10 +80,12 @@ up-to-date.  Many thanks.
 #endif
 
 #if !defined(WINDOWS)
-#include <arpa/inet.h>		/* for htonl() */
+#include <arpa/inet.h>		/* Needed for htonl() on POSIX systems */
 #endif
 
 #include <ctype.h>
+//#include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -98,23 +103,28 @@ up-to-date.  Many thanks.
 #define err(fd, ...)    do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #endif
 
-#define NL_SETMAX	255
-#define NL_MSGMAX	32767
+#ifndef NL_SETMAX
+#define NL_SETMAX 255
+#endif
+#ifndef NL_MSGMAX
+#define NL_MSGMAX 2048
+#endif
 
-/*
- * MESSAGE CATALOG FILE FORMAT.
- *
- * The NetBSD/FreeBSD message catalog format is similar to the format used by
- * Svr4 systems.  The differences are:
- *   * fixed byte order (big endian)
- *   * fixed data field sizes
- *
- * A message catalog contains four data types: a catalog header, one
- * or more set headers, one or more message headers, and one or more
- * text strings.
- */
+struct _msgT
+{
+  long msgId;
+  char *str;
+    LIST_ENTRY (_msgT) entries;
+};
 
-#define _NLS_MAGIC	0xff88ff89
+struct _setT
+{
+  long setId;
+    LIST_HEAD (msghead, _msgT) msghead;
+    LIST_ENTRY (_setT) entries;
+};
+
+#define _NLS_MAGIC      0xff88ff89
 
 struct _nls_cat_hdr
 {
@@ -139,38 +149,13 @@ struct _nls_msg_hdr
   int32_t __offset;
 };
 
-
-#define	NL_SETD		0
-#define	NL_CAT_LOCALE	1
-
-typedef struct __nl_cat_d
-{
-  void *__data;
-  int __size;
-} *nl_catd;
-
-
-nl_catd catopen (const char *, int);
-char *catgets (nl_catd, int, int, const char *);
-int catclose (nl_catd);
-
-struct _msgT
-{
-  long msgId;
-  char *str;
-    LIST_ENTRY (_msgT) entries;
-};
-
-struct _setT
-{
-  long setId;
-    LIST_HEAD (msghead, _msgT) msghead;
-    LIST_ENTRY (_setT) entries;
-};
+#define NL_SETD			0
+#define NL_CAT_LOCALE	1
 
 LIST_HEAD (sethead, _setT) sethead;
      static struct _setT *curSet;
 
+     static const char *curfile;
      static char *curline = NULL;
      static long lineno = 0;
 
@@ -184,51 +169,41 @@ LIST_HEAD (sethead, _setT) sethead;
      static void *xmalloc (size_t);
      static void *xrealloc (void *, size_t);
 
-     void MCParse (int);
-     void MCReadCat (int);
-     void MCWriteCat (int);
-     void MCDelMsg (int);
-     void MCAddMsg (int, const char *);
-     void MCAddSet (int);
-     void MCDelSet (int);
-     void usage (void);
+     void MCParse (int fd);
+     void MCReadCat (int fd);
+     void MCWriteCat (int fd);
+     void MCDelMsg (int msgId);
+     void MCAddMsg (int msgId, const char *msg);
+     void MCAddSet (int setId);
+     void MCDelSet (int setId);
      int main (int, char **);
+     void usage (void);
 
      static char *progname;
 
-     void usage ()
+#define CORRUPT			"corrupt message catalog"
+#define NOMEMORY		"out of memory"
+
+     void usage (void)
 {
   fprintf (stderr, "usage: %s catfile msgfile ...\n", progname);
   exit (1);
 }
 
 int
-main (int argc, char **argv)
+main (int argc, char *argv[])
 {
   int ofd, ifd;
   char *catfile = NULL;
   int c;
+  int updatecat = 0;
 
   progname = argv[0];
-#define DEPRECATEDMSG	1
 
-#ifdef DEPRECATEDMSG
-  while ((c = getopt (argc, argv, "new")) != -1)
-    {
-#else
   while ((c = getopt (argc, argv, "")) != -1)
     {
-#endif
       switch (c)
 	{
-#ifdef DEPRECATEDMSG
-	case 'n':
-	  fprintf (stderr,
-		   "WARNING: Usage of \"-new\" argument is deprecated.\n");
-	case 'e':
-	case 'w':
-	  break;
-#endif
 	case '?':
 	default:
 	  usage ();
@@ -245,16 +220,77 @@ main (int argc, char **argv)
     }
   catfile = *argv++;
 
-  for (; *argv; argv++)
+  if ((catfile[0] == '-') && (catfile[1] == '\0'))
     {
-      if ((ifd = open (*argv, O_RDONLY)) < 0)
-	err (1, "Unable to read %s", *argv);
-      MCParse (ifd);
-      close (ifd);
+#if defined(WINDOWS)
+      ofd = _fileno (stdout);
+#else
+      ofd = STDOUT_FILENO;
+#endif
+
+    }
+  else
+    {
+      ofd = open (catfile, O_WRONLY | O_CREAT | O_EXCL, 0666);
+      if (ofd < 0)
+	{
+	  if (errno == EEXIST)
+	    {
+	      if ((ofd = open (catfile, O_RDWR)) < 0)
+		{
+		  err (1, "Unable to open %s", catfile);
+		  /* NOTREACHED */
+		}
+	    }
+	  else
+	    {
+	      err (1, "Unable to create new %s", catfile);
+	      /* NOTREACHED */
+	    }
+	  curfile = catfile;
+	  updatecat = 1;
+	  MCReadCat (ofd);
+	  if (lseek (ofd, SEEK_SET, 0) < 0)
+	    {
+	      err (1, "Unable to seek on %s", catfile);
+	      /* NOTREACHED */
+	    }
+	}
     }
 
-  if ((ofd = open (catfile, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0)
-    err (1, "Unable to create a new %s", catfile);
+  if (((*argv)[0] == '-') && ((*argv)[1] == '\0'))
+    {
+      if (argc != 2)
+	usage ();
+      /* NOTREACHED */
+#if defined(WINDOWS)
+      MCParse (_fileno (stdin));
+#else
+      MCParse (STDIN_FILENO);
+#endif
+    }
+  else
+    {
+      for (; *argv; argv++)
+	{
+	  if ((ifd = open (*argv, O_RDONLY)) < 0)
+	    err (1, "Unable to read %s", *argv);
+	  curfile = *argv;
+	  lineno = 0;
+	  MCParse (ifd);
+	  close (ifd);
+	}
+    }
+
+  if (updatecat)
+    {
+      if (ftruncate (ofd, 0) != 0)
+	{
+	  err (1, "Unable to truncate %s", catfile);
+	  /* NOTREACHED */
+	}
+    }
+
   MCWriteCat (ofd);
   exit (0);
 }
@@ -262,19 +298,24 @@ main (int argc, char **argv)
 static void
 warning (const char *cptr, const char *msg)
 {
-  fprintf (stderr, "%s: %s on line %ld\n", progname, msg, lineno);
-  fprintf (stderr, "%s\n", curline);
-  if (cptr)
+  if (lineno)
     {
-      char *tptr;
-      for (tptr = curline; tptr < cptr; ++tptr)
-	putc (' ', stderr);
-      fprintf (stderr, "^\n");
+      fprintf (stderr, "%s: %s on line %ld, %s\n",
+	       progname, msg, lineno, curfile);
+      fprintf (stderr, "%s\n", curline);
+      if (cptr)
+	{
+	  char *tptr;
+	  for (tptr = curline; tptr < cptr; ++tptr)
+	    putc (' ', stderr);
+	  fprintf (stderr, "^\n");
+	}
+    }
+  else
+    {
+      fprintf (stderr, "%s: %s, %s\n", progname, msg, curfile);
     }
 }
-
-#define	CORRUPT()	{ error("corrupt message catalog"); }
-#define	NOMEM()		{ error("out of memory"); }
 
 static void
 error (const char *msg)
@@ -289,7 +330,13 @@ xmalloc (size_t len)
   void *p;
 
   if ((p = malloc (len)) == NULL)
-    NOMEM ();
+    {
+#if defined(WINDOWS)
+      error (NOMEMORY);
+#else
+      errx (1, NOMEMORY);
+#endif
+    }
   return (p);
 }
 
@@ -297,7 +344,13 @@ static void *
 xrealloc (void *ptr, size_t size)
 {
   if ((ptr = realloc (ptr, size)) == NULL)
-    NOMEM ();
+    {
+#if defined(WINDOWS)
+      error (NOMEMORY);
+#else
+      errx (1, NOMEMORY);
+#endif
+    }
   return (ptr);
 }
 
@@ -307,7 +360,13 @@ xstrdup (const char *str)
   char *nstr;
 
   if ((nstr = strdup (str)) == NULL)
-    NOMEM ();
+    {
+#if defined(WINDOWS)
+      error (NOMEMORY);
+#else
+      errx (1, NOMEMORY);
+#endif
+    }
   return (nstr);
 }
 
@@ -429,65 +488,84 @@ getmsg (int fd, char *cptr, char quote)
 	      *cptr = '\0';
 	    }
 	}
-      else if (*cptr == '\\')
-	{
-	  ++cptr;
-	  switch (*cptr)
-	    {
-	    case '\0':
-	      cptr = getline (fd);
-	      if (!cptr)
-		error ("premature end of file");
-	      msglen += strlen (cptr);
-	      i = tptr - msg;
-	      msg = xrealloc (msg, msglen);
-	      tptr = msg + i;
-	      break;
-
-#define	CASEOF(CS, CH)		\
-			case CS:		\
-				*tptr++ = CH;	\
-				++cptr;		\
-				break;		\
-
-	      CASEOF ('n', '\n');
-	      CASEOF ('t', '\t');
-	      CASEOF ('v', '\v');
-	      CASEOF ('b', '\b');
-	      CASEOF ('r', '\r');
-	      CASEOF ('f', '\f');
-	      CASEOF ('"', '"');
-	      CASEOF ('\\', '\\');
-
-	    default:
-	      if (quote && *cptr == quote)
-		{
-		  *tptr++ = *cptr++;
-		}
-	      else if (isdigit ((unsigned char) *cptr))
-		{
-		  *tptr = 0;
-		  for (i = 0; i < 3; ++i)
-		    {
-		      if (!isdigit ((unsigned char) *cptr))
-			break;
-		      if (*cptr > '7')
-			warning (cptr, "octal number greater than 7?!");
-		      *tptr *= 8;
-		      *tptr += (*cptr - '0');
-		      ++cptr;
-		    }
-		}
-	      else
-		{
-		  warning (cptr, "unrecognized escape sequence");
-		}
-	      break;
-	    }
-	}
       else
 	{
-	  *tptr++ = *cptr++;
+	  if (*cptr == '\\')
+	    {
+	      ++cptr;
+	      switch (*cptr)
+		{
+		case '\0':
+		  cptr = getline (fd);
+		  if (!cptr)
+		    error ("premature end of file");
+		  msglen += strlen (cptr);
+		  i = tptr - msg;
+		  msg = xrealloc (msg, msglen);
+		  tptr = msg + i;
+		  break;
+		case 'n':
+		  *tptr++ = '\n';
+		  ++cptr;
+		  break;
+		case 't':
+		  *tptr++ = '\t';
+		  ++cptr;
+		  break;
+		case 'v':
+		  *tptr++ = '\v';
+		  ++cptr;
+		  break;
+		case 'b':
+		  *tptr++ = '\b';
+		  ++cptr;
+		  break;
+		case 'r':
+		  *tptr++ = '\r';
+		  ++cptr;
+		  break;
+		case 'f':
+		  *tptr++ = '\f';
+		  ++cptr;
+		  break;
+		case '"':
+		  *tptr++ = '"';
+		  ++cptr;
+		  break;
+		case '\\':
+		  *tptr++ = '\\';
+		  ++cptr;
+		  break;
+		default:
+		  if (quote && *cptr == quote)
+		    {
+		      *tptr++ = *cptr++;
+		    }
+		  else if (isdigit ((unsigned char) *cptr))
+		    {
+		      *tptr = 0;
+		      for (i = 0; i < 3; ++i)
+			{
+			  if (!isdigit ((unsigned char) *cptr))
+			    break;
+			  if (*cptr > '7')
+			    warning (cptr, "octal number greater than 7?!");
+			  *tptr *= 8;
+			  *tptr += (*cptr - '0');
+			  ++cptr;
+			}
+		    }
+		  else
+		    {
+		      warning (cptr, "unrecognized escape sequence");
+		    }
+		  break;
+		}
+	    }
+	  else
+	    {
+	      *tptr++ = *cptr++;
+	    }
 	}
     }
   *tptr = '\0';
@@ -498,7 +576,8 @@ void
 MCParse (int fd)
 {
   char *cptr, *str;
-  int setid, msgid = 0;
+  int msgid = 0;
+  int setid = 0;
   char quote = 0;
 
   /* XXX: init sethead? */
@@ -566,13 +645,29 @@ MCParse (int fd)
 	    {
 	      msgid = atoi (cptr);
 	      cptr = cskip (cptr);
-	      cptr = wskip (cptr);
-	      /* if (*cptr) ++cptr; */
+	      if (*cptr)
+		{
+		  cptr = wskip (cptr);
+		  if (!*cptr)
+		    {
+		      MCAddMsg (msgid, "");
+		      continue;
+		    }
+		}
 	    }
 	  else
 	    {
 	      warning (cptr, "neither blank line nor start of a message id");
 	      continue;
+	    }
+	  /*
+	   * If no set directive specified, all messages
+	   * shall be in default message set NL_SETD.
+	   */
+	  if (setid == 0)
+	    {
+	      setid = NL_SETD;
+	      MCAddSet (setid);
 	    }
 	  /*
 	   * If we have a message ID, but no message,
@@ -595,92 +690,143 @@ MCParse (int fd)
 void
 MCReadCat (int fd)
 {
-  fd = 0;
-#if 0
-  MCHeaderT mcHead;
-  MCMsgT mcMsg;
-  MCSetT mcSet;
-  msgT *msg;
-  setT *set;
-  int i;
-  char *data;
+  void *msgcat;			/* message catalog data */
+  struct _nls_cat_hdr cat_hdr;
+  struct _nls_set_hdr *set_hdr;
+  struct _nls_msg_hdr *msg_hdr;
+  char *strings;
+  int m, n, s;
+  int msgno, setno;
 
   /* XXX init sethead? */
 
-  if (read (fd, &mcHead, sizeof (mcHead)) != sizeof (mcHead))
-    CORRUPT ();
-  if (strncmp (mcHead.magic, MCMagic, MCMagicLen) != 0)
-    CORRUPT ();
-  if (mcHead.majorVer != MCMajorVer)
-    error ("unrecognized catalog version");
-  if ((mcHead.flags & MCGetByteOrder ()) == 0)
-    error ("wrong byte order");
-
-  if (lseek (fd, mcHead.firstSet, SEEK_SET) == -1)
-    CORRUPT ();
-
-  for (;;)
+  n = read (fd, &cat_hdr, sizeof (cat_hdr));
+  if (n < sizeof (cat_hdr))
     {
-      if (read (fd, &mcSet, sizeof (mcSet)) != sizeof (mcSet))
-	CORRUPT ();
-      if (mcSet.invalid)
-	continue;
-
-      set = xmalloc (sizeof (setT));
-      memset (set, '\0', sizeof (*set));
-      if (cat->first)
-	{
-	  cat->last->next = set;
-	  set->prev = cat->last;
-	  cat->last = set;
-	}
+      if (n == 0)
+	return;			/* empty file */
+      else if (n == -1)
+	err (1, "header read");
       else
-	cat->first = cat->last = set;
+	{
+#if defined(WINDOWS)
+	  error (CORRUPT);
+#else
+	  errx (1, CORRUPT);
+#endif
+	}
+    }
+  if (ntohl (cat_hdr.__magic) != _NLS_MAGIC)
+    {
+#if defined(WINDOWS)
+      error (CORRUPT);
+#else
+      errx (1, "%s: bad magic number (%#x)", CORRUPT, cat_hdr.__magic);
+#endif
+    }
 
-      set->setId = mcSet.setId;
+  cat_hdr.__mem = ntohl (cat_hdr.__mem);
+  msgcat = xmalloc (cat_hdr.__mem);
+
+  cat_hdr.__nsets = ntohl (cat_hdr.__nsets);
+  cat_hdr.__msg_hdr_offset = ntohl (cat_hdr.__msg_hdr_offset);
+  cat_hdr.__msg_txt_offset = ntohl (cat_hdr.__msg_txt_offset);
+  if ((cat_hdr.__mem < 0) ||
+      (cat_hdr.__msg_hdr_offset < 0) ||
+      (cat_hdr.__msg_txt_offset < 0) ||
+      (cat_hdr.__mem < (cat_hdr.__nsets * sizeof (struct _nls_set_hdr))) ||
+      (cat_hdr.__mem < cat_hdr.__msg_hdr_offset) ||
+      (cat_hdr.__mem < cat_hdr.__msg_txt_offset))
+    {
+#if defined(WINDOWS)
+      error (CORRUPT);
+#else
+      errx (1, "%s: catalog header", CORRUPT);
+#endif
+
+    }
+
+  n = read (fd, msgcat, cat_hdr.__mem);
+  if (n < cat_hdr.__mem)
+    {
+      if (n == -1)
+	err (1, "data read");
+      else
+	{
+#if defined(WINDOWS)
+	  error (CORRUPT);
+#else
+	  errx (1, CORRUPT);
+#endif
+	}
+    }
+
+  set_hdr = (struct _nls_set_hdr *) msgcat;
+  msg_hdr = (struct _nls_msg_hdr *) ((char *) msgcat +
+				     cat_hdr.__msg_hdr_offset);
+  strings = (char *) msgcat + cat_hdr.__msg_txt_offset;
+
+  setno = 0;
+  for (s = 0; s < cat_hdr.__nsets; s++, set_hdr++)
+    {
+      set_hdr->__setno = ntohl (set_hdr->__setno);
+      if (set_hdr->__setno < setno)
+	{
+#if defined(WINDOWS)
+	  error (CORRUPT);
+#else
+	  errx (1, "%s: bad set number (%d)", CORRUPT, set_hdr->__setno);
+#endif
+	}
+      setno = set_hdr->__setno;
+
+      MCAddSet (setno);
+
+      set_hdr->__nmsgs = ntohl (set_hdr->__nmsgs);
+      set_hdr->__index = ntohl (set_hdr->__index);
+      if (set_hdr->__nmsgs < 0 || set_hdr->__index < 0)
+	{
+#if defined(WINDOWS)
+	  error (CORRUPT);
+#else
+	  errx (1, "%s: set header", CORRUPT);
+#endif
+
+	}
 
       /* Get the data */
-      if (mcSet.dataLen)
+      msgno = 0;
+      for (m = 0; m < set_hdr->__nmsgs; m++, msg_hdr++)
 	{
-	  data = xmalloc (mcSet.dataLen);
-	  if (lseek (fd, mcSet.data.off, SEEK_SET) == -1)
-	    CORRUPT ();
-	  if (read (fd, data, mcSet.dataLen) != mcSet.dataLen)
-	    CORRUPT ();
-	  if (lseek (fd, mcSet.u.firstMsg, SEEK_SET) == -1)
-	    CORRUPT ();
-
-	  for (i = 0; i < mcSet.numMsgs; ++i)
+	  msg_hdr->__msgno = ntohl (msg_hdr->__msgno);
+	  msg_hdr->__offset = ntohl (msg_hdr->__offset);
+	  if (msg_hdr->__msgno < msgno)
 	    {
-	      if (read (fd, &mcMsg, sizeof (mcMsg)) != sizeof (mcMsg))
-		CORRUPT ();
-	      if (mcMsg.invalid)
-		{
-		  --i;
-		  continue;
-		}
-	      msg = xmalloc (sizeof (msgT));
-	      memset (msg, '\0', sizeof (*msg));
-	      if (set->first)
-		{
-		  set->last->next = msg;
-		  msg->prev = set->last;
-		  set->last = msg;
-		}
-	      else
-		set->first = set->last = msg;
-
-	      msg->msgId = mcMsg.msgId;
-	      msg->str = xstrdup ((char *) (data + mcMsg.msg.off));
-	    }
-	  free (data);
-	}
-      if (!mcSet.nextSet)
-	break;
-      if (lseek (fd, mcSet.nextSet, SEEK_SET) == -1)
-	CORRUPT ();
-    }
+#if defined(WINDOWS)
+	      error (CORRUPT);
+#else
+	      errx (1, "%s: bad message number (%d)",
+		    CORRUPT, msg_hdr->__msgno);
 #endif
+
+	    }
+	  if ((msg_hdr->__offset < 0) ||
+	      ((strings + msg_hdr->__offset) >
+	       ((char *) msgcat + cat_hdr.__mem)))
+	    {
+#if defined(WINDOWS)
+	      error (CORRUPT);
+#else
+	      errx (1, "%s: message header", CORRUPT);
+#endif
+
+	    }
+
+	  msgno = msg_hdr->__msgno;
+	  MCAddMsg (msgno, strings + msg_hdr->__offset);
+	}
+    }
+  free (msgcat);
 }
 
 /*
@@ -753,14 +899,13 @@ MCWriteCat (int fd)
 	   nmsgs * sizeof (struct _nls_msg_hdr));
 
   /* compute offsets for set & msg header tables and string pool */
-  set_hdr = (struct _nls_set_hdr *) (void *) ((char *) msgcat +
-					      sizeof (struct _nls_cat_hdr));
-  msg_hdr = (struct _nls_msg_hdr *) (void *) ((char *) msgcat +
-					      sizeof (struct _nls_cat_hdr) +
-					      nsets *
-					      sizeof (struct _nls_set_hdr));
-  strings =
-    (char *) msgcat + sizeof (struct _nls_cat_hdr) +
+  set_hdr = (struct _nls_set_hdr *) ((char *) msgcat +
+				     sizeof (struct _nls_cat_hdr));
+  msg_hdr = (struct _nls_msg_hdr *) ((char *) msgcat +
+				     sizeof (struct _nls_cat_hdr) +
+				     nsets * sizeof (struct _nls_set_hdr));
+  strings = (char *) msgcat +
+    sizeof (struct _nls_cat_hdr) +
     nsets * sizeof (struct _nls_set_hdr) +
     nmsgs * sizeof (struct _nls_msg_hdr);
 
@@ -895,20 +1040,30 @@ MCDelSet (int setId)
   struct _setT *set;
   struct _msgT *msg;
 
+  if (setId <= 0)
+    {
+      error ("setId's must be greater than zero");
+      /* NOTREACHED */
+    }
+  if (setId > NL_SETMAX)
+    {
+      error ("setId exceeds limit");
+      /* NOTREACHED */
+    }
+
   set = sethead.lh_first;
   for (; set != NULL && set->setId < setId; set = set->entries.le_next);
 
   if (set && set->setId == setId)
     {
-
-      msg = set->msghead.lh_first;
-      while (msg)
-	{
-	  free (msg->str);
-	  LIST_REMOVE (msg, entries);
-	}
-
       LIST_REMOVE (set, entries);
+      while ((msg = set->msghead.lh_first) != NULL)
+	{
+	  LIST_REMOVE (msg, entries);
+	  free (msg->str);
+	  free (msg);
+	}
+      free (set);
       return;
     }
   warning (NULL, "specified set doesn't exist");
@@ -927,8 +1082,9 @@ MCDelMsg (int msgId)
 
   if (msg && msg->msgId == msgId)
     {
-      free (msg->str);
       LIST_REMOVE (msg, entries);
+      free (msg->str);
+      free (msg);
       return;
     }
   warning (NULL, "specified msg doesn't exist");

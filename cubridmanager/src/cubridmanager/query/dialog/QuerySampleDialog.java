@@ -275,7 +275,7 @@ public class QuerySampleDialog extends Dialog {
 		if (query.size() > 0)
 			return;
 
-		query.add(new StructQueryExample("+ , || , * , -", new int[] { 39, 300 }));
+		query.add(new StructQueryExample("+ , || , * , -, /", new int[] { 39, 300 }));
 		query.add(new StructQueryExample("all", null));
 		query.add(new StructQueryExample("distinct / unique", new int[] { 87, 129, 302 }));
 		query.add(new StructQueryExample("alter", new int[] { 201, 7, 10, 11, 12, }));
@@ -409,6 +409,16 @@ public class QuerySampleDialog extends Dialog {
 		function.add(new StructQueryExample("ABS", new int[] { 418 }));
 		function.add(new StructQueryExample("FLOOR", new int[] { 418 }));
 		function.add(new StructQueryExample("ROUND", new int[] { 418 }));
+		function.add(new StructQueryExample("INCR", new int[] { 175, 420 }));
+		function.add(new StructQueryExample("DECR", new int[] { 175, 421 }));
+		function.add(new StructQueryExample("INSTR", new int[] { 176, 422 }));
+		function.add(new StructQueryExample("DRAND", new int[] { 177, 423 }));
+		function.add(new StructQueryExample("CEIL", new int[] { 178, 424 }));
+		function.add(new StructQueryExample("SIGN", new int[] { 179, 425 }));
+		function.add(new StructQueryExample("GREATEST", new int[] { 180, 426 }));
+		function.add(new StructQueryExample("LEAST", new int[] { 181, 427 }));
+		function.add(new StructQueryExample("USER(=CURRENT_USER)", new int[] { 182, 428 }));
+
 		Collections.sort(function);
 	}
 

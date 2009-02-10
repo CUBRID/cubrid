@@ -396,10 +396,10 @@ extern int heap_indexinfo_get_attrids (int btid_index,
 				       HEAP_CACHE_ATTRINFO * attrinfo,
 				       ATTR_ID * attrids);
 
-extern int heap_get_attrids_of_btid_key (THREAD_ENTRY * thread_p,
-					 OID * class_oid, BTID * btid,
-					 BTREE_TYPE * type, int *num_attrs,
-					 ATTR_ID ** attr_ids);
+extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p,
+				       OID * class_oid, BTID * btid,
+				       BTREE_TYPE * type, int *num_attrs,
+				       ATTR_ID ** attr_ids, char **btnamepp);
 extern int heap_get_referenced_by (THREAD_ENTRY * thread_p,
 				   const OID * obj_oid, RECDES * obj,
 				   int *max_oid_cnt, OID ** oid_list);

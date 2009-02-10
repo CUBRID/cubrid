@@ -152,6 +152,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p,
 						 OID * class_oid,
 						 int n_attr_ids,
 						 ATTR_ID * attr_ids,
+						 const char *btname,
 						 bool repair);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,
 					RECDES * recdes, OID * inst_oid,
@@ -185,7 +186,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 				HFID * hfid, TP_DOMAIN * key_type,
 				int n_attrs, int *attr_ids, OID * pk_cls_oid,
 				BTID * pk_btid, int cache_attr_id,
-				char *fk_name);
+				char *fkname);
 #endif /* SERVER_MODE */
 
 #endif /* _LOCATOR_SR_H_ */

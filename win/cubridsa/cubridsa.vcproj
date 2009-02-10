@@ -61,7 +61,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libeay32.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib"
 				AdditionalLibraryDirectories="&quot;$(JAVA_HOME)\lib&quot;;..\external\lib"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridsa.def"
@@ -140,7 +140,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libeay32.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib "
 				AdditionalLibraryDirectories="&quot;$(JAVA_HOME)\lib&quot;;..\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridsa.def"
@@ -460,6 +460,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\release_string.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\sha1.c"
 					>
 				</File>
 				<File

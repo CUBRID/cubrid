@@ -1498,6 +1498,24 @@ db_error_init (const char *logfile)
 }
 
 /*
+ *
+ * db_register_error_loghandler () - This function registers user supplied 
+ * error log handler function (db_error_log_handler_t type) which is called 
+ * whenever DBMS error message is to be logged.
+ *
+ * return : previously registered error log handler function (may be NULL)
+ * f (in) : user supplied error log handler function
+ *
+ */
+
+db_error_log_handler_t
+db_register_error_log_handler (db_error_log_handler_t f)
+{
+  return (db_error_log_handler_t) er_register_log_handler ((er_log_handler_t)
+							   f);
+}
+
+/*
  *  CLUSTER FETCH FUNCTIONS
  */
 

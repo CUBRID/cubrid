@@ -7320,6 +7320,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   const char *nopath_name;	/* Name without path          */
   const char *volnameptr;
   char to_volname[PATH_MAX];	/* Name of a volume (TO)      */
+  char verbose_to_volname[PATH_MAX];	/* Printable name of a volume (TO) */
   char prev_volname[PATH_MAX];	/* Name of a prev volume (TO) */
   char from_volbackup[PATH_MAX];	/* Name of the backup volume
 					 * (FROM)
@@ -7359,6 +7360,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
+  memset (verbose_to_volname, 0, PATH_MAX);
   memset (lgat_tmpname, 0, PATH_MAX);
 
   LOG_CS_ENTER (thread_p);
@@ -7695,7 +7697,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  if (first_time)
 	    {
 	      fprintf (restore_verbose_file_p,
-		       "[ Database(%s) Restore (level = %d) start ]\n\n",
+		       "\n[ Database(%s) Restore (level = %d) start ]\n\n",
 		       boot_db_name (), r_args->level);
 
 	      restore_start_time = time (NULL);
@@ -7741,6 +7743,11 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 					  &to_volid, &vol_nbytes);
 	  if (another_vol == 1)
 	    {
+
+	      if (restore_verbose_file_p)
+		{
+		  strcpy (verbose_to_volname, to_volname);
+		}
 
 	      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
 		{
@@ -7890,7 +7897,8 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		    }
 		}
 
-	      success = fileio_restore_volume (thread_p, session, to_volname,
+	      success = fileio_restore_volume (thread_p, session,
+					       to_volname, verbose_to_volname,
 					       prev_volname, &pages_cache,
 					       remember_pages);
 	    }

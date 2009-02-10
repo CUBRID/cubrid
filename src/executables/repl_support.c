@@ -22,13 +22,19 @@
 
 #ident "$Id$"
 
+#include "config.h"
+
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <broker_error.h>
 #if !defined(WINDOWS)
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <unistd.h>
+#include <limits.h>
 #endif /* ! WINDOWS */
+#include <netinet/tcp.h>
+#include <netdb.h>
 
 #include "repl_tp.h"
 #include "memory_alloc.h"
@@ -71,37 +77,46 @@ int repl_Pipe_to_master = -1;
 int
 repl_io_read (int vdes, void *io_pgptr, PAGEID pageid, int pagesize)
 {
+  int remain_bytes = pagesize;
   int nbytes;
-  int retry = true;
-  int error = NO_ERROR;
   off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  char errno_buffer[FILE_PATH_LENGTH];
+  char *current_ptr = (char *) io_pgptr;
 
-  while (retry == true)
+  if (lseek64 (vdes, offset, SEEK_SET) == -1)
     {
-      retry = false;
-
-      /* Read the desired page */
-      nbytes = pread64 (vdes, io_pgptr, pagesize, offset);
-
-      if (nbytes != pagesize)
-	{
-	  if (nbytes == 0)
-	    {
-	      /*
-	       * This is an end of file.
-	       * We are trying to read beyond the allocated disk space
-	       */
-	      REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-	    }
-	  if (errno == EINTR)
-	    retry = true;
-	  else
-	    {
-	      REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-	    }
-	}
+      snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+      REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+			       errno_buffer);
     }
-  return error;
+
+  while (remain_bytes > 0)
+    {
+      nbytes = read (vdes, current_ptr, pagesize);
+      /*
+       * The nbytes is zero indicates end of file.
+       * This case is not possible.
+       */
+      if (nbytes == 0)
+	{
+	  snprintf (errno_buffer, FILE_PATH_LENGTH, "EOF");
+	  REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+				   errno_buffer);
+	}
+      else if (nbytes == -1)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+	  snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+	  REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+				   errno_buffer);
+	}
+      remain_bytes -= nbytes;
+      current_ptr += nbytes;
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -130,78 +145,74 @@ repl_io_read (int vdes, void *io_pgptr, PAGEID pageid, int pagesize)
 int
 repl_io_write (int vdes, void *op_pgptr, PAGEID pageid, int pagesize)
 {
-  int retry = true;
-  int error = NO_ERROR;
+  int remain_bytes = pagesize;
   int nbytes;
   off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  char errno_buffer[FILE_PATH_LENGTH];
+  char *current_ptr = (char *) op_pgptr;
 
-  while (retry == true)
+  if (lseek64 (vdes, offset, SEEK_SET) == -1)
     {
-      retry = false;
+      snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+      REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+			       errno_buffer);
+    }
 
-      /* write the page */
-      nbytes = pwrite64 (vdes, op_pgptr, pagesize, offset);
-
-      if (nbytes != pagesize)
+  while (remain_bytes > 0)
+    {
+      nbytes = write (vdes, current_ptr, remain_bytes);
+      if (nbytes == -1)
 	{
 	  if (errno == EINTR)
 	    {
-	      retry = true;
+	      continue;
 	    }
-	  else
-	    {
-	      if (errno == ENOSPC)
-		{
-		  REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-		}
-	      else
-		{
-		  /* write error */
-		  REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-		}
-	    }
+	  snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+	  REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+				   errno_buffer);
 	}
+      remain_bytes -= nbytes;
+      current_ptr += nbytes;
     }
-  return error;
+
+  return NO_ERROR;
 }
 
 int
 repl_io_write_copy_log_info (int vdes, void *op_pgptr, PAGEID pageid,
 			     int pagesize)
 {
-  int retry = true;
-  int error = NO_ERROR;
+  int remain_bytes = DB_SIZEOF (COPY_LOG);
   int nbytes;
   off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  char errno_buffer[FILE_PATH_LENGTH];
+  char *current_ptr = (char *) op_pgptr;
 
-  while (retry == true)
+  if (lseek64 (vdes, offset, SEEK_SET) == -1)
     {
-      retry = false;
+      snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+      REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+			       errno_buffer);
+    }
 
-      /* write the page */
-      nbytes = pwrite64 (vdes, op_pgptr, DB_SIZEOF (COPY_LOG), offset);
-
-      if (nbytes != DB_SIZEOF (COPY_LOG))
+  while (remain_bytes > 0)
+    {
+      nbytes = write (vdes, current_ptr, remain_bytes);
+      if (nbytes == -1)
 	{
 	  if (errno == EINTR)
 	    {
-	      retry = true;
+	      continue;
 	    }
-	  else
-	    {
-	      if (errno == ENOSPC)
-		{
-		  REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-		}
-	      else
-		{
-		  /* write error */
-		  REPL_ERR_RETURN (REPL_FILE_COMM, REPL_COMMON_ERROR);
-		}
-	    }
+	  snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
+	  REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
+				   errno_buffer);
 	}
+      remain_bytes -= nbytes;
+      current_ptr += nbytes;
     }
-  return error;
+
+  return NO_ERROR;
 }
 
 /*
@@ -374,6 +385,29 @@ repl_pack_server_name (bool serveryn, const char *server_name,
 }
 
 /*
+ * repl_set_socket_tcp_nodelay ()
+ */
+int
+repl_set_socket_tcp_nodelay (int sock_fd)
+{
+  struct protoent *proto;
+  int tcp_level;
+  int one = 1;
+
+  proto = getprotobyname ("TCP");
+  if (proto == NULL)
+    {
+      tcp_level = IPPROTO_TCP;
+    }
+  else
+    {
+      tcp_level = proto->p_proto;
+    }
+  return setsockopt (sock_fd, tcp_level, TCP_NODELAY, (char *) &one,
+		     sizeof (int));
+}
+
+/*
  * repl_connect_to_master() - connect to the master server
  *   return: error code
  *   serveryn(in) : true if repl_server
@@ -407,9 +441,9 @@ int
 repl_start_daemon (void)
 {
   int childpid, fd;
-#if defined (sun)
+#if defined (HAVE_GETRLIMIT)
   struct rlimit rlp;
-#endif /* sun */
+#endif /* HAVE_GETRLIMIT */
   int fd_max;
   int ppid = getpid ();
 
@@ -448,14 +482,16 @@ out:
    * could be a shell. For now, leave in/out/err open
    */
 
-#if defined (sun)
+#if defined (HAVE_GETRLIMIT)
   fd_max = 0;
   if (getrlimit (RLIMIT_NOFILE, &rlp) == 0)
     fd_max = MIN (1024, rlp.rlim_cur);
-#elif defined(LINUX)
+#elif defined (OPEN_MAX)
+  fd_max = OPEN_MAX;
+#elif defined(HAVE_SYSCONF) && defined(_SC_OPEN_MAX)
   fd_max = sysconf (_SC_OPEN_MAX);
-#else /* HPUX */
-  fd_max = _POSIX_OPEN_MAX;
+#else
+#error "There's no known way to get the maximum number of file descriptors!"
 #endif
   for (fd = 3; fd < fd_max; fd++)
     close (fd);
