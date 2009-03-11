@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -68,6 +69,10 @@
 #include "job_queue.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
+
+#if !defined(WINDOWS)
+#include "replication.h"
+#endif
 
 #if !defined(SERVER_MODE)
 #undef MUTEX_INIT
@@ -4330,6 +4335,13 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   LOG_CS_EXIT ();
 
+#if !defined (WINDOWS)
+  if (PRM_REPLICATION_MODE)
+    {
+      (void) repl_add_savepoint_info (thread_p, savept_name);
+    }
+#endif
+
   return &tdes->savept_lsa;
 }
 
@@ -5199,7 +5211,7 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       while (tdes->append_repl_recidx < tdes->cur_repl_record)
 	{
 	  repl_rec = (LOG_REPL_RECORD *)
-                     (&(tdes->repl_records[tdes->append_repl_recidx]));
+	    (&(tdes->repl_records[tdes->append_repl_recidx]));
 
 	  if ((repl_rec->repl_type == LOG_REPLICATION_DATA
 	       || repl_rec->repl_type == LOG_REPLICATION_SCHEMA)
@@ -6132,6 +6144,13 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
    * get undefined and cannot get call by the user any longer.
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
+
+#if !defined (WINDOWS)
+  if (PRM_REPLICATION_MODE)
+    {
+      (void) repl_log_abort_to_savepoint (thread_p, savepoint_name);
+    }
+#endif
 
   return state;
 }

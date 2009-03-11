@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -124,14 +125,6 @@ extern void db_scramble (void *region, int size);
           } \
         } while (0)
 
-#define db_instant_free_and_init(thrd, ptr) \
-        do { \
-          if ((ptr)) { \
-            db_instant_free ((thrd), (ptr)); \
-            (ptr) = NULL; \
-          } \
-        } while (0)
-
 #define free_and_init(ptr) \
         do { \
           if ((ptr)) { \
@@ -143,12 +136,6 @@ extern void db_scramble (void *region, int size);
 #define db_private_free_and_init(thrd, ptr) \
         do { \
           db_private_free ((thrd), (ptr)); \
-          (ptr) = NULL; \
-	} while (0)
-
-#define db_instant_free_and_init(thrd, ptr) \
-        do { \
-          db_instant_free ((thrd), (ptr)); \
           (ptr) = NULL; \
 	} while (0)
 
@@ -164,7 +151,6 @@ extern int ansisql_strcasecmp (const char *s, const char *t);
 
 #if !defined (SERVER_MODE)
 extern unsigned int private_heap_id;
-extern unsigned int instant_heap_id;
 #endif /* SERVER_MODE */
 
 /*
@@ -198,21 +184,38 @@ extern void *db_private_alloc (void *thrd, size_t size);
 extern void *db_private_realloc (void *thrd, void *ptr, size_t size);
 extern void db_private_free (void *thrd, void *ptr);
 
-extern unsigned int db_create_instant_heap (void);
-extern void db_clear_instant_heap (THREAD_ENTRY * thread_p,
-				   unsigned int heap_id);
-extern unsigned int db_change_instant_heap (THREAD_ENTRY * thread_p,
-					    unsigned int heap_id);
-extern unsigned int db_replace_instant_heap (THREAD_ENTRY * thread_p);
-extern void db_destroy_instant_heap (THREAD_ENTRY * thread_p,
-				     unsigned int heap_id);
-extern void *db_instant_alloc (void *thrd, size_t size);
-extern void *db_instant_realloc (void *thrd, void *ptr, size_t size);
-extern void db_instant_free (void *thrd, void *ptr);
-
 extern unsigned int db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (unsigned int heap_id);
 extern void *db_fixed_alloc (unsigned int heap_id, size_t size);
 extern void db_fixed_free (unsigned int heap_id, void *ptr);
+
+#if defined(SA_MODE)
+typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
+struct private_malloc_header_s
+{
+  int magic;
+  int alloc_type;
+};
+
+#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafda
+
+enum
+{
+  PRIVATE_ALLOC_TYPE_LEA = 1,
+  PRIVATE_ALLOC_TYPE_WS = 2
+};
+
+#define PRIVATE_MALLOC_HEADER_ALIGNED_SIZE \
+  ((sizeof(PRIVATE_MALLOC_HEADER) + 7) & ~7)
+
+#define private_request_size(s) \
+  (PRIVATE_MALLOC_HEADER_ALIGNED_SIZE + (s))
+
+#define private_hl2user_ptr(ptr) \
+  (void *)((char *)(ptr) + PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+
+#define private_user2hl_ptr(ptr) \
+  (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+#endif /* SA_MODE */
 
 #endif /* _MEMORY_ALLOC_H_ */

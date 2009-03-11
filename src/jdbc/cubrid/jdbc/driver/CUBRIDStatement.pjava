@@ -722,19 +722,22 @@ public class CUBRIDStatement implements Statement
   {
     checkIsOpen ();
     String plan;
+    int error_code = UErrorCode.ER_NO_ERROR;
 
     if (sql == null)
       return "";
 
-      plan = u_con.getQueryplanOnly (sql);
+    plan = u_con.getQueryplanOnly (sql);
 
-      error = u_con.getRecentError ();
-    switch (error.getErrorCode ())
-      {
-      case UErrorCode.ER_NO_ERROR:
-	break;
-	default:throw new CUBRIDException (error);
-      }
+    error = u_con.getRecentError ();
+    error_code = error.getErrorCode();
+
+    con.autoRollback();
+
+    if ( error_code != UErrorCode.ER_NO_ERROR )
+    {
+       throw new CUBRIDException(error); 
+    }
 
     if (plan == null)
       return "";
@@ -745,18 +748,22 @@ public class CUBRIDStatement implements Statement
   public String getQueryplan () throws SQLException
   {
     checkIsOpen ();
+    int error_code = UErrorCode.ER_NO_ERROR;
 
     if (u_stmt == null)
       return "";
 
     String plan = u_stmt.getQueryplan ();
-      error = u_stmt.getRecentError ();
-    switch (error.getErrorCode ())
-      {
-      case UErrorCode.ER_NO_ERROR:
-	break;
-	default:throw new CUBRIDException (error);
-      }
+
+    error = u_stmt.getRecentError ();
+    error_code = error.getErrorCode();
+
+    con.autoRollback();
+    
+    if( error_code != UErrorCode.ER_NO_ERROR)
+    {
+         throw new CUBRIDException(error); 
+    } 
 
     if (plan == null)
       return "";

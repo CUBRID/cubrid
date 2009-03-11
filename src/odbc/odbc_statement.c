@@ -283,13 +283,13 @@ odbc_free_statement (ODBC_STATEMENT * stmt)
 	  else
 	    stmt->conn->statements = stmt->next;
 	}
+      odbc_close_cursor (stmt);
     }
 
 
   /* free memebers */
   NA_FREE (stmt->sql_text);
 
-  odbc_close_cursor (stmt);
   reset_revised_sql (stmt);
 
   odbc_free_diag (stmt->diag, FREE_ALL);
@@ -1773,19 +1773,15 @@ odbc_close_cursor (ODBC_STATEMENT * stmt)
     {
       cci_close_req_handle (stmt->stmthd);
       stmt->stmthd = -1;
-    }
 
-  if (stmt->result_type != TYPE_INFO)
-    {
-      odbc_auto_commit (stmt->conn);
+      if (stmt->result_type != TYPE_INFO)
+        {
+          odbc_auto_commit (stmt->conn);
+        }
     }
-
   // reset result set
   reset_result_set (stmt);
   //reset_cursor_state(stmt);
-
-
-
   return ODBC_SUCCESS;
 }
 

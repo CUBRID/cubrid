@@ -73,7 +73,7 @@
             <fileset dir="${cubridmanager.location}/disable_icons"/>
         </copy>
         <copy todir="${out}">
-            <fileset file="${cubridmanager.location}/cubridmanager.ini"/>
+            <fileset file="${cubridmanager.location}/configuration.ini"/>
             <fileset file="${cubridmanager.location}/cubridmanager.product"/>
             <fileset file="${cubridmanager.location}/version.properties"/>
             <fileset file="${cubridmanager.location}/messages.properties"/>
@@ -84,11 +84,11 @@
             <fileset file="${cubridmanager.location}/splash.bmp"/>
         </copy>
     </target>
-    
+
     <target depends="build" name="win32">
     	<mkdir dir="${product.win32}/plugins"/>
     	<mkdir dir="${product.win32}/configuration"/>
-    	<jar jarfile="${product.win32}/plugins/cubridmanager_8.1.2.jar" basedir="${out}" manifest="${cubridmanager.location}/META-INF/MANIFEST.MF"/>
+    	<jar jarfile="${product.win32}/plugins/cubridmanager_8.jar" basedir="${out}" manifest="${cubridmanager.location}/META-INF/MANIFEST.MF"/>
         <copy todir="${product.win32}/plugins">
             <fileset dir="${eclipse.plugins.common}"/>
             <fileset file="${eclipse.plugins.win32}/org.eclipse.swt.win32.win32.x86_3.3.3.v3349.jar"/>
@@ -99,16 +99,17 @@
          <copy todir="${product.win32}">
             <fileset file="${eclipse.plugins.win32}/cubridmanager.exe"/>
             <fileset file="${eclipse.plugins.win32}/.eclipseproduct"/>
+         	<fileset file="${eclipse.plugins.common}/cubridmanager.ini"/>
         </copy>
          <copy todir="${product.win32}/configuration">
             <fileset file="${eclipse.plugins.win32}/config.ini"/>
         </copy>
     </target>
-    
+
     <target depends="build" name="linux-gtk">
     	<mkdir dir="${product.linux-gtk}/plugins"/>
     	<mkdir dir="${product.linux-gtk}/configuration"/>
-    	<jar jarfile="${product.linux-gtk}/plugins/cubridmanager_8.1.2.jar" basedir="${out}" manifest="${cubridmanager.location}/META-INF/MANIFEST.MF"/>
+    	<jar jarfile="${product.linux-gtk}/plugins/cubridmanager_8.jar" basedir="${out}" manifest="${cubridmanager.location}/META-INF/MANIFEST.MF"/>
         <copy todir="${product.linux-gtk}/plugins/">
             <fileset dir="${eclipse.plugins.common}"/>
             <fileset file="${eclipse.plugins.linux-gtk}/org.eclipse.swt.gtk.linux.x86_3.3.2.v3349.jar"/>
@@ -119,6 +120,7 @@
          <copy todir="${product.linux-gtk}">
             <fileset file="${eclipse.plugins.linux-gtk}/cubridmanager"/>
             <fileset file="${eclipse.plugins.linux-gtk}/.eclipseproduct"/>
+         	<fileset file="${eclipse.plugins.common}/cubridmanager.ini"/>
         </copy>
 	<chmod perm="ugo+x">
             <fileset file="${product.linux-gtk}/cubridmanager"/>
@@ -126,8 +128,8 @@
          <copy todir="${product.linux-gtk}/configuration">
             <fileset file="${eclipse.plugins.linux-gtk}/config.ini"/>
         </copy>
-    </target> 
-       
+    </target>
+
     <target depends="win32,linux-gtk" name="all">
     </target>
 </project>

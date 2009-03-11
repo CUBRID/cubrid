@@ -1032,7 +1032,7 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 		g2_table.setLinesVisible(true);
 		g2_table.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 			public void widgetSelected(org.eclipse.swt.events.SelectionEvent e) {
-				System.out.println("widgetSelected()"); // TODO Auto-generated Event stub widgetSelected()
+				// TODO Auto-generated Event stub widgetSelected()
 			}
 		});
 

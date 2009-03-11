@@ -92,6 +92,7 @@ import cubridmanager.cubrid.action.AddVolumeAction;
 import cubridmanager.cubrid.action.AddedVolumeLogAction;
 import cubridmanager.cubrid.action.AlterTriggerAction;
 import cubridmanager.cubrid.action.AutoBackupErrorLogAction;
+import cubridmanager.cubrid.action.AutoQueryLogAction;
 import cubridmanager.cubrid.action.BackupAction;
 import cubridmanager.cubrid.action.BackupPlanAction;
 import cubridmanager.cubrid.action.CheckAction;
@@ -262,6 +263,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 	public static AddedVolumeLogAction addedVolumeLogAction;
 	public static AddVolumeAction addVolumeAction;
 	public static AutoBackupErrorLogAction autoBackupErrorLogAction;
+	public static AutoQueryLogAction autoQueryErrorLogAction;
 	public static BackupPlanAction backupPlanAction;
 	public static UpdateBackupPlanAction updateBackupPlanAction;
 	public static DeleteBackupPlanAction deleteBackupPlanAction;
@@ -548,6 +550,8 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 				.getString("TOOL.ADDVOLUMEACTION"), null);
 		autoBackupErrorLogAction = new AutoBackupErrorLogAction(Messages
 				.getString("TOOL.AUTOBACKUPERRORLOGACTION"), null);
+		autoQueryErrorLogAction = new AutoQueryLogAction(Messages
+				.getString("TOOL.AUTOQUERYLOGACTION"), null);
 		backupPlanAction = new BackupPlanAction(Messages
 				.getString("TOOL.BACKUPPLANACTION"), null);
 		updateBackupPlanAction = new UpdateBackupPlanAction(Messages
@@ -911,6 +915,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		toolMenu.add(oidNaviAction);
 		toolMenu.add(new Separator());
 		toolMenu.add(autoBackupErrorLogAction);
+		toolMenu.add(autoQueryErrorLogAction);
 		toolMenu.add(managerLogAction);
 		toolMenu.add(new Separator());
 		if (!MainRegistry.isProtegoBuild())
@@ -1034,6 +1039,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 		// dBStatusMonitoringAction.setEnabled(false);
 		queryPlanAction.setEnabled(false);
 		autoBackupErrorLogAction.setEnabled(false);
+		autoQueryErrorLogAction.setEnabled(false);
 		addVolumeAction.setEnabled(false);
 		setAutoAddVolumeAction.setEnabled(false);
 		addedVolumeLogAction.setEnabled(false);
@@ -1163,6 +1169,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 							adj_cubrid = MainConstants.AUTH_DBASTART;
 							queryPlanAction.setEnabled(true);
 							autoBackupErrorLogAction.setEnabled(true);
+							autoQueryErrorLogAction.setEnabled(true);
 						} else {
 							adj_cubrid = MainConstants.AUTH_DBASTOP;
 						}
@@ -1376,6 +1383,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor {
 							.add(ApplicationActionBarAdvisor.autoBackupErrorLogAction);
 				} else if (Current_select.equals(JobAutomation.QUERYJOBS)) {
 					manager.add(ApplicationActionBarAdvisor.queryPlanAction);
+					manager.add(ApplicationActionBarAdvisor.autoQueryErrorLogAction);
 				} else if (Current_select.equals(JobAutomation.BACKJOB)) {
 					manager
 							.add(ApplicationActionBarAdvisor.deleteBackupPlanAction);

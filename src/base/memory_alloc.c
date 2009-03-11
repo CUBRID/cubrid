@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -45,8 +46,8 @@
 extern unsigned int db_on_server;
 
 unsigned int private_heap_id = 0;
-unsigned int instant_heap_id = 0;
 #endif /* SERVER_MODE */
+
 
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
@@ -237,11 +238,11 @@ db_create_private_heap (void)
 {
   unsigned int heap_id = 0;
 #if defined (SERVER_MODE)
-  heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+  heap_id = hl_register_lea_heap ();
 #else /* SERVER_MODE */
   if (db_on_server)
     {
-      heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+      heap_id = hl_register_lea_heap ();
     }
 #endif /* SERVER_MODE */
   return heap_id;
@@ -266,7 +267,7 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
 
   if (heap_id)
     {
-      hl_clear_ostk_heap (heap_id);
+      hl_clear_lea_heap (heap_id);
     }
 }
 
@@ -309,12 +310,12 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
-  heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+  heap_id = db_create_private_heap ();
   css_set_private_heap (thread_p, heap_id);
 #else /* SERVER_MODE */
   if (db_on_server)
     {
-      heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
+      heap_id = db_create_private_heap ();
       private_heap_id = heap_id;
     }
 #endif /* SERVER_MODE */
@@ -340,114 +341,7 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
 
   if (heap_id)
     {
-      hl_unregister_ostk_heap (heap_id);
-    }
-}
-
-/*
- * db_create_instant_heap () - create a thread specific heap
- *   return: memory heap identifier
- */
-unsigned int
-db_create_instant_heap (void)
-{
-  return db_create_private_heap ();
-}
-
-/*
- * db_clear_instant_heap () - clear a thread specific heap
- *   return:
- *   heap_id(in): memory heap identifier to clear
- */
-void
-db_clear_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
-{
-  if (heap_id == 0)
-    {
-#if defined (SERVER_MODE)
-      heap_id = css_get_instant_heap (thread_p);
-#else /* SERVER_MODE */
-      heap_id = instant_heap_id;
-#endif /* SERVER_MODE */
-    }
-
-  if (heap_id)
-    {
-      hl_clear_ostk_heap (heap_id);
-    }
-}
-
-/*
- * db_change_instant_heap () - change instant heap
- *    return: old instant heap id
- *    heap_id(in): heap id
- */
-unsigned int
-db_change_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
-{
-  unsigned int old_heap_id;
-
-#if defined (SERVER_MODE)
-  old_heap_id = css_set_instant_heap (thread_p, heap_id);
-#else /* SERVER_MODE */
-  old_heap_id = instant_heap_id;
-  if (db_on_server)
-    {
-      instant_heap_id = heap_id;
-    }
-#endif
-  return old_heap_id;
-}
-
-/*
- * db_replace_instant_heap () - replace a thread specific heap
- *   return: old memory heap identifier
- *
- */
-unsigned int
-db_replace_instant_heap (THREAD_ENTRY * thread_p)
-{
-  unsigned int old_heap_id, heap_id;
-
-#if defined (SERVER_MODE)
-  old_heap_id = css_get_instant_heap (thread_p);
-#else /* SERVER_MODE */
-  old_heap_id = instant_heap_id;
-#endif /* SERVER_MODE */
-
-#if defined (SERVER_MODE)
-  heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
-  css_set_instant_heap (thread_p, heap_id);
-#else /* SERVER_MODE */
-  if (db_on_server)
-    {
-      heap_id = hl_register_ostk_heap (DEFAULT_OBSTACK_CHUNK_SIZE);
-      instant_heap_id = heap_id;
-    }
-#endif /* SERVER_MODE */
-  return old_heap_id;
-}
-
-/*
- * db_destroy_instant_heap () - destroy a thread specific heap
- *   return:
- *   heap_id(in): memory heap identifier to destroy
- */
-void
-db_destroy_instant_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
-{
-  if (heap_id == 0)
-    {
-#if defined (SERVER_MODE)
-      heap_id = css_get_instant_heap (thread_p);
-#else /* SERVER_MODE */
-      heap_id = instant_heap_id;
-#endif /* SERVER_MODE */
-    }
-
-  if (heap_id)
-    {
-      hl_unregister_ostk_heap (heap_id);
+      hl_unregister_lea_heap (heap_id);
     }
 }
 
@@ -474,7 +368,7 @@ db_private_alloc (void *thrd, size_t size)
 
   if (heap_id)
     {
-      ptr = hl_ostk_alloc (heap_id, size);
+      ptr = hl_lea_alloc (heap_id, size);
     }
   else
     {
@@ -488,23 +382,34 @@ db_private_alloc (void *thrd, size_t size)
     }
   else
     {
-      unsigned int heap_id;
-      void *ptr = NULL;
-
       if (size <= 0)
-	return NULL;
-
-      heap_id = private_heap_id;
-
-      if (heap_id)
 	{
-	  ptr = hl_ostk_alloc (heap_id, size);
+	  return NULL;
+	}
+
+      if (private_heap_id)
+	{
+	  PRIVATE_MALLOC_HEADER *h = NULL;
+	  size_t req_sz;
+
+	  req_sz = private_request_size (size);
+	  h = hl_lea_alloc (private_heap_id, req_sz);
+
+	  if (h != NULL)
+	    {
+	      h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
+	      h->alloc_type = PRIVATE_ALLOC_TYPE_LEA;
+	      return private_hl2user_ptr (h);
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
 	}
       else
 	{
-	  ptr = malloc (size);
+	  return malloc (size);
 	}
-      return ptr;
     }
 #endif /* SA_MODE */
 }
@@ -533,18 +438,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 
   if (heap_id)
     {
-#if defined(NDEBUG)
-      if (ptr == NULL)
-	{
-	  new_ptr = hl_ostk_alloc (heap_id, size);
-	}
-      else
-	{
-	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-	}
-#else /* NDEBUG */
-      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-#endif /* NDEBUG */
+      new_ptr = hl_lea_realloc (heap_id, ptr, size);
     }
   else
     {
@@ -552,40 +446,53 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
     }
   return new_ptr;
 #else /* SA_MODE */
+  if (ptr == NULL)
+    {
+      return db_private_alloc (thrd, size);
+    }
+
   if (!db_on_server)
     {
       return db_ws_realloc (ptr, size);
     }
   else
     {
-      unsigned int heap_id;
-      void *new_ptr = NULL;
-
-      if (size <= 0)
-	return NULL;
-
-      heap_id = private_heap_id;
-
-      if (heap_id)
+      if (private_heap_id)
 	{
-#if defined(NDEBUG)
-	  if (ptr == NULL)
+	  PRIVATE_MALLOC_HEADER *h;
+
+	  h = private_user2hl_ptr (ptr);
+	  if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	    {
-	      new_ptr = hl_ostk_alloc (heap_id, size);
+	      return NULL;
+	    }
+
+	  if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
+	    {
+	      PRIVATE_MALLOC_HEADER *new_h;
+	      size_t req_sz;
+
+	      req_sz = private_request_size (size);
+	      new_h = hl_lea_realloc (private_heap_id, h, req_sz);
+	      if (new_h == NULL)
+		{
+		  return NULL;
+		}
+	      return private_hl2user_ptr (new_h);
+	    }
+	  else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
+	    {
+	      return db_ws_realloc (ptr, size);
 	    }
 	  else
 	    {
-	      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+	      return NULL;
 	    }
-#else /* NDEBUG */
-	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-#endif /* NDEBUG */
 	}
       else
 	{
-	  new_ptr = realloc (ptr, size);
+	  return realloc (ptr, size);
 	}
-      return new_ptr;
     }
 #endif /* SA_MODE */
 }
@@ -612,226 +519,51 @@ db_private_free (void *thrd, void *ptr)
 
   if (heap_id)
     {
-      // hl_ostk_free (heap_id, ptr);
+      hl_lea_free (heap_id, ptr);
     }
   else
     {
       free_and_init (ptr);
     }
 #else /* SA_MODE */
+  if (ptr == NULL)
+    {
+      return;
+    }
+
   if (!db_on_server)
     {
       db_ws_free (ptr);
     }
   else
     {
-      unsigned int heap_id;
-
-      if (ptr == NULL)
-	return;
-
-      heap_id = private_heap_id;
-
-      if (heap_id)
+      if (private_heap_id == 0)
 	{
-	  // hl_ostk_free (heap_id, ptr);
+	  free (ptr);
 	}
       else
 	{
-	  free_and_init (ptr);
-	}
-    }
-#endif /* SA_MODE */
-}
+	  PRIVATE_MALLOC_HEADER *h;
 
-/*
- * db_instant_alloc () - call allocation function for current instant heap
- *   return: allocated memory pointer
- *   thrd(in): thread conext if it is server, otherwise NULL
- *   size(in): size to allocate
- */
-void *
-db_instant_alloc (void *thrd, size_t size)
-{
-#if defined (CS_MODE)
-  return db_ws_alloc (size);
-#elif defined (SERVER_MODE)
-  unsigned int heap_id;
-  void *ptr = NULL;
-
-  if (size <= 0)
-    return NULL;
-
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
-	     css_get_instant_heap (NULL));
-
-  if (heap_id)
-    {
-      ptr = hl_ostk_alloc (heap_id, size);
-    }
-  else
-    {
-      ptr = malloc (size);
-    }
-  return ptr;
-#else /* SA_MODE */
-  if (!db_on_server)
-    {
-      return db_ws_alloc (size);
-    }
-  else
-    {
-      unsigned int heap_id;
-      void *ptr = NULL;
-
-      if (size <= 0)
-	return NULL;
-
-      heap_id = instant_heap_id;
-
-      if (heap_id)
-	{
-	  ptr = hl_ostk_alloc (heap_id, size);
-	}
-      else
-	{
-	  ptr = malloc (size);
-	}
-      return ptr;
-    }
-#endif /* SA_MODE */
-}
-
-/*
- * db_instant_realloc () - call re-allocation function for current instant heap
- *   return: allocated memory pointer
- *   thrd(in): thread conext if it is server, otherwise NULL
- *   ptr(in): memory pointer to reallocate
- *   size(in): size to allocate
- */
-void *
-db_instant_realloc (void *thrd, void *ptr, size_t size)
-{
-#if defined (CS_MODE)
-  return db_ws_realloc (ptr, size);
-#elif defined (SERVER_MODE)
-  unsigned int heap_id;
-  void *new_ptr = NULL;
-
-  if (size <= 0)
-    return NULL;
-
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
-	     css_get_instant_heap (NULL));
-
-  if (heap_id)
-    {
-#if defined(NDEBUG)
-      if (ptr == NULL)
-	{
-	  new_ptr = hl_ostk_alloc (heap_id, size);
-	}
-      else
-	{
-	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-	}
-#else /* NDEBUG */
-      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-#endif /* NDEBUG */
-    }
-  else
-    {
-      new_ptr = realloc (ptr, size);
-    }
-  return new_ptr;
-#else /* SA_MODE */
-  if (!db_on_server)
-    {
-      return db_ws_realloc (ptr, size);
-    }
-  else
-    {
-      unsigned int heap_id;
-      void *new_ptr = NULL;
-
-      if (size <= 0)
-	return NULL;
-
-      heap_id = instant_heap_id;
-
-      if (heap_id)
-	{
-#if defined(NDEBUG)
-	  if (ptr == NULL)
+	  h = private_user2hl_ptr (ptr);
+	  if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	    {
-	      new_ptr = hl_ostk_alloc (heap_id, size);
+	      /* assertion point */
+	      return;
+	    }
+
+	  if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
+	    {
+	      hl_lea_free (private_heap_id, h);
+	    }
+	  else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
+	    {
+	      db_ws_free (ptr);	/* not h */
 	    }
 	  else
 	    {
-	      new_ptr = hl_ostk_realloc (heap_id, ptr, size);
+	      return;
 	    }
-#else /* NDEBUG */
-	  new_ptr = hl_ostk_realloc (heap_id, ptr, size);
-#endif /* NDEBUG */
-	}
-      else
-	{
-	  new_ptr = realloc (ptr, size);
-	}
-      return new_ptr;
-    }
-#endif /* SA_MODE */
-}
-
-/*
- * db_instant_free () - call free function for current instant heap
- *   return:
- *   thrd(in): thread conext if it is server, otherwise NULL
- *   ptr(in): memory pointer to free
- */
-void
-db_instant_free (void *thrd, void *ptr)
-{
-#if defined (CS_MODE)
-  db_ws_free (ptr);
-#elif defined (SERVER_MODE)
-  unsigned int heap_id;
-
-  if (ptr == NULL)
-    return;
-
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->instant_heap_id :
-	     css_get_instant_heap (NULL));
-
-  if (heap_id)
-    {
-      // hl_ostk_free (heap_id, ptr);
-    }
-  else
-    {
-      free_and_init (ptr);
-    }
-#else /* SA_MODE */
-  if (!db_on_server)
-    {
-      db_ws_free (ptr);
-    }
-  else
-    {
-      unsigned int heap_id;
-
-      if (ptr == NULL)
-	return;
-
-      heap_id = instant_heap_id;
-
-      if (heap_id)
-	{
-	  // hl_ostk_free (heap_id, ptr);
-	}
-      else
-	{
-	  free_and_init (ptr);
 	}
     }
 #endif /* SA_MODE */

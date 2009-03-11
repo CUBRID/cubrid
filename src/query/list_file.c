@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -5424,7 +5425,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   QFILE_POOLED_LIST_CACHE_ENTRY *pent;
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int i;
-  unsigned int old_pri_heap_id, old_ins_heap_id;
+  unsigned int old_pri_heap_id; 
 
   if (data == NULL)
     {
@@ -5436,13 +5437,11 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
    * Remind that the parameter values are cloned in global heap context(0)
    */
   old_pri_heap_id = db_change_private_heap (thread_p, 0);
-  old_ins_heap_id = db_change_instant_heap (thread_p, 0);
   for (i = 0; i < lent->param_values.size; i++)
     {
       (void) pr_clear_value (&lent->param_values.vals[i]);
     }
   (void) db_change_private_heap (thread_p, old_pri_heap_id);
-  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   /* if this entry is from the pool return it, else free it */
   pent = POOLED_LIST_CACHE_ENTRY_FROM_LIST_CACHE_ENTRY (lent);
@@ -6066,7 +6065,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   TRAN_ISOLATION tran_isolation;
 #endif /* SERVER_MODE */
   unsigned int n;
-  unsigned int old_pri_heap_id, old_ins_heap_id;
+  unsigned int old_pri_heap_id; 
   int i, j, k;
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6313,14 +6312,12 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
    * boundary.
    */
   old_pri_heap_id = db_change_private_heap (thread_p, 0);
-  old_ins_heap_id = db_change_instant_heap (thread_p, 0);
   for (i = 0; i < lent->param_values.size; i++)
     {
       /*(void) pr_clear_value(&(lent->param_values.vals[i])); */
       (void) pr_clone_value (&params->vals[i], &lent->param_values.vals[i]);
     }
   (void) db_change_private_heap (thread_p, old_pri_heap_id);
-  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   /* copy the QFILE_LIST_ID */
   if (qfile_copy_list_id (&lent->list_id, list_id, false) != NO_ERROR)

@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -54,7 +55,7 @@
 #include "replication.h"
 
 /*
- * TODO: To use db_clear_private_heap instead of db_destroy_private_heap
+ * Use db_clear_private_heap instead of db_destroy_private_heap
  */
 #if defined(DEBUG_DB_ON_SERVER)
 #define ENTER_SERVER() \
@@ -71,16 +72,10 @@
             } \
         } \
       db_on_server = 1; \
-      if (private_heap_id != 0) \
+      if (private_heap_id == 0) \
         { \
-          db_destroy_private_heap (NULL, private_heap_id); \
+	  private_heap_id = db_create_private_heap (); \
         } \
-      private_heap_id = db_create_private_heap (); \
-      if (instant_heap_id != 0) \
-        { \
-          db_destroy_instant_heap (NULL, instant_heap_id); \
-        } \
-      instant_heap_id = db_create_instant_heap (); \
     } \
   while (0)
 #else /* DEBUG_DB_ON_SERVER */
@@ -88,16 +83,10 @@
   do \
     { \
       db_on_server = 1; \
-      if (private_heap_id != 0) \
+      if (private_heap_id == 0) \
         { \
-          db_destroy_private_heap (NULL, private_heap_id); \
+          private_heap_id = db_create_private_heap (); \
         } \
-      private_heap_id = db_create_private_heap (); \
-      if (instant_heap_id != 0) \
-        { \
-          db_destroy_instant_heap (NULL, instant_heap_id); \
-        } \
-      instant_heap_id = db_create_instant_heap (); \
     } \
   while (0)
 #endif /* DEBUG_DB_ON_SERVER */
@@ -107,13 +96,7 @@
     { \
       if (private_heap_id != 0) \
         { \
-          db_destroy_private_heap (NULL, private_heap_id); \
-          private_heap_id = 0; \
-        } \
-      if (instant_heap_id != 0) \
-        { \
-          db_destroy_instant_heap (NULL, instant_heap_id); \
-          instant_heap_id = 0; \
+          db_clear_private_heap (NULL, private_heap_id); \
         } \
       db_on_server = 0; \
     } \

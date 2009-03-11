@@ -30,6 +30,7 @@
 
 package cubridmanager.cubrid.dialog;
 
+import java.text.ParseException;
 import java.util.ArrayList;
 
 import org.eclipse.jface.viewers.ColumnWeightData;
@@ -70,6 +71,7 @@ import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
 import cubridmanager.VerifyDigitListener;
 import cubridmanager.cubrid.AuthItem;
+import cubridmanager.cubrid.DBAttribute;
 import cubridmanager.cubrid.SchemaInfo;
 import cubridmanager.cubrid.view.CubridView;
 import org.eclipse.swt.widgets.Table;
@@ -180,6 +182,15 @@ public class EditAttributeDialog extends Dialog {
 							if (atttype.length() <= 0) {
 								return;
 							}
+						
+							try {
+								attdeft =DBAttribute.formatDefault(atttype, attdeft);							
+							}catch(ParseException pe){									
+								CommonTool.ErrorBox(sShell, Messages
+										.getString("ERROR.INVALID"+atttype.toUpperCase()));
+								return;
+							}
+
 							StringBuffer msg = new StringBuffer("");
 							msg.append("dbname:");
 							msg.append(CubridView.Current_db);
@@ -235,6 +246,7 @@ public class EditAttributeDialog extends Dialog {
 						} else {
 							String attname = txtName.getText().trim();
 							String attdeft = txtDefault.getText();
+							String atttype = makeType();
 							String retstr = CommonTool
 									.ValidateCheckInIdentifier(attname);
 							if (retstr.length() > 0) {
@@ -247,6 +259,14 @@ public class EditAttributeDialog extends Dialog {
 									&& ti.getText(6).length() > 0) {
 								CommonTool.ErrorBox(sShell, Messages
 										.getString("ERROR.CANNOTDELDEFAULT"));
+								return;
+							}
+							
+							try {
+								attdeft =DBAttribute.formatDefault(atttype, attdeft);							
+							}catch(ParseException pe){									
+								CommonTool.ErrorBox(sShell, Messages
+										.getString("ERROR.INVALID"+atttype.toUpperCase()));
 								return;
 							}
 

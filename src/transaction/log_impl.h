@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -600,6 +601,13 @@ struct log_tdes
   struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert target lsa */
   LOG_LSA repl_update_lsa;	/* update target lsa */
+
+#if !defined(WINDOWS)
+  struct
+  {
+    struct repl_savepoint_info *head, *tail;
+  } savepoint_list;
+#endif
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1476,12 +1484,12 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 		     int (*send_prepare) (int gtrid, int num_particps,
 					  void *block_particps_ids),
 		     bool (*send_commit) (int gtrid, int num_particps,
-					 int *particp_indices,
-					 void *block_particps_ids),
+					  int *particp_indices,
+					  void *block_particps_ids),
 		     bool (*send_abort) (int gtrid, int num_particps,
-					int *particp_indices,
-					void *block_particps_ids,
-					int collect));
+					 int *particp_indices,
+					 void *block_particps_ids,
+					 int collect));
 extern char *log_2pc_sprintf_particp (void *particp_id);
 extern void log_2pc_dump_participants (int block_length,
 				       void *block_particps_ids);
@@ -1574,6 +1582,8 @@ logtb_set_client_ids_all (LOG_CLIENTIDS * client, const char *prog_name,
 			  const char *host_name, const char *user_name,
 			  int process_id);
 extern char *logtb_find_client_name (int tran_index);
+extern bool logtb_is_repl_agent_client (THREAD_ENTRY * thread_p);
+
 extern int
 logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
 				 char **client_user_name,

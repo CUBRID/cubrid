@@ -34,7 +34,14 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.Locale;
 import java.util.Properties;
 
 import org.eclipse.swt.SWT;
@@ -440,5 +447,163 @@ public class CommonTool {
 			return '\\';
 		else
 			return '/';
+	}
+	/**
+	 * support multi input time string, return the timestamp, a long type with unit second
+	 * <li>"hh:mm[:ss] a"
+	 * <li>"a hh:mm[:ss]"
+	 * <li>"HH:mm[:ss]"
+	 * @param timestring String time string eg: 11:12:13 am
+	 * @return long timestamp
+	 * @throws ParseException
+	 */
+	public static long getTime(String timestring)throws ParseException{
+		String[] supportedInputDateTime={
+				"hh:mm:ss a",
+				"a hh:mm:ss",
+				"HH:mm:ss",	
+				"hh:mm a",
+				"a hh:mm",
+				"HH:mm",	
+				"''hh:mm:ss a''",
+				"''a hh:mm:ss''",
+				"''HH:mm:ss''",
+				"''hh:mm a''",
+				"''a hh:mm''",
+				"''HH:mm''",
+		};
+		for(String datepattern:supportedInputDateTime){
+			if(validateTimestamp(timestring,datepattern)){
+				try {
+					return getTimestamp(timestring, datepattern);
+				} catch (Exception e) {
+					//it is designed not to run at here,so throws nothing
+					CommonTool.debugPrint("an unexpected exception is throwed.\n"+e.getMessage());
+				}
+			}			
+		}		
+		throw new ParseException("Unparseable date: \"" + timestring + "\"",0);		
+	}
+	/**
+	 * support multi input date string, return the timestamp, a long type with unit second
+	 * <li>"MM/dd/yyyy",
+	 * <li>"yyyy/MM/dd",
+	 * <li>"yyyy-MM-dd"
+	 * @param datestring String date string eg: 2009-02-20
+	 * @return long timestamp
+	 */
+	public static long getDate(String datestring)throws ParseException{
+		String[] supportedInputDateTime={
+				"MM/dd/yyyy",				
+				"yyyy/MM/dd",
+				"yyyy-MM-dd",
+				"''MM/dd/yyyy''",
+				"''yyyy/MM/dd''",
+				"''yyyy-MM-dd''"
+		};
+		for(String datepattern:supportedInputDateTime){
+			if(validateTimestamp(datestring,datepattern)){
+				try {
+					return getTimestamp(datestring, datepattern);
+				} catch (Exception e) {
+					//it is designed not to run at here,so throws nothing
+					CommonTool.debugPrint("an unexpected exception is throwed.\n"+e.getMessage());
+				}
+			}			
+		}		
+		throw new ParseException("Unparseable date: \"" + datestring + "\"",0);		
+	}
+	/**
+	 * support multi input data string, return the timestamp, a long type with unit second
+	 * <li>"hh:mm[:ss] a MM/dd/yyyy",
+	 * <li>"HH:mm[:ss] MM/dd/yyyy",
+	 * <li>"yyyy/MM/dd a hh:mm[:ss]",
+	 * <li>"yyyy-MM-dd a hh:mm[:ss]",
+	 * <li>"yyyy/MM/dd HH:mm[:ss]",
+	 * <li>"yyyy-MM-dd HH:mm[:ss]"
+	 * @param datestring String date string eg: 2009-02-20 16:42:46
+	 * @return long timestamp
+	 */
+	public static long getTimestamp(String datestring)throws ParseException{
+		String[] supportedInputDateTime={				
+				"yyyy/MM/dd a hh:mm:ss",
+				"yyyy-MM-dd a hh:mm:ss",
+				"yyyy/MM/dd HH:mm:ss",
+				"yyyy-MM-dd HH:mm:ss",
+				"hh:mm:ss a MM/dd/yyyy",
+				"HH:mm:ss MM/dd/yyyy",
+				"yyyy/MM/dd a hh:mm",
+				"yyyy-MM-dd a hh:mm",
+				"yyyy/MM/dd HH:mm",
+				"yyyy-MM-dd HH:mm",
+				"hh:mm a MM/dd/yyyy",
+				"HH:mm MM/dd/yyyy",
+				"''yyyy/MM/dd a hh:mm:ss''",
+				"''yyyy-MM-dd a hh:mm:ss''",
+				"''yyyy/MM/dd HH:mm:ss''",
+				"''yyyy-MM-dd HH:mm:ss''",
+				"''hh:mm:ss a MM/dd/yyyy''",
+				"''HH:mm:ss MM/dd/yyyy''",
+				"''yyyy/MM/dd a hh:mm''",
+				"''yyyy-MM-dd a hh:mm''",
+				"''yyyy/MM/dd HH:mm''",
+				"''yyyy-MM-dd HH:mm''",
+				"''hh:mm a MM/dd/yyyy''",
+				"''HH:mm MM/dd/yyyy''"
+		};
+		for(String datepattern:supportedInputDateTime){
+			if(validateTimestamp(datestring,datepattern)){
+				try {
+					return getTimestamp(datestring, datepattern);
+				} catch (Exception e) {
+					//it is designed not to run at here,so throws nothing
+					CommonTool.debugPrint("an unexpected exception is throwed.\n"+e.getMessage());
+				}
+			}			
+		}		
+		throw new ParseException("Unparseable date: \"" + datestring + "\"",0);		
+	}
+	/**
+	 * validate whether a date string can be parsed by a given date pattern
+	 * @param datestring String  a date string
+	 * @param datepattern String  a given date pattern
+	 * @return boolean true: can be parsed; false: can not
+	 */
+	public static boolean validateTimestamp(String datestring,String datepattern) {
+		try {
+			DateFormat formatter = new SimpleDateFormat(datepattern,Locale.US);
+			formatter.setLenient(false);
+			formatter.parse(datestring);
+			return true;
+		} catch (ParseException e) {
+			return false;
+		}
+	}
+	/**
+	 * parse date string with a given date pattern, return long type timestamp, unit:second 
+	 * 
+	 * precondition: it is better to call cubridmanager.CommonTool.validateTimestamp(String, String)
+	 * first to void throwing an ParseException
+	 * @param datestring String date string eg: 2009-02-20 16:42:46
+	 * @param datepattern String date pattern eg: yyyy-MM-dd HH:mm:ss
+	 * @return long timestamp
+	 * @throws ParseException
+	 */
+	public static long getTimestamp(String datestring,String datepattern) throws ParseException{
+			DateFormat formatter = new SimpleDateFormat(datepattern,Locale.US);
+			Date date=formatter.parse(datestring);
+			long time=date.getTime()/1000;
+			return time;		
+	}
+	/**
+	 * format a timestamp into a given date pattern string
+	 * @param timestamp long type timestamp, unit:second 
+	 * @param datepattern a given date pattern
+	 * @return
+	 */
+	public static String getTimestampString(long timestamp,String datepattern){
+		DateFormat formatter = new SimpleDateFormat(datepattern,Locale.US);		
+		Date date=new Date(timestamp*1000);		
+		return formatter.format(date);
 	}
 }

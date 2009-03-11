@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -76,11 +77,9 @@ struct query_async
   XASL_NODE *xasl;
   int dbval_count;
   const DB_VALUE *dbval_p;
-  THREAD_ENTRY *dbval_thread_p;
   int query_id;
   int tran_index;
   unsigned int pri_heap_id;
-  unsigned int ins_heap_id;
 };
 
 /*
@@ -3837,12 +3836,10 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   XASL_NODE *xasl_p;
   int dbval_count;
   DB_VALUE *dbval_p, *tmp_dbval_p;
-  THREAD_ENTRY *dbval_thread_p;
   int query_id, tran_index, i;
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
   unsigned int pri_heap_id;
-  unsigned int ins_heap_id;
 
   if (thread_p == NULL)
     {
@@ -3853,11 +3850,9 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   xasl_p = async_query_p->xasl;
   dbval_count = async_query_p->dbval_count;
   dbval_p = (DB_VALUE *) async_query_p->dbval_p;
-  dbval_thread_p = async_query_p->dbval_thread_p;
   query_id = async_query_p->query_id;
   tran_index = async_query_p->tran_index;
   pri_heap_id = async_query_p->pri_heap_id;
-  ins_heap_id = async_query_p->ins_heap_id;
 
   THREAD_SET_TRAN_INDEX (thread_p, tran_index);
   MUTEX_UNLOCK (thread_p->tran_index_lock);
@@ -3879,13 +3874,18 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
       if (dbval_p != NULL)
 	{
+	  unsigned int curr_heap_id;
+
+	  curr_heap_id = db_change_private_heap(NULL, pri_heap_id);
+
 	  for (i = 0, tmp_dbval_p = dbval_p; i < dbval_count;
 	       i++, tmp_dbval_p++)
 	    {
 	      db_value_clear (tmp_dbval_p);
 	    }
+	  db_private_free (NULL, dbval_p);
 
-	  db_private_free_and_init (dbval_thread_p, dbval_p);
+	  db_change_private_heap(NULL, curr_heap_id);
 	}
 
       if (cache_clone_p)
@@ -3923,12 +3923,17 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
   if (dbval_p != NULL)
     {
+      unsigned int curr_heap_id;
+
+      curr_heap_id = db_change_private_heap(NULL, pri_heap_id);
+
       for (i = 0, tmp_dbval_p = dbval_p; i < dbval_count; i++, tmp_dbval_p++)
 	{
 	  db_value_clear (tmp_dbval_p);
 	}
+      db_private_free (NULL, dbval_p);
 
-      db_private_free_and_init (dbval_thread_p, dbval_p);
+      db_change_private_heap (NULL, curr_heap_id);
     }
 
   if (cache_clone_p)
@@ -3954,11 +3959,9 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   qmgr_mark_query_as_completed (query_p);
 
   db_destroy_private_heap (thread_p, pri_heap_id);
-  db_destroy_instant_heap (thread_p, ins_heap_id);
 
   /* clear memory to be used at async worker thread */
   db_clear_private_heap (thread_p, 0);
-  db_clear_instant_heap (thread_p, 0);
 
   return;
 }
@@ -4656,11 +4659,9 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
       async_query_p->xasl = xasl_p;
       async_query_p->dbval_count = dbval_count;
       async_query_p->dbval_p = dbval_p;
-      async_query_p->dbval_thread_p = thread_p;
       async_query_p->query_id = query_p->query_id;
       async_query_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       async_query_p->pri_heap_id = db_replace_private_heap (thread_p);
-      async_query_p->ins_heap_id = db_replace_instant_heap (thread_p);
 
       /*
        * setting query mode flag to ASYNC_MODE here to prevent a async

@@ -101,7 +101,7 @@ public class DeleteQueryPlanAction extends Action {
 		CubridView.myNavi.createModel();
 		CubridView.viewer.refresh();
 
-		ApplicationActionBarAdvisor.refreshAction.run();
+		//ApplicationActionBarAdvisor.refreshAction.run();
 		if (MainRegistry.Current_Navigator == MainConstants.NAVI_CUBRID) {
 			CubridView.myNavi.SelectDB_UpdateView(CubridView.Current_db);
 		} else if (MainRegistry.Current_Navigator == MainConstants.NAVI_CAS) {

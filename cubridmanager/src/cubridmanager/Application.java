@@ -95,7 +95,7 @@ public class Application implements IApplication {
 		if(Version.isSupportsUsedJRE()) {
 			return true ;
 		} else {
-			System.out.println(Version.getUnsupportedJREMessage());
+			CommonTool.debugPrint(Version.getUnsupportedJREMessage());
 			return false ;
 		}
 	}

@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -186,7 +187,7 @@ static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser,
 					  DB_OBJECT *** classes, int *index,
 					  int *max);
 static bool mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
-			        DB_OBJECT *** classes, int *i, int *max);
+				DB_OBJECT *** classes, int *i, int *max);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
 						   PT_NODE * statement,
 						   PT_NODE * query_spec,
@@ -214,6 +215,9 @@ static bool mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 						 PT_NODE * class_spec,
 						 int what_for);
+static int mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser,
+					    PT_NODE * node,
+					    PT_NODE * subquery);
 static PT_NODE *mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 				   PT_NODE * spec_list, PT_NODE * order_by,
 				   int what_for);
@@ -412,56 +416,56 @@ static PT_NODE *mq_generate_unique (PARSER_CONTEXT * parser,
 				    PT_NODE * name_list);
 
 extern PT_NODE *mq_fetch_attributes (PARSER_CONTEXT * parser,
-                     PT_NODE * class_);
+				     PT_NODE * class_);
 
 extern PT_NODE *mq_lambda (PARSER_CONTEXT * parser, PT_NODE * tree_with_names,
-               PT_NODE * name_node, PT_NODE * corresponding_tree);
+			   PT_NODE * name_node, PT_NODE * corresponding_tree);
 
 extern PT_NODE *mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
-                 PT_NODE * class_,
-                 PT_NODE * corresponding_spec,
-                 PT_NODE * class_where_part,
-                 PT_NODE * class_check_part,
-                 PT_NODE * class_group_by_part,
-                 PT_NODE * class_having_part);
+				 PT_NODE * class_,
+				 PT_NODE * corresponding_spec,
+				 PT_NODE * class_where_part,
+				 PT_NODE * class_check_part,
+				 PT_NODE * class_group_by_part,
+				 PT_NODE * class_having_part);
 
 static PT_NODE *mq_fix_derived_in_union (PARSER_CONTEXT * parser,
-                     PT_NODE * statement,
-                     UINTPTR spec_id);
+					 PT_NODE * statement,
+					 UINTPTR spec_id);
 
 static PT_NODE *mq_fetch_subqueries (PARSER_CONTEXT * parser,
-                     PT_NODE * class_);
+				     PT_NODE * class_);
 
 static PT_NODE *mq_fetch_subqueries_for_update (PARSER_CONTEXT * parser,
-                        PT_NODE * class_,
-                        PT_FETCH_AS fetch_as,
-                        DB_AUTH what_for);
+						PT_NODE * class_,
+						PT_FETCH_AS fetch_as,
+						DB_AUTH what_for);
 
 static PT_NODE *mq_rename_resolved (PARSER_CONTEXT * parser, PT_NODE * spec,
-                    PT_NODE * statement, const char *newname);
+				    PT_NODE * statement, const char *newname);
 
 static PT_NODE *mq_reset_ids_and_references (PARSER_CONTEXT * parser,
-                         PT_NODE * statement,
-                         PT_NODE * spec);
+					     PT_NODE * statement,
+					     PT_NODE * spec);
 
 static PT_NODE *mq_reset_ids_and_references_helper (PARSER_CONTEXT * parser,
-                            PT_NODE * statement,
-                            PT_NODE * spec,
-                            bool
-                            get_spec_referenced_attr);
+						    PT_NODE * statement,
+						    PT_NODE * spec,
+						    bool
+						    get_spec_referenced_attr);
 
 static PT_NODE *mq_push_path (PARSER_CONTEXT * parser, PT_NODE * statement,
-                  PT_NODE * spec, PT_NODE * path);
+			      PT_NODE * spec, PT_NODE * path);
 
 static PT_NODE *mq_derived_path (PARSER_CONTEXT * parser, PT_NODE * statement,
-                 PT_NODE * path);
+				 PT_NODE * path);
 static int mq_mget_exprs (DB_OBJECT ** objects, int rows,
-                          char **exprs, int cols, int qOnErr,
-                          DB_VALUE * values, int *results, char *emsg);
+			  char **exprs, int cols, int qOnErr,
+			  DB_VALUE * values, int *results, char *emsg);
 
 
 static void mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead,
-                              PT_NODE * attr);
+			      PT_NODE * attr);
 
 
 static DB_OBJECT **mq_fetch_real_classes (DB_OBJECT * vclass);
@@ -1922,6 +1926,34 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 }
 
 /*
+ * mq_check_subqueries_for_prepare () - 
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   subquery(in):
+ */
+static int
+mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node,
+				 PT_NODE * subquery)
+{
+  if (node->cannot_prepare == 1)
+    {
+      return 1;
+    }
+
+  while (subquery)
+    {
+      if (subquery->cannot_prepare == 1)
+	{
+	  return 1;
+	}
+      subquery = subquery->next;
+    }
+
+  return node->cannot_prepare;
+}
+
+/*
  * mq_translate_tree() - translates a tree against a list of classes
  *   return: PT_NODE *, parse tree with view and virtual class queries expanded
  *          to leaf classes or local db tables/classes
@@ -2021,61 +2053,63 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    }
 
 		  if (subquery)
-		    if (parser->error_msgs)
-		      {
-			/* an error was discovered parsing the sub query. */
-			return NULL;
-		      }
-		    else
-		      {
+		    {
+
+		      if (parser->error_msgs)
+			{
+			  /* an error was discovered parsing the sub query. */
+			  return NULL;
+			}
+
+		      tree->cannot_prepare =
+			mq_check_subqueries_for_prepare (parser, tree,
+							 subquery);
 #if defined(CUBRID_DEBUG)
-			fprintf (stdout, "\n<subqueries of %s are>\n  %s\n",
-				 entity->info.name.original,
-				 parser_print_tree_list (parser, subquery));
+		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n",
+			       entity->info.name.original,
+			       parser_print_tree_list (parser, subquery));
 #endif /* CUBRID_DEBUG */
-			substituted = mq_substitute_subquery_list_in_statement
-			  (parser, tree, subquery, entity, order_by,
-			   what_for);
+		      substituted = mq_substitute_subquery_list_in_statement
+			(parser, tree, subquery, entity, order_by, what_for);
 #ifdef CUBRID_DEBUG
-			fprintf (stdout,
-				 "\n<substituted %s with subqueries is>\n  %s\n",
-				 entity->info.name.original,
-				 parser_print_tree_list (parser,
-							 substituted));
+		      fprintf (stdout,
+			       "\n<substituted %s with subqueries is>\n  %s\n",
+			       entity->info.name.original,
+			       parser_print_tree_list (parser, substituted));
 #endif /* CUBRID_DEBUG */
 
-			if (substituted)
-			  {
-			    if (tree_union)
-			      {
-				if (what_for == DB_AUTH_SELECT)
-				  {
-				    tree_union = mq_union_bump_correlation
-				      (parser, tree_union, substituted);
-				    if (tree_union && order_by)
-				      {
-					tree_union->info.query.order_by =
-					  parser_copy_tree_list (parser,
-								 order_by);
-				      }
-				  }
-				else
-				  {
-				    parser_append_node (substituted,
-							tree_union);
-				  }
-			      }
-			    else
-			      {
-				tree_union = substituted;
-			      }
-			  }
-			else
-			  {
-			    /* a subquery with no substitution is
-			     * from an excluded ldb */
-			  }
-		      }
+		      if (substituted)
+			{
+			  if (tree_union)
+			    {
+			      if (what_for == DB_AUTH_SELECT)
+				{
+				  tree_union = mq_union_bump_correlation
+				    (parser, tree_union, substituted);
+				  if (tree_union && order_by)
+				    {
+				      tree_union->info.query.order_by =
+					parser_copy_tree_list (parser,
+							       order_by);
+				    }
+				}
+			      else
+				{
+				  parser_append_node (substituted,
+						      tree_union);
+				}
+			    }
+			  else
+			    {
+			      tree_union = substituted;
+			    }
+			}
+		      else
+			{
+			  /* a subquery with no substitution is
+			   * from an excluded ldb */
+			}
+		    }
 		  else
 		    {
 		      /* a virtual class with no subquery */

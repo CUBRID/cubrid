@@ -301,7 +301,6 @@
 		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMODB_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>dwmapi.dll</td><td>CUBRID</td><td>dwmapi.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\dwmapi.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>emgr.conf</td><td>CUBRID</td><td>emgr.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr.conf</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>emgr.pass</td><td>CUBRID</td><td>emgr.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr.pass</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>emgr_db.pass</td><td>CUBRID</td><td>emgr_db.pass</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\emgr_db.pass</td><td>1</td><td>NewSubFolder5</td></row>
@@ -314,11 +313,7 @@
 		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\loadjava.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\logging.properties</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>msvcr90.dll</td><td>CUBRID</td><td>msvcr90.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>msvcr90d.dll</td><td>CUBRID</td><td>msvcr90d.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcr90d.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>msvcrt.dll</td><td>CUBRID</td><td>msvcrt.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\msvcrt.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\setupmanage.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>xmlrpcepi.dll</td><td>CUBRID</td><td>xmlrpcepi.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\xmlrpcepi.dll</td><td>1</td><td>NewSubFolder4</td></row>
 	</table>
 
 	<table name="Font">
@@ -979,93 +974,49 @@
 		<col def="I2">Encoded</col>
 		<col def="S0">Comment</col>
 		<col def="I4">TimeStamp</col>
-		<row><td>ALL</td><td>1033</td><td/><td>0</td><td>CUBRID Server and Client Components (CUBRID Server, CUBRID Manager Client, Visual-SQL, OLEDB  Provider, ODBC Driver, JDBC Driver) will be installed.</td><td>-602089420</td></row>
 		<row><td>ALL</td><td>1042</td><td/><td>0</td><td>CUBRID Server and Client Components (CUBRID Server, CUBRID Manager Client, Visual-SQL, OLEDB  Provider, ODBC Driver, JDBC Driver) will be installed.</td><td>480013259</td></row>
-		<row><td>CLIENT_ONLY</td><td>1033</td><td/><td>0</td><td>CUBRID Client Components (CUBRID Manager Client, Visual-SQL, OLEDB  Provider, ODBC Driver, JDBC Driver) will be installed.</td><td>-602089420</td></row>
 		<row><td>CLIENT_ONLY</td><td>1042</td><td/><td>0</td><td>CUBRID Client Components (CUBRID Manager Client, Visual-SQL, OLEDB  Provider, ODBC Driver, JDBC Driver) will be installed.</td><td>480013259</td></row>
-		<row><td>COMPANY_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>COMPANY_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
-		<row><td>FOLDER_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>FOLDER_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1033</td><td>Complete</td><td>0</td><td/><td>479682885</td></row>
 		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1042</td><td>!,BTS"``),%8S@``</td><td>5</td><td/><td>480015307</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1033</td><td>Complete</td><td>0</td><td/><td>479682885</td></row>
 		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1042</td><td>!,BTS"``),%8SB``),&amp;%N@``</td><td>8</td><td/><td>480015307</td></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1033</td><td>Custom</td><td>0</td><td/><td>479682885</td></row>
 		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1042</td><td>K,"IQI#'(``5R%C'</td><td>6</td><td/><td>480015307</td></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1033</td><td>Custom</td><td>0</td><td/><td>479682885</td></row>
 		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1042</td><td>K,"IQI#'(``5R%C'(``DP86Z</td><td>9</td><td/><td>480015307</td></row>
-		<row><td>IDS_ERROR_27530</td><td>1033</td><td>Unknown error returned from NetAPI. System error: [2]</td><td>0</td><td/><td/></row>
 		<row><td>IDS_ERROR_27530</td><td>1042</td><td>Unknown error returned from NetAPI. System error: [2]</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_BROWSE</td><td>1033</td><td>Open [ProductName]'s original [SETUPEXENAME]</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PREREQUISITE_SETUP_BROWSE</td><td>1042</td><td>Open [ProductName]'s original [SETUPEXENAME]</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_INVALID</td><td>1033</td><td>This executable file does not appear to be the original executable file for [ProductName]. Without using the original [SETUPEXENAME] to install additional dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PREREQUISITE_SETUP_INVALID</td><td>1042</td><td>This executable file does not appear to be the original executable file for [ProductName]. Without using the original [SETUPEXENAME] to install additional dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_SEARCH</td><td>1033</td><td>This installation may require additional dependencies. Without its dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PREREQUISITE_SETUP_SEARCH</td><td>1042</td><td>This installation may require additional dependencies. Without its dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEVROOT</td><td>1033</td><td>Creating IIS virtual directory %s</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_CREATEVROOT</td><td>1042</td><td>Creating IIS virtual directory %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEVROOTS</td><td>1033</td><td>Creating IIS virtual directories...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_CREATEVROOTS</td><td>1042</td><td>Creating IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITE</td><td>1033</td><td>Creating IIS website %s</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITE</td><td>1042</td><td>Creating IIS website %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITES</td><td>1033</td><td>Creating IIS websites...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITES</td><td>1042</td><td>Creating IIS websites...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_EXTRACT</td><td>1033</td><td>Extracting information for IIS virtual directories...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_EXTRACT</td><td>1042</td><td>Extracting information for IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_EXTRACTDONE</td><td>1033</td><td>Extracted information for IIS virtual directories...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_EXTRACTDONE</td><td>1042</td><td>Extracted information for IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVESITE</td><td>1033</td><td>Removing web site at port %d</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_REMOVESITE</td><td>1042</td><td>Removing web site at port %d</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEVROOT</td><td>1033</td><td>Removing IIS virtual directory %s</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_REMOVEVROOT</td><td>1042</td><td>Removing IIS virtual directory %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEVROOTS</td><td>1033</td><td>Removing IIS virtual directories...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_REMOVEVROOTS</td><td>1042</td><td>Removing IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEWEBSITES</td><td>1033</td><td>Removing IIS websites...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_REMOVEWEBSITES</td><td>1042</td><td>Removing IIS websites...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_ROLLBACKVROOTS</td><td>1033</td><td>Rolling back virtual directory and web site changes...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_PROGMSG_IIS_ROLLBACKVROOTS</td><td>1042</td><td>Rolling back virtual directory and web site changes...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1033</td><td>Executing SQL Install Script...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1042</td><td>,*YTR%C'(`!3`%$`3``@`"3!6,X@`*3";-"]N;C2+@`N`"X`</td><td>18</td><td/><td>480015307</td></row>
-		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1033</td><td>Executing SQL Uninstall Script...</td><td>0</td><td/><td/></row>
 		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1042</td><td>4P!1`$P`(``&lt;R'"L(`"DPFS0O;FXTB``Y,*)U2X`+@`N````</td><td>17</td><td/><td>480015307</td></row>
-		<row><td>IDS__DialogId_103</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_12</td><td>1042</td><td>&lt; &amp;Back</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1033</td><td>I accept</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1042</td><td>I accept</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1033</td><td>I do not accept</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1042</td><td>I do not accept</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_50</td><td>1033</td><td>License Agreement</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_50</td><td>1042</td><td>License Agreement</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_51</td><td>1033</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_51</td><td>1042</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_6</td><td>1033</td><td>&amp;Next&gt;</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_6</td><td>1042</td><td>&amp;Next&gt;</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_711</td><td>1033</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_711</td><td>1042</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_712</td><td>1033</td><td>Do you accept all the terms of the preceding License Agreement?  If you choose No,  the setup will close.  To install %p, you must accept this agreement.</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_712</td><td>1042</td><td>Do you accept all the terms of the preceding License Agreement?  If you choose No,  the setup will close.  To install %p, you must accept this agreement.</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS__DialogId_103_ControlId_9</td><td>1033</td><td>&amp;Cancel</td><td>0</td><td/><td>-602085324</td></row>
 		<row><td>IDS__DialogId_103_ControlId_9</td><td>1042</td><td>&amp;Cancel</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>ID_STRING1</td><td>1033</td><td>NewFeature1</td><td>0</td><td/><td>480013104</td></row>
 		<row><td>ID_STRING1</td><td>1042</td><td>NewFeature1</td><td>0</td><td/><td>480013104</td></row>
-		<row><td>ID_STRING2</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191102931</td></row>
 		<row><td>ID_STRING2</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
-		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
-		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191057747</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.3</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838951566</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R1.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-191081907</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.3</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1838955662</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1033</td><td>CUBRID 2008 ??</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1285339632</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>0P!5`$(`4@!)`$0`(``R`#``,``X`"``4@`Q`"X`,P`@`"3!6,X`</td><td>19</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>421362166</td></row>
-		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-602089420</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.4</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429778475</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.4</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429721163</td></row>
+		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>698209329</td></row>
 		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 	</table>
 

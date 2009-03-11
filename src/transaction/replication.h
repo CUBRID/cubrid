@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
  *
  *  This program is distributed in the hope that it will be useful, 
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
  *
  */
 
@@ -77,6 +78,14 @@ struct repl_info_schema
   char *ddl;
 };
 
+typedef struct repl_savepoint_info REPL_SAVEPOINT_INFO;
+struct repl_savepoint_info
+{
+  REPL_SAVEPOINT_INFO *next;
+  char *sp_name;
+  int log_rec_start_idx;
+};
+
 /*
  * STATES OF TRANSACTIONS                            
  */
@@ -99,6 +108,10 @@ extern int repl_log_insert_schema (THREAD_ENTRY * thread_p,
 				   REPL_INFO_SCHEMA * repl_schema);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
+extern int repl_add_savepoint_info (THREAD_ENTRY * thread_p, const char *sp_name);
+extern int repl_log_abort_to_savepoint (THREAD_ENTRY * thread_p,
+					const char *sp_name);
+extern void repl_free_savepoint_info (REPL_SAVEPOINT_INFO * node);
 #if defined(CUBRID_DEBUG)
 extern void repl_debug_info ();
 #endif /* CUBRID_DEBUG */

@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -43,6 +44,9 @@ static const int REPL_LOG_INFO_ALLOC_SIZE = 100;
 #if defined(SERVER_MODE) || defined(SA_MODE)
 static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size,
 				bool need_realloc);
+#if !defined(WINDOWS)
+static REPL_SAVEPOINT_INFO *repl_alloc_savepoint_info (const char *sp_name);
+#endif
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -541,6 +545,206 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 
   return;
 }
+
+#if !defined(WINDOWS)
+/*
+ * repl_alloc_savepoint_info -
+ *
+ * return:
+ *
+ *   sp_name(in): save point name
+ *
+ */
+static REPL_SAVEPOINT_INFO *
+repl_alloc_savepoint_info (const char *sp_name)
+{
+  REPL_SAVEPOINT_INFO *sp_info =
+    (REPL_SAVEPOINT_INFO *) malloc (sizeof (REPL_SAVEPOINT_INFO));
+
+  if (sp_info)
+    {
+      sp_info->sp_name = strdup (sp_name);
+      if (sp_info->sp_name == NULL)
+	{
+	  free (sp_info);
+	  return NULL;
+	}
+      sp_info->log_rec_start_idx = 0;
+      sp_info->next = NULL;
+    }
+
+  return sp_info;
+}
+
+/*
+ * repl_free_savepoint_info -
+ *
+ * return:
+ *
+ *   node (in) :
+ *
+ */
+void
+repl_free_savepoint_info (REPL_SAVEPOINT_INFO * node)
+{
+  REPL_SAVEPOINT_INFO *next_node;
+
+  while (node)
+    {
+      next_node = node->next;
+
+      if (node->sp_name)
+	{
+	  free (node->sp_name);
+	}
+      free_and_init (node);
+
+      node = next_node;
+    }
+}
+
+/*
+ * repl_add_savepoint_info -
+ *
+ * return:
+ *
+ *   thread_p (in) :
+ *   sp_name (in) :
+ *
+ */
+int
+repl_add_savepoint_info (THREAD_ENTRY * thread_p, const char *sp_name)
+{
+  int error;
+  LOG_TDES *tdes;
+  REPL_SAVEPOINT_INFO *new_sp_info, *node, *prev_node;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1,
+	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  /* check sp_name already exist in the savepoint list */
+  new_sp_info = prev_node = NULL;
+  for (node = tdes->savepoint_list.head; node; node = node->next)
+    {
+      if (strcmp (node->sp_name, sp_name) == 0)
+	{
+	  if (prev_node)
+	    {
+	      prev_node->next = node->next;
+	    }
+	  else
+	    {
+	      tdes->savepoint_list.head = node->next;
+	    }
+
+	  node->next = NULL;
+	  new_sp_info = node;
+	  break;
+	}
+      prev_node = node;
+    }
+
+  if (new_sp_info == NULL)
+    {
+      new_sp_info = repl_alloc_savepoint_info (sp_name);
+
+      if (new_sp_info == NULL)
+	{
+	  REPL_ERROR (error, "can't allocate memory");
+	  return error;
+	}
+    }
+
+  new_sp_info->log_rec_start_idx = tdes->cur_repl_record + 1;
+
+  if (tdes->savepoint_list.head == NULL)
+    {
+      tdes->savepoint_list.head = new_sp_info;
+    }
+  else
+    {
+      tdes->savepoint_list.tail->next = new_sp_info;
+    }
+
+  tdes->savepoint_list.tail = new_sp_info;
+  return NO_ERROR;
+}
+
+/*
+ * repl_log_abort_to_savepoint -
+ *
+ * return:
+ *
+ *   thread_p (in) :
+ *   sp_name (in) :
+ *
+ */
+int
+repl_log_abort_to_savepoint (THREAD_ENTRY * thread_p, const char *sp_name)
+{
+  LOG_TDES *tdes;
+  REPL_SAVEPOINT_INFO *sp_info, *prev_sp_info;
+  LOG_REPL_RECORD *repl_rec_arr;
+  int start_idx, i, error;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1,
+	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  prev_sp_info = NULL;
+
+  for (sp_info = tdes->savepoint_list.head; sp_info; sp_info = sp_info->next)
+    {
+      if (strcmp (sp_info->sp_name, sp_name) == 0)
+	{
+	  start_idx = sp_info->log_rec_start_idx;
+	  repl_free_savepoint_info (sp_info);
+	  if (prev_sp_info)
+	    {
+	      prev_sp_info->next = NULL;
+	    }
+	  else
+	    {
+	      tdes->savepoint_list.head = NULL;
+	    }
+	  tdes->savepoint_list.tail = prev_sp_info;
+
+	  break;
+	}
+      prev_sp_info = sp_info;
+    }
+
+  if (sp_info == NULL)
+    {
+      REPL_ERROR (error, "can't find savepoint name");
+      return error;
+    }
+
+  if (start_idx <= tdes->cur_repl_record)
+    {
+      repl_rec_arr = tdes->repl_records;
+      for (i = start_idx; i <= tdes->cur_repl_record; i++)
+	{
+	  repl_rec_arr[i - 1].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	}
+    }
+
+  return NO_ERROR;
+}
+#endif
 
 #if defined(CUBRID_DEBUG)
 /*

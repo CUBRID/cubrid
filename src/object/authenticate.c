@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -343,7 +344,8 @@ static MOP Au_first_user = NULL;
  * NOTE: Need to be storing the password in an encrypted string.
  */
 static char Au_user_name[DB_MAX_USER_LENGTH + 4] = { '\0' };
-char Au_user_password[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+char Au_user_password_des_oldstyle[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+char Au_user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
 
 /*
  * Au_password_class
@@ -2129,29 +2131,51 @@ match_password (const char *user, const char *database)
   /* get both passwords into an encrypted format */
   /* if database's password was encrypted with DES,
    * then, user's password should be encrypted with DES,
-   * 
-   * DATABASE                   USER
-   * DES  -> NO TRANS           PLAIN -> DES
-   * SHA1 -> NO TRANS           PLAIN -> SHA1
-   * PLAINTEXT -> TRANS to SHA1 PLAIN -> SHA1
    */
   if (IS_ENCODED_DES (database))
     {
-      /* DB: DES, USER:PLAINTEXT */
+      /* DB: DES */
       strcpy (buf2, database);
-      encrypt_password (user, 1, buf1);
+      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+	{
+	  /* USER : DES */
+	  strcpy (buf1, Au_user_password_des_oldstyle);
+	}
+      else
+	{
+	  /* USER : PLAINTEXT -> DES */
+	  encrypt_password (user, 1, buf1);
+	}
     }
   else if (IS_ENCODED_SHA1 (database))
     {
-      /* DB:SHA1, USER:PLAINTEXT */
+      /* DB: SHA1 */
       strcpy (buf2, database);
-      encrypt_password_sha1 (user, 1, buf1);
+      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+	{
+	  /* USER:SHA1 */
+	  strcpy (buf1, Au_user_password_sha1);
+	}
+      else
+	{
+	  /* USER:PLAINTEXT -> SHA1 */
+	  encrypt_password_sha1 (user, 1, buf1);
+	}
     }
   else
     {
-      /* DB:PLAIN, USER:PLAINTEXT */
+      /* DB:PLAINTEXT -> SHA1 */
       encrypt_password_sha1 (database, 1, buf2);
-      encrypt_password_sha1 (user, 1, buf1);
+      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+	{
+	  /* USER : SHA1 */
+	  strcpy (buf1, Au_user_password_sha1);
+	}
+      else
+	{
+	  /* USER : PLAINTEXT -> SHA1 */
+	  encrypt_password_sha1 (user, 1, buf1);
+	}
     }
 
   return strcmp (buf1, buf2) == 0;
@@ -5053,7 +5077,7 @@ au_user_name (void)
  *
  * Note:
  *    Note that this doesn't necessarily track the contents of
- *    Au_user_password.
+ *    Au_user_password_des_oldstyle.
  *    Note, we may only allow this to be called for the "original" user
  *    that logged in to the system.  If we allow it for all users,
  *    there is a potential hole where we could access the password
@@ -5074,7 +5098,7 @@ au_user_password (char *buffer)
        * Database hasn't been started yet, return the registered password
        * if any. Probably don't really have to handle this condition.
        */
-      return unencrypt_password (Au_user_password, 1, buffer);
+      return unencrypt_password (Au_user_password_des_oldstyle, 1, buffer);
     }
 
   AU_DISABLE (save);
@@ -5819,12 +5843,16 @@ au_login (const char *name, const char *password)
 
       if (password == NULL || strlen (password) == 0)
 	{
-	  strcpy (Au_user_password, "");
+	  strcpy (Au_user_password_des_oldstyle, "");
+	  strcpy (Au_user_password_sha1, "");
 	}
       else
 	{
-	  /* store the password */
-	  strcpy (Au_user_password, password);
+	  /* store the password encrypted(DES and SHA1 both) so we don't 
+	   * have buffers lying around with the obvious passwords in it.
+	   */
+	  encrypt_password (password, 1, Au_user_password_des_oldstyle);
+	  encrypt_password_sha1 (password, 1, Au_user_password_sha1);
 	}
     }
   else
@@ -5997,7 +6025,8 @@ au_start (void)
 	      strcpy (Au_user_name, "public");
 	    }
 
-	  error = au_perform_login (Au_user_name, Au_user_password);
+	  error =
+	    au_perform_login (Au_user_name, Au_user_password_des_oldstyle);
 	}
     }
 

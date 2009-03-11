@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -9068,7 +9069,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p,
       /* Free memory */
       if (scan_cache->area)
 	{
-	  db_instant_free_and_init (thread_p, scan_cache->area);
+	  db_private_free_and_init (thread_p, scan_cache->area);
 	}
     }
 
@@ -9811,7 +9812,7 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	         the object will fit in two pages for not better estimates.
 	       */
 	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_instant_alloc (thread_p,
+	      scan_cache->area = (char *) db_private_alloc (thread_p,
 							    scan_cache->
 							    area_size);
 	      if (scan_cache->area == NULL)
@@ -9879,7 +9880,7 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	         the object will fit in two pages for not better estimates.
 	       */
 	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_instant_alloc (thread_p,
+	      scan_cache->area = (char *) db_private_alloc (thread_p,
 							    scan_cache->
 							    area_size);
 	      if (scan_cache->area == NULL)
@@ -9945,7 +9946,7 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	       * for this object.
 	       */
 	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_instant_alloc (thread_p,
+	      scan_cache->area = (char *) db_private_alloc (thread_p,
 							    scan_cache->
 							    area_size);
 	      if (scan_cache->area == NULL)
@@ -9969,7 +9970,7 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 
 	      recdes->area_size = -recdes->length;
 	      recdes->data =
-		(char *) db_instant_realloc (thread_p, scan_cache->area,
+		(char *) db_private_realloc (thread_p, scan_cache->area,
 					     recdes->area_size);
 	      if (recdes->data == NULL)
 		{
@@ -10322,7 +10323,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		     the object will fit in two pages for not better estimates.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -10384,7 +10385,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		   * for this object.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -10406,7 +10407,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		   */
 		  recdes->area_size = -recdes->length;
 		  recdes->data =
-		    (char *) db_instant_realloc (thread_p, scan_cache->area,
+		    (char *) db_private_realloc (thread_p, scan_cache->area,
 						 recdes->area_size);
 		  if (recdes->data == NULL)
 		    {
@@ -10437,7 +10438,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		     the object will fit in two pages for not better estimates.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -10793,7 +10794,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		     the object will fit in two pages for not better estimates.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -10857,7 +10858,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		   * for this object.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -10877,7 +10878,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		   * area
 		   */
 		  recdes->area_size = -recdes->length;
-		  recdes->data = (char *) db_instant_realloc (thread_p,
+		  recdes->data = (char *) db_private_realloc (thread_p,
 							      scan_cache->
 							      area,
 							      recdes->
@@ -10911,7 +10912,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		     the object will fit in two pages for not better estimates.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
-		  scan_cache->area = (char *) db_instant_alloc (thread_p,
+		  scan_cache->area = (char *) db_private_alloc (thread_p,
 								scan_cache->
 								area_size);
 		  if (scan_cache->area == NULL)
@@ -15293,7 +15294,7 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
   if (attr_ids)
     {
       *attr_ids =
-	(ATTR_ID *) db_instant_alloc (thread_p, n * sizeof (ATTR_ID));
+	(ATTR_ID *) db_private_alloc (thread_p, n * sizeof (ATTR_ID));
 
       if (*attr_ids == NULL)
 	{
@@ -15328,7 +15329,7 @@ exit_on_error:
     {
       if (*attr_ids)
 	{
-	  db_instant_free_and_init (thread_p, *attr_ids);
+	  db_private_free_and_init (thread_p, *attr_ids);
 	}
       *attr_ids = NULL;
     }

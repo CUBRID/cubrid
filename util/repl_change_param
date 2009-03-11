@@ -24,7 +24,40 @@
 ###############################################################################
 usage() {
   exec_name=`basename $0`
-  echo "usage: $exec_name master_db_name slave_db_name dist_db_name [-p passwd] [-n parameter_name -v parameter_value]" 1>&2
+  echo "usage: $exec_name master_db_name slave_db_name dist_db_name [-p passwd] [-n parameter_name -v parameter_value] [--help]" 1>&2
+  if [ $1 = 1 ]
+  then
+    exit 1
+  fi
+}
+
+full_usage() {
+  exec_name=`basename $0`
+  echo "Usage: $exec_name MASTER_DB_NAME SLAVE_DB_NAME DIST_DB_NAME [Options]" 1>&2
+  echo "Change some parameter for CUBRID replication " 1>&2
+  echo "" 1>&2
+  echo "Mandatory arguments:" 1>&2
+  echo "  MASTER_DB_NAME Database name for Master DB" 1>&2
+  echo "  SLAVE_DB_NAME Database name for Slave DB" 1>&2
+  echo "  DIST_DB_NAME Database name for Distribution DB" 1>&2
+  echo "" 1>&2
+  echo "Options:" 1>&2
+  echo "  -p DBA password" 1>&2
+  echo "  -n <parameter name> Supported parameters are as below" 1>&2
+  echo "     When omit this parameter, interactive mode is activated" 1>&2
+  echo "  -v <value> Set the parameter value" 1>&2
+  echo "  --help This output" 1>&2
+  echo "" 1>&2
+  echo "Supported parameter lists:" 1>&2
+  echo "  1. perf_poll_interval preformance polling interval(sec) (10~60), default: 10 " 1>&2
+  echo "  2. size_of_log_buffer log buffer size of repl_agent (100~1000), default: 500 " 1>&2
+  echo "  3. size_of_cache_buffer cache buffer size of the repl_agent (100~500), default: 100 " 1>&2
+  echo "  4. size_of_copylog page count of the copy log (1000~10000), default: 5000 " 1>&2
+  echo "  5. index_replication 'y' for index replication (y/n), default: 'n' " 1>&2
+  echo "  6. for_recovery 'y' for recovery mode (y/n), default: 'n' " 1>&2
+  echo "  7. log_apply_interval interval between log page fetches(sec) (0~600), default: 0 " 1>&2
+  echo "  8. restart_interval interval between connections to the slave(sec) (1~60), default: 100" 1>&2
+  echo "" 1>&2
   exit 1
 }
 
@@ -154,6 +187,7 @@ print_error() {
   else
     print_error_e $2 $3 $4 $5
   fi
+  usage 0
   echo
   sql=
   if [ $1 = 1 ]
@@ -334,6 +368,11 @@ CurDir=`eval pwd`
 ###############################################################################
 # STEP 0 : read the parameters 
 ###############################################################################
+if [ $# -eq 1 ]  && [ "$1" = "--help" ]
+then
+  full_usage
+fi
+
 master_db_name=$1
 slave_db_name=$2
 dist_db_name=$3
@@ -362,22 +401,22 @@ done
 #check inputs
 if [ -z "$master_db_name" ]
 then
-  usage
+  usage 1
 fi
 
 if [ -z "$slave_db_name" ]
 then
-  usage
+  usage 1
 fi
 
 if [ -z "$dist_db_name" ]
 then
-  usage
+  usage 1
 fi
 
 if [ -n "$param_name" -a -z "$param_val" ]
 then
-  usage
+  usage 1
 fi
 
 ###############################################################################

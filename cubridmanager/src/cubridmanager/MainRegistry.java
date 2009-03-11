@@ -480,7 +480,7 @@ public class MainRegistry {
 			if (queryEditorOption.recordlimit < 1)
 				queryEditorOption.recordlimit = 0;
 		} catch (Exception e) {
-			queryEditorOption.recordlimit = 10000;
+			queryEditorOption.recordlimit = 5000;
 		}
 		try {
 			queryEditorOption.pagelimit = Integer.parseInt(pageLimit);

@@ -141,7 +141,6 @@ public class HostmonSocket {
 									break;
 								}
 
-								System.out.println(buf);
 								String[] lines = buf.split("\n");
 								toks = new String[lines.length * 2];
 								for (int l1 = 0; l1 < lines.length; l1++) {

@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -7653,7 +7654,7 @@ ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
     backupid[256];
   FILE *infile;
 
-  sprintf (logfile, "%s/logs/autobackupdb_error.log", sco.szCubrid);
+  sprintf (logfile, "%s/log/manager/auto_backupdb.log", sco.szCubrid);
   if ((infile = fopen (logfile, "r")) == NULL)
     {
       return ERR_NO_ERROR;
@@ -7685,6 +7686,48 @@ ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
   fclose (infile);
 
   return ERR_NO_ERROR;
+}
+
+int 
+ts_get_autoexecquery_error_log(nvplist* req, nvplist* res, char* _dbmt_error) {
+	char buf[1024], logfile[256], s1[256], s2[256], s3[256], s4[256], time[32],
+	dbname[256], username[256], query_id[64], error_code[64];
+	FILE* infile;
+
+	sprintf(logfile, "%s/log/manager/auto_execquery.log", sco.szCubrid);
+	if ((infile = fopen(logfile, "r")) == NULL)
+		return ERR_NO_ERROR;
+
+	while (fgets(buf, sizeof(buf), infile)) {
+		if (sscanf(buf, "%s %s", s1, s2) != 2)
+			continue;
+		if (!strncmp(s1, "DATE:", 5)) {
+			sprintf(time, "%s %s", s1 + 5, s2 + 5); /* 5 = strlen("DATE:"); 5 = strlen("TIME:"); */
+			if (fgets(buf, sizeof(buf), infile) == NULL)
+				break;
+
+			s3[0] = 0;
+			sscanf(buf, "%s %s %s %s", s1, s2, s3, s4);
+			sprintf(dbname, "%s", s1 + 7); 		/* 7 = strlen("DBNAME:") */
+			sprintf(username, "%s", s2 + 14); 	/* 14 = strlen("EMGR-USERNAME:") */
+			sprintf(query_id, "%s", s3 + 9); 	/* 9 = strlen("QUERY-ID:") */
+			sprintf(error_code, "%s", s4 + 11); /* 11 = strlen("ERROR-CODE:") */
+			if (fgets(buf, sizeof(buf), infile) == NULL)
+				break;
+
+			uRemoveCRLF(buf);
+			nv_add_nvp(res, "open", "error");
+			nv_add_nvp(res, "dbname", dbname);
+			nv_add_nvp(res, "username", username);
+			nv_add_nvp(res, "query_id", query_id);
+			nv_add_nvp(res, "error_time", time);
+			nv_add_nvp(res, "error_code", error_code);
+			nv_add_nvp(res, "error_desc", buf + 3);
+			nv_add_nvp(res, "close", "error");
+		}
+	}
+
+	return ERR_NO_ERROR;
 }
 
 /***************************************************************************
@@ -10759,7 +10802,7 @@ int
 ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   FILE *conf_file, *temp_file;
-  char line[1024], tmpfile[512];
+  char line[MAX_JOB_CONFIG_FILE_LINE_LENGTH], tmpfile[512];
   char auto_exec_query_conf_file[512];
   char *conf_item[AUTOEXECQUERY_CONF_ENTRY_NUM];
   int i, index, length;
@@ -10780,6 +10823,22 @@ ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
   conf_get_dbmt_file (FID_AUTO_EXECQUERY_CONF, auto_exec_query_conf_file);
   nv_locate (req, "planlist", &index, &length);
 
+  /* check query string length */
+	for (i = index + 1; i < index + length; i += 6) {
+		/* get query string */
+		nv_lookup(req, i + 3, &name, &value);
+		if (strcmp(name, "query_string") != 0) {
+			sprintf(_dbmt_error, "%s","nv order error. [i+3] must is [query_string]");
+			return ERR_WITH_MSG;
+		}
+
+		if (strlen(value) > MAX_AUTOQUERY_SCRIPT_SIZE) {
+			/* error handle */
+			sprintf(_dbmt_error,"query script too long. do not exceed MAX_AUTOQUERY_SCRIPT_SIZE(%d) bytes.", 
+					MAX_AUTOQUERY_SCRIPT_SIZE);
+			return ERR_WITH_MSG;
+		}
+	}
 
   conf_file = temp_file = 0;
   name = value = NULL;
@@ -10886,7 +10945,7 @@ ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  while (fgets (line, sizeof (line), conf_file))
 	    {
-	      char query_id[5];
+	      char query_id[64];
 	      if (sscanf (line, "%*s %s ", query_id) < 1)
 		continue;
 	      if (strcmp (query_id, conf_item[1]) != 0)
@@ -10918,10 +10977,10 @@ int
 ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   FILE *conf_file;
-  char buf[1024];
+  char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH];
   char auto_exec_query_conf_file[512];
-  char id_num[8], db_name[64], user[64], period[8];
-  char detail1[32], detail2[8], query_string[512], detail[64];
+  char id_num[64], db_name[64], user[64], period[8];
+  char detail1[32], detail2[8], query_string[MAX_AUTOQUERY_SCRIPT_SIZE + 1], detail[64];
   char *dbname, *dbmt_username;
 
   conf_get_dbmt_file (FID_AUTO_EXECQUERY_CONF, auto_exec_query_conf_file);
@@ -10945,7 +11004,7 @@ ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   nv_add_nvp (res, "open", "planlist");
-  while (fgets (buf, 1024, conf_file))
+  while (fgets (buf, sizeof(buf), conf_file))
     {
       int scan_matched;
       char *p;
@@ -10988,7 +11047,7 @@ static void
 op_auto_exec_query_get_newplan_id (char *id_buf, char *conf_filename)
 {
   FILE *conf_file;
-  char buf[1024], id_num[5];
+  char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH], id_num[5];
   int index;
 
   for (index = 1; index < 10000; index++)
@@ -10997,7 +11056,7 @@ op_auto_exec_query_get_newplan_id (char *id_buf, char *conf_filename)
       conf_file = fopen (conf_filename, "r");
       if (conf_file)
 	{
-	  while (fgets (buf, 1023, conf_file))
+	  while (fgets (buf, sizeof(buf), conf_file))
 	    {
 	      sscanf (buf, "%*s %s", id_num);
 	      if (atoi (id_num) == index)

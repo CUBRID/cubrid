@@ -500,12 +500,11 @@ public class JOB_BACKUPDialog extends Dialog {
 	}
 
 	private boolean sendapply() {
-		jobs.backupid = EDIT_BACKUP_ID.getText();
+		jobs.backupid = EDIT_BACKUP_ID.getText().trim();
 		jobs.path = EDIT_BACKUP_PATH.getText();
-		if (jobs.backupid == null || jobs.backupid.indexOf(" ") >= 0
-				|| jobs.backupid.length() < 1) {
-			CommonTool.ErrorBox(dlgShell, Messages
-					.getString("ERROR.INVALIDBACKUPID"));
+		if (jobs.backupid == null || jobs.backupid.indexOf(" ") >= 0 || jobs.backupid.length() < 1
+		        || jobs.backupid.length() >= 32) {
+			CommonTool.ErrorBox(dlgShell, Messages.getString("ERROR.INVALIDBACKUPID"));
 			EDIT_BACKUP_ID.setFocus();
 			return false;
 		}

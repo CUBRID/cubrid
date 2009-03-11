@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -66,6 +67,12 @@
 #if defined(SERVER_MODE)
 #include "thread_impl.h"
 #endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+#if !defined(WINDOWS)
+#include "replication.h"
+#endif
+#endif
 
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
 #define NUM_TOTAL_TRAN_INDICES log_Gl.trantable.num_total_indices
@@ -843,6 +850,11 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->topops.last = -1;
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
+
+#if !defined(WINDOWS)
+  tdes->savepoint_list.head = NULL;
+  tdes->savepoint_list.tail = NULL;
+#endif
 }
 
 /*
@@ -1527,6 +1539,12 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->fl_mark_repl_recidx = -1;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+
+#if !defined (WINDOWS)
+  repl_free_savepoint_info (tdes->savepoint_list.head);
+  tdes->savepoint_list.head = NULL;
+  tdes->savepoint_list.tail = NULL;
+#endif
 }
 
 /*
@@ -1566,6 +1584,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->append_repl_recidx = -1;
   tdes->fl_mark_repl_recidx = -1;
   tdes->repl_records = NULL;
+#if !defined (WINDOWS)
+  tdes->savepoint_list.head = NULL;
+  tdes->savepoint_list.tail = NULL;
+#endif
 }
 
 /*
@@ -1787,6 +1809,32 @@ logtb_find_client_name (int tran_index)
       client_name = tdes->client.user_name;
     }
   return client_name;
+}
+
+/*
+ * logtb_is_repl_agent_client - find replication client of transaction index
+ *
+ * return: true is replication client , false is not replication client
+ *
+ *   thread_p(in): Index of transaction
+ */
+bool
+logtb_is_repl_agent_client (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes != NULL)
+    {
+      if (strncmp (tdes->client.prog_name, "repl_agent", PATH_MAX) == 0)
+	{
+	  return true;
+	}
+    }
+  return false;
 }
 
 /*

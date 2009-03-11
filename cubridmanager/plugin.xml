@@ -204,6 +204,13 @@
             id="workview.BrokerJob"
             name="%VIEW.BROKERJOB"/>
    </extension>
+   <extension point="org.eclipse.ui.views">
+    	<view
+        class="org.eclipse.ui.ExtensionFactory:progressView"
+        id="org.eclipse.ui.views.ProgressView"
+        icon="icons/progress.gif"
+        name="Progress"/>
+   </extension>
    <extension
          point="org.eclipse.ui.commands">
    </extension>

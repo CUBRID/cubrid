@@ -546,7 +546,7 @@ public class UConnection
         if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
           return;
 
-        if (!lastAutoCommit || isAutoCommitBySelf)
+        if (!lastAutoCommit || isAutoCommitBySelf || type == false)
         {
           outBuffer.newRequest(out, UFunctionCode.END_TRANSACTION);
           outBuffer.addByte((type == true) ? END_TRAN_COMMIT

@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
  *
  *  This program is distributed in the hope that it will be useful, 
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
  *
  */
 
@@ -1808,8 +1809,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       bool need_copy_buf;
 
       isidp->key_vals =
-	(KEY_VAL_RANGE *) db_instant_alloc (thread_p,
-					    isidp->key_cnt *
+	(KEY_VAL_RANGE *) db_private_alloc (thread_p, isidp->key_cnt *
 					    sizeof (KEY_VAL_RANGE));
       if (isidp->key_vals == NULL)
 	{
@@ -1847,7 +1847,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  /* alloc index key copy_buf */
 	  isidp->copy_buf =
-	    (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
+	    (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
 	  if (isidp->copy_buf == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1874,11 +1874,11 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_instant_free (thread_p, isidp->key_vals);
+      db_private_free (thread_p, isidp->key_vals);
     }
   if (isidp->bt_attr_ids)
     {
-      db_instant_free (thread_p, isidp->bt_attr_ids);
+      db_private_free (thread_p, isidp->bt_attr_ids);
     }
   if (isidp->vstr_ids)
     {
@@ -1891,7 +1891,7 @@ exit_on_error:
   /* free index key copy_buf */
   if (isidp->copy_buf)
     {
-      db_instant_free (thread_p, isidp->copy_buf);
+      db_private_free (thread_p, isidp->copy_buf);
     }
 
   if (ret == NO_ERROR)
@@ -2586,12 +2586,12 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp = &scan_id->s.isid;
       if (isidp->key_vals)
 	{
-	  db_instant_free (thread_p, isidp->key_vals);
+	  db_private_free (thread_p, isidp->key_vals);
 	}
       /* free allocated memory for the scan */
       if (isidp->bt_attr_ids)
 	{
-	  db_instant_free (thread_p, isidp->bt_attr_ids);
+	  db_private_free (thread_p, isidp->bt_attr_ids);
 	}
       if (isidp->vstr_ids)
 	{
@@ -2604,7 +2604,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* free index key copy_buf */
       if (isidp->copy_buf)
 	{
-	  db_instant_free (thread_p, isidp->copy_buf);
+	  db_private_free (thread_p, isidp->copy_buf);
 	}
       break;
 

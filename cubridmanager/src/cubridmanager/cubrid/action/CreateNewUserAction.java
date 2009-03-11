@@ -369,7 +369,8 @@ public class CreateNewUserAction extends Action {
 		GridData gridData4 = new org.eclipse.swt.layout.GridData();
 		gridData4.widthHint = 100;
 		IDCANCEL.setLayoutData(gridData4);
-
+		sShell.setText(Messages.getString("TITLE.ADDNEWUSER"));
+		//sShell.setText("Add new user");
 		sShell.pack();
 		CommonTool.centerShell(sShell);
 		sShell.open();

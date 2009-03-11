@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -125,11 +126,11 @@ typedef struct autoexecquery_t
 {
   char dbname[64];
   char dbmt_uid[64];
-  int query_id;
+  char query_id[64];
   T_EXECQUERY_PERIOD_TYPE period;
   char detail1[32];
   char detail2[16];
-  char query_string[512];
+  char query_string[MAX_AUTOQUERY_SCRIPT_SIZE];
   int db_mode;
   struct autoexecquery_t *next;
 } autoexecquery_node;
@@ -165,7 +166,7 @@ static void aj_execquery_get_exec_time (autoexecquery_node * node,
 					struct tm *exec_tm);
 
 static void aj_execquery (autoexecquery_node * c);
-static void _aj_autoexecquery_error_log (autoexecquery_node * node,
+static void _aj_autoexecquery_error_log (autoexecquery_node * node, int err_code,
 					 char *errmsg);
 static void aj_load_autobackupdb_conf (ajob * ajp);
 static void aj_load_autoaddvoldb_config (ajob * ajp);
@@ -737,7 +738,7 @@ aj_load_autobackupdb_conf (ajob * p_aj)
   if ((infile = fopen (p_aj->config_file, "r")) == NULL)
     return;
 
-  while (fgets (buf, 1024, infile))
+  while (fgets (buf, sizeof(buf), infile))
     {
       is_old_version_entry = 0;
       ut_trim (buf);
@@ -851,7 +852,7 @@ aj_load_execquery_conf (ajob * p_aj)
 {
   FILE *infile = NULL;
   char *conf_item[AUTOEXECQUERY_CONF_ENTRY_NUM];
-  char buf[1024];
+  char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH];
   autoexecquery_node *c;
 
   p_aj->is_on = 0;
@@ -872,7 +873,7 @@ aj_load_execquery_conf (ajob * p_aj)
   if ((infile = fopen (p_aj->config_file, "r")) == NULL)
     return;
 
-  while (fgets (buf, 1024, infile))
+  while (fgets (buf, sizeof(buf), infile))
     {
       ut_trim (buf);
       if (buf[0] == '#' || buf[0] == '\0')
@@ -897,7 +898,7 @@ aj_load_execquery_conf (ajob * p_aj)
 	break;
 
       strcpy (c->dbname, conf_item[0]);
-      c->query_id = atoi (conf_item[1]);
+      strcpy (c->query_id, conf_item[1]);
       strcpy (c->dbmt_uid, conf_item[2]);
 
       if (strcmp (conf_item[3], "ONE") == 0)
@@ -998,13 +999,13 @@ static void
 aj_execquery (autoexecquery_node * c)
 {
   /* run query */
-  char cmd_name[CUBRID_CMD_NAME_LEN];
+  char cmd_name[CUBRID_CMD_NAME_LEN + 1];
   char error_buffer[1024];
-  char *dbuser, dbpasswd[PASSWD_LENGTH];
+  char *dbuser, dbpasswd[PASSWD_LENGTH + 1];
   char *argv[11];
-  char input_filename[200];
+  char input_filename[256];
   char *cubrid_err_file;
-  int retval, argc, i, j;
+  int retval, argc, i, j, error_code;
   FILE *input_file;
 
   T_DB_SERVICE_MODE db_mode;
@@ -1018,13 +1019,13 @@ aj_execquery (autoexecquery_node * c)
 
   /* dbuser = get user name */
   /* dbpasswd = get password */
-  if (dbmt_user_read (&dbmt_user, error_buffer) != ERR_NO_ERROR)
+  if ((retval = dbmt_user_read (&dbmt_user, error_buffer)) != ERR_NO_ERROR)
     {
       /* can't get user information */
 #ifdef	_DEBUG_
       assert (error_buffer != NULL);
 #endif
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, retval, error_buffer);
       return;
     }
 
@@ -1052,9 +1053,9 @@ aj_execquery (autoexecquery_node * c)
 	    {
 	      /* Can't find dbname */
 	      sprintf (error_buffer,
-		       "Database(%s) not found or User(%s) has no outhority for this Database",
+		       "Database(%s) not found or User(%s) has no authority for this Database",
 		       c->dbname, c->dbmt_uid);
-	      _aj_autoexecquery_error_log (c, error_buffer);
+	      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
 	      return;
 	    }
 
@@ -1067,7 +1068,7 @@ aj_execquery (autoexecquery_node * c)
       /* Can't find easy-manager user */
       sprintf (error_buffer, "User(%s) not found or has no authority",
 	       c->dbmt_uid);
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
       return;
     }
 
@@ -1098,7 +1099,7 @@ aj_execquery (autoexecquery_node * c)
     {
       /* database is not exist */
       sprintf (error_buffer, "Database(%s) not found", c->dbname);
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
       return;
     }
 
@@ -1109,7 +1110,7 @@ aj_execquery (autoexecquery_node * c)
       /* database is running in stand alone mode */
       sprintf (error_buffer, "Database(%s) is running in stand alone mode",
 	       c->dbname);
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
       return;
     }
 
@@ -1137,7 +1138,7 @@ aj_execquery (autoexecquery_node * c)
     {
       /* file open error */
       sprintf (error_buffer, "Can't create temp file");
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, ERR_FILE_CREATE_FAIL, error_buffer);
       return;
     }
 
@@ -1149,25 +1150,32 @@ aj_execquery (autoexecquery_node * c)
   /* free dbmt_user */
   dbmt_user_free (&dbmt_user);
 
-  if (read_error_file (cubrid_err_file, error_buffer, DBMT_ERROR_MSG_SIZE) <
+  if (read_error_file2 (cubrid_err_file, error_buffer, DBMT_ERROR_MSG_SIZE, &error_code) <
       0)
     {
       /* error occurred when exec query */
-      _aj_autoexecquery_error_log (c, error_buffer);
+	  if (error_code == 0)
+		  error_code = ERR_GENERAL_ERROR;
+
+      _aj_autoexecquery_error_log (c, error_code, error_buffer);
       return;
     }
 
-  if (retval < 0)
+  if (retval != 0)
     {
       /* error occerred when run_child */
       sprintf (error_buffer, "Failed to execute Query with");
-      _aj_autoexecquery_error_log (c, error_buffer);
+      _aj_autoexecquery_error_log (c, ERR_SYSTEM_CALL, error_buffer);
       return;
+    }
+  else 
+    {
+	  _aj_autoexecquery_error_log (c, 0, "success");
     }
 }
 
 static void
-_aj_autoexecquery_error_log (autoexecquery_node * node, char *errmsg)
+_aj_autoexecquery_error_log (autoexecquery_node * node, int error_code, char *errmsg)
 {
   /* open error file and write errmsg */
   time_t tt;
@@ -1176,7 +1184,7 @@ _aj_autoexecquery_error_log (autoexecquery_node * node, char *errmsg)
   char strbuf[128];
 
   tt = time (&tt);
-  sprintf (logfile, "%s/logs/autoexecquery_error.log", sco.szCubrid);
+  sprintf (logfile, "%s/log/manager/auto_execquery.log", sco.szCubrid);
 
   outfile = fopen (logfile, "a");
   if (outfile == NULL)
@@ -1185,8 +1193,8 @@ _aj_autoexecquery_error_log (autoexecquery_node * node, char *errmsg)
   time_to_str (tt, "DATE:%04d/%02d/%02d TIME:%02d:%02d:%02d", strbuf,
 	       TIME_STR_FMT_DATE_TIME);
   fprintf (outfile, "%s\n", strbuf);
-  fprintf (outfile, "DBNAME:%s EMGR-USERNAME:%s\n", node->dbname,
-	   node->dbmt_uid);
+  fprintf (outfile, "DBNAME:%s EMGR-USERNAME:%s QUERY-ID:%s ERROR-CODE:%d\n", node->dbname,
+	  node->dbmt_uid, node->query_id, error_code);
   fprintf (outfile, "=> %s\n", errmsg);
   fclose (outfile);
 }
@@ -1241,7 +1249,7 @@ _aj_autobackupdb_error_log (autobackupdb_node * n, char *errmsg)
   char strbuf[128];
 
   tt = time (&tt);
-  sprintf (logfile, "%s/logs/autobackupdb_error.log", sco.szCubrid);
+  sprintf (logfile, "%s/log/manager/auto_backupdb.log", sco.szCubrid);
 
   outfile = fopen (logfile, "a");
   if (outfile == NULL)

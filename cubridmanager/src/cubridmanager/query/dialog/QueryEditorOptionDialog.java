@@ -165,13 +165,13 @@ public class QueryEditorOptionDialog extends Dialog {
 							org.eclipse.swt.events.SelectionEvent e) {
 						spnRecordLimit
 								.setEnabled(chkRecordLimit.getSelection());
+						spnRecordLimit.setSelection(5000);
 					}
 				});
 
 		GridData gridData7 = new GridData();
 		gridData7.widthHint = 100;
 		spnRecordLimit = new Spinner(cmpActionValueArea, SWT.BORDER);
-		spnRecordLimit.setMinimum(1);
 		spnRecordLimit.setMaximum(Integer.MAX_VALUE);
 		spnRecordLimit.setLayoutData(gridData7);
 		spnRecordLimit.setToolTipText(Messages
@@ -183,7 +183,6 @@ public class QueryEditorOptionDialog extends Dialog {
 		GridData gridData8 = new GridData();
 		gridData8.widthHint = 100;
 		spnPageLimit = new Spinner(cmpActionValueArea, SWT.BORDER);
-		spnPageLimit.setMinimum(1);
 		spnPageLimit.setMaximum(Integer.MAX_VALUE);
 		spnPageLimit.setLayoutData(gridData8);
 		spnPageLimit.setToolTipText(Messages.getString("TOOLTIP.PAGELIMIT"));
@@ -345,7 +344,9 @@ public class QueryEditorOptionDialog extends Dialog {
 		chkAutoCommit.setSelection(MainRegistry.queryEditorOption.autocommit);
 		chkGetQueryPlan
 				.setSelection(MainRegistry.queryEditorOption.getqueryplan);
-		spnRecordLimit.setSelection(MainRegistry.queryEditorOption.recordlimit);
+		spnRecordLimit
+        .setSelection(MainRegistry.queryEditorOption.recordlimit > 0 ? MainRegistry.queryEditorOption.recordlimit
+                : 5000);
 		spnPageLimit.setSelection(MainRegistry.queryEditorOption.pagelimit);
 		chkRecordLimit
 				.setSelection(MainRegistry.queryEditorOption.recordlimit > 0);
@@ -390,6 +391,12 @@ public class QueryEditorOptionDialog extends Dialog {
 			CommonTool.ErrorBox(sShell, Messages
 					.getString("MESSAGE.INVALIDRECORDLIMIT"));
 			spnRecordLimit.setFocus();
+			return false;
+		}
+		if (spnPageLimit.getSelection() < 1) {
+			CommonTool.ErrorBox(sShell, Messages
+					.getString("MESSAGE.INVALIDRECORDLIMIT"));
+			spnPageLimit.setFocus();
 			return false;
 		}
 		if (cmbCasPort.getText().indexOf("(stopped)") > 0) {

@@ -68,6 +68,7 @@ import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.custom.VerifyKeyListener;
 import org.eclipse.swt.custom.ViewForm;
 import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.DropTarget;
@@ -79,7 +80,7 @@ import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
-import org.eclipse.swt.events.MenuEvent;
+import org.eclipse.swt.events.VerifyEvent;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
@@ -355,6 +356,7 @@ public class QueryEditor extends ViewPart {
 			}
 			if (conn != null)
 				conn.close();
+			clearResult();
 		} catch (Exception e) {
 			CommonTool.debugPrint(e);
 		} finally {
@@ -472,7 +474,18 @@ public class QueryEditor extends ViewPart {
 				}
 			}
 		});
-
+		txaEdit.addVerifyKeyListener(new VerifyKeyListener() {
+			public void verifyKey(VerifyEvent e) {
+				if ((e.stateMask & SWT.SHIFT) != 0) {
+					if (e.keyCode == SWT.TAB)
+						e.doit = false;
+				} else if (e.keyCode == SWT.TAB) {
+					e.doit = false;
+				} else {
+					e.doit = true;
+				}
+			}
+		});
 		txaEdit.addKeyListener(new org.eclipse.swt.events.KeyAdapter() {
 			public void keyPressed(org.eclipse.swt.events.KeyEvent e) {
 
@@ -535,10 +548,9 @@ public class QueryEditor extends ViewPart {
 					}
 				} else if ((e.stateMask & SWT.SHIFT) != 0) {
 					if (e.keyCode == SWT.TAB)
-						indent();
+						unindent();
 				} else if (e.keyCode == SWT.TAB) {
-					unindent();
-
+					indent();
 				}
 
 				if ((e.character >= 'A' && e.character <= 'Z')
@@ -1271,7 +1283,7 @@ public class QueryEditor extends ViewPart {
 	}
 
 	public void indent() {
-		inputTab(true);
+		inputTab();
 	}
 
 	public void scriptRun(String result) {
@@ -1348,10 +1360,15 @@ public class QueryEditor extends ViewPart {
 	}
 
 	private void clearResult() {
-		while (tabMiddle.getItemCount() > 0) {
-			tabMiddle.getItem(0).dispose();
+		if (tabMiddle != null && !tabMiddle.isDisposed()) {
+			while (tabMiddle.getItemCount() > 0) {
+				if (!tabMiddle.getItem(0).getControl().isDisposed())
+					tabMiddle.getItem(0).getControl().dispose();
+				tabMiddle.getItem(0).dispose();
+			}
 		}
-		curResult.clear();
+		if (curResult != null)
+			curResult.clear();
 	}
 
 	private Vector queriesToQuery(String queries) {
@@ -1597,6 +1614,7 @@ public class QueryEditor extends ViewPart {
 		runJob = new Job(Messages.getString("PROGRESSMONITOR.RUNQUERY")) {
 			public IStatus run(IProgressMonitor monitor) {
 				final Vector qVector = queriesToQuery(queries);
+				monitor.beginTask("", qVector.size() * 2 + 2);
 				vectorQueryPlans.clear();
 				int i = 0;
 				int cntResults = 0;
@@ -1612,28 +1630,25 @@ public class QueryEditor extends ViewPart {
 				String multiQuerySql = null;
 				try {
 					if (qVector.size() > 0 && !monitor.isCanceled())
-						isIsolationHigher = isIsolationHigherThanRepeatableRead(
-								conn, isActive);
+						isIsolationHigher = isIsolationHigherThanRepeatableRead(conn, isActive);
+					monitor.worked(1);
 					for (i = 0; i < qVector.size() && !monitor.isCanceled(); i++) {
 						String sql = qVector.get(i).toString();
-						multiQuerySql = SqlParser.parse(sql);
+						monitor.subTask(i + 1 + Messages.getString("TASK.QUERYDESC"));
+						if (MainRegistry.queryEditorOption.recordlimit > 0) {
+							multiQuerySql = SqlParser.parse(sql);
+						}
 						if (multiQuerySql == null) {
 							beginTimestamp = System.currentTimeMillis();
-							stmt = (CUBRIDPreparedStatement) conn
-									.prepareStatement(
-											sql,
-											ResultSet.TYPE_FORWARD_ONLY,
-											(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
-													: ResultSet.CONCUR_READ_ONLY,
-											ResultSet.HOLD_CURSORS_OVER_COMMIT);
+							stmt = (CUBRIDPreparedStatement) conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY,
+							        (MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
+							                : ResultSet.CONCUR_READ_ONLY, ResultSet.HOLD_CURSORS_OVER_COMMIT);
 						}
+						monitor.worked(1);
 						if (multiQuerySql != null) {
-							result = new QueryExecuter(QueryEditor.this,
-									cntResults, "");
+							result = new QueryExecuter(QueryEditor.this, cntResults, "");
 							result.setMultiQuerySql(multiQuerySql);
-							result.setQueryMsg((i + 1)
-									+ Messages.getString("QEDIT.QUERYSEQ")
-									+ MainConstants.NEW_LINE);
+							result.setQueryMsg((i + 1) + Messages.getString("QEDIT.QUERYSEQ") + MainConstants.NEW_LINE);
 							try {
 								result.makeTable(1);
 							} catch (SQLException ee) {
@@ -1659,23 +1674,18 @@ public class QueryEditor extends ViewPart {
 							if (elapsedTime < 0.001) {
 								elapsedTimeStr = "0.000";
 							}
-							result = new QueryExecuter(QueryEditor.this,
-									cntResults, sql);
+							result = new QueryExecuter(QueryEditor.this, cntResults, sql);
 							result.makeTable(rs);
-							String queryMsg = (i + 1)
-									+ Messages.getString("QEDIT.QUERYSEQ")
-									+ "[ " + elapsedTimeStr + " "
-									+ Messages.getString("QEDIT.SECOND")
-									+ " , "
-									+ Messages.getString("MSG.TOTALROWS")
-									+ " : " + result.cntRecord + " ]"
-									+ MainConstants.NEW_LINE;
+							String queryMsg = (i + 1) + Messages.getString("QEDIT.QUERYSEQ") + "[ " + elapsedTimeStr
+							        + " " + Messages.getString("QEDIT.SECOND") + " , "
+							        + Messages.getString("MSG.TOTALROWS") + " : " + result.cntRecord + " ]"
+							        + MainConstants.NEW_LINE;
 							result.setQueryMsg(queryMsg);
 							switch (stmt.getStatementType()) {
-							case CUBRIDCommandType.CUBRID_STMT_EVALUATE:
-							case CUBRIDCommandType.CUBRID_STMT_CALL:
-								hasModifyQuery = true;
-								break;
+								case CUBRIDCommandType.CUBRID_STMT_EVALUATE:
+								case CUBRIDCommandType.CUBRID_STMT_CALL:
+									hasModifyQuery = true;
+									break;
 							}
 							curResult.addElement(result);
 							cntResults++;
@@ -1689,72 +1699,66 @@ public class QueryEditor extends ViewPart {
 								throw ee;
 							}
 							elapsedTime = (endTimestamp - beginTimestamp) * 0.001;
-							logs += (i + 1)
-									+ Messages.getString("QEDIT.QUERYSEQ")
-									+ " ";
+							logs += (i + 1) + Messages.getString("QEDIT.QUERYSEQ") + " ";
 							int cntModify = threadExecResult;
 							noSelectSql += sql + MainConstants.NEW_LINE;
 							hasModifyQuery = true;
 							switch (execType) {
-							case CUBRIDCommandType.CUBRID_STMT_ALTER_CLASS:
-							case CUBRIDCommandType.CUBRID_STMT_ALTER_SERIAL:
-							case CUBRIDCommandType.CUBRID_STMT_RENAME_CLASS:
-							case CUBRIDCommandType.CUBRID_STMT_RENAME_TRIGGER:
-								logs += Messages.getString("QEDIT.ALTEROK");
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_CREATE_CLASS:
-							case CUBRIDCommandType.CUBRID_STMT_CREATE_INDEX:
-							case CUBRIDCommandType.CUBRID_STMT_CREATE_TRIGGER:
-							case CUBRIDCommandType.CUBRID_STMT_CREATE_SERIAL:
-								logs += Messages.getString("QEDIT.CREATEOK");
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_DROP_DATABASE:
-							case CUBRIDCommandType.CUBRID_STMT_DROP_CLASS:
-							case CUBRIDCommandType.CUBRID_STMT_DROP_INDEX:
-							case CUBRIDCommandType.CUBRID_STMT_DROP_LABEL:
-							case CUBRIDCommandType.CUBRID_STMT_DROP_TRIGGER:
-							case CUBRIDCommandType.CUBRID_STMT_DROP_SERIAL:
-							case CUBRIDCommandType.CUBRID_STMT_REMOVE_TRIGGER:
-								logs += Messages.getString("QEDIT.DROPOK");
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_INSERT:
-								logs += cntModify + " "
-										+ Messages.getString("QEDIT.INSERTOK");
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_SELECT:
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_UPDATE:
-								logs += cntModify + " "
-										+ Messages.getString("QEDIT.UPDATEOK2");
-								break;
-							case CUBRIDCommandType.CUBRID_STMT_DELETE:
-								logs += cntModify + " "
-										+ Messages.getString("QEDIT.DELETEOK");
-								break;
-							/* others are 'Successfully execution' */
-							/*
-							 * Under two line works disable button when query's
-							 * last command is commit/rollback
-							 */
-							case CUBRIDCommandType.CUBRID_STMT_COMMIT_WORK:
-							case CUBRIDCommandType.CUBRID_STMT_ROLLBACK_WORK:
-								hasModifyQuery = false;
-							default:
-								logs += Messages.getString("QEDIT.QUERYOK");
-								break;
+								case CUBRIDCommandType.CUBRID_STMT_ALTER_CLASS:
+								case CUBRIDCommandType.CUBRID_STMT_ALTER_SERIAL:
+								case CUBRIDCommandType.CUBRID_STMT_RENAME_CLASS:
+								case CUBRIDCommandType.CUBRID_STMT_RENAME_TRIGGER:
+									logs += Messages.getString("QEDIT.ALTEROK");
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_CREATE_CLASS:
+								case CUBRIDCommandType.CUBRID_STMT_CREATE_INDEX:
+								case CUBRIDCommandType.CUBRID_STMT_CREATE_TRIGGER:
+								case CUBRIDCommandType.CUBRID_STMT_CREATE_SERIAL:
+									logs += Messages.getString("QEDIT.CREATEOK");
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_DROP_DATABASE:
+								case CUBRIDCommandType.CUBRID_STMT_DROP_CLASS:
+								case CUBRIDCommandType.CUBRID_STMT_DROP_INDEX:
+								case CUBRIDCommandType.CUBRID_STMT_DROP_LABEL:
+								case CUBRIDCommandType.CUBRID_STMT_DROP_TRIGGER:
+								case CUBRIDCommandType.CUBRID_STMT_DROP_SERIAL:
+								case CUBRIDCommandType.CUBRID_STMT_REMOVE_TRIGGER:
+									logs += Messages.getString("QEDIT.DROPOK");
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_INSERT:
+									logs += cntModify + " " + Messages.getString("QEDIT.INSERTOK");
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_SELECT:
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_UPDATE:
+									logs += cntModify + " " + Messages.getString("QEDIT.UPDATEOK2");
+									break;
+								case CUBRIDCommandType.CUBRID_STMT_DELETE:
+									logs += cntModify + " " + Messages.getString("QEDIT.DELETEOK");
+									break;
+								/* others are 'Successfully execution' */
+								/*
+								 * Under two line works disable button when
+								 * query's last command is commit/rollback
+								 */
+								case CUBRIDCommandType.CUBRID_STMT_COMMIT_WORK:
+								case CUBRIDCommandType.CUBRID_STMT_ROLLBACK_WORK:
+									hasModifyQuery = false;
+								default:
+									logs += Messages.getString("QEDIT.QUERYOK");
+									break;
 							}
 							String elapsedTimeStr = nf.format(elapsedTime);
 							if (elapsedTime < 0.001) {
 								elapsedTimeStr = "0.000";
 							}
-							logs += "[" + elapsedTimeStr + " "
-									+ Messages.getString("QEDIT.SECOND") + "]"
-									+ MainConstants.NEW_LINE;
+							logs += "[" + elapsedTimeStr + " " + Messages.getString("QEDIT.SECOND") + "]"
+							        + MainConstants.NEW_LINE;
 							if (MainRegistry.queryEditorOption.getqueryplan)
-								vectorQueryPlans.add(new StructQueryPlan(sql,
-										""));
+								vectorQueryPlans.add(new StructQueryPlan(sql, ""));
 						}
 						QueryUtil.freeQuery(stmt, rs);
+						monitor.worked(1);
 					}
 					if (isAutocommit && !monitor.isCanceled())
 						conn.commit();
@@ -1769,26 +1773,18 @@ public class QueryEditor extends ViewPart {
 						logs += result.getQueryMsg();
 					} else {
 						final String errorSql = (String) qVector.get(i);
-						Application.mainwindow.getShell().getDisplay()
-								.syncExec(new Runnable() {
-									public void run() {
-										if (txaEdit != null
-												&& !txaEdit.isDisposed()) {
-											txtFind(errorSql, 0, false, false,
-													true, false);
-											line = txaEdit
-													.getLineAtOffset(txaEdit
-															.getSelection().x) + 1;
-										}
-									}
-								});
+						Application.mainwindow.getShell().getDisplay().syncExec(new Runnable() {
+							public void run() {
+								if (txaEdit != null && !txaEdit.isDisposed()) {
+									txtFind(errorSql, 0, false, false, true, false);
+									line = txaEdit.getLineAtOffset(txaEdit.getSelection().x) + 1;
+								}
+							}
+						});
 						noSelectSql += errorSql;
-						logs += Messages.getString("QEDIT.RUNERR")
-								+ e.getErrorCode() + MainConstants.NEW_LINE
-								+ line + Messages.getString("QEDIT.ERRWHERE")
-								+ MainConstants.NEW_LINE
-								+ Messages.getString("QEDIT.ERRORHEAD")
-								+ e.getMessage();
+						logs += Messages.getString("QEDIT.RUNERR") + e.getErrorCode() + MainConstants.NEW_LINE + line
+						        + Messages.getString("QEDIT.ERRWHERE") + MainConstants.NEW_LINE
+						        + Messages.getString("QEDIT.ERRORHEAD") + e.getMessage();
 						CommonTool.debugPrint(e);
 					}
 				} finally {
@@ -1797,45 +1793,39 @@ public class QueryEditor extends ViewPart {
 					final int cntResultsBak = i;
 					final boolean hasModifyQueryBak = hasModifyQuery;
 					final boolean isIsolationHigherBak = isIsolationHigher;
-					Application.mainwindow.getShell().getDisplay().syncExec(
-							new Runnable() {
-								public void run() {
-									if (tabMiddle != null
-											&& !tabMiddle.isDisposed()) {
-										if (cntResultsBak < 1
-												&& logsBak.trim().length() <= 0)
-											makeEmptyResult();
-										else {
-											if (logsBak.trim().length() > 0) {
-												makeLogResult(noSelectSqlBak,
-														logsBak);
-											}
-											for (int j = 0; j < curResult
-													.size(); j++) {
-												makeResult((QueryExecuter) curResult
-														.get(j));
-											}
-										}
-
-										if (!hasModifyQueryBak
-												&& !isIsolationHigherBak) {
-											try {
-												if (conn != null
-														&& !conn.isClosed())
-													conn.commit();
-											} catch (SQLException e) {
-												CommonTool.debugPrint(e);
-											}
-											setActive(false);
-										} else
-											setActive(true);
-										itemRun.setEnabled(true);
-										if (MainRegistry.queryEditorOption.getqueryplan)
-											itemQueryPlan.setEnabled(true);
+					Application.mainwindow.getShell().getDisplay().syncExec(new Runnable() {
+						public void run() {
+							if (tabMiddle != null && !tabMiddle.isDisposed()) {
+								if (cntResultsBak < 1 && logsBak.trim().length() <= 0)
+									makeEmptyResult();
+								else {
+									if (logsBak.trim().length() > 0) {
+										makeLogResult(noSelectSqlBak, logsBak);
+									}
+									for (int j = 0; j < curResult.size(); j++) {
+										makeResult((QueryExecuter) curResult.get(j));
 									}
 								}
-							});
+
+								if (!hasModifyQueryBak && !isIsolationHigherBak) {
+									try {
+										if (conn != null && !conn.isClosed())
+											conn.commit();
+									} catch (SQLException e) {
+										CommonTool.debugPrint(e);
+									}
+									setActive(false);
+								} else
+									setActive(true);
+								itemRun.setEnabled(true);
+								if (MainRegistry.queryEditorOption.getqueryplan)
+									itemQueryPlan.setEnabled(true);
+							}
+						}
+					});
 					QueryUtil.freeQuery(stmt, rs);
+					monitor.worked(1);
+					monitor.done();
 				}
 				return Status.OK_STATUS;
 			}
@@ -2209,28 +2199,29 @@ public class QueryEditor extends ViewPart {
 		}
 	}
 
-	public void inputTab(boolean isForce) {
+	public void inputTab() {
 		int startOffset = txaEdit.getSelection().x;
 		int endOffset = txaEdit.getSelection().y;
 
 		int startLine = txaEdit.getLineAtOffset(startOffset);
 		int endLine = txaEdit.getLineAtOffset(endOffset);
 
-		if (txaEdit.getSelectionText().endsWith(MainConstants.NEW_LINE))
-			endLine--;
-
-		if (txaEdit.getSelectionCount() > 0) {
+		if (endLine > startLine) {
+			if (txaEdit.getSelectionText().endsWith(MainConstants.NEW_LINE))
+				endLine--;
 			for (int i = startLine; i <= endLine; i++)
 				txaEdit.replaceTextRange(txaEdit.getOffsetAtLine(i), 0, "\t");
 			startOffset++;
 			endOffset += (endLine - startLine + 1);
-		} else if (isForce) {
-			txaEdit.replaceTextRange(txaEdit.getOffsetAtLine(startLine), 0,
-					"\t");
+		} else if (txaEdit.getSelectionCount() > 0) {
+			txaEdit.replaceTextRange(startOffset, txaEdit.getSelectionCount(), "\t");
+			startOffset++;
+			endOffset = startOffset;
+		} else {
+			txaEdit.insert("\t");
 			startOffset++;
 			endOffset++;
-		} else
-			return;
+		}
 		txaEdit.setSelection(startOffset, endOffset);
 	}
 
@@ -2241,26 +2232,30 @@ public class QueryEditor extends ViewPart {
 		int startLine = txaEdit.getLineAtOffset(startOffset);
 		int endLine = txaEdit.getLineAtOffset(endOffset);
 
-		if (txaEdit.getSelectionText().endsWith(MainConstants.NEW_LINE))
-			endLine--;
-
-		for (int i = startLine; i <= endLine; i++)
-			if (!txaEdit.getText().substring(txaEdit.getOffsetAtLine(i))
-					.startsWith("\t"))
-				return;
-
-		for (int i = startLine; i <= endLine; i++)
-			txaEdit.replaceTextRange(txaEdit.getText().indexOf("\t",
-					txaEdit.getOffsetAtLine(i)), 1, "");
-
-		startOffset--;
-		endOffset -= (endLine - startLine + 1);
-
-		try {
-			txaEdit.setSelection(startOffset, endOffset);
-		} catch (Exception e) {
-			; // ignore
+		if (endLine > startLine) {
+			if (txaEdit.getSelectionText().endsWith(MainConstants.NEW_LINE))
+				endLine--;
+			if (txaEdit.getText().substring(txaEdit.getOffsetAtLine(startLine)).startsWith("\t")) {
+				startOffset--;
+			}
+			int offset = 0;
+			for (int i = startLine; i <= endLine; i++) {
+				if (!txaEdit.getText().substring(txaEdit.getOffsetAtLine(i)).startsWith("\t"))
+					continue;
+				txaEdit.replaceTextRange(txaEdit.getText().indexOf("\t", txaEdit.getOffsetAtLine(i)), 1, "");
+				offset++;
+			}
+			endOffset -= offset;
+		} else if (txaEdit.getSelectionCount() > 0) {
+			txaEdit.replaceTextRange(startOffset, txaEdit.getSelectionCount(), "\t");
+			startOffset++;
+			endOffset = startOffset;
+		} else {
+			txaEdit.insert("\t");
+			startOffset++;
+			endOffset++;
 		}
+		txaEdit.setSelection(startOffset, endOffset);
 	}
 
 	public static QueryEditor getApp() {

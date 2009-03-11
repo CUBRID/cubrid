@@ -789,7 +789,7 @@ public class ConnectDialog extends Dialog {
 
 				MainRegistry.UserSignedData = new String(Pass);
 			} catch (Exception e) {
-				System.out.println(e.getMessage());
+				CommonTool.debugPrint(e.getMessage());
 			}
 		} else {
 			ID = textID.getText().trim();

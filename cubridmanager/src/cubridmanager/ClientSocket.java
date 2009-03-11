@@ -416,6 +416,8 @@ public class ClientSocket {
 						TaskGetAutoAddVolLog();
 					else if (toks[1].equals("getautobackupdberrlog"))
 						TaskGetAutoBackupDBErrLog();
+					else if (toks[1].equals("getautoexecqueryerrlog"))
+						TaskGetAutoQueryErrLog();
 					else if (toks[1].equals("getautoexecquery"))
 						TaskGetAutoexecQuery();
 					else if (toks[1].equals("getbackupinfo"))
@@ -2314,7 +2316,22 @@ public class ClientSocket {
 			}
 		}
 	}
-
+	
+	void TaskGetAutoQueryErrLog(){
+		MainRegistry.Tmpchkrst.clear();
+		for (int i = 6, n = toks.length; i < n; i += 2) {
+			if (toks[i].equals("open")) {
+				MainRegistry.Tmpchkrst.add(toks[i + (1 * 2) + 1]);
+				MainRegistry.Tmpchkrst.add(toks[i + (2 * 2) + 1]);
+				MainRegistry.Tmpchkrst.add(toks[i + (3 * 2) + 1]);
+				MainRegistry.Tmpchkrst.add(toks[i + (4 * 2) + 1]);
+				MainRegistry.Tmpchkrst.add(toks[i + (5 * 2) + 1]);
+				MainRegistry.Tmpchkrst.add(toks[i + (6 * 2) + 1]);
+				i += (7 * 2);
+			}
+		}		
+	}
+	
 	void TaskGetHistoryList() {
 		/*
 		 * if (strcmp(m_NVList[1].name, "status")) { AfxMessageBox("Messsage

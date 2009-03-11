@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -3952,8 +3953,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	}
       else if (fkref->del_action == SM_FOREIGN_KEY_RESTRICT)
 	{
-	  if (btree_find_foreign_key (thread_p, &fkref->self_btid, key,
-				      &fkref->self_oid) > 0)
+	  if (logtb_is_repl_agent_client (thread_p) == false
+	      && btree_find_foreign_key (thread_p, &fkref->self_btid, key,
+					 &fkref->self_oid) > 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
 		      fkref->fkname);
@@ -4335,8 +4337,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 
       if (fkref->upd_action == SM_FOREIGN_KEY_RESTRICT)
 	{
-	  if (btree_find_foreign_key (thread_p, &fkref->self_btid, key,
-				      &fkref->self_oid) > 0)
+	  if (logtb_is_repl_agent_client (thread_p) == false
+	      && btree_find_foreign_key (thread_p, &fkref->self_btid, key,
+					 &fkref->self_oid) > 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1,
 		      fkref->fkname);
@@ -6931,7 +6934,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /* alloc index key copy_buf */
-  isid.copy_buf = (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
+  isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -6948,7 +6951,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       /* free index key copy_buf */
       if (isid.copy_buf)
 	{
-	  db_instant_free_and_init (thread_p, isid.copy_buf);
+	  db_private_free_and_init (thread_p, isid.copy_buf);
 	}
 
       return DISK_ERROR;
@@ -7066,7 +7069,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_instant_free_and_init (thread_p, isid.copy_buf);
+      db_private_free_and_init (thread_p, isid.copy_buf);
     }
 
   if (num_heap_oids != num_btree_oids)
@@ -7335,7 +7338,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
   /* alloc index key copy_buf */
-  isid.copy_buf = (char *) db_instant_alloc (thread_p, DBVAL_BUFSIZE);
+  isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -7476,7 +7479,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_instant_free_and_init (thread_p, isid.copy_buf);
+      db_private_free_and_init (thread_p, isid.copy_buf);
     }
 
   if (heap_scancache_end (thread_p, &isid.scan_cache) != NO_ERROR)
@@ -7556,7 +7559,7 @@ error:
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
-      db_instant_free_and_init (thread_p, isid.copy_buf);
+      db_private_free_and_init (thread_p, isid.copy_buf);
     }
   if (class_oids)
     {

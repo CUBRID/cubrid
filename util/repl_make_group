@@ -17,7 +17,7 @@
 usage() 
 {
   exec_name=`basename $0`
-  echo "usage: $exec_name master_db_name dist_db_name [-p passwd] [-f file_name] [-a | -d class_name_list] [-i] [-e]" 1>&2
+  echo "usage: $exec_name master_db_name dist_db_name [-p passwd] [-f file_name] [-a | -d class_name_list] [-i]" 1>&2
   exit 1
 }
 

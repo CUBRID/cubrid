@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
  *
  *  This program is distributed in the hope that it will be useful, 
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
  *
  */
 
@@ -510,6 +511,85 @@ read_error_file (char *err_file, char *err_buf, int err_buf_size)
     }
   fclose (fp);
   return (msg_size > 0 ? -1 : 0);
+}
+
+int 
+read_error_file2(char *err_file, char *err_buf, int err_buf_size,
+		int* err_code) {
+	FILE* fp;
+	char buf[1024];
+	int msg_size = 0;
+	char rm_prev_flag = 0;
+	int found = 0;
+	int success = 1;
+
+	if (err_buf == NULL)
+		return 0;
+
+	err_buf[0] = 0;
+
+	fp = fopen(err_file, "r");
+	if (fp == NULL) {
+		*err_code = 0;
+		return 0; /* not found error file */
+	}
+
+	while (1) {
+		char* p= NULL;
+		if (fgets(buf, sizeof(buf), fp) == NULL)
+			break;
+
+		/* start with "ERROR: " */
+		if (strlen(buf) > 7 && memcmp(buf, "ERROR: ", 7) == 0) {
+
+			int len = strlen(buf + 7);
+			if (len > 0 && buf[len + 7] == '\n')
+				len--;
+
+			if (len >= err_buf_size)
+				len = err_buf_size - 1;
+
+			memcpy(err_buf, buf + 7, len);
+			err_buf[len] = 0;
+
+			success = 0;
+			continue;
+		}
+
+		/* find "CODE = " */
+		p = strstr(buf, "CODE = ");
+		if (p != NULL) {
+			int len = 0;
+			if (sscanf(p, "CODE = %d", err_code) != 1)
+				continue;
+
+			success = 0;
+			found = 1;
+
+			/* read error description */
+			if (fgets(buf, sizeof(buf), fp) == NULL)
+				break;
+
+			len = strlen(buf);
+			if (len > 0 && buf[len] == '\n')
+				len--;
+
+			if (len >= err_buf_size)
+				len = err_buf_size - 1;
+
+			memcpy(err_buf, buf, len);
+			err_buf[len] = 0;
+		}
+	}
+
+	if (success != 0) {
+		*err_code = 0;
+		return 0;
+	} else if (found == 0) {
+		*err_code = -1;
+	}
+
+	return -1;
 }
 
 static T_SPACEDB_RESULT *

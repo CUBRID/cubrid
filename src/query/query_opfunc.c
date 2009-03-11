@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -1733,7 +1734,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
 	      if (tuple_record_p->size == 0)
 		{
 		  tuple_record_p->tpl =
-		    (char *) db_instant_alloc (thread_p, tpl_size);
+		    (char *) db_private_alloc (thread_p, tpl_size);
 		  if (tuple_record_p->tpl == NULL)
 		    {
 		      return ER_FAILED;
@@ -1742,7 +1743,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
 	      else
 		{
 		  tuple_record_p->tpl =
-		    (char *) db_instant_realloc (thread_p,
+		    (char *) db_private_realloc (thread_p,
 						 tuple_record_p->tpl,
 						 tpl_size);
 		  if (tuple_record_p->tpl == NULL)

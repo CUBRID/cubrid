@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -911,6 +912,17 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      smclass = sm_get_class_with_statistics (classop);
+	      if (smclass == NULL)
+		{
+		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
+		    {
+		      error = ER_PARTITION_WORK_FAILED;
+		    }
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PARTITION_WORK_FAILED, 0);
+		  goto fail_end;
+		}
+
 	      if (smclass->stats == NULL)
 		{
 		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
@@ -1888,7 +1900,12 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_CLASS *smcls;
   SM_CLASS_CONSTRAINT *idx;
   SM_ATTRIBUTE **attp;
-  int attnames_allocated = 0;
+  int attnames_allocated;
+
+  attnames = NULL;
+  asc_desc = NULL;
+  attnames_allocated = 0;
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -2028,8 +2045,14 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  free_and_init (attnames);
-  free_and_init (asc_desc);
+  if (attnames)
+    {
+      free_and_init (attnames);
+    }
+  if (asc_desc)
+    {
+      free_and_init (asc_desc);
+    }
 
   return error;
 }

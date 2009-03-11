@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -9657,7 +9658,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
     {
       if (remote_data_p)
 	{
-	  db_private_free_and_init (thread_p, remote_data_p);
+	  free_and_init (remote_data_p);
 	}
 
       return ER_FAILED;
@@ -9666,7 +9667,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
   ptr = or_unpack_int (remote_data_p, &remote_status);
   if (remote_status != NO_ERROR)
     {
-      db_private_free_and_init (thread_p, remote_data_p);
+      free_and_init (remote_data_p);
       return ER_FAILED;
     }
   data_size -= OR_INT_SIZE;
@@ -9678,7 +9679,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
 	      intl_mbs_len (remote_answer_p) + 1);
     }
 
-  db_private_free_and_init (thread_p, remote_data_p);
+  free_and_init (remote_data_p);
   return NO_ERROR;
 #else /* SERVER_MODE */
   extern unsigned int db_on_server;

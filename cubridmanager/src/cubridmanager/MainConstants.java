@@ -70,7 +70,7 @@ public interface MainConstants {
 	public static final String DBPARA_TEMPNUM = "tempvol_num_page";
 	public static final String MONPARA_STATUS = "monitoring_status";
 	public static final String MONPARA_INTERVAL = "monitoring_interval";
-	public static final String FILE_CONFIGURATION = "cubridmanager.ini";
+	public static final String FILE_CONFIGURATION = "configuration.ini";
 	public static final String PROP_HOSTCONFIGURATION = "Cubridmanager Configuration";
 	public static final String WORK_FOLDER = "workfolder";
 	public static final String DBVERSION_NEED_MDBC_NODE = "6.0";

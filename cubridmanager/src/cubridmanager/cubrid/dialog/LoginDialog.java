@@ -262,12 +262,27 @@ public class LoginDialog extends Dialog {
 				msg += "close:dbauth\n";
 			}
 		}
-		if (MainRegistry.CASAuth == MainConstants.AUTH_DBA)
-			msg += "casauth:admin\n";
-		else if (MainRegistry.CASAuth == MainConstants.AUTH_NONDBA)
-			msg += "casauth:monitor\n";
-		else
-			msg += "casauth:none\n";
+		String userport = (String) MainRegistry.UserPort
+				.get(MainRegistry.UserID);
+		if (MainRegistry.CASAuth == MainConstants.AUTH_DBA) {
+			if (userport.equals("") || userport == null) {
+				msg += "casauth:admin\n";
+			} else {
+				msg += "casauth:admin," + userport + "\n";
+			}
+		} else if (MainRegistry.CASAuth == MainConstants.AUTH_NONDBA) {
+			if (userport.equals("") || userport == null) {
+				msg += "casauth:monitor\n";
+			} else {
+				msg += "casauth:monitor," + userport + "\n";
+			}
+		} else {
+			if (userport.equals("") || userport == null) {
+				msg += "casauth:none\n";
+			} else {
+				msg += "casauth:none," + userport + "\n";
+			}
+		}
 
 		if (MainRegistry.IsDBAAuth)
 			msg += "dbcreate:admin\n";

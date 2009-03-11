@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -782,7 +783,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      /* allocate tuple descriptor */
 	      tplrec->size = DB_PAGESIZE;
 	      tplrec->tpl =
-		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+		(QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
 	      if (tplrec->tpl == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -2564,7 +2565,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	      /* allocate tuple descriptor */
 	      gbstate->output_tplrec->size = DB_PAGESIZE;
 	      gbstate->output_tplrec->tpl =
-		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+		(QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
 	      if (gbstate->output_tplrec->tpl == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -8694,7 +8695,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
 	      /* allocate tuple descriptor */
 	      tplrec->size = DB_PAGESIZE;
 	      tplrec->tpl =
-		(QFILE_TUPLE) db_instant_alloc (thread_p, DB_PAGESIZE);
+		(QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
 	      if (tplrec->tpl == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -8906,10 +8907,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   bool iscan_oid_order;
   int old_waitsecs;
   int error;
-  unsigned int old_ins_heap_id;
 
   /* create new instant heap memory and save old */
-  old_ins_heap_id = db_replace_instant_heap (thread_p);
 
   /*
    * Pre_processing
@@ -8994,11 +8993,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  if (tplrec.tpl)
 		    {
-		      db_instant_free_and_init (thread_p, tplrec.tpl);
+		      db_private_free_and_init (thread_p, tplrec.tpl);
 		    }
-		  /* restore old instant heap memory */
-		  db_destroy_instant_heap (thread_p, 0);
-		  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 		  qexec_failure_line (__LINE__, xasl_state);
 		  return ER_FAILED;
 		}
@@ -9065,12 +9061,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    {
 		      if (tplrec.tpl)
 			{
-			  db_instant_free_and_init (thread_p, tplrec.tpl);
+			  db_private_free_and_init (thread_p, tplrec.tpl);
 			}
-		      /* restore old instant heap memory */
-		      db_destroy_instant_heap (thread_p, 0);
-		      (void) db_change_instant_heap (thread_p,
-						     old_ins_heap_id);
 		      qexec_failure_line (__LINE__, xasl_state);
 		      return ER_FAILED;
 		    }
@@ -9081,12 +9073,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    {
 		      if (tplrec.tpl)
 			{
-			  db_instant_free_and_init (thread_p, tplrec.tpl);
+			  db_private_free_and_init (thread_p, tplrec.tpl);
 			}
-		      /* restore old instant heap memory */
-		      db_destroy_instant_heap (thread_p, 0);
-		      (void) db_change_instant_heap (thread_p,
-						     old_ins_heap_id);
 		      qexec_failure_line (__LINE__, xasl_state);
 		      return ER_FAILED;
 		    }
@@ -9502,12 +9490,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   if (tplrec.tpl)
     {
-      db_instant_free_and_init (thread_p, tplrec.tpl);
+      db_private_free_and_init (thread_p, tplrec.tpl); 
     }
-
-  /* restore old instant heap memory */
-  db_destroy_instant_heap (thread_p, 0);
-  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
 
   xasl->status = XASL_SUCCESS;
 
@@ -9532,12 +9516,8 @@ exit_on_error:
 
   if (tplrec.tpl)
     {
-      db_instant_free_and_init (thread_p, tplrec.tpl);
+      db_private_free_and_init (thread_p, tplrec.tpl);
     }
-  /* restore old instant heap memory */
-  db_destroy_instant_heap (thread_p, 0);
-  (void) db_change_instant_heap (thread_p, old_ins_heap_id);
-
   xasl->status = XASL_FAILURE;
 
   qexec_failure_line (__LINE__, xasl_state);

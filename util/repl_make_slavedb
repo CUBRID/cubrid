@@ -824,6 +824,7 @@ do
      if [ -n "$e_value" ]
      then
        dist_log_path=$e_value
+       dist_log_path=`echo $dist_log_path | sed -e "s/'//g"`
        break;
      fi
   fi
@@ -836,7 +837,7 @@ then
 fi
 
 $rootdir/bin/cubrid unloaddb -C -s $slave_db_name 1> /dev/null 2> /dev/null
-if [ -f "$distdb_name"_schema ]
+if [ -f "$slave_db_name"_schema ]
 then
   user_shcema=""
   while read line
@@ -853,7 +854,7 @@ then
       user_schema=$user_schema"$line
 "
     fi
-  done < "$distdb_name"_schema
+  done < "$slave_db_name"_schema
 
   debug_msg $LINENO "$user_schema"
 
@@ -861,7 +862,7 @@ then
   rm "$slave_db_name"_schema > /dev/null
 fi
 
-if [ -f "distdb_name"_trigger ]
+if [ -f "$slave_db_name"_trigger ]
 then
   cat "$slave_db_name"_trigger >> "$dist_log_path"/"$distdb_name".hist 
   rm "$slave_db_name"_trigger > /dev/null

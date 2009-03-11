@@ -374,6 +374,10 @@
 					RelativePath="..\..\src\heaplayers\customheaps.cpp"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\heaplayers\lea_heap.c"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="object"

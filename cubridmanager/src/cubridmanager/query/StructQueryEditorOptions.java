@@ -33,7 +33,7 @@ package cubridmanager.query;
 public class StructQueryEditorOptions {
 	public boolean autocommit = true;
 	public boolean getqueryplan = true;
-	public int recordlimit = 10000;
+	public int recordlimit = 5000;
 	public boolean oidinfo = false;
 	public int casport = 30000;
 	public String charset = "";

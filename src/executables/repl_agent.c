@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; version 2 of the License.
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  *
  */
@@ -137,26 +138,27 @@ extern int repl_Pipe_to_master;
       if (release == 1) repl_ag_release_page_buffer(pageid, m_idx);           \
       if (((log_pgptr) = repl_ag_get_page(++(pageid), m_idx)) == NULL) {      \
         REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
-      }                                                                       \
+      } else { release = 1; }                                                 \
       (offset) -= REPL_LOGAREA_SIZE(m_idx);                                   \
       DB_ALIGN((offset), INT_ALIGNMENT);                                      \
     }                                                                         \
   } while(0)
 
 #define REPL_LOG_READ_ADD_ALIGN(add, offset, pageid,                          \
-            log_pgptr, release,  m_idx)                                       \
+            log_pgptr, release, m_idx)                                        \
   do {                                                                        \
     (offset) += (add);                                                        \
     REPL_LOG_READ_ALIGN((offset), (pageid), (log_pgptr), (release), m_idx);   \
   } while(0)
 
 #define REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT(length, offset, pageid,         \
-              pgptr, release, m_idx)                                          \
+              pg_, release, m_idx)                                            \
   do {                                                                        \
     if ((offset)+(length) >= REPL_LOGAREA_SIZE(m_idx)) {                      \
       if ((release) == 1) repl_ag_release_page_buffer(pageid, m_idx);         \
-      if (((pgptr) = repl_ag_get_page(++(pageid), m_idx)) == NULL)            \
+      if (((pg_) = repl_ag_get_page(++(pageid), m_idx)) == NULL) {            \
         REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
+      } else { release = 1; }                                                 \
       (offset) = 0;                                                           \
       DB_ALIGN((offset), INT_ALIGNMENT);                                      \
     }                                                                         \
@@ -864,8 +866,6 @@ repl_log_copy_fromlog (char *rec_type, char *area, int length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      if (pg != log_pgptr)
-	release_yn = 1;
       copy_length =
 	((log_offset + rec_length <
 	  LOGAREA_SIZE) ? rec_length : LOGAREA_SIZE - log_offset);
@@ -885,8 +885,6 @@ repl_log_copy_fromlog (char *rec_type, char *area, int length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      if (pg != log_pgptr)
-	release_yn = 1;
       copy_length = ((log_offset + t_length < LOGAREA_SIZE) ? t_length
 		     : LOGAREA_SIZE - log_offset);
       memcpy (area + area_offset, (char *) (pg)->area + log_offset,
@@ -961,10 +959,8 @@ repl_ag_get_log_data (struct log_rec *lrec,
   offset = DB_SIZEOF (struct log_rec) + lsa->offset;
   pageid = lsa->pageid;
 
-  REPL_LOG_READ_ALIGN (offset, pageid, pg, 0, m_idx);
+  REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
   REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-  if (pg != pgptr)
-    release_yn = 1;
 
   switch (lrec->type)
     {
@@ -978,8 +974,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
       length = DB_SIZEOF (struct log_undoredo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset, pageid,
 					     pg, release_yn, m_idx);
-      if (pg != pgptr)
-	release_yn = 1;
 
       if (error == NO_ERROR)
 	{
@@ -1005,10 +999,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
 
 	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo), offset,
 				   pageid, pg, release_yn, m_idx);
-
-	  if (pg != pgptr)
-	    release_yn = 1;
-
 	  if (error == NO_ERROR)
 	    {
 	      if (is_diff)
@@ -1059,9 +1049,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
 					   offset, pageid, pg,
 					   release_yn, m_idx);
 		}
-
-	      if (pg != pgptr)
-		release_yn = 1;
 	    }
 	}
       break;
@@ -1070,8 +1057,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
       length = DB_SIZEOF (struct log_undo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 					     pageid, pg, release_yn, m_idx);
-      if (pg != pgptr)
-	release_yn = 1;
       if (error == NO_ERROR)
 	{
 	  undo = (struct log_undo *) ((char *) pg->area + offset);
@@ -1091,8 +1076,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	    }
 	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undo), offset, pageid,
 				   pg, release_yn, m_idx);
-	  if (pg != pgptr)
-	    release_yn = 1;
 	}
       break;
 
@@ -1100,8 +1083,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
       length = DB_SIZEOF (struct log_redo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 					     pageid, pg, release_yn, m_idx);
-      if (pg != pgptr)
-	release_yn = 1;
       if (error == NO_ERROR)
 	{
 	  redo = (struct log_redo *) ((char *) pg->area + offset);
@@ -1121,8 +1102,6 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	    }
 	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*redo), offset, pageid,
 				   pg, release_yn, m_idx);
-	  if (pg != pgptr)
-	    release_yn = 1;
 	}
       break;
 
@@ -1682,6 +1661,7 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   VPID prev_vpid;
   bool first = true;
   bool error_status = true;
+  bool is_end_of_record = false;
   int copyed_len;
   int area_len;
   int area_offset;
@@ -1691,7 +1671,7 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
   prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
 
-  while (!LSA_ISNULL (&current_lsa))
+  while (!is_end_of_record && !LSA_ISNULL (&current_lsa))
     {
       current_log_page = repl_ag_get_page (current_lsa.pageid, m_idx);
       current_log_record =
@@ -1720,7 +1700,8 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 	  error =
 	    repl_ag_get_log_data (current_log_record, &current_lsa,
 				  current_log_page, m_idx, rcvindex, NULL,
-				  &redo_log, NULL, &ovf_list_data->data,
+				  (void **) (&redo_log), NULL,
+				  &ovf_list_data->data,
 				  &ovf_list_data->length);
 
 	  if (error == NO_ERROR && redo_log && ovf_list_data->data)
@@ -1747,8 +1728,19 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 		    {
 		      error_status = false;
 		    }
-		  memcpy (&prev_vpid, &temp_vpid, DB_SIZEOF (VPID));
+		  prev_vpid.pageid = redo_log->data.pageid;
+		  prev_vpid.volid = redo_log->data.volid;
 		  *length += ovf_list_data->length;
+		}
+	      else
+		{
+		  if (error_status == false
+		      && (temp_vpid->pageid != prev_vpid.pageid
+			  || temp_vpid->volid != prev_vpid.volid))
+		    {
+		      is_end_of_record = true;
+		    }
+		  free_and_init (ovf_list_data);
 		}
 	    }
 	  else
@@ -1812,7 +1804,7 @@ repl_ag_get_relocation_recdes (struct log_rec *lrec,
   struct log_rec *tmp_lrec;
   unsigned int rcvindex;
   LOG_PAGE *pg = pgptr;
-  bool release_yn = false;
+  int release_yn = 0;
   LOG_LSA lsa;
   int error = NO_ERROR;
 
@@ -1822,7 +1814,7 @@ repl_ag_get_relocation_recdes (struct log_rec *lrec,
       pg = repl_ag_get_page (lsa.pageid, m_idx);
       if (pg != pgptr)
 	{
-	  release_yn = true;
+	  release_yn = 1;
 	}
       tmp_lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
       if (tmp_lrec->trid != lrec->trid)
@@ -1842,7 +1834,7 @@ repl_ag_get_relocation_recdes (struct log_rec *lrec,
       error = REPL_AGENT_GET_LOG_PAGE_FAIL;
     }
 
-  if (release_yn)
+  if (release_yn == 1)
     {
       repl_ag_release_page_buffer (lsa.pageid, m_idx);
     }
@@ -1923,14 +1915,10 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 	      offset = DB_SIZEOF (struct log_rec) + lsa.offset;
 	      pageid = lsa.pageid;
 	      REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
-	      if (pg != pgptr)
-		release_yn = 1;
 	      length = DB_SIZEOF (struct log_undoredo);
 	      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 						     pageid, pg,
 						     release_yn, m_idx);
-	      if (pg != pgptr)
-		release_yn = 1;
 	      if (error == NO_ERROR)
 		{
 		  undoredo =
@@ -1947,8 +1935,6 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 		      REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo),
 					       offset, pageid, pg,
 					       release_yn, m_idx);
-		      if (pg != pgptr)
-			release_yn = 1;
 
 		      if (bIsDiff)
 			{
@@ -1992,9 +1978,6 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 						   offset, pageid, pg,
 						   release_yn, m_idx);
 			}
-
-		      if (pg != pgptr)
-			release_yn = 1;
 
 		      if (ZIP_CHECK (temp_length))
 			{
@@ -2251,9 +2234,10 @@ repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
       && ((*record_data)->max_length
 	  <= ((*record_data)->length + pt_get_varchar_length (buf) + 3)))
     {
-      (*record_data) = (char *) realloc ((*record_data),
-					 debug_record_data->max_length
-					 + 10240);
+      (*record_data) =
+	(struct debug_string *) realloc ((*record_data),
+					 debug_record_data->max_length +
+					 10240);
       if ((*record_data) != NULL)
 	{
 	  (*record_data)->max_length += 10240;
@@ -2610,9 +2594,9 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
 		   debug_record_data->data, debug_workspace_data->data);
 	  fflush (debug_Log_fd);
 	}
-      debug_record_data->data[0] = NULL;
+      debug_record_data->data[0] = 0;
       debug_record_data->length = 0;
-      debug_workspace_data->data[0] = NULL;
+      debug_workspace_data->data[0] = 0;
       debug_workspace_data->length = 0;
     }
 
@@ -2688,36 +2672,35 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   int m_idx;
   char *class_name;
   char *str_value;
+  int release_yn = 0;
+  char *area;
 
   sinfo = repl_ag_get_slave_info (NULL);
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
+  t_pageid = lsa->pageid;
   target_offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  length = DB_SIZEOF (struct log_replication);
 
-  DB_ALIGN ((target_offset), INT_ALIGNMENT);
-  if (target_offset + DB_SIZEOF (struct log_replication)
-      >= REPL_LOGAREA_SIZE (m_idx))
-    {
-      log_pgptr2 = repl_ag_get_page (lsa->pageid + 1, m_idx);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
-			   log_pgptr2);
-      target_offset = 0;
-    }
-  DB_ALIGN (target_offset, INT_ALIGNMENT);
+  REPL_LOG_READ_ALIGN (target_offset, t_pageid, log_pgptr2, release_yn,
+		       m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, target_offset, t_pageid,
+					 log_pgptr2, release_yn, m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 
   repl_log =
     (struct log_replication *) ((char *) log_pgptr2->area + target_offset);
-
-  target_offset += DB_SIZEOF (*repl_log);
-
-  REPL_LOG_READ_ALIGN (target_offset, lsa->pageid, log_pgptr2, 0, m_idx);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-
+  target_offset += length;
   length = repl_log->length;
 
-  t_pageid = lsa->pageid;
-  repl_log_copy_fromlog (NULL, sinfo->log_data, length, t_pageid,
-			 target_offset, log_pgptr2, m_idx);
+  REPL_LOG_READ_ALIGN (target_offset, t_pageid, log_pgptr2, release_yn,
+		       m_idx);
+  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+
+  area = (char *) malloc (length);
+  repl_log_copy_fromlog (NULL, area, length, t_pageid, target_offset,
+			 log_pgptr2, m_idx);
 
   apply = repl_ag_find_apply_list (sinfo, tranid, idx);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
@@ -2726,7 +2709,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
     {
     case LOG_REPLICATION_DATA:
       {
-	ptr = or_unpack_string (sinfo->log_data, &class_name);
+	ptr = or_unpack_string (area, &class_name);
 
 	if (sinfo->masters[idx].all_repl == false &&
 	    repl_ag_get_class_from_repl_group (sinfo, idx, class_name,
@@ -2752,7 +2735,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	  {
 	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
 	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-	    ptr = or_unpack_int (sinfo->log_data, &apply->repl_tail->type);
+	    ptr = or_unpack_int (area, &apply->repl_tail->type);
 	    ptr = or_unpack_string (ptr, &apply->repl_tail->class_name);
 	    ptr = or_unpack_string (ptr, &str_value);
 	    db_make_string (&apply->repl_tail->key, str_value);
@@ -2764,11 +2747,12 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
       REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
     }
 
-  if (log_pgptr != log_pgptr2)
+  if (release_yn == 1)
     {
       repl_ag_release_page_buffer (log_pgptr2->hdr.logical_pageid, m_idx);
     }
 
+  free (area);
   return error;
 }
 
@@ -2801,19 +2785,17 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
 
   pg = pgptr;
 
-  REPL_LOG_READ_ALIGN (offset, pageid, pg, 0, m_idx);
-  if (pg != pgptr)
-    release_yn = 1;
-
+  REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
   REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (DB_SIZEOF (*donetime), offset,
 					 pageid, pg, release_yn, m_idx);
-  donetime = (struct log_donetime *) ((char *) pgptr->area + offset);
+  donetime = (struct log_donetime *) ((char *) pg->area + offset);
 
   if (release_yn == 1)
-    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    {
+      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    }
 
   return donetime->at_time;
-
 }
 
 /*
@@ -2949,7 +2931,7 @@ repl_ag_log_get_file_line (FILE * fp)
       line_count++;
     }
 
-  return line_count - 2;
+  return line_count < 2 ? line_count - 2 : 0;
 }
 
 /*

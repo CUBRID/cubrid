@@ -3,7 +3,8 @@
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
  *
  *  This program is distributed in the hope that it will be useful, 
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -12,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
  *
  */
 
@@ -41,7 +42,7 @@
 
 #define ERR_MSG_SIZE	1024
 
-#define CUBRID_ERROR_LOG_DIR		"log"
+#define CUBRID_ERROR_LOG_DIR		"log/server"
 
 #define CUBRID_DATABASE_TXT	"databases.txt"
 #define CUBRID_CUBRID_CONF	"cubrid.conf"
@@ -119,6 +120,6 @@ char *cubrid_cmd_name (char *buf);
 void cmd_result_free (T_CMD_RESULT * res);
 void cmd_spacedb_result_free (T_SPACEDB_RESULT * res);
 int read_error_file (char *err_file, char *err_buf, int err_buf_size);
+int read_error_file2 (char *err_file, char *err_buf, int err_buf_size, int* err_code);
 int read_csql_error_file (char *err_file, char *err_buf, int err_buf_size);
-
 #endif /* _CM_COMMAND_EXECUTE_H_ */
