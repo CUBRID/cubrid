@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -42,7 +42,7 @@
 #include <readline/history.h>
 #else /* !GNU_Readline */
 #if !defined(WINDOWS)
-#include "readline.h"
+#include <editline/readline.h>
 #endif /* !WINDOWS */
 #endif /* GNU_Readline */
 
@@ -1082,12 +1082,27 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      if (!strcasecmp (argument, "on"))
 		{
-		  histo_start ();
-		  csql_Is_histo_on = true;
+		  if (histo_start () == NO_ERROR)
+		    {
+		      csql_Is_histo_on = true;
+		    }
+		  else
+		    {
+		      if (er_errid () == ER_AU_DBA_ONLY)
+			{
+			  fprintf (csql_Output_fp,
+				   "Histogram is allowed only for DBA\n");
+			}
+		      else
+			{
+			  fprintf (csql_Output_fp,
+				   "Error on .hist command\n");
+			}
+		    }
 		}
 	      else if (!strcasecmp (argument, "off"))
 		{
-		  histo_stop ();
+		  (void) histo_stop ();
 		  csql_Is_histo_on = false;
 		}
 	      else
@@ -1098,9 +1113,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
-	      fprintf (csql_Output_fp, "Histogram on execution statistics "
-		       "is only allowed for the csql started "
-		       "with `communication_histogram=yes'\n");
+	      fprintf (csql_Output_fp,
+		       "Histogram is possible when the csql started with "
+		       "`communication_histogram=yes'\n");
 	    }
 	  break;
 
@@ -2224,7 +2239,6 @@ csql_exit (int exit_status)
 int
 csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 {
-  const char *errlog;
   char *env;
 
   /* Establish a globaly accessible longjmp environment so we can terminate
@@ -2298,10 +2312,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Is_interactive = true;
     }
 
+  /* initialize error log file */
+  if (er_init ("./csql.err", ER_NEVER_EXIT) != NO_ERROR)
+    {
+      printf ("Failed to initialize error manager.\n");
+      csql_Error_code = CSQL_ERR_OS_ERROR;;
+      goto error;
+    }
+
   /*
    * login and restart database
    */
-
+  db_set_client_type (DB_CLIENT_TYPE_CSQL);
   if (db_login (csql_arg->user_name, csql_arg->passwd) < 0 ||
       db_restart (argv0, FALSE, csql_arg->db_name) < 0)
     {
@@ -2370,8 +2392,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Pager_cmd[0] = '\0';
     }
 
-  errlog = er_msglog_filename ();
-
   if (csql_Is_interactive)
     {
       /* handling Ctrl-C */
@@ -2392,13 +2412,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
 #endif /* !WINDOWS */
-    }
-
-  if (er_init (errlog, ER_NEVER_EXIT) != NO_ERROR)
-    {
-      printf ("Failed to initialize error manager.\n");
-      csql_Error_code = CSQL_ERR_OS_ERROR;;
-      goto error;
     }
 
   start_csql (csql_arg);

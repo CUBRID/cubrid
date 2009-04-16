@@ -790,7 +790,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Dismount any archive and checkpoint the database */
   logpb_decache_archive_info ();
 
+  LOG_CS_EXIT ();
   (void) logpb_checkpoint (thread_p);
+  LOG_CS_ENTER (thread_p);
 
   /* Flush all dirty pages */
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
@@ -842,9 +844,9 @@ log_rv_analysis_client_name (THREAD_ENTRY * thread_p, int tran_id,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, LOG_USERNAME_MAX, log_lsa,
 				    log_page_p);
-  logtb_set_client_ids_all (&tdes->client, NULL, NULL,
-			    (char *) log_page_p->area + log_lsa->offset,
-			    log_Client_process_id_unknown);
+  logtb_set_client_ids_all (&tdes->client, 0, NULL,
+			    (char *) log_page_p->area + log_lsa->offset, NULL,
+			    NULL, NULL, -1);
 
   return NO_ERROR;
 }
@@ -2210,9 +2212,8 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
       LSA_COPY (&tdes->client_undo_lsa, &chkpt_one->client_undo_lsa);
       LSA_COPY (&tdes->client_posp_lsa, &chkpt_one->client_posp_lsa);
-      logtb_set_client_ids_all (&tdes->client, NULL, NULL,
-				chkpt_one->user_name,
-				log_Client_process_id_unknown);
+      logtb_set_client_ids_all (&tdes->client, 0, NULL, chkpt_one->user_name,
+				NULL, NULL, NULL, -1);
       if (LOG_ISTRAN_2PC (tdes))
 	{
 	  *may_need_synch_check_point_2pc = true;
@@ -2801,6 +2802,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
     case LOG_REPLICATION_SCHEMA:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
+    case LOG_DUMMY_HA_SERVER_STATE:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
@@ -3958,9 +3960,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      /*
 		       * Obtain the participant information
 		       */
-		      logtb_set_client_ids_all (&tdes->client, NULL, NULL,
-						start_2pc->user_name,
-						log_Client_process_id_unknown);
+		      logtb_set_client_ids_all (&tdes->client, 0, NULL,
+						start_2pc->user_name, NULL,
+						NULL, NULL, -1);
 		      tdes->gtrid = start_2pc->gtrid;
 
 		      num_particps = start_2pc->num_particps;
@@ -4126,12 +4128,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_DUMMY_CRASH_RECOVERY:
 	    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-	    case LOG_END_OF_LOG:
-
-	    case LOG_REPLICATION_DATA:	/* EJIN: for replication: Just Skip */
-	    case LOG_REPLICATION_SCHEMA:	/* EJIN: for replication: Just Skip */
+	    case LOG_REPLICATION_DATA:
+	    case LOG_REPLICATION_SCHEMA:
 	    case LOG_UNLOCK_COMMIT:
 	    case LOG_UNLOCK_ABORT:
+	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_END_OF_LOG:
 	      break;
 
 	    case LOG_SMALLER_LOGREC_TYPE:
@@ -4735,6 +4737,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_SCHEMA:
 		case LOG_UNLOCK_COMMIT:
 		case LOG_UNLOCK_ABORT:
+		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_END_OF_LOG:
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
@@ -5695,6 +5698,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_REPLICATION_SCHEMA:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
+    case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_END_OF_LOG:
       break;
 

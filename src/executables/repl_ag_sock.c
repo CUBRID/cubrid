@@ -356,7 +356,7 @@ repl_ag_sock_get_response (int m_idx, int *result, bool * in_archive)
   /* get result and data */
   length = length + minfo->io_pagesize;
   rc = css_net_recv (minfo->conn.client_sock, minfo->conn.resp_buffer,
-		     &length);
+		     &length, -1);
 
   if (rc != RECORD_TRUNCATED && rc != NO_ERRORS)
     {
@@ -399,8 +399,8 @@ repl_ag_sock_recv_agent_info (int m_idx)
   int length = COMM_RESP_BUF_SIZE;
   int io_pagesize;
 
-  rc = css_net_recv (minfo->conn.client_sock,
-		     minfo->conn.resp_buffer, &length);
+  rc = css_net_recv (minfo->conn.client_sock, minfo->conn.resp_buffer,
+		     &length, -1);
   if (rc != NO_ERRORS)
     {
       REPL_ERR_RETURN (REPL_FILE_AG_SOCK, REPL_AGENT_SOCK_ERROR);

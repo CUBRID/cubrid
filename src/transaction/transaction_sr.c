@@ -27,6 +27,7 @@
 
 #include <assert.h>
 
+#include "db.h"
 #include "transaction_sr.h"
 #include "locator_sr.h"
 #include "log_manager.h"
@@ -649,7 +650,7 @@ loop:
        * m-drivers.
        * We must have chance to receive data from them.
        */
-      thread_sleep (0, 500);
+      thread_sleep (0, 10000);	/* 10 msec */
     }
 
   if (thrd_cnt > 0)

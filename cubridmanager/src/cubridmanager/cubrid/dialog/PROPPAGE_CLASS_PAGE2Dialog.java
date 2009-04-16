@@ -248,8 +248,8 @@ public class PROPPAGE_CLASS_PAGE2Dialog extends Dialog {
 							return;
 						String msg = "dbname:" + CubridView.Current_db + "\n";
 						msg += "classname:" + si.name + "\n";
-						msg += "super:" + col2 + "\n";
-						msg += "name:" + col1 + "\n";
+						msg += "super:" + col1 + "\n";
+						msg += "name:" + col2 + "\n";
 						msg += "category:"
 								+ ((col0.equals("Yes") ? "class" : "instance"));
 

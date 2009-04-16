@@ -286,12 +286,10 @@ public class EditAttributeDialog extends Dialog {
 							msg.append("newattributename:");
 							msg.append(attname);
 							msg.append("\n");
-
-							if (!chkClassAttribute.getSelection())
-								msg
-										.append(chkClassAttribute
-												.getSelection() ? "category:class\n"
-												: "category:instance\n");
+						
+							msg.append(chkClassAttribute.getSelection() ? "category:class\n"
+									: "category:instance\n");
+							
 							msg.append("index:x\n"); 
 							msg.append(chkNotNull.getSelection() ? "notnull:y\n"
 											: "notnull:n\n");
@@ -758,25 +756,16 @@ public class EditAttributeDialog extends Dialog {
 						combo.addSelectionListener(new SelectionAdapter() {
 							public void widgetSelected(SelectionEvent event) {
 								if (combo.getSelectionIndex() != 0) {
-									if (item
-											.getText(0)
-											.equals(
-													Messages
-															.getString("COMBOITEM.SELECTION"))) {
-										TableItem newItem = new TableItem(
-												tblSetTypes, SWT.NONE);
-										newItem
-												.setText(
-														0,
-														Messages
-																.getString("COMBOITEM.SELECTION"));
+/*									
+  									if (item.getText(0).equals(Messages.getString("COMBOITEM.SELECTION"))) {
+										TableItem newItem = new TableItem(tblSetTypes, SWT.NONE);
+										newItem.setText(0, Messages.getString("COMBOITEM.SELECTION"));
 									}
+*/
 									item.setText(0, combo.getText());
 								} else {
-									if (tblSetTypes.getSelectionIndex() < (tblSetTypes
-											.getItemCount() - 1))
-										tblSetTypes.remove(tblSetTypes
-												.getSelectionIndex());
+									if (tblSetTypes.getSelectionIndex() < (tblSetTypes.getItemCount() - 1))
+										tblSetTypes.remove(tblSetTypes.getSelectionIndex());
 									else {
 										item.setText(1, "");
 										item.setText(2, "");
@@ -1036,7 +1025,7 @@ public class EditAttributeDialog extends Dialog {
 		case 18:
 		case 19:
 			domain += "(";
-			for (int i = 0; i < tblSetTypes.getItemCount() - 1; i++) {
+			for (int i = 0; i < tblSetTypes.getItemCount(); i++) {
 				TableItem item = tblSetTypes.getItem(i);
 				if (i > 0)
 					domain += ",";

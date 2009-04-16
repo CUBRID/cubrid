@@ -64,7 +64,7 @@ public class QueryInsertAction {
 			stmt = con.prepareStatement(sql);
 			stmt.execute();
 
-			resultMsg = stmt.getUpdateCount()
+			resultMsg = stmt.getUpdateCount() + " "
 					+ Messages.getString("QEDIT.INSERTOK");
 
 			stmt.close();

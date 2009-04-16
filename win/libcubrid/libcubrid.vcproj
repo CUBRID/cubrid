@@ -611,6 +611,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\transaction\log_writer.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\transaction\recovery.c"
 					>
 				</File>

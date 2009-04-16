@@ -229,10 +229,10 @@ static TP_DOMAIN *locator_make_midxkey_domain (OR_INDEX * index);
 static DISK_ISVALID
 locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    RECDES * classrec, ATTR_ID * attr_ids,
-				    bool repair);
-static bool
-locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
-				   BTID * btid, int pos);
+				    const char *btname, bool repair);
+static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO *
+					       index_attrinfo, BTID * btid,
+					       int pos);
 
 
 /*
@@ -3953,7 +3953,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	}
       else if (fkref->del_action == SM_FOREIGN_KEY_RESTRICT)
 	{
-	  if (logtb_is_repl_agent_client (thread_p) == false
+	  if (LOG_CHECK_LOG_APPLIER (thread_p) == false
 	      && btree_find_foreign_key (thread_p, &fkref->self_btid, key,
 					 &fkref->self_oid) > 0)
 	    {
@@ -4337,7 +4337,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 
       if (fkref->upd_action == SM_FOREIGN_KEY_RESTRICT)
 	{
-	  if (logtb_is_repl_agent_client (thread_p) == false
+	  if (LOG_CHECK_LOG_APPLIER (thread_p) == false
 	      && btree_find_foreign_key (thread_p, &fkref->self_btid, key,
 					 &fkref->self_oid) > 0)
 	    {
@@ -4832,7 +4832,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	   * The target log info. was already created when the locator_update_index()
 	   */
 #if !defined(WINDOWS)
-	  if (IS_REPLICATED_MODE (&class_oid, true, true))
+	  if (IS_REPLICATED_MODE (&class_oid, true, true)
+	      && !LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      repl_add_update_lsa (thread_p, oid);
 	    }
@@ -5967,7 +5968,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
        */
 #if !defined(WINDOWS)
       if (IS_REPLICATED_MODE (class_oid, (index->type == BTREE_PRIMARY_KEY),
-			      need_replication))
+			      need_replication)
+	  && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  repl_log_insert (thread_p, class_oid, inst_oid,
 			   datayn ? LOG_REPLICATION_DATA :
@@ -6188,7 +6190,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   for (i = 0; i < num_btids; i++)
     {
 #if !defined(WINDOWS)
-      if (pk_btid_index == -1 && PRM_REPLICATION_MODE && need_replication)
+      if (pk_btid_index == -1 && PRM_REPLICATION_MODE && need_replication
+	  && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  tmp_btid = heap_indexinfo_get_btid (i, new_attrinfo);
 	  if (tmp_btid != NULL
@@ -7122,7 +7125,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 static DISK_ISVALID
 locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    RECDES * classrec, ATTR_ID * attr_ids,
-				    bool repair)
+				    const char *btname, bool repair)
 {
   DISK_ISVALID isvalid = DISK_VALID, isallvalid = DISK_VALID;
   OID inst_oid;
@@ -7143,6 +7146,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   OID *class_oids = NULL, *class_oid = NULL;
   INDX_SCAN_ID isid;
   char buf[DBVAL_BUFSIZE];
+  char *class_name_p = NULL;
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -7284,17 +7288,33 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 			      char *key_dmp;
 
 			      key_dmp = pr_valstring (dbvalue_ptr);
+			      if (class_oid && !OID_ISNULL (class_oid))
+				{
+				  class_name_p =
+				    heap_get_class_name (thread_p, class_oid);
+				}
+
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1,
-				      7,
+				      12,
+				      (btname) ? btname : "*UNKNOWN-INDEX*",
+				      (class_name_p) ? class_name_p :
+				      "*UNKNOWN-CLASS*", class_oid->volid,
+				      class_oid->pageid, class_oid->slotid,
 				      (key_dmp) ? key_dmp : "_NULL_KEY",
 				      inst_oid.volid, inst_oid.pageid,
 				      inst_oid.slotid, btid->vfid.volid,
 				      btid->vfid.fileid, btid->root_pageid);
+
 			      if (key_dmp)
 				{
 				  free_and_init (key_dmp);
 				}
+			      if (class_name_p)
+				{
+				  free_and_init (class_name_p);
+				}
+
 
 			      if (isallvalid != DISK_INVALID)
 				{
@@ -7427,12 +7447,28 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 	      if (status != DISK_VALID)
 		{
+
+		  if (class_oid && !OID_ISNULL (class_oid))
+		    {
+		      class_name_p =
+			heap_get_class_name (thread_p, class_oid);
+		    }
+
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2,
-			  6, oid_area[i].volid,
-			  oid_area[i].pageid,
-			  oid_area[i].slotid, btid->vfid.volid,
-			  btid->vfid.fileid, btid->root_pageid);
+			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
+			  (btname) ? btname : "*UNKNOWN-INDEX*",
+			  (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
+			  class_oid->volid, class_oid->pageid,
+			  class_oid->slotid, oid_area[i].volid,
+			  oid_area[i].pageid, oid_area[i].slotid,
+			  btid->vfid.volid, btid->vfid.fileid,
+			  btid->root_pageid);
+
+		  if (class_name_p)
+		    {
+		      free_and_init (class_name_p);
+		    }
+
 		  isallvalid = DISK_INVALID;
 		}
 	    }
@@ -7462,12 +7498,28 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
 	      if (!found)
 		{
+
+		  if (class_oid && !OID_ISNULL (class_oid))
+		    {
+		      class_name_p =
+			heap_get_class_name (thread_p, class_oid);
+		    }
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE8,
-			  6, oid_area[i].volid,
+			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE8, 11,
+			  (btname) ? btname : "*UNKNOWN-INDEX*",
+			  (class_name_p) ? class_name_p :
+			  "*UNKNOWN-CLASS*",
+			  class_oid->volid, class_oid->pageid,
+			  class_oid->slotid,
+			  oid_area[i].volid,
 			  oid_area[i].pageid,
 			  oid_area[i].slotid, btid->vfid.volid,
 			  btid->vfid.fileid, btid->root_pageid);
+
+		  if (class_name_p)
+		    {
+		      free_and_init (class_name_p);
+		    }
 		  isallvalid = DISK_INVALID;
 		}
 	    }
@@ -7503,36 +7555,101 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* Do the numbers add up? */
   if (num_heap_oids != num_btree_oids + num_nulls)
     {
+      if (class_oid && !OID_ISNULL (class_oid))
+	{
+	  class_name_p = heap_get_class_name (thread_p, class_oid);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE4, 6,
+	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE4, 11,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (class_name_p) ? class_name_p :
+	      "*UNKNOWN-CLASS*",
+	      class_oid->volid, class_oid->pageid,
+	      class_oid->slotid,
 	      num_heap_oids, num_btree_oids, num_nulls,
 	      btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+      if (class_name_p)
+	{
+	  free_and_init (class_name_p);
+	}
+
       isallvalid = DISK_INVALID;
     }
+
   if (num_heap_oids != btree_oid_cnt)
     {
+      if (class_oid && !OID_ISNULL (class_oid))
+	{
+	  class_name_p = heap_get_class_name (thread_p, class_oid);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE5, 5,
+	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE5, 10,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (class_name_p) ? class_name_p :
+	      "*UNKNOWN-CLASS*",
+	      class_oid->volid, class_oid->pageid,
+	      class_oid->slotid,
 	      num_heap_oids, btree_oid_cnt,
 	      btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+      if (class_name_p)
+	{
+	  free_and_init (class_name_p);
+	}
+
       isallvalid = DISK_INVALID;
     }
+
   if (num_nulls != btree_null_cnt)
     {
+      if (class_oid && !OID_ISNULL (class_oid))
+	{
+	  class_name_p = heap_get_class_name (thread_p, class_oid);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE7, 5,
+	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE7, 10,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (class_name_p) ? class_name_p :
+	      "*UNKNOWN-CLASS*",
+	      class_oid->volid, class_oid->pageid,
+	      class_oid->slotid,
 	      num_nulls, btree_null_cnt,
 	      btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+      if (class_name_p)
+	{
+	  free_and_init (class_name_p);
+	}
       isallvalid = DISK_INVALID;
     }
 
   /* finally check if the btree thinks that it is unique */
   if (btree_oid_cnt != btree_null_cnt + btree_key_cnt)
     {
+      if (class_oid && !OID_ISNULL (class_oid))
+	{
+	  class_name_p = heap_get_class_name (thread_p, class_oid);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE6, 6,
+	      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE6, 11,
+	      (btname) ? btname : "*UNKNOWN-INDEX*",
+	      (class_name_p) ? class_name_p :
+	      "*UNKNOWN-CLASS*",
+	      class_oid->volid, class_oid->pageid,
+	      class_oid->slotid,
 	      btree_oid_cnt, btree_null_cnt, btree_key_cnt,
 	      btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+      if (class_name_p)
+	{
+	  free_and_init (class_name_p);
+	}
+
       isallvalid = DISK_INVALID;
     }
 
@@ -7709,6 +7826,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 								    btid,
 								    &peek,
 								    attrids,
+								    btname,
 								    repair);
 		      if (isvalid != DISK_VALID)
 			{
@@ -8870,7 +8988,7 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
   int error_code = NO_ERROR;
 
 #if !defined(WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       switch (repl_info->repl_info_type)
 	{
@@ -8917,14 +9035,14 @@ xrepl_log_get_append_lsa (void)
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fkname(in):
+ *   fk_name(in):
  */
 int
 xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 				HFID * hfid, TP_DOMAIN * key_type,
 				int n_attrs, int *attr_ids, OID * pk_cls_oid,
 				BTID * pk_btid, int cache_attr_id,
-				char *fkname)
+				char *fk_name)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -8976,7 +9094,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 
       error_code = btree_check_foreign_key (thread_p, cls_oid, hfid, &oid,
 					    key_val, n_attrs, pk_cls_oid,
-					    pk_btid, cache_attr_id, fkname);
+					    pk_btid, cache_attr_id, fk_name);
 
       if (key_val == &tmpval)
 	{

@@ -73,21 +73,12 @@ static int get_conf_value_table (char *value, T_CONF_TABLE * conf_table);
 
 
 static T_CONF_TABLE tbl_appl_server[] = {
-  {"VAS", APPL_SERVER_UTS_C},
-  {"AMS", APPL_SERVER_AM},
-  {"ULS", APPL_SERVER_UPLOAD},
-  {"WAS", APPL_SERVER_UTS_W},
   {"CAS", APPL_SERVER_CAS},
+  {"CAS_ORACLE", APPL_SERVER_CAS_ORACLE},
+  {"CAS_MYSQL", APPL_SERVER_CAS_MYSQL},
   {NULL, 0}
 };
 
-static T_CONF_TABLE tbl_error_log[] = {
-  {"NONE", CONF_ERR_LOG_NONE},
-  {"LOGFILE", CONF_ERR_LOG_LOGFILE},
-  {"BROWSER", CONF_ERR_LOG_BROWSER},
-  {"BOTH", CONF_ERR_LOG_BOTH},
-  {NULL, 0}
-};
 static T_CONF_TABLE tbl_on_off[] = {
   {"ON", ON},
   {"OFF", OFF},
@@ -348,10 +339,6 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 	  goto conf_error;
 	}
 
-      br_info[num_brs].compress_size =
-	ini_getuint (ini, sec_name, "COMPRESS_SIZE", DEFAULT_COMPRESS_SIZE);
-      br_info[num_brs].compress_size *= 1024;	/* K bytes */
-
       strcpy (br_info[num_brs].source_env,
 	      ini_getstr (ini, sec_name, "SOURCE_ENV", DEFAULT_EMPTY_STRING));
 
@@ -427,68 +414,12 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 	  goto conf_error;
 	}
 
-      br_info[num_brs].session_flag =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "SESSION", "OFF"));
-      if (br_info[num_brs].session_flag < 0)
-	{
-	  goto conf_error;
-	}
-
       br_info[num_brs].job_queue_size =
 	ini_getuint_max (ini, sec_name, "JOB_QUEUE_SIZE",
 			 DEFAULT_JOB_QUEUE_SIZE, JOB_QUEUE_MAX_SIZE);
 
-      br_info[num_brs].priority_gap =
-	ini_getuint (ini, sec_name, "PRIORITY_GAP", DEFAULT_PRIORITY_GAP);
-
       br_info[num_brs].time_to_kill =
 	ini_getuint (ini, sec_name, "TIME_TO_KILL", DEFAULT_TIME_TO_KILL);
-
-      strcpy (br_info[num_brs].doc_root,
-	      ini_getstr (ini, sec_name, "APPL_ROOT", DEFAULT_DOC_ROOT_DIR));
-
-      br_info[num_brs].error_log =
-	get_conf_value_table (ini_getstr
-			      (ini, sec_name, "ERROR_LOG", DEFAULT_ERROR_LOG),
-			      tbl_error_log);
-      if (br_info[num_brs].error_log < 0)
-	{
-	  goto conf_error;
-	}
-
-      strcpy (br_info[num_brs].file_upload_temp_dir,
-	      ini_getstr (ini, sec_name, "FILE_UPLOAD_TEMP_DIR",
-			  DEFAULT_FILE_UPLOAD_TEMP_DIR));
-
-      strcpy (br_info[num_brs].file_upload_delimiter,
-	      ini_getstr (ini, sec_name, "FILE_UPLOAD_DELIMITER",
-			  DEFAULT_FILE_UPLOAD_DELIMITER));
-
-      br_info[num_brs].set_cookie =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "SET_COOKIE", "OFF"));
-      if (br_info[num_brs].set_cookie < 0)
-	{
-	  goto conf_error;
-	}
-
-      br_info[num_brs].entry_value_trim =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "ENTRY_VALUE_TRIM",
-				      "ON"));
-      if (br_info[num_brs].entry_value_trim < 0)
-	{
-	  goto conf_error;
-	}
-
-      br_info[num_brs].oid_check =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "OID_CHECK", "ON"));
-      if (br_info[num_brs].entry_value_trim < 0)
-	{
-	  goto conf_error;
-	}
 
       br_info[num_brs].access_log =
 	conf_get_value_table_on_off (ini_getstr
@@ -501,14 +432,6 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
       strcpy (br_info[num_brs].acl_file,
 	      ini_getstr (ini, sec_name, "ACCESS_LIST",
 			  DEFAULT_EMPTY_STRING));
-
-      br_info[num_brs].enc_appl_flag =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "ENC_APPL", "OFF"));
-      if (br_info[num_brs].enc_appl_flag < 0)
-	{
-	  goto conf_error;
-	}
 
       br_info[num_brs].max_string_length =
 	ini_getint (ini, sec_name, "MAX_STRING_LENGTH", -1);
@@ -660,14 +583,6 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 
       for (i = 0; i < num_brs; i++)
 	{
-#if 0
-	  if (br_info[i].appl_server != APPL_SERVER_CAS)
-	    {
-	      if (br_info[i].session_timeout <= 0)
-		br_info[i].session_timeout = DEFAULT_SESSION_TIMEOUT;
-	    }
-#endif
-	  dir_repath (br_info[i].doc_root);
 	  dir_repath (br_info[i].access_log_file);
 	  dir_repath (br_info[i].error_log_file);
 	  if (br_info[i].source_env[0] != '\0')
@@ -678,8 +593,6 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 	    {
 	      dir_repath (br_info[i].acl_file);
 	    }
-	  dir_repath (br_info[i].file_upload_temp_dir);
-	  mkdir (br_info[i].file_upload_temp_dir, 0777);
 	}
       dir_repath (admin_log_file);
     }

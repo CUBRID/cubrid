@@ -3480,7 +3480,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_ADD_HASHPARTITION:
     case PT_REORG_PARTITION:
     case PT_COALESCE_PARTITION:
-      if (sm_class_has_triggers (db, &trigger_involved) == NO_ERROR)
+      if (sm_class_has_triggers (db, &trigger_involved, TR_EVENT_ALL) ==
+	  NO_ERROR)
 	{
 	  if (trigger_involved)
 	    {

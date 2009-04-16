@@ -56,7 +56,6 @@
 #include "cas_sql_log2.h"
 
 #include "release_string.h"
-
 #ifdef DIAG_DEVEL
 #include "perf_monitor.h"
 #endif
@@ -69,7 +68,7 @@
 #define IN_STR		0
 
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
-			     T_NET_BUF *);
+			     T_NET_BUF *, T_REQ_INFO *);
 
 typedef struct t_priv_table T_PRIV_TABLE;
 struct t_priv_table
@@ -135,17 +134,24 @@ static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
   fetch_xxx prototype:
   fetch_xxx(T_SRV_HANDLE *, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx, T_NET_BUF *);
 */
-static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int,
-			     T_NET_BUF *);
-static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
-static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *);
+static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			 T_REQ_INFO *);
+static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			T_REQ_INFO *);
+static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			    T_REQ_INFO *);
+static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			 T_REQ_INFO *);
+static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			   T_REQ_INFO *);
+static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			     T_REQ_INFO *);
+static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			  T_REQ_INFO *);
+static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
+			    T_REQ_INFO *);
 static int fetch_primary_key (T_SRV_HANDLE *, int, int, char, int,
-			      T_NET_BUF *);
+			      T_NET_BUF *, T_REQ_INFO *);
 
 static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size,
 				char type);
@@ -290,24 +296,29 @@ static T_FETCH_FUNC fetch_func[] = {
 static char database_name[SRV_CON_DBNAME_SIZE] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
+static char database_host[MAXHOSTNAMELEN + 1] = "";
 static char cas_db_sys_param[128] = "";
 
 #ifndef LIBCAS_FOR_JSP
-extern int need_auto_commit;
+extern char boot_Host_connected[];
 #endif
 
 int
 ux_check_connection (void)
 {
 #ifndef LIBCAS_FOR_JSP
-  extern int net_client_ping_server ();
 
   if (ux_is_database_connected ())
     {
-      if (net_client_ping_server () < 0)
+      if (db_ping_server (0, NULL) < 0)
 	{
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_check_connection: db_ping_server() error");
+	  cas_log_write (0, TRUE, "connection lost");
 	  if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
 	    {
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_check_connection: cur_statement_pooling");
 	      return -1;
 	    }
 	  else
@@ -320,10 +331,18 @@ ux_check_connection (void)
 	      strcpy (dbuser, database_user);
 	      strcpy (dbpasswd, database_passwd);
 
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_check_connection: ux_database_shutdown()"
+			     " ux_database_connect(%s, %s)", dbname, dbuser);
 	      ux_database_shutdown ();
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
 	}
+      return 0;
+    }
+  else
+    {
+      return -1;
     }
 #endif
   return 0;
@@ -340,21 +359,33 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
   if (db_name == NULL || db_name[0] == '\0')
     return -1;
 
-  if (!db_Connect_status
-      || database_name[0] == '\0' || strcmp (database_name, db_name) != 0)
+  if (db_Connect_status == 0	/* DB_CONNECTION_STATUS_NOT_CONNECTED */
+      || database_name[0] == '\0'
+      || strcmp (database_name, db_name) != 0
+      || strcmp (database_host, boot_Host_connected) != 0)
     {
       if (database_name[0] != '\0')
 	{
 	  ux_database_shutdown ();
 	}
       db_disable_first_user ();
+      db_set_client_type (3);	/* DB_CLIENT_TYPE_BROKER in db.h */
       if ((err_code = db_login (db_user, db_passwd)) < 0)
-	goto connect_error;
+	{
+	  goto connect_error;
+	}
       if ((err_code = db_restart (APPL_SERVER_CAS_NAME, 0, db_name)) < 0)
-	goto connect_error;
+	{
+	  goto connect_error;
+	}
+      cas_log_debug (ARG_FILE_LINE,
+		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
+		     db_user, db_name, boot_Host_connected);
       strncpy (database_name, db_name, sizeof (database_name) - 1);
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
+      strncpy (database_host, boot_Host_connected,
+	       sizeof (database_host) - 1);
 
       ux_get_default_setting ();
     }
@@ -369,8 +400,8 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	{
 	  ux_database_shutdown ();
 
-	  return (ux_database_connect
-		  (db_name, db_user, db_passwd, db_err_msg));
+	  return ux_database_connect (db_name, db_user, db_passwd,
+				      db_err_msg);
 	}
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
@@ -388,6 +419,42 @@ connect_error:
       if (*db_err_msg)
 	strcpy (*db_err_msg, p);
     }
+  return err_code;
+}
+
+int
+ux_database_reconnect (void)
+{
+  int err_code;
+
+  if (!ux_is_database_connected ())
+    return 1;
+
+  if ((err_code = db_shutdown ()) < 0)
+    {
+      goto reconnect_error;
+    }
+  cas_log_debug (ARG_FILE_LINE, "ux_database_reconnect: db_shutdown()");
+
+  db_set_client_type (3);	/* DB_CLIENT_TYPE_BROKER in db.h */
+  db_disable_first_user ();
+  if ((err_code = db_login (database_user, database_passwd)) < 0)
+    {
+      goto reconnect_error;
+    }
+  if ((err_code = db_restart (APPL_SERVER_CAS_NAME, 0, database_name)) < 0)
+    {
+      goto reconnect_error;
+    }
+  cas_log_debug (ARG_FILE_LINE,
+		 "ux_database_reconnect: db_login (%s) db_restart(%s) at %s",
+		 database_user, database_name, boot_Host_connected);
+
+  ux_get_default_setting ();
+
+  return 0;
+
+reconnect_error:
   return err_code;
 }
 #endif
@@ -412,8 +479,8 @@ ux_get_default_setting ()
   strcpy (cas_db_sys_param,
 	  "index_scan_in_oid_order;garbage_collection;optimization_level;");
 
-  if (db_get_system_parameters
-      (cas_db_sys_param, sizeof (cas_db_sys_param) - 1) < 0)
+  if (db_get_system_parameters (cas_db_sys_param,
+				sizeof (cas_db_sys_param) - 1) < 0)
     {
       cas_db_sys_param[0] = '\0';
     }
@@ -444,6 +511,7 @@ void
 ux_database_shutdown ()
 {
   db_shutdown ();
+  cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
   memset (database_name, 0, sizeof (database_name));
   memset (database_user, 0, sizeof (database_user));
   memset (database_passwd, 0, sizeof (database_passwd));
@@ -675,7 +743,7 @@ prepare_error2:
 #ifndef LIBCAS_FOR_JSP
   if (auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOROLLBACK;
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
   if (srv_handle)
@@ -951,7 +1019,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	|| srv_handle->q_result->stmt_type == CUBRID_STMT_EVALUATE)
       && srv_handle->auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #endif
 
@@ -982,7 +1050,7 @@ execute_error2:
 #ifndef LIBCAS_FOR_JSP
   if (srv_handle->auto_commit_mode)
     {
-      need_auto_commit = TRAN_AUTOROLLBACK;
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
   if (value_list)
@@ -1228,7 +1296,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	   srv_handle->q_result->stmt_type == CUBRID_STMT_EVALUATE)
       && srv_handle->auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #endif
 
@@ -1258,7 +1326,7 @@ execute_all_err_db:
 #ifndef LIBCAS_FOR_JSP
   if (srv_handle->auto_commit_mode)
     {
-      need_auto_commit = TRAN_AUTOROLLBACK;
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
   if (value_list)
@@ -1493,7 +1561,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 #ifndef LIBCAS_FOR_JSP
   if (auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #endif
 
@@ -1636,7 +1704,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 #ifndef LIBCAS_FOR_JSP
   if (auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #endif
 
@@ -1872,7 +1940,8 @@ ux_set_lock_timeout (int lock_timeout)
 
 int
 ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-	  char fetch_flag, int result_set_index, T_NET_BUF * net_buf)
+	  char fetch_flag, int result_set_index, T_NET_BUF * net_buf,
+	  T_REQ_INFO * req_info)
 {
   int err_code;
   int fetch_func_index;
@@ -1913,7 +1982,8 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 						cursor_pos,
 						fetch_count,
 						fetch_flag,
-						result_set_index, net_buf);
+						result_set_index,
+						net_buf, req_info);
 
   if (err_code < 0)
     {
@@ -2779,20 +2849,23 @@ oid_put_error2:
 }
 
 void
-#ifdef CAS_DEBUG
-db_err_msg_set_debug (T_NET_BUF * net_buf, int err_code, char *file, int line)
-#else
-db_err_msg_set (T_NET_BUF * net_buf, int err_code)
-#endif
+db_err_msg_set (T_NET_BUF * net_buf, int err_code, char *file, int line)
 {
+  int err_code2;
   char *err_msg;
 
+  if (err_code == -1)		/* might be connection error */
+    {
+      err_code = er_errid ();
+    }
   err_msg = (char *) db_error_string (1);
 
-  if (err_code == -1 || err_code == -224)
+  if (net_buf != NULL)
     {
-      if (database_name[0] != '\0')
-	ux_database_shutdown ();
+      net_buf_error_msg_set (net_buf, err_code, err_msg, file, line);
+      cas_log_debug (ARG_FILE_LINE,
+		     "db_err_msg_set: err_code %d err_msg %s file %s line %d",
+		     err_code, err_msg, file, line);
     }
 #ifndef LIBCAS_FOR_JSP
   else if (err_code == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
@@ -2801,14 +2874,34 @@ db_err_msg_set (T_NET_BUF * net_buf, int err_code)
     }
 #endif
 
-  if (net_buf == NULL)
-    return;
-
-#ifdef CAS_DEBUG
-  net_buf_error_msg_set_debug (net_buf, err_code, err_msg, file, line);
+  switch (err_code)
+    {
+    case -111:			/* ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED */
+    case -199:			/* ER_NET_SERVER_CRASHED */
+    case -224:			/* ER_OBJ_NO_CONNECT */
+      /*case -581: *//* ER_DB_NO_MODIFICATIONS */
+#if 0				/* TODO: ??? */
+#ifndef LIBCAS_FOR_JSP
+      if ((err_code2 = ux_database_reconnect ()) < 0)
+	{
+	  /* error while restarting the db server connection */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "db_err_msg_set: ux_database_reconnect() error");
+	}
 #else
-  net_buf_error_msg_set (net_buf, err_code, err_msg);
+      if (database_name[0] != '\0')
+	{
+	  ux_database_shutdown ();
+	}
 #endif
+#else
+      if (database_name[0] != '\0')
+	{
+	  ux_database_shutdown ();
+	}
+#endif
+      break;
+    }
 }
 
 char
@@ -4173,7 +4266,8 @@ oid_data_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num,
 
 static int
 fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-	      char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+	      char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   int err_code;
@@ -4243,7 +4337,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      && srv_handle->auto_commit_mode == TRUE
 	      && srv_handle->forward_only_cursor == TRUE)
 	    {
-	      need_auto_commit = TRAN_AUTOCOMMIT;
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif
 	  return 0;
@@ -4320,7 +4414,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      && srv_handle->auto_commit_mode == TRUE
 	      && srv_handle->forward_only_cursor == TRUE)
 	    {
-	      need_auto_commit = TRAN_AUTOCOMMIT;
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif
 	  break;
@@ -4340,7 +4434,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      && srv_handle->auto_commit_mode == TRUE
 	      && srv_handle->forward_only_cursor == TRUE)
 	    {
-	      need_auto_commit = TRAN_AUTOCOMMIT;
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 #endif
 	  break;
@@ -4361,7 +4455,8 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-	     char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+	     char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+	     T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   int tuple_num, tuple_num_msg_offset;
@@ -4405,7 +4500,8 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		 char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+		 char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+		 T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   int err_code;
@@ -4572,7 +4668,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-	      char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+	      char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_METHOD *tmp_p;
@@ -4662,7 +4759,8 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+		char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_METHFILE *tmp_p;
@@ -4712,7 +4810,8 @@ fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		  char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+		  char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+		  T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_CONSTRAINT *tmp_p;
@@ -4804,7 +4903,8 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-	       char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+	       char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+	       T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_OBJLIST *tmp_p;
@@ -4946,7 +5046,8 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		 char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+		 char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+		 T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   int num_result;
@@ -5031,7 +5132,8 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 static int
 fetch_primary_key (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		   char fetch_flag, int result_set_idx, T_NET_BUF * net_buf)
+		   char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
+		   T_REQ_INFO * req_info)
 {
   net_buf_cp_int (net_buf, 0, NULL);
   return 0;
@@ -5696,21 +5798,16 @@ get_domain_str (DB_DOMAIN * domain)
 static void
 glo_err_msg_set (T_NET_BUF * net_buf, int err_code, const char *method_nm)
 {
-  char err_msg[128];
-#ifdef CAS_DEBUG
-  char err_msg_debug[256];
-#endif
+  char err_msg[256];
 
   if (net_buf == NULL)
     return;
 
   glo_err_msg_get (err_code, err_msg);
 #ifdef CAS_DEBUG
-  sprintf (err_msg_debug, "%s:%s", method_nm, err_msg);
-  net_buf_error_msg_set_debug (net_buf, CAS_ER_GLO, err_msg_debug, "glo", 0);
-#else
-  net_buf_error_msg_set (net_buf, CAS_ER_GLO, err_msg);
+  sprintf (err_msg, "%s:%s", method_nm, err_msg);
 #endif
+  NET_BUF_ERROR_MSG_SET (net_buf, CAS_ER_GLO, err_msg);
 }
 
 static void
@@ -7094,7 +7191,7 @@ check_class_chn (T_SRV_HANDLE * srv_handle)
 	return CAS_ER_STMT_POOLING;
       if (srv_handle->classes_chn[i] != db_chn (classes[i], DB_FETCH_READ))
 	{
-	  if (!db_Connect_status)
+	  if (db_Connect_status == 0)	/* DB_CONNECTION_STATUS_NOT_CONNECTED */
 	    return CAS_ER_DBSERVER_DISCONNECTED;
 	  return CAS_ER_STMT_POOLING;
 	}
@@ -7133,20 +7230,19 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 }
 
 int
-ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 
 #ifndef LIBCAS_FOR_JSP
   int err_code;
 
-  if (need_auto_commit == TRAN_AUTOCOMMIT)
+  if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, TRUE, "auto_commit");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, TRUE);
       cas_log_write (0, TRUE, "auto_commit %d", err_code);
     }
-  else if (need_auto_commit == TRAN_AUTOROLLBACK)
+  else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, TRUE, "auto_rollback");
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, TRUE);
@@ -7155,12 +7251,12 @@ ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF,
 
   if (err_code < 0)
     {
-      DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
-      CAS_FN_ARG_REQ_INFO->need_rollback = TRUE;
+      DB_ERR_MSG_SET (net_buf, err_code);
+      req_info->need_rollback = TRUE;
     }
   else
     {
-      CAS_FN_ARG_REQ_INFO->need_rollback = FALSE;
+      req_info->need_rollback = FALSE;
     }
 
   if (shm_appl->as_info[shm_as_index].cur_keep_con != KEEP_CON_OFF)

@@ -355,24 +355,61 @@ public class QueryEditorOptionDialog extends Dialog {
 
 		CASItem casItem = null;
 		int selectionItem = 0;
-		for (int i = 0; i < MainRegistry.CASinfo.size(); i++) {
-			casItem = (CASItem) MainRegistry.CASinfo.get(i);
-			cmbCasPort.add(casItem.broker_name
-					+ "("
-					+ (casItem.broker_port == 0 ? "stopped" : Integer
-							.toString(casItem.broker_port)) + ")");
-			if(MainRegistry.UserPort.get(MainRegistry.UserID)==null||MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals(""))
-			{
-				if(casItem.broker_name.equals("query_editor"))
-					selectionItem = i;
-				else
-					selectionItem = 0;
-			}
-			else if (casItem.broker_port == new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID))) {
-				selectionItem = i;
+		int default_port = 30000 ;
+		int admin_port = 30000 ;
+
+		if (MainRegistry.getDefaultBroker(MainRegistry.UserID) != null ) {
+			default_port = MainRegistry.getDefaultBroker(MainRegistry.UserID).broker_port ;
+		} 
+
+		if (MainRegistry.UserID.equals("admin")) {
+			String old_port = (String)MainRegistry.UserPort.get(MainRegistry.UserID);
+			if (old_port != null && !old_port.equals("")) {
+				CASItem checkCasItem = MainRegistry.CASinfoFind(Integer.parseInt(old_port));
+				if (checkCasItem == null) {
+					CASItem ci = MainRegistry.getDefaultBroker(MainRegistry.UserID);					
+					if(ci != null)
+						admin_port = ci.broker_port;
+				}
+			} else {
+				CASItem ci = MainRegistry.getDefaultBroker(MainRegistry.UserID);					
+				if(ci != null)
+					admin_port = ci.broker_port;				
 			}
 		}
-		cmbCasPort.select(selectionItem);
+
+		int selectNum = 0 ;
+		boolean checkPort = false ;
+		for (int i = 0; i < MainRegistry.CASinfo.size(); i++) {
+			casItem = (CASItem) MainRegistry.CASinfo.get(i);
+			if ( casItem.broker_port > 0 ) {
+				cmbCasPort.add(casItem.broker_name
+						+ "(" + Integer.toString(casItem.broker_port) + ")");
+				selectNum++ ;
+			}
+			if(MainRegistry.UserPort.get(MainRegistry.UserID)==null||MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals(""))
+			{
+				if(casItem.broker_port == default_port) {
+					selectionItem = ( selectNum - 1 );
+					checkPort = true ;
+				}
+			}
+			else if (casItem.broker_port == new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID))) {
+				selectionItem = ( selectNum - 1 );
+				checkPort = true ;
+			} else {
+				if (MainRegistry.UserID.equals("admin")) {
+					if ( casItem.broker_port == admin_port ) 
+						selectionItem = ( selectNum - 1 );
+					checkPort = true ;
+				}
+			}
+		}
+
+		if (checkPort == true) {
+			cmbCasPort.select(selectionItem);
+		}	
+		
 		if(MainRegistry.UserID.equals("admin"))
 		{
 			cmbCasPort.setEnabled(true);

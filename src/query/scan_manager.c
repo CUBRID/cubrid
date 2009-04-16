@@ -564,8 +564,11 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   /* pointer to multi-column index key domain info. structure */
   setdomain = BTS->btid_int.key_type->setdomain;
 
-  val = NULL;			/* init */
+  /* init */
+  val = NULL;
   clear_value = false;
+  DB_MAKE_NULL (&temp_val);
+
   for (operand = func->value.funcp->operand, n_atts = 0, dom = setdomain;
        operand; operand = operand->next, n_atts++, dom = dom->next)
     {

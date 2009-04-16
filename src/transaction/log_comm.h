@@ -28,11 +28,7 @@
 #include "object_representation.h"
 
 
-#if defined(L_cuserid)
-#define LOG_USERNAME_MAX L_cuserid
-#else /* L_cuserid */
-#define LOG_USERNAME_MAX 9
-#endif /* L_cuserid */
+#define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
 
 #define TRAN_LOCK_INFINITE_WAIT (-1)
 

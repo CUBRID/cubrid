@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -97,7 +97,6 @@ char stripped_column_name;
 char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
-int need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 int new_req_sock_fd = 0;
 #endif
 int cas_default_isolation_level = 0;
@@ -259,19 +258,6 @@ main (int argc, char *argv[])
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  db_name = getenv ("UNICAS_DATABASE");
-  if (db_name)
-    {
-      tmp_db_user = getenv ("UNICAS_DB_USER");
-      tmp_db_passwd = getenv ("UNICAS_DB_PASSWD");
-      if (tmp_db_user == NULL || tmp_db_user[0] == '\0')
-	tmp_db_user = "public";
-      if (tmp_db_passwd == NULL)
-	tmp_db_passwd = "";
-      UX_DATABASE_CONNECT (db_name, tmp_db_user,
-			   tmp_db_passwd, NULL, req_info.isql);
-    }
-
   if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
     {
       sql_log_mode = SQL_LOG_MODE_ON | SQL_LOG_MODE_APPEND;
@@ -342,11 +328,11 @@ main (int argc, char *argv[])
 
 	if (print_cas_pid)
 	  {
-	    cas_log_write (0, TRUE, "CAS_STARTED pid:%d", getpid ());
+	    cas_log_write (0, TRUE, "CAS STARTED pid %d", getpid ());
 	    print_cas_pid = FALSE;
 	  }
 	cas_log_write (0, TRUE,
-		       "connect %s",
+		       "IP ADDR %s",
 		       ut_uchar2ipstr ((unsigned char *) (&client_ip_addr)));
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
@@ -383,11 +369,8 @@ main (int argc, char *argv[])
 	    if (db_user[0] == '\0')
 	      strcpy (db_user, "public");
 
-	    cas_log_write (0, TRUE, "connect %s %s", db_name, db_user);
-
 	    err_code =
-	      UX_DATABASE_CONNECT (db_name, db_user,
-				   db_passwd, &db_err_msg, req_info.isql);
+	      ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 	    if (err_code < 0)
 	      {
 		if (db_err_msg == NULL)
@@ -406,12 +389,14 @@ main (int argc, char *argv[])
 
 		goto error1;
 	      }
+	    cas_log_write (0, TRUE, "connect DB %s USER %s", db_name,
+			   db_user);
 
-	    UX_SET_DEFAULT_SETTING ();
+	    ux_set_default_setting ();
 
 	    shm_appl->as_info[shm_as_index].auto_commit_mode = FALSE;
 	    cas_log_write (0, TRUE,
-			   "isolation level : %d, lock timeout : %d, auto_commit : %s",
+			   "isolation level %d, lock timeout %d, auto_commit %s",
 			   cas_default_isolation_level,
 			   cas_default_lock_timeout,
 			   shm_appl->as_info[shm_as_index].
@@ -458,49 +443,68 @@ main (int argc, char *argv[])
 	    req_info.need_rollback = TRUE;
 
 	    cas_log_error_handler_begin ();
-	    while (1)
+	    err_code = 0;
+	    while (err_code >= 0)
 	      {
 #ifndef WIN32
 		signal (SIGUSR1, query_cancel);
 #endif
 		err_code =
 		  process_request (client_sock_fd, &net_buf, &req_info);
-
 		cas_log_error_handler_clear ();
 #ifndef WIN32
 		signal (SIGUSR1, SIG_IGN);
 #endif
 #ifdef WIN32
 		if (shm_appl->as_info[shm_as_index].glo_read_size < 0)
-		  shm_appl->as_info[shm_as_index].glo_read_size = 0;
+		  {
+		    shm_appl->as_info[shm_as_index].glo_read_size = 0;
+		  }
 		if (shm_appl->as_info[shm_as_index].glo_write_size < 0)
-		  shm_appl->as_info[shm_as_index].glo_write_size = 0;
+		  {
+		    shm_appl->as_info[shm_as_index].glo_write_size = 0;
+		  }
 		shm_appl->as_info[shm_as_index].glo_flag = 0;
 #endif
 		shm_appl->as_info[shm_as_index].last_access_time =
 		  time (NULL);
-		if (err_code < 0)
-		  break;
+
+#if 0
+		if (req_info.need_reconnect)
+		  {
+		    cas_log_debug (ARG_FILE_LINE, "main: need_reconnect");
+		    err_code =
+		      ux_database_connect (db_name, db_user, db_passwd, NULL);
+		    if (err_code == 0)
+		      {
+			cas_log_write (0, TRUE, "reconnect %s %s", db_name,
+				       db_user);
+		      }
+		  }
+#endif
 	      }
 
 	    if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
-	      hm_srv_handle_free_all ();
+	      {
+		hm_srv_handle_free_all ();
+	      }
 
 	    if (xa_prepare_flag)
 	      {
-		UX_DATABASE_SHUTDOWN (req_info.isql);
-		UX_DATABASE_CONNECT (db_name, db_user,
-				     db_passwd, NULL, req_info.isql);
+		ux_database_shutdown ();
+		ux_database_connect (db_name, db_user, db_passwd, NULL);
 	      }
 	    else
 	      {
 		ux_end_tran (CCI_TRAN_ROLLBACK, FALSE);
 	      }
-
 	    cas_log_error_handler_end ();
 
 	    if (shm_appl->access_log == ON)
-	      cas_access_log (&tran_start_time, shm_as_index, client_ip_addr);
+	      {
+		cas_access_log (&tran_start_time, shm_as_index,
+				client_ip_addr);
+	      }
 
 	  }
 
@@ -637,7 +641,7 @@ cleanup (int signo)
 
   signal (signo, SIG_IGN);
 
-  UX_DATABASE_SHUTDOWN (req_info.isql);
+  ux_database_shutdown ();
 
 #ifdef MEM_DEBUG
   fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
@@ -767,15 +771,25 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   server_fn = server_fn_table[func_code - 1];
 
 #ifndef LIBCAS_FOR_JSP
-  need_auto_commit = TRAN_NOT_AUTOCOMMIT;
+  req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 #endif
   cas_send_result_flag = TRUE;
 
   err_code = (*server_fn) (clt_sock_fd, argc, argv, net_buf, req_info);
+#ifndef LIBCAS_FOR_JSP
+  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
+		 server_func_name[func_code - 1], err_code);
+  if (!ux_is_database_connected ())
+    {
+      cas_log_debug (ARG_FILE_LINE,
+		     "process_request: !ux_is_database_connected()");
+      err_code = -1;
+    }
+#endif
 
 #ifndef LIBCAS_FOR_JSP
   if (err_code == 0 && net_buf->err_code == 0
-      && need_auto_commit != TRAN_NOT_AUTOCOMMIT)
+      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT)
     {
       /* no error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
@@ -1051,7 +1065,7 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
   CloseHandle (FileHandle);
 
-  UX_DATABASE_SHUTDOWN (req_info.isql);
+  ux_database_shutdown ();
 
   return EXCEPTION_EXECUTE_HANDLER;
 }

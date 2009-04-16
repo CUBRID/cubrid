@@ -19,7 +19,7 @@
 
 
 /*
- * execute_statement.h - 
+ * execute_statement.h -
  */
 
 #ifndef _EXECUTE_STATEMENT_H_
@@ -52,9 +52,6 @@ extern int do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
 extern bool do_Trigger_involved;
-
-extern char Db_database_name[];
-extern char Db_program_name[];
 
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 

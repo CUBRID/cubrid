@@ -2607,9 +2607,10 @@ reorder_schema_caches (TR_TRIGGER * trigger)
 
 /*
  * tr_active_schema_cache() - This is used to determine if a cache contains
- *                            any active triggers.
+ *                            active event_type triggers.
  *    return: 0 = none, >0 = active, <0 = error
  *    cache(in): schema cache to examine
+ *    event_type(in) : event type.
  *
  * Note:
  *     The schema manager calls this to cache the trigger
@@ -2620,10 +2621,12 @@ reorder_schema_caches (TR_TRIGGER * trigger)
  *
  */
 int
-tr_active_schema_cache (TR_SCHEMA_CACHE * cache)
+tr_active_schema_cache (TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event_type,
+			bool * has_event_type_triggers)
 {
   TR_TRIGLIST *t;
   int i, active;
+  bool result = false;
 
   active = 0;
   if (cache != NULL)
@@ -2632,17 +2635,28 @@ tr_active_schema_cache (TR_SCHEMA_CACHE * cache)
 	{
 	  return -1;
 	}
-      for (i = 0; i < cache->array_length && !active; i++)
+      for (i = 0; i < cache->array_length && !result; i++)
 	{
-	  for (t = cache->triggers[i]; t != NULL && !active; t = t->next)
+	  for (t = cache->triggers[i]; t != NULL && !result; t = t->next)
 	    {
 	      if (t->trigger->status == TR_STATUS_ACTIVE)
 		{
 		  active = 1;
+		  if ((event_type == TR_EVENT_ALL)
+		      || (t->trigger->event == event_type))
+		    {
+		      result = true;
+		    }
 		}
 	    }
 	}
     }
+
+  if (has_event_type_triggers)
+    {
+      *has_event_type_triggers = result;
+    }
+
   return active;
 }
 

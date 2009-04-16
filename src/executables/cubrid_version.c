@@ -30,6 +30,11 @@
 int
 main (int argc, char *argv[])
 {
+#if defined (NDEBUG)
   fprintf (stdout, "\n%s (%s)\n\n", rel_name (), rel_build_number ());
+#else /* NDEBUG */
+  fprintf (stdout, "\n%s (%s debug) \n\n", rel_name (),
+	   rel_build_number ());
+#endif /* !NDEBUG */
   return 0;
 }

@@ -5991,10 +5991,6 @@ do_is_partitioned_classobj (int *is_partition,
 			    DB_OBJECT * classop, char *keyattr,
 			    MOP ** sub_partitions)
 {
-  enum
-  {
-    NOT_PARTITION_CLASS = 0, PARTITIONED_CLASS = 1, PARTITION_CLASS = 2
-  };
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subcls;
   DB_VALUE pname, pattr, psize, attrname, pclassof, classobj;
@@ -7508,7 +7504,7 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	{
 	  if (atts->info.attr_def.auto_increment)
 	    {
-	      if (!db_Replication_agent_mode)
+	      if (!db_Log_replication_mode)
 		{
 		  error = do_create_auto_increment_serial (parser,
 							   &auto_increment_obj,

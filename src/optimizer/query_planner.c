@@ -1620,7 +1620,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
   fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
   if (QO_NODE_INFO (node))
     {
-      for (i = 0, n = QO_NODE_INFO (node)->n; i < n; i++)
+      for (i = 0, n = QO_NODE_INFO_N (node); i < n; i++)
 	{
 	  name = QO_NODE_INFO (node)->info[i].name;
 	  fprintf (f, "%s ", (name ? name : "(anon)"));

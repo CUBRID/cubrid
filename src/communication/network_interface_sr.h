@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -30,13 +30,15 @@
 #include "query_opfunc.h"	/* for VACOMM stuff */
 #include "thread_impl.h"
 
-extern void return_error_to_client (unsigned int rid);
-extern void server_ping (unsigned int rid);
-extern int
-server_ping_with_handshake (unsigned int rid, char *request, int reqlen);
-extern void
-slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid, char *request,
-		int reqlen);
+extern void return_error_to_client (THREAD_ENTRY * thread_p,
+				    unsigned int rid);
+extern int server_ping_with_handshake (THREAD_ENTRY * thread_p,
+				       unsigned int rid, char *request,
+				       int reqlen);
+extern void server_ping (THREAD_ENTRY * thread_p, unsigned int rid,
+			 char *request, int reqlen);
+extern void slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid,
+			    char *request, int reqlen);
 extern void slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
 
@@ -109,7 +111,8 @@ extern void slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 /* AsyncCommit */
-extern void slogpb_dump_stat (unsigned int rid, char *request, int reqlen);
+extern void slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid,
+			      char *request, int reqlen);
 
 extern void slock_dump (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen);
@@ -189,6 +192,13 @@ extern void sboot_find_number_temp_volumes (THREAD_ENTRY * thread_p,
 					    int reqlen);
 extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
+extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
+extern void slargeobjmgr_create (THREAD_ENTRY * thread_p,
+				 unsigned int rid, char *request, int reqlen);
+extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p,
+				  unsigned int rid, char *request,
+				  int reqlen);
 extern void slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
 extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -266,7 +276,7 @@ extern void sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
-extern void sqp_get_sys_timestamp (unsigned int rid);
+extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid);
 extern void sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
 extern void sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -292,7 +302,8 @@ extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
 					int *datasize);
 extern int xs_send_action_to_client (THREAD_ENTRY * thread_p,
 				     VACOMM_BUFFER_CLIENT_ACTION action);
-extern void stest_performance (unsigned int rid, char *request, int reqlen);
+extern void stest_performance (THREAD_ENTRY * thread_p, unsigned int rid,
+			       char *request, int reqlen);
 extern void
 slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
 			   char *request, int reqlen);
@@ -303,9 +314,9 @@ extern void slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
 					     unsigned int rid, char *request,
 					     int reqlen);
 extern void tm_restart_event_handler (unsigned int, char *, int);
-extern void
-sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid,
-			 char *request, int reqlen);
+extern void sthread_kill_tran_index (THREAD_ENTRY * thread_p,
+				     unsigned int rid, char *request,
+				     int reqlen);
 extern void slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
@@ -331,17 +342,21 @@ extern void sprm_server_obtain_parameters (THREAD_ENTRY * thread_p,
 					   int reqlen);
 extern void shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
-extern void
-stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid,
-				char *request, int reqlen);
-extern void sjsp_get_server_port (unsigned int rid);
+extern void stran_get_local_transaction_id (THREAD_ENTRY * thread_p,
+					    unsigned int rid, char *request,
+					    int reqlen);
+extern void sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
 extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid,
 			    char *request, int reqlen);
-extern void srepl_log_get_append_lsa (unsigned int rid, char *request,
+extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p,
+				      unsigned int rid, char *request,
 				      int reqlen);
 extern void slocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
 					    unsigned int rid, char *request,
 					    int reqlen);
+extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
 
 extern void net_cleanup_server_queues (unsigned int rid);
 

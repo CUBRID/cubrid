@@ -482,9 +482,28 @@ public class PROPPAGE_USER_GENERALDialog extends Dialog {
 				TableItem item = new TableItem(LIST_USER_MEMBERS, SWT.NONE);
 				item.setText(0, ((UserInfo) uiedit.members.get(i2)).userName);
 			}
+			
+			boolean isHasPublic = false;
 			for (int i2 = 0, n2 = uiedit.groups.size(); i2 < n2; i2++) {
 				TableItem item = new TableItem(LIST_USER_GROUPS, SWT.NONE);
-				item.setText(0, ((UserInfo) uiedit.groups.get(i2)).userName);
+				String userName = ((UserInfo) uiedit.groups.get(i2)).userName;
+				if (userName.equals("public"))
+					isHasPublic = true;
+				item.setText(0, userName);
+			}
+			
+			if (!isHasPublic && !DBUser.equals("dba") && !DBUser.equals("public")) {
+				UserInfo publicUserInfo = UserInfo.UserInfo_find(userinfo, "public");
+				uiedit.groups.add(publicUserInfo);
+				TableItem item = new TableItem(LIST_USER_GROUPS, SWT.NONE);
+				item.setText(0, "public");
+				for (int j = 0, n = LIST_USER_ALLUSERS.getItemCount(); j < n; j++) {
+					String userName = LIST_USER_ALLUSERS.getItem(j).getText(0);
+					if (userName.equals("public")) {
+						LIST_USER_ALLUSERS.remove(j);
+						break;
+					}
+				}
 			}
 		}
 

@@ -57,6 +57,7 @@ extern int db_login (const char *name, const char *password);
 extern int db_restart (const char *program,
 		       int print_version, const char *volume);
 extern int db_shutdown (void);
+extern int db_ping_server (int client_val, int *server_val);
 extern int db_commit_transaction (void);
 extern int db_abort_transaction (void);
 extern int db_commit_is_needed (void);
@@ -349,6 +350,8 @@ extern int db_drop_constraint (MOP classmop,
 /* Browsing functions */
 extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
+extern void db_set_client_type (int client_type);
+extern int db_get_client_type ();
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 
@@ -836,6 +839,8 @@ extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
 				     CACHE_TIME * cache_time);
 extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx,
 				  int *life_time);
+extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx,
+			      bool * use_plan_cache, bool * use_query_cache);
 
 /* These are used by csql but weren't in the 2.0 dbi.h file, added
    it for the PC.  If we don't want them here, they should go somewhere

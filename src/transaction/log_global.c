@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -55,7 +55,8 @@ LOG_GLOBAL log_Gl = {
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
    {'0'}, 0, 0, 0,
-   {{0, 0, 0, 0, 0}}},
+   {{0, 0, 0, 0, 0}},
+   0, 0},
   /* archive */
   {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0},
    0, 0, NULL},
@@ -84,9 +85,6 @@ LOG_GLOBAL log_Gl = {
   /* loghdr_pgptr */
   NULL,
 
-  /* flush_run_mutex */
-  MUTEX_INITIALIZER,
-
   /* flush info */
   {0, 0, LOG_FLUSH_NORMAL, NULL
 #if defined(SERVER_MODE)
@@ -99,7 +97,13 @@ LOG_GLOBAL log_Gl = {
    },
 
   /* group_commit_info */
-  {0, MUTEX_INITIALIZER, COND_INITIALIZER}
+  {0, MUTEX_INITIALIZER, COND_INITIALIZER},
+
+  /* log writer info */
+  {NULL, MUTEX_INITIALIZER,
+   COND_INITIALIZER, MUTEX_INITIALIZER,
+   COND_INITIALIZER, MUTEX_INITIALIZER,
+   false}
 };
 
 /* Name of the database and logs */
@@ -112,8 +116,3 @@ char log_Name_active[PATH_MAX];
 char log_Name_info[PATH_MAX];
 char log_Name_bkupinfo[PATH_MAX];
 char log_Name_volinfo[PATH_MAX];
-
-char log_Client_progname_unknown[PATH_MAX] = "unknown";
-char log_Client_name_unknown[LOG_USERNAME_MAX] = "unknown";
-char log_Client_host_unknown[MAXHOSTNAMELEN] = "unknown";
-int log_Client_process_id_unknown = -1;

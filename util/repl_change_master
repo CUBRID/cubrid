@@ -1,4 +1,4 @@
-#!/bin/ksh
+#!/bin/sh
 ###############################################################################
 #  Script Name : repl_change_master
 #
@@ -246,7 +246,7 @@ do
             error_exit
         fi
     fi
-    (( count=count+1 ))
+    count=$(($count+1))
 done < $servers_file
 
 print_msg END

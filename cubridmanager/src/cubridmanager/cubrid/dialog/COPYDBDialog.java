@@ -465,8 +465,11 @@ public class COPYDBDialog extends Dialog {
 		VolumeInfo vi;
 		TableItem item;
 		Collections.sort(CopyAction.ai.Volinfo, new VolOrderComparator());
+		String srcLogDir = "";
 		for (int i = 0, n = CopyAction.ai.Volinfo.size(); i < n; i++) {
 			vi = (VolumeInfo) CopyAction.ai.Volinfo.get(i);
+			if (vi.type.equals("Active_log")) 
+				srcLogDir = vi.location;
 			if (!vi.type.equals("GENERIC") && !vi.type.equals("DATA")
 					&& !vi.type.equals("INDEX") && !vi.type.equals("TEMP"))
 				continue;
@@ -481,7 +484,7 @@ public class COPYDBDialog extends Dialog {
 		Collections.sort(CopyAction.ai.Volinfo);
 		EDIT_COPYDB_SOURCEDB.setText(CopyAction.ai.dbname);
 		EDIT_COPYDB_SRCDATADIR.setText(CopyAction.ai.dbdir);
-		EDIT_COPYDB_SRCLOGDIR.setText(CopyAction.ai.dbdir);
+		EDIT_COPYDB_SRCLOGDIR.setText(srcLogDir);
 		EDIT_COPYDB_DESTDATADIR.setText(MainRegistry.envCUBRID_DATABASES);
 		EDIT_COPYDB_EXVOLDIR.setText(MainRegistry.envCUBRID_DATABASES);
 		EDIT_COPYDB_DESTLOGDIR.setText(MainRegistry.envCUBRID_DATABASES);
@@ -490,7 +493,7 @@ public class COPYDBDialog extends Dialog {
 		CHECK_COPYDB_ADVANCED.setSelection(false);
 		ClientSocket cs = new ClientSocket();
 		cs.SendClientMessage(dlgShell, "dbname:" + CopyAction.ai.dbname,
-				"getdbsize");
+		"getdbsize");
 		isChanged = false;
 	}
 
@@ -542,10 +545,17 @@ public class COPYDBDialog extends Dialog {
 			requestMsg += "advanced:on\n";
 			requestMsg += "open:volume\n";
 
-			String oldVolName, newVolName, oldVolDir, newVolDir;
+			String oldVolName = null, newVolName = null, oldVolDir = null, newVolDir = null;
 			for (int i = 0, n = LIST_COPYDB_VOLLIST.getItemCount(); i < n; i++) {
 				TableItem ti = LIST_COPYDB_VOLLIST.getItem(i);
-				oldVolDir = ((VolumeInfo) CopyAction.ai.Volinfo.get(i)).location;
+				List Volinfo = CopyAction.ai.Volinfo;
+				for (int j = 0; j < Volinfo.size(); j++) {
+					VolumeInfo vi = (VolumeInfo) Volinfo.get(j);
+					if (vi.spacename.equals(ti.getText(0))) {
+						oldVolDir = vi.location;
+						break;
+					}
+				}
 				oldVolName = ti.getText(0);
 				newVolName = ti.getText(1);
 				newVolDir = ti.getText(2);

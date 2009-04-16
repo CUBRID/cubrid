@@ -934,7 +934,7 @@
 
 #define ER_VID_OO_PROXY_MOP_HAS_BAD_KEY             -754
 
-#define ER_INVALID_OPERATION                        -755
+#define ER_NOT_IN_STANDALONE                        -755
 
 #define ER_OBJ_BUFFER_TOO_SMALL			    -756
 #define ER_OBJ_CANT_ASSIGN_OID			    -757
@@ -1193,8 +1193,9 @@
 #define  ER_INTERFACE_BROKER                        -963
 #define  ER_INTERFACE_RESULTSET_CLOSED              -964
 #define  ER_SM_INDEX_ATTR_DUPLICATED                -965
+#define  ER_ONLY_IN_CLIENT                          -966
 
-#define ER_LAST_ERROR                               -966
+#define ER_LAST_ERROR                               -967
 
 #endif /* _DBER_H_ */
 
@@ -3233,6 +3234,8 @@ extern int db_drop_constraint (MOP classmop,
 /* Browsing functions */
 extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
+extern void db_set_client_type (int client_type);
+extern int db_get_client_type ();
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 

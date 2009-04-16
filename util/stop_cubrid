@@ -56,7 +56,7 @@ do
 	seevar="echo \$$i"
 	#echo $seevar
 	dir=`eval $seevar`
-	if  [ "$dir" !=  ""   ]
+	if  [ "$dir" !=  "" ]
 	then
 		title=$dir
 	fi

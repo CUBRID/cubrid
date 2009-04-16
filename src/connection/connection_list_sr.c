@@ -34,6 +34,7 @@
 #include <malloc.h>
 #include <memory.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "connection_list_sr.h"
 #include "connection_error.h"
@@ -65,7 +66,7 @@ css_check_list (CSS_LIST * list)
       prev = &e->next;
       e = e->next;
     }
-  CSS_ASSERT ((list->back == prev) && (list->count == i));
+  assert ((list->back == prev) && (list->count == i));
 
   return 1;
 }
@@ -88,7 +89,7 @@ css_initialize_list (CSS_LIST * list, int free_count)
   list->count = 0;
 
 #ifdef TRACE_LIST
-  CSS_ASSERT (css_check_list (list));
+  assert (css_check_list (list));
 #endif /* TRACE_LIST */
 
   list->free_list = NULL;
@@ -128,8 +129,8 @@ css_finalize_list (CSS_LIST * list)
       list->free_count--;
     }
 
-  CSS_ASSERT (list->free_count == 0);
-  CSS_ASSERT (list->count == 0);
+  assert (list->free_count == 0);
+  assert (list->count == 0);
 
   PRINT_FINALIZE_LIST (list);
 
@@ -176,7 +177,7 @@ css_add_list (CSS_LIST * list, void *item)
   e->data = item;
 
 #ifdef TRACE_LIST
-  CSS_ASSERT (css_check_list (list));
+  assert (css_check_list (list));
 #endif /* TRACE_LIST */
 
   list->count++;
@@ -185,7 +186,7 @@ css_add_list (CSS_LIST * list, void *item)
   list->back = &e->next;
 
 #ifdef TRACE_LIST
-  CSS_ASSERT (css_check_list (list));
+  assert (css_check_list (list));
 #endif /* TRACE_LIST */
 
   return NO_ERROR;
@@ -220,7 +221,7 @@ css_add_list_to_head (CSS_LIST * list, void *item)
   e->data = item;
 
 #ifdef TRACE_LIST
-  CSS_ASSERT (css_check_list (list));
+  assert (css_check_list (list));
 #endif /* TRACE_LIST */
 
   list->count++;
@@ -232,7 +233,7 @@ css_add_list_to_head (CSS_LIST * list, void *item)
     }
 
 #ifdef TRACE_LIST
-  CSS_ASSERT (css_check_list (list));
+  assert (css_check_list (list));
 #endif /* TRACE_LIST */
 
   return NO_ERROR;

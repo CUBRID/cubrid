@@ -57,8 +57,8 @@ static void css_shutdown_handler (unsigned int eid);
 static void css_server_down_handler (unsigned int eid);
 static void css_waiting_poll_handler (unsigned int eid);
 static void css_set_pipe_signal (void);
-static void css_test_for_server_errors (CSS_MAP_ENTRY * entry,
-					unsigned int eid);
+static int css_test_for_server_errors (CSS_MAP_ENTRY * entry,
+				       unsigned int eid);
 
 /*
  * css_internal_server_shutdown() -
@@ -506,7 +506,7 @@ css_queue_receive_data_buffer (unsigned int eid, char *buffer,
       entry = css_return_entry_from_eid (eid, css_Client_anchor);
       if (entry != NULL)
 	{
-	  rid = css_return_rid_from_eid (eid);
+	  rid = CSS_RID_FROM_EID (eid);
 	  rc = css_queue_user_data_buffer (entry->conn, rid, buffer_size,
 					   buffer);
 	}
@@ -541,7 +541,7 @@ css_send_error_to_server (char *host, unsigned int eid,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->db_error = er_errid ();
-      css_Errno = css_send_error (entry->conn, css_return_rid_from_eid (eid),
+      css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid),
 				  buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
@@ -577,7 +577,7 @@ css_send_data_to_server (char *host, unsigned int eid,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
-      css_Errno = css_send_data (entry->conn, css_return_rid_from_eid (eid),
+      css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid),
 				 buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
@@ -596,24 +596,23 @@ css_send_data_to_server (char *host, unsigned int eid,
 
 /*
  * css_test_for_server_errors() -
- *   return:
+ *   return: error id from the server
  *   entry(in):
  *   eid(in):
  */
-static void
+static int
 css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 {
   char *error_buffer;
-  int error_size;
-  int rc;
+  int error_size, rc, errid = NO_ERROR;
 
-  if (css_return_queued_error (entry->conn,
-			       css_return_rid_from_eid (eid),
+  if (css_return_queued_error (entry->conn, CSS_RID_FROM_EID (eid),
 			       &error_buffer, &error_size, &rc))
     {
-      er_set_area_error ((void *) error_buffer);
+      errid = er_set_area_error ((void *) error_buffer);
       free_and_init (error_buffer);
     }
+  return errid;
 }
 
 /*
@@ -627,32 +626,50 @@ unsigned int
 css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
 {
   CSS_MAP_ENTRY *entry;
+  int errid;
 
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
   if (entry != NULL)
     {
-      css_Errno = css_receive_data (entry->conn,
-				    css_return_rid_from_eid (eid),
+      css_Errno = css_receive_data (entry->conn, CSS_RID_FROM_EID (eid),
 				    buffer, size);
       if (css_Errno == NO_ERRORS)
 	{
 	  css_test_for_server_errors (entry, eid);
-	  return 0;
-	}
-      else
-	{
-	  /*
-	   * Normally, we disconnect upon any type of receive error.  However,
-	   * in the case of allocation errors, we want to continue and
-	   * propagate the error.
-	   */
-	  if (css_Errno != CANT_ALLOC_BUFFER)
+	  errid = css_test_for_server_errors (entry, eid);
+	  if (errid == ER_DB_NO_MODIFICATIONS)
 	    {
-	      css_remove_queued_connection_by_entry (entry,
-						     &css_Client_anchor);
+	      css_Errno = REQUEST_REFUSED;
 	    }
-	  return css_Errno;
+	  else
+	    {
+	      /* 0 means that it isn't a communication error with server */
+	      return 0;
+	    }
 	}
+      /* css_Errno != NO_ERROR */
+      if (css_Errno == SERVER_ABORTED)
+	{
+	  errid = css_test_for_server_errors (entry, eid);
+#if 0
+	  if (errid == ER_DB_NO_MODIFICATIONS)
+	    {
+	      css_Errno = REQUEST_REFUSED;
+	    }
+#endif
+	}
+#if 0
+      /*
+       * Normally, we disconnect upon any type of receive error.  However,
+       * in the case of allocation errors, we want to continue and
+       * propagate the error.
+       */
+      if (css_Errno != CANT_ALLOC_BUFFER)
+	{
+	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+	}
+#endif
+      return css_Errno;
     }
 
   css_Errno = SERVER_WAS_NOT_FOUND;
@@ -674,8 +691,7 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
   if (entry != NULL)
     {
-      css_Errno = css_receive_error (entry->conn,
-				     css_return_rid_from_eid (eid),
+      css_Errno = css_receive_error (entry->conn, CSS_RID_FROM_EID (eid),
 				     buffer, size);
       if (css_Errno == NO_ERRORS)
 	{
@@ -743,13 +759,18 @@ css_receive_oob_from_server (unsigned int eid, char **buffer, int *size)
 
 /*
  * css_terminate() - "gracefully" terminate all requests
+ *   server_error(in):
  *   return: void
  */
 void
-css_terminate (void)
+css_terminate (bool server_error)
 {
   while (css_Client_anchor)
     {
+      if (server_error && css_Client_anchor->conn)
+	{
+	  css_Client_anchor->conn->status = CONN_CLOSING;
+	}
       css_send_close_request (css_Client_anchor->conn);
       css_remove_queued_connection_by_entry (css_Client_anchor,
 					     &css_Client_anchor);

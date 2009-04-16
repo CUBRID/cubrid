@@ -56,22 +56,29 @@ public class QueryEditorConnection {
 		host = MainRegistry.HostAddr;
 		
 		if( MainRegistry.UserPort.get(MainRegistry.UserID) != null &&
-			!MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals("")) {
-			MainRegistry.queryEditorOption.casport = new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID)) ;
-		} else {
-			if (MainRegistry.CASinfo_find(MainRegistry.queryEditorOption.casport) == null) {
-				CASItem casitem = MainRegistry.CASinfo_find("query_editor");
-				if (casitem == null) {
-					if (MainRegistry.CASinfo != null) {
-						casitem = (CASItem)MainRegistry.CASinfo.get(0);
-					}
+				!MainRegistry.UserPort.get(MainRegistry.UserID).toString().trim().equals("")) {
+			if (MainRegistry.UserID.equals("admin")) {
+				String old_port = (String)MainRegistry.UserPort.get(MainRegistry.UserID);
+				CASItem checkCasItem = MainRegistry.CASinfoFind(Integer.parseInt(old_port));
+				if (checkCasItem == null) {
+					CASItem ci = MainRegistry.getDefaultBroker(MainRegistry.UserID);					
+					if(ci != null)
+						MainRegistry.queryEditorOption.casport = ci.broker_port;
+				} else {
+					MainRegistry.queryEditorOption.casport = Integer.parseInt(old_port) ;
 				}
+			} else {
+				MainRegistry.queryEditorOption.casport = new Integer((String)MainRegistry.UserPort.get(MainRegistry.UserID)) ;
+			}
+		} else {
+			if (MainRegistry.CASinfoFind(MainRegistry.queryEditorOption.casport) == null) {
+				CASItem casitem = MainRegistry.getDefaultBroker(MainRegistry.UserID);
 				if (casitem != null) {
 					MainRegistry.queryEditorOption.casport = Integer.parseInt(casitem.port);
 				}
 			}
 		}
-		
+
 		port = Integer.toString(MainRegistry.queryEditorOption.casport);
 		ui = userinfo;
 

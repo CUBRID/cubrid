@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -18,7 +18,7 @@
  */
 
 /*
- * serial.c - Serial number handling routine 
+ * serial.c - Serial number handling routine
  */
 
 #ident "$Id$"
@@ -43,7 +43,7 @@
 
 /*
  * xqp_get_serial_current_value () -
- *   return: NO_ERROR, or ER_code 
+ *   return: NO_ERROR, or ER_code
  *   oid_str_val(in)    :
  *   result_num(in)     :
  */
@@ -174,7 +174,7 @@ exit_on_error:
 
 /*
  * xqp_get_serial_next_value () -
- *   return: NO_ERROR, or ER_status 
+ *   return: NO_ERROR, or ER_status
  *   oid_str_val(in)    :
  *   result_num(in)     :
  */
@@ -224,6 +224,13 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   assert (oid_str_val != (DB_VALUE *) NULL);
   assert (result_num != (DB_VALUE *) NULL);
 
+  if (!LOG_CHECK_LOG_APPLIER (thread_p))
+    {
+      CHECK_MODIFICATION_NO_RETURN (ret);
+      if (ret != NO_ERROR)
+	return ret;
+    }
+
   DB_MAKE_NULL (&tmp_val);
   DB_MAKE_NULL (&next_val);
 
@@ -247,7 +254,7 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   savepoint_used = 1;
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_start_flush_mark (thread_p);
     }
@@ -387,7 +394,7 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
       inc_val_flag = DB_GET_INT (&cmp_result);
 
     /**********************************************************************
-     * Now calculate next value 
+     * Now calculate next value
      **********************************************************************/
 
       /* inc_val_flag >0 or <0 */
@@ -541,14 +548,15 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
 
 #if !defined (WINDOWS)
   /* make replication log for the special type of update for serial */
-  if (IS_REPLICATED_MODE (&serial_class_oid, true, true))
+  if (IS_REPLICATED_MODE (&serial_class_oid, true, true)
+      && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_log_insert (thread_p, &serial_class_oid, &serial_oid,
 		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, &key_val);
       repl_add_update_lsa (thread_p, &serial_oid);
     }
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, false);
     }
@@ -575,7 +583,7 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   pgbuf_unfix (thread_p, pgptr);
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, false);
     }
@@ -589,8 +597,6 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
     }
-
-end:
 
   return ret;
 
@@ -616,7 +622,7 @@ exit_on_error:
     }
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, true);
     }
@@ -635,5 +641,6 @@ exit_on_error:
 	  ret = ER_FAILED;
 	}
     }
-  goto end;
+
+  return ret;
 }

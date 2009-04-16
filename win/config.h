@@ -25,22 +25,34 @@
 
 
 /* Define to 1 if you have the `asprintf' function. */
-#undef HAVE_ASPRINTF
+/* #undef HAVE_ASPRINTF */
 
 /* Define to 1 if you have the `basename' function. */
-#undef HAVE_BASENAME
+/* #undef HAVE_BASENAME */
 
 /* Define to 1 if the system has the type `byte_t'. */
 /* #undef HAVE_BYTE_T */
 
 /* Define to 1 if you have the `dirname' function. */
-#undef HAVE_DIRNAME
+/* #undef HAVE_DIRNAME */
 
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
 /* Define to 1 if you don't have `vprintf' but do have `_doprnt.' */
 /* #undef HAVE_DOPRNT */
+
+/* Define to 1 if you have the `gethostbyname_r' function. */
+/* #undef HAVE_GETHOSTBYNAME_R */
+
+/* Using glibc version of gethostbyname_r() */
+/* #undef HAVE_GETHOSTBYNAME_R_GLIBC */
+
+/* Using HPUX gethostbyname_r() */
+/* #undef HAVE_GETHOSTBYNAME_R_HPUX */
+
+/* Using Solaris gethostbyname_r() */
+/* #undef HAVE_GETHOSTBYNAME_R_SOLARIS */
 
 /* Define to 1 if you have the `getopt' function. */
 #define HAVE_GETOPT 1
@@ -49,7 +61,10 @@
 #define HAVE_GETOPT_H 1
 
 /* Define to 1 if you have the `getopt_long' function. */
-#undef HAVE_GETOPT_LONG
+/* #undef HAVE_GETOPT_LONG */
+
+/* Define to 1 if you have the `getrlimit' function. */
+/* #undef HAVE_GETRLIMIT */
 
 /* Define to 1 if the system has the type `int16_t'. */
 #undef HAVE_INT16_T
@@ -72,8 +87,8 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Define to 1 if you have the `bfd' library (-lbfd). */
-#define HAVE_LIBBFD 1
+/* Define to 1 if you have the `curses' library (-lcurses). */
+#undef HAVE_LIBCURSES
 
 /* Define to 1 if you have the `dl' library (-ldl). */
 #define HAVE_LIBDL 1
@@ -82,16 +97,16 @@
 /* #undef HAVE_LIBELF */
 
 /* Define to 1 if you have the <libgen.h> header file. */
-#undef HAVE_LIBGEN_H
-
-/* Define to 1 if you have the `iberty' library (-liberty). */
-#define HAVE_LIBIBERTY 1
+/* #undef HAVE_LIBGEN_H */
 
 /* Define to 1 if you have the `m' library (-lm). */
 #define HAVE_LIBM 1
 
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #define HAVE_LIBPTHREAD 1
+
+/* Define to 1 if you have the `stdc++' library (-lstdc++). */
+#define HAVE_LIBSTDC__ 1
 
 /* Define to 1 if you have the <limits.h> header file. */
 #define HAVE_LIMITS_H 1
@@ -109,10 +124,13 @@
 /* #undef HAVE_OFF64_T */
 
 /* Define to 1 if you have the <regex.h> header file. */
-#undef HAVE_REGEX_H
+/* #undef HAVE_REGEX_H */
+
+/* Define to 1 if you have the <rpc/des_crypt.h> header file. */
+/* #undef HAVE_RPC_DES_CRYPT_H */
 
 /* Define to 1 if stdbool.h conforms to C99. */
-#undef HAVE_STDBOOL_H
+/* #undef HAVE_STDBOOL_H */
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
@@ -134,6 +152,9 @@
 
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
+
+/* Define to 1 if you have the `sysconf' function. */
+#undef HAVE_SYSCONF
 
 /* Define to 1 if you have the <sys/param.h> header file. */
 #undef HAVE_SYS_PARAM_H
@@ -176,6 +197,12 @@
 
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
+
+/* Max line length */
+#define LINE_MAX 2048
+
+/* Max file name length */
+/* #undef NAME_MAX */
 
 /* Max path length */
 /* #undef PATH_MAX */

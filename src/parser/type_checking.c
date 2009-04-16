@@ -7690,9 +7690,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser,
  *                  the data type of an object or NULL
  */
 int
-pt_coerce_value (PARSER_CONTEXT * parser,
-		 PT_NODE * src,
-		 PT_NODE * dest,
+pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 		 PT_TYPE_ENUM desired_type, PT_NODE * data_type)
 {
   PT_TYPE_ENUM original_type;
@@ -7707,12 +7705,16 @@ pt_coerce_value (PARSER_CONTEXT * parser,
   original_type = src->type_enum;
 
   if ((original_type == (PT_TYPE_ENUM) desired_type
-       && original_type != PT_TYPE_NUMERIC && desired_type != PT_TYPE_OBJECT)
+       && original_type != PT_TYPE_NUMERIC
+       && desired_type != PT_TYPE_OBJECT)
       || original_type == PT_TYPE_NA || original_type == PT_TYPE_NULL)
     {
-      *dest = *src;
-      dest->next = dest_next;
-      return (NO_ERROR);
+      if (src != dest)
+	{
+	  *dest = *src;
+	  dest->next = dest_next;
+	}
+      return NO_ERROR;
     }
 
   if (data_type == NULL
@@ -7732,17 +7734,23 @@ pt_coerce_value (PARSER_CONTEXT * parser,
 	  data_type->info.data_type.dec_precision))
     {				/* exact match */
 
-      *dest = *src;
-      dest->next = dest_next;
+      if (src != dest)
+	{
+	  *dest = *src;
+	  dest->next = dest_next;
+	}
       return NO_ERROR;
     }
 
   if (original_type == PT_TYPE_NONE && src->node_type != PT_HOST_VAR)
     {
-      *dest = *src;
+      if (src != dest)
+	{
+	  *dest = *src;
+	  dest->next = dest_next;
+	}
       dest->type_enum = (PT_TYPE_ENUM) desired_type;
       dest->data_type = parser_copy_tree_list (parser, data_type);
-      dest->next = dest_next;
       /* don't return, in case further coercion is needed
          set original type to match desired type to avoid confusing
          type check below */
@@ -7814,7 +7822,8 @@ pt_coerce_value (PARSER_CONTEXT * parser,
 	    break;
 	  }
 
-	if (err == DOMAIN_COMPATIBLE && src->node_type == PT_HOST_VAR
+	if (err == DOMAIN_COMPATIBLE
+	    && src->node_type == PT_HOST_VAR
 	    && PRM_HOSTVAR_LATE_BINDING == false)
 	  {
 	    /* when the type of the host variable is compatible to coerce,
@@ -7905,7 +7914,9 @@ pt_coerce_value (PARSER_CONTEXT * parser,
 
     default:
       err =
-	((pt_common_type ((PT_TYPE_ENUM) desired_type, src->type_enum) ==
+	((pt_common_type
+	  ((PT_TYPE_ENUM) desired_type,
+	   src->type_enum) ==
 	  PT_TYPE_NONE) ? ER_IT_INCOMPATIBLE_DATATYPE : NO_ERROR);
       break;
     }
@@ -7920,11 +7931,11 @@ pt_coerce_value (PARSER_CONTEXT * parser,
   else if (err < 0)
     {
       PT_ERRORmf2 (parser, src, MSGCAT_SET_PARSER_SEMANTIC,
-		   MSGCAT_SEMANTIC_CANT_COERCE_TO, pt_short_print (parser,
-								   src),
+		   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, src),
 		   (desired_type ==
-		    PT_TYPE_OBJECT ? pt_class_name (data_type) :
-		    pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
+		    PT_TYPE_OBJECT ? pt_class_name (data_type)
+		    : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
     }
 
   return err;

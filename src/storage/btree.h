@@ -321,40 +321,42 @@ extern int xbtree_get_keytype_revlevel (BTID * btid, DB_TYPE * keytype,
 #endif
 
 /* Dump routines */
-extern int btree_dump_capacity (THREAD_ENTRY * thread_p, BTID * btid);
-extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p);
-extern void btree_dump (THREAD_ENTRY * thread_p, BTID * btid, int level);
+extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp,
+				BTID * btid);
+extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp);
+extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid,
+			int level);
 
 /* Recovery routines */
 extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr,
 					    INT16 first_slotid, int rec_cnt,
 					    INT16 ins_slotid, char *data,
 					    int *length);
-extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p,
+extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp,
 					BTID_INT * btid, RECDES * Rec);
-extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p,
+extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp,
 					 BTID_INT * btid, RECDES * Rec);
 extern int btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
-extern void btree_rv_roothdr_dump (int length, void *data);
+extern void btree_rv_roothdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p,
 					   LOG_RCV * recv);
-extern void btree_rv_ovfid_dump (int length, void *data);
+extern void btree_rv_ovfid_dump (FILE * fp, int length, void *data);
 extern int btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
 extern int btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
 extern int btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
-extern void btree_rv_nodehdr_dump (int length, void *data);
+extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
-extern void btree_rv_noderec_dump (int length, void *data);
+extern void btree_rv_noderec_dump (FILE * fp, int length, void *data);
 extern int btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
 extern int btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
-extern void btree_rv_noderec_dump_slot_id (int length, void *data);
+extern void btree_rv_noderec_dump_slot_id (FILE * fp, int length, void *data);
 extern int btree_rv_pagerec_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_redo_truncate_oid (THREAD_ENTRY * thread_p,
@@ -363,12 +365,13 @@ extern int btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p,
 				       LOG_RCV * recv);
 extern int btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
-extern void btree_rv_newpage_dump_undo_alloc (int length, void *data);
+extern void btree_rv_newpage_dump_undo_alloc (FILE * fp, int length,
+					      void *data);
 extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
-extern void btree_rv_keyval_dump (int length, void *data);
+extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
 extern int btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern int btree_rv_leafrec_redo_delete (THREAD_ENTRY * thread_p,
@@ -379,7 +382,8 @@ extern int btree_rv_leafrec_undo_insert_key (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
 extern int btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
-extern void btree_rv_leafrec_dump_insert_oid (int length, void *data);
+extern void btree_rv_leafrec_dump_insert_oid (FILE * fp, int length,
+					      void *data);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 #include "scan_manager.h"

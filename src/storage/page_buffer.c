@@ -4546,7 +4546,7 @@ try_again:
   sleep_count++;
 
 #if defined(SERVER_MODE)
-  thread_sleep (0, 10);
+  thread_sleep (0, 1000);	/* 10 msec */
 #endif /* SERVER_MODE */
 
   goto try_again;

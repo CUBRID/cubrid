@@ -133,7 +133,7 @@ extern SCAN_CODE spage_previous_record (PAGE_PTR pgptr, PGSLOTID * slotid,
 extern SCAN_CODE spage_get_record (PAGE_PTR pgptr, PGSLOTID slotid,
 				   RECDES * recdes, int ispeeking);
 extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
-extern void spage_dump (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr,
 			int isrecord_printed);
 extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);

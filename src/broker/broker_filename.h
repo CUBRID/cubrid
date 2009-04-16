@@ -29,12 +29,9 @@
 
 #include "porting.h"
 
-#define APPL_SERVER_UTS_C_NAME		"vas"
-#define APPL_SERVER_UTS_W_NAME		"was"
-#define APPL_SERVER_AM_NAME		"ams"
 #define APPL_SERVER_CAS_NAME		"cub_cas"
-#define APPL_SERVER_UPLOAD_NAME		"uls"
-#define APPL_SERVER_CAS_U52_NAME	"cas_u52"
+#define APPL_SERVER_CAS_ORACLE_NAME		"cub_cas_oracle"
+#define APPL_SERVER_CAS_MYSQL_NAME		"cub_cas_mysql"
 
 #define NAME_BROKER			"Tbroker"
 #define NAME_CAS_BROKER			"cub_broker"
@@ -61,8 +58,6 @@
 /* default values */
 #define DEFAULT_LOG_DIR			CUBRID_LOG_DIR
 #define DEFAULT_ERR_DIR			CUBRID_ERR_DIR
-#define DEFAULT_DOC_ROOT_DIR		DEFAULT_LOG_DIR
-#define DEFAULT_FILE_UPLOAD_TEMP_DIR	CUBRID_TMP_DIR
 
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 enum t_cubrid_file_id

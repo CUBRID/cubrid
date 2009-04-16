@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -388,7 +388,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int au_save;
   extern bool obt_Enable_autoincrement;
 
-  char log_file_name[64];
+  char log_file_name[PATH_MAX];
 
   LOADDB_INIT_DEBUG ();
   obt_Enable_autoincrement = false;
@@ -435,11 +435,15 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
+  /* error message log file */
+  sprintf (log_file_name, "%s_%s.err", Volume, arg->command_name);
+  er_init (log_file_name, ER_NEVER_EXIT);
+
   /* login */
   if (User_name != NULL || !dba_mode)
     {
       (void) db_login (User_name, Password);
-      if ((error = db_restart (arg->argv0, true, Volume)))
+      if ((error = db_restart (arg->command_name, true, Volume)))
 	{
 	  if (error == ER_AU_INVALID_PASSWORD)
 	    {
@@ -451,7 +455,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	      if (!strlen (passwd))
 		passwd = NULL;
 	      (void) db_login (User_name, passwd);
-	      error = db_restart (arg->argv0, true, Volume);
+	      error = db_restart (arg->command_name, true, Volume);
 	    }
 	}
     }
@@ -460,12 +464,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       /* if we're in the protected dba mode, just login without
          authorization */
       AU_DISABLE_PASSWORDS ();
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       (void) db_login ("dba", NULL);
-      error = db_restart (arg->argv0, true, Volume);
+      error = db_restart (arg->command_name, true, Volume);
     }
 
   /* open loaddb log file */
-  sprintf (log_file_name, "loaddb_%s.log", Volume);
+  sprintf (log_file_name, "%s_loaddb.log", Volume);
   loaddb_log_file = fopen (log_file_name, "w+");
   if (loaddb_log_file == NULL)
     {

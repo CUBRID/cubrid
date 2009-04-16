@@ -106,6 +106,8 @@ public class QueryExecuter {
 	private String queryMsg;
 	private String multiQuerySql = null;
 	private Map<String, ColumnComparator> colComparatorMap = null;
+	private CUBRIDPreparedStatement stmt;
+	private CUBRIDResultSet rs;
 
 	public QueryExecuter(QueryEditor qe, int idx, String query) {
 		this.qe = qe;
@@ -622,14 +624,15 @@ public class QueryExecuter {
 		double elapsedTime = 0.0;
 		NumberFormat nf = NumberFormat.getInstance();
 		nf.setMaximumFractionDigits(3);
-		CUBRIDPreparedStatement stmt = null;
-		CUBRIDResultSet rs = null;
+		stmt = null;
+		rs = null;
 		boolean isHasError = false;
 		try {
 			beginTimestamp = System.currentTimeMillis();
+			String fileterSql = SqlParser.convertComment(sql);
 			stmt = (CUBRIDPreparedStatement) conn
 					.prepareStatement(
-							sql,
+							fileterSql,
 							ResultSet.TYPE_FORWARD_ONLY,
 							(MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
 									: ResultSet.CONCUR_READ_ONLY,
@@ -849,5 +852,14 @@ public class QueryExecuter {
 	public void setMultiQuerySql(String multiQuerySql) {
 		this.multiQuerySql = multiQuerySql;
 	}
-
+	
+	public void dispose() {
+		try {
+			if (stmt != null) {
+				stmt.cancel();
+			}
+		} catch (SQLException e) {
+		}
+		QueryUtil.freeQuery(stmt, rs);
+	}
 }

@@ -30,7 +30,6 @@
 #include "connection_defs.h"
 
 extern unsigned int css_make_eid (unsigned short host_id, unsigned short rid);
-extern unsigned short css_return_rid_from_eid (unsigned int eid);
 extern CSS_MAP_ENTRY *css_queue_connection (CSS_CONN_ENTRY * conn,
 					    const char *host,
 					    CSS_MAP_ENTRY ** anchor);

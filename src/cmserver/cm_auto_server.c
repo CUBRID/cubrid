@@ -233,7 +233,6 @@ main (int argc, char **argv)
       fprintf (start_log_fp, "Error while reading environment variables.\n");
       exit (1);
     }
-  mkdir (sco.dbmt_tmp_dir, 0777);
 
   if (uReadSystemConfig () < 0)
     {

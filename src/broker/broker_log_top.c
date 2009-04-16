@@ -336,6 +336,8 @@ log_top (FILE * fp, char *filename)
 	      break;
 	    }
 
+	  GET_MSG_START_PTR (msg_p, linebuf);
+
 	  if (strncmp (msg_p, "query_cancel", 12) == 0)
 	    {
 	      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)

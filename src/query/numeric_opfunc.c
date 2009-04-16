@@ -171,7 +171,8 @@ numeric_is_negative (DB_C_NUMERIC arg)
 static void
 numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source)
 {
-  memcpy (dest, source, DB_NUMERIC_BUF_SIZE);	/* sizeof(source[0]) == 1 */
+  if (dest != source)
+    memcpy (dest, source, DB_NUMERIC_BUF_SIZE);	/* sizeof(source[0]) == 1 */
 }
 
 /*

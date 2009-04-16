@@ -53,6 +53,11 @@
 #define CHECK_PARTITION_PARENT  0x0001
 #define CHECK_PARTITION_SUBS    0x0010
 
+enum
+{
+  NOT_PARTITION_CLASS = 0, PARTITIONED_CLASS = 1, PARTITION_CLASS = 2
+};
+
 typedef struct partition_insert_cache PARTITION_INSERT_CACHE;
 struct partition_insert_cache
 {

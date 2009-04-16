@@ -76,7 +76,7 @@ ut_trim (char *str)
   *++p = '\0';
 
   if (s != str)
-    memcpy (str, s, strlen (s) + 1);
+    memmove (str, s, strlen (s) + 1);
 
   return (str);
 }

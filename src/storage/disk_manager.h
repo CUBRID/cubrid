@@ -69,14 +69,15 @@ extern INT32 xdisk_get_total_numpages (THREAD_ENTRY * thread_p, INT16 volid);
 extern INT32 xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid);
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, INT16 volid,
-                                 char *vol_fullname);
-extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid);
-extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
-                                                        VOLID volid,
-							DISK_VOLPURPOSE *
-							vol_purpose,
-							int *vol_ntotal_pages,
-							int *vol_nfree_pages);
+				 char *vol_fullname);
+extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p,
+					  INT16 volid);
+extern VOLID
+xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
+					   VOLID volid,
+					   DISK_VOLPURPOSE * vol_purpose,
+					   int *vol_ntotal_pages,
+					   int *vol_nfree_pages);
 #endif /* SERVER_MODE */
 
 extern int disk_goodvol_decache (THREAD_ENTRY * thread_p);
@@ -165,37 +166,43 @@ extern INT32 disk_get_max_numpages (THREAD_ENTRY * thread_p,
 
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, INT16 volid,
 				bool repair);
-extern int disk_dump_all (THREAD_ENTRY * thread_p);
+extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
 
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);
 extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_hdr (int length_ignore, void *data);
+extern void disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_init_map (int length_ignore, void *data);
+extern void disk_rv_dump_init_map (FILE * fp, int length_ignore, void *data);
 extern int disk_vhdr_rv_undoredo_free_sectors (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
-extern void disk_vhdr_rv_dump_free_sectors (int length_ignore, void *data);
+extern void disk_vhdr_rv_dump_free_sectors (FILE * fp, int length_ignore,
+					    void *data);
 extern int disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
-extern void disk_vhdr_rv_dump_free_pages (int length_ignore, void *data);
+extern void disk_vhdr_rv_dump_free_pages (FILE * fp, int length_ignore,
+					  void *data);
 extern int disk_rv_set_alloctable (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_clear_alloctable (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_alloctable (int length_ignore, void *data);
+extern void disk_rv_dump_alloctable (FILE * fp, int length_ignore,
+				     void *data);
 extern int disk_rv_redo_magic (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_magic (int length_ignore, void *data);
+extern void disk_rv_dump_magic (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
-extern void disk_rv_dump_set_creation_time (int length_ignore, void *data);
+extern void disk_rv_dump_set_creation_time (FILE * fp, int length_ignore,
+					    void *data);
 extern int disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p,
 					   LOG_RCV * rcv);
-extern void disk_rv_dump_set_boot_hfid (int length_ignore, void *data);
+extern void disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore,
+					void *data);
 extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_link (int length_ignore, void *data);
+extern void disk_rv_dump_link (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_set_alloctable_with_vhdr (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
 extern int disk_rv_clear_alloctable_with_vhdr (THREAD_ENTRY * thread_p,
 					       LOG_RCV * rcv);
-extern void disk_rv_dump_alloctable_with_vhdr (int length_ignore, void *data);
+extern void disk_rv_dump_alloctable_with_vhdr (FILE * fp, int length_ignore,
+					       void *data);
 
 #endif /* _DISK_MANAGER_H_ */

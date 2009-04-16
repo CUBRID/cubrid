@@ -35,8 +35,8 @@ typedef struct sockaddr_in SOCKADDR_IN;
 extern unsigned int css_gethostid (void);
 extern int css_fd_down (int fd);
 extern int css_tcp_client_open (const char *host, int port);
-extern int css_tcp_client_open_withretry (const char *host, int port,
-					  bool willretry);
+extern int css_tcp_client_open_with_retry (const char *host, int port,
+					   bool willretry);
 extern int css_tcp_master_open (int port, int *sockfd);
 extern bool css_tcp_setup_server_datagram (char *pathname, int *sockfd);
 extern bool css_tcp_listen_server_datagram (int sockfd, int *newfd);
@@ -51,5 +51,11 @@ extern bool css_broadcast_to_client (int client_fd, char data);
 extern int css_open_server_connection_socket (void);
 extern void css_close_server_connection_socket (void);
 extern int css_server_accept (int sockfd);
+#if !defined (WINDOWS)
+extern int css_tcp_client_open_with_timeout (const char *host, int port,
+					     int timeout);
+extern int css_ping (int sd, struct sockaddr_in *sa_send, int timeout);
+extern bool css_peer_alive (int sd, int timeout);
+#endif /* !WINDOWS */
 
 #endif /* _TCP_H_ */

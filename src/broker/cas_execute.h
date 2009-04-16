@@ -31,15 +31,6 @@
 #include "cas_handle.h"
 #include "cas_db_inc.h"
 
-#define UX_DATABASE_CONNECT(DBNAME, DBUSER, DBPASSWD, DBERRMSG, CAS_MM_ARG) \
-	ux_database_connect(DBNAME, DBUSER, DBPASSWD, DBERRMSG)
-#define UX_SET_DEFAULT_SETTING()	\
-	ux_set_default_setting()
-#define UX_DATABASE_SHUTDOWN(CAS_MM_ARG)	\
-	ux_database_shutdown()
-#define UX_END_TRAN(TRAN_TYPE, CAS_MM_ARG)	\
-	ux_end_tran(TRAN_TYPE, TRUE)
-
 #define CAS_TYPE_SET(TYPE)		((TYPE) | CCI_CODE_SET)
 #define CAS_TYPE_MULTISET(TYPE)		((TYPE) | CCI_CODE_MULTISET)
 #define CAS_TYPE_SEQUENCE(TYPE)		((TYPE) | CCI_CODE_SEQUENCE)
@@ -52,18 +43,14 @@
 #define IS_SET_TYPE(DB_TYPE)	\
 	((DB_TYPE) == DB_TYPE_SET || (DB_TYPE) == DB_TYPE_MULTISET || (DB_TYPE) == DB_TYPE_LIST)
 
-#ifdef CAS_DEBUG
 #define DB_ERR_MSG_SET(NET_BUF, ERR_CODE)	\
-	db_err_msg_set_debug(NET_BUF, ERR_CODE, __FILE__, __LINE__)
-#else
-#define DB_ERR_MSG_SET(NET_BUF, ERR_CODE)	\
-	db_err_msg_set(NET_BUF, ERR_CODE)
-#endif
+	db_err_msg_set(NET_BUF, ERR_CODE, __FILE__, __LINE__)
 
 extern int ux_check_connection (void);
 #ifndef LIBCAS_FOR_JSP
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 				char **db_err_msg);
+extern int ux_database_reconnect (void);
 #endif
 extern int ux_is_database_connected (void);
 extern int ux_prepare (char *sql_stmt, char flag, char auto_commit_mode,
@@ -81,7 +68,7 @@ extern int ux_set_isolation_level (int isol_level, T_NET_BUF * net_buf);
 extern void ux_set_lock_timeout (int lock_timeout);
 extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos,
 		     int fetch_count, char fetch_flag, int result_set_index,
-		     T_NET_BUF * net_buf);
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_glo_new (char *class_name, char *filename, T_NET_BUF * net_buf);
 extern int ux_glo_save (DB_OBJECT * obj, char *filename, T_NET_BUF * net_buf);
@@ -124,12 +111,8 @@ extern int ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos,
 			     int argc, void **argv, T_NET_BUF * net_buf);
 
-#ifdef CAS_DEBUG
-extern void db_err_msg_set_debug (T_NET_BUF * net_buf, int err_code,
-				  char *file, int line);
-#else
-extern void db_err_msg_set (T_NET_BUF * net_buf, int err_code);
-#endif
+extern void db_err_msg_set (T_NET_BUF * net_buf, int err_code,
+			    char *file, int line);
 
 extern int ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf);
 

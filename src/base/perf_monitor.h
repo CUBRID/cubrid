@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -192,7 +192,7 @@ struct mnt_exec_stats
 };
 
 extern int mnt_start_stats (void);
-extern void mnt_stop_stats (void);
+extern int mnt_stop_stats (void);
 extern void mnt_reset_stats (void);
 extern void mnt_print_stats (FILE * stream);
 extern MNT_EXEC_STATS *mnt_get_stats (void);

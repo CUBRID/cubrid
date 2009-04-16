@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -26,6 +26,7 @@
 #include <ctype.h>
 
 #include "config.h"
+#include "porting.h"
 #include "utility.h"
 #include "message_catalog.h"
 #include "error_code.h"
@@ -61,7 +62,7 @@ utility_get_generic_message (int message_index)
 }
 
 /*
- * check_database_name() - check validation of the name of a database  
+ * check_database_name() - check validation of the name of a database
  *   return: error code
  *   name(in): the name of a database
  */
@@ -169,7 +170,7 @@ utility_get_option_index (UTIL_ARG_MAP * arg_map, int arg_ch)
 /*
  * utility_get_option_int_value() - search an option in the map of arguments
  *      and return that value
- *   return: the value of a searched argument 
+ *   return: the value of a searched argument
  *   arg_map(in): the map of arguments
  *   arg_ch(in): the value of an argument
  */
@@ -187,7 +188,7 @@ utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch)
 /*
  * get_option_bool_value() - search an option in the map of arguments
  *      and return that value
- *   return: the value of a searched argument 
+ *   return: the value of a searched argument
  *   arg_map(in): the map of arguments
  *   arg_ch(in): the value of an argument
  */
@@ -206,7 +207,7 @@ utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch)
 /*
  * get_option_string_value() - search an option in the map of arguments
  *      and return that value
- *   return: the value of a searched argument 
+ *   return: the value of a searched argument
  *   arg_map(in): the map of arguments
  *   arg_ch(in): the value of an argument
  */
@@ -274,4 +275,40 @@ fopen_ex (const char *filename, const char *type)
 #else /* NT, ALPHA_OSF, and the others */
   return fopen (filename, type);
 #endif
+}
+
+/*
+ * utility_keyword_search
+ */
+int
+utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
+			char **keystr_p)
+{
+  UTIL_KEYWORD *keyp;
+
+  if (*keyval_p >= 0 && *keystr_p == NULL)
+    {
+      /* get keyword string from keyword value */
+      for (keyp = keywords; keyp->keyval >= 0; keyp++)
+	{
+	  if (*keyval_p == keyp->keyval)
+	    {
+	      *keystr_p = keyp->keystr;
+	      return NO_ERROR;
+	    }
+	}
+    }
+  else if (*keyval_p < 0 && *keystr_p != NULL)
+    {
+      /* get keyword value from keyword string */
+      for (keyp = keywords; keyp->keystr != NULL; keyp++)
+	{
+	  if (!strcasecmp (*keystr_p, keyp->keystr))
+	    {
+	      *keyval_p = keyp->keyval;
+	      return NO_ERROR;
+	    }
+	}
+    }
+  return ER_FAILED;
 }

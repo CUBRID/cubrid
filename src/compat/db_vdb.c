@@ -1662,9 +1662,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   do_Trigger_involved = false;
   if (err < 0)
     {
-      if (pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
+      /* Do not override original error id with */
+      if (er_errid () == NO_ERROR
+	  && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_EXECUTION, statement);
+	  err = er_errid ();
 	}
       /* free the allocated list_id area before leaving */
       if (pt_node_to_cmd_type (statement) == CUBRID_STMT_SELECT)
@@ -1760,8 +1763,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       *result = qres;
     }				/* if (result) */
 
+  /* Do not override original error id with  */
   /* last error checking */
-  if (pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
+  if (er_errid () == NO_ERROR
+      && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
     {
       pt_report_to_ersys_with_statement (parser, PT_EXECUTION, statement);
       err = er_errid ();

@@ -30,12 +30,40 @@
 
 package cubridmanager.cubrid.dialog;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
+import org.eclipse.jface.viewers.ColumnWeightData;
+import org.eclipse.jface.viewers.TableLayout;
+import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.CCombo;
+import org.eclipse.swt.custom.TableEditor;
+import org.eclipse.swt.events.DisposeEvent;
+import org.eclipse.swt.events.DisposeListener;
+import org.eclipse.swt.events.FocusEvent;
+import org.eclipse.swt.events.MouseAdapter;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.layout.FillLayout;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Dialog;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.Dialog;
-import org.eclipse.swt.SWT;
+import org.eclipse.swt.widgets.TabFolder;
+import org.eclipse.swt.widgets.Table;
+import org.eclipse.swt.widgets.TableColumn;
+import org.eclipse.swt.widgets.TableItem;
 
 import cubridmanager.CommonTool;
 import cubridmanager.Messages;
@@ -43,24 +71,6 @@ import cubridmanager.cubrid.Authorizations;
 import cubridmanager.cubrid.SchemaInfo;
 import cubridmanager.cubrid.UserInfo;
 import cubridmanager.cubrid.view.CubridView;
-import cubridmanager.cubrid.dialog.PROPPAGE_USER_GENERALDialog;
-import java.util.ArrayList;
-import org.eclipse.swt.widgets.Table;
-import org.eclipse.jface.viewers.CellEditor;
-import org.eclipse.jface.viewers.ICellModifier;
-import org.eclipse.jface.viewers.TableLayout;
-import org.eclipse.jface.viewers.ColumnWeightData;
-import org.eclipse.jface.viewers.TableViewer;
-import org.eclipse.jface.viewers.ComboBoxCellEditor;
-import org.eclipse.jface.viewers.Viewer;
-import org.eclipse.swt.widgets.TableColumn;
-import org.eclipse.swt.widgets.TableItem;
-import org.eclipse.swt.widgets.Button;
-import org.eclipse.swt.widgets.TabFolder;
-import org.eclipse.swt.events.FocusEvent;
-import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.layout.FillLayout;
 
 public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 	private Shell dlgShell = null;
@@ -70,9 +80,9 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 	private Button BUTTON_USERINFO_ADDCLASS = null;
 	private Button BUTTON_USERINFO_DELETECLASS = null;
 	public Table LIST_AUTHORIZATIONS = null;
-	public static final String[] PROPS = new String[15];
 	public static final String[] ynstr = { "Y", "N" };
-
+	private List currentClassList = new ArrayList();
+	
 	public PROPPAGE_USER_AUTHORIZATIONDialog(Shell parent) {
 		super(parent);
 	}
@@ -308,10 +318,32 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 
 		TableColumn tblcol = new TableColumn(LIST_CURRENT_CLASSES, SWT.LEFT);
 		tblcol.setText(Messages.getString("TABLE.NAME"));
+		final ColumnComparator nameComparator = new ColumnComparator(ColumnComparator.NAMECOLUMN, true);
+		tblcol.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				TableColumn column = (TableColumn) e.widget;
+				LIST_CURRENT_CLASSES.setSortColumn(column);
+				LIST_CURRENT_CLASSES.setSortDirection(nameComparator.isAsc() ? SWT.UP : SWT.DOWN);
+				Collections.sort(currentClassList, nameComparator);
+				nameComparator.setAsc(!nameComparator.isAsc());
+				makeCurrentClassTableItem();
+			}
+		});
 		tblcol = new TableColumn(LIST_CURRENT_CLASSES, SWT.LEFT);
 		tblcol.setText(Messages.getString("TABLE.SCHEMATYPE"));
 		tblcol = new TableColumn(LIST_CURRENT_CLASSES, SWT.LEFT);
 		tblcol.setText(Messages.getString("TABLE.OWNER"));
+		final ColumnComparator ownerComparator = new ColumnComparator(ColumnComparator.OWNERCOLUMN, true);
+		tblcol.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				TableColumn column = (TableColumn) e.widget;
+				LIST_CURRENT_CLASSES.setSortColumn(column);
+				LIST_CURRENT_CLASSES.setSortDirection(ownerComparator.isAsc() ? SWT.UP : SWT.DOWN);
+				Collections.sort(currentClassList, ownerComparator);
+				ownerComparator.setAsc(!ownerComparator.isAsc());
+				makeCurrentClassTableItem();
+			}
+		});
 		tblcol = new TableColumn(LIST_CURRENT_CLASSES, SWT.LEFT);
 		tblcol.setText(Messages.getString("TABLE.SUPERCLASS"));
 		tblcol = new TableColumn(LIST_CURRENT_CLASSES, SWT.LEFT);
@@ -319,8 +351,7 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 	}
 
 	private void createTable2() {
-		final TableViewer tv = new TableViewer(sShell, SWT.FULL_SELECTION
-				| SWT.BORDER);
+		final TableViewer tv = new TableViewer(sShell, SWT.FULL_SELECTION | SWT.BORDER);
 		LIST_AUTHORIZATIONS = tv.getTable();
 		LIST_AUTHORIZATIONS.setBounds(new org.eclipse.swt.graphics.Rectangle(
 				14, 228, 576, 160));
@@ -356,6 +387,11 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 
 		TableColumn tblColumn = new TableColumn(LIST_AUTHORIZATIONS, SWT.LEFT);
 		tblColumn.setText(Messages.getString("TABLE.CLASS"));
+		tblColumn.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				tv.setSorter(null);
+			}
+		});
 		tblColumn = new TableColumn(LIST_AUTHORIZATIONS, SWT.LEFT);
 		tblColumn.setText(Messages.getString("TABLE.SELECT"));
 		tblColumn = new TableColumn(LIST_AUTHORIZATIONS, SWT.LEFT);
@@ -385,18 +421,67 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 		tblColumn = new TableColumn(LIST_AUTHORIZATIONS, SWT.LEFT);
 		tblColumn.setText(Messages.getString("TABLE.GRANTEXECUTE"));
 
-		CellEditor[] editors = new CellEditor[15];
-		editors[0] = null;
-		for (int i = 0; i < 15; i++) {
-			PROPS[i] = LIST_AUTHORIZATIONS.getColumn(i).getText();
-			if (i > 0)
-				editors[i] = new ComboBoxCellEditor(LIST_AUTHORIZATIONS, ynstr,
-						SWT.READ_ONLY);
-		}
-		tv.setColumnProperties(PROPS);
-		tv.setCellEditors(editors);
-		tv.setCellModifier(new YnCellModifier(tv));
+		final TableEditor editor = new TableEditor(LIST_AUTHORIZATIONS);
+		editor.horizontalAlignment = SWT.LEFT;
+		editor.grabHorizontal = true;
+		LIST_AUTHORIZATIONS.addMouseListener(new MouseAdapter() {
+			public void mouseDown(MouseEvent event) {
+				if (LIST_AUTHORIZATIONS.getSelectionCount() > 0) {
+					TableItem[] items = LIST_AUTHORIZATIONS.getSelection();
+					List sinfo = SchemaInfo.SchemaInfo_get(CubridView.Current_db);
+					for (int i = 0, n = sinfo.size(); i < n; i++) {
+						SchemaInfo si = (SchemaInfo) sinfo.get(i);
+						if (si.name.equals(items[0].getText(0))) {
+							if (si.isSystemClass())
+								return;
+						}
+					}
+				} else {
+					return;
+				}
+				Control old = editor.getEditor();
+				if (old != null)
+					old.dispose();
 
+				Point pt = new Point(event.x, event.y);
+
+				final TableItem item = LIST_AUTHORIZATIONS.getItem(pt);
+
+				if (item != null) {
+					int column = -1;
+					for (int i = 0, n = LIST_AUTHORIZATIONS.getColumnCount(); i < n; i++) {
+						Rectangle rect = item.getBounds(i);
+						if (rect.contains(pt)) {
+							column = i;
+							break;
+						}
+					}
+					if (column == 0) {
+						return;
+					} else {
+						final CCombo combo = new CCombo(LIST_AUTHORIZATIONS, SWT.READ_ONLY);
+						combo.setItems(ynstr);
+						combo.select(combo.indexOf(item.getText(column)));
+						combo.setFocus();
+						editor.setEditor(combo, item, column);
+						final int col = column;
+						combo.addSelectionListener(new SelectionAdapter() {
+							public void widgetSelected(SelectionEvent event) {
+								item.setText(col, combo.getText());
+								combo.dispose();
+							}
+						});
+						item.addDisposeListener(new DisposeListener() {
+							public void widgetDisposed(DisposeEvent e) {
+								if (combo != null && !combo.isDisposed()) {
+									combo.dispose();
+								}
+							}
+						});
+					}
+				}
+			}
+		});		
 		LIST_AUTHORIZATIONS
 				.addSelectionListener(new org.eclipse.swt.events.SelectionAdapter() {
 					public void widgetSelected(
@@ -421,31 +506,44 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 				});
 	}
 
-	private void setinfo() {
-		ArrayList sinfo = SchemaInfo.SchemaInfo_get(CubridView.Current_db);
-		for (int i = 0, n = sinfo.size(); i < n; i++) {
-			SchemaInfo si = (SchemaInfo) sinfo.get(i);
+	private void makeCurrentClassTableItem() {
+		LIST_CURRENT_CLASSES.removeAll();
+		for (int i = 0, n = currentClassList.size(); i < n; i++) {
+			SchemaInfo si = (SchemaInfo) currentClassList.get(i);
 			if (!si.type.equals("user"))
 				continue;
 			TableItem item = new TableItem(LIST_CURRENT_CLASSES, SWT.NONE);
 			item.setText(0, si.name);
-			item.setText(1, si.type.equals("system") ? Messages
-					.getString("TREE.SYSSCHEMA") : Messages
-					.getString("TREE.USERSCHEMA"));
+			item.setText(1, si.type.equals("system") ? Messages.getString("TREE.SYSSCHEMA") : Messages
+			        .getString("TREE.USERSCHEMA"));
 			item.setText(2, si.schemaowner);
 			String superstr = new String("");
 			for (int i2 = 0, n2 = si.superClasses.size(); i2 < n2; i2++) {
 				if (superstr.length() < 1)
-					superstr = superstr
-							.concat((String) si.superClasses.get(i2));
+					superstr = superstr.concat((String) si.superClasses.get(i2));
 				else
-					superstr = superstr.concat(", "
-							+ (String) si.superClasses.get(i2));
+					superstr = superstr.concat(", " + (String) si.superClasses.get(i2));
 			}
 			item.setText(3, superstr);
-			item.setText(4, si.virtual.equals("normal") ? Messages
-					.getString("TREE.TABLE") : Messages.getString("TREE.VIEW"));
+			item.setText(4, si.virtual.equals("normal") ? Messages.getString("TREE.TABLE") : Messages
+			        .getString("TREE.VIEW"));
 		}
+		
+		for (int i = LIST_CURRENT_CLASSES.getItemCount() - 1, n = -1; i > n; i--) {
+			for (int j = 0, m = LIST_AUTHORIZATIONS.getItemCount(); j < m; j++) {
+				if (LIST_CURRENT_CLASSES.getItem(i).getText(0).equals(
+						LIST_AUTHORIZATIONS.getItem(j).getText(0))) {
+					LIST_CURRENT_CLASSES.remove(i);
+					break;
+				}
+			}
+		}
+	}
+	
+	private void setinfo() {
+		ArrayList sinfo = SchemaInfo.SchemaInfo_get(CubridView.Current_db);
+		currentClassList.addAll(sinfo);
+		makeCurrentClassTableItem();
 
 		if (PROPPAGE_USER_GENERALDialog.DBUser == null
 				|| PROPPAGE_USER_GENERALDialog.DBUser.length() <= 0)
@@ -502,52 +600,40 @@ public class PROPPAGE_USER_AUTHORIZATIONDialog extends Dialog {
 	}
 }
 
-class YnCellModifier implements ICellModifier {
-	Table tbl = null;
+class ColumnComparator implements Comparator {
 
-	public YnCellModifier(Viewer viewer) {
-		tbl = ((TableViewer) viewer).getTable();
+	public static final String NAMECOLUMN = "name";
+	public static final String OWNERCOLUMN = "owner";
+	private String columnName = null;
+	private boolean isAsc = true;
+
+	public ColumnComparator(String columnName,boolean isAsc) {
+		this.columnName = columnName;
+		this.isAsc = isAsc;
 	}
 
-	public boolean canModify(Object element, String property) {
-		if (property == null)
-			return false;
-		if (PROPPAGE_USER_AUTHORIZATIONDialog.PROPS[0].equals(property))
-			return false;
-
-		if (tbl.getSelectionCount() > 0) {
-			TableItem[] items = tbl.getSelection();
-
-			ArrayList sinfo = SchemaInfo.SchemaInfo_get(CubridView.Current_db);
-			for (int i = 0, n = sinfo.size(); i < n; i++) {
-				SchemaInfo si = (SchemaInfo) sinfo.get(i);
-				if (si.name.equals(items[0].getText(0))) {
-					return si.isSystemClass() ? false : true;
-				}
-			}
-		}
-
-		return true;
+	public void setAsc(boolean isAsc) {
+		this.isAsc = isAsc;
 	}
 
-	public Object getValue(Object element, String property) {
-		TableItem[] tis = tbl.getSelection();
-		for (int i = 1; i < 15; i++) {
-			if (PROPPAGE_USER_AUTHORIZATIONDialog.PROPS[i].equals(property)) {
-				return (tis[0].getText(i).equals("Y")) ? new Integer(0)
-						: new Integer(1);
-			}
-		}
-		return Boolean.valueOf(false);
+	public boolean isAsc() {
+		return this.isAsc;
 	}
 
-	public void modify(Object element, String property, Object value) {
-		String yn = (((Integer) value).intValue() == 0) ? "Y" : "N";
-		for (int i = 1; i < 15; i++) {
-			if (PROPPAGE_USER_AUTHORIZATIONDialog.PROPS[i].equals(property)) {
-				((TableItem) element).setText(i, yn);
-				((TableItem) element).getParent().redraw();
-			}
+	public int compare(Object o1, Object o2) {
+		SchemaInfo schemaInfo1 = (SchemaInfo) o1;
+		SchemaInfo schemaInfo2 = (SchemaInfo) o2;
+		String str1 = "";
+		String str2 = "";
+		if (columnName.equals(NAMECOLUMN)) {
+			str1 = schemaInfo1.name;
+			str2 = schemaInfo2.name;
+		} else if (columnName.equals(OWNERCOLUMN)) {
+			str1 = schemaInfo1.schemaowner;
+			str2 = schemaInfo2.schemaowner;
 		}
+		return isAsc ? str1.compareTo(str2) : str2.compareTo(str1);
 	}
 }
+
+

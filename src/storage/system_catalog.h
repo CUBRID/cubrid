@@ -156,7 +156,7 @@ extern int catalog_delete (THREAD_ENTRY * thread_p, OID * classoid);
 extern DISK_ISVALID catalog_check_consistency (THREAD_ENTRY * thread_p);
 
 /* Dump routines */
-extern void catalog_dump (THREAD_ENTRY * thread_p, int dump_flg);
+extern void catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flg);
 
 /* Recovery routines */
 extern int catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);

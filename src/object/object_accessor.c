@@ -737,7 +737,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
       /* Check for the presence of triggers or unique constraints, use
        * templates in those cases.
        */
-      trigstate = sm_active_triggers (class_);
+      trigstate = sm_active_triggers (class_, TR_EVENT_ALL);
       if (trigstate < 0)
 	{
 	  return er_errid ();

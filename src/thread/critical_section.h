@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -40,19 +40,13 @@ enum
 };
 
 /*
- * These are the user defined lock definitions. When adding more locks, also 
+ * These are the user defined lock definitions. When adding more locks, also
  * add initialization entries in critical_section.c
  */
 enum
 {
   CSECT_ER_LOG_FILE = 0,	/* Latch for error msg log file */
   CSECT_ER_MSG_CACHE,		/* Latch for error msg cache */
-  CSECT_CONN_LIST,		/* Latch for connection list */
-  CSECT_CONN_MAP,		/* Latch for connection map */
-  CSECT_FILEIO_CACHE_MOUNTED,	/* Latch for cached mounted volumes global structures */
-  CSECT_PGBUF_POOL,		/* Latch for page buffer pool */
-  CSECT_LOCK_OBJECT_TABLE,	/* Latch for lock object table */
-  CSECT_LOCK_PAGE_TABLE,	/* Latch for lock page table */
   CSECT_WFG,			/* Latch for wait-for-graph */
   CSECT_LOG,			/* Latch for log manager */
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for temp classname to classOID entries */
@@ -61,21 +55,18 @@ enum
   CSECT_QPROC_QFILE_PGCNT,	/* Latch for query file page count */
   CSECT_QPROC_XASL_CACHE,	/* Latch for XASL cache (mht: memory hash table) */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
-  CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters. 
+  CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters.
 				 * Used during vol creation */
-  CSECT_HEAP_CLASSREPR,		/* Latch for accessing cached class representations */
   CSECT_DISK_REFRESH_GOODVOL,	/* Latch for refreshing good volume cache */
-  CSECT_LDB_CACHE_VALUE,	/* Latch for accessing cached ldb parameters */
-  CSECT_LDB_DRIVER_STATUS,	/* Latch for accessing cached ldb binding status */
-  CSECT_LDB_DRIVER_ADD,		/* Latch for accessing the info. on driver */
-  CSECT_LDB_DRIVER_UNBIND,	/* Latch for free of drivers */
   CSECT_CNV_FMT_LEXER,		/* Latch for value/string format translation lexer */
   CSECT_HEAP_CHNGUESS,		/* Latch for schema change */
   CSECT_SPAGE_SAVESPACE,	/* Latch for slotted page saving space */
+
   CSECT_TRAN_TABLE,		/* Latch for transaction table */
   CSECT_CT_OID_TABLE,
   CSECT_SCANID_BITMAP,
   CSECT_LOG_FLUSH,		/* for 2 flushing (by LFT, by normal thread) */
+  CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_LAST
 };
 
@@ -100,9 +91,13 @@ extern int csect_initialize (void);
 extern void cs_clear_tran_index (int tran_index);
 extern int csect_finalize (void);
 
-extern int csect_enter (THREAD_ENTRY * thread_p, int cs_index, int do_wait);
+extern int csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index,
-				  int do_wait);
+				  int wait_secs);
+extern int csect_demote (THREAD_ENTRY * thread_p, int cs_index,
+			 int wait_secs);
+extern int csect_promote (THREAD_ENTRY * thread_p, int cs_index,
+			  int wait_secs);
 extern int csect_exit (int cs_index);
 
 extern int csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
@@ -110,9 +105,16 @@ extern int csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 extern int csect_enter_critical_section (THREAD_ENTRY * thread_p,
 					 CSS_CRITICAL_SECTION * cs_ptr,
 					 int wait_secs);
-extern int csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
-						   CSS_CRITICAL_SECTION *
-						   cs_ptr, int wait_secs);
+extern int
+csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
+					CSS_CRITICAL_SECTION * cs_ptr,
+					int wait_secs);
+extern int csect_demote_critical_section (THREAD_ENTRY * thread_p,
+					  CSS_CRITICAL_SECTION * cs_ptr,
+					  int wait_secs);
+extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
+					   CSS_CRITICAL_SECTION * cs_ptr,
+					   int wait_secs);
 extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 
 #ifdef LOG_DEBUG

@@ -334,19 +334,20 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				HFID * hfids, int unique_flag,
 				int reverse_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fkname);
+				const char *fk_name);
 #endif /* SERVER_MODE */
 
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid,
 				    HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid,
 				    BTID * pk_btid, int cache_attr_id,
-				    const char *fkname);
+				    const char *fk_name);
 
 /* Recovery routines */
 extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
-extern void btree_rv_dump_create_index (int length_ignore, void *data);
+extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
+					void *data);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_write_overflow_header (RECDES * Rec,
@@ -384,6 +385,6 @@ extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
 extern char *btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr);
 
 /* Dump routines */
-extern void btree_dump_key (DB_VALUE * key);
+extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 
 #endif /* _BTREE_LOAD_H_ */

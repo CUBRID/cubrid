@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -18,7 +18,7 @@
  */
 
 /*
- * network_interface_sr.c - Server side network interface functions 
+ * network_interface_sr.c - Server side network interface functions
  *                          for client requests.
  */
 
@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "memory_alloc.h"
@@ -62,6 +63,7 @@
 #include "replication.h"
 #include "server_support.h"
 #include "connection_sr.h"
+#include "log_writer.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -81,19 +83,43 @@ static int server_capabilities (void);
  * NOTE:
  */
 void
-return_error_to_client (unsigned int rid)
+return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
 {
-  void *error_string;
-  int length;
+  int errid;
+  void *area;
+  char buffer[1024];
+  int length = 1024;
+  CSS_CONN_ENTRY *conn;
 
-  error_string = er_get_area_error (&length);
+  assert (thread_p != NULL);
 
-  if (error_string != NULL)
+  conn = thread_p->conn_entry;
+  assert (conn != NULL);
+
+  /* check some errors which require special actions */
+  /*
+   * ER_LK_UNILATERALLY_ABORTED may have occurred due to deadlock.
+   * If it happened, do server-side rollback of the transaction.
+   * If ER_DB_NO_MODIFICATIONS error is occurred in server-side,
+   * it means that the user tried to update the database
+   * when the server was disabled to modify. (aka standby mode)
+   */
+  errid = er_errid ();
+  if (errid == ER_LK_UNILATERALLY_ABORTED || errid == ER_DB_NO_MODIFICATIONS)
     {
-      css_set_error_code (rid, er_errid ());
-      css_send_error_to_client (rid, (char *) error_string, length);
-      css_set_error_code (rid, 0);
-      free_and_init (error_string);
+      tran_server_unilaterally_abort_tran (thread_p);
+    }
+  if (errid == ER_DB_NO_MODIFICATIONS)
+    {
+      conn->reset_on_commit = true;
+    }
+
+  area = er_get_area_error (buffer, &length);
+  if (area != NULL)
+    {
+      conn->db_error = errid;
+      css_send_error_to_client (conn, rid, (char *) area, length);
+      conn->db_error = 0;
     }
 }
 
@@ -111,56 +137,25 @@ server_capabilities (void)
 }
 
 /*
- * server_ping -
- *
- * return:
- *
+ * server_ping - return that the server is alive
+ *   return:
  *   rid(in): request id
- *
- * NOTE:
- * this function is obsolate... it remains here to detect old versions of
- *    clients without handshake ..
  */
 void
-server_ping (unsigned int rid)
+server_ping (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+	     int reqlen)
 {
-  OR_ALIGNED_BUF (NET_PINGBUF_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *secure_errtxt_to_client;
-  void *error_string;
-  int length;
+  int client_val, server_val;
 
-  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_RELEASE, 2,
-	  rel_major_release_string (), " ");
+  /* you can get something useful from the request */
+  or_unpack_int (request, &client_val);
 
-  /*
-   * It is likely that the client doe snot knonw about the above errid...
-   * reset it with another one... for security reasons...
-   */
-
-  secure_errtxt_to_client = (char *) db_private_alloc (NULL,
-						       strlen (er_msg ()) +
-						       1);
-  if (secure_errtxt_to_client != NULL)
-    {
-      strcpy (secure_errtxt_to_client, er_msg ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1,
-	      secure_errtxt_to_client);
-      db_private_free_and_init (NULL, secure_errtxt_to_client);
-    }
-
-  error_string = er_get_area_error (&length);
-
-  if (error_string != NULL)
-    {
-      css_set_error_code (rid, er_errid ());
-      css_send_error_to_client (rid, (char *) error_string, length);
-      css_set_error_code (rid, 0);
-      free_and_init (error_string);
-    }
-
-  strcpy (reply, " ");
-  css_send_data_to_client (rid, reply, strlen (reply) + 1);
+  /* you can envelope something useful into the reply */
+  server_val = 0;
+  or_pack_int (reply, server_val);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE);
 }
 
 /*
@@ -177,72 +172,62 @@ server_ping (unsigned int rid)
  *    version string so the client can determine compatibility.
  */
 int
-server_ping_with_handshake (unsigned int rid, char *request, int reqlen)
+server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
+			    char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (NET_PINGBUF_SIZE) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr, *client_version, *temp;
-  unsigned int reply_size;
+  int reply_size;
+  char *ptr, *client_release;
+  const char *server_release;
   int status = CSS_NO_ERRORS;
   bool compatible = true;
 
   if (reqlen > 0)
     {
-      or_unpack_string_nocopy (request, &client_version);
-      temp = css_add_client_version_string (client_version);
+      or_unpack_string_nocopy (request, &client_release);
+      client_release =
+	css_add_client_version_string (thread_p, client_release);
     }
   else
     {
-      temp = css_add_client_version_string ("?.?.?");
+      client_release = css_add_client_version_string (thread_p, "?.?.?");
     }
+  server_release = rel_release_string ();
 
   /* Check to see if we successfully added the version internally.
    * If we can't store the client version, we don't know what protocol
    * to use, so we have to disconnect it.
    */
-  if (temp == NULL)
+  if (client_release == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 0);
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }
   else
     {
-      char *server_release = (char *) rel_release_string ();
-      char *client_release = temp;
       if (!server_release || !client_release
 	  || rel_compare (server_release, client_release) != 0)
 	{
 	  compatible = false;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_RELEASE,
 		  2, server_release, client_release);
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);
 	}
     }
 
-  reply_size = (or_packed_string_length (rel_release_string ()) +
-		or_packed_string_length (NET_CLIENT_SERVER_HAND_SHAKE) +
-		OR_INT_SIZE);
-
-  if (reply_size > NET_PINGBUF_SIZE)
+  reply_size = or_packed_string_length (server_release) + OR_INT_SIZE;
+  if (compatible)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_CANT_ALLOC_BUFFER, 0);
-      return_error_to_client (rid);
+      ptr = or_pack_string (reply, (char *) server_release);
     }
   else
     {
-      if (compatible)
-	{
-	  ptr = or_pack_string (reply, (char *) rel_release_string ());
-	}
-      else
-	{
-	  ptr = or_pack_string (reply, (char *) "?.?.?");
-	}
-      ptr = or_pack_string (ptr, NET_CLIENT_SERVER_HAND_SHAKE);
-      ptr = or_pack_int (ptr, server_capabilities ());
-      css_send_data_to_client (rid, reply, reply_size);
+      ptr = or_pack_string (reply, (char *) "?.?.?");
     }
+  ptr = or_pack_int (ptr, server_capabilities ());
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, reply_size);
 
   return status;
 }
@@ -260,7 +245,7 @@ server_ping_with_handshake (unsigned int rid, char *request, int reqlen)
  * NOTE:
  */
 void
-slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid, char *request,
+slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		int reqlen)
 {
   OID oid;
@@ -288,19 +273,12 @@ slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &prefetch);
 
   copy_area = NULL;
-  success = xlocator_fetch (thrd, &oid, chn, lock, &class_oid, class_chn,
+  success = xlocator_fetch (thread_p, &oid, chn, lock, &class_oid, class_chn,
 			    prefetch, &copy_area);
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thrd);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (copy_area != NULL)
@@ -326,11 +304,12 @@ slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid, char *request,
 
   if (copy_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size, content_ptr,
 					   content_size);
@@ -382,17 +361,9 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   copy_area = NULL;
   success = xlocator_get_class (thread_p, &class_oid, class_chn, &oid, lock,
 				prefetching, &copy_area);
-
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (copy_area != NULL)
@@ -419,11 +390,12 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (copy_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -480,14 +452,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (copy_area != NULL)
@@ -517,11 +482,12 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (copy_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -579,14 +545,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (doesexist == LC_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (copy_area != NULL)
@@ -613,11 +572,12 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (copy_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -659,7 +619,7 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xlocator_notify_isolation_incons (thread_p, &copy_area);
   if (success != NO_ERROR)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (copy_area != NULL)
@@ -686,11 +646,12 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (copy_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -749,14 +710,15 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       if (num_objs > 0)
 	{
-	  csserror = css_receive_data_from_client (rid, &packed_desc, &size);
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+						   &packed_desc, &size);
 	}
 
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  goto end;
 	}
       else
@@ -770,7 +732,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	  if (content_size > 0)
 	    {
-	      csserror = css_receive_data_from_client (rid, &new_content_ptr,
+	      csserror = css_receive_data_from_client (thread_p->conn_entry,
+						       rid, &new_content_ptr,
 						       &size);
 
 	      if (new_content_ptr != NULL)
@@ -783,7 +746,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_NET_SERVER_DATA_RECEIVE, 0);
-		  css_send_abort_to_client (rid);
+		  css_send_abort_to_client (thread_p->conn_entry, rid);
 		  goto end;
 		}
 	    }
@@ -804,20 +767,14 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	  if (success != NO_ERROR)
 	    {
-	      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	       * but if it occurs, rollback transaction
-	       */
-	      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-		{
-		  tran_server_unilaterally_abort_tran (thread_p);
-		}
-	      return_error_to_client (rid);
+	      return_error_to_client (thread_p, rid);;
 	    }
 
-	  css_send_reply_and_2_data_to_client (rid, reply,
+	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid,
+					       reply,
 					       OR_ALIGNED_BUF_SIZE (a_reply),
-					       packed_desc,
-					       packed_desc_size, NULL, 0);
+					       packed_desc, packed_desc_size,
+					       NULL, 0);
 	  if (packed_desc)
 	    {
 	      free_and_init (packed_desc);
@@ -871,11 +828,12 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (request, &packed_size);
 
   if (packed_size == 0
-      || css_receive_data_from_client (rid, &packed, (int *) &packed_size))
+      || css_receive_data_from_client (thread_p->conn_entry, rid, &packed,
+				       (int *) &packed_size))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       if (packed)
 	free_and_init (packed);
       return;
@@ -889,13 +847,14 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if ((lockset == NULL) || (lockset->length <= 0))
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, ER_FAILED);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
       return;
     }
 
@@ -910,14 +869,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (success != NO_ERROR)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may occur,
-	   * if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       if (copy_area != NULL)
@@ -950,15 +902,17 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (copy_area == NULL && lockset == NULL)
 	{
-	  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+	  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply));
 	}
       else
 	{
-	  css_send_reply_and_3_data_to_client (rid, reply,
+	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid,
+					       reply,
 					       OR_ALIGNED_BUF_SIZE (a_reply),
-					       packed, send_size,
-					       desc_ptr, desc_size,
-					       content_ptr, content_size);
+					       packed, send_size, desc_ptr,
+					       desc_size, content_ptr,
+					       content_size);
 	}
       if (copy_area != NULL)
 	{
@@ -1039,14 +993,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (lockset != NULL && lockset->length > 0)
@@ -1058,7 +1005,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 
       if (!packed)
 	{
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	  success = ER_FAILED;
 	}
     }
@@ -1088,11 +1035,12 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 
   if (copy_area == NULL && lockset == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_3_data_to_client (rid, reply,
+      css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   packed, send_size,
 					   desc_ptr, desc_size,
@@ -1145,19 +1093,13 @@ slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (found == LC_CLASSNAME_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, found);
   ptr = or_pack_oid (ptr, &class_oid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1188,18 +1130,12 @@ slocator_reserve_classname (THREAD_ENTRY * thread_p, unsigned int rid,
   reserved = xlocator_reserve_class_name (thread_p, classname, &class_oid);
   if (reserved == LC_CLASSNAME_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, reserved);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1227,18 +1163,12 @@ slocator_delete_class_name (THREAD_ENTRY * thread_p, unsigned int rid,
   deleted = xlocator_delete_class_name (thread_p, classname);
   if (deleted == LC_CLASSNAME_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, deleted);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1271,18 +1201,12 @@ slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int rid,
 					&class_oid);
   if (renamed == LC_CLASSNAME_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, renamed);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1304,7 +1228,7 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int expected_length;
   OID class_oid, perm_oid;
   char *classname;
-  int success = NO_ERROR;
+  int success;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -1314,23 +1238,18 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_string_nocopy (ptr, &classname);
 
-  if (xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length,
-			   &class_oid, classname) != NO_ERROR)
+  success = (xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length,
+				  &class_oid, classname) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, success);
   ptr = or_pack_oid (ptr, &perm_oid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1363,13 +1282,13 @@ sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 					      &buffer_length);
   if (buffer == NULL && buffer_length < 0)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       buffer_length = 0;
     }
 
   (void) or_pack_int (reply, buffer_length);
 
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length);
   if (buffer != NULL)
@@ -1409,7 +1328,7 @@ slog_client_get_first_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1427,11 +1346,12 @@ slog_client_get_first_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -1473,7 +1393,7 @@ slog_client_get_next_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1491,11 +1411,12 @@ slog_client_get_next_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -1537,7 +1458,7 @@ slog_client_get_first_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1555,11 +1476,12 @@ slog_client_get_first_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -1601,7 +1523,7 @@ slog_client_get_next_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1619,11 +1541,12 @@ slog_client_get_next_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -1666,7 +1589,7 @@ slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY * thread_p,
 
   if (log_area == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1684,11 +1607,12 @@ slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY * thread_p,
 
   if (log_area == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_2_data_to_client (rid, reply,
+      css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   desc_ptr, desc_size,
 					   content_ptr, content_size);
@@ -1725,13 +1649,14 @@ slog_append_client_undo (THREAD_ENTRY * thread_p, unsigned int rid,
   (void) or_unpack_int (request, &rcvindex);
 
   data = NULL;
-  csserror = css_receive_data_from_client (rid, &data, (int *) &length);
+  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data,
+					   (int *) &length);
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
@@ -1743,7 +1668,8 @@ slog_append_client_undo (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   /* just send back a dummy message */
   or_pack_int (reply, 0);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1771,13 +1697,14 @@ slog_append_client_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
   (void) or_unpack_int (request, &rcvindex);
 
   data = NULL;
-  csserror = css_receive_data_from_client (rid, &data, (int *) &length);
+  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data,
+					   (int *) &length);
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
@@ -1789,7 +1716,8 @@ slog_append_client_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   /* just send back a dummy message */
   or_pack_int (reply, 0);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1814,7 +1742,8 @@ slog_client_complete_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
   transtate = xlog_client_complete_postpone (thread_p);
 
   (void) or_pack_int (reply, (int) transtate);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1839,7 +1768,8 @@ slog_client_complete_undo (THREAD_ENTRY * thread_p, unsigned int rid,
   transtate = xlog_client_complete_undo (thread_p);
 
   (void) or_pack_int (reply, (int) transtate);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1864,7 +1794,8 @@ slogtb_has_updated (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   has_updated = logtb_has_updated (thread_p);
 
   (void) or_pack_int (reply, has_updated);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1916,7 +1847,8 @@ slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
   waitsecs = xlogtb_reset_wait_secs (thread_p, waitsecs);
 
   (void) or_pack_int (reply, waitsecs);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1946,12 +1878,14 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 					     (TRAN_ISOLATION) isolation,
 					     (bool) unlock_by_isolation);
 
-  (void) or_pack_int (reply, error_code);
   if (error_code != NO_ERROR)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -1966,7 +1900,8 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slogpb_dump_stat (unsigned int rid, char *request, int reqlen)
+slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		  int reqlen)
 {
   FILE *outfp;
   int file_size;
@@ -1981,7 +1916,7 @@ slogpb_dump_stat (unsigned int rid, char *request, int reqlen)
   buffer = (char *) db_private_alloc (NULL, buffer_size);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
@@ -1990,7 +1925,7 @@ slogpb_dump_stat (unsigned int rid, char *request, int reqlen)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 			   0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (NULL, buffer);
       return;
     }
@@ -2004,7 +1939,8 @@ slogpb_dump_stat (unsigned int rid, char *request, int reqlen)
   rewind (outfp);
 
   (void) or_pack_int (reply, (int) file_size);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   while (file_size > 0)
     {
@@ -2022,13 +1958,13 @@ slogpb_dump_stat (unsigned int rid, char *request, int reqlen)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_GENERIC_ERROR, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
 	}
-      css_send_data_to_client (rid, buffer, send_size);
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
     }
   fclose (outfp);
   db_private_free_and_init (NULL, buffer);
@@ -2062,7 +1998,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
@@ -2071,7 +2007,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 			   0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (thread_p, buffer);
       return;
     }
@@ -2085,7 +2021,8 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   rewind (outfp);
 
   (void) or_pack_int (reply, (int) file_size);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   while (file_size > 0)
     {
@@ -2103,13 +2040,13 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_GENERIC_ERROR, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
 	}
-      css_send_data_to_client (rid, buffer, send_size);
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);
@@ -2143,19 +2080,13 @@ shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   error = xheap_create (thread_p, &hfid, &class_oid);
   if (error != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_errcode (reply, error);
   ptr = or_pack_hfid (ptr, &hfid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2183,18 +2114,12 @@ shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   error = xheap_destroy (thread_p, &hfid);
   if (error != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2222,18 +2147,12 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xheap_destroy_newly_created (thread_p, &hfid);
   if (error != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2249,32 +2168,65 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-stran_server_commit (THREAD_ENTRY * thrd, unsigned int rid,
+stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
 		     char *request, int reqlen)
 {
   TRAN_STATE state;
   int xretain_lock;
-  bool retain_lock;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  bool retain_lock, reset_on_commit;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  HA_SERVER_STATE ha_state;
+  int client_type;
+  bool has_updated;
 
   (void) or_unpack_int (request, &xretain_lock);
   retain_lock = (bool) xretain_lock;
 
-  state = xtran_server_commit (thrd, retain_lock);
+  has_updated = logtb_has_updated (thread_p);
+
+  state = xtran_server_commit (thread_p, retain_lock);
 
   net_cleanup_server_queues (rid);
 
-  if (state != TRAN_UNACTIVE_COMMITTED
-      && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
-      && state != TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+  if (state != TRAN_UNACTIVE_COMMITTED &&
+      state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS &&
+      state != TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
     {
       /* Likely the commit failed.. somehow */
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_int (reply, (int) state);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  ptr = or_pack_int (reply, (int) state);
+  client_type = logtb_find_current_client_type (thread_p);
+  ha_state = css_ha_server_state ();
+  if (has_updated
+      && ha_state == HA_SERVER_STATE_TO_BE_STANDBY
+      && BOOT_NORMAL_CLIENT_TYPE (client_type))
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE,
+		    "stran_server_commit(): (has_updated && to-be-standby) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else if (ha_state == HA_SERVER_STATE_STANDBY
+	   && thread_p->conn_entry->reset_on_commit == true
+	   && BOOT_NORMAL_CLIENT_TYPE (client_type))
+    {
+      reset_on_commit = true;
+      thread_p->conn_entry->reset_on_commit = false;
+      er_log_debug (ARG_FILE_LINE,
+		    "stran_server_commit: (standby && conn->reset_on_commit) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else
+    {
+      reset_on_commit = false;
+    }
+  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2290,27 +2242,61 @@ stran_server_commit (THREAD_ENTRY * thrd, unsigned int rid,
  * NOTE:
  */
 void
-stran_server_abort (THREAD_ENTRY * thrd, unsigned int rid,
+stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
 		    char *request, int reqlen)
 {
   TRAN_STATE state;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int reset_on_commit;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  HA_SERVER_STATE ha_state;
+  int client_type;
+  bool has_updated;
 
-  state = xtran_server_abort (thrd);
+  has_updated = logtb_has_updated (thread_p);
+
+  state = xtran_server_abort (thread_p);
 
   net_cleanup_server_queues (rid);
 
-  if (state != TRAN_UNACTIVE_ABORTED
-      && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS
-      && state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
+  if (state != TRAN_UNACTIVE_ABORTED &&
+      state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS &&
+      state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
     {
       /* Likely the abort failed.. somehow */
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_int (reply, state);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  ptr = or_pack_int (reply, state);
+  client_type = logtb_find_current_client_type (thread_p);
+  ha_state = css_ha_server_state ();
+  if (has_updated
+      && ha_state == HA_SERVER_STATE_TO_BE_STANDBY
+      && BOOT_NORMAL_CLIENT_TYPE (client_type))
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE,
+		    "stran_server_abort: (has_updated && to-be-standby) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else if (ha_state == HA_SERVER_STATE_STANDBY
+	   && thread_p->conn_entry->reset_on_commit == true
+	   && BOOT_NORMAL_CLIENT_TYPE (client_type))
+    {
+      reset_on_commit = true;
+      thread_p->conn_entry->reset_on_commit = false;
+      er_log_debug (ARG_FILE_LINE,
+		    "stran_server_abort: (standby && conn->reset_on_commit) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else
+    {
+      reset_on_commit = false;
+    }
+  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2335,7 +2321,8 @@ stran_server_has_updated (THREAD_ENTRY * thread_p, unsigned int rid,
   has_updated = xtran_server_has_updated (thread_p);
 
   (void) or_pack_int (reply, has_updated);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2353,21 +2340,23 @@ void
 stran_server_start_topop (THREAD_ENTRY * thread_p, unsigned int rid,
 			  char *request, int reqlen)
 {
-  int success = NO_ERROR;
+  int success;
   LOG_LSA topop_lsa;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
-  if (xtran_server_start_topop (thread_p, &topop_lsa) != NO_ERROR)
+  success = (xtran_server_start_topop (thread_p, &topop_lsa) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, success);
   ptr = or_pack_log_lsa (ptr, &topop_lsa);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2400,7 +2389,8 @@ stran_server_end_topop (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_pack_int (reply, (int) state);
   ptr = or_pack_log_lsa (ptr, &topop_lsa);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2418,7 +2408,7 @@ void
 stran_server_savepoint (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
-  int success = NO_ERROR;
+  int success;
   char *savept_name;
   LOG_LSA topop_lsa;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
@@ -2427,15 +2417,18 @@ stran_server_savepoint (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  if (xtran_server_savepoint (thread_p, savept_name, &topop_lsa) != NO_ERROR)
+  success = (xtran_server_savepoint (thread_p, savept_name,
+				     &topop_lsa) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, success);
   ptr = or_pack_log_lsa (ptr, &topop_lsa);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2468,12 +2461,13 @@ stran_server_partial_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       && state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
     {
       /* Likely the abort failed.. somehow */
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, (int) state);
   ptr = or_pack_log_lsa (ptr, &savept_lsa);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2499,7 +2493,8 @@ stran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p,
   isactive_has_updated = xtran_server_is_active_and_has_updated (thread_p);
 
   (void) or_pack_int (reply, isactive_has_updated);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2524,7 +2519,8 @@ stran_wait_server_active_trans (THREAD_ENTRY * thread_p, unsigned int rid,
   status = xtran_wait_server_active_trans (thread_p);
 
   (void) or_pack_int (reply, status);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2552,7 +2548,8 @@ stran_is_blocked (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   blocked = xtran_is_blocked (thread_p, tran_index);
 
   (void) or_pack_int (reply, blocked ? 1 : 0);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2570,7 +2567,7 @@ void
 stran_server_set_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen)
 {
-  int success = NO_ERROR;
+  int success;
   int gtrid;
   void *info;
   int size;
@@ -2579,23 +2576,26 @@ stran_server_set_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
 
   (void) or_unpack_int (request, &gtrid);
 
-  if (css_receive_data_from_client (rid, (char **) &info, (int *) &size))
+  if (css_receive_data_from_client
+      (thread_p->conn_entry, rid, (char **) &info, (int *) &size))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
-  if (xtran_server_set_global_tran_info (thread_p, gtrid, info, size) !=
-      NO_ERROR)
+  success = (xtran_server_set_global_tran_info (thread_p, gtrid, info,
+						size) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   if (info != NULL)
     {
@@ -2618,7 +2618,7 @@ void
 stran_server_get_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen)
 {
-  int success = NO_ERROR;
+  int success;
   int gtrid;
   void *buffer;
   int size;
@@ -2631,21 +2631,22 @@ stran_server_get_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = malloc (size);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
-  if (xtran_server_get_global_tran_info (thread_p, gtrid, buffer, size) !=
-      NO_ERROR)
+  success = (xtran_server_get_global_tran_info (thread_p, gtrid, buffer,
+						size) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       size = 0;
     }
 
   ptr = or_pack_int (reply, size);
   ptr = or_pack_int (ptr, success);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply),
 				     (char *) buffer, size);
   free_and_init (buffer);
@@ -2673,11 +2674,12 @@ stran_server_2pc_start (THREAD_ENTRY * thread_p, unsigned int rid,
   gtrid = xtran_server_2pc_start (thread_p);
   if (gtrid < 0)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, gtrid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2703,11 +2705,12 @@ stran_server_2pc_prepare (THREAD_ENTRY * thread_p, unsigned int rid,
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* the prepare failed. */
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, state);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2734,21 +2737,21 @@ stran_server_2pc_recovery_prepared (THREAD_ENTRY * thread_p, unsigned int rid,
   gtrids = (int *) malloc (sizeof (int) * size);
   if (gtrids == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
   count = xtran_server_2pc_recovery_prepared (thread_p, gtrids, size);
   if (count < 0 || count > size)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   reply_size = OR_INT_SIZE + (OR_INT_SIZE * size);
   reply = (char *) malloc (reply_size);
   if (reply == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       free_and_init (gtrids);
       return;
     }
@@ -2758,7 +2761,7 @@ stran_server_2pc_recovery_prepared (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       ptr = or_pack_int (ptr, gtrids[i]);
     }
-  css_send_data_to_client (rid, reply, reply_size);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, reply_size);
 
   free_and_init (gtrids);
   free_and_init (reply);
@@ -2790,11 +2793,12 @@ stran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p,
   tran_index = xtran_server_2pc_attach_global_tran (thread_p, gtrid);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, tran_index);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2824,11 +2828,12 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* Likely the prepare failed.. somehow */
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, state);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2847,20 +2852,15 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
 			 char *request, int reqlen)
 {
   int xint;
-  int print_version;
-  char *db_name, *db_path, *vol_path, *log_path, *db_server_host;
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  BOOT_DB_PATH_INFO db_path_info;
   int db_overwrite;
-  char *db_comments;
   DKNPAGES db_npages;
   int db_desired_pagesize;
   DKNPAGES log_npages;
   OID rootclass_oid;
   HFID rootclass_hfid;
   char *file_addmore_vols;
-  char *client_prog_name;
-  char *client_user_name;
-  char *client_host_name;
-  int client_pid;
   int client_lock_wait;
   TRAN_ISOLATION client_isolation;
   int tran_index;
@@ -2868,47 +2868,46 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &print_version);
+  memset (&client_credential, sizeof (client_credential), 0);
+  ptr = or_unpack_int (request, &xint);
+  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.host_name);
+  ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &db_overwrite);
   ptr = or_unpack_int (ptr, &db_desired_pagesize);
-  ptr = or_unpack_string_nocopy (ptr, &db_name);
-  ptr = or_unpack_string_nocopy (ptr, &db_path);
-  ptr = or_unpack_string_nocopy (ptr, &vol_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_comments);
-  ptr = or_unpack_int (ptr, &db_npages);
+  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
+  ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
+  ptr = or_unpack_string_nocopy (ptr, &db_path_info.log_path);
+  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_host);
+  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_comments);
   ptr = or_unpack_string_nocopy (ptr, &file_addmore_vols);
-  ptr = or_unpack_string_nocopy (ptr, &db_server_host);
-  ptr = or_unpack_string_nocopy (ptr, &log_path);
-  ptr = or_unpack_int (ptr, &log_npages);
-  ptr = or_unpack_string_nocopy (ptr, &client_prog_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_user_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_host_name);
-  ptr = or_unpack_int (ptr, &client_pid);
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-  tran_index = xboot_initialize_server (thread_p, print_version, db_overwrite,
-					db_desired_pagesize, db_name,
-					db_path, vol_path, db_comments,
+  tran_index = xboot_initialize_server (thread_p, &client_credential,
+					&db_path_info, db_overwrite,
+					db_desired_pagesize,
 					(DKNPAGES) db_npages,
-					file_addmore_vols,
-					db_server_host, log_path,
-					log_npages, &rootclass_oid,
-					&rootclass_hfid,
-					client_prog_name,
-					client_user_name,
-					client_host_name, client_pid,
+					file_addmore_vols, log_npages,
+					&rootclass_oid, &rootclass_hfid,
 					client_lock_wait, client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, tran_index);
   ptr = or_pack_oid (ptr, &rootclass_oid);
   ptr = or_pack_hfid (ptr, &rootclass_hfid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -2928,12 +2927,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   int xint;
   int tran_index;
-  int print_version;
-  char *db_name;
-  char *client_prog_name;
-  char *client_user_name;
-  char *client_host_name;
-  int client_pid;
+  BOOT_CLIENT_CREDENTIAL client_credential;
   int client_lock_wait;
   TRAN_ISOLATION client_isolation;
   OID oid;
@@ -2942,17 +2936,21 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   PGLENGTH current_pagesize;
   char *ptr;
   struct timeval server_clock;
-
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE + OR_INT_SIZE +
 		  OR_INT_SIZE + (OR_INT_SIZE * 2) + OR_FLOAT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &print_version);
-  ptr = or_unpack_string_nocopy (ptr, &db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_prog_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_user_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_host_name);
-  ptr = or_unpack_int (ptr, &client_pid);
+  memset (&client_credential, sizeof (client_credential), 0);
+  ptr = or_unpack_int (request, &xint);
+  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);
+  ptr = or_unpack_string_nocopy (ptr, &client_credential.host_name);
+  ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
@@ -2961,19 +2959,17 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1,
 		  DIAG_VAL_SETTYPE_INC, NULL);
 #endif
-  tran_index = xboot_register_client (thread_p, print_version, db_name,
-				      &oid, &hfid, client_prog_name,
-				      client_user_name, client_host_name,
-				      client_pid, client_lock_wait,
-				      client_isolation, &transtate,
-				      &current_pagesize);
+  tran_index =
+    xboot_register_client (thread_p, &client_credential, &oid, &hfid,
+			   client_lock_wait, client_isolation, &transtate,
+			   &current_pagesize);
   if (tran_index == NULL_TRAN_INDEX)
     {
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
       SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1,
 		      DIAG_VAL_SETTYPE_INC, NULL);
 #endif
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   gettimeofday (&server_clock, NULL);
@@ -2986,7 +2982,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (ptr, server_clock.tv_sec);
   ptr = or_pack_int (ptr, server_clock.tv_usec);
   ptr = or_pack_float (ptr, rel_disk_compatible ());
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3014,7 +3011,8 @@ sboot_notify_unregister_client (THREAD_ENTRY * thread_p, unsigned int rid,
   xboot_notify_unregister_client (thread_p, tran_index);
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3063,14 +3061,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   /*
@@ -3081,7 +3072,8 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_pack_int (ptr, success);
   ptr = or_pack_int (ptr, 0xEEABCDFFL);	/* padding, not used */
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3125,18 +3117,12 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (volid == NULL_VOLID)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, (int) volid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3168,16 +3154,16 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
       or_unpack_int (request, &check_flag);
     }
 
-  success = ((xboot_check_db_consistency (thread_p, check_flag)
-	      == NO_ERROR) ? NO_ERROR : ER_FAILED);
-
+  success = ((xboot_check_db_consistency (thread_p, check_flag) == NO_ERROR)
+	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3203,7 +3189,8 @@ sboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p,
   nvols = xboot_find_number_permanent_volumes (thread_p);
 
   (void) or_pack_int (reply, nvols);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3228,7 +3215,8 @@ sboot_find_number_temp_volumes (THREAD_ENTRY * thread_p, unsigned int rid,
   nvols = xboot_find_number_temp_volumes (thread_p);
 
   (void) or_pack_int (reply, nvols);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3253,7 +3241,42 @@ sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid,
   nvols = xboot_find_last_temp (thread_p);
 
   (void) or_pack_int (reply, nvols);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sboot_change_ha_mode -
+ */
+void
+sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
+		      char *request, int reqlen)
+{
+  int i, force, wait;
+  HA_SERVER_STATE state;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_int (request, &i);
+  state = (HA_SERVER_STATE) i;
+  ptr = or_unpack_int (ptr, &force);
+  ptr = or_unpack_int (ptr, &wait);
+
+  if (state > 0)
+    {
+      if (css_change_ha_server_state (thread_p, state, force, wait)
+	  != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
+		  1, "cannot change server HA mode");
+	  return_error_to_client (thread_p, rid);
+	}
+    }
+  state = css_ha_server_state ();
+  or_pack_int (reply, (int) state);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3287,14 +3310,15 @@ slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = NULL;
   if (datasize)
     {
-      csserror = css_receive_data_from_client (rid, &buffer, (int *) &length);
+      csserror = css_receive_data_from_client (thread_p->conn_entry,
+					       rid, &buffer, (int *) &length);
     }
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
@@ -3302,18 +3326,12 @@ slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       if (xlargeobjmgr_create (thread_p, &loid, datasize, buffer,
 			       est_length, &oid) == NULL)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       ptr = or_pack_loid (reply, &loid);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
   if (buffer != NULL)
@@ -3344,20 +3362,16 @@ slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
 
   (void) or_unpack_loid (request, &loid);
 
-  if (xlargeobjmgr_destroy (thread_p, &loid) != NO_ERROR)
+  success = (xlargeobjmgr_destroy (thread_p, &loid) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3388,25 +3402,18 @@ slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = (char *) db_private_alloc (thread_p, length);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
       rlength = xlargeobjmgr_read (thread_p, &loid, offset, length, buffer);
       if (rlength < 0)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       ptr = or_pack_int (reply, rlength);
-      css_send_reply_and_data_to_client (rid, reply,
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 					 OR_ALIGNED_BUF_SIZE (a_reply),
 					 buffer, rlength);
       db_private_free_and_init (thread_p, buffer);
@@ -3443,32 +3450,27 @@ slargeobjmgr_write (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = NULL;
   if (datasize)
     {
-      csserror = css_receive_data_from_client (rid, &buffer, (int *) &length);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &buffer, (int *) &length);
     }
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
       rlength = xlargeobjmgr_write (thread_p, &loid, offset, length, buffer);
       if (rlength < 0)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   if (buffer != NULL)
     {
@@ -3506,32 +3508,27 @@ slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = NULL;
   if (datasize)
     {
-      csserror = css_receive_data_from_client (rid, &buffer, (int *) &length);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &buffer, (int *) &length);
     }
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
       rlength = xlargeobjmgr_insert (thread_p, &loid, offset, length, buffer);
       if (rlength < 0)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   if (buffer != NULL)
     {
@@ -3567,18 +3564,12 @@ slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   rlength = xlargeobjmgr_delete (thread_p, &loid, offset, length);
   if (rlength < 0)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, rlength);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3610,32 +3601,27 @@ slargeobjmgr_append (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   buffer = NULL;
   if (datasize)
     {
-      csserror = css_receive_data_from_client (rid, &buffer, (int *) &length);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &buffer, (int *) &length);
     }
 
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
       rlength = xlargeobjmgr_append (thread_p, &loid, length, buffer);
       if (rlength < 0)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   if (buffer != NULL)
     {
@@ -3670,18 +3656,12 @@ slargeobjmgr_truncate (THREAD_ENTRY * thread_p, unsigned int rid,
   rlength = xlargeobjmgr_truncate (thread_p, &loid, offset);
   if (rlength < 0)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, rlength);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3700,26 +3680,21 @@ slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid,
 		       char *request, int reqlen)
 {
   LOID loid;
-  int success = NO_ERROR;
+  int success;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_loid (request, &loid);
 
-  if (xlargeobjmgr_compress (thread_p, &loid) != NO_ERROR)
+  success = xlargeobjmgr_compress (thread_p, &loid);
+  if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3748,18 +3723,12 @@ slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   length = xlargeobjmgr_length (thread_p, &loid);
   if (length < 0)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, length);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3787,18 +3756,12 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xstats_update_class_statistics (thread_p, &classoid);
   if (error != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3823,18 +3786,12 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xstats_update_statistics (thread_p);
   if (error != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3852,7 +3809,6 @@ void
 sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		  int reqlen)
 {
-  int error = NO_ERROR;
   BTID btid;
   BTID *return_btid;
   TP_DOMAIN *key_type;
@@ -3876,21 +3832,13 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 				  0);
   if (return_btid == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
-      error = er_errid ();
+      return_error_to_client (thread_p, rid);;
     }
 
-  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int (reply, er_errid ());
   ptr = or_pack_btid (ptr, &btid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3908,7 +3856,6 @@ void
 sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		   int reqlen)
 {
-  int error;
   BTID btid;
   BTID *return_btid;
   OID *class_oids;
@@ -3918,7 +3865,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
   int cache_attr_id;
-  char *fkname;
+  char *fk_name;
   int n_classes, n_attrs, *attr_ids;
   TP_DOMAIN *key_type;
   char *ptr;
@@ -3943,30 +3890,22 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_btid (ptr, &fk_refcls_pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
-  ptr = or_unpack_string_nocopy (ptr, &fkname);
+  ptr = or_unpack_string_nocopy (ptr, &fk_name);
 
-  error = 0;
   return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
 				   n_classes, n_attrs,
 				   attr_ids, hfids, unique_flag, reverse_flag,
 				   &fk_refcls_oid, &fk_refcls_pk_btid,
-				   cache_attr_id, fkname);
+				   cache_attr_id, fk_name);
   if (return_btid == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
-      error = er_errid ();
+      return_error_to_client (thread_p, rid);;
     }
 
-  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int (reply, er_errid ());
   ptr = or_pack_btid (ptr, &btid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   db_private_free_and_init (thread_p, class_oids);
   db_private_free_and_init (thread_p, attr_ids);
@@ -3995,22 +3934,16 @@ sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_btid (request, &btid);
 
-  success = ((xbtree_delete_index (thread_p, &btid) == NO_ERROR)
-	     ? NO_ERROR : ER_FAILED);
+  success = (xbtree_delete_index (thread_p, &btid) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, (int) success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4041,22 +3974,17 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_hfid (ptr, &hfid);
 
-  success = ((xlocator_remove_class_from_index (thread_p, &oid, &btid, &hfid)
-	      == NO_ERROR) ? NO_ERROR : ER_FAILED);
+  success = (xlocator_remove_class_from_index (thread_p, &oid,
+					       &btid, &hfid) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, (int) success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4093,14 +4021,7 @@ sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 				false);
   if (success == BTREE_ERROR_OCCURRED)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   /* free storage if the key was a string */
@@ -4108,7 +4029,8 @@ sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_pack_int (reply, success);
   ptr = or_pack_oid (ptr, &oid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4134,11 +4056,12 @@ sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, (int) success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4168,18 +4091,12 @@ sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   npages = xdisk_get_total_numpages (thread_p, volid);
   if (npages < 0)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, npages);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4209,18 +4126,12 @@ sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   npages = xdisk_get_free_numpages (thread_p, volid);
   if (npages < 0)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, npages);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4248,17 +4159,9 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   (void) or_unpack_int (request, &int_volid);
 
   remark = xdisk_get_remarks (thread_p, (VOLID) int_volid);
-
   if (remark == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       area_length = 0;
       area = NULL;
     }
@@ -4268,7 +4171,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	  area_length = 0;
 	}
       else
@@ -4278,7 +4181,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 
   (void) or_pack_int (reply, area_length);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), area,
 				     area_length);
   if (remark != NULL)
@@ -4320,18 +4223,12 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   vol_purpose = xdisk_get_purpose (thread_p, volid);
   if (vol_purpose < DISK_UNKNOWN_PURPOSE)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, vol_purpose);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4365,24 +4262,17 @@ sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p, unsigned int rid,
 						     &vol_purpose,
 						     &vol_ntotal_pages,
 						     &vol_nfree_pages);
-
   if (volid == NULL_VOLID)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, vol_purpose);
   ptr = or_pack_int (ptr, vol_ntotal_pages);
   ptr = or_pack_int (ptr, vol_nfree_pages);
   ptr = or_pack_int (ptr, (int) volid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -4412,14 +4302,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (xdisk_get_fullname (thread_p, (VOLID) int_volid, vol_fullname) == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       area_length = 0;
       area = NULL;
     }
@@ -4429,7 +4312,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	  area_length = 0;
 	}
       else
@@ -4439,7 +4322,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 
   (void) or_pack_int (reply, area_length);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), area,
 				     area_length);
   if (area)
@@ -4491,7 +4374,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
 	  xqmgr_sync_query (thread_p, query_id, false, NULL, true);
 	}
 
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       goto empty_page;
     }
   if (page_size == 0)
@@ -4501,7 +4384,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), page_buf,
 				     page_size);
   return;
@@ -4512,7 +4395,7 @@ empty_page:
   page_size = QFILE_PAGE_HEADER_SIZE;
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), page_buf,
 				     page_size);
 }
@@ -4534,7 +4417,7 @@ empty_page:
  * This function is a counter part to qmgr_prepare_query().
  */
 void
-sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid,
+sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		     char *request, int reqlen)
 {
   XASL_ID xasl_id, *p;
@@ -4556,12 +4439,13 @@ sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid,
   if (xasl_size > 0)
     {
       /* receive XASL stream from the client */
-      csserror = css_receive_data_from_client (rid, &xasl_stream, &xasl_size);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &xasl_stream, &xasl_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  if (xasl_stream)
 	    free_and_init (xasl_stream);
 	  return;
@@ -4570,15 +4454,12 @@ sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid,
 
   /* call the server routine of query prepare */
   XASL_ID_SET_NULL (&xasl_id);
-  p = xqmgr_prepare_query (thrd, query_str, &user_oid, xasl_stream, xasl_size,
-			   &xasl_id);
+  p =
+    xqmgr_prepare_query (thread_p, query_str, &user_oid, xasl_stream,
+			 xasl_size, &xasl_id);
   if (xasl_stream && !p)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-         but if it occurs, rollback transaction */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	tran_server_unilaterally_abort_tran (thrd);
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
   if (xasl_stream)
     {
@@ -4598,7 +4479,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid,
     }
 
   /* send reply and data to the client */
-  css_send_reply_and_data_to_client (rid,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
 				     reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				     NULL, 0);
 }
@@ -4619,7 +4500,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid,
  * This function is a counter part to qmgr_execute_query().
  */
 void
-sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
+sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		     char *request, int reqlen)
 {
   XASL_ID xasl_id;
@@ -4652,24 +4533,25 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
     {
       /* if the request contains parameter values for the query,
          allocate space for them */
-      dbvals = (DB_VALUE *) db_private_alloc (thrd,
+      dbvals = (DB_VALUE *) db_private_alloc (thread_p,
 					      sizeof (DB_VALUE) * dbval_cnt);
       if (!dbvals)
 	{
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
 
       /* receive parameter values (DB_VALUE) from the client */
-      csserror = css_receive_data_from_client (rid, &data, &data_size);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &data, &data_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  if (data)
 	    free_and_init (data);
-	  db_private_free_and_init (thrd, dbvals);
+	  db_private_free_and_init (thread_p, dbvals);
 	  return;
 	}
       else
@@ -4688,18 +4570,12 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
   CACHE_TIME_RESET (&srv_cache_time);
 
   /* call the server routine of query execute */
-  list_id = xqmgr_execute_query (thrd, &xasl_id, &query_id,
+  list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
 				 dbval_cnt, dbvals, &query_flag,
 				 &clt_cache_time, &srv_cache_time);
   if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-         but if it occurs, rollback transaction */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thrd);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   /* clear and free space for DB_VALUEs after the query is executed
@@ -4713,7 +4589,7 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
 	}
       if (dbvals)
 	{
-	  db_private_free_and_init (thrd, dbvals);
+	  db_private_free_and_init (thread_p, dbvals);
 	}
     }
 
@@ -4723,7 +4599,7 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
     {
       /* get the first page of the list file */
       page_ptr = (VPID_ISNULL (&(list_id->first_vpid))) ?
-	NULL : qmgr_get_old_page (thrd, &(list_id->first_vpid),
+	NULL : qmgr_get_old_page (thread_p, &(list_id->first_vpid),
 				  list_id->tfile_vfid);
       if (page_ptr)
 	{
@@ -4737,18 +4613,18 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
 						QFILE_GET_LAST_TUPLE_OFFSET
 						(page_ptr))));
 	  (void) memcpy (page_buf, page_ptr, page_size);
-	  qmgr_free_old_page (thrd, page_ptr, list_id->tfile_vfid);
+	  qmgr_free_old_page (thread_p, page_ptr, list_id->tfile_vfid);
 	  page_ptr = page_buf;
 	}
       else
 	{
-	  /* for sync query, following error may not occur,
-	     if it does, rollback transaction */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thrd);
-	    }
-	  return_error_to_client (rid);
+	  /*
+	   * During query execution, ER_LK_UNILATERALLY_ABORTED may have
+	   * occurred.
+	   * xqmgr_sync_query() had set this error
+	   * so that the transaction will be rolled back.
+	   */
+	  return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -4760,14 +4636,14 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
   if (replydata_size)
     {
       /* pack list file id as a reply data */
-      replydata = (char *) db_private_alloc (thrd, replydata_size);
+      replydata = (char *) db_private_alloc (thread_p, replydata_size);
       if (replydata)
 	{
 	  (void) or_pack_listid (replydata, list_id);
 	}
       else
 	{
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
     }
   /* pack size of a page to return as a third argumnet of the reply */
@@ -4777,7 +4653,7 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
-  css_send_reply_and_2_data_to_client (rid,
+  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid,
 				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				       replydata, replydata_size,
 				       page_ptr, page_size);
@@ -4785,7 +4661,7 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
   if (replydata)
     {
-      db_private_free_and_init (thrd, replydata);
+      db_private_free_and_init (thread_p, replydata);
     }
   if (list_id)
     {
@@ -4806,12 +4682,12 @@ sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid,
  * NOTE:
  */
 void
-sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
+sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				 unsigned int rid, char *request, int reqlen)
 {
   int query_id, var_count, var_datasize, var_actual_datasize;
   QFILE_LIST_ID *q_result;
-  int csserror, i, listid_length, error_id;
+  int csserror, i, listid_length;
   char *xasl_buffer;
   int xasl_size;
   char *ptr, *var_data, *list_data;
@@ -4833,13 +4709,13 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
   page_size = 0;
   q_result = NULL;
 
-  csserror = css_receive_data_from_client (rid, &xasl_buffer,
-					   (int *) &xasl_size);
+  csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					   &xasl_buffer, (int *) &xasl_size);
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       goto cleanup;
     }
 
@@ -4849,20 +4725,21 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 
   if (var_count && var_datasize)
     {
-      csserror = css_receive_data_from_client (rid, &var_data,
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
+					       &var_data,
 					       (int *) &var_actual_datasize);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  goto cleanup;
 	}
-      dbvals = (DB_VALUE *) db_private_alloc (thrd,
+      dbvals = (DB_VALUE *) db_private_alloc (thread_p,
 					      sizeof (DB_VALUE) * var_count);
       if (dbvals == NULL)
 	{
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  goto cleanup;
 	}
       ptr = var_data;
@@ -4883,9 +4760,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
    * After this point, xqmgr_prepare_and_execute_query has assumed
    * responsibility for freeing xasl_buffer...
    */
-  q_result = xqmgr_prepare_and_execute_query (thrd, xasl_buffer, xasl_size,
-					      &query_id, var_count, dbvals,
-					      &flag);
+  q_result =
+    xqmgr_prepare_and_execute_query (thread_p, xasl_buffer, xasl_size,
+				     &query_id, var_count, dbvals, &flag);
   if (xasl_buffer)
     {
       free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */
@@ -4902,19 +4779,12 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 	{
 	  db_value_clear (&dbvals[i]);
 	}
-      db_private_free_and_init (thrd, dbvals);
+      db_private_free_and_init (thread_p, dbvals);
     }
 
   if (q_result == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thrd);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, (int) QUERY_END);
@@ -4931,7 +4801,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 	{
 	  if (!VPID_ISNULL (&q_result->first_vpid))
 	    {
-	      page_ptr = qmgr_get_old_page (thrd, &q_result->first_vpid,
+	      page_ptr = qmgr_get_old_page (thread_p, &q_result->first_vpid,
 					    q_result->tfile_vfid);
 	    }
 	  if (page_ptr)
@@ -4950,20 +4820,19 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 		}
 	      /* to free page_ptr early */
 	      memcpy (page_buf, page_ptr, page_size);
-	      qmgr_free_old_page (thrd, page_ptr, q_result->tfile_vfid);
+	      qmgr_free_old_page (thread_p, page_ptr, q_result->tfile_vfid);
 	    }
 	  else
 	    {
-	      /* for sync query, following error may not occur,
-	       * if it does, rollback transaction
+	      /*
+	       * During query execution, ER_LK_UNILATERALLY_ABORTED may have
+	       * occurred.
+	       * xqmgr_sync_query() had set this error
+	       * so that the transaction will be rolled back.
 	       */
-	      if ((error_id = er_errid ()) < 0)
+	      if (er_errid () < 0)
 		{
-		  if (error_id == ER_LK_UNILATERALLY_ABORTED)
-		    {
-		      tran_server_unilaterally_abort_tran (thrd);
-		    }
-		  return_error_to_client (rid);
+		  return_error_to_client (thread_p, rid);
 		  listid_length = 0;
 		}
 	      /* if query type is not select, page ptr can be null */
@@ -4978,7 +4847,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
       ptr = or_pack_int (ptr, query_id);
       if (listid_length > 0)
 	{
-	  list_data = (char *) db_private_alloc (thrd, listid_length);
+	  list_data = (char *) db_private_alloc (thread_p, listid_length);
 	}
       if (list_data)
 	{
@@ -4995,7 +4864,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
       ptr = or_pack_int (ptr, 0);
     }
 
-  css_send_reply_and_2_data_to_client (rid, reply,
+  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 				       OR_ALIGNED_BUF_SIZE (a_reply),
 				       list_data, listid_length, page_buf,
 				       page_size);
@@ -5012,7 +4881,7 @@ cleanup:
     }
   if (list_data)
     {
-      db_private_free_and_init (thrd, list_data);
+      db_private_free_and_init (thread_p, list_data);
     }
 
   /* since the listid was copied over to the client, we don't need
@@ -5036,7 +4905,7 @@ cleanup:
  * NOTE:
  */
 void
-sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid,
+sqmgr_end_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		 char *request, int reqlen)
 {
   int query_id;
@@ -5047,22 +4916,16 @@ sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid,
   (void) or_unpack_int (request, &query_id);
   if (query_id > 0)
     {
-      success = xqmgr_end_query (thrd, query_id);
+      success = xqmgr_end_query (thread_p, query_id);
       if (success != NO_ERROR)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur,
-	   * but if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thrd);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
     }
 
   (void) or_pack_int (reply, (int) success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5103,22 +4966,19 @@ sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &drop);
 
   /* call the server routine of query drop plan */
-  status =
-    xqmgr_drop_query_plan (thread_p, query_str, &user_oid, &xasl_id, drop);
+  status = xqmgr_drop_query_plan (thread_p, query_str, &user_oid, &xasl_id,
+				  drop);
   if (status != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-         but if it occurs, rollback transaction */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	tran_server_unilaterally_abort_tran (thread_p);
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   /* pack status (DB_IN32) as a reply */
   (void) or_pack_int (reply, status);
 
   /* send reply and data to the client */
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
 }
 
@@ -5149,20 +5009,15 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   status = xqmgr_drop_all_query_plans (thread_p);
   if (status != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-         but if it occurs, rollback transaction */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   /* pack status (DB_IN32) as a reply */
   (void) or_pack_int (reply, status);
 
   /* send reply and data to the client */
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5193,7 +5048,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
@@ -5202,7 +5057,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 			   0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (thread_p, buffer);
       return;
     }
@@ -5216,7 +5071,8 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   rewind (outfp);
 
   (void) or_pack_int (reply, (int) file_size);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   while (file_size > 0)
     {
@@ -5234,13 +5090,13 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_GENERIC_ERROR, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
 	}
-      css_send_data_to_client (rid, buffer, send_size);
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
     }
 
   fclose (outfp);
@@ -5275,7 +5131,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
@@ -5284,7 +5140,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 			   0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (thread_p, buffer);
       return;
     }
@@ -5298,7 +5154,8 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   rewind (outfp);
 
   (void) or_pack_int (reply, (int) file_size);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   while (file_size > 0)
     {
@@ -5316,13 +5173,13 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_GENERIC_ERROR, 0);
-	  css_send_abort_to_client (rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
 	}
-      css_send_data_to_client (rid, buffer, send_size);
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);
@@ -5367,7 +5224,7 @@ sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       tran_server_unilaterally_abort_tran (thread_p);
     }
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buf,
 				     length);
   free_and_init (buf);
@@ -5403,7 +5260,6 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   memset (&new_list_id, 0, sizeof (QFILE_LIST_ID));
 
   success = xqmgr_sync_query (thread_p, query_id, wait, &new_list_id, false);
-
   if (success != NO_ERROR)
     {
       success = er_errid ();
@@ -5422,15 +5278,12 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (list_data == NULL)
     {
-      /* During query execution, ER_LK_UNILATERALLY_ABORTED may have occurred.
-       * then, xqmgr_sync_query() set this error.
-       * if it occurs, rollback transaction
+      /*
+       * During query execution, ER_LK_UNILATERALLY_ABORTED may have occurred.
+       * xqmgr_sync_query() had set this error
+       * so that the transaction will be rolled back.
        */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       list_length = 0;
     }
   else
@@ -5438,7 +5291,7 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_listid (list_data, &new_list_id);
     }
 
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), list_data,
 				     list_length);
   qfile_clear_list_id (&new_list_id);
@@ -5455,7 +5308,7 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sqp_get_sys_timestamp (unsigned int rid)
+sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5465,7 +5318,8 @@ sqp_get_sys_timestamp (unsigned int rid)
   db_sys_timestamp (&sys_timestamp);
   (void) or_pack_utime (reply,
 			*(DB_TIMESTAMP *) DB_GET_TIMESTAMP (&sys_timestamp));
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5513,14 +5367,7 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (buffer == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (error_status == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       buffer_length = 0;
     }
   else
@@ -5529,7 +5376,7 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
       db_value_clear (&cur_val);
     }
 
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length);
   if (buffer != NULL)
@@ -5554,25 +5401,23 @@ void
 sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		    int reqlen)
 {
-  int error_status = NO_ERROR;
   DB_VALUE oid, next_val;
   char *buffer;
-  int buffer_length;
+  int buffer_length, errid;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *p;
 
   (void) or_unpack_value (request, &oid);
-  error_status = xqp_get_serial_next_value (thread_p, &oid, &next_val);
+  errid = xqp_get_serial_next_value (thread_p, &oid, &next_val);
   db_value_clear (&oid);
 
-  if (error_status != NO_ERROR)
+  if (errid != NO_ERROR)
     {
-      error_status = er_errid ();
       p = or_pack_int (reply, 0);
-      p = or_pack_int (p, error_status);
+      p = or_pack_int (p, errid);
       buffer_length = 0;
-      buffer = 0;
+      buffer = NULL;
     }
   else
     {
@@ -5584,14 +5429,7 @@ sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (buffer == NULL)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (error_status == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       buffer_length = 0;
     }
   else
@@ -5600,7 +5438,7 @@ sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       db_value_clear (&next_val);
     }
 
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length);
   if (buffer != NULL)
@@ -5632,11 +5470,12 @@ smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xmnt_server_start_stats (thread_p);
   if (success != NO_ERROR)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, (int) success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5660,7 +5499,8 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid,
   xmnt_server_stop_stats (thread_p);
   /* dummy reply message */
   (void) or_pack_int (reply, 1);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5684,7 +5524,8 @@ smnt_server_reset_stats (THREAD_ENTRY * thread_p, unsigned int rid,
   xmnt_server_reset_stats (thread_p);
   /* dummy reply message */
   (void) or_pack_int (reply, 1);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5725,7 +5566,8 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 #endif /* !PRODUCTION */
   xmnt_server_copy_stats (thread_p, &stats);
   net_pack_stats (reply, &stats);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5755,23 +5597,16 @@ sct_can_accept_new_repr (THREAD_ENTRY * thread_p, unsigned int rid,
 
   success = xcatalog_is_acceptable_new_representation (thread_p, &classoid,
 						       &hfid, &can_accept);
-
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, (int) success);
   ptr = or_pack_int (ptr, (int) can_accept);
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5810,7 +5645,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
 
   ptr = or_pack_listid (databuf, (void *) list_id);
   ptr = or_pack_method_sig_list (ptr, (void *) method_sig_list);
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), databuf,
 				     length);
   db_private_free_and_init (thread_p, databuf);
@@ -5840,7 +5675,8 @@ xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
     }
   rid = thread_get_comm_request_id (thread_p);
 
-  if (css_receive_data_from_client (rid, area, (int *) datasize))
+  if (css_receive_data_from_client (thread_p->conn_entry, rid, area,
+				    (int *) datasize))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
@@ -5880,7 +5716,7 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p,
 
   rid = thread_get_comm_request_id (thread_p);
   (void) or_pack_int (reply, (int) action);
-  if (css_send_data_to_client (rid, reply, OR_INT_SIZE))
+  if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
     {
       return ER_FAILED;
     }
@@ -5900,7 +5736,8 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p,
  * NOTE:
  */
 void
-stest_performance (unsigned int rid, char *request, int reqlen)
+stest_performance (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		   int reqlen)
 {
   int return_size;
   OR_ALIGNED_BUF (10000) a_reply;
@@ -5911,7 +5748,8 @@ stest_performance (unsigned int rid, char *request, int reqlen)
       or_unpack_int (request, &return_size);
       if (return_size > 0)
 	{
-	  css_send_data_to_client (rid, reply, return_size);
+	  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+				   return_size);
 	}
     }
 }
@@ -5931,14 +5769,14 @@ void
 slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
 			   char *request, int reqlen)
 {
-  int success = ER_FAILED;
+  int success;
   LC_OIDSET *oidset = NULL;
 
   /* skip over the word at the front reserved for the return code */
   oidset = locator_unpack_oid_set_to_new (thread_p, request + OR_INT_SIZE);
   if (oidset == NULL)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       return;
     }
 
@@ -5962,17 +5800,10 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may not occur,
-       * but if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
-  css_send_data_to_client (rid, request, reqlen);
+  css_send_data_to_client (thread_p->conn_entry, rid, request, reqlen);
 
   locator_free_oid_set (thread_p, oidset);
 }
@@ -6014,7 +5845,6 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
   int i;
   int malloc_size;
   char *malloc_area;
-
   OR_ALIGNED_BUF (NET_SENDRECV_BUFFSIZE + NET_COPY_AREA_SENDRECV_SIZE +
 		  OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6025,21 +5855,21 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (request, &num_classes);
   ptr = or_unpack_int (ptr, &quit_on_errors);
 
-  malloc_size = ((DB_SIZEOF (char *) + DB_SIZEOF (LOCK) + DB_SIZEOF (int) +
-		  DB_SIZEOF (OID) + DB_SIZEOF (int)) * num_classes);
+  malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) +
+		  sizeof (OID) + sizeof (int)) * num_classes);
 
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
     {
       many_classnames = (char **) malloc_area;
       many_locks = (LOCK *) ((char *) malloc_area +
-			     (DB_SIZEOF (char *) * num_classes));
+			     (sizeof (char *) * num_classes));
       many_need_subclasses = (int *) ((char *) many_locks +
-				      (DB_SIZEOF (LOCK) * num_classes));
+				      (sizeof (LOCK) * num_classes));
       guessed_class_oids = (OID *) ((char *) many_need_subclasses +
-				    (DB_SIZEOF (int) * num_classes));
+				    (sizeof (int) * num_classes));
       guessed_class_chns = (int *) ((char *) guessed_class_oids +
-				    (DB_SIZEOF (OID) * num_classes));
+				    (sizeof (OID) * num_classes));
 
       for (i = 0; i < num_classes; i++)
 	{
@@ -6063,14 +5893,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if (allfind != LC_CLASSNAME_EXIST)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (found_lockhint != NULL && found_lockhint->length > 0)
@@ -6082,7 +5905,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (!packed)
 	{
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	  allfind = LC_CLASSNAME_ERROR;
 	}
     }
@@ -6112,11 +5935,12 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (copy_area == NULL && found_lockhint == NULL)
     {
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
-      css_send_reply_and_3_data_to_client (rid, reply,
+      css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply,
 					   OR_ALIGNED_BUF_SIZE (a_reply),
 					   packed, send_size,
 					   desc_ptr, desc_size,
@@ -6178,11 +6002,12 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (request, &packed_size);
 
   if (packed_size == 0
-      || css_receive_data_from_client (rid, &packed, (int *) &packed_size))
+      || css_receive_data_from_client (thread_p->conn_entry, rid, &packed,
+				       (int *) &packed_size))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       if (packed)
 	{
 	  free_and_init (packed);
@@ -6199,13 +6024,14 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if ((lockhint == NULL) || (lockhint->length <= 0))
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, ER_FAILED);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
       return;
     }
 
@@ -6220,14 +6046,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
 						 &copy_area);
       if (success != NO_ERROR)
 	{
-	  /* ER_LK_UNILATERALLY_ABORTED may occur,
-	   * if it occurs, rollback transaction
-	   */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (rid);
+	  return_error_to_client (thread_p, rid);;
 	}
 
       if (copy_area != NULL)
@@ -6260,15 +6079,17 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (copy_area == NULL && lockhint == NULL)
 	{
-	  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+	  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply));
 	}
       else
 	{
-	  css_send_reply_and_3_data_to_client (rid, reply,
+	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid,
+					       reply,
 					       OR_ALIGNED_BUF_SIZE (a_reply),
-					       packed, send_size,
-					       desc_ptr, desc_size,
-					       content_ptr, content_size);
+					       packed, send_size, desc_ptr,
+					       desc_size, content_ptr,
+					       content_size);
 	}
       if (copy_area != NULL)
 	{
@@ -6288,30 +6109,6 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       locator_free_lockhint (lockhint);
     }
-}
-
-/*
- * tm_restart_event_handler -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-tm_restart_event_handler (unsigned int rid, char *request, int reqlen)
-{
-  int status = false;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  status = true;
-
-  (void) or_pack_int (reply, status);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6343,19 +6140,17 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_string_nocopy (ptr, &kill_host);
   ptr = or_unpack_int (ptr, &kill_pid);
 
-  if (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user,
-			       kill_host, kill_pid) != NO_ERROR)
+  success = (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user,
+				      kill_host, kill_pid) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
     {
-      success = ER_FAILED;
-      return_error_to_client (rid);
-    }
-  else
-    {
-      success = NO_ERROR;
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6385,14 +6180,16 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
     }
   else
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      css_send_data_to_client (rid, buffer, size);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
       free_and_init (buffer);
     }
 }
@@ -6460,7 +6257,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
   ptr = or_pack_string (ptr, (char *) secondary_prompt);
   ptr = or_pack_int (ptr, reprompt_value);
 
-  rc = css_send_reply_and_data_to_client (rid, reply,
+  rc = css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 					  OR_ALIGNED_BUF_SIZE (a_reply),
 					  databuf, prompt_length);
   db_private_free_and_init (thread_p, databuf);
@@ -6471,6 +6268,96 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * xlog_send_log_pages_to_client -
+ *
+ * return:
+ * NOTE:
+ */
+int
+xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
+			       char *logpg_area, int area_size,
+			       LOGWR_MODE mode)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  unsigned int rid, rc;
+  char *ptr;
+
+  rid = thread_get_comm_request_id (thread_p);
+
+  /*
+   * Client side caller must be expecting a reply/callback followed
+   * by 2 ints, otherwise client will abort due to protocol error
+   * Prompt_length tells the receiver how big the followon message is.
+   */
+  ptr = or_pack_int (reply, (int) GET_NEXT_LOG_PAGES);
+  ptr = or_pack_int (ptr, (int) area_size);
+
+  rc = css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+					  OR_ALIGNED_BUF_SIZE (a_reply),
+					  logpg_area, area_size);
+  if (rc)
+    {
+      return ER_FAILED;
+    }
+
+#if defined(LOGWR_DEBUG_MSG)
+  er_log_debug (ARG_FILE_LINE, "xlog_send_log_pages_to_client\n");
+#endif /* LOGWR_DEBUG_MSG */
+
+  return NO_ERROR;
+}
+
+/*
+ * xlog_get_page_request_with_reply
+ *
+ * return:
+ * NOTE:
+ */
+int
+xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
+				  PAGEID * fpageid_ptr, LOGWR_MODE * mode_ptr)
+{
+  char *reply = NULL;
+  int reply_size;
+  PAGEID first_pageid;
+  int mode;
+  char *ptr;
+  int error;
+  int remote_error;
+
+  /* Obtain success message from the client, without blocking the
+     server. */
+  if ((error = xs_receive_data_from_client (thread_p, &reply, &reply_size))
+      != NO_ERROR)
+    {
+      if (reply)
+	{
+	  free_and_init (reply);
+	}
+      return error;
+    }
+
+  assert (reply != NULL);
+  ptr = or_unpack_int (reply, &first_pageid);
+  ptr = or_unpack_int (ptr, &mode);
+  ptr = or_unpack_int (ptr, &remote_error);
+  free_and_init (reply);
+
+  *fpageid_ptr = first_pageid;
+  *mode_ptr = mode;
+
+#if defined(LOGWR_DEBUG_MSG)
+  er_log_debug (ARG_FILE_LINE, "xlog_get_page_request_with_reply, "
+		"fpageid(%d), mode(%s)\n", first_pageid,
+		mode == LOGWR_MODE_SYNC ? "sync" : (mode ==
+						    LOGWR_MODE_ASYNC ? "async"
+						    : "semisync"));
+#endif /* LOGWR_DEBUG_MSG */
+  return (remote_error != NO_ERROR) ? remote_error : error;
 }
 
 /*
@@ -6497,28 +6384,22 @@ shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &approximation);
 
-  success = ((xheap_get_class_num_objects_pages (thread_p, &hfid,
-						 approximation, &nobjs,
-						 &npages) ==
-	      NO_ERROR) ? NO_ERROR : ER_FAILED);
+  success = (xheap_get_class_num_objects_pages (thread_p, &hfid,
+						approximation, &nobjs,
+						&npages) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
 
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, (int) success);
   ptr = or_pack_int (ptr, (int) nobjs);
   ptr = or_pack_int (ptr, (int) npages);
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6545,18 +6426,11 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_btid (request, &btid);
 
-  success = ((btree_get_stats (thread_p, &btid, &stat_info,
-			       false) == NO_ERROR) ? NO_ERROR : ER_FAILED);
+  success = (btree_get_stats (thread_p, &btid, &stat_info, false) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, success);
@@ -6565,7 +6439,8 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (ptr, stat_info.height);
   ptr = or_pack_int (ptr, stat_info.keys);
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6601,22 +6476,23 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	  switch ((1 << i))
 	    {
 	    case SI_SYS_TIMESTAMP:
-	      success = ((db_sys_timestamp (&value[i]) == NO_ERROR)
-			 ? NO_ERROR : ER_FAILED);
+	      success = (db_sys_timestamp (&value[i]) == NO_ERROR)
+		? NO_ERROR : ER_FAILED;
 	      break;
 
 	    case SI_LOCAL_TRANSACTION_ID:
-	      success = ((xtran_get_local_transaction_id (thread_p,
-							  &value[i]) ==
-			  NO_ERROR) ? NO_ERROR : ER_FAILED);
+	      success = (xtran_get_local_transaction_id (thread_p,
+							 &value[i]) ==
+			 NO_ERROR) ? NO_ERROR : ER_FAILED;
 	      break;
 	    }
-	  buffer_length += or_db_value_size (&value[i]);	/* increase buf length */
+	  buffer_length += or_db_value_size (&value[i]);
+	  /* increase buf length */
 	}
     }
   if (success == ER_FAILED)
     {
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   if (success == NO_ERROR)
@@ -6644,7 +6520,7 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_pack_int (reply, buffer_length);
   ptr = or_pack_int (ptr, success);
 
-  css_send_reply_and_data_to_client (rid, reply,
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length);
 
@@ -6677,15 +6553,14 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   (void) or_unpack_string_nocopy (request, &data);
 
   rc = xsysprm_change_server_parameters (data);
-
-  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+  if (rc != NO_ERROR)
     {
-      tran_server_unilaterally_abort_tran (thread_p);
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   (void) or_pack_int (reply, rc);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6704,8 +6579,7 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
 			       char *request, int reqlen)
 {
   char *data;
-  int len;
-  int rc;
+  int len, rc;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
@@ -6713,26 +6587,20 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   (void) or_unpack_int (request, &len);
 
   data = NULL;
-  rc = css_receive_data_from_client (rid, &data, &len);
+  rc = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &len);
   if (rc)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
-      css_send_abort_to_client (rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
     }
   else
     {
       rc = xsysprm_obtain_server_parameters (data, len);
 
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	  return_error_to_client (rid);
-	}
-
       ptr = or_pack_int (reply, len);
       ptr = or_pack_int (ptr, rc);
-      css_send_reply_and_data_to_client (rid,
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
 					 reply, OR_ALIGNED_BUF_SIZE (a_reply),
 					 data, len);
 
@@ -6772,19 +6640,13 @@ shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (r == -1)
     {
-      /* ER_LK_UNILATERALLY_ABORTED may occur,
-       * if it occurs, rollback transaction
-       */
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
+      return_error_to_client (thread_p, rid);;
     }
 
   ptr = or_pack_int (reply, (int) r);
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6808,12 +6670,13 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid,
   DB_VALUE val;
   int success, trid;
 
-  success = ((xtran_get_local_transaction_id (thread_p, &val) ==
-	      NO_ERROR) ? NO_ERROR : ER_FAILED);
+  success = (xtran_get_local_transaction_id (thread_p, &val) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
   trid = DB_GET_INTEGER (&val);
   ptr = or_pack_int (reply, success);
   ptr = or_pack_int (ptr, trid);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6826,13 +6689,15 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sjsp_get_server_port (unsigned int rid)
+sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid,
+		      char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_pack_int (reply, jsp_server_port ());
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6857,7 +6722,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   REPL_INFO repl_info = { 0, NULL };
   REPL_INFO_SCHEMA repl_schema = { 0, NULL, NULL };
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       ptr = or_unpack_int (request, &repl_info.repl_info_type);
       switch (repl_info.repl_info_type)
@@ -6892,7 +6757,8 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 
   (void) or_pack_int (reply, success);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6907,7 +6773,8 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-srepl_log_get_append_lsa (unsigned int rid, char *request, int reqlen)
+srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid,
+			  char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6918,7 +6785,8 @@ srepl_log_get_append_lsa (unsigned int rid, char *request, int reqlen)
   reply = OR_ALIGNED_BUF_START (a_reply);
   (void) or_pack_log_lsa (reply, lsa);
 
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -6936,7 +6804,6 @@ void
 slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen)
 {
-  int error = NO_ERROR;
   OID class_oid;
   HFID hfid;
   OID pk_cls_oid;
@@ -6944,7 +6811,7 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   int cache_attr_id;
   int n_attrs, *attr_ids;
   TP_DOMAIN *key_type;
-  char *fkname;
+  char *fk_name;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6958,24 +6825,60 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (ptr, &pk_btid);
   ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
-  ptr = or_unpack_string (ptr, &fkname);
+  ptr = or_unpack_string (ptr, &fk_name);
 
   if (xlocator_build_fk_object_cache (thread_p, &class_oid, &hfid, key_type,
 				      n_attrs, attr_ids, &pk_cls_oid,
 				      &pk_btid, cache_attr_id,
-				      fkname) != NO_ERROR)
+				      fk_name) != NO_ERROR)
     {
-      if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return_error_to_client (rid);
-      error = er_errid ();
+      return_error_to_client (thread_p, rid);;
     }
 
-  ptr = or_pack_int (reply, error);
-  css_send_data_to_client (rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  ptr = or_pack_int (reply, er_errid ());
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 
   db_private_free_and_init (thread_p, attr_ids);
-  db_private_free_and_init (thread_p, fkname);
+  db_private_free_and_init (thread_p, fk_name);
+}
+
+/*
+ * slogwr_get_log_pages -
+ *
+ * return:
+ *
+ *   thread_p(in):
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * Note:
+ */
+void
+slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
+		      char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  PAGEID first_pageid;
+  int mode;
+  char *ptr;
+  int error, remote_error;
+
+  ptr = or_unpack_int (request, &first_pageid);
+  ptr = or_unpack_int (ptr, &mode);
+  ptr = or_unpack_int (ptr, &remote_error);
+
+  error = xlogwr_get_log_pages (thread_p, first_pageid, mode);
+  if (error == ER_INTERRUPT)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+  ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, error);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
 }

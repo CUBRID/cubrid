@@ -244,19 +244,15 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, int fd)
   conn->transaction_id = -1;
   conn->client_id = css_get_next_client_id ();
   conn->db_error = 0;
-  conn->error_p = CSS_NO_ERRORS;
+  conn->in_transaction = false;
+  conn->reset_on_commit = false;
 
   err = csect_initialize_critical_section (&conn->csect);
   CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
 
   conn->stop_talk = false;
 
-  conn->pid = -1;
-  conn->name = NULL;
   conn->version_string = NULL;
-
-  conn->timeout_duration = -1;
-  conn->client_timeout = NULL;
 
   conn->local_name = NULL;
   conn->foreign_name = NULL;
@@ -313,11 +309,8 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       conn->status = CONN_CLOSED;
       conn->stop_talk = false;
-      conn->pid = -1;
 
-      free_and_init (conn->name);
       free_and_init (conn->version_string);
-      free_and_init (conn->client_timeout);
       free_and_init (conn->local_name);
       free_and_init (conn->foreign_name);
 
@@ -765,7 +758,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name,
       else
 	{
 	  if (css_readn (conn->fd, (char *) &response_buff,
-			 sizeof (int)) == sizeof (int))
+			 sizeof (int), -1) == sizeof (int))
 	    {
 	      response = ntohl (response_buff);
 	      TRACE
@@ -798,7 +791,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name,
 		    }
 
 		  response = htonl (server_port_id);
-		  css_net_send (conn, (char *) &response, sizeof (int));
+		  css_net_send (conn, (char *) &response, sizeof (int), -1);
 		  /* this connection remains our only contact with the master */
 		  return conn;
 
@@ -1009,7 +1002,9 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.transaction_id = htonl (conn->transaction_id);
   header.db_error = htonl (conn->db_error);
 
-  return (css_net_send (conn, (char *) &header, sizeof (NET_HEADER)));
+  /* timeout in mili-second in css_net_send() */
+  return (css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
+			PRM_TCP_CONNECTION_TIMEOUT * 1000));
 }
 
 /*
@@ -1189,29 +1184,6 @@ css_make_eid (unsigned short entry_id, unsigned short rid)
   top = entry_id;
   return ((top << 16) | rid);
 }
-
-/*
- * css_return_rid_from_eid() - get request id from enquiry id
- *   return: request id
- *   eid(in): enquiry id
- */
-unsigned short
-css_return_rid_from_eid (unsigned int eid)
-{
-  return ((unsigned short) LOW16BITS (eid));
-}
-
-/*
- * css_return_entry_id_from_eid() - get entry id from enquiry id
- *   return: connection entry id
- *   eid(in): enquiry id
- */
-unsigned short
-css_return_entry_id_from_eid (unsigned int eid)
-{
-  return ((unsigned short) HIGH16BITS (eid));
-}
-
 
 /* CSS_CONN_ENTRY's queues related functions */
 
@@ -1709,7 +1681,9 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       do
 	{
-	  rc = css_net_recv (conn->fd, buffer, &size);
+	  /* timeout in mili-second in css_net_recv() */
+	  rc = css_net_recv (conn->fd, buffer, &size,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 	}
       while (rc == INTERRUPTED_READ);
 
@@ -1786,7 +1760,9 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       do
 	{
-	  rc = css_net_recv (conn->fd, buffer, &size);
+	  /* timeout in mili-second in css_net_recv() */
+	  rc = css_net_recv (conn->fd, buffer, &size,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 	}
       while (rc == INTERRUPTED_READ);
 
@@ -1881,7 +1857,8 @@ css_queue_oob_packet (CSS_CONN_ENTRY * conn, const NET_HEADER * header)
     {
       do
 	{
-	  rc = css_net_recv (conn->fd, buffer, &size);
+	  rc = css_net_recv (conn->fd, buffer, &size,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 	}
       while (rc == INTERRUPTED_READ);
 

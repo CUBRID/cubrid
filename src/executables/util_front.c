@@ -160,7 +160,7 @@ static ARG_MAP_TABLE ua_Killtran_map[] = {
   {"-pg", "--" KILLTRAN_KILL_PROGRAM_NAME_L},
   {"-p", "--" KILLTRAN_DBA_PASSWORD_L},
   {"-d", "--" KILLTRAN_DISPLAY_INFORMATION_L},
-  {"-v", "--" KILLTRAN_CONFIRM_L},
+  {"-v", "--" KILLTRAN_FORCE_L},
   {0, 0}
 };
 
@@ -370,7 +370,7 @@ main (int argc, char **argv)
 	  if (strcmp (ua_Util_table[i].app_name, program_name) == 0)
 	    {
 	      admin_argv = (char **) malloc ((argc + 2) * sizeof (char *));
-	      admin_argv[argc_index++] = UTIL_ADMIN_NAME;
+	      admin_argv[argc_index++] = UTIL_CUBRID;
 	      admin_argv[argc_index++] = ua_Util_table[i].util_name;
 	      memcpy (&admin_argv[argc_index], &argv[1],
 		      (argc - 1) * sizeof (char *));

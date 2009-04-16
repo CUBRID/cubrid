@@ -18,7 +18,7 @@
  */
 
 /*
- * query_manager.c - Query manager module 
+ * query_manager.c - Query manager module
  */
 
 #ident "$Id$"
@@ -1878,7 +1878,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	    }
 #else
 	  /* error - cannot run a asynchronous query in stand-alone mode */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_OPERATION, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NOT_IN_STANDALONE, 1, "asynchronous query");
 #endif
 	}
 
@@ -2220,7 +2221,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 	}
 #else
       /* this is an error - cannot run a streaming query in stand-alone mode */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_NOT_IN_STANDALONE, 1, "asynchronous query");
       list_id_p = NULL;
 #endif
     }

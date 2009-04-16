@@ -29,11 +29,13 @@
 #include <errno.h>
 #include <ctype.h>
 
+#include "porting.h"
 #ifndef HAVE_STRLCPY
 #include "stringl.h"
 #endif
 #include "error_code.h"
 #include "environment_variable.h"
+#include "porting.h"
 
 /* available root directory symbols; NULL terminated array */
 static const char *envvar_Prefixes[] = {
@@ -135,7 +137,6 @@ envvar_get (const char *name)
   return getenv (envvar_name (buf, _ENVVAR_MAX_LENGTH, name));
 }
 
-#if 0
 /*
  * enclosing_method - change value of an prefixed environment variable
  *   return: error code
@@ -148,11 +149,13 @@ int
 envvar_set (const char *name, const char *val)
 {
   char buf[_ENVVAR_MAX_LENGTH];
+  char *env_buf = (char *) malloc (_ENVVAR_MAX_LENGTH);
 
-  return (setenv (envvar_name (buf, _ENVVAR_MAX_LENGTH, name), val, 1) ==
-	  0) ? NO_ERROR : ER_FAILED;
+  envvar_name (buf, _ENVVAR_MAX_LENGTH, name);
+  snprintf (env_buf, _ENVVAR_MAX_LENGTH, "%s=%s", buf, val);
+
+  return (putenv (env_buf) == 0) ? NO_ERROR : ER_FAILED;
 }
-#endif
 
 /*
  * envvar_expand - expand environment variables (${ENV}) with their values

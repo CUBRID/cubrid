@@ -113,6 +113,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     }
 
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("dba", NULL))
       || (error = db_restart (arg->argv0, true, database_name)))
     {

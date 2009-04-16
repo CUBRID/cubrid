@@ -172,7 +172,7 @@ $set 5 MSGCAT_SET_ERROR
 108 현재의 트랜잭션 %1$d 은(는) 전역 식별자 %2$d 으로 분산 트랜잭션에 참여하기 이전에 커밋 또는 철회되어야 합니다. 
 109 트랜잭션 %1$d 은(는) 리모트 사이트가 다운되었거나 트랜잭션이 취소되었기 때문에 시스템에 의하여 취소되었습니다. 
 110 Isolation 레벨 값은 %1$d 와(과) %2$d 사이가 되어야 합니다.
-111 당신의 트랜잭션은 서버 failure로 인해 취소되었습니다. 
+111 당신의 트랜잭션은 서버 failure 혹은 모드 변경으로 인해 취소되었습니다.
 112 호스트 "%1$s" 은(는) 한글 CUBRID를 수행할 수 있는 권한이 없습니다.
 113 한글 CUBRID 서버를 재수행/초기화할 수 없습니다.
 114 "%1$s"을 데이터베이스로 인식할 수 없습니다. 데이터베이스 볼륨/파일들은 외부에서 rename/copy 되었습니다. 
@@ -673,7 +673,7 @@ $ LOADDB
 608 데이터베이스 "%1$s"의 호스트 명세가 odbc.ini 내에 정의되지 않습니다.
 609 로깅하지 않았으므로 트랜잭션을 철회할 수 없습니다. 데이터베이스가 손상되었을 수 있습니다. 
 610 데이터베이스에 장애가 발생했을 시점에 로깅하지 않았으므로 데이터베이스가 손상되었을 수 있습니다.
-611 클라이언트 서버 모드에서는 %s (을)를 비활성화 할 수 없습니다.
+611 클라이언트 서버 모드에서는 %s (을)를 실행 할 수 없습니다.
 612 복구해야 할 pending action이 있기 때문에 이 시점에서는 로깅을 disable할 수 없습니다.
 613 도메인이 다르므로 클래스 "%3$s"의 "%1$s"을(를) 클래스 "%2$s"의 alias substitute로 활용할 수 없습니다. 
 614 아카이브 로그의 개수가 허용 최대치 %1$d을(를) 초과했습니다.
@@ -760,12 +760,12 @@ $ LOADDB
 695 클라이언트를 종료하는데 잘못된 인터페이스를 사용하였습니다.
 696 알 수 없는 트랜잭션 입니다. (index %1$d, %2$s@%3$s|%4$d)
 697 주어진 트랜잭션 인덱스 (index %1$d, %2$s@%3$s|%4$d)는 현재 트랜잭션 인덱스 (index %5$d, %6$s@%7$s|%8$d)와 맞지 않습니다. 주어진 트랜잭션은 이미 종료되었고 해당 트랜잭션 인덱스는 다른 트랜잭션에 의해 사용되고 있습니다. 
-698 내부 에러: the number of OIDs in the unique hierarchy: %1$d does not equal the number of OIDs: %2$d found in the unique B+tree plus the number of NULLs: %3$d found in the unique hierarchy for B+tree: %4$d|%5$d|%6$d.
-699 내부 에러: the number of OIDs in the unique hierarchy: %1$d does not equal the number of OIDs: %2$d found in the unique B+tree root statistics for B+tree: %3$d|%4$d|%5$d.
-700 내부 에러: the number of OIDs: %1$d does not equal the number of NULLs: %2$d plus the number of keys: %3$d in the unique B+tree: %4$d|%5$d|%6$d.
+698 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
+699 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+700 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
 701 ldb "%2$s"의 "%1$s"에서 프락시가 정의되지 않았습니다.
-702 내부 에러: the number of NULLs in the unique hierarchy: %1$d does not equal the number of NULLs: %2$d found in the unique B+tree root statistics for B+tree: %3$d|%4$d|%5$d.
-703 내부 에러: OID: %1$d|%2$d|%3$d found in unique B+tree: %4$d|%5$d|%6$d does not belong to one of the classes for the unique constraint.
+702 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+703 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
 704 Evaluation of generic server function failed.
 705 %2$d 개이어야 하나 %1$d 개의 영구 볼륨이 발견되었습니다.
 706 볼륨 용도 %2$s의 영구 볼륨 "%1$s"을(를) 확장할 수 없습니다. 
@@ -817,7 +817,7 @@ $ LOADDB
 752 Error restoring backup unit_num %d.
 753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
 754 OO 프락시 인스턴스가 문자열 타입이 아니거나 NULL 키를 가지고 있습니다.
-755 해당 오퍼레이션은 스탠드-얼론 모드에서는 허용되지 않습니다.
+755 스탠드-얼론 모드에서는 %s (을)를 실행 할 수 없습니다.
 756 지정된 문자열 버퍼가 해당 오브젝트를 인코딩 하기에는 너무 작습니다. 
 757 내부 에러: cannot assign permanent OID during object encode.
 758 지정된 문자열 버퍼가 해당 오브젝트를 디코딩하기에 적합하지 않습니다.
@@ -1041,12 +1041,12 @@ $set 6 MSGCAT_SET_INTERNAL
 12 er_study_fmt: suspect message for error code %d.
 13 er_estimate_size: 알 수 없는 변환 코드 (%d).
 14 \n\n***  메시지 로그 wraparound. 메시지들은 파일에서 다시 시작됩니다. ***\n\n
-15 \nTime: %s *** %s *** %s 코드 = %d, Tran = %d%s\n%s\n
-16 System (pid:%d) *** %s *** %s 코드 = %d, Tran = %d %s
-17 \n--->>>Time: %s \n*** %s *** 파일 %s, 라인 %d %s 코드 = %d Tran = %d%s\n%s\n<<<---\n
-18 System (pid: %d) *** %s *** 파일 %s, 라인 %d, %s 코드 = %d, Tran = %d. %s
+15 \nTime: %s - %s *** %s 코드 = %d, Tran = %d%s\n%s\n<<<---\n
+16 CUBRID (pid:%d) *** %s *** %s 코드 = %d, Tran = %d %s
+17 \nTime: %s - %s *** 파일 %s, 라인 %d %s 코드 = %d Tran = %d%s\n%s\n<<<---\n
+18 CUBRID (pid: %d) *** %s *** 파일 %s, 라인 %d, %s 코드 = %d, Tran = %d. %s
 19 \n*** 이전 에러 메시지가 마지막 입니다.  ***\n\n
-20 \nTime: %s DEBUG *** 파일 %s, 라인 %d\n
+20 \nTime: %s - DEBUG *** 파일 %s, 라인 %d\n<<<---\n
 21 Mail -s "Server가 멈추었습니다."
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d

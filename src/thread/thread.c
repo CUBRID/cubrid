@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -39,6 +39,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #endif /* WINDOWS */
+#include <assert.h>
 
 #include "porting.h"
 #include "connection_error.h"
@@ -147,7 +148,6 @@ static void *thread_page_flush_thread (void *);
 static void *thread_log_flush_thread (void *);
 #endif /* WINDOWS */
 
-/* AsyncCommit */
 static int thread_get_LFT_min_wait_time ();
 
 
@@ -163,29 +163,6 @@ static int thread_get_LFT_min_wait_time ();
  */
 
 #if defined(HPUX)
-/*
- * thread_set_current_thread_info() - assign transaction infomation to current
- *                                 thread entry
- *   return: void
- *   client_id(in): client id
- *   rid(in): request id
- *   tran_index(in): transaction index
- */
-void
-thread_set_current_thread_info (int client_id, unsigned int request_id,
-				int tran_index)
-{
-  tsd_ptr->client_id = client_id;
-  tsd_ptr->rid = request_id;
-  tsd_ptr->tran_index = tran_index;
-  tsd_ptr->victim_request_fail = false;
-  tsd_ptr->next_wait_thrd = NULL;
-  tsd_ptr->lockwait = NULL;
-  tsd_ptr->lockwait_state = -1;
-  tsd_ptr->query_entry = NULL;
-  tsd_ptr->tran_next_wait = NULL;
-}
-
 /*
  * thread_get_thread_entry_info() - retrieve TSD of it's own.
  *   return: thread entry
@@ -225,37 +202,6 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_SETSPECIFIC);
 
   return r;
-}
-
-/*
- * thread_set_current_thread_info() - assign transaction infomation to current
- *                                 thread entry
- *   return: void
- *   client_id(in): client id
- *   rid(in): request id
- *   tran_index(in): transaction index
- */
-void
-thread_set_current_thread_info (int client_id, unsigned int request_id,
-				int tran_index)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
-
-  thread_p->client_id = client_id;
-  thread_p->rid = request_id;
-  thread_p->tran_index = tran_index;
-
-  /* for page latch */
-  thread_p->victim_request_fail = false;
-  thread_p->next_wait_thrd = NULL;
-
-  thread_p->lockwait = NULL;
-  thread_p->lockwait_state = -1;
-  thread_p->query_entry = NULL;
-  thread_p->tran_next_wait = NULL;
 }
 
 /*
@@ -549,13 +495,14 @@ loop:
 	  logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
 	  if (thread_p->status == TS_WAIT)
 	    {
+	      thread_p->interrupted = true;
 	      thread_wakeup (thread_p);
 	    }
-	  thread_sleep (0, 100);
+	  thread_sleep (0, 10000);	/* 10 msec */
 	}
     }
 
-  thread_sleep (0, 100);
+  thread_sleep (0, 10000);
   lock_force_timeout_lock_wait_transactions ();
 
   /* Signal for blocked on job queue */
@@ -575,6 +522,11 @@ loop:
     {
       if (count++ > 60)
 	{
+#if CUBRID_DEBUG
+	  logtb_dump_trantable (NULL, stderr);
+#endif
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_stop_active_workers: _exit(0)\n");
 	  /* exit process after some tries */
 	  _exit (0);
 	}
@@ -627,6 +579,11 @@ loop:
     {
       if (count++ > 30)
 	{
+#if CUBRID_DEBUG
+	  logtb_dump_trantable (NULL, stderr);
+#endif
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_stop_active_daemons: _exit(0)\n");
 	  /* exit process after some tries */
 	  _exit (0);
 	}
@@ -680,6 +637,10 @@ loop:
     {
       if (count++ > 60)
 	{
+#if CUBRID_DEBUG
+	  logtb_dump_trantable (NULL, stderr);
+#endif
+	  er_log_debug (ARG_FILE_LINE, "thread_kill_all_workers: _exit(0)\n");
 	  /* exit process after some tries */
 	  _exit (0);
 	}
@@ -898,7 +859,7 @@ thread_get_current_entry_index (void)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->index;
 }
@@ -914,7 +875,7 @@ thread_get_current_tran_index (void)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->tran_index;
 }
@@ -932,7 +893,7 @@ thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   thread_p->tran_index = tran_index;
 }
@@ -960,7 +921,7 @@ thread_get_current_conn_entry (void)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->conn_entry;
 }
@@ -975,7 +936,7 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
   if (r < 0)
@@ -998,7 +959,7 @@ thread_lock_entry_with_tran_index (int tran_index)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_find_entry_by_tran_index (tran_index);
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
   if (r < 0)
@@ -1019,7 +980,7 @@ thread_unlock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r < 0)
@@ -1043,7 +1004,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
 
-  CSS_ASSERT (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN);
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
@@ -1082,7 +1043,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
   int rv;
 #endif /* WINDOWS && SERVER_MODE */
 
-  CSS_ASSERT (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN);
   thread_p->status = TS_WAIT;
 
 #if defined(WINDOWS)
@@ -1127,7 +1088,7 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
    * this function must be called by current thread
    * also, the lock must have already been acquired before.
    */
-  CSS_ASSERT (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN);
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
@@ -1217,7 +1178,7 @@ thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
   while ((*func) (thread_p, arg) == false && thread_p->interrupted != true
 	 && thread_p->shutdown != true)
     {
-      thread_sleep (0, 10);
+      thread_sleep (0, 10000);	/* 10 msec */
     }
 }
 
@@ -1232,8 +1193,8 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
 {
   int r;
 
-  CSS_ASSERT (thread_p != NULL);
-  CSS_ASSERT (thread_p->status == TS_RUN);
+  assert (thread_p != NULL);
+  assert (thread_p->status == TS_RUN);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
   CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
@@ -1320,7 +1281,7 @@ thread_get_client_id (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   conn_p = thread_p->conn_entry;
   if (conn_p != NULL)
@@ -1348,7 +1309,7 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->rid;
 }
@@ -1367,7 +1328,7 @@ thread_set_comm_request_id (unsigned int request_id)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   thread_p->rid = request_id;
 }
@@ -1482,7 +1443,7 @@ css_get_private_heap (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->private_heap_id;
 }
@@ -1503,7 +1464,7 @@ css_set_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   old_heap_id = thread_p->private_heap_id;
   thread_p->private_heap_id = heap_id;
@@ -1522,7 +1483,7 @@ css_get_cnv_adj_buffer (int idx)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   return thread_p->cnv_adj_buffer[idx];
 }
@@ -1539,7 +1500,7 @@ css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
   THREAD_ENTRY *thread_p;
 
   thread_p = thread_get_thread_entry_info ();
-  CSS_ASSERT (thread_p != NULL);
+  assert (thread_p != NULL);
 
   thread_p->cnv_adj_buffer[idx] = buffer_p;
 }
@@ -2007,7 +1968,6 @@ thread_wakeup_page_flush_thread (void)
   MUTEX_UNLOCK (css_Page_flush_thread.lock);
 }
 
-/* AsyncCommit */
 /*
  * thread_get_LFT_min_wait_time() - get LFT's minimum wait time
  *  return:
@@ -2042,7 +2002,6 @@ thread_get_LFT_min_wait_time ()
 }
 
 
-/* AsyncCommit */
 /*
  * thread_log_flush_thread() - flushed dirty log pages in background
  *   return:
@@ -2074,7 +2033,9 @@ thread_log_flush_thread (void *arg_p)
 
   double curr_elapsed = 0;
   double gc_elapsed = 0;
+#if 0				/* disabled temporarily */
   double repl_elapsed = 0;
+#endif
   double work_elapsed = 0;
   int diff_wait_time;
   int min_wait_time;
@@ -2083,6 +2044,7 @@ thread_log_flush_thread (void *arg_p)
   int flushed;
   int temp_wait_usec;
   bool is_background_flush = true;
+  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
@@ -2152,7 +2114,9 @@ thread_log_flush_thread (void *arg_p)
       curr_elapsed = LOG_GET_ELAPSED_TIME (end_time, start_time);
 
       gc_elapsed += curr_elapsed;
+#if 0				/* disabled temporarily */
       repl_elapsed += curr_elapsed;
+#endif
 
       start_time = end_time;
 
@@ -2165,7 +2129,7 @@ thread_log_flush_thread (void *arg_p)
 		    gc_elapsed, repl_elapsed, work_elapsed, diff_wait_time);
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
 
-      MUTEX_LOCK (rv, log_Gl.group_commit_info.gc_mutex);
+      MUTEX_LOCK (rv, group_commit_info->gc_mutex);
 
       is_background_flush = false;
       have_wake_up_thread = false;
@@ -2193,7 +2157,7 @@ thread_log_flush_thread (void *arg_p)
 	  else
 	    {
 	      if (gc_elapsed * 1000 >= PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS
-		  && log_Gl.group_commit_info.waiters > 0)
+		  && group_commit_info->waiters > 0)
 		{
 		  is_background_flush = false;
 		}
@@ -2203,6 +2167,7 @@ thread_log_flush_thread (void *arg_p)
 		}
 	    }
 
+#if 0				/* disabled temporarily */
 	  if (PRM_REPLICATION_MODE
 	      && (repl_elapsed >= (double) PRM_LOG_HEADER_FLUSH_INTERVAL))
 	    {
@@ -2212,11 +2177,14 @@ thread_log_flush_thread (void *arg_p)
 
 	      repl_elapsed = 0;
 	    }
+#endif
 	}
 
       if (is_background_flush)
 	{
+	  LOG_CS_ENTER (tsd_ptr);
 	  logpb_flush_pages_background (tsd_ptr);
+	  LOG_CS_EXIT ();
 	}
       else
 	{
@@ -2239,23 +2207,23 @@ thread_log_flush_thread (void *arg_p)
 #if defined(WINDOWS)
 	  int loop;
 
-	  for (loop = 0; loop != log_Gl.group_commit_info.waiters; ++loop)
+	  for (loop = 0; loop != group_commit_info->waiters; ++loop)
 	    {
-	      COND_BROADCAST (log_Gl.group_commit_info.gc_cond);
+	      COND_BROADCAST (group_commit_info->gc_cond);
 	    }
 #else /* WINDOWS */
-	  COND_BROADCAST (log_Gl.group_commit_info.gc_cond);
+	  COND_BROADCAST (group_commit_info->gc_cond);
 #endif /* WINDOWS */
 
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
 	  er_log_debug (ARG_FILE_LINE,
 			"css_log_flush_thread: "
 			"[%d]send signal - waiters(%d) \n",
-			(int) THREAD_ID (), log_Gl.group_commit_info.waiters);
+			(int) THREAD_ID (), group_commit_info->waiters);
 #endif /*LOG_DEBUG & LOG_DEBUG_MSG */
-	  log_Gl.group_commit_info.waiters = 0;
+	  group_commit_info->waiters = 0;
 	}
-      MUTEX_UNLOCK (log_Gl.group_commit_info.gc_mutex);
+      MUTEX_UNLOCK (group_commit_info->gc_mutex);
     }
 
   css_Log_flush_thread.is_valid = false;
@@ -2309,6 +2277,7 @@ static int
 thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
   css_shutdown_conn_by_tran_index (tran_index);
 
   return CSS_SLAM_STATUS_INTERRUPTED;

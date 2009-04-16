@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 #include "critical_section.h"
 #include "connection_defs.h"
@@ -59,48 +60,29 @@ CSS_CRITICAL_SECTION css_Csect_array[CRITICAL_SECTION_COUNT];
 static char *css_Csect_name[CRITICAL_SECTION_COUNT] = {
   "CSECT_ER_LOG_FILE",
   "CSECT_ER_MSG_CACHE",
-  "CSECT_CONN_LIST",
-  "CSECT_CONN_MAP",
-  "CSECT_FILEIO_CACHE_MOUNTED",
-  "CSECT_PGBUF_POOL",
-  "CSECT_LOCK_OBJECT_TABLE",
-  "CSECT_LOCK_PAGE_TABLE",
   "CSECT_WFG",
   "CSECT_LOG",
   "CSECT_LOCATOR_SR_CLASSNAME_TABLE",
   "CSECT_FILE_NEWFILE",
-  "CSECT_QP_QUERY_TABLE",
-  "CSECT_QP_QFILE_PGCNT",
-  "CSECT_QP_XASL_CACHE",
-  "CSECT_QP_LIST_CACHE",
+  "CSECT_QPROC_QUERY_TABLE",
+  "CSECT_QPROC_QFILE_PGCNT",
+  "CSECT_QPROC_XASL_CACHE",
+  "CSECT_QPROC_LIST_CACHE",
   "CSECT_BOOT_SR_DBPARM",
-  "CSECT_HEAP_CLASSREPR",
   "CSECT_DISK_REFRESH_GOODVOL",
-  "CSECT_LDB_CACHE_VALUE",
-  "CSECT_LDB_DRIVER_STATUS",
-  "CSECT_LDB_DRIVER_ADD",
-  "CSECT_LDB_DRIVER_UNBIND",
   "CSECT_CNV_FMT_LEXER",
   "CSECT_HEAP_CHNGUESS",
   "CSECT_SPAGE_SAVESPACE",
   "CSECT_TRAN_TABLE",
   "CSECT_CT_OID_TABLE",
   "CSECT_SCANID_BITMAP",
-  "CSECT_LOG_FLUSH",
+  "CSECT_HA_SERVER_STATE",
+  "CSECT_LOG_FLUSH"
 };
 #endif /* CSECT_STATISTICS */
 
 static int csect_initialize_entry (int cs_index);
 static int csect_finalize_entry (int cs_index);
-static int csect_enter_critical_section_internal (THREAD_ENTRY * thrd,
-						  CSS_CRITICAL_SECTION *
-						  cs_ptr, int wait_secs);
-static int
-csect_enter_critical_section_as_reader_internal (THREAD_ENTRY * thread_p,
-						 CSS_CRITICAL_SECTION *
-						 cs_ptr, int wait_secs);
-static int csect_exit_critical_section_internal (CSS_CRITICAL_SECTION *
-						 cs_ptr);
 
 /*
  * csect_initialize_critical_section() - initialize critical section
@@ -299,22 +281,21 @@ csect_finalize (void)
 }
 
 /*
- * csect_enter_critical_section_internal() - lock critical section
+ * csect_enter_critical_section() - lock critical section
  *   return: 0 if success, or error code
  *   cs_ptr(in): critical section
  *   wait_secs(in): timeout second
  */
-static int
-csect_enter_critical_section_internal (THREAD_ENTRY * thread_p,
-				       CSS_CRITICAL_SECTION * cs_ptr,
-				       int wait_secs)
+int
+csect_enter_critical_section (THREAD_ENTRY * thread_p,
+			      CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r2;
 #ifdef CSECT_STATISTICS
   struct timeval start_val, end_val;
 #endif /* CSECT_STATISTICS */
 
-  CSS_ASSERT (cs_ptr != NULL);
+  assert (cs_ptr != NULL);
 
   if (thread_p == NULL)
     {
@@ -453,26 +434,26 @@ csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
       CSS_CHECK_RETURN_ERROR (ER_CS_INVALID_INDEX, ER_CS_INVALID_INDEX);
     }
 
-  return csect_enter_critical_section_internal (thread_p, cs_ptr, wait_secs);
+  return csect_enter_critical_section (thread_p, cs_ptr, wait_secs);
 }
 
 /*
- * csect_enter_critical_section_as_reader_internal () - acquire a read lock
+ * csect_enter_critical_section_as_reader () - acquire a read lock
  *   return: 0 if success, or error code
  *   cs_ptr(in): critical section
  *   wait_secs(in): timeout second
  */
-static int
-csect_enter_critical_section_as_reader_internal (THREAD_ENTRY * thread_p,
-						 CSS_CRITICAL_SECTION *
-						 cs_ptr, int wait_secs)
+int
+csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
+					CSS_CRITICAL_SECTION * cs_ptr,
+					int wait_secs)
 {
   int r = NO_ERROR, r2;
 #ifdef CSECT_STATISTICS
   struct timeval start_val, end_val;
 #endif /* CSECT_STATISTICS */
 
-  CSS_ASSERT (cs_ptr != NULL);
+  assert (cs_ptr != NULL);
 
   if (thread_p == NULL)
     {
@@ -499,7 +480,14 @@ csect_enter_critical_section_as_reader_internal (THREAD_ENTRY * thread_p,
     }
   else
     {
+#if 1
+      /* reader can enter this csect without waiting writer(s)
+         when the csect had been demoted by the other */
+      while (cs_ptr->rwlock < 0
+	     || (cs_ptr->waiting_writers && cs_ptr->owner == NULL_THREAD_T))
+#else
       while (cs_ptr->rwlock < 0 || cs_ptr->waiting_writers)
+#endif
 	{
 	  /* reader should wait writer(s). */
 	  if (wait_secs == INF_WAIT)
@@ -597,17 +585,360 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
       CSS_CHECK_RETURN_ERROR (ER_CS_INVALID_INDEX, ER_CS_INVALID_INDEX);
     }
 
-  return csect_enter_critical_section_as_reader_internal (thread_p, cs_ptr,
-							  wait_secs);
+  return csect_enter_critical_section_as_reader (thread_p, cs_ptr, wait_secs);
 }
 
 /*
- * csect_exit_critical_section_internal() - unlock critical section
+ * csect_demote_critical_section () - acquire a read lock when it has write lock
+ *   return: 0 if success, or error code
+ *   cs_ptr(in): critical section
+ *   wait_secs(in): timeout second
+ *
+ * Note: Always successful because I have the write lock.
+ */
+int
+csect_demote_critical_section (THREAD_ENTRY * thread_p,
+			       CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+{
+  int r = NO_ERROR, r2;
+#ifdef CSECT_STATISTICS
+  struct timeval start_val, end_val;
+#endif /* CSECT_STATISTICS */
+
+  assert (cs_ptr != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+#ifdef CSECT_STATISTICS
+  cs_ptr->total_enter++;
+  gettimeofday (&start_val, NULL);
+#endif /* CSECT_STATISTICS */
+
+  MUTEX_LOCK (r, cs_ptr->lock);
+
+#ifdef CSECT_STATISTICS
+  gettimeofday (&end_val, NULL);
+  ADD_TIMEVAL (cs_ptr->mutex_wait, start_val, end_val);
+#endif /* CSECT_STATISTICS */
+  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+
+  if (cs_ptr->rwlock < 0 && cs_ptr->owner == thread_p->tid)
+    {
+      /*
+       * I have write lock. I was entered before as a writer.
+       * Every others are waiting on either 'reader_ok', if it is waiting as
+       * a reader, or 'writer_ok' with 'waiting_writers++', if waiting as
+       * a writer.
+       */
+
+      cs_ptr->rwlock++;		/* releasing */
+      if (cs_ptr->rwlock < 0)
+	{
+	  /*
+	   * In the middle of an outer critical section, it is not possible
+	   * to be a reader. Treat as same as csect_enter_critical_section_as_reader().
+	   */
+	  cs_ptr->rwlock--;	/* entering as a writer */
+	}
+      else
+	{
+	  /* rwlock == 0 */
+	  cs_ptr->rwlock++;	/* entering as a reader */
+#if 0
+	  cs_ptr->owner = NULL_THREAD_T;
+	  cs_ptr->tran_index = -1;
+#endif
+	}
+    }
+  else
+    {
+      /*
+       * I don't have write lock. Act like a normal reader request.
+       */
+      while (cs_ptr->rwlock < 0 || cs_ptr->waiting_writers)
+	{
+	  /* reader should wait writer(s). */
+	  if (wait_secs == INF_WAIT)
+	    {
+#ifdef CSECT_STATISTICS
+	      cs_ptr->total_nwaits++;
+#endif /* CSECT_STATISTICS */
+
+	      r = COND_WAIT (cs_ptr->readers_ok, cs_ptr->lock);
+
+#if defined(WINDOWS)
+	      MUTEX_LOCK (r2, cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_LOCK);
+#endif /* WINDOWS */
+	      if (r != 0)
+		{
+		  r2 = MUTEX_UNLOCK (cs_ptr->lock);
+		  CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+		}
+	      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_WAIT);
+	    }
+	  else if (wait_secs > 0)
+	    {
+#if defined(WINDOWS)
+	      int to;
+	      to = wait_secs * 1000;
+#else /* WINDOWS */
+	      struct timespec to;
+	      to.tv_sec = time (NULL) + wait_secs;
+	      to.tv_nsec = 0;
+#endif /* WINDOWS */
+
+	      cs_ptr->waiting_writers++;
+
+	      r = COND_TIMEDWAIT (cs_ptr->readers_ok, cs_ptr->lock, to);
+
+#if defined(WINDOWS)
+	      MUTEX_LOCK (r2, cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_LOCK);
+#endif /* WINDOWS */
+
+	      if (r != TIMEDWAIT_GET_LK)
+		{
+		  r2 = MUTEX_UNLOCK (cs_ptr->lock);
+		  CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+		  if (r != TIMEDWAIT_TIMEOUT)
+		    {
+		      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_WAIT);
+		    }
+		  return r;
+		}
+	    }
+	  else
+	    {
+	      r = MUTEX_UNLOCK (cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+	      return ETIMEDOUT;
+	    }
+	}
+
+      /* rwlock will be > 0. record that a reader enters the csect. */
+      cs_ptr->rwlock++;
+    }
+
+#ifdef CSECT_STATISTICS
+  gettimeofday (&end_val, NULL);
+  ADD_TIMEVAL (cs_ptr->total_wait, start_val, end_val);
+#endif /* CSECT_STATISTICS */
+
+  r = MUTEX_UNLOCK (cs_ptr->lock);
+  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+
+  return r;
+}
+
+/*
+ * csect_demote () - acquire a read lock when it has write lock
+ *   return: 0 if success, or error code
+ *   cs_index(in): identifier of the section to lock
+ *   wait_secs(in): timeout second
+ *
+ * Note: Always successful because I have the write lock.
+ */
+int
+csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
+{
+  CSS_CRITICAL_SECTION *cs_ptr;
+
+  if (0 <= cs_index && cs_index < CRITICAL_SECTION_COUNT)
+    {
+      cs_ptr = &css_Csect_array[cs_index];
+    }
+  else
+    {
+      CSS_CHECK_RETURN_ERROR (ER_CS_INVALID_INDEX, ER_CS_INVALID_INDEX);
+    }
+
+  return csect_demote_critical_section (thread_p, cs_ptr, wait_secs);
+}
+
+/*
+ * csect_promote_critical_section () - acquire a write lock when it has read lock
+ *   return: 0 if success, or error code
+ *   cs_ptr(in): critical section
+ *   wait_secs(in): timeout second
+ *
+ * Note: Always successful because I have the write lock.
+ */
+int
+csect_promote_critical_section (THREAD_ENTRY * thread_p,
+				CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+{
+  int error_code = NO_ERROR, r2;
+#ifdef CSECT_STATISTICS
+  struct timeval start_val, end_val;
+#endif /* CSECT_STATISTICS */
+
+  assert (cs_ptr != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+#ifdef CSECT_STATISTICS
+  cs_ptr->total_enter++;
+  gettimeofday (&start_val, NULL);
+#endif /* CSECT_STATISTICS */
+
+  MUTEX_LOCK (error_code, cs_ptr->lock);
+
+#ifdef CSECT_STATISTICS
+  gettimeofday (&end_val, NULL);
+  ADD_TIMEVAL (cs_ptr->mutex_wait, start_val, end_val);
+#endif /* CSECT_STATISTICS */
+  CSS_CHECK_RETURN_ERROR (error_code, ER_CSS_PTHREAD_MUTEX_LOCK);
+
+  if (cs_ptr->rwlock > 0)
+    {
+      /*
+       * I am a reader so that no writer is in this csect but reader(s) could be.
+       * All writers are waiting on 'writer_ok' with 'waiting_writers++'.
+       */
+      cs_ptr->rwlock--;		/* releasing */
+    }
+  else
+    {
+      cs_ptr->rwlock++;		/* releasing */
+      /*
+       * I don't have read lock. Act like a normal writer request.
+       */
+    }
+  while (cs_ptr->rwlock != 0)
+    {
+      /* There's another readers. So I have to wait as a writer. */
+      if (cs_ptr->rwlock < 0 && cs_ptr->owner == thread_p->tid)
+	{
+	  /*
+	   * I am holding the csect, and reenter it again as writer.
+	   * Note that rwlock will be decremented.
+	   */
+	  break;
+	}
+      else
+	{
+	  if (wait_secs == INF_WAIT)
+	    {
+	      cs_ptr->waiting_writers++;
+#ifdef CSECT_STATISTICS
+	      cs_ptr->total_nwaits++;
+#endif /* CSECT_STATISTICS */
+
+	      error_code = COND_WAIT (cs_ptr->writer_ok, cs_ptr->lock);
+#if defined(WINDOWS)
+	      MUTEX_LOCK (r2, cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_LOCK);
+#endif /* WINDOWS */
+
+	      if (error_code != 0)
+		{
+		  r2 = MUTEX_UNLOCK (cs_ptr->lock);
+		  CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+		}
+	      CSS_CHECK_RETURN_ERROR (error_code, ER_CSS_PTHREAD_COND_WAIT);
+
+	      cs_ptr->waiting_writers--;
+	    }
+	  else if (wait_secs > 0)
+	    {
+#if defined(WINDOWS)
+	      int to;
+	      to = wait_secs * 1000;
+#else /* WINDOWS */
+	      struct timespec to;
+	      to.tv_sec = time (NULL) + wait_secs;
+	      to.tv_nsec = 0;
+#endif /* WINDOWS */
+
+	      cs_ptr->waiting_writers++;
+
+	      error_code =
+		COND_TIMEDWAIT (cs_ptr->writer_ok, cs_ptr->lock, to);
+#if defined(WINDOWS)
+	      MUTEX_LOCK (r2, cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_LOCK);
+#endif /* WINDOWS */
+
+	      cs_ptr->waiting_writers--;
+
+	      if (error_code != TIMEDWAIT_GET_LK)
+		{
+		  r2 = MUTEX_UNLOCK (cs_ptr->lock);
+		  CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+		  if (error_code != TIMEDWAIT_TIMEOUT)
+		    {
+		      CSS_CHECK_RETURN_ERROR (error_code,
+					      ER_CSS_PTHREAD_COND_WAIT);
+		    }
+		  return error_code;
+		}
+	    }
+	  else
+	    {
+	      error_code = MUTEX_UNLOCK (cs_ptr->lock);
+	      CSS_CHECK_RETURN_ERROR (error_code,
+				      ER_CSS_PTHREAD_MUTEX_UNLOCK);
+	      return ETIMEDOUT;
+	    }
+	}
+    }
+
+  /* rwlock will be < 0. It denotes that a writer owns the csect. */
+  cs_ptr->rwlock--;
+  /* record that I am the writer of the csect. */
+  cs_ptr->owner = thread_p->tid;
+  cs_ptr->tran_index = thread_p->tran_index;
+
+#ifdef CSECT_STATISTICS
+  gettimeofday (&end_val, NULL);
+  ADD_TIMEVAL (cs_ptr->total_wait, start_val, end_val);
+#endif /* CSECT_STATISTICS */
+
+  error_code = MUTEX_UNLOCK (cs_ptr->lock);
+  CSS_CHECK_RETURN_ERROR (error_code, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+
+  return error_code;
+}
+
+/*
+ * csect_promote () - acquire a write lock when it has read lock
+ *   return: 0 if success, or error code
+ *   cs_index(in): identifier of the section to lock
+ *   wait_secs(in): timeout second
+ *
+ * Note: Always successful because I have the write lock.
+ */
+int
+csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
+{
+  CSS_CRITICAL_SECTION *cs_ptr;
+
+  if (0 <= cs_index && cs_index < CRITICAL_SECTION_COUNT)
+    {
+      cs_ptr = &css_Csect_array[cs_index];
+    }
+  else
+    {
+      CSS_CHECK_RETURN_ERROR (ER_CS_INVALID_INDEX, ER_CS_INVALID_INDEX);
+    }
+
+  return csect_promote_critical_section (thread_p, cs_ptr, wait_secs);
+}
+
+/*
+ * csect_exit_critical_section() - unlock critical section
  *   return:  0 if success, or error code
  *   cs_ptr(in): critical section
  */
-static int
-csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
+int
+csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 {
   int r = NO_ERROR;
   int ww, wr;
@@ -615,7 +946,7 @@ csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
   struct timeval start_val, end_val;
 #endif /* CSECT_STATISTICS */
 
-  CSS_ASSERT (cs_ptr != NULL);
+  assert (cs_ptr != NULL);
 
 #ifdef CSECT_STATISTICS
   gettimeofday (&start_val, NULL);
@@ -640,7 +971,7 @@ csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
 	}
       else
 	{
-	  /* cs_ptr->rwlock should be 0. */
+	  /* rwlock == 0 */
 	  cs_ptr->owner = NULL_THREAD_T;
 	  cs_ptr->tran_index = -1;
 	}
@@ -654,6 +985,7 @@ csect_exit_critical_section_internal (CSS_CRITICAL_SECTION * cs_ptr)
       /* cs_ptr->rwlock == 0 */
       MUTEX_UNLOCK (cs_ptr->lock);
 
+      assert (0);
       CSS_CHECK_RETURN_ERROR (ER_CS_UNLOCKED_BEFORE, ER_CS_UNLOCKED_BEFORE);
     }
 
@@ -701,7 +1033,7 @@ csect_exit (int cs_index)
       CSS_CHECK_RETURN_ERROR (ER_CS_INVALID_INDEX, ER_CS_INVALID_INDEX);
     }
 
-  return csect_exit_critical_section_internal (cs_ptr);
+  return csect_exit_critical_section (cs_ptr);
 }
 
 #ifdef CSECT_STATISTICS
@@ -767,45 +1099,6 @@ csect_dump_statistics_and_initialize (FILE * fp)
 }
 #endif /* CSECT_STATISTICS */
 
-/*
- * csect_enter_critical_section() - lock critical section without name
- *   return: 0 if success, or error code
- *   cs_ptr(in): critical section to lock
- *   wait_secs(in): timeout section
- */
-int
-csect_enter_critical_section (THREAD_ENTRY * thread_p,
-			      CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
-{
-  return csect_enter_critical_section_internal (thread_p, cs_ptr, wait_secs);
-}
-
-/*
- * csect_enter_critical_section_as_reader() - acquire read lock without criticak section name
- *   return: 0 if success, or error code
- *   cs_ptr(in): critical section to lock
- *   wait_secs(in): timeout section
- */
-int
-csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
-					CSS_CRITICAL_SECTION * cs_ptr,
-					int wait_secs)
-{
-  return csect_enter_critical_section_as_reader_internal (thread_p, cs_ptr,
-							  wait_secs);
-}
-
-/*
- * csect_exit_critical_section() - unlock critical section without name
- *   return: 0 if success, or error code
- *   cs_ptr(in): critical section to unlock
- */
-int
-csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
-{
-  return csect_exit_critical_section_internal (cs_ptr);
-}
-
 #ifdef LOG_DEBUG
 /*
  * csect_check_own() - check if current thread is critical section owner
@@ -821,7 +1114,7 @@ csect_check_own (int cs_index)
   int r = NO_ERROR, r2;
 
   thrd = thread_get_thread_entry_info ();
-  CSS_ASSERT (thrd != NULL);
+  assert (thrd != NULL);
 
   if (0 <= cs_index && cs_index < CRITICAL_SECTION_COUNT)
     {

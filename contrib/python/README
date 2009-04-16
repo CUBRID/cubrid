@@ -1,0 +1,35 @@
+CUBRID-Python: CUBRID Module for Python DB API 2.0
+License: BSD
+Author: Kang, Dong-Wan (cubrid_python@nhncorp.com)
+
+PREREQUISITES
+=============
+ * CUBRID 2008 R1.1 이상
+ * Python 2.4 이상
+ * C-Compiler(gcc or Microsoft Visual Studio)
+
+INSTALL
+=======
+ * Unix/Linux
+  * 컴파일하려면 아래처럼 입력합니다.
+  
+   > python setup.py build
+  
+  * 컴파일 후 설치하려면 아래처럼 입력합니다. 이때 python이 설치된 디렉토리에 쓰기 권한이 있어야 합니다.
+    
+   > python setup.py install
+   
+ * Windows
+  * _cubrid.dll, cubriddb.py 파일을 $PYTHON_HOME/lib 디렉토리에 복사합니다.
+    $PYTHON_HOME은 Python이 설치된 디렉토리입니다.
+    _cubrid.dll은 확장자를 _cubrid.pyd로 변경합니다. 
+  * 소스를 빌드하여 설치하려면 CUBRID-Python 위키의 
+    BuildOnWindows(http://dev.naver.com/wiki/cubrid-python/index.php/BuildOnWindows)를 참조하세요. 
+  
+DOCUMENT
+========
+ * See Python DB API 2.0 Spec (http://www.python.org/dev/peps/pep-0249/)
+ 
+SAMPLES
+=======
+See directory "sample".

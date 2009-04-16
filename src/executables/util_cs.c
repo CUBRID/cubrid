@@ -46,6 +46,9 @@
 #include "transaction_cl.h"
 #include "porting.h"
 #include "network_interface_cl.h"
+#include "connection_defs.h"
+#include "log_writer.h"
+#include "log_applier.h"
 
 #define PASSBUF_SIZE 12
 
@@ -58,6 +61,8 @@ typedef enum
   SPACEDB_SIZE_UNIT_HUMAN_READABLE
 } T_SPACEDB_SIZE_UNIT;
 
+static int changemode_keyword (int *keyval_p, char **keystr_p);
+static int copylogdb_keyword (int *keyval_p, char **keystr_p);
 static void sig_interrupt (int sig_no);
 static int
 spacedb_get_size_str (char *buf, int num_pages,
@@ -70,6 +75,7 @@ int
 backupdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *backup_path = NULL;
   bool remove_log_archives = false;
@@ -143,10 +149,15 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (arg->argv0, TRUE, database_name) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (check)
 	{
@@ -165,7 +176,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 		{
 		  tmpname = "/dev/null";
 		}
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					       MSGCAT_UTIL_SET_CHECKDB,
 					       CHECKDB_MSG_INCONSISTENT),
 		       tmpname);
@@ -178,7 +189,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       if (os_set_signal_handler (SIGINT, sig_interrupt) == SIG_ERR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  fprintf (stdout, "%s\n", db_error_string (3));
+	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -245,6 +256,7 @@ int
 addvoldb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   int volext_npages = 0;
   const char *volext_name = NULL;
@@ -312,9 +324,14 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, database_name) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (db_add_volume
 	  (volext_pathname, volext_name, volext_comments,
@@ -354,6 +371,7 @@ int
 checkdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   bool repair = false;
   int flag;
@@ -375,9 +393,14 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, database_name) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (repair)
 	{
@@ -427,6 +450,7 @@ int
 spacedb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
   int i;
@@ -441,7 +465,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   int nvols;
   VOLID temp_volid;
   char num_total_str[64], num_free_str[64];
-
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -503,13 +526,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (arg->argv0, TRUE, database_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
-      fprintf (outfp, "%s\n", db_error_string (3));
+      fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -551,7 +579,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  fprintf (outfp, "%s\n", db_error_string (3));
+	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -610,7 +638,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  fprintf (outfp, "%s\n", db_error_string (3));
+	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -655,7 +683,9 @@ error_exit:
 int
 lockdb (UTIL_FUNCTION_ARG * arg)
 {
+#if defined (CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
   FILE *outfp = NULL;
@@ -690,13 +720,18 @@ lockdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (arg->argv0, TRUE, database_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
-      fprintf (outfp, "%s\n", db_error_string (3));
+      fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -721,6 +756,13 @@ error_exit:
       fclose (outfp);
     }
   return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_LOCKDB,
+				   LOCKDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
 
 struct one_traninfo
@@ -728,9 +770,10 @@ struct one_traninfo
   int tran_index;
   int state;
   int process_id;
-  char *progname;
-  char *username;
-  char *hostname;
+  char *db_user;
+  char *program_name;
+  char *login_name;
+  char *host_name;
 };
 
 typedef struct
@@ -754,12 +797,14 @@ free_trantb (TRANS_INFO * info)
 
   for (i = 0; i < info->num_trans; i++)
     {
-      if (info->tran[i].progname != NULL)
-	db_private_free_and_init (NULL, info->tran[i].progname);
-      if (info->tran[i].username != NULL)
-	db_private_free_and_init (NULL, info->tran[i].username);
-      if (info->tran[i].hostname != NULL)
-	db_private_free_and_init (NULL, info->tran[i].hostname);
+      if (info->tran[i].db_user != NULL)
+	db_private_free_and_init (NULL, info->tran[i].db_user);
+      if (info->tran[i].program_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].program_name);
+      if (info->tran[i].login_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].login_name);
+      if (info->tran[i].host_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].host_name);
     }
   free_and_init (info);
 }
@@ -802,9 +847,10 @@ get_trantb (void)
       if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL ||
 	  (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL ||
 	  (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL ||
-	  (ptr = or_unpack_string (ptr, &info->tran[i].progname)) == NULL ||
-	  (ptr = or_unpack_string (ptr, &info->tran[i].username)) == NULL ||
-	  (ptr = or_unpack_string (ptr, &info->tran[i].hostname)) == NULL)
+	  (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL ||
+	  (ptr = or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
 	goto error;
     }
 
@@ -863,10 +909,12 @@ doesmatch_transaction (const struct one_traninfo *tran, int tran_index,
 
   match = (isvalid_transaction (tran)
 	   && (tran->tran_index == tran_index
-	       || (username != NULL && strcmp (tran->username, username) == 0)
-	       || (hostname != NULL && strcmp (tran->hostname, hostname) == 0)
+	       || (username != NULL
+		   && strcmp (tran->login_name, username) == 0)
+	       || (hostname != NULL
+		   && strcmp (tran->host_name, hostname) == 0)
 	       || (progname != NULL
-		   && strcmp (tran->progname, progname) == 0)));
+		   && strcmp (tran->program_name, progname) == 0)));
 
   return match;
 
@@ -917,8 +965,8 @@ dump_trantb (const TRANS_INFO * info)
 					       KILLTRAN_MSG_TABLE_ENTRY),
 		       info->tran[i].tran_index,
 		       TRAN_STATE_CHAR (info->tran[i].state),
-		       info->tran[i].username, info->tran[i].hostname,
-		       info->tran[i].process_id, info->tran[i].progname);
+		       info->tran[i].db_user, info->tran[i].host_name,
+		       info->tran[i].process_id, info->tran[i].program_name);
 	    }
 	}
     }
@@ -1019,8 +1067,9 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 						 KILLTRAN_MSG_TABLE_ENTRY),
 			 info->tran[i].tran_index,
 			 TRAN_STATE_CHAR (info->tran[i].state),
-			 info->tran[i].username, info->tran[i].hostname,
-			 info->tran[i].process_id, info->tran[i].progname);
+			 info->tran[i].db_user, info->tran[i].host_name,
+			 info->tran[i].process_id,
+			 info->tran[i].program_name);
 	      }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_KILLTRAN,
@@ -1047,10 +1096,11 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 						   MSGCAT_UTIL_SET_KILLTRAN,
 						   KILLTRAN_MSG_KILLING),
 			   info->tran[i].tran_index);
-		  if (thread_kill_tran_index
-		      (info->tran[i].tran_index, info->tran[i].username,
-		       info->tran[i].hostname,
-		       info->tran[i].process_id) == NO_ERROR)
+		  if (thread_kill_tran_index (info->tran[i].tran_index,
+					      info->tran[i].db_user,
+					      info->tran[i].host_name,
+					      info->tran[i].process_id) ==
+		      NO_ERROR)
 		    {
 		      info->tran[i].tran_index = -1;	/* Gone */
 		      nkills++;
@@ -1081,9 +1131,10 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 					       KILLTRAN_MSG_TABLE_ENTRY),
 			       info->tran[i].tran_index,
 			       TRAN_STATE_CHAR (info->tran[i].state),
-			       info->tran[i].username, info->tran[i].hostname,
+			       info->tran[i].db_user,
+			       info->tran[i].host_name,
 			       info->tran[i].process_id,
-			       info->tran[i].progname);
+			       info->tran[i].program_name);
 		      if (er_errid () != NO_ERROR)
 			fprintf (stdout, "%s\n", db_error_string (3));
 		      else	/* probably it is the case of timeout */
@@ -1113,7 +1164,9 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 int
 killtran (UTIL_FUNCTION_ARG * arg)
 {
+#if defined (CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   int kill_tran_index;
   const char *kill_progname;
@@ -1121,7 +1174,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   const char *kill_host;
   const char *dba_password;
   bool dump_trantab_flag;
-  bool verify = true;
+  bool force = true;
   int isbatch;
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
@@ -1143,6 +1196,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
   kill_progname =
     utility_get_option_string_value (arg_map, KILLTRAN_KILL_PROGRAM_NAME_S,
 				     0);
+
+  force = utility_get_option_bool_value (arg_map, KILLTRAN_FORCE_S);
   dba_password =
     utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
   dump_trantab_flag =
@@ -1170,6 +1225,11 @@ killtran (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (db_login ("dba", dba_password) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -1177,7 +1237,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   /* first try to restart with the password given (possibly none) */
-  error = db_restart (arg->argv0, TRUE, database_name);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
       if (error == ER_AU_INVALID_PASSWORD && strlen (dba_password) == 0)
@@ -1198,7 +1258,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	  if (db_login ("dba", dba_password) != NO_ERROR)
 	    goto error_exit;
 	  else
-	    error = db_restart (arg->argv0, TRUE, database_name);
+	    error = db_restart (arg->command_name, TRUE, database_name);
 	}
 
       if (error)
@@ -1233,7 +1293,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     {
       /* some piece of transaction identifer was entered, try to use it */
       if (kill_transactions (info, kill_tran_index, kill_user, kill_host,
-			     kill_progname, verify) <= 0)
+			     kill_progname, !force) <= 0)
 	{
 	  db_shutdown ();
 	  goto error_exit;
@@ -1257,6 +1317,13 @@ error_exit:
     free_trantb (info);
 
   return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_KILLTRAN,
+				   KILLTRAN_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -1266,7 +1333,9 @@ error_exit:
 int
 plandump (UTIL_FUNCTION_ARG * arg)
 {
+#if defined (CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
   bool drop_flag = false;
@@ -1303,11 +1372,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (arg->argv0, TRUE, database_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1344,10 +1418,601 @@ error_exit:
       fclose (outfp);
     }
   return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_PLANDUMP,
+				   PLANDUMP_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
 
 /*
- * sig_interrupt() - 
+ * paramparam() - paramparam main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+paramdump (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  const char *database_name;
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_dumpparam_usage;
+    }
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  output_file =
+    utility_get_option_string_value (arg_map, PARAMDUMP_OUTPUT_FILE_S, 0);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  if (output_file == NULL)
+    outfp = stdout;
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_PARAMDUMP,
+					   PARAMDUMP_MSG_BAD_OUTPUT),
+		   output_file);
+	  goto error_exit;
+	}
+    }
+
+  if (sysprm_load_and_init (database_name, NULL) == NO_ERROR)
+    {
+      sysprm_dump_system_parameters (outfp);
+    }
+
+  if (outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
+  return EXIT_SUCCESS;
+
+print_dumpparam_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_PARAMDUMP,
+				   PARAMDUMP_MSG_USAGE),
+	   basename (arg->argv0));
+
+error_exit:
+  if (outfp != stdout && outfp != NULL)
+    {
+      fclose (outfp);
+    }
+  return EXIT_FAILURE;
+}
+
+
+/*
+ * changemode_keyword() - get keyword value or string of the server mode
+ *   return: NO_ERROR or ER_FAILED
+ *   keyval_p(in/out): keyword value
+ *   keystr_p(in/out): keyword string
+ */
+static int
+changemode_keyword (int *keyval_p, char **keystr_p)
+{
+  static UTIL_KEYWORD keywords[] = {
+    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_IDLE_STR},
+    {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE_STR},
+    {HA_SERVER_STATE_TO_BE_ACTIVE, HA_SERVER_STATE_TO_BE_ACTIVE_STR},
+    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY_STR},
+    {HA_SERVER_STATE_TO_BE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY_STR},
+    {HA_SERVER_STATE_DEAD, HA_SERVER_STATE_DEAD_STR},
+    {-1, NULL}
+  };
+
+  return utility_keyword_search (keywords, keyval_p, keystr_p);
+}
+
+/*
+ * changemode() - changemode main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+changemode (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  char *mode_name;
+  const char *dba_password;
+  char *passbuf = NULL;
+  int mode = -1, error;
+  bool wait, force;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_changemode_usage;
+    }
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  mode_name = utility_get_option_string_value (arg_map, CHANGEMODE_MODE_S, 0);
+  wait = utility_get_option_bool_value (arg_map, CHANGEMODE_WAIT_S);
+  force = utility_get_option_bool_value (arg_map, CHANGEMODE_FORCE_S);
+  dba_password =
+    utility_get_option_string_value (arg_map, CHANGEMODE_DBA_PASSWORD_S, 0);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* check mode_name option argument */
+  if (mode_name != NULL)
+    {
+      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+	{
+	  if (sscanf (mode_name, "%d", &mode) != 1)
+	    {
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_CHANGEMODE,
+					       CHANGEMODE_MSG_BAD_MODE),
+		       mode_name);
+	      goto error_exit;
+	    }
+	}
+      if (!(mode == HA_SERVER_STATE_ACTIVE
+	    || mode == HA_SERVER_STATE_STANDBY))
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CHANGEMODE,
+					   CHANGEMODE_MSG_BAD_MODE),
+		   mode_name);
+	  goto error_exit;
+	}
+    }
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("dba", dba_password) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && strlen (dba_password) == 0)
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_CHANGEMODE,
+					     CHANGEMODE_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    passbuf = (char *) NULL;
+	  dba_password = passbuf;
+	  if (db_login ("dba", dba_password) != NO_ERROR)
+	    goto error_exit;
+	  else
+	    error = db_restart (arg->command_name, TRUE, database_name);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  if (mode_name == NULL)
+    {
+      /* display the value of current mode */
+      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, false);
+    }
+  else
+    {
+      /* change server's HA mode */
+      mode = boot_change_ha_mode (mode, force, wait);
+    }
+  if (mode != HA_SERVER_MODE_NA)
+    {
+      mode_name = NULL;
+      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CHANGEMODE,
+					   CHANGEMODE_MSG_BAD_MODE),
+		   (mode_name ? mode_name : "unknown"));
+	}
+      else
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CHANGEMODE,
+					   CHANGEMODE_MSG_SERVER_MODE),
+		   database_name, mode_name);
+	}
+    }
+  else
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+    }
+
+  (void) db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_changemode_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_CHANGEMODE,
+				   CHANGEMODE_MSG_USAGE),
+	   basename (arg->argv0));
+
+error_exit:
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_CHANGEMODE,
+				   CHANGEMODE_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * copylogdb_keyword() - get keyword value or string of the copylogdb mode
+ *   return: NO_ERROR or ER_FAILED
+ *   keyval_p(in/out): keyword value
+ *   keystr_p(in/out): keyword string
+ */
+static int
+copylogdb_keyword (int *keyval_p, char **keystr_p)
+{
+  static UTIL_KEYWORD keywords[] = {
+    {LOGWR_MODE_ASYNC, "async"},
+#if 0				/* disabled */
+    {LOGWR_MODE_SEMISYNC, "semisync"},
+#endif
+    {LOGWR_MODE_SYNC, "sync"},
+    {-1, NULL}
+  };
+
+  return utility_keyword_search (keywords, keyval_p, keystr_p);
+}
+
+/*
+ * copylogdb() - copylogdb main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+copylogdb (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (WINDOWS)
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_COPYLOGDB,
+				   COPYLOGDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#else /* WINDOWS */
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *log_path;
+  char *mode_name;
+  int mode = -1;
+  const char *dba_password;
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+  int retried = 0, sleep_nsecs = 1;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_copylog_usage;
+    }
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  log_path = utility_get_option_string_value (arg_map, COPYLOG_LOG_PATH_S, 0);
+  mode_name = utility_get_option_string_value (arg_map, COPYLOG_MODE_S, 0);
+  dba_password =
+    utility_get_option_string_value (arg_map, COPYLOG_DBA_PASSWORD_S, 0);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+  if (log_path == NULL)
+    {
+      goto print_copylog_usage;
+    }
+  /* check mode_name option argument */
+  if (mode_name != NULL)
+    {
+      if (copylogdb_keyword (&mode, &mode_name) != NO_ERROR)
+	{
+	  if (sscanf (mode_name, "%d", &mode) != 1)
+	    {
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_COPYLOGDB,
+					       COPYLOGDB_MSG_BAD_MODE),
+		       mode_name);
+	      goto error_exit;
+	    }
+	}
+      if (!(mode >= LOGWR_MODE_ASYNC && mode <= LOGWR_MODE_SYNC))
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_COPYLOGDB,
+					   COPYLOGDB_MSG_BAD_MODE),
+		   mode_name);
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      mode = LOGWR_MODE_ASYNC;
+    }
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_Log_replication_mode = true;
+  db_set_client_type (DB_CLIENT_TYPE_LOG_REPLICATOR);
+  if (db_login ("dba", dba_password) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+retry:
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && strlen (dba_password) == 0)
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COPYLOGDB,
+					     COPYLOGDB_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    passbuf = (char *) NULL;
+	  dba_password = passbuf;
+	  if (db_login ("dba", dba_password) != NO_ERROR)
+	    goto error_exit;
+	  else
+	    error = db_restart (arg->command_name, TRUE, database_name);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  if (retried % 10 == 0)
+	    {
+	      fprintf (stderr, "%s\n", db_error_string (3));
+	    }
+	  goto error_exit;
+	}
+    }
+
+  error = logwr_copy_log_file (database_name, log_path, mode);
+  if (error != NO_ERROR)
+    {
+      fprintf (stdout, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  (void) db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_copylog_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_COPYLOGDB,
+				   COPYLOGDB_MSG_USAGE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+
+error_exit:
+  if (error == ER_NET_SERVER_CRASHED
+      || error == ER_NET_CANT_CONNECT_SERVER
+      || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER)
+    {
+      (void) db_shutdown ();
+      (void) sleep (sleep_nsecs);
+      /* sleep 1, 2, 4, 8, etc; don't wait for more than 1/2 min */
+      if ((sleep_nsecs *= 2) > 32)
+	{
+	  sleep_nsecs = 1;
+	}
+      ++retried;
+      goto retry;
+    }
+
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_COPYLOGDB,
+				   COPYLOGDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+#endif /* !WINDOWS */
+}
+
+/*
+ * applylogdb() - applylogdb main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+applylogdb (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (WINDOWS)
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYLOGDB,
+				   APPLYLOGDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+
+error_exit:
+  return EXIT_FAILURE;
+#else /* WINDOWS */
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *log_path;
+  const char *log_path_base;
+  int test_log;
+  const char *dba_password;
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+  int retried = 0, sleep_nsecs = 1;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_applylog_usage;
+    }
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  log_path =
+    utility_get_option_string_value (arg_map, APPLYLOG_LOG_PATH_S, 0);
+  dba_password =
+    utility_get_option_string_value (arg_map, APPLYLOG_DBA_PASSWORD_S, 0);
+  test_log = utility_get_option_int_value (arg_map, APPLYLOG_TEST_LOG_S);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+  if (log_path == NULL)
+    {
+      goto print_applylog_usage;
+    }
+
+  /* error message log file */
+  log_path_base = strdup (log_path);
+  sprintf (er_msg_file, "%s_%s_%s.err", database_name, arg->command_name,
+	   basename (log_path_base));
+  free (log_path_base);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (test_log >= 0)
+    {
+      la_test_log_page (database_name, log_path, test_log);
+      return EXIT_SUCCESS;
+    }
+
+  db_Log_replication_mode = true;
+  db_set_client_type (DB_CLIENT_TYPE_LOG_REPLICATOR);
+
+  if (db_login ("dba", dba_password) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+retry:
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && strlen (dba_password) == 0)
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_APPLYLOGDB,
+					     APPLYLOGDB_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    passbuf = (char *) NULL;
+	  dba_password = passbuf;
+	  if (db_login ("dba", dba_password) != NO_ERROR)
+	    goto error_exit;
+	  else
+	    error = db_restart (arg->command_name, TRUE, database_name);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  error = la_apply_log_file (database_name, log_path);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  (void) db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_applylog_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYLOGDB,
+				   APPLYLOGDB_MSG_USAGE),
+	   basename (arg->argv0));
+
+error_exit:
+  if (error == ER_NET_SERVER_CRASHED
+      || error == ER_NET_CANT_CONNECT_SERVER
+      || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
+      || error == ER_NET_SERVER_COMM_ERROR)
+    {
+      (void) db_shutdown ();
+      (void) sleep (sleep_nsecs);
+      /* sleep 1, 2, 4, 8, etc; don't wait for more than 10 sec */
+      if ((sleep_nsecs *= 2) > 10)
+	{
+	  sleep_nsecs = 1;
+	}
+      ++retried;
+      goto retry;
+    }
+
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYLOGDB,
+				   APPLYLOGDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+
+error_exit:
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+#endif /* !WINDOWS */
+}
+
+/*
+ * sig_interrupt() -
  *   return: none
  *   sig_no(in)
  */
@@ -1403,4 +2068,3 @@ spacedb_get_size_str (char *buf, int num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 
   return NO_ERROR;
 }
-

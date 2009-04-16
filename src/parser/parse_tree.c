@@ -1114,18 +1114,32 @@ parser_free_parser (PARSER_CONTEXT * parser)
       free_and_init (parser->host_variables);
     }
 
+  parser_free_lcks_classes (parser);
+
+  free_and_init (parser);
+}
+
+/*
+ * parser_free_lcks_classes() - free allocated memory in pt_class_pre_fetch()
+ *                              and pt_find_lck_classes ()
+ *   return: void
+ *   parser(in):
+ */
+void
+parser_free_lcks_classes (PARSER_CONTEXT * parser)
+{
+  int i;
+
   if (parser->lcks_classes)
     {
-      /* free allocated memory in pt_class_pre_fetch() and pt_find_lck_classes () */
-      int i;
       for (i = 0; i < parser->num_lcks_classes; i++)
 	{
 	  free_and_init (parser->lcks_classes[i]);
 	}
+
       free_and_init (parser->lcks_classes);
-      parser->lcks_classes = NULL;
       parser->num_lcks_classes = 0;
     }
 
-  free_and_init (parser);
+  return;
 }

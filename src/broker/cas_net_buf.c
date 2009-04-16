@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cas_net_buf.c - 
+ * cas_net_buf.c -
  */
 
 #ident "$Id$"
@@ -179,12 +179,8 @@ net_buf_cp_short (T_NET_BUF * net_buf, short value)
 }
 
 void
-#ifdef CAS_DEBUG
-net_buf_error_msg_set_debug (T_NET_BUF * net_buf, int err_code, char *err_str,
-			     char *file, int line)
-#else
-net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code, char *err_str)
-#endif
+net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code, char *err_str,
+		       char *file, int line)
 {
 #ifdef CAS_DEBUG
   char msg_buf[1024];
@@ -194,7 +190,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code, char *err_str)
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
-  sprintf (msg_buf, "[%s:%d] ", file, line);
+  sprintf (msg_buf, "%s:%d ", file, line);
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 

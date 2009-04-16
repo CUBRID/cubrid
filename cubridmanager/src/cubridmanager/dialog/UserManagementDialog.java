@@ -277,18 +277,14 @@ public class UserManagementDialog extends Dialog {
 					else if (column == 4) {
 
 						final CCombo combo = new CCombo(tblUsers, SWT.READ_ONLY);
-//						Hashtable userPort = MainRegistry.UserPort;
 						for(int i=0;i<MainRegistry.CASinfo.size();i++)
 						{
 							CASItem casItem = (CASItem)MainRegistry.CASinfo.get(i);
-							combo.add(new Integer(casItem.broker_port).toString());
+							if (casItem.broker_port > 0) {
+								combo.add(Integer.toString(casItem.broker_port));
+							}
 						}
-//						Enumeration enu = userPort.keys();
-//						while(enu.hasMoreElements())
-//						{
-//							String user=(String)enu.nextElement();
-//							combo.add((String)userPort.get(user));
-//						}
+
 						combo.select(combo.indexOf(item.getText(column)));
 
 						editor.minimumWidth = combo.computeSize(SWT.DEFAULT,
@@ -500,34 +496,35 @@ public class UserManagementDialog extends Dialog {
 		item.setData("passwd", cmPassword);
 		item.setText(2, dbaAuth);
 		item.setText(3, casAuth);
-		String port = "30000";
+		String port = "";
 		if(MainRegistry.UserPort.get(cmUser)==null||MainRegistry.UserPort.get(cmUser).toString().trim().equals(""))
 		{
 			btnSaveEnable = true;
-			CASItem casItem = null;
-			for(int i=0;i<MainRegistry.CASinfo.size();i++)
-			{
-				CASItem tmp = (CASItem)MainRegistry.CASinfo.get(i);
-				if(tmp.broker_name.equals("query_editor"))
-					casItem = tmp;
-				else
-				{
-					if(MainRegistry.CASinfo.size()>0)
-						casItem = (CASItem)MainRegistry.CASinfo.get(0);
-					else
-						casItem = null;
-				}
-					
-			}			
+			CASItem casItem = MainRegistry.getDefaultBroker(MainRegistry.UserID);
+			
 			if(casItem != null)
 				port = new Integer(casItem.broker_port).toString();
 		}	
 		else
 		{
-			port = MainRegistry.UserPort.get(cmUser).toString();
-			btnSaveEnable = false;
+			if (MainRegistry.UserID.equals("admin")) {
+				port = MainRegistry.UserPort.get(cmUser).toString();
+				CASItem checkCasItem = MainRegistry.CASinfoFind(Integer.parseInt(port));
+				if (checkCasItem != null) {
+					btnSaveEnable = false;
+				} else {
+					CASItem casItem = MainRegistry.getDefaultBroker(MainRegistry.UserID);					
+					if(casItem != null) {
+						port = Integer.toString(casItem.broker_port);
+						item.setBackground(Display.getCurrent().getSystemColor(SWT.COLOR_DARK_YELLOW));
+						btnSaveEnable = true;
+					}
+				}					
+			} else {
+				port = MainRegistry.UserPort.get(cmUser).toString();
+				btnSaveEnable = false;				
+			}
 		}
-			
 
 		item.setText(4,port);
 		item.setData("dbUserInfo", MainRegistry.listDBUserInfo);
@@ -546,20 +543,22 @@ public class UserManagementDialog extends Dialog {
 			item.setData("passwd", cmPassword);
 			item.setText(2, dbaAuth);
 			item.setText(3, casAuth);
-			String port1 = "30000";
+			String displayPort = "";
 			if(MainRegistry.UserPort.get(cmUser)==null||MainRegistry.UserPort.get(cmUser).toString().trim().equals(""))
 			{
-				btnSaveEnable = true;
-				CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
-				if(casItem != null)
-					port1 = new Integer(casItem.broker_port).toString();
+				CASItem casItem = MainRegistry.getDefaultBroker(cmUser);
+				if(casItem == null)
+					item.setBackground(Display.getCurrent().getSystemColor(SWT.COLOR_GRAY));
 			}	
 			else
 			{
-				port1 = MainRegistry.UserPort.get(cmUser).toString();
+				displayPort = MainRegistry.UserPort.get(cmUser).toString();
+				CASItem casItem = MainRegistry.CASinfoFind(Integer.parseInt(displayPort));
+				if(casItem == null)
+					item.setBackground(Display.getCurrent().getSystemColor(SWT.COLOR_GRAY));		
 				btnSaveEnable = false;
 			}
-			item.setText(4,port1);
+			item.setText(4,displayPort);
 			item.setData("dbUserInfo", cmui.listDBUserInfo.clone());
 		}
 	}
@@ -686,18 +685,23 @@ public class UserManagementDialog extends Dialog {
 				}
 			} else
 				cmd = "updatedbmtuser";
-			String port = "30000";
+			
+			String port = "";
 			if(item.getText(4)==null&&item.getText(4).trim().equals(""))
 			{
-				CASItem casItem = (CASItem) MainRegistry.CASinfo.get(0);
-				if(casItem != null)
-					port = new Integer(casItem.broker_port).toString();
+				CASItem casItem = MainRegistry.getDefaultBroker(MainRegistry.UserID);
+				port = new Integer(casItem.broker_port).toString();
 			}
 			else
 			{
 				port = item.getText(4);
 			}
-			msg += "casauth:" + item.getText(3) +","+port+ "\n";
+
+			if (port.equals("")) {
+				msg += "casauth:" + item.getText(3) + "\n";
+			} else {
+				msg += "casauth:" + item.getText(3) + "," + port + "\n";				
+			}
 			msg += "dbcreate:" + item.getText(2) + "\n";
 
 			if (!cs.SendBackGround(sShell, msg, cmd, Messages

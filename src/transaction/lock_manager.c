@@ -291,7 +291,7 @@ do {    MUTEX_INIT(((res_ptr)->res_mutex));                     \
 #define SET_SCANID_BIT(s, i)    (s[i/8] |= (1 << (i%8)))
 #define RESET_SCANID_BIT(s, i)  (s[i/8] &= ~(1 << (i%8)))
 #define IS_SCANID_BIT_SET(s, i) (s[i/8] & (1 << (i%8)))
-#define RESOURCE_ALLOC_WAIT_TIME 100	/* microseconds */
+#define RESOURCE_ALLOC_WAIT_TIME 10000	/* 10 msec */
 
 /* type of locking resource */
 typedef enum
@@ -2703,7 +2703,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 							 tran_index, true);
 		  while (1)
 		    {
-		      (void) thread_sleep (0, 100);	/* sleep 0.1 seconds */
+		      (void) thread_sleep (0, 10000);	/* sleep 10 msec */
 		      thread_wakeup_with_tran_index (entry_ptr->tran_index);
 		      if (thread_has_threads
 			  (entry_ptr->tran_index,
@@ -10106,7 +10106,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
  * Note:Dump the structure of acquired locks
  */
 void
-lock_dump_acquired (LK_ACQUIRED_LOCKS * acqlocks)
+lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -10116,10 +10116,10 @@ lock_dump_acquired (LK_ACQUIRED_LOCKS * acqlocks)
   /* Dump object locks */
   if (acqlocks->obj != NULL && acqlocks->nobj_locks > 0)
     {
-      fprintf (stdout, "Object_locks: count = %d\n", acqlocks->nobj_locks);
+      fprintf (fp, "Object_locks: count = %d\n", acqlocks->nobj_locks);
       for (i = 0; i < acqlocks->nobj_locks; i++)
 	{
-	  fprintf (stdout, "   |%d|%d|%d| %s\n", acqlocks->obj[i].oid.volid,
+	  fprintf (fp, "   |%d|%d|%d| %s\n", acqlocks->obj[i].oid.volid,
 		   acqlocks->obj[i].oid.pageid, acqlocks->obj[i].oid.slotid,
 		   LOCK_TO_LOCKMODE_STRING (acqlocks->obj[i].lock));
 	}

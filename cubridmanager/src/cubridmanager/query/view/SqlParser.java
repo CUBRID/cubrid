@@ -43,6 +43,66 @@ public class SqlParser {
 
 	/**
 	 * 
+	 * Convert the comment(\\) to the comment(--)
+	 * 
+	 * @param sql
+	 * @return
+	 */
+	public static String convertComment(String sql) {
+		if (sql == null || sql.length() < 0) {
+			return null;
+		}
+		if (sql.indexOf("//") < 0) {
+			return sql;
+		}
+		List<SqlToken> tokenList = new ArrayList<SqlToken>();
+		char[] charArray = sql.toCharArray();
+		int length = charArray.length;
+		for (int i = 0; i < length; i++) {
+			if (i - 1 > 0 && charArray[i] == '\'' && charArray[i - 1] != '\\') {
+				// single quotation('')
+				int start = i;
+				i = getSingleQuoteEndPos(charArray, i + 1);
+				if (i < 0) {
+					return null;
+				}
+				tokenList.add(new SqlToken(SqlTokenType.SINGLE_QUOTE, start, i));
+			} else if (i - 1 > 0 && charArray[i] == '"' && charArray[i - 1] != '\\') {
+				// double quotation(")
+				int start = i;
+				i = getDoubleQuoteEndPos(charArray, i + 1);
+				if (i < 0) {
+					return null;
+				}
+				tokenList.add(new SqlToken(SqlTokenType.DOUBLE_QUOTE, start, i));
+			}
+		}
+		StringBuffer filteredSqlBuf = new StringBuffer();
+		for (int j = 0; j < length; j++) {
+			if (j + 1 < length && charArray[j] == '/' && charArray[j + 1] == '/') {
+				boolean isCommented = true;
+				for (int k = 0; k < tokenList.size(); k++) {
+					SqlToken token = tokenList.get(k);
+					if (j > token.start && j < token.end) {
+						isCommented = false;
+						break;
+					}
+				}
+				if (isCommented) {
+					filteredSqlBuf.append("--");
+					j = j + 1;
+				} else {
+					filteredSqlBuf.append(charArray[j]);
+				}
+			} else {
+				filteredSqlBuf.append(charArray[j]);
+			}
+		}
+		return filteredSqlBuf.toString();
+	}
+	
+	/**
+	 * 
 	 * @param sql
 	 * @return
 	 */

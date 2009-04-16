@@ -97,12 +97,9 @@ struct t_br_info
   int session_timeout;
   int sql_log_time;
   int as_max_size;
-  int compress_size;
-  int priority_gap;
   int time_to_kill;
   char status;
   char auto_add_flag;
-  char session_flag;
   char sql_log_on_off;
   char sql_log_append_mode;
   char sql_log_bind_value;

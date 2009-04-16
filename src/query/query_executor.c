@@ -8203,7 +8203,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   lock_start_instant_lock_mode (tran_index);
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_start_flush_mark (thread_p);
     }
@@ -8335,7 +8335,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, false);
     }
@@ -8379,7 +8379,7 @@ exit_on_error:
   err = ER_FAILED;
 
 #if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, true);
     }
@@ -8917,6 +8917,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   switch (xasl->type)
     {
     case UPDATE_PROC:
+      if (!LOG_CHECK_LOG_APPLIER (thread_p))
+	{
+	  CHECK_MODIFICATION_NO_RETURN (error);
+	  if (error != NO_ERROR)
+	    return error;
+	}
+
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
       if (xasl->proc.update.waitsecs != XASL_WAITSECS_NOCHANGE)
 	{
@@ -8935,6 +8942,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       break;
 
     case DELETE_PROC:
+      if (!LOG_CHECK_LOG_APPLIER (thread_p))
+	{
+	  CHECK_MODIFICATION_NO_RETURN (error);
+	  if (error != NO_ERROR)
+	    return error;
+	}
+
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
       if (xasl->proc.delete_.waitsecs != XASL_WAITSECS_NOCHANGE)
 	{
@@ -8953,6 +8967,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       break;
 
     case INSERT_PROC:
+      if (!LOG_CHECK_LOG_APPLIER (thread_p))
+	{
+	  CHECK_MODIFICATION_NO_RETURN (error);
+	  if (error != NO_ERROR)
+	    return error;
+	}
+
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
       if (xasl->proc.insert.waitsecs != XASL_WAITSECS_NOCHANGE)
 	{

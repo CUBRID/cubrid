@@ -172,7 +172,7 @@ $set 5 MSGCAT_SET_ERROR
 108 Current transaction %1$d must be committed or aborted before attempting to join to the distributed transaction with global identifier %2$d.
 109 Your transaction %1$d has been unilaterally aborted by the system because a participant (remote) site went down or unilaterally aborted the transaction.
 110 Isolation level value must be between %1$d and %2$d.
-111 Your transaction has been aborted by the system due to server failure.
+111 Your transaction has been aborted by the system due to server failure or mode change.
 112 Host "%1$s" is not authorized to run database.
 113 Unable to restart/initialize the database server.
 114 Unable to interpret "%1$s" as a database.  The database volumes/files may have been renamed/copied outside the database domain.
@@ -669,7 +669,7 @@ $ LOADDB
 608 Database "%1$s" does not have a Host specification in the odbc.ini file.
 609 Your transaction cannot be rolled back since logging was ignored. Your database may be corrupted.
 610 Your database is likely to be corrupted since logging was turned off when your database crashed.
-611 %s cannot be disabled in client/server mode.
+611 %s cannot be executed in client/server mode.
 612 Logging cannot be disabled at this moment since there are pending actions to recover.
 613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 614 Number of active log archives has been exceeded the max desired number of %1$d.
@@ -756,12 +756,12 @@ $ LOADDB
 695 Bad interface to kill client has been used.
 696 Unknown transaction (index %1$d, %2$s@%3$s|%4$d).
 697 Given transaction index (index %1$d, %2$s@%3$s|%4$d) does not match with current transaction index (index %5$d, %6$s@%7$s|%8$d). Likely, the given transaction has finished and its transaction index was re-assigned to another transaction.
-698 Internal error: the number of OIDs in the unique hierarchy: %1$d does not equal the number of OIDs: %2$d found in the unique B+tree plus the number of NULLs: %3$d found in the unique hierarchy for B+tree: %4$d|%5$d|%6$d.
-699 Internal error: the number of OIDs in the unique hierarchy: %1$d does not equal the number of OIDs: %2$d found in the unique B+tree root statistics for B+tree: %3$d|%4$d|%5$d.
-700 Internal error: the number of OIDs: %1$d does not equal the number of NULLs: %2$d plus the number of keys: %3$d in the unique B+tree: %4$d|%5$d|%6$d.
+698 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
+699 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+700 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
 701 No proxy is defined on "%1$s" at ldb "%2$s".
-702 Internal error: the number of NULLs in the unique hierarchy: %1$d does not equal the number of NULLs: %2$d found in the unique B+tree root statistics for B+tree: %3$d|%4$d|%5$d.
-703 Internal error: OID: %1$d|%2$d|%3$d found in unique B+tree: %4$d|%5$d|%6$d does not belong to one of the classes for the unique constraint.
+702 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+703 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
 704 Evaluation of generic server function failed.
 705 Inconsistent %1$d permanent volumes were found when %2$d were expected.
 706 Cannot expand permanent volumes. Permanent volume "%1$s" with purpose %2$s was given.
@@ -813,7 +813,7 @@ $ LOADDB
 752 Error restoring backup unit_num %d.
 753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
 754 OO proxy instance has non-string-type or null key.
-755 This operation can not be executed in stand-alone mode.
+755 %s cannot be executed in stand-alone mode.
 756 Specified string buffer is too small to encode this object.
 757 Internal Error: cannot assign permanent OID during object encode.
 758 Specified string is not valid for decoding object.
@@ -1038,11 +1038,11 @@ $set 6 MSGCAT_SET_INTERNAL
 13 er_estimate_size: unknown conversion code (%d).
 14 \n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n
 15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
-16 System (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
+16 CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
 17 \nTime: %s - %s *** file %s, line %d %s CODE = %d Tran = %d%s\n%s\n
-18 System (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s
+18 CUBRID (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s
 19 \n*** The previous error message is the last one. ***\n\n
-20 \nTime: %s DEBUG *** file %s, line %d\n
+20 \nTime: %s - DEBUG *** file %s, line %d\n
 21 Mail -s "Server has been stopped"
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d

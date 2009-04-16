@@ -808,26 +808,21 @@ asprintf (char **ptr, const char *format, ...)
 }
 #endif /* !HAVE_ASPRINTF */
 
-#if !defined(HAVE_DIRNAME)
-char *
-dirname (const char *path)
+int
+dirname_r (const char *path, char *pathbuf, size_t buflen)
 {
-  static char *bname = NULL;
   const char *endp;
+  int len;
 
-  if (bname == NULL)
-    {
-      bname = (char *) malloc (PATH_MAX);
-      if (bname == NULL)
-	return (NULL);
-    }
+  if (buflen < 2)
+    return (errno = ERANGE);
 
   /* Empty or NULL string gets treated as "." */
   if (path == NULL || *path == '\0')
     {
-      bname[0] = PATH_CURRENT;
-      bname[1] = '\0';
-      return (bname);
+      pathbuf[0] = PATH_CURRENT;
+      pathbuf[1] = '\0';
+      return 1;
     }
 
   /* Strip trailing slashes */
@@ -843,11 +838,11 @@ dirname (const char *path)
   if (endp == path)
     {
       if (*endp == PATH_SEPARATOR)
-	bname[0] = PATH_SEPARATOR;
+	pathbuf[0] = PATH_SEPARATOR;
       else
-	bname[0] = PATH_CURRENT;
-      bname[1] = '\0';
-      return (bname);
+	pathbuf[0] = PATH_CURRENT;
+      pathbuf[1] = '\0';
+      return 1;
     }
   else
     {
@@ -858,23 +853,25 @@ dirname (const char *path)
       while (endp > path && *endp == PATH_SEPARATOR);
     }
 
-  if (endp - path + 2 > PATH_MAX)
+  len = endp - path + 1;
+  if (len + 1 > PATH_MAX)
     {
-      errno = ENAMETOOLONG;
-      return (NULL);
+      return (errno = ENAMETOOLONG);
     }
-  (void) strncpy (bname, path, endp - path + 1);
-  bname[endp - path + 1] = '\0';
-  return (bname);
+  if (len + 1 > buflen)
+    {
+      return (errno = ERANGE);
+    }
+  (void) strncpy (pathbuf, path, len);
+  pathbuf[len] = '\0';
+  return len;
 }
-#endif /* !HAVE_DIRNAME */
 
-#if !defined(HAVE_BASENAME)
+#if !defined(HAVE_DIRNAME)
 char *
-basename (const char *path)
+dirname (const char *path)
 {
   static char *bname = NULL;
-  const char *endp, *startp;
 
   if (bname == NULL)
     {
@@ -883,12 +880,25 @@ basename (const char *path)
 	return (NULL);
     }
 
+  return (dirname_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
+}
+#endif /* !HAVE_DIRNAME */
+
+int
+basename_r (const char *path, char *pathbuf, size_t buflen)
+{
+  const char *endp, *startp;
+  int len;
+
+  if (buflen < 2)
+    return (errno = ERANGE);
+
   /* Empty or NULL string gets treated as "." */
   if (path == NULL || *path == '\0')
     {
-      bname[0] = PATH_CURRENT;
-      bname[1] = '\0';
-      return (bname);
+      pathbuf[0] = PATH_CURRENT;
+      pathbuf[1] = '\0';
+      return 1;
     }
 
   /* Strip trailing slashes */
@@ -899,9 +909,9 @@ basename (const char *path)
   /* All slashes becomes "/" */
   if (endp == path && *endp == PATH_SEPARATOR)
     {
-      bname[0] = PATH_SEPARATOR;
-      bname[1] = '\0';
-      return (bname);
+      pathbuf[0] = PATH_SEPARATOR;
+      pathbuf[1] = '\0';
+      return 1;
     }
 
   /* Find the start of the base */
@@ -909,14 +919,34 @@ basename (const char *path)
   while (startp > path && *(startp - 1) != PATH_SEPARATOR)
     startp--;
 
-  if (endp - startp + 2 > PATH_MAX)
+  len = endp - startp + 1;
+  if (len + 1 > PATH_MAX)
     {
-      errno = ENAMETOOLONG;
-      return (NULL);
+      return (errno = ENAMETOOLONG);
     }
-  (void) strncpy (bname, startp, endp - startp + 1);
-  bname[endp - startp + 1] = '\0';
-  return (bname);
+  if (len + 1 > buflen)
+    {
+      return (errno = ERANGE);
+    }
+  (void) strncpy (pathbuf, startp, len);
+  pathbuf[len] = '\0';
+  return len;
+}
+
+#if !defined(HAVE_BASENAME)
+char *
+basename (const char *path)
+{
+  static char *bname = NULL;
+
+  if (bname == NULL)
+    {
+      bname = (char *) malloc (PATH_MAX);
+      if (bname == NULL)
+	return (NULL);
+    }
+
+  return (basename_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
 }
 #endif /* !HAVE_BASENAME */
 
@@ -1091,17 +1121,16 @@ getpass (const char *prompt)
     {
       c = getch ();
       if (c == '\r' || c == '\n')
-        break;
+	break;
       if (c == '\b')
-        {                       /* backspace */
-          if (pwlen > 0)
-            pwlen--;
-          continue;
-        }
+	{			/* backspace */
+	  if (pwlen > 0)
+	    pwlen--;
+	  continue;
+	}
       if (pwlen < sizeof (password_buffer) - 1)
-        password_buffer[pwlen++] = c;
+	password_buffer[pwlen++] = c;
     }
   password_buffer[pwlen] = '\0';
   return password_buffer;
 }
-

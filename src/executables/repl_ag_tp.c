@@ -32,6 +32,7 @@
 #include "porting.h"
 #include "utility.h"
 #include "dbi.h"
+#include "db.h"
 #include "repl_agent.h"
 #include "repl_tp.h"
 #include "log_compress.h"
@@ -258,6 +259,11 @@ repl_tr_log_recv_fail (void *arg)
   pb = minfo->pb;
 
   PTHREAD_MUTEX_LOCK (pb->mutex);
+  if (pb->log_vdes != NULL_VOLDES)
+    {
+      close (pb->log_vdes);
+      pb->log_vdes = NULL_VOLDES;
+    }
   pb->need_shutdown = true;
   ag_status_need_shutdown = true;
   PTHREAD_COND_BROADCAST (pb->write_cond);
@@ -267,7 +273,9 @@ repl_tr_log_recv_fail (void *arg)
   repl_error_flush (err_Log_fp, 0);
   repl_ag_sock_shutdown (*id);
   if (arg)
-    free_and_init (arg);
+    {
+      free_and_init (arg);
+    }
 
   PTHREAD_EXIT;
 
@@ -987,6 +995,7 @@ repl_update_distributor (SLAVE_INFO * sinfo, int idx)
 
   master = &sinfo->masters[idx];
 
+  db_set_client_type (DB_CLIENT_TYPE_LOG_REPLICATOR);
   error = db_login ("dba", dist_Passwd);
   if (error == NO_ERROR)
     error = db_restart ("repl_agent", 0, dist_Dbname);
@@ -1987,7 +1996,7 @@ repl_ag_get_resource_size ()
   /* page to kbyte */
   mem = mem * (sysconf (_SC_PAGESIZE) / ONE_K);
 
-  return mem / 1024;
+  return mem / ONE_K;
 
 #elif defined(SOLARIS)
   unsigned long mem;
@@ -2004,7 +2013,7 @@ repl_ag_get_resource_size ()
       return 0;
     }
 
-  mem = stat_buf.st_size / 1024;
+  mem = stat_buf.st_size / ONE_K;
 
 #else
 
@@ -2018,11 +2027,11 @@ repl_ag_get_resource_size ()
       return 0;
     }
 
-  mem = stat_buf.st_size / 1024;
+  mem = stat_buf.st_size / ONE_K;
 
 #endif
 
-  return mem / 1024;
+  return mem / ONE_K;
 
 #elif defined(AIX)
 

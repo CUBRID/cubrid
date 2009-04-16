@@ -110,7 +110,7 @@ tran_cache_tran_settings (int tran_index, float lock_timeout,
    */
   if (tm_Tran_index == NULL_TRAN_INDEX)
     {
-      db_Connect_status = 0;
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
     }
 }
 
@@ -356,7 +356,7 @@ tran_commit (bool retain_lock)
   TRAN_STATE state;
   int error_code = NO_ERROR;
 
-  /* check defered trigger activities, these may prevent the transaction
+  /* check deferred trigger activities, these may prevent the transaction
      from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
   if (error_code != NO_ERROR)
@@ -591,23 +591,20 @@ int
 tran_unilaterally_abort (void)
 {
   int error_code = NO_ERROR;
-  char user_name[LOG_USERNAME_MAX];
+  char user_name[L_cuserid];
   char host[MAXHOSTNAMELEN];
   int pid;
 
   /* Get the user name, host, and process identifier */
-
-  if (getuserid (user_name, LOG_USERNAME_MAX) == NULL)
+  if (getuserid (user_name, L_cuserid) == NULL)
     {
-      strcpy (user_name, "");
+      strcpy (user_name, "(unknown)");
     }
-
   if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
     {
       /* unknown error */
-      strcpy (host, "???");
+      strcpy (host, "(unknown)");
     }
-
   pid = getpid ();
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,

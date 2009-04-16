@@ -318,6 +318,57 @@ public class MainRegistry {
 		return null;
 	}
 
+	public static CASItem CASinfoFind(String name) {
+		CASItem casrec;
+		if (MainRegistry.CASinfo == null)
+			return null;
+		for (int i = 0, n = MainRegistry.CASinfo.size(); i < n; i++) {
+			casrec = (CASItem) MainRegistry.CASinfo.get(i);
+			if (casrec.broker_name.equals(name)) {
+				if (casrec.broker_port > 0)
+					return casrec;
+				else
+					return null;
+			}
+		}
+		return null;
+	}
+
+	public static CASItem CASinfoFind(int port) {
+		CASItem casrec;
+		if (MainRegistry.CASinfo == null || port == 0)
+			return null;
+		for (int i = 0, n = MainRegistry.CASinfo.size(); i < n; i++) {
+			casrec = (CASItem) MainRegistry.CASinfo.get(i);
+			if (casrec.broker_port == port)
+				return casrec;
+		}
+		return null;
+	}
+
+	public static CASItem getDefaultBroker(String cmUser) {
+		if (MainRegistry.CASinfo == null)
+			return null;
+		CASItem casitem = MainRegistry.CASinfoFind("query_editor");
+		if (casitem == null) {
+			casitem = MainRegistry.CASinfoFind(30000);
+			if (casitem == null) {
+				/* only admin user, allocation available port */
+				if (cmUser.equals("admin")) {
+					for (int p = 0; p < MainRegistry.CASinfo.size(); p++) {
+						CASItem casitem_tmp = (CASItem) MainRegistry.CASinfo
+								.get(p);
+						if (casitem_tmp.broker_port > 0) {
+							casitem = casitem_tmp;
+							break;
+						}
+					}
+				}
+			}
+		}
+		return casitem;
+	}
+
 	public static boolean CASinfo_update(CASItem newrec) {
 		CASItem casrec;
 		for (int i = 0, n = MainRegistry.CASinfo.size(); i < n; i++) {

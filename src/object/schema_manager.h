@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "language_support.h"	/* for international string functions */
-#include "storage_common.h"		/* for HFID */
+#include "storage_common.h"	/* for HFID */
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "work_space.h"		/* for MOP */
 #include "class_object.h"	/* for SM_CLASS */
@@ -212,7 +212,8 @@ extern void sm_gc_object (MOP mop, void (*gcmarker) (MOP));
 extern int sm_set_inhibit_identifier_check (int inhibit);
 
 /* Trigger support */
-extern int sm_class_has_triggers (DB_OBJECT * classop, int *status);
+extern int sm_class_has_triggers (DB_OBJECT * classop, int *status,
+				  DB_TRIGGER_EVENT event_type);
 
 extern int sm_get_trigger_cache (DB_OBJECT * class_, const char *attribute,
 				 int class_attribute, void **cache);
@@ -229,7 +230,8 @@ extern int sm_drop_trigger (DB_OBJECT * classop,
 			    int class_attribute, DB_OBJECT * trigger);
 
 /* Optimized trigger checker for the object manager */
-extern int sm_active_triggers (SM_CLASS * class_);
+extern int sm_active_triggers (SM_CLASS * class_,
+			       DB_TRIGGER_EVENT event_type);
 
 
 /* Attribute & Method descriptors */
@@ -271,9 +273,3 @@ extern int sc_set_current_schema (MOP user);
 /* Obtain (pointer to) current schema name.                            */
 
 #endif /* _SCHEMA_MANAGER_H_ */
-
-
-
-
-
-

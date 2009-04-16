@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -676,7 +676,7 @@ err:
  *    Always output the entire schema.
  */
 int
-extractschema (char *exec_name, int do_auth)
+extractschema (const char *exec_name, int do_auth)
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
@@ -754,7 +754,7 @@ extractschema (char *exec_name, int do_auth)
   /*
    * Trigger
    * emit the triggers last, they will have no mutual dependencies so
-   * it doesn't really matter what order they're in.  
+   * it doesn't really matter what order they're in.
    */
   total = strlen (output_dirname) + strlen (output_prefix) +
     strlen (TRIGGER_SUFFIX) + 8;

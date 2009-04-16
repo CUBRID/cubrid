@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -305,6 +305,7 @@ static bool logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY *
 static int logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p);
 static void logpb_initialize_flush_info (void);
 static void logpb_finalize_flush_info (void);
+static void logpb_finalize_writer_info (void);
 static void logpb_dump_log_header (FILE * outfp);
 static void logpb_dump_parameter (FILE * outfp);
 static void logpb_dump_runtime (FILE * outfp);
@@ -443,11 +444,10 @@ logpb_expand_pool (int num_new_buffers)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN ());
-  assert (num_new_buffers == -1);
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
   if (num_new_buffers <= 0)
@@ -490,13 +490,11 @@ logpb_expand_pool (int num_new_buffers)
     {
       /* Note that we control overflow of size in this way */
       LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-      LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
       error_code = logpb_expand_pool (LOG_MAX_NUM_CONTIGUOS_BUFFERS);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
-      LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
       LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
       num_new_buffers -= LOG_MAX_NUM_CONTIGUOS_BUFFERS;
     }
@@ -512,7 +510,6 @@ logpb_expand_pool (int num_new_buffers)
       if (log_Pb.pool == NULL)
 	{
 	  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-	  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -529,7 +526,6 @@ logpb_expand_pool (int num_new_buffers)
       if (area == NULL)
 	{
 	  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-	  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -556,7 +552,6 @@ logpb_expand_pool (int num_new_buffers)
     }
 
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
 
   ++log_Stat.log_buffer_expand_count;
 
@@ -575,6 +570,8 @@ int
 logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
+  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
+  LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   assert (LOG_CS_OWN ());
   assert (log_Pb.pool == NULL);
@@ -604,10 +601,16 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   logpb_initialize_flush_info ();
 
-  MUTEX_INIT (log_Gl.flush_run_mutex);
+  COND_INIT (group_commit_info->gc_cond);
+  MUTEX_INIT (group_commit_info->gc_mutex);
 
-  COND_INIT (log_Gl.group_commit_info.gc_cond);
-  MUTEX_INIT (log_Gl.group_commit_info.gc_mutex);
+  MUTEX_INIT (writer_info->wr_list_mutex);
+
+  COND_INIT (writer_info->flush_start_cond);
+  MUTEX_INIT (writer_info->flush_start_mutex);
+
+  COND_INIT (writer_info->flush_end_cond);
+  MUTEX_INIT (writer_info->flush_end_mutex);
 
   return error_code;
 
@@ -687,10 +690,11 @@ logpb_finalize_pool (void)
   MUTEX_DESTROY (log_Pb.lpb_mutex);
 
   logpb_finalize_flush_info ();
-  MUTEX_DESTROY (log_Gl.flush_run_mutex);
 
   MUTEX_DESTROY (log_Gl.group_commit_info.gc_mutex);
   COND_DESTROY (log_Gl.group_commit_info.gc_cond);
+
+  logpb_finalize_writer_info ();
 }
 
 /*
@@ -1429,12 +1433,13 @@ logpb_dump_to_flush_page (FILE * out_fp)
 {
   int i;
   struct log_buffer *log_bufptr;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   (void) fprintf (out_fp, " Candidate append pages to flush are:\n");
 
-  for (i = 0; i < log_Gl.flush_info.num_toflush; i++)
+  for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (log_bufptr, log_Gl.flush_info.toflush[i]);
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (log_bufptr, flush_info->toflush[i]);
       if (i != 0)
 	{
 	  if ((i % 10) == 0)
@@ -1623,6 +1628,10 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
 
   logpb_initialize_backup_info ();
 
+  loghdr->ha_server_status = -1;
+  loghdr->ha_file_status = -1;
+  LSA_SET_NULL (&loghdr->eof_lsa);
+
   return NO_ERROR;
 }
 
@@ -1776,7 +1785,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, PAGEID pageid,
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
-  LOG_CS_ENTER (thread_p);
+  LOG_CS_ENTER_READ_MODE (thread_p);
 
 /*   assert(log_lpb_mutex_not_own()); */
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
@@ -2122,6 +2131,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN ());
 
@@ -2164,19 +2174,18 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   need_flush = false;
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
-  log_Gl.flush_info.toflush[log_Gl.flush_info.num_toflush] =
-    log_Gl.append.log_pgptr;
-  log_Gl.flush_info.num_toflush++;
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
+  flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
+  flush_info->num_toflush++;
 
-  if (log_Gl.flush_info.num_toflush >= log_Gl.flush_info.max_toflush)
+  if (flush_info->num_toflush >= flush_info->max_toflush)
     {
       /*
        * Force the dirty pages including the current one at this moment
        */
       need_flush = true;
     }
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
 
   if (need_flush)
     {
@@ -2233,6 +2242,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 
   gettimeofday (&end_append_time, NULL);
 #endif /* LOG_DEBUG */
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN ());
 
@@ -2302,6 +2312,9 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
     {
       log_Gl.hdr.fpageid += LOGPB_ACTIVE_NPAGES;
+
+      /* Flush the header to save updates by archiving. */
+      logpb_flush_header (thread_p);
     }
 
   /*
@@ -2343,19 +2356,18 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
    * and need to be flushed.
    */
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
 
-  log_Gl.flush_info.toflush[log_Gl.flush_info.num_toflush]
-    = log_Gl.append.log_pgptr;
-  log_Gl.flush_info.num_toflush++;
+  flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
+  flush_info->num_toflush++;
 
   need_flush = false;
-  if (log_Gl.flush_info.num_toflush >= log_Gl.flush_info.max_toflush)
+  if (flush_info->num_toflush >= flush_info->max_toflush)
     {
       need_flush = true;
     }
 
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
 
   if (need_flush)
     {
@@ -2393,7 +2405,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 		(int) log_Stat.last_delayed_pageid,
 		log_Stat.total_append_page_count,
 		log_Stat.total_delayed_page_count,
-		log_Gl.flush_info.num_toflush,
+		flush_info->num_toflush,
 		log_Stat.use_append_page_sec,
 		need_flush,
 		log_Stat.last_commit_count_while_using_a_page,
@@ -2431,9 +2443,8 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
       LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
 
-      if (fileio_writev
-	  (log_Gl.append.vdes, (void **) to_flush, phy_pageid,
-	   npages) == NULL)
+      if (fileio_writev (log_Gl.append.vdes, (void **) to_flush, phy_pageid,
+			 npages) == NULL)
 	{
 	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	    {
@@ -2489,8 +2500,6 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
   int i;
   bool need_flush = true;
   int error_code = NO_ERROR;
-  int mutexState = 0;
-
   int flush_page_count = 0;
 #if defined(LOG_DEBUG)
   struct timeval start_time = {
@@ -2504,9 +2513,13 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
   long commit_count = 0;
   static long prev_commit_count_in_flush = 0;
 #endif /* LOG_DEBUG */
+  bool hold_flush_mutex = false, hold_lpb_mutex = false;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
 #if defined(SERVER_MODE)
   int rv;
+  LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN ());
@@ -2519,14 +2532,14 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
   gettimeofday (&start_time, NULL);
 #endif /* LOG_DEBUG */
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
+  hold_flush_mutex = true;
 
-  if (log_Gl.flush_info.num_toflush < 1)
+  if (flush_info->num_toflush < 1)
     {
       need_flush = false;
     }
-
-  if (log_Gl.flush_info.num_toflush == 1)
+  if (flush_info->num_toflush == 1)
     {
       /*
        * Don't need to do anything if the page is not dirty.
@@ -2535,16 +2548,17 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
        * end of file log when it is not needed at all.
        */
 
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_Gl.flush_info.toflush[0]);
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
       assert (bufptr->fcnt > 0);
 
-      if (!logpb_is_dirty (log_Gl.flush_info.toflush[0]))
+      if (!logpb_is_dirty (flush_info->toflush[0]))
 	{
 	  need_flush = false;
 	}
     }
 
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
+  hold_flush_mutex = false;
 
   if (!need_flush)
     {
@@ -2578,14 +2592,14 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 
 #if defined(CUBRID_DEBUG)
   if (log_Gl.append.nxio_lsa.pageid !=
-      logpb_get_page_id (log_Gl.flush_info.toflush[0]))
+      logpb_get_page_id (flush_info->toflush[0]))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: SYSTEM ERROR\n "
 		    " NXIO_PAGE %d does not seem the same as next free"
 		    " append page %d to flush\n",
 		    log_Gl.append.nxio_lsa.pageid,
-		    logpb_get_page_id (log_Gl.flush_info.toflush[0]));
+		    logpb_get_page_id (flush_info->toflush[0]));
       goto error;
     }
 #endif /* CUBRID_DEBUG */
@@ -2629,8 +2643,9 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&eof->forw_lsa);
       eof->type = LOG_END_OF_LOG;
-      logpb_set_dirty (log_Gl.append.delayed_free_log_pgptr, DONT_FREE);
+      LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
 
+      logpb_set_dirty (log_Gl.append.delayed_free_log_pgptr, DONT_FREE);
     }
   else
     {
@@ -2646,6 +2661,7 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
       LSA_COPY (&eof->back_lsa, &log_Gl.append.prev_lsa);
       LSA_SET_NULL (&eof->forw_lsa);
       eof->type = LOG_END_OF_LOG;
+      LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.hdr.append_lsa);
 
       logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
     }
@@ -2656,30 +2672,50 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
    * rest.
    */
 
+#if defined(SERVER_MODE)
+  /* It changes the status of waiting log writer threads and wakes them up */
+  if (!writer_info->skip_flush)
+    {
+      assert (hold_flush_mutex == false);
+      LOG_CS_DEMOTE (thread_p);
+
+      LOG_MUTEX_LOCK (rv, writer_info->flush_start_mutex);
+
+      LOG_MUTEX_LOCK (rv, writer_info->wr_list_mutex);
+      entry = writer_info->writer_list;
+      while (entry)
+	{
+	  if (entry->status == LOGWR_STATUS_WAIT)
+	    {
+	      entry->status = LOGWR_STATUS_FETCH;
+	      thread_wakeup_with_tran_index (entry->thread_p->tran_index);
+	    }
+	  entry = entry->next;
+	}
+      LOG_MUTEX_UNLOCK (writer_info->wr_list_mutex);
+      LOG_MUTEX_UNLOCK (writer_info->flush_start_mutex);
+    }
+#endif /* SERVER_MODE */
 
   idxflush = -1;
   last_idxflush = -1;
   prv_bufptr = NULL;
   need_sync = false;
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_run_mutex);
-
-  mutexState = 1;
-
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
-  mutexState = 2;
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
+  hold_flush_mutex = true;
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
-  mutexState = 3;
+  hold_lpb_mutex = true;
 
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
   log_scan_flush_info (log_dump_pageid);
   er_log_debug (ARG_FILE_LINE, "\n");
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
 
-  for (i = 0; i < log_Gl.flush_info.num_toflush; i++)
+  for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_Gl.flush_info.toflush[i]);
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
 
       /*
        * Make sure that we have found the smallest dirty append page to flush
@@ -2713,9 +2749,12 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 	       *
 	       * Flush the accumulated contiguous pages
 	       */
-	      if (logpb_writev_append_pages
-		  (thread_p, &log_Gl.flush_info.toflush[idxflush],
-		   i - idxflush) == NULL)
+	      LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
+	      hold_lpb_mutex = false;
+
+	      if (logpb_writev_append_pages (thread_p,
+					     &(flush_info->toflush[idxflush]),
+					     i - idxflush) == NULL)
 		{
 		  error_code = ER_FAILED;
 		  goto error;
@@ -2732,7 +2771,7 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 			er_log_debug (ARG_FILE_LINE,
 				      "logpb_flush_all_append_pages: flush1 "
 				      "pageid(%d)\n",
-				      (log_Gl.flush_info.toflush[idxflush])->
+				      (flush_info->toflush[idxflush])->
 				      hdr.logical_pageid + j);
 		      }
 		  }
@@ -2745,6 +2784,8 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 		  flush_page_count += i - idxflush;
 		  idxflush = -1;
 		}
+	      LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
+	      hold_lpb_mutex = true;
 	    }
 	}
 
@@ -2767,14 +2808,17 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
    * If there are any accumulated pages, flush them at this point
    */
 
+  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
+  hold_lpb_mutex = false;
+
   if (idxflush != -1)
     {
-      int pageToFlush = log_Gl.flush_info.num_toflush - idxflush;
+      int pageToFlush = flush_info->num_toflush - idxflush;
 
       /* last countious pages */
-      if (logpb_writev_append_pages
-	  (thread_p, &log_Gl.flush_info.toflush[idxflush],
-	   pageToFlush) == NULL)
+      if (logpb_writev_append_pages (thread_p,
+				     &(flush_info->toflush[idxflush]),
+				     pageToFlush) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -2789,7 +2833,7 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 	      {
 		er_log_debug (ARG_FILE_LINE,
 			      "logpb_flush_all_append_pages: flush2 pageid(%d)\n",
-			      (log_Gl.flush_info.toflush[idxflush])->hdr.
+			      (flush_info->toflush[idxflush])->hdr.
 			      logical_pageid + j);
 	      }
 	  }
@@ -2824,8 +2868,7 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: flush3 pageid(%d)\n",
-		    (log_Gl.flush_info.toflush[last_idxflush])->hdr.
-		    logical_pageid);
+		    (flush_info->toflush[last_idxflush])->hdr.logical_pageid);
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
 
       ++flush_page_count;
@@ -2833,8 +2876,9 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
       ++log_Stat.total_sync_count;
 #endif /* LOG_DEBUG */
 
-      if (logpb_writev_append_pages
-	  (thread_p, &log_Gl.flush_info.toflush[last_idxflush], 1) == NULL
+      if (logpb_writev_append_pages (thread_p,
+				     &(flush_info->toflush[last_idxflush]),
+				     1) == NULL
 	  || fileio_synchronize (log_Gl.append.vdes,
 				 !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
 	{
@@ -2848,15 +2892,18 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
    * any more.
    */
 
-  for (i = 0; i < log_Gl.flush_info.num_toflush; i++)
+  LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
+  hold_lpb_mutex = true;
+
+  for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_Gl.flush_info.toflush[i]);
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
 #if LOG_DEBUG
       if (bufptr->dirty)
 	{
 	  ++dirty_page_count;
 	}
-      log_Gl.flush_info.toflush[i] = NULL;
+      flush_info->toflush[i] = NULL;
 #endif /* LOG_DEBUG */
       bufptr->dirty = false;
     }
@@ -2864,8 +2911,8 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
   assert (flush_page_count == dirty_page_count);
 #endif /* LOG_DEBUG */
 
-  mutexState = 2;
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
+  hold_lpb_mutex = false;
 
 #if defined(CUBRID_DEBUG)
   assert (!logpb_is_any_dirty ());
@@ -2880,12 +2927,12 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
     }
 #endif
 
-  if (log_Gl.flush_info.num_toflush == log_Gl.flush_info.max_toflush)
+  if (flush_info->num_toflush == flush_info->max_toflush)
     {
       ++log_Stat.log_buffer_full_count;
     }
 #if defined(LOG_DEBUG)
-  curr_flush_count = log_Gl.flush_info.num_toflush;
+  curr_flush_count = flush_info->num_toflush;
 #endif /* LOG_DEBUG */
 
 
@@ -2902,22 +2949,21 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
       eof->type = save_type;
       logpb_set_dirty (log_Gl.append.delayed_free_log_pgptr, DONT_FREE);
 
-      log_Gl.flush_info.toflush[0] = log_Gl.append.delayed_free_log_pgptr;
-      log_Gl.flush_info.num_toflush = 1;
+      flush_info->toflush[0] = log_Gl.append.delayed_free_log_pgptr;
+      flush_info->num_toflush = 1;
       LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.append.prev_lsa);
     }
   else
     {
-      log_Gl.flush_info.num_toflush = 0;
+      flush_info->num_toflush = 0;
       LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.hdr.append_lsa);
     }
 
   if (log_Gl.append.log_pgptr != NULL)
     {
       /* Add the append page */
-      log_Gl.flush_info.toflush[log_Gl.flush_info.num_toflush] =
-	log_Gl.append.log_pgptr;
-      log_Gl.flush_info.num_toflush++;
+      flush_info->toflush[flush_info->num_toflush] = log_Gl.append.log_pgptr;
+      flush_info->num_toflush++;
     }
 
   ++log_Stat.flushall_append_pages_call_count;
@@ -2958,11 +3004,42 @@ logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p)
 		log_Stat.flushall_append_pages_call_count);
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
 
-  mutexState = 1;
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
+  hold_flush_mutex = false;
 
-  mutexState = 0;
-  LOG_MUTEX_UNLOCK (log_Gl.flush_run_mutex);
+#if defined(SERVER_MODE)
+  if (!writer_info->skip_flush)
+    {
+      /* It waits until all log writer threads are done */
+      MUTEX_LOCK (rv, writer_info->flush_end_mutex);
+
+      MUTEX_LOCK (rv, writer_info->wr_list_mutex);
+      entry = writer_info->writer_list;
+      while (entry != NULL)
+	{
+	  if (entry->status == LOGWR_STATUS_FETCH)
+	    break;
+	  entry = entry->next;
+	}
+      MUTEX_UNLOCK (writer_info->wr_list_mutex);
+
+      if (entry != NULL)
+	{
+	  rv = COND_WAIT (writer_info->flush_end_cond,
+			  writer_info->flush_end_mutex);
+	}
+#if !defined(WINDOWS)
+      MUTEX_UNLOCK (writer_info->flush_end_mutex);
+#else
+      if (entry == NULL)
+	{
+	  MUTEX_UNLOCK (writer_info->flush_end_mutex);
+	}
+#endif
+      assert (hold_flush_mutex == false);
+      LOG_CS_PROMOTE (thread_p);
+    }
+#endif /* SERVER_MODE */
 
   return 1;
 
@@ -2973,15 +3050,13 @@ error:
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 		     "logpb_flush_all_append_pages");
 
-  switch (mutexState)
+  if (hold_lpb_mutex)
     {
-    case 3:
       LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-    case 2:
-      LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
-    case 1:
-      LOG_MUTEX_UNLOCK (log_Gl.flush_run_mutex);
-      break;
+    }
+  if (hold_flush_mutex)
+    {
+      LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
     }
 
   return error_code;
@@ -3023,6 +3098,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
     0, 0
   };
   double elapsed;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   assert (LOG_CS_OWN ());
 
@@ -3031,7 +3108,7 @@ direct_flush:
    * log_Gl.append.log_pgptr == NULL
    * So, log_cs must not be released.
    */
-  if (log_Gl.flush_info.flush_type == LOG_FLUSH_DIRECT
+  if (flush_info->flush_type == LOG_FLUSH_DIRECT
       || flush_type == LOG_FLUSH_DIRECT || !LOG_ISRESTARTED ())
     {
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
@@ -3039,10 +3116,10 @@ direct_flush:
 		    "logpb_flush_all_append_pages: "
 		    "[%d]flush direct\n", (int) THREAD_ID ());
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
-      flush_type = log_Gl.flush_info.flush_type;
-      log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+      flush_type = flush_info->flush_type;
+      flush_info->flush_type = LOG_FLUSH_DIRECT;
       (void) logpb_flush_all_append_pages_low (thread_p);
-      log_Gl.flush_info.flush_type = flush_type;
+      flush_info->flush_type = flush_type;
       ++log_Stat.direct_flush_count;
       return;
     }
@@ -3088,26 +3165,26 @@ direct_flush:
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
     }
 
-  MUTEX_LOCK (rv, log_Gl.group_commit_info.gc_mutex);
+  MUTEX_LOCK (rv, group_commit_info->gc_mutex);
   MUTEX_UNLOCK (css_Log_flush_thread.lock);
 
   if (!PRM_LOG_ASYNC_COMMIT || (flush_type == LOG_FLUSH_FORCE))
     {
-      ++log_Gl.group_commit_info.waiters;
+      ++(group_commit_info->waiters);
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]cond wait, flush_type(%d) waiters(%d)\n",
 		    (int) THREAD_ID (),
-		    flush_type, log_Gl.group_commit_info.waiters);
+		    flush_type, group_commit_info->waiters);
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
       if (LOG_IS_GROUP_COMMIT_ACTIVE ())
 	{
 	  gettimeofday (&start_time, NULL);
 	}
 
-      ret = COND_WAIT (log_Gl.group_commit_info.gc_cond,
-		       log_Gl.group_commit_info.gc_mutex);
+      ret = COND_WAIT (group_commit_info->gc_cond,
+		       group_commit_info->gc_mutex);
       assert (ret != TIMEDWAIT_TIMEOUT);
 
       if (LOG_IS_GROUP_COMMIT_ACTIVE () && (flush_type != LOG_FLUSH_FORCE))
@@ -3134,7 +3211,7 @@ direct_flush:
 #endif /* LOG_DEBUG & LOG_DEBUG_MSG */
     }
 
-  MUTEX_UNLOCK (log_Gl.group_commit_info.gc_mutex);
+  MUTEX_UNLOCK (group_commit_info->gc_mutex);
   LOG_CS_ENTER (thread_p);
 #endif /* SERVER_MODE */
 }
@@ -3153,6 +3230,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN ());
 
@@ -3166,10 +3244,10 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
       logpb_free_page (log_Gl.append.log_pgptr);
       log_Gl.append.log_pgptr = NULL;
     }
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
-  log_Gl.flush_info.num_toflush = 0;
-  log_Gl.flush_info.toflush[log_Gl.flush_info.num_toflush] = NULL;
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
+  flush_info->num_toflush = 0;
+  flush_info->toflush[flush_info->num_toflush] = NULL;
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
 }
 
 /*
@@ -3561,6 +3639,7 @@ logpb_remove_append (LOG_TDES * tdes)
 {
   struct log_rec *log_rec;	/* The log record */
   int i;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (0);
 
@@ -3581,11 +3660,11 @@ logpb_remove_append (LOG_TDES * tdes)
       /*
        * Remove all the pages to flush ahead of current append
        */
-      for (i = log_Gl.flush_info.num_toflush - 1; i > 0; i--)
+      for (i = flush_info->num_toflush - 1; i > 0; i--)
 	{
-	  if (log_Gl.flush_info.toflush[i] == log_Gl.append.log_pgptr)
+	  if (flush_info->toflush[i] == log_Gl.append.log_pgptr)
 	    break;
-	  log_Gl.flush_info.num_toflush--;
+	  flush_info->num_toflush--;
 	}
     }
   else
@@ -4746,6 +4825,443 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 }
 
 /*
+ * log_fetch_header_from_archive - Fetch a log header page from
+ *                                 the log archives
+ *
+ * return: log_pgptr or NULL (in case of error)
+ *
+ *   pageid(in): The desired logical page
+ *   hdr_pgptr(in): Place to return the log page
+ *   arv_num(in): Set to archive number where page was found or where page
+ *                 should have been found.
+ *
+ * NOTE: Fetch a log page from archive logs.
+ */
+int
+logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
+				 struct log_arv_header *ret_arvhdr)
+{
+  struct log_arv_header *arvhdr;
+  char arv_name[PATH_MAX];	/* Archive name */
+  int hdr_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  int arv_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  LOG_PAGE *arv_pgptr;		/* Archive page PTR */
+  LOG_PAGE *hdr_pgptr;		/* Archive page PTR */
+  PAGEID phy_pageid = NULL_PAGEID;	/* Physical pageid of archive
+					 * where desired logical page
+					 * is located
+					 */
+  int arv_num;
+  int vdes;
+  int direction = 0;
+  int retry;
+  bool has_guess_arvnum = false;
+  bool first_time = true;
+  int error_code = NO_ERROR;
+
+/* TODO: check if it is in LOG_CS(), not LOG_CS_READ_MODE() */
+  assert (LOG_CS_OWN ());
+
+#if defined(LOGRV_TRACE)
+  if (PRM_LOG_TRACE_DEBUG)
+    fprintf (stdout, "\n **log_fetch_from_archive has been called on"
+	     " pageid = %d ** \n", pageid);
+#endif
+
+  hdr_pgptr = (LOG_PAGE *) hdr_pgbuf;
+  arv_pgptr = (LOG_PAGE *) arv_pgbuf;
+
+  if (log_Gl.archive.vdes == NULL_VOLDES)
+    {
+      if (log_Gl.hdr.nxarv_num <= 0)
+	{
+	  /* We do not have any archives */
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_NOTIN_ARCHIVE, 1, pageid);
+	  return ER_LOG_NOTIN_ARCHIVE;
+	}
+
+      /*
+       * Guess the archive where that page is stored
+       */
+
+      has_guess_arvnum = true;
+      arv_num = logpb_get_guess_archive_num (pageid);
+
+      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix,
+				    arv_num);
+
+      error_code = ER_FAILED;
+      if (logpb_is_archive_available (arv_num) == true
+	  && fileio_is_volume_exist (arv_name) == true)
+	{
+	  vdes =
+	    fileio_mount (log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID,
+			  false, false);
+	  if (vdes != NULL_VOLDES)
+	    {
+	      if (fileio_read (vdes, hdr_pgptr, 0) == NULL)
+		{
+		  fileio_dismount (vdes);
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
+			  3, 0, 0, arv_name);
+		  return ER_LOG_READ;
+		}
+	      error_code = NO_ERROR;
+	      arvhdr = (struct log_arv_header *) hdr_pgptr->area;
+	      if (log_Gl.append.vdes != NULL_VOLDES)
+		{
+		  if (difftime (arvhdr->db_creation,
+				log_Gl.hdr.db_creation) != 0)
+		    {
+		      /*
+		       * This volume does not belong to the database. For now, assume
+		       * that it is not only. Later, we will give this error to user
+		       */
+		      vdes = NULL_VOLDES;
+		      arvhdr = NULL;
+		    }
+		}
+	    }
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  /*
+	   * The volume is not online. Ask for it later (below). But first try to
+	   * make the best guess for the archive number.
+	   */
+	  vdes = NULL_VOLDES;
+	  arvhdr = NULL;
+	}
+    }
+  else
+    {
+      vdes = log_Gl.archive.vdes;
+      arvhdr = &log_Gl.archive.hdr;
+      arv_num = arvhdr->arv_num;
+    }
+
+  //log_Gl.archive.vdes = NULL_VOLDES;
+  while (true)
+    {
+      /* Is the page in current archive log ? */
+      if (arvhdr != NULL
+	  && pageid >= arvhdr->fpageid
+	  && pageid <= arvhdr->fpageid + arvhdr->npages - 1)
+	{
+	  /* Find location of logical page in the archive log */
+	  phy_pageid = pageid - arvhdr->fpageid + 1;
+
+	  /* Record number of reads in statistics */
+	  mnt_log_ioreads (thread_p);
+
+	  if (fileio_read (vdes, arv_pgptr, phy_pageid) == NULL)
+	    {
+	      /* Error reading archive page */
+	      if (arvhdr != &log_Gl.archive.hdr)
+		fileio_dismount (vdes);
+	      //log_Gl.archive.vdes = NULL_VOLDES;
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
+		      pageid, phy_pageid, arv_name);
+	      return ER_LOG_READ;
+	    }
+	  /* Cast the archive information. May be used again */
+	  if (arvhdr != &log_Gl.archive.hdr)
+	    {
+	      //log_Gl.archive.hdr = *arvhdr;
+	    }
+	  //log_Gl.archive.vdes = vdes;
+	  break;
+	}
+      else
+	{
+	  /* If any archive dismount it */
+	  if (vdes != NULL_VOLDES)
+	    {
+	      if (arvhdr != &log_Gl.archive.hdr)
+		fileio_dismount (vdes);
+	      vdes = NULL_VOLDES;
+	    }
+
+	  if (has_guess_arvnum == false)
+	    {
+	      has_guess_arvnum = true;
+	      if ((retry = logpb_get_guess_archive_num (pageid)) != arv_num)
+		{
+		  arv_num = retry;
+		}
+	    }
+	  else
+	    {
+	      if (direction == 0)
+		{
+		  /*
+		   * Define the direction by looking for desired page
+		   */
+		  if (arvhdr != NULL)
+		    {
+		      if (pageid < arvhdr->fpageid)
+			{
+			  /* Try older archives */
+			  direction = -1;
+			}
+		      else
+			{
+			  /* Try newer archives */
+			  direction = 1;
+			}
+		    }
+		  else
+		    {
+		      if (first_time != true)
+			{
+			  if (log_Gl.append.vdes == NULL_VOLDES)
+			    {
+			      direction = 1;
+			    }
+			  else
+			    {
+			      /*
+			       * Start looking from the last archive.
+			       * Optimized for UNDO.. This is not so bad since this branch
+			       * will be reached only when the guess archive is not
+			       * available.
+			       */
+			      arv_num = log_Gl.hdr.nxarv_num;
+			      direction = -1;
+			    }
+			}
+		    }
+		}
+
+	      if (arvhdr != NULL)
+		{
+		  if (direction == -1)
+		    {
+		      /*
+		       * Try an older archive.
+		       * The page that I am looking MUST be smaller than the first
+		       * page in current archive
+		       */
+		      if (pageid < arvhdr->fpageid)
+			{
+			  arv_num -= 1;
+			}
+		      else
+			{
+			  arv_num = -1;
+			}
+		    }
+		  else
+		    {
+		      /* Try a newer archive.
+		       * The page that I am looking MUST be larger than the last page in
+		       * current archive
+		       */
+		      if (pageid > arvhdr->fpageid + arvhdr->npages - 1)
+			{
+			  arv_num += 1;
+			}
+		      else
+			{
+			  arv_num = log_Gl.hdr.nxarv_num;
+			}
+		    }
+		}
+	      else
+		{
+		  /*
+		   * The archive number is not increased the first time in the loop,
+		   * so we can ask for it when it is not available.
+		   */
+		  if (first_time != true)
+		    {
+		      /*
+		       * If we do not have the log active, we don't really know how to
+		       * continue, we could be looping forever.
+		       */
+		      if (log_Gl.append.vdes == NULL_VOLDES)
+			{
+			  arv_num = -1;
+			}
+		      else
+			{
+			  arv_num = arv_num + direction;
+			}
+		    }
+		}
+
+	      first_time = false;
+	      if (arv_num < 0 || arv_num == log_Gl.hdr.nxarv_num)
+		{
+		  /* Unable to find page in archive */
+		  if (log_Gl.append.vdes != NULL_VOLDES)
+		    {
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_LOG_NOTIN_ARCHIVE, 1, pageid);
+		    }
+		  else
+		    {
+		      /*
+		       * This is likely an incomplete recovery (restore).
+		       * We do not have the active log and we are looking for a log page
+		       */
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			      ER_LOG_NOTIN_ARCHIVE, 1, pageid);
+		    }
+
+		  return ER_LOG_NOTIN_ARCHIVE;
+		}
+	    }
+
+	  if (logpb_is_archive_available (arv_num) == false)
+	    {
+	      arvhdr = NULL;
+	      continue;
+	    }
+
+	  fileio_make_log_archive_name (arv_name, log_Archive_path,
+					log_Prefix, arv_num);
+	  retry = 3;
+	  while (retry != 0 && retry != 1
+		 && (vdes = fileio_mount (log_Db_fullname, arv_name,
+					  LOG_DBLOG_ARCHIVE_VOLID,
+					  false, false)) == NULL_VOLDES)
+	    {
+	      char line_buf[PATH_MAX * 2];
+
+	      /*
+	       * The archive is not online.
+	       */
+	      fprintf (stdout, "%s\n", er_msg ());
+	    retry_prompt:
+	      if (log_default_input_for_archive_log_location >= 0)
+		{
+		  retry = log_default_input_for_archive_log_location;
+		  if (retry == 1)
+		    {
+		      fprintf (stdout,
+			       "Continue without present archive. (Partial recovery).\n");
+		    }
+		}
+	      else
+		{
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						   MSGCAT_SET_LOG,
+						   MSGCAT_LOG_STARTS));
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						   MSGCAT_SET_LOG,
+						   MSGCAT_LOG_LOGARCHIVE_NEEDED),
+			   arv_name);
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						   MSGCAT_SET_LOG,
+						   MSGCAT_LOG_STARTS));
+
+		  if (fgets (line_buf, PATH_MAX, stdin) == NULL)
+		    {
+		      retry = 0;	/* EOF */
+		    }
+		  else if (sscanf (line_buf, "%d", &retry) != 1)
+		    {
+		      retry = -1;	/* invalid input */
+		    }
+		}
+
+	      switch (retry)
+		{
+		case 0:	/* quit */
+		  logpb_set_unavialble_archive (arv_num);
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LOG_NOTIN_ARCHIVE, 1, pageid);
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				     "log_fetch_from_archive");
+		  return ER_LOG_NOTIN_ARCHIVE;
+
+		case 1:	/* Not available */
+		  logpb_set_unavialble_archive (arv_num);
+		  break;
+
+		case 3:	/* Relocate */
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						   MSGCAT_SET_LOG,
+						   MSGCAT_LOG_NEWLOCATION));
+		  if (fgets (line_buf, PATH_MAX, stdin) == 0
+		      || (sscanf (line_buf, "%s", arv_name) != 1))
+		    {
+		      fileio_make_log_archive_name (arv_name,
+						    log_Archive_path,
+						    log_Prefix, arv_num);
+		    }
+		  break;
+
+		case 2:	/* Retry */
+		  break;
+
+		default:	/* Something strange.  Get user to try again. */
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+						   MSGCAT_SET_LOG,
+						   MSGCAT_LOG_INPUT_RANGE_ERROR),
+			   0, 3);
+		  goto retry_prompt;
+		}
+	    }
+
+	  if (vdes != NULL_VOLDES)
+	    {
+	      /* Read header page and make sure the page is here */
+
+	      /* Record number of reads in statistics */
+	      mnt_log_ioreads (thread_p);
+
+	      if (fileio_read (vdes, hdr_pgptr, 0) == NULL)
+		{
+		  fileio_dismount (vdes);
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
+			  3, 0, 0, arv_name);
+		  return ER_LOG_READ;
+		}
+	      arvhdr = (struct log_arv_header *) hdr_pgptr->area;
+	      if (log_Gl.append.vdes != NULL_VOLDES)
+		{
+		  if (difftime (arvhdr->db_creation, log_Gl.hdr.db_creation)
+		      != 0)
+		    {
+		      /*
+		       * This volume does not belong to the database. For now, assume
+		       * that it is not only. Later, we will give this error to user
+		       */
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1,
+			      arv_name);
+		      arvhdr = NULL;
+		    }
+		}
+	    }
+	  else
+	    {
+	      arvhdr = NULL;
+	    }
+	}
+    }
+
+#if defined(CUBRID_DEBUG)
+  if (arv_pgptr->hdr.logical_pageid != pageid)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
+	      1, pageid);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_fetch_from_archive");
+      return ER_LOG_PAGE_CORRUPTED;
+    }
+#endif /* CUBRID_DEBUG */
+
+  *ret_arvhdr = *arvhdr;
+
+  return NO_ERROR;
+}
+
+/*
  * logpb_archive_active_log - Archive the active portion of the log
  *
  * return: nothing
@@ -4777,11 +5293,12 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 #endif /* SERVER_MODE */
   int error_code;
   LOG_FLUSH_TYPE old_flush_type;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN ());
 
-  old_flush_type = log_Gl.flush_info.flush_type;
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+  old_flush_type = flush_info->flush_type;
+  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   if ((log_Gl.hdr.nxarv_num - log_Gl.hdr.last_deleted_arv_num)
       > PRM_LOG_MAX_ARCHIVES)
@@ -4796,7 +5313,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       er_log_debug (ARG_FILE_LINE, "log_archive_active_log: WARNING "
 		    "Trying to archive ONLY the append page"
 		    " which is incomplete\n");
-      log_Gl.flush_info.flush_type = old_flush_type;
+      flush_info->flush_type = old_flush_type;
       return;
     }
 
@@ -4984,7 +5501,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
 	      logpb_flush_header (thread_p);
 	      free_and_init (malloc_arv_hdr_pgptr);
-	      log_Gl.flush_info.flush_type = old_flush_type;
+	      flush_info->flush_type = old_flush_type;
 	      return;
 	    }
 	}
@@ -5047,6 +5564,10 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
       /* Record number of writes in statistics */
       mnt_log_iowrites (thread_p);
+
+      er_log_debug (ARG_FILE_LINE,
+		    "logpb_archive_active_log, arvhdr->fpageid = %d\n",
+		    arvhdr->fpageid);
 
       if (fileio_write (vdes, malloc_arv_hdr_pgptr, 0) == NULL)
 	{
@@ -5133,13 +5654,13 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     }
 
   free_and_init (malloc_arv_hdr_pgptr);
-  log_Gl.flush_info.flush_type = old_flush_type;
+  flush_info->flush_type = old_flush_type;
   return;
 
   /* ********* */
 error:
 
-  log_Gl.flush_info.flush_type = old_flush_type;
+  flush_info->flush_type = old_flush_type;
   if (malloc_arv_hdr_pgptr != NULL)
     {
       free_and_init (malloc_arv_hdr_pgptr);
@@ -5837,14 +6358,15 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
 #if defined(SERVER_MODE)
   if (BO_ISSERVER_RESTARTED () && log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return NULL_PAGEID;
     }
@@ -5867,7 +6389,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return NULL_PAGEID;
     }
@@ -5922,7 +6444,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LSA_COPY (&newchkpt_lsa, &tdes->tail_lsa);
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   pgbuf_flush_check_point (thread_p, &flush_upto_lsa, &tmp_chkpt.redo_lsa);
@@ -5933,7 +6455,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   if (LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
@@ -5960,7 +6482,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (chkpt_trans == NULL)
     {
       TR_TABLE_CS_EXIT ();
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error_cannot_chkpt;
     }
@@ -6010,7 +6532,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		    &act_tdes->tail_topresult_lsa);
 	  LSA_COPY (&chkpt_one->client_undo_lsa, &act_tdes->client_undo_lsa);
 	  LSA_COPY (&chkpt_one->client_posp_lsa, &act_tdes->client_posp_lsa);
-	  *(chkpt_one->user_name) = *(act_tdes->client.user_name);
+	  *(chkpt_one->user_name) = *(act_tdes->client.db_user);
 	  ntrans++;
 	  if (act_tdes->topops.last >= 0
 	      && ((act_tdes->state ==
@@ -6051,7 +6573,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	{
 	  free_and_init (chkpt_trans);
 	  TR_TABLE_CS_EXIT ();
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error_cannot_chkpt;
 	}
@@ -6164,7 +6686,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * module which may be blocked on a lock.
    */
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   /*
@@ -6316,11 +6838,10 @@ error_cannot_chkpt:
  * NOTE: Dump a checkpoint transactions structure.
  */
 void
-logpb_dump_checkpoint_trans (int length, void *data)
+logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 {
   int ntrans, i;
   struct log_chkpt_trans *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
-  FILE *out_fp = stdout;
 
   chkpt_trans = (struct log_chkpt_trans *) data;
   ntrans = length / sizeof (*chkpt_trans);
@@ -6366,7 +6887,7 @@ logpb_dump_checkpoint_trans (int length, void *data)
  * NOTE: Dump the checkpoint top system operation structure.
  */
 void
-logpb_dump_checkpoint_topops (int length, void *data)
+logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
   struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system
@@ -6374,8 +6895,6 @@ logpb_dump_checkpoint_topops (int length, void *data)
 							 * commit postpone mode
 							 */
   struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope   */
-  FILE *out_fp = stdout;
-
 
   chkpt_topops = (struct log_chkpt_topops_commit_posp *) data;
   ntops = length / sizeof (*chkpt_topops);
@@ -6571,6 +7090,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   FILE *backup_verbose_file_p;
   char old_bkpath[PATH_MAX];
   const char *str_tmp;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
@@ -6987,7 +7507,7 @@ loop:
 #endif /* SERVER_MODE */
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   /*
    * Remember the previous backup arv range, in order to delete or tag
@@ -7010,7 +7530,7 @@ loop:
 					 LOG_DBLOG_INFO_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7027,7 +7547,7 @@ loop:
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -7066,7 +7586,7 @@ loop:
 					 LOG_DBLOG_ACTIVE_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7074,7 +7594,7 @@ loop:
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       error_code = ER_FAILED;
       goto error;
@@ -7164,14 +7684,14 @@ loop:
 	    }
 	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	    {
-	      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 	    }
 	}
     }
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
@@ -7358,6 +7878,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
   const char *verbose_file;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -7365,7 +7886,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   memset (lgat_tmpname, 0, PATH_MAX);
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
+  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   if (logpb_find_header_parameters
       (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
@@ -7387,7 +7908,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (lgat_vdes == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7410,7 +7931,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.ht == NULL)
     {
       error_code = ER_FAILED;
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -7419,7 +7940,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.heap_id == 0)
     {
       error_code = ER_FAILED;
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -7500,7 +8021,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	      error_expected = true;
 	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 
@@ -7514,7 +8035,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 		  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-		  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -7535,9 +8056,10 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  if (fileio_read_backup_info_entries
 	      (backup_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
 	    {
-	      volnameptr = fileio_get_backup_info_volume_name (try_level,
-							       FILEIO_INITIAL_BACKUP_UNITS,
-							       FILEIO_FIRST_BACKUP_VOL_INFO);
+	      volnameptr =
+		fileio_get_backup_info_volume_name (try_level,
+						    FILEIO_INITIAL_BACKUP_UNITS,
+						    FILEIO_FIRST_BACKUP_VOL_INFO);
 	      if (volnameptr != NULL)
 		{
 		  strcpy (from_volbackup, volnameptr);
@@ -7554,7 +8076,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      fclose (backup_volinfo_fp);
 	      backup_volinfo_fp = NULL;
 	      error_code = ER_FAILED;
-	      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 	    }
@@ -7576,13 +8098,13 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 				   &bkdb_iopagesize, &bkdb_compatibility,
 				   try_level, r_args->newvolpath) == NO_ERROR)
 	    {
-	      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      return NO_ERROR;
 	    }
 	  else
 	    {
-	      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      return ER_FAILED;
 	    }
@@ -7600,7 +8122,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7634,13 +8156,13 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		       ctime_buf1, ctime_buf2);
 	      if (fileio_finish_restore (session) == NO_ERROR)
 		{
-		  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  return NO_ERROR;
 		}
 	      else
 		{
-		  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  return ER_FAILED;
 		}
@@ -7663,7 +8185,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      if (db_set_page_size (bkdb_iopagesize) != bkdb_iopagesize)
 		{
 		  error_code = ER_FAILED;
-		  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -7671,7 +8193,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      error_code = logtb_define_trantable_log_latch (thread_p, -1);
 	      if (error_code != NO_ERROR)
 		{
-		  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -7686,7 +8208,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  ER_LOG_BKUP_INCOMPATIBLE, 2,
 		  rel_name (), rel_release_string ());
 	  error_code = ER_LOG_BKUP_INCOMPATIBLE;
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7744,7 +8266,6 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 					  &to_volid, &vol_nbytes);
 	  if (another_vol == 1)
 	    {
-
 	      if (restore_verbose_file_p)
 		{
 		  strcpy (verbose_to_volname, to_volname);
@@ -7788,7 +8309,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			{
 			  success = ER_FAILED;
 			  error_code = ER_FAILED;
-			  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+			  flush_info->flush_type = LOG_FLUSH_NORMAL;
 			  LOG_CS_EXIT ();
 			  goto error;
 			}
@@ -7891,7 +8412,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 							       prefix_logname);
 		      if (error_code != NO_ERROR)
 			{
-			  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+			  flush_info->flush_type = LOG_FLUSH_NORMAL;
 			  LOG_CS_EXIT ();
 			  goto error;
 			}
@@ -7965,7 +8486,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
       error_code = ER_FAILED;
     }
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   mht_destroy (pages_cache.ht);
@@ -8592,6 +9113,9 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   LSA_SET_NULL (&eof->back_lsa);
   LSA_SET_NULL (&eof->forw_lsa);
   eof->type = LOG_END_OF_LOG;
+
+  log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
+  log_Gl.hdr.eof_lsa.offset = 0;
 
   /* Record number of writes in statistics */
   mnt_log_iowrites (thread_p);
@@ -9772,7 +10296,7 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
        */
       boot_donot_shutdown_client_at_exit ();
       tran_cache_tran_settings (NULL_TRAN_INDEX, -1, TRAN_DEFAULT_ISOLATION);
-      db_Connect_status = 0;
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif /* SERVER_MODE */
 
 #if defined(NDEBUG)
@@ -9977,14 +10501,14 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
 static void
 logpb_initialize_flush_info (void)
 {
-  log_Gl.flush_info.max_toflush = log_Pb.num_buffers - 1;
-  log_Gl.flush_info.num_toflush = 0;
-  log_Gl.flush_info.toflush = (LOG_PAGE **) calloc (log_Pb.num_buffers,
-						    sizeof (log_Gl.
-							    flush_info.
-							    toflush));
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  MUTEX_INIT (log_Gl.flush_info.flush_mutex);
+  flush_info->max_toflush = log_Pb.num_buffers - 1;
+  flush_info->num_toflush = 0;
+  flush_info->toflush = (LOG_PAGE **) calloc (log_Pb.num_buffers,
+					      sizeof (flush_info->toflush));
+
+  MUTEX_INIT (flush_info->flush_mutex);
 }
 
 /*
@@ -10000,20 +10524,55 @@ logpb_finalize_flush_info (void)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
 
-  if (log_Gl.flush_info.toflush != NULL)
+  if (flush_info->toflush != NULL)
     {
-      free_and_init (log_Gl.flush_info.toflush);
+      free_and_init (flush_info->toflush);
     }
 
-  log_Gl.flush_info.max_toflush = 0;
-  log_Gl.flush_info.num_toflush = 0;
-  log_Gl.flush_info.toflush = NULL;
+  flush_info->max_toflush = 0;
+  flush_info->num_toflush = 0;
+  flush_info->toflush = NULL;
 
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
-  MUTEX_DESTROY (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
+  MUTEX_DESTROY (flush_info->flush_mutex);
+}
+
+/*
+ * logpb_finalize_writer_info - Destroy writer information
+ *
+ * return: nothing
+ *
+ * NOTE:
+ */
+static void
+logpb_finalize_writer_info (void)
+{
+  LOGWR_ENTRY *entry, *next_entry;
+  int rv;
+  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+
+  LOG_MUTEX_LOCK (rv, writer_info->wr_list_mutex);
+  entry = writer_info->writer_list;
+  while (entry)
+    {
+      next_entry = entry->next;
+      free (entry);
+      entry = next_entry;
+    }
+  writer_info->writer_list = NULL;
+  LOG_MUTEX_UNLOCK (writer_info->wr_list_mutex);
+
+  MUTEX_DESTROY (writer_info->wr_list_mutex);
+
+  MUTEX_DESTROY (writer_info->flush_start_mutex);
+  COND_DESTROY (writer_info->flush_start_cond);
+
+  MUTEX_DESTROY (writer_info->flush_end_mutex);
+  COND_DESTROY (writer_info->flush_end_cond);
 }
 
 /*
@@ -10063,20 +10622,20 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   bool find_first = false;
   int flush_count = 0;
   int flush_expected;
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_run_mutex);
+  assert (LOG_CS_OWN ());
 
-  assert (log_Gl.flush_info.toflush != NULL);
+  assert (flush_info->toflush != NULL);
 
-  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
-  if (log_Gl.flush_info.num_toflush <= 2)
+  LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
+  if (flush_info->num_toflush <= 2)
     {
-      LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
-      LOG_MUTEX_UNLOCK (log_Gl.flush_run_mutex);
+      LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
       return;
     }
 
@@ -10085,17 +10644,17 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   flush_expected = PRM_LOG_BG_FLUSH_NUM_PAGES;
   if (flush_expected == 0)
     {
-      flush_expected = log_Gl.flush_info.max_toflush;
+      flush_expected = flush_info->max_toflush;
     }
 
-  assert (log_Gl.flush_info.num_toflush > 0);
+  assert (flush_info->num_toflush > 0);
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
   find_first = false;
-  for (loop = 0; loop != log_Gl.flush_info.num_toflush; ++loop)
+  for (loop = 0; loop != flush_info->num_toflush; ++loop)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_Gl.flush_info.toflush[loop]);
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[loop]);
 
       if (!bufptr->dirty || bufptr->fcnt > 0)
 	{
@@ -10123,8 +10682,8 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
        */
 
       bufptr->flush_running = true;
-      if (logpb_writev_append_pages
-	  (thread_p, &log_Gl.flush_info.toflush[loop], 1) == NULL)
+      if (logpb_writev_append_pages (thread_p, &flush_info->toflush[loop], 1)
+	  == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_flush_pages_bg");
@@ -10136,7 +10695,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
       ++flush_count;
 
-      assert (log_Gl.flush_info.toflush[loop] != NULL);
+      assert (flush_info->toflush[loop] != NULL);
     }
   if (flush_count > 0)
     {
@@ -10149,10 +10708,10 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
     }
 
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-  assert (flush_count < log_Gl.flush_info.num_toflush - 1);
+  assert (flush_count < flush_info->num_toflush - 1);
 
   /* while I/O, to append log can be executed concurrently. */
-  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
 
   if (flush_count > 0)
     {
@@ -10167,11 +10726,9 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
   assert (flush_count <= flush_expected);
 
-  LOG_MUTEX_UNLOCK (log_Gl.flush_run_mutex);
   return;
 
 error:
-  LOG_MUTEX_UNLOCK (log_Gl.flush_run_mutex);
   return;
 
 }
@@ -10235,7 +10792,7 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\thighest log archive number for backup : %d\n",
 	   log_Gl.hdr.highest_arv_num_for_backup);
-}				/* log_dump_loghdr */
+}
 
 /*
  * logpb_dump_parameter - dump logging parameter

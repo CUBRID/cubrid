@@ -85,17 +85,6 @@
 #define UC_CONF_PARAM_TIME_TO_KILL		"TIME_TO_KILL"
 #define UC_CONF_PARAM_SESSION_TIMEOUT		"SESSION_TIMEOUT"
 #define UC_CONF_PARAM_JOB_QUEUE_SIZE		"JOB_QUEUE_SIZE"
-#define UC_CONF_PARAM_PRIORITY_GAP		"PRIORITY_GAP"
-#define UC_CONF_PARAM_COMPRESS_SIZE		"COMPRESS_SIZE"
-#define UC_CONF_PARAM_FILE_UPLOAD_TEMP_DIR	"FILE_UPLOAD_TEMP_DIR"
-#define UC_CONF_PARAM_FILE_UPLOAD_DELIMITER	"FILE_UPLOAD_DELIMITER"
-#define UC_CONF_PARAM_SET_COOKIE		"SET_COOKIE"
-#define UC_CONF_PARAM_APPL_ROOT			"APPL_ROOT"
-#define UC_CONF_PARAM_ENC_APPL			"ENC_APPL"
-#define UC_CONF_PARAM_ERROR_LOG			"ERROR_LOG"
-#define UC_CONF_PARAM_OID_CHECK			"OID_CHECK"
-#define UC_CONF_PARAM_ENTRY_VALUE_TRIM		"ENTRY_VALUE_TRIM"
-#define UC_CONF_PARAM_SESSION			"SESSION"
 #define UC_CONF_PARAM_ACCESS_LIST		"ACCESS_LIST"
 #define UC_CONF_PARAM_SQL_LOG2			"SQL_LOG2"
 #define UC_CONF_PARAM_MAX_STRING_LENGTH		"MAX_STRING_LENGTH"
@@ -144,18 +133,6 @@
 #define SET_CONF_ITEM_STR(CONF_ITEM, IDX, NAME, VALUE)		\
 	do {							\
 	  SET_CONF_ITEM(CONF_ITEM, IDX, NAME, strdup(VALUE));	\
-	} while (0)
-
-#define SET_CONF_ITEM_ERLOG(CONF_ITEM, IDX, NAME, VALUE)	\
-	do {							\
-	  if ((VALUE) == CONF_ERR_LOG_NONE)			\
-	    SET_CONF_ITEM_STR(CONF_ITEM, IDX, NAME, "NONE");	\
-	  else if ((VALUE) == CONF_ERR_LOG_LOGFILE)		\
-	    SET_CONF_ITEM_STR(CONF_ITEM, IDX, NAME, "LOGFILE");	\
-	  else if ((VALUE) == CONF_ERR_LOG_BROWSER)		\
-	    SET_CONF_ITEM_STR(CONF_ITEM, IDX, NAME, "BROWSER");	\
-	  else							\
-	    SET_CONF_ITEM_STR(CONF_ITEM, IDX, NAME, "BOTH");	\
 	} while (0)
 
 #define SET_FLAG(ONOFF)		((ONOFF) == ON ? FLAG_ON : FLAG_OFF)
@@ -770,7 +747,11 @@ uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
 #endif
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	{
-	  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+	  if ((shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+	      || (shm_br->br_info[br_index].appl_server ==
+		  APPL_SERVER_CAS_ORACLE)
+	      || (shm_br->br_info[br_index].appl_server ==
+		  APPL_SERVER_CAS_MYSQL))
 	    {
 	      if (shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN)
 		as_info[i].status = AS_STATUS_CLOSE_WAIT;
@@ -919,8 +900,6 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  br_info[i].sql_log_time = shm_appl->sql_log_time;
 	  br_info[i].auto_add_flag =
 	    SET_FLAG (shm_br->br_info[i].auto_add_appl_server);
-	  br_info[i].session_flag =
-	    SET_FLAG (shm_br->br_info[i].session_flag);
 	  if (shm_br->br_info[i].sql_log_mode & SQL_LOG_MODE_ON)
 	    br_info[i].sql_log_on_off = FLAG_ON;
 	  else
@@ -940,9 +919,7 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  if (p != NULL)
 	    *p = '\0';
 	  br_info[i].as_max_size = shm_br->br_info[i].appl_server_max_size;
-	  br_info[i].compress_size = shm_br->br_info[i].compress_size;
 	  br_info[i].log_backup_flag = shm_br->br_info[i].log_backup;
-	  br_info[i].priority_gap = shm_br->br_info[i].priority_gap;
 	  br_info[i].time_to_kill = shm_br->br_info[i].time_to_kill;
 	  uw_shm_detach (shm_appl);
 	}
@@ -1276,45 +1253,14 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 			 br_conf[i].session_timeout, FMT_D);
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_JOB_QUEUE_SIZE,
 			 br_conf[i].job_queue_size, FMT_D);
-      if (as_type == APPL_SERVER_CAS)
+      if ((as_type == APPL_SERVER_CAS) || (as_type == APPL_SERVER_CAS_ORACLE)
+	  || (as_type == APPL_SERVER_CAS_MYSQL))
 	{
 	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH,
 			     br_conf[i].max_string_length, FMT_D);
 	  SET_CONF_ITEM_ONOFF (conf_item, n,
 			       UC_CONF_PARAM_STRIPPED_COLUMN_NAME,
 			       br_conf[i].stripped_column_name);
-	}
-      if (as_type == APPL_SERVER_UTS_C)
-	{
-	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_PRIORITY_GAP,
-			     br_conf[i].priority_gap, FMT_D);
-	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_COMPRESS_SIZE,
-			     br_conf[i].compress_size / 1024, FMT_D);
-	}
-      if (as_type == APPL_SERVER_UTS_W)
-	{
-	  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_FILE_UPLOAD_TEMP_DIR,
-			     br_conf[i].file_upload_temp_dir);
-	  SET_CONF_ITEM_STR (conf_item, n,
-			     UC_CONF_PARAM_FILE_UPLOAD_DELIMITER,
-			     br_conf[i].file_upload_delimiter);
-	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SET_COOKIE,
-			       br_conf[i].set_cookie);
-	}
-      if (as_type == APPL_SERVER_UTS_C || as_type == APPL_SERVER_UTS_W)
-	{
-	  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_ROOT,
-			     br_conf[i].doc_root);
-	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_ENC_APPL,
-			       br_conf[i].enc_appl_flag);
-	  SET_CONF_ITEM_ERLOG (conf_item, n, UC_CONF_PARAM_ERROR_LOG,
-			       br_conf[i].error_log);
-	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_OID_CHECK,
-			       br_conf[i].oid_check);
-	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_ENTRY_VALUE_TRIM,
-			       br_conf[i].entry_value_trim);
-	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SESSION,
-			       br_conf[i].session_flag);
 	}
       SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ACCESS_LIST,
 			 br_conf[i].acl_file);
@@ -1427,28 +1373,20 @@ copy_job_info (T_JOB_INFO ** ret_job_info, T_MAX_HEAP_NODE * job_q)
 static char *
 get_as_type_str (char as_type)
 {
-  if (as_type == APPL_SERVER_UTS_C)
-    return ("VAS");
-  if (as_type == APPL_SERVER_AM)
-    return ("AMS");
-  if (as_type == APPL_SERVER_UPLOAD)
-    return ("ULS");
-  if (as_type == APPL_SERVER_UTS_W)
-    return ("WAS");
+  if (as_type == APPL_SERVER_CAS_ORACLE)
+    return ("CAS_ORACLE");
+  if (as_type == APPL_SERVER_CAS_MYSQL)
+    return ("CAS_MYSQL");
   return ("CAS");
 }
 
 static int
 get_as_type (char *type_str)
 {
-  if (strcasecmp (type_str, "VAS") == 0)
-    return APPL_SERVER_UTS_C;
-  if (strcasecmp (type_str, "AMS") == 0)
-    return APPL_SERVER_AM;
-  if (strcasecmp (type_str, "ULS") == 0)
-    return APPL_SERVER_UPLOAD;
-  if (strcasecmp (type_str, "WAS") == 0)
-    return APPL_SERVER_UTS_W;
+  if (strcasecmp (type_str, "CAS_ORACLE") == 0)
+    return APPL_SERVER_CAS_ORACLE;
+  if (strcasecmp (type_str, "CAS_MYSQL") == 0)
+    return APPL_SERVER_CAS_MYSQL;
   return APPL_SERVER_CAS;
 }
 
@@ -1463,60 +1401,14 @@ change_conf_as_type (T_BR_CONF * br_conf, int old_as_type, int new_as_type)
 
   num = br_conf->num;
   item = br_conf->item;
-  if (old_as_type == APPL_SERVER_CAS)
+  if ((old_as_type == APPL_SERVER_CAS)
+      || (old_as_type == APPL_SERVER_CAS_ORACLE)
+      || (old_as_type == APPL_SERVER_CAS_MYSQL))
     {
       reset_conf_value (num, item, UC_CONF_PARAM_MAX_STRING_LENGTH);
       reset_conf_value (num, item, UC_CONF_PARAM_STRIPPED_COLUMN_NAME);
     }
-  if (old_as_type == APPL_SERVER_UTS_C)
-    {
-      reset_conf_value (num, item, UC_CONF_PARAM_PRIORITY_GAP);
-      reset_conf_value (num, item, UC_CONF_PARAM_COMPRESS_SIZE);
-    }
-  if (old_as_type == APPL_SERVER_UTS_W)
-    {
-      reset_conf_value (num, item, UC_CONF_PARAM_FILE_UPLOAD_TEMP_DIR);
-      reset_conf_value (num, item, UC_CONF_PARAM_FILE_UPLOAD_DELIMITER);
-      reset_conf_value (num, item, UC_CONF_PARAM_SET_COOKIE);
-    }
-  if ((old_as_type == APPL_SERVER_UTS_C || old_as_type == APPL_SERVER_UTS_W)
-      && (new_as_type != APPL_SERVER_UTS_C
-	  && new_as_type != APPL_SERVER_UTS_W))
-    {
-      reset_conf_value (num, item, UC_CONF_PARAM_APPL_ROOT);
-      reset_conf_value (num, item, UC_CONF_PARAM_ENC_APPL);
-      reset_conf_value (num, item, UC_CONF_PARAM_ERROR_LOG);
-      reset_conf_value (num, item, UC_CONF_PARAM_OID_CHECK);
-      reset_conf_value (num, item, UC_CONF_PARAM_ENTRY_VALUE_TRIM);
-      reset_conf_value (num, item, UC_CONF_PARAM_SESSION);
-    }
   num = br_conf->num - 1;
-  if (new_as_type == APPL_SERVER_UTS_C)
-    {
-      SET_CONF_ITEM_INT (item, num, UC_CONF_PARAM_PRIORITY_GAP,
-			 DEFAULT_PRIORITY_GAP, FMT_D);
-      SET_CONF_ITEM_INT (item, num, UC_CONF_PARAM_COMPRESS_SIZE,
-			 DEFAULT_COMPRESS_SIZE, FMT_D);
-    }
-  if (new_as_type == APPL_SERVER_UTS_W)
-    {
-      SET_CONF_ITEM_STR (item, num, UC_CONF_PARAM_FILE_UPLOAD_TEMP_DIR,
-			 DEFAULT_FILE_UPLOAD_TEMP_DIR);
-      SET_CONF_ITEM_STR (item, num, UC_CONF_PARAM_FILE_UPLOAD_DELIMITER,
-			 "^^");
-      SET_CONF_ITEM_ONOFF (item, num, UC_CONF_PARAM_SET_COOKIE, OFF);
-    }
-  if (new_as_type == APPL_SERVER_UTS_C || new_as_type == APPL_SERVER_UTS_W)
-    {
-      SET_CONF_ITEM_STR (item, num, UC_CONF_PARAM_APPL_ROOT,
-			 DEFAULT_DOC_ROOT_DIR);
-      SET_CONF_ITEM_ONOFF (item, num, UC_CONF_PARAM_ENC_APPL, OFF);
-      SET_CONF_ITEM_ERLOG (item, num, UC_CONF_PARAM_ERROR_LOG,
-			   CONF_ERR_LOG_BOTH);
-      SET_CONF_ITEM_ONOFF (item, num, UC_CONF_PARAM_OID_CHECK, ON);
-      SET_CONF_ITEM_ONOFF (item, num, UC_CONF_PARAM_ENTRY_VALUE_TRIM, ON);
-      SET_CONF_ITEM_ONOFF (item, num, UC_CONF_PARAM_SESSION, OFF);
-    }
   br_conf->num = num;
 }
 

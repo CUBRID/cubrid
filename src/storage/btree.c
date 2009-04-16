@@ -184,7 +184,7 @@ static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p,
 static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p,
 				       BTID_INT * btid, PAGE_PTR pg_ptr,
 				       BTREE_CAPACITY * cpc);
-static void btree_print_space (int n);
+static void btree_print_space (FILE * fp, int n);
 static int btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				   VPID * leaf_vpid, DB_VALUE * key,
 				   OID * class_oid, OID * oid, int *del_key);
@@ -296,17 +296,18 @@ static DISK_ISVALID btree_find_key_from_page (THREAD_ENTRY * thread_p,
 					      bool * clear_key);
 
 /* Dump routines */
-static void btree_dump_root_header (RECDES Rec);
-static void btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				    RECDES * Rec, int n);
-static void btree_dump_non_leaf_record (THREAD_ENTRY * thread_p,
+static void btree_dump_root_header (FILE * fp, RECDES Rec);
+static void btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
+				    BTID_INT * btid, RECDES * Rec, int n);
+static void btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 					BTID_INT * btid, RECDES * Rec, int n,
 					int print_key);
-static void btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
+static void btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp,
+			     const OID * class_oid_p,
 			     BTID_INT * btid, const char *btname,
 			     PAGE_PTR page_ptr, VPID * pg_vpid, int n,
 			     int level);
-static void btree_dump_page_with_subtree (THREAD_ENTRY * thread_p,
+static void btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, FILE * fp,
 					  BTID_INT * btid, PAGE_PTR pg_ptr,
 					  VPID * pg_vpid, int n, int level);
 
@@ -1464,7 +1465,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec,
  *   rec(in):
  */
 static void
-btree_dump_root_header (RECDES rec)
+btree_dump_root_header (FILE * fp, RECDES rec)
 {
   BTREE_ROOT_HEADER root_header;
 
@@ -1472,15 +1473,15 @@ btree_dump_root_header (RECDES rec)
 
   /* output root header information */
   btree_read_root_header (&rec, &root_header);
-  fprintf (stdout,
+  fprintf (fp,
 	   "\n==============    R O O T    P A G E   ================\n\n");
-  fprintf (stdout, " Key_Type: %s\n",
+  fprintf (fp, " Key_Type: %s\n",
 	   pr_type_name (root_header.key_type->type->id));
-  fprintf (stdout, " Num OIDs: %d, Num NULLs: %d, Num keys: %d\n",
+  fprintf (fp, " Num OIDs: %d, Num NULLs: %d, Num keys: %d\n",
 	   root_header.num_oids, root_header.num_nulls, root_header.num_keys);
-  fprintf (stdout, " OVFID: %d|%d\n",
+  fprintf (fp, " OVFID: %d|%d\n",
 	   root_header.ovfid.fileid, root_header.ovfid.volid);
-  fprintf (stdout, " Btree Revision Level: %d\n", root_header.rev_level);
+  fprintf (fp, " Btree Revision Level: %d\n", root_header.rev_level);
 }
 
 /*
@@ -1489,14 +1490,14 @@ btree_dump_root_header (RECDES rec)
  *   key(in):
  */
 void
-btree_dump_key (DB_VALUE * key)
+btree_dump_key (FILE * fp, DB_VALUE * key)
 {
   DB_TYPE key_type = DB_VALUE_DOMAIN_TYPE (key);
   PR_TYPE *pr_type = PR_TYPE_FROM_ID (key_type);
 
-  fprintf (stdout, " ");
-  (*(pr_type->fptrfunc)) (stdout, key);
-  fprintf (stdout, " ");
+  fprintf (fp, " ");
+  (*(pr_type->fptrfunc)) (fp, key);
+  fprintf (fp, " ");
 }
 
 /*
@@ -1510,7 +1511,7 @@ btree_dump_key (DB_VALUE * key)
  * values for the key.
  */
 static void
-btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
+btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 			RECDES * rec, int n)
 {
   LEAF_REC leaf_record;
@@ -1535,7 +1536,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
 
   /* output the leaf record structure content */
-  btree_print_space (n);
+  btree_print_space (fp, n);
 
   btree_read_record (thread_p, btid, rec, &key, &leaf_record, true,
 		     &clear_key, &offset, 0);
@@ -1544,29 +1545,28 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
   if (leaf_record.key_len > 0)
     {
       /* regular key */
-      fprintf (stdout, "Key_Len: %d Ovfl_Page: {%d , %d} ",
+      fprintf (fp, "Key_Len: %d Ovfl_Page: {%d , %d} ",
 	       leaf_record.key_len, leaf_record.ovfl.volid,
 	       leaf_record.ovfl.pageid);
     }
   else
     {
       /* overflow key */
-      fprintf (stdout, "Key_Len: %d Ovfl_Page: {%d , %d} ",
+      fprintf (fp, "Key_Len: %d Ovfl_Page: {%d , %d} ",
 	       key_len, leaf_record.ovfl.volid, leaf_record.ovfl.pageid);
       key_len = DISK_VPID_SIZE;
     }
 
-  fprintf (stdout, "Key: ");
-  btree_dump_key (&key);
+  fprintf (fp, "Key: ");
+  btree_dump_key (fp, &key);
 
   btree_clear_key_value (&clear_key, &key);
 
   overflow_vpid = leaf_record.ovfl;
 
   /* output the values */
-  fprintf (stdout, "  Values: ");
-  fprintf (stdout, "Oid_Cnt: %d ",
-	   CEIL_PTVDIV (rec->length - offset, oid_size));
+  fprintf (fp, "  Values: ");
+  fprintf (fp, "Oid_Cnt: %d ", CEIL_PTVDIV (rec->length - offset, oid_size));
   ptr = rec->data + offset;
   if (BTREE_IS_UNIQUE (btid))
     {
@@ -1575,7 +1575,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  /* values stored within the record */
 	  if (k % 2 == 0)
 	    {
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 
 	  OR_GET_OID (ptr, &class_oid);
@@ -1583,7 +1583,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  OR_GET_OID (ptr, &oid);
 	  ptr += OR_OID_SIZE;
 
-	  fprintf (stdout, " (%d %d %d : %d, %d, %d) ",
+	  fprintf (fp, " (%d %d %d : %d, %d, %d) ",
 		   class_oid.volid, class_oid.pageid, class_oid.slotid,
 		   oid.volid, oid.pageid, oid.slotid);
 	}
@@ -1595,14 +1595,13 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  /* values stored within the record */
 	  if (k % 4 == 0)
 	    {
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 
 	  OR_GET_OID (ptr, &oid);
 	  ptr += OR_OID_SIZE;
 
-	  fprintf (stdout, " (%d, %d, %d) ", oid.volid, oid.pageid,
-		   oid.slotid);
+	  fprintf (fp, " (%d, %d, %d) ", oid.volid, oid.pageid, oid.slotid);
 	}
     }
 
@@ -1615,14 +1614,14 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
       overflow_rec.area_size = DB_PAGESIZE;
       overflow_rec.data = (char *) malloc (DB_PAGESIZE);
 
-      fprintf (stdout,
+      fprintf (fp,
 	       "\n\n=======    O V E R F L O W   P A G E S     =========\n");
-      fflush (stdout);
+      fflush (fp);
 
       /* get all the overflow pages and output their value content */
       while (overflow_vpid.pageid != NULL_PAGEID)
 	{
-	  fprintf (stdout, "\n ------ Overflow Page {%d , %d} \n",
+	  fprintf (fp, "\n ------ Overflow Page {%d , %d} \n",
 		   overflow_vpid.volid, overflow_vpid.pageid);
 	  overflow_page_ptr = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE,
 					 PGBUF_LATCH_READ,
@@ -1635,7 +1634,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	  oid_cnt = CEIL_PTVDIV (overflow_rec.length, oid_size);
 	  ptr = (char *) overflow_rec.data;
-	  fprintf (stdout, "Oid_Cnt: %d ", oid_cnt);
+	  fprintf (fp, "Oid_Cnt: %d ", oid_cnt);
 
 	  if (BTREE_IS_UNIQUE (btid))
 	    {
@@ -1643,7 +1642,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		{
 		  if (i % 2 == 0)
 		    {
-		      fprintf (stdout, "\n");
+		      fprintf (fp, "\n");
 		    }
 
 		  OR_GET_OID (ptr, &class_oid);
@@ -1651,7 +1650,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		  OR_GET_OID (ptr, &oid);
 		  ptr += OR_OID_SIZE;
 
-		  fprintf (stdout, " (%d %d %d : %d, %d, %d) ",
+		  fprintf (fp, " (%d %d %d : %d, %d, %d) ",
 			   class_oid.volid, class_oid.pageid,
 			   class_oid.slotid, oid.volid, oid.pageid,
 			   oid.slotid);
@@ -1669,7 +1668,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		  OR_GET_OID (ptr, &oid);
 		  ptr += OR_OID_SIZE;
 
-		  fprintf (stdout, " (%d, %d, %d) ", oid.volid,
+		  fprintf (fp, " (%d, %d, %d) ", oid.volid,
 			   oid.pageid, oid.slotid);
 		}
 	    }
@@ -1681,8 +1680,8 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
       free_and_init (overflow_rec.data);
     }
 
-  fprintf (stdout, "\n");
-  fflush (stdout);
+  fprintf (fp, "\n");
+  fflush (fp);
 }
 
 /*
@@ -1697,8 +1696,9 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
  * page identifier.
  */
 static void
-btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			    RECDES * rec, int n, int print_key)
+btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
+			    BTID_INT * btid, RECDES * rec, int n,
+			    int print_key)
 {
   NON_LEAF_REC non_leaf_record;
   int key_len, offset;
@@ -1709,25 +1709,25 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
   btree_read_record (thread_p, btid, rec, &key, &non_leaf_record, false,
 		     &clear_key, &offset, 0);
 
-  btree_print_space (n);
-  fprintf (stdout, "Child_Page: {%d , %d} ",
+  btree_print_space (fp, n);
+  fprintf (fp, "Child_Page: {%d , %d} ",
 	   non_leaf_record.pnt.volid, non_leaf_record.pnt.pageid);
 
   if (print_key)
     {
       key_len = btree_get_key_length (&key);
-      fprintf (stdout, "Key_Len: %d  Key: ", key_len);
-      btree_dump_key (&key);
+      fprintf (fp, "Key_Len: %d  Key: ", key_len);
+      btree_dump_key (fp, &key);
     }
   else
     {
-      fprintf (stdout, "No Key");
+      fprintf (fp, "No Key");
     }
 
   btree_clear_key_value (&clear_key, &key);
 
-  fprintf (stdout, "\n");
-  fflush (stdout);
+  fprintf (fp, "\n");
+  fflush (fp);
 }
 
 /*
@@ -3331,7 +3331,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 		    "--- key count (%d) test failed for page {%d , %d}."
 		    " Expected count %d",
 		    key_cnt, page_vpid->volid, page_vpid->pageid, key_cnt2);
-      btree_dump_page (thread_p, class_oid_p, btid, btname, page_ptr,
+      btree_dump_page (thread_p, stdout, class_oid_p, btid, btname, page_ptr,
 		       page_vpid, 2, 2);
       valid = DISK_INVALID;
       goto error;
@@ -3379,8 +3379,8 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 			"--- max key length test failed for page "
 			"{%d , %d}. Check key_rec = %d\n",
 			page_vpid->volid, page_vpid->pageid, k);
-	  btree_dump_page (thread_p, class_oid_p, btid, btname, page_ptr,
-			   page_vpid, 2, 2);
+	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
+			   page_ptr, page_vpid, 2, 2);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -3406,8 +3406,8 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 			"--- max key length test failed for page "
 			"{%d , %d}. Check key_rec = %d\n",
 			page_vpid->volid, page_vpid->pageid, k + 1);
-	  btree_dump_page (thread_p, class_oid_p, btid, btname, page_ptr,
-			   page_vpid, 2, 2);
+	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
+			   page_ptr, page_vpid, 2, 2);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -3422,8 +3422,8 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 			"--- key order test failed for page"
 			" {%d , %d}. Check key_recs = %d and %d\n",
 			page_vpid->volid, page_vpid->pageid, k, k + 1);
-	  btree_dump_page (thread_p, class_oid_p, btid, btname, page_ptr,
-			   page_vpid, 2, 2);
+	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
+			   page_ptr, page_vpid, 2, 2);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -3512,8 +3512,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	{
 	  er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
 			"node key count underflow: %d\n", key_cnt);
-	  btree_dump_page (thread_p, class_oid_p, btid, btname, pg_ptr,
-			   pg_vpid, 2, 2);
+	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
+			   pg_ptr, pg_vpid, 2, 2);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -3575,8 +3575,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 		    {
 		      er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
 				    "key order test among nodes failed...\n");
-		      btree_dump_page (thread_p, class_oid_p, btid, btname,
-				       pg_ptr, pg_vpid, 2, 2);
+		      btree_dump_page (thread_p, stdout, class_oid_p, btid,
+				       btname, pg_ptr, pg_vpid, 2, 2);
 		      valid = DISK_INVALID;
 		      goto error;
 		    }
@@ -4564,7 +4564,7 @@ exit_on_error:
  * Note: Dump index capacity/space information.
  */
 int
-btree_dump_capacity (THREAD_ENTRY * thread_p, BTID * btid)
+btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 {
   BTREE_CAPACITY cpc;
   int ret = NO_ERROR;
@@ -4576,29 +4576,28 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, BTID * btid)
       goto exit_on_error;
     }
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "\n--------------------------------------------------"
 	   "-----------\n");
-  fprintf (stdout, "BTID: {{%d, %d}, %d}  CAPACITY INFORMATION:\n",
+  fprintf (fp, "BTID: {{%d, %d}, %d}  CAPACITY INFORMATION:\n",
 	   btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
 
   /* dump the capacity information */
-  fprintf (stdout, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
-  fprintf (stdout, "Total Value Count: %d\n", cpc.tot_val_cnt);
-  fprintf (stdout, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
-  fprintf (stdout, "Total Page Count: %d\n", cpc.tot_pg_cnt);
-  fprintf (stdout, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
-  fprintf (stdout, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
-  fprintf (stdout, "Height: %d\n", cpc.height);
-  fprintf (stdout, "Average Key Length: %d\n", cpc.avg_key_len);
-  fprintf (stdout, "Average Record Length: %d\n", cpc.avg_rec_len);
-  fprintf (stdout, "Total Index Space: %.0f bytes\n", cpc.tot_space);
-  fprintf (stdout, "Used Index Space: %.0f bytes\n", cpc.tot_used_space);
-  fprintf (stdout, "Free Index Space: %.0f bytes\n", cpc.tot_free_space);
-  fprintf (stdout, "Average Page Free Space: %.0f bytes\n",
-	   cpc.avg_pg_free_sp);
-  fprintf (stdout, "Average Page Key Count: %d\n", cpc.avg_pg_key_cnt);
-  fprintf (stdout, "--------------------------------------------------"
+  fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
+  fprintf (fp, "Total Value Count: %d\n", cpc.tot_val_cnt);
+  fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
+  fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt);
+  fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
+  fprintf (fp, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
+  fprintf (fp, "Height: %d\n", cpc.height);
+  fprintf (fp, "Average Key Length: %d\n", cpc.avg_key_len);
+  fprintf (fp, "Average Record Length: %d\n", cpc.avg_rec_len);
+  fprintf (fp, "Total Index Space: %.0f bytes\n", cpc.tot_space);
+  fprintf (fp, "Used Index Space: %.0f bytes\n", cpc.tot_used_space);
+  fprintf (fp, "Free Index Space: %.0f bytes\n", cpc.tot_free_space);
+  fprintf (fp, "Average Page Free Space: %.0f bytes\n", cpc.avg_pg_free_sp);
+  fprintf (fp, "Average Page Key Count: %d\n", cpc.avg_pg_key_cnt);
+  fprintf (fp, "--------------------------------------------------"
 	   "-----------\n");
 
 end:
@@ -4625,7 +4624,7 @@ exit_on_error:
  * Note: Dump the capacity/space information of all indices.
  */
 int
-btree_dump_capacity_all (THREAD_ENTRY * thread_p)
+btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
 {
   int num_files;		/* Number of files in the system */
   BTID btid;			/* Btree index identifier */
@@ -4660,7 +4659,7 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p)
 
       btid.root_pageid = vpid.pageid;
 
-      ret = btree_dump_capacity (thread_p, &btid);
+      ret = btree_dump_capacity (thread_p, fp, &btid);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -4694,12 +4693,12 @@ exit_on_error:
  *   n(in):
  */
 static void
-btree_print_space (int n)
+btree_print_space (FILE * fp, int n)
 {
 
   while (n--)			/* print n space character */
     {
-      fprintf (stdout, " ");
+      fprintf (fp, " ");
     }
 
 }
@@ -4716,7 +4715,7 @@ btree_print_space (int n)
  * Note: Dumps the content of the given page of the tree.
  */
 static void
-btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
+btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p,
 		 BTID_INT * btid, const char *btname, PAGE_PTR page_ptr,
 		 VPID * pg_vpid, int n, int level)
 {
@@ -4732,17 +4731,17 @@ btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
   leaf_page = (BTREE_GET_NODE_TYPE (header_ptr) == LEAF_NODE) ? true : false;
   BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
-  btree_print_space (n);
-  fprintf (stdout,
+  btree_print_space (fp, n);
+  fprintf (fp,
 	   "\n<<<<<<<<<<<<<<<<  N O D E   P A G E  >>>>>>>>>>>>>>>>> \n\n");
-  btree_print_space (n);
+  btree_print_space (fp, n);
 
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
 
-      fprintf (stdout, "INDEX %s ON CLASS %s (CLASS_OID:%2d|%4d|%2d) \n\n",
+      fprintf (fp, "INDEX %s ON CLASS %s (CLASS_OID:%2d|%4d|%2d) \n\n",
 	       (btname) ? btname : "*UNKNOWN-INDEX*",
 	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
 	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid);
@@ -4753,17 +4752,17 @@ btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
     }
 
   /* output header information */
-  fprintf (stdout,
+  fprintf (fp,
 	   "--- Page_Id: {%d , %d} Node_Type: %s Key_Cnt: %d Next_Page_Id: {%d , %d} Max_Key_Len %d ---\n\n",
 	   pg_vpid->volid, pg_vpid->pageid,
 	   leaf_page ? "LEAF " : "NON_LEAF ", key_cnt,
 	   next_vpid.volid, next_vpid.pageid,
 	   BTREE_GET_NODE_MAX_KEY_LEN (header_ptr));
-  fflush (stdout);
+  fflush (fp);
 
   if (key_cnt < 0)
     {
-      fprintf (stdout,
+      fprintf (fp,
 	       "btree_dump_page: node key count underflow: %d\n", key_cnt);
       return;
     }
@@ -4776,21 +4775,21 @@ btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	  (void) spage_get_record (page_ptr, i, &Rec, PEEK);
 	  if (leaf_page)
 	    {
-	      btree_dump_leaf_record (thread_p, btid, &Rec, n);
+	      btree_dump_leaf_record (thread_p, fp, btid, &Rec, n);
 	    }
 	  else
 	    {
-	      btree_dump_non_leaf_record (thread_p, btid, &Rec, n, 1);
+	      btree_dump_non_leaf_record (thread_p, fp, btid, &Rec, n, 1);
 	    }
-	  fprintf (stdout, "\n\n");
+	  fprintf (fp, "\n\n");
 	}
 
       if (!leaf_page)
 	{
 	  /* print the last record of a non leaf page, it has no key */
 	  (void) spage_get_record (page_ptr, key_cnt + 1, &Rec, PEEK);
-	  btree_dump_non_leaf_record (thread_p, btid, &Rec, n, 0);
-	  fprintf (stdout, "Last Rec, Key ignored.\n\n");
+	  btree_dump_non_leaf_record (thread_p, fp, btid, &Rec, n, 0);
+	  fprintf (fp, "Last Rec, Key ignored.\n\n");
 	}
     }
 
@@ -4808,9 +4807,9 @@ btree_dump_page (THREAD_ENTRY * thread_p, const OID * class_oid_p,
  * Note: Dumps the content of the given page together with its subtrees
  */
 static void
-btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			      PAGE_PTR pg_ptr, VPID * pg_vpid, int n,
-			      int level)
+btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, FILE * fp,
+			      BTID_INT * btid, PAGE_PTR pg_ptr,
+			      VPID * pg_vpid, int n, int level)
 {
   char *header_ptr;
   int key_cnt, right;
@@ -4820,7 +4819,7 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, BTID_INT * btid,
   PAGE_PTR page = NULL;
   RECDES Rec;
 
-  btree_dump_page (thread_p, NULL, btid, NULL, pg_ptr, pg_vpid, n, level);	/* dump current page */
+  btree_dump_page (thread_p, fp, NULL, btid, NULL, pg_ptr, pg_vpid, n, level);	/* dump current page */
 
   /* get the header record */
   btree_get_header_ptr (pg_ptr, &header_ptr);
@@ -4831,7 +4830,7 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, BTID_INT * btid,
 #if defined(BTREE_DEBUG)
       if (key_cnt < 0)
 	{
-	  fprintf (stdout,
+	  fprintf (fp,
 		   "btree_dump_page_with_subtree: node key count underflow: %d.\n",
 		   key_cnt);
 	  return;
@@ -4849,7 +4848,7 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  page_vpid = NLeaf_Ptr.pnt;
 	  page = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			    PGBUF_UNCONDITIONAL_LATCH);
-	  btree_dump_page_with_subtree (thread_p, btid, page, &page_vpid,
+	  btree_dump_page_with_subtree (thread_p, fp, btid, page, &page_vpid,
 					n + 2, level);
 	  pgbuf_unfix (thread_p, page);
 	  page = NULL;
@@ -4882,7 +4881,7 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, BTID_INT * btid,
  * is also stored in the root header.
  */
 void
-btree_dump (THREAD_ENTRY * thread_p, BTID * btid, int level)
+btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
 {
   VPID p_vpid;
   PAGE_PTR Root = NULL;
@@ -4905,13 +4904,13 @@ btree_dump (THREAD_ENTRY * thread_p, BTID * btid, int level)
       return;			/* do nothing */
     }
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "\n------------ The B+Tree Index Content: ---------------------\n\n");
-  btree_dump_root_header (Rec);	/* output root header information */
+  btree_dump_root_header (fp, Rec);	/* output root header information */
 
   if (level != 0)
     {
-      btree_dump_page_with_subtree (thread_p, &btid_int, Root, &p_vpid, 2,
+      btree_dump_page_with_subtree (thread_p, fp, &btid_int, Root, &p_vpid, 2,
 				    level);
     }
 
@@ -10299,7 +10298,11 @@ key_insertion:
    */
   add_key = 0;
 
-  if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
+  if (LOG_CHECK_LOG_APPLIER (thread_p))
+    {
+      do_unique_check = false;
+    }
+  else if (logtb_is_current_active (thread_p) && BTREE_IS_UNIQUE (&btid_int))
     {
       if (op_type == SINGLE_ROW_INSERT || op_type == MULTI_ROW_INSERT
 	  || op_type == SINGLE_ROW_UPDATE)
@@ -14820,10 +14823,10 @@ btree_rv_save_root_head (int max_key_len, int null_delta,
  * Note: This is a UTILITY routine, but not an actual recovery routine
  */
 void
-btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			    RECDES * Rec)
+btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp,
+			    BTID_INT * btid, RECDES * Rec)
 {
-  btree_dump_leaf_record (thread_p, btid, Rec, 2);
+  btree_dump_leaf_record (thread_p, fp, btid, Rec, 2);
 }
 
 /*
@@ -14837,10 +14840,10 @@ btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, BTID_INT * btid,
  * Note: This is a UTILITY routine, but not an actual recovery routine
  */
 void
-btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			     RECDES * Rec)
+btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp,
+			     BTID_INT * btid, RECDES * Rec)
 {
-  btree_dump_non_leaf_record (thread_p, btid, Rec, 2, 1);
+  btree_dump_non_leaf_record (thread_p, fp, btid, Rec, 2, 1);
 }
 
 /*
@@ -14899,7 +14902,7 @@ error:
  * Note: Dump the root header statistics recovery information.
  */
 void
-btree_rv_roothdr_dump (int length, void *data)
+btree_rv_roothdr_dump (FILE * fp, int length, void *data)
 {
   char *datap;
   int max_key_len, null_delta, oid_delta, key_delta;
@@ -14915,7 +14918,7 @@ btree_rv_roothdr_dump (int length, void *data)
   key_delta = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "\nMAX_KEY_LEN: %d NUM NULLS DELTA: %d NUM OIDS DELTA: %4d NUM KEYS DELTA: %d\n\n",
 	   max_key_len, null_delta, oid_delta, key_delta);
 }
@@ -14961,13 +14964,13 @@ error:
  * Note: Dump the overflow VFID for the root header.
  */
 void
-btree_rv_ovfid_dump (int length, void *data)
+btree_rv_ovfid_dump (FILE * fp, int length, void *data)
 {
   VFID ovfid;
 
   ovfid = *((VFID *) data);	/* structure copy */
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "\nOverflow key file VFID: %d|%d\n\n", ovfid.fileid, ovfid.volid);
 }
 
@@ -15060,7 +15063,7 @@ btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Dump node header recovery information
  */
 void
-btree_rv_nodehdr_dump (int length, void *data)
+btree_rv_nodehdr_dump (FILE * fp, int length, void *data)
 {
   char *header_ptr;
   VPID next_vpid;
@@ -15068,7 +15071,7 @@ btree_rv_nodehdr_dump (int length, void *data)
   header_ptr = (char *) data;
   BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "\nNODE_TYPE: %s KEY_CNT: %4d MAX_KEY_LEN: %4d "
 	   "NEXT_PAGEID: {%4d , %4d} \n\n",
 	   (BTREE_GET_NODE_TYPE (header_ptr) ==
@@ -15179,7 +15182,7 @@ btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Dump node record recovery information
  */
 void
-btree_rv_noderec_dump (int length, void *data)
+btree_rv_noderec_dump (FILE * fp, int length, void *data)
 {
 #if 0
   /* This needs to be fixed.  The easiest way is for the btid to be packed and
@@ -15198,11 +15201,11 @@ btree_rv_noderec_dump (int length, void *data)
 
   if (Node_Type == 0)
     {
-      btree_rv_util_dump_leafrec (btid, &Rec);
+      btree_rv_util_dump_leafrec (fp, btid, &Rec);
     }
   else
     {
-      btree_rv_util_dump_nleafrec (btid, &Rec);
+      btree_rv_util_dump_nleafrec (fp, btid, &Rec);
     }
 
   free_and_init (Rec.data);
@@ -15220,11 +15223,9 @@ btree_rv_noderec_dump (int length, void *data)
  */
 
 void
-btree_rv_noderec_dump_slot_id (int length, void *data)
+btree_rv_noderec_dump_slot_id (FILE * fp, int length, void *data)
 {
-
-  fprintf (stdout, " Slot_id: %d \n", *(INT16 *) data);
-
+  fprintf (fp, " Slot_id: %d \n", *(INT16 *) data);
 }
 
 /*
@@ -15421,11 +15422,11 @@ btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Dump undo information of new page creation
  */
 void
-btree_rv_newpage_dump_undo_alloc (int length, void *data)
+btree_rv_newpage_dump_undo_alloc (FILE * fp, int length, void *data)
 {
   PAGEID_STRUCT *pageid_struct = (PAGEID_STRUCT *) data;
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "Deallocating page from Volid = %d, Fileid = %d\n",
 	   pageid_struct->vfid.volid, pageid_struct->vfid.fileid);
 }
@@ -15606,7 +15607,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Dump undo information <key-value> insertion
  */
 void
-btree_rv_keyval_dump (int length, void *data)
+btree_rv_keyval_dump (FILE * fp, int length, void *data)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -15621,27 +15622,26 @@ btree_rv_keyval_dump (int length, void *data)
   btree_rv_read_keyval_info_nocopy (NULL, (char *) data, length, &btid,
 				    &cls_oid, &oid, &key);
 
-  fprintf (stdout, " BTID = { { %d , %d }, %d, %s } \n ",
+  fprintf (fp, " BTID = { { %d , %d }, %d, %s } \n ",
 	   btid.sys_btid->vfid.volid, btid.sys_btid->vfid.fileid,
 	   btid.sys_btid->root_pageid,
 	   pr_type_name (btid.key_type->type->id));
 
-  fprintf (stdout, " KEY = ");
-  btree_dump_key (&key);
-  fprintf (stdout, "\n");
+  fprintf (fp, " KEY = ");
+  btree_dump_key (fp, &key);
+  fprintf (fp, "\n");
 
   if (BTREE_IS_UNIQUE (&btid))
     {				/* unique index */
-      fprintf (stdout, " Class OID = { %d, %d, %d }, ",
+      fprintf (fp, " Class OID = { %d, %d, %d }, ",
 	       cls_oid.volid, cls_oid.pageid, cls_oid.slotid);
     }
   else
     {				/* non-unique index */
-      fprintf (stdout, " Class OID = None, ");
+      fprintf (fp, " Class OID = None, ");
     }
 
-  fprintf (stdout, " OID = { %d, %d, %d } \n", oid.volid,
-	   oid.pageid, oid.slotid);
+  fprintf (fp, " OID = { %d, %d, %d } \n", oid.volid, oid.pageid, oid.slotid);
 }
 
 /*
@@ -15978,21 +15978,21 @@ error:
  * Note: Dump recovery data of leaf record oid insertion
  */
 void
-btree_rv_leafrec_dump_insert_oid (int length, void *data)
+btree_rv_leafrec_dump_insert_oid (FILE * fp, int length, void *data)
 {
   RECINS_STRUCT *recins = (RECINS_STRUCT *) data;
 
-  fprintf (stdout, "LEAF RECORD OID INSERTION STRUCTURE: \n");
-  fprintf (stdout, "Class OID: { %d, %d, %d }\n",
+  fprintf (fp, "LEAF RECORD OID INSERTION STRUCTURE: \n");
+  fprintf (fp, "Class OID: { %d, %d, %d }\n",
 	   recins->class_oid.volid,
 	   recins->class_oid.pageid, recins->class_oid.slotid);
-  fprintf (stdout, "OID: { %d, %d, %d } \n",
+  fprintf (fp, "OID: { %d, %d, %d } \n",
 	   recins->oid.volid, recins->oid.pageid, recins->oid.slotid);
-  fprintf (stdout, "RECORD TYPE: %s \n",
+  fprintf (fp, "RECORD TYPE: %s \n",
 	   (recins->rec_type == REGULAR) ? "REGULAR" : "OVERFLOW");
-  fprintf (stdout, "Overflow Page Id: {%d , %d}\n",
+  fprintf (fp, "Overflow Page Id: {%d , %d}\n",
 	   recins->ovfl_vpid.volid, recins->ovfl_vpid.pageid);
-  fprintf (stdout,
+  fprintf (fp,
 	   "Oid_Inserted: %d \n Ovfl_Changed: %d \n"
 	   "New_Ovfl Page: %d \n", recins->oid_inserted,
 	   recins->ovfl_changed, recins->new_ovflpg);

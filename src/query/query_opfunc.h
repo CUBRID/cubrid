@@ -45,6 +45,7 @@ typedef enum
   QUERY_END = 1,		/* Normal end of query */
   METHOD_CALL,			/* Invoke methods */
   ASYNC_OBTAIN_USER_INPUT,	/* server needs info from operator */
+  GET_NEXT_LOG_PAGES,		/* log writer uses this type of request */
   END_CALLBACK			/* normal end of non-query callback */
 } QUERY_SERVER_REQUEST;
 

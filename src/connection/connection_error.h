@@ -95,22 +95,6 @@
     } \
   while (0)
 
-#if defined(CSS_DEBUG)
-#define CSS_ASSERT(expr) \
-  do \
-    { \
-      if (!(expr)) \
-	{ \
-	  fprintf (stderr, "TID(%2d):%10s(%4d): assertion failed `%s'\n", \
-		   THREAD_ID (), __FILE__, __LINE__, #expr); \
-	  THREAD_EXIT(-1); \
-	} \
-    } \
-  while (0)
-#else /* CSS_DEBUG */
-#define CSS_ASSERT(expr)
-#endif /* CSS_DEBUG */
-
 #if defined(TRACE_LIST)
 #define PRINT_INIT_LIST(p) \
 	fprintf (stderr, "TID(%2d):%10s(%4d): Initialize LIST  (%p)\n", \

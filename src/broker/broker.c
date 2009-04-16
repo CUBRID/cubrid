@@ -65,10 +65,8 @@
 #include "broker_filename.h"
 #include "broker_er_html.h"
 
-#ifdef CAS_BROKER
 #include "cas_intf.h"
 #include "broker_send_fd.h"
-#endif
 
 #ifdef WIN32
 #include "broker_wsa_init.h"
@@ -76,7 +74,7 @@
 
 
 #ifdef WIN_FW
-#if !defined(CAS_BROKER) || !defined(WIN32)
+#if !defined(WIN32)
 #error DEFINE ERROR
 #endif
 #endif
@@ -234,20 +232,8 @@ static THREAD_FUNC dispatch_thr_f (void *arg);
 
 static THREAD_FUNC psize_check_thr_f (void *arg);
 
-#ifdef CAS_BROKER
 static THREAD_FUNC cas_monitor_thr_f (void *arg);
 static int read_nbytes_from_client (int sock_fd, char *buf, int size);
-#else
-static THREAD_FUNC service_thr_f (void *arg);
-static int read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info);
-static int process_request (int clt_sock_fd, T_CLIENT_INFO * clt_info);
-static void ip2str (unsigned char *ip, char *ip_str);
-static int str2ip (char *ip_str, unsigned char *ip);
-static void ht_error_message (int clt_sock_fd, int cur_error_code,
-			      int cur_os_errno);
-static void set_close_job_info (T_CLIENT_INFO * info);
-static void set_close_job (T_MAX_HEAP_NODE * job);
-#endif
 
 #if defined(WIN_FW)
 static THREAD_FUNC service_thr_f (void *arg);
@@ -289,7 +275,7 @@ static T_SHM_APPL_SERVER *shm_appl;
 
 static int br_index = -1;
 
-#if !defined(CAS_BROKER) || defined(WIN_FW)
+#if defined(WIN_FW)
 static int num_thr;
 #endif
 
@@ -307,10 +293,6 @@ static pthread_mutex_t suspend_mutex;
 static pthread_mutex_t run_appl_mutex;
 static pthread_mutex_t con_status_mutex;
 static pthread_mutex_t service_flag_mutex;
-#ifndef CAS_BROKER
-static pthread_mutex_t num_busy_uts_mutex;
-static pthread_mutex_t session_mutex;
-#endif
 #endif
 
 
@@ -320,7 +302,7 @@ static int process_flag = 1;
 
 static int num_busy_uts = 0;
 
-#if !defined(CAS_BROKER) || defined(WIN_FW)
+#if defined(WIN_FW)
 static int last_job_fetch_time;
 static time_t last_session_id = 0;
 static T_MAX_HEAP_NODE *session_request_q;
@@ -376,15 +358,13 @@ main (int argc, char *argv[])
   T_THREAD receiver_thread;
   T_THREAD dispatch_thread;
   T_THREAD psize_check_thread;
-#if !defined(CAS_BROKER) || defined(WIN_FW)
+#if defined(WIN_FW)
   T_THREAD service_thread;
   int *thr_index;
 #endif
   int wait_job_cnt;
   int cur_appl_server_num;
-#ifdef CAS_BROKER
   T_THREAD cas_monitor_thread;
-#endif
 
   signal (SIGTERM, cleanup);
   signal (SIGINT, cleanup);
@@ -398,11 +378,6 @@ main (int argc, char *argv[])
   MUTEX_INIT (run_appl_mutex);
   MUTEX_INIT (con_status_mutex);
   MUTEX_INIT (service_flag_mutex);
-#ifndef CAS_BROKER
-  MUTEX_INIT (num_busy_uts_mutex);
-  MUTEX_INIT (session_mutex);
-#endif
-
 
   p = getenv (MASTER_SHM_KEY_ENV_STR);
   if (p == NULL)
@@ -471,7 +446,7 @@ main (int argc, char *argv[])
       goto error1;
     }
 
-#if !defined(CAS_BROKER) || defined(WIN_FW)
+#if defined(WIN_FW)
   num_thr = shm_br->br_info[br_index].appl_server_max_num;
 
   thr_index = (int *) malloc (sizeof (int) * num_thr);
@@ -493,7 +468,7 @@ main (int argc, char *argv[])
     {
       session_request_q[i].clt_sock_fd = -1;
     }
-#endif /* ifndef CAS_BROKER */
+#endif
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
 
@@ -501,11 +476,9 @@ main (int argc, char *argv[])
   THREAD_BEGIN (dispatch_thread, dispatch_thr_f, NULL);
   THREAD_BEGIN (psize_check_thread, psize_check_thr_f, NULL);
 
-#ifdef CAS_BROKER
   THREAD_BEGIN (cas_monitor_thread, cas_monitor_thr_f, NULL);
-#endif
 
-#if !defined(CAS_BROKER) || defined(WIN_FW)
+#if defined(WIN_FW)
   for (i = 0; i < num_thr; i++)
     {
       thr_index[i] = i;
@@ -701,17 +674,9 @@ receiver_thr_f (void *arg)
   int job_count;
   int read_len;
   int one = 1;
-#ifdef CAS_BROKER
   char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
   T_BROKER_VERSION clt_ver;
   char cas_client_type;
-#else
-  char magic[sizeof (UW_SOCKET_MAGIC)];
-  char priority;
-  char pre_send_data[PRE_SEND_DATA_SIZE];
-  int total_read_size;
-  int session_id;
-#endif
   job_queue_size = shm_appl->job_queue_size;
   job_queue = shm_appl->job_queue;
   job_count = 1;
@@ -740,7 +705,6 @@ receiver_thr_f (void *arg)
       setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		  sizeof (one));
 
-#ifdef CAS_BROKER
       cas_client_type = CAS_CLIENT_NONE;
 
       read_len = read_nbytes_from_client (clt_sock_fd,
@@ -799,171 +763,27 @@ receiver_thr_f (void *arg)
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
-#else
-      read_len = read_from_client (clt_sock_fd, magic,
-				   sizeof (UW_SOCKET_MAGIC));
-      if ((read_len <= 0) || strcmp (magic, UW_SOCKET_MAGIC) != 0)
-	{
-	  CLOSE_SOCKET (clt_sock_fd);
-	  continue;
-	}
-      read_len = read_from_client (clt_sock_fd, &priority, 1);
-      if (read_len <= 0)
-	{
-	  CLOSE_SOCKET (clt_sock_fd);
-	  continue;
-	}
-      if (priority < 0)
-	priority = 0;
-      else if (priority > 2)
-	priority = 2;
-
-      total_read_size = 0;
-      while (total_read_size < PRE_SEND_DATA_SIZE)
-	{
-	  read_len =
-	    read_from_client (clt_sock_fd, pre_send_data + total_read_size,
-			      PRE_SEND_DATA_SIZE - total_read_size);
-	  if (read_len <= 0)
-	    {
-	      total_read_size = -1;
-	      break;
-	    }
-	  total_read_size += read_len;
-	}
-      if (total_read_size < 0)
-	{
-	  CLOSE_SOCKET (clt_sock_fd);
-	  continue;
-	}
-#endif
-
-#ifndef CAS_BROKER
-#ifdef _EDU_
-      if (shm_br->br_info[br_index].appl_server != APPL_SERVER_UTS_W)
-	{
-	  if (strncmp
-	      (pre_send_data + PRE_SEND_KEY_OFFSET, EDU_KEY,
-	       sizeof (EDU_KEY)) != 0)
-	    {
-	      ht_error_message (clt_sock_fd, UW_ER_INVALID_CLIENT, 0);
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
-	}
-#endif
-#endif
 
       if (v3_acl != NULL)
 	{
 	  unsigned char ip_addr[4];
 
-#ifdef CAS_BROKER
 	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
-#else
-	  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_W)
-	    str2ip (pre_send_data + PRE_SEND_SCRIPT_SIZE, ip_addr);
-	  else
-	    memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
-#endif
 
 	  if (uw_acl_check (ip_addr) < 0)
 	    {
-#ifdef CAS_BROKER
 	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT);
-#else
-	      ht_error_message (clt_sock_fd, UW_ER_INVALID_CLIENT, 0);
-#endif
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }
 	}
-
-#ifndef CAS_BROKER
-      session_id =
-	atoi (pre_send_data + PRE_SEND_SCRIPT_SIZE + PRE_SEND_PRG_NAME_SIZE);
-
-      if (session_id > 0)
-	{			/* session request */
-	  int session_index, i;
-
-	  MUTEX_LOCK (session_mutex);
-	  for (session_index = -1, i = 0; i < shm_appl->num_appl_server; i++)
-	    {
-	      if ((shm_appl->as_info[i].session_keep == TRUE)
-		  && (shm_appl->as_info[i].session_id == session_id))
-		{
-		  session_index = i;
-		}
-	    }
-
-	  if (session_index == -1)
-	    {
-	      SLEEP_MILISEC (0, 100);
-	      ht_error_message (clt_sock_fd, UW_ER_SESSION_NOT_FOUND, 0);
-	      CLOSE_SOCKET (clt_sock_fd);
-#ifdef SESSION_LOG
-	      SESSION_LOG_WRITE ((unsigned char
-				  *) (&(clt_sock_addr.sin_addr)), session_id,
-				 "SESSION NOT FOUND", -1);
-#endif
-	    }
-	  else
-	    {
-	      if (session_request_q[session_index].clt_sock_fd > 0)
-		{
-		  CLOSE_SOCKET (clt_sock_fd);
-		}
-	      else
-		{
-		  job_count =
-		    (job_count >= JOB_COUNT_MAX) ? 1 : job_count + 1;
-		  session_request_q[session_index].id = job_count;
-		  session_request_q[session_index].priority = 0;
-		  session_request_q[session_index].clt_sock_fd = clt_sock_fd;
-		  session_request_q[session_index].recv_time = time (NULL);
-		  if (shm_br->br_info[br_index].appl_server ==
-		      APPL_SERVER_UTS_W)
-		    {
-		      str2ip (pre_send_data + PRE_SEND_SCRIPT_SIZE,
-			      session_request_q[session_index].ip_addr);
-		    }
-		  else
-		    {
-		      memcpy (session_request_q[session_index].ip_addr,
-			      &(clt_sock_addr.sin_addr), 4);
-		    }
-		  strcpy (session_request_q[session_index].script,
-			  pre_send_data);
-		  if (shm_br->br_info[br_index].appl_server ==
-		      APPL_SERVER_UTS_W)
-		    {
-		      strcpy (session_request_q[session_index].prg_name, "");
-		    }
-		  else
-		    {
-		      strcpy (session_request_q[session_index].prg_name,
-			      pre_send_data + PRE_SEND_SCRIPT_SIZE);
-		    }
-		}
-	    }
-
-	  MUTEX_UNLOCK (session_mutex);
-	  continue;
-	}
-#endif /* ifndef CAS_BROKER */
-
 
       if (job_queue[0].id == job_queue_size)
 	{
 	  SLEEP_SEC (1);
 	  if (job_queue[0].id == job_queue_size)
 	    {
-#ifdef CAS_BROKER
 	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
-#else
-	      ht_error_message (clt_sock_fd, UW_ER_NO_FREE_UTS, 0);
-#endif
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }
@@ -973,7 +793,6 @@ receiver_thr_f (void *arg)
       new_job.id = job_count;
       new_job.clt_sock_fd = clt_sock_fd;
       new_job.recv_time = time (NULL);
-#ifdef CAS_BROKER
       new_job.priority = 0;
       new_job.script[0] = '\0';
       new_job.clt_major_version = cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER];
@@ -982,20 +801,6 @@ receiver_thr_f (void *arg)
       new_job.cas_client_type = cas_client_type;
       memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
       strcpy (new_job.prg_name, cas_client_type_str[cas_client_type]);
-#else
-      new_job.priority = priority * shm_br->br_info[br_index].priority_gap;
-      strcpy (new_job.script, pre_send_data);
-      if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_W)
-	{
-	  str2ip (pre_send_data + PRE_SEND_SCRIPT_SIZE, new_job.ip_addr);
-	  strcpy (new_job.prg_name, "");
-	}
-      else
-	{
-	  memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
-	  strcpy (new_job.prg_name, pre_send_data + PRE_SEND_SCRIPT_SIZE);
-	}
-#endif
 
       while (1)
 	{
@@ -1027,10 +832,8 @@ dispatch_thr_f (void *arg)
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
   int as_index, i;
-#ifdef CAS_BROKER
 #ifndef WIN32
   int srv_sock_fd;
-#endif
 #endif
 
   job_queue = shm_appl->job_queue;
@@ -1088,7 +891,7 @@ dispatch_thr_f (void *arg)
 
       hold_job = 0;
 
-#if defined(CAS_BROKER) && !defined(WIN_FW)
+#if !defined(WIN_FW)
       shm_appl->as_info[as_index].clt_major_version =
 	cur_job.clt_major_version;
       shm_appl->as_info[as_index].clt_minor_version =
@@ -1157,241 +960,7 @@ dispatch_thr_f (void *arg)
 #endif
 }
 
-#if !defined(CAS_BROKER)
-static THREAD_FUNC
-service_thr_f (void *arg)
-{
-  int self_index = *((int *) arg);
-  int clt_sock_fd;
-  T_CLIENT_INFO clt_info;
-  time_t job_fetch_time;
-  int job_queue_size;
-  T_MAX_HEAP_NODE *job_queue;
-  T_MAX_HEAP_NODE cur_job;
-  int job_wait_count;
-
-  job_queue_size = shm_appl->job_queue_size;
-  job_queue = shm_appl->job_queue;
-
-  clt_info.as_index = self_index;
-  clt_info.env_buf_alloc_size = ENV_BUF_INIT_SIZE;
-  clt_info.env_buf = (char *) malloc (clt_info.env_buf_alloc_size);
-  if (clt_info.env_buf == NULL)
-    {
-      goto finale;
-    }
-
-  job_wait_count = 0;
-
-  while (process_flag)
-    {
-      if (shm_appl->as_info[self_index].session_keep == TRUE)
-	{
-	  MUTEX_LOCK (session_mutex);
-	  if (session_request_q[self_index].clt_sock_fd > 0)
-	    {
-	      cur_job = session_request_q[self_index];
-	      session_request_q[self_index].clt_sock_fd = -1;
-	    }
-	  else
-	    {
-	      job_wait_count++;
-	      if (shm_br->br_info[br_index].session_timeout >= 0
-		  && job_wait_count >=
-		  shm_br->br_info[br_index].session_timeout * 100)
-		{
-		  shm_appl->as_info[self_index].uts_status = UTS_STATUS_BUSY;
-		  shm_appl->as_info[self_index].session_keep = FALSE;
-		  set_close_job (&cur_job);
-		  set_close_job_info (&clt_info);
-		}
-	      else
-		{
-		  MUTEX_UNLOCK (session_mutex);
-		  SLEEP_MILISEC (0, 10);
-		  continue;
-		}
-	    }
-	  clt_sock_fd = cur_job.clt_sock_fd;
-	  job_wait_count = 0;
-	  MUTEX_UNLOCK (session_mutex);
-#ifdef SESSION_LOG
-	  SESSION_LOG_WRITE (cur_job.ip_addr,
-			     shm_appl->as_info[self_index].session_id,
-			     cur_job.script, self_index);
-#endif
-	}
-      else
-	{
-	  if (session_request_q[self_index].clt_sock_fd > 0)
-	    {
-	      cur_job = session_request_q[self_index];
-	      session_request_q[self_index].clt_sock_fd = -1;
-	    }
-	  else
-	    {
-	      SLEEP_MILISEC (0, 10);
-	      continue;
-	    }
-
-	  clt_sock_fd = cur_job.clt_sock_fd;
-	  ip2str (cur_job.ip_addr, clt_info.clt_ip_addr);
-	}			/* end of else. if (session_keep == FALSE) */
-
-      if (clt_sock_fd > 0)
-	{
-	  if (read_client_data (clt_sock_fd, &clt_info) < 0)
-	    {
-	      CLOSE_SOCKET (clt_sock_fd);
-	      shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
-	      continue;
-	    }
-	}
-
-      if ((strcmp (cur_job.script, "OPEN_SESSION") == 0)
-	  && (strcmp (cur_job.prg_name, "OPEN_SESSION") == 0))
-	{
-	  time_t session_id;
-	  char buf[32];
-	  if (shm_br->br_info[br_index].session_flag == ON)
-	    {
-	      MUTEX_LOCK (num_busy_uts_mutex);
-	      num_busy_uts++;
-	      MUTEX_UNLOCK (num_busy_uts_mutex);
-
-	      session_request_q[self_index].clt_sock_fd = -1;
-	      shm_appl->as_info[self_index].session_keep = TRUE;
-	      MUTEX_LOCK (session_mutex);
-	      session_id = time (NULL);
-	      if (session_id <= last_session_id)
-		session_id = last_session_id + 1;
-	      last_session_id = session_id;
-	      shm_appl->as_info[self_index].session_id = session_id;
-	      MUTEX_UNLOCK (session_mutex);
-	      V3_WRITE_HEADER_OK_FILE_SOCK (clt_sock_fd);
-	      sprintf (buf, "%ld", session_id);
-	      write_to_client (clt_sock_fd, buf, strlen (buf));
-#ifdef SESSION_LOG
-	      SESSION_LOG_WRITE (cur_job.ip_addr, session_id, "OPEN_SESSION",
-				 self_index);
-#endif
-	    }
-	  else
-	    {
-	      char *p;
-	      V3_WRITE_HEADER_ERR_SOCK (clt_sock_fd);
-	      p = "cannot open session";
-	      write_to_client (clt_sock_fd, p, strlen (p));
-	    }
-
-	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
-	  CLOSE_SOCKET (clt_sock_fd);
-	  continue;
-	}
-      else if ((strcmp (cur_job.script, "CLOSE_SESSION") == 0)
-	       && (strcmp (cur_job.prg_name, "CLOSE_SESSION") == 0))
-	{
-	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_BUSY;
-	  shm_appl->as_info[self_index].session_keep = FALSE;
-	  MUTEX_LOCK (num_busy_uts_mutex);
-	  num_busy_uts--;
-	  MUTEX_UNLOCK (num_busy_uts_mutex);
-	}
-
-      job_fetch_time = time (NULL);
-      (shm_appl->as_info[self_index].num_request)++;
-      shm_appl->as_info[self_index].uts_status = UTS_STATUS_BUSY;
-      shm_appl->as_info[self_index].last_access_time = job_fetch_time;
-      strcpy (shm_appl->as_info[self_index].clt_appl_name,
-	      clt_info.clt_appl_name);
-      strcpy (shm_appl->as_info[self_index].clt_req_path_info,
-	      clt_info.path_info);
-      strcpy (shm_appl->as_info[self_index].clt_ip_addr,
-	      clt_info.clt_ip_addr);
-
-      last_job_fetch_time = job_fetch_time;
-
-      if (shm_appl->as_info[self_index].session_keep == FALSE)
-	{
-	  MUTEX_LOCK (num_busy_uts_mutex);
-	  num_busy_uts++;
-	  MUTEX_UNLOCK (num_busy_uts_mutex);
-	}
-
-      process_request (clt_sock_fd, &clt_info);
-      CLOSE_SOCKET (clt_sock_fd);
-
-      shm_appl->as_info[self_index].clt_appl_name[0] = '\0';
-      shm_appl->as_info[self_index].clt_req_path_info[0] = '\0';
-      shm_appl->as_info[self_index].clt_ip_addr[0] = '\0';
-
-      if (shm_appl->as_info[self_index].session_keep == FALSE)
-	{
-	  MUTEX_LOCK (num_busy_uts_mutex);
-	  num_busy_uts--;
-	  MUTEX_UNLOCK (num_busy_uts_mutex);
-
-	  /* restart appl_server */
-	  /*mutex entry section */
-	  shm_appl->as_info[self_index].mutex_flag[SHM_MUTEX_BROKER] = TRUE;
-	  shm_appl->as_info[self_index].mutex_turn = SHM_MUTEX_ADMIN;
-	  while ((shm_appl->as_info[self_index].mutex_flag[SHM_MUTEX_ADMIN] ==
-		  TRUE)
-		 && (shm_appl->as_info[self_index].mutex_turn ==
-		     SHM_MUTEX_ADMIN))
-	    {			/* no-op */
-	    }
-
-#if defined(WIN32)
-	  if (shm_appl->use_pdh_flag == TRUE)
-	    {
-	      if (shm_appl->as_info[self_index].pid ==
-		  shm_appl->as_info[self_index].pdh_pid
-		  && shm_appl->as_info[self_index].pdh_workset >
-		  shm_br->br_info[br_index].appl_server_max_size)
-		{
-		  shm_appl->as_info[self_index].uts_status =
-		    UTS_STATUS_RESTART;
-		  restart_appl_server (self_index);
-		}
-	    }
-	  else
-	    {
-	      if (((shm_br->br_info[br_index].appl_server ==
-		    APPL_SERVER_UTS_C)
-		   || (shm_br->br_info[br_index].appl_server ==
-		       APPL_SERVER_UTS_W))
-		  && (shm_appl->as_info[self_index].num_request % 1000 == 0))
-		{
-		  shm_appl->as_info[self_index].uts_status =
-		    UTS_STATUS_RESTART;
-		  restart_appl_server (self_index);
-		}
-	    }
-#else
-	  if (time (NULL) - shm_appl->as_info[self_index].psize_time >
-	      PS_CHK_PERIOD)
-	    {
-	      shm_appl->as_info[self_index].uts_status = UTS_STATUS_RESTART;
-	      restart_appl_server (self_index);
-	    }
-#endif
-
-	  /* mutex exit section */
-	  shm_appl->as_info[self_index].mutex_flag[SHM_MUTEX_BROKER] = FALSE;
-	}
-
-      shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
-    }
-
-finale:
-#ifdef WIN32
-  return;
-#else
-  return NULL;
-#endif
-}
-#elif defined(WIN_FW)
+#if defined(WIN_FW)
 static THREAD_FUNC
 service_thr_f (void *arg)
 {
@@ -1583,274 +1152,6 @@ write_to_client (int sock_fd, char *buf, int size)
   return write_len;
 }
 
-#ifndef CAS_BROKER
-static int
-read_client_data (int clt_sock_fd, T_CLIENT_INFO * clt_info)
-{
-  int tmp;
-  int read_len;
-  int env_buf_size;
-  int tot_read_size, read_size;
-  int length;
-  char clt_addr_str[32];
-  char int_str[INT_STR_LEN];
-  char *env_buf;
-  char *p;
-
-  /* read environment values */
-  read_len = read_from_client (clt_sock_fd, int_str, sizeof (int_str));
-  if (read_len <= 0)
-    {
-      return -1;
-    }
-  env_buf_size = atoi (int_str);
-  tmp = env_buf_size;
-
-  sprintf (clt_addr_str, "%s=%s", REMOTE_ADDR_ENV_STR, clt_info->clt_ip_addr);
-  env_buf_size += (strlen (clt_addr_str) + 1);
-
-  clt_info->env_buf_size = env_buf_size;
-  if (env_buf_size > clt_info->env_buf_alloc_size)
-    {
-      clt_info->env_buf_alloc_size = ALIGN_ENV_BUF_SIZE (env_buf_size);
-      env_buf =
-	(char *) realloc (clt_info->env_buf, clt_info->env_buf_alloc_size);
-      if (env_buf == NULL)
-	{
-	  UW_SET_ERROR_CODE (UW_ER_NO_MORE_MEMORY, 0);
-	  return -1;
-	}
-      clt_info->env_buf = env_buf;
-    }
-  else
-    env_buf = clt_info->env_buf;
-
-  tot_read_size = 0;
-  while (tot_read_size < tmp)
-    {
-      read_size =
-	read_from_client (clt_sock_fd, env_buf + tot_read_size,
-			  tmp - tot_read_size);
-      if (read_size <= 0)
-	{
-	  return -1;
-	}
-      tot_read_size += read_size;
-    }
-  memccpy (env_buf + tmp, clt_addr_str, '\0', 10000);
-
-  length = strlen (CONTENT_LENGTH_ENV_STR) + 1;
-  clt_info->content_length = 0;
-  for (p = env_buf; p - env_buf < env_buf_size;)
-    {
-      if ((strncmp (p, CONTENT_LENGTH_ENV_STR, length - 1) == 0)
-	  && (p[length - 1] == '='))
-	{
-	  clt_info->content_length = atoi (p + length);
-	  if (clt_info->content_length < 0)
-	    clt_info->content_length = 0;
-	  break;
-	}
-      p = p + strlen (p) + 1;
-    }
-
-  length = strlen (PATH_INFO_ENV_STR) + 1;
-  clt_info->path_info = "";
-  for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
-    {
-      if ((strncmp (p, PATH_INFO_ENV_STR, length - 1) == 0)
-	  && (p[length - 1] == '='))
-	{
-	  clt_info->path_info = p + length;
-	  break;
-	}
-    }
-
-  length = strlen (CLT_APPL_NAME_ENV_STR) + 1;	/* 1 is '=' */
-  clt_info->clt_appl_name = "";
-  for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
-    {
-      if ((strncmp (p, CLT_APPL_NAME_ENV_STR, length - 1) == 0)
-	  && (p[length - 1] == '='))
-	{
-	  clt_info->clt_appl_name = p + length;
-	  break;
-	}
-    }
-
-  length = strlen (SID_ENV_STR);
-  clt_info->session_id = 0;
-  for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
-    {
-      if (strncmp (p, SID_ENV_STR, length) == 0)
-	{
-	  clt_info->session_id = atoi (p + length + 1);
-	  break;
-	}
-    }
-
-  length = strlen (DELIMITER_ENV_STR) + 1;
-  clt_info->delimiter_str = NULL;
-  for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
-    {
-      if ((strncmp (p, DELIMITER_ENV_STR, length - 1) == 0)
-	  && (p[length - 1] == '='))
-	{
-	  clt_info->delimiter_str = p + length;
-	  break;
-	}
-    }
-
-  length = strlen (OUT_FILE_NAME_ENV_STR) + 1;
-  clt_info->out_file_name = NULL;
-  for (p = env_buf; p - env_buf < env_buf_size; p += strlen (p) + 1)
-    {
-      if ((strncmp (p, OUT_FILE_NAME_ENV_STR, length - 1) == 0)
-	  && (p[length - 1] == '='))
-	{
-	  clt_info->out_file_name = p + length;
-	  break;
-	}
-    }
-
-  return 0;
-}
-#endif
-
-#ifndef CAS_BROKER
-static int
-process_request (int clt_sock_fd, T_CLIENT_INFO * clt_info)
-{
-  int srv_sock_fd;
-  char int_str[INT_STR_LEN], read_buf[BUFFER_SIZE];
-  char *p;
-  int read_len, total_read;
-  int write_len, remain_write;
-  int err_code, os_err_code = 0;
-  int as_index = clt_info->as_index;
-  int env_buf_size = clt_info->env_buf_size;
-  char *env_buf = clt_info->env_buf;
-
-  srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, as_index);
-  if (srv_sock_fd < 0)
-    {
-      err_code = errno;
-      os_err_code = errno;
-      goto error;
-    }
-
-  if (WRITE_TO_SOCKET (srv_sock_fd, UW_SOCKET_MAGIC, sizeof (UW_SOCKET_MAGIC))
-      < 0)
-    {
-      err_code = UW_ER_COMMUNICATION;
-      goto error;
-    }
-
-  sprintf (int_str, "%d", env_buf_size);
-  WRITE_TO_SOCKET (srv_sock_fd, int_str, sizeof (int_str));
-  WRITE_TO_SOCKET (srv_sock_fd, env_buf, env_buf_size);
-
-  total_read = 0;
-  while (total_read < clt_info->content_length)
-    {
-      read_len = read_from_client (clt_sock_fd, read_buf, sizeof (read_buf));
-      if (read_len <= 0)
-	{
-	  goto error;
-	}
-      total_read += read_len;
-      WRITE_TO_SOCKET (srv_sock_fd, read_buf, read_len);
-    }
-
-  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_C
-      && clt_info->out_file_name == NULL)
-    {
-      V3_WRITE_HEADER_OK_FILE_SOCK (clt_sock_fd);
-    }
-
-  write_len = 1;
-  while (1)
-    {
-      read_len = READ_FROM_SOCKET (srv_sock_fd, read_buf, sizeof (read_buf));
-      if (read_len <= 0)
-	break;
-      if (write_len > 0)
-	{
-	  p = read_buf;
-	  remain_write = read_len;
-	  while (remain_write > 0)
-	    {
-	      if (clt_sock_fd < 0)
-		break;
-
-	      write_len = write_to_client (clt_sock_fd, p, remain_write);
-	      if (write_len <= 0)
-		break;
-	      p += write_len;
-	      remain_write -= write_len;
-	    }
-	}
-    }
-
-  CLOSE_SOCKET (srv_sock_fd);
-  return 0;
-
-error:
-  ht_error_message (clt_sock_fd, err_code, os_err_code);
-  if (srv_sock_fd > 0)
-    CLOSE_SOCKET (srv_sock_fd);
-
-  return -1;
-}
-#endif
-
-#ifndef CAS_BROKER
-static void
-ht_error_message (int clt_sock_fd, int cur_error_code, int cur_os_errno)
-{
-  char msg_buf[1024];
-  char html_file[FILE_NAME_LEN];
-
-  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_UTS_W)
-    {
-      char *er_msg = NULL;
-
-      sprintf (msg_buf, "Content-type: text/html\n\n");
-      write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-
-      get_cubrid_file (FID_ER_HTML, html_file);
-      if (read_er_html (html_file, cur_error_code, cur_os_errno, &er_msg) >=
-	  0)
-	{
-	  write_to_client (clt_sock_fd, er_msg, strlen (er_msg));
-	  FREE_MEM (er_msg);
-	}
-      else
-	{
-	  sprintf (msg_buf,
-		   "<HTML>\n<HEAD>\n<TITLE> Error message from UniWeb </TITLE>\n</HEAD>\n");
-	  write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-	  sprintf (msg_buf, "<BODY>\n<H2> Error message from UniWeb </H2>\n");
-	  write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-	  sprintf (msg_buf, "<P> The error code is %d.\n", cur_error_code);
-	  write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-	  sprintf (msg_buf, "<P> %s\n",
-		   uw_get_error_message (cur_error_code, cur_os_errno));
-	  write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-	  sprintf (msg_buf, "</BODY>\n</HTML>\n");
-	  write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf));
-	}
-    }
-  else
-    {
-      V3_WRITE_HEADER_ERR_SOCK (clt_sock_fd);
-      sprintf (msg_buf, "%s\n",
-	       uw_get_error_message (cur_error_code, cur_os_errno));
-      write_to_client (clt_sock_fd, msg_buf, strlen (msg_buf) + 1);
-    }
-}
-#endif
-
 static int
 run_appl_server (int as_index)
 {
@@ -2009,85 +1310,6 @@ restart_appl_server (int as_index)
 #endif
 }
 
-#ifndef CAS_BROKER
-static void
-ip2str (unsigned char *ip, char *ip_str)
-{
-  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip[0],
-	   (unsigned char) ip[1],
-	   (unsigned char) ip[2], (unsigned char) ip[3]);
-}
-#endif
-
-#ifndef CAS_BROKER
-static int
-str2ip (char *ip_str, unsigned char *ip)
-{
-  int ip1, ip2, ip3, ip4;
-
-  memset (ip, 0, 4);
-  if (sscanf (ip_str, "%d%*c%d%*c%d%*c%d", &ip1, &ip2, &ip3, &ip4) < 4)
-    return -1;
-  ip[0] = (unsigned char) ip1;
-  ip[1] = (unsigned char) ip2;
-  ip[2] = (unsigned char) ip3;
-  ip[3] = (unsigned char) ip4;
-  return 0;
-}
-#endif
-
-#ifndef CAS_BROKER
-static void
-set_close_job (T_MAX_HEAP_NODE * job)
-{
-  job->id = 0;
-  job->priority = 0;
-  job->clt_sock_fd = -1;
-  job->recv_time = time (NULL);
-  memset (job->ip_addr, 0, 4);
-  strcpy (job->script, "CLOSE_SESSION");
-  strcpy (job->prg_name, "CLOSE_SESSION");
-}
-#endif
-
-#ifndef CAS_BROKER
-static void
-set_close_job_info (T_CLIENT_INFO * info)
-{
-  char buf[128];
-  char *p;
-  int env_buf_size = 0;
-
-  p = info->env_buf;
-
-  info->path_info = p;
-  sprintf (buf, "%s=/CLOSE_SESSION", PATH_INFO_ENV_STR);
-  env_buf_size += strlen (buf) + 1;
-  p = memccpy (p, buf, '\0', 1000000);
-
-  info->clt_appl_name = p;
-  sprintf (buf, "%s=CLOSE_SESSION", CLT_APPL_NAME_ENV_STR);
-  env_buf_size += strlen (buf) + 1;
-  p = memccpy (p, buf, '\0', 1000000);
-
-  info->delimiter_str = p;
-  sprintf (buf, "%s=???", DELIMITER_ENV_STR);
-  env_buf_size += strlen (buf) + 1;
-  p = memccpy (p, buf, '\0', 1000000);
-
-  sprintf (buf, "%s=GET", REQUEST_METHOD_ENV_STR);
-  env_buf_size += strlen (buf) + 1;
-  p = memccpy (p, buf, '\0', 1000000);
-
-  info->content_length = 0;
-  info->session_id = 0;
-  strcpy (info->clt_ip_addr, "broker");
-  info->out_file_name = NULL;
-  info->env_buf_size = env_buf_size;
-}
-#endif
-
-#ifdef CAS_BROKER
 static int
 read_nbytes_from_client (int sock_fd, char *buf, int size)
 {
@@ -2107,7 +1329,6 @@ read_nbytes_from_client (int sock_fd, char *buf, int size)
     }
   return total_read_size;
 }
-#endif
 
 static int
 connect_srv (char *br_name, int as_index)
@@ -2176,7 +1397,6 @@ retry:
   return srv_sock_fd;
 }
 
-#ifdef CAS_BROKER
 static THREAD_FUNC
 cas_monitor_thr_f (void *ar)
 {
@@ -2247,7 +1467,6 @@ cas_monitor_thr_f (void *ar)
   return NULL;
 #endif
 }
-#endif
 
 #ifdef WIN32
 static int
@@ -2612,7 +1831,9 @@ check_cas_log (char *br_name, int as_index)
 {
   char log_filename[512];
 
-  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+  if ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
+      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_MYSQL))
     return;
   if (!(shm_appl->sql_log_mode & SQL_LOG_MODE_ON))
     return;
@@ -2912,7 +2133,7 @@ find_idle_cas (void)
       MUTEX_UNLOCK (con_status_mutex);
     }
 
-#if defined(CAS_BROKER) && defined(WIN32)
+#if defined(WIN32)
   if (idle_cas_id >= 0)
     {
       HANDLE h_proc;
@@ -2945,7 +2166,9 @@ find_drop_as_index (void)
   int i, drop_as_index, exist_idle_cas;
   time_t max_wait_time, wait_time;
 
-  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+  if ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
+      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_MYSQL))
     {
       drop_as_index = shm_br->br_info[br_index].appl_server_num - 1;
       wait_time =

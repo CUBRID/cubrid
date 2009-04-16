@@ -126,12 +126,15 @@ static bool largeobjmgr_initdir_newpage (THREAD_ENTRY * thread_p,
 static PAGE_PTR largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p,
 					   LARGEOBJMGR_DIRSTATE * ds,
 					   VPID * vpid);
-static void largeobjmgr_dirheader_dump (LARGEOBJMGR_DIRHEADER * dir_hdr);
-static void largeobjmgr_direntry_dump (LARGEOBJMGR_DIRENTRY * ent_ptr,
+static void largeobjmgr_dirheader_dump (FILE * fp,
+					LARGEOBJMGR_DIRHEADER * dir_hdr);
+static void largeobjmgr_direntry_dump (FILE * fp,
+				       LARGEOBJMGR_DIRENTRY * ent_ptr,
 				       int idx);
-static void largeobjmgr_dirmap_dump (LARGEOBJMGR_DIRMAP_ENTRY * map_ptr,
+static void largeobjmgr_dirmap_dump (FILE * fp,
+				     LARGEOBJMGR_DIRMAP_ENTRY * map_ptr,
 				     int idx);
-static void largeobjmgr_dir_pgdump (PAGE_PTR curdir_pgptr);
+static void largeobjmgr_dir_pgdump (FILE * fp, PAGE_PTR curdir_pgptr);
 static int largeobjmgr_dir_pgcnt (THREAD_ENTRY * thread_p,
 				  LARGEOBJMGR_DIRSTATE * ds);
 static PAGE_PTR largeobjmgr_dir_get_prvpg (THREAD_ENTRY * thread_p,
@@ -1597,12 +1600,12 @@ exit_on_error:
  *   dir_hdr(in):
  */
 static void
-largeobjmgr_dirheader_dump (LARGEOBJMGR_DIRHEADER * dir_hdr)
+largeobjmgr_dirheader_dump (FILE * fp, LARGEOBJMGR_DIRHEADER * dir_hdr)
 {
-  fprintf (stdout, "Page Total Length: %d\n", dir_hdr->pg_tot_length);
-  fprintf (stdout, "Active Entry Count: %d, Last Active Entry Index; %d\n",
+  fprintf (fp, "Page Total Length: %d\n", dir_hdr->pg_tot_length);
+  fprintf (fp, "Active Entry Count: %d, Last Active Entry Index; %d\n",
 	   dir_hdr->pg_act_idxcnt, dir_hdr->pg_lastact_idx);
-  fprintf (stdout, "Next_VPID = %d|%d\n",
+  fprintf (fp, "Next_VPID = %d|%d\n",
 	   dir_hdr->next_vpid.volid, dir_hdr->next_vpid.pageid);
 }
 
@@ -1613,19 +1616,19 @@ largeobjmgr_dirheader_dump (LARGEOBJMGR_DIRHEADER * dir_hdr)
  *   idx(in):
  */
 static void
-largeobjmgr_direntry_dump (LARGEOBJMGR_DIRENTRY * ent_ptr, int idx)
+largeobjmgr_direntry_dump (FILE * fp, LARGEOBJMGR_DIRENTRY * ent_ptr, int idx)
 {
   if (LARGEOBJMGR_ISEMPTY_DIRENTRY (ent_ptr))
     {
-      fprintf (stdout, "[%3d:  _EMPTY_ENTRY_  ] ", idx);
+      fprintf (fp, "[%3d:  _EMPTY_ENTRY_  ] ", idx);
     }
   else if (LARGEOBJMGR_ISHOLE_DIRENTRY (ent_ptr))
     {
-      fprintf (stdout, "[%3d: _HOLE_ENTRY_ , %d] ", idx, ent_ptr->u.length);
+      fprintf (fp, "[%3d: _HOLE_ENTRY_ , %d] ", idx, ent_ptr->u.length);
     }
   else
     {
-      fprintf (stdout, "[%3d: {%2d|%4d}, %4d, %4d] ",
+      fprintf (fp, "[%3d: {%2d|%4d}, %4d, %4d] ",
 	       idx, ent_ptr->u.vpid.volid,
 	       ent_ptr->u.vpid.pageid, ent_ptr->slotid, ent_ptr->length);
     }
@@ -1638,9 +1641,10 @@ largeobjmgr_direntry_dump (LARGEOBJMGR_DIRENTRY * ent_ptr, int idx)
  *   idx(in):
  */
 static void
-largeobjmgr_dirmap_dump (LARGEOBJMGR_DIRMAP_ENTRY * map_ptr, int idx)
+largeobjmgr_dirmap_dump (FILE * fp, LARGEOBJMGR_DIRMAP_ENTRY * map_ptr,
+			 int idx)
 {
-  fprintf (stdout, "[%3d: {%2d, %4d} , %4d] ",
+  fprintf (fp, "[%3d: {%2d, %4d} , %4d] ",
 	   idx, map_ptr->vpid.volid, map_ptr->vpid.pageid, map_ptr->length);
 }
 
@@ -1652,7 +1656,7 @@ largeobjmgr_dirmap_dump (LARGEOBJMGR_DIRMAP_ENTRY * map_ptr, int idx)
  * Note: This routine is provided only for debugging purposes.
  */
 static void
-largeobjmgr_dir_pgdump (PAGE_PTR curdir_pgptr)
+largeobjmgr_dir_pgdump (FILE * fp, PAGE_PTR curdir_pgptr)
 {
   LARGEOBJMGR_DIRHEADER *dir_hdr;
   VPID *vpid;
@@ -1666,16 +1670,16 @@ largeobjmgr_dir_pgdump (PAGE_PTR curdir_pgptr)
 
   if (dir_hdr->index_level > 0)
     {
-      fprintf (stdout, "DIRECTORY MAP INDEX PAGE:\n");
+      fprintf (fp, "DIRECTORY MAP INDEX PAGE:\n");
     }
   else
     {
-      fprintf (stdout, "DIRECTORY PAGE:\n");
+      fprintf (fp, "DIRECTORY PAGE:\n");
     }
 
-  fprintf (stdout, "VPID = %d|%d\n", vpid->volid, vpid->pageid);
+  fprintf (fp, "VPID = %d|%d\n", vpid->volid, vpid->pageid);
 
-  largeobjmgr_dirheader_dump (dir_hdr);
+  largeobjmgr_dirheader_dump (fp, dir_hdr);
 
   n = 0;
   if (dir_hdr->index_level > 0)
@@ -1687,10 +1691,10 @@ largeobjmgr_dir_pgdump (PAGE_PTR curdir_pgptr)
 	{
 	  if ((n++ % 3) == 0)
 	    {
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 
-	  largeobjmgr_dirmap_dump (firstdir_idxptr, k);
+	  largeobjmgr_dirmap_dump (fp, firstdir_idxptr, k);
 	}
     }
   else
@@ -1701,14 +1705,14 @@ largeobjmgr_dir_pgdump (PAGE_PTR curdir_pgptr)
 	{
 	  if ((n++ % 3) == 0)
 	    {
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 
-	  largeobjmgr_direntry_dump (curdir_idxptr, k);
+	  largeobjmgr_direntry_dump (fp, curdir_idxptr, k);
 	}
     }
 
-  fprintf (stdout, "\n--------------------------------------------\n\n");
+  fprintf (fp, "\n--------------------------------------------\n\n");
 }
 
 /*
@@ -1744,7 +1748,7 @@ largeobjmgr_dir_search (THREAD_ENTRY * thread_p, PAGE_PTR first_dir_pg,
       next_vpid = dir_hdr->next_vpid;
       if (page_ptr != first_dir_pg)
 	{
-	  goto exit_on_error;
+	  pgbuf_unfix (thread_p, page_ptr);
 	}
 
       page_ptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -2655,7 +2659,7 @@ exit_on_error:
  * Note: This routine is provided only for debugging purposes.
  */
 void
-largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid)
+largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid)
 {
   LARGEOBJMGR_DIRHEADER *dir_hdr;
   PAGE_PTR page_ptr = NULL;
@@ -2668,25 +2672,25 @@ largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid)
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      fprintf (stdout, "....Error reading page.. Bye\n");
+      fprintf (fp, "....Error reading page.. Bye\n");
       return;
     }
   dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
 
-  fprintf (stdout, "\n========= LARGE OBJECT DIRECTORY ===========\n\n");
-  fprintf (stdout, "LOID = {{%d, %d} , {%d, %d}}\n",
+  fprintf (fp, "\n========= LARGE OBJECT DIRECTORY ===========\n\n");
+  fprintf (fp, "LOID = {{%d, %d} , {%d, %d}}\n",
 	   dir_hdr->loid.vfid.volid, dir_hdr->loid.vfid.fileid,
 	   dir_hdr->loid.vpid.volid, dir_hdr->loid.vpid.pageid);
-  fprintf (stdout, "Index Level: %d\n", dir_hdr->index_level);
-  fprintf (stdout, "Total Length: %d, Total Slot Count: %d\n",
+  fprintf (fp, "Index Level: %d\n", dir_hdr->index_level);
+  fprintf (fp, "Total Length: %d, Total Slot Count: %d\n",
 	   dir_hdr->tot_length, dir_hdr->tot_slot_cnt);
-  fprintf (stdout, "Good VPID Data (Last Allocated VPID data): {%d, %d}\n\n",
+  fprintf (fp, "Good VPID Data (Last Allocated VPID data): {%d, %d}\n\n",
 	   dir_hdr->goodvpid_fordata.volid, dir_hdr->goodvpid_fordata.pageid);
 
   if (dir_hdr->index_level > 0)
     {
       /* dump index page entry content */
-      largeobjmgr_dir_pgdump (page_ptr);
+      largeobjmgr_dir_pgdump (fp, page_ptr);
 
       /* get first directory page */
       firstdir_idxptr = largeobjmgr_first_dirmap_entry (page_ptr);
@@ -2702,7 +2706,7 @@ largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid)
 				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (curdir_pgptr == NULL)
 	{
-	  fprintf (stdout, "....Error reading page.. Bye\n");
+	  fprintf (fp, "....Error reading page.. Bye\n");
 	  return;
 	}
       pgbuf_unfix (thread_p, page_ptr);
@@ -2717,7 +2721,7 @@ largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid)
   do
     {
       dir_hdr = (LARGEOBJMGR_DIRHEADER *) curdir_pgptr;
-      largeobjmgr_dir_pgdump (curdir_pgptr);
+      largeobjmgr_dir_pgdump (fp, curdir_pgptr);
       next_vpid = dir_hdr->next_vpid;
       pgbuf_unfix (thread_p, curdir_pgptr);
       curdir_pgptr = NULL;
@@ -2729,14 +2733,14 @@ largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid)
 				    PGBUF_UNCONDITIONAL_LATCH);
 	  if (curdir_pgptr == NULL)
 	    {
-	      fprintf (stdout, "....Error reading page.. Bye\n");
+	      fprintf (fp, "....Error reading page.. Bye\n");
 	      return;
 	    }
 	}
     }
   while (!VPID_ISNULL (&next_vpid));
 
-  fprintf (stdout, "\n\n");
+  fprintf (fp, "\n\n");
 }
 
 /*
@@ -4101,35 +4105,35 @@ largeobjmgr_rv_dir_rcv_state_undoredo (THREAD_ENTRY * thread_p,
  *   data(in): Data that has been logged
  */
 void
-largeobjmgr_rv_dir_rcv_state_dump (int length, void *data)
+largeobjmgr_rv_dir_rcv_state_dump (FILE * fp, int length, void *data)
 {
   LARGEOBJMGR_RCV_STATE *rcv = (LARGEOBJMGR_RCV_STATE *) data;
 
   /* dump header information */
-  fprintf (stdout, "\n--------------------------------------------\n");
-  fprintf (stdout, "LARGEOBJMGR_RCVSTATE_INFORMATION:\n");
-  fprintf (stdout, "\nDirectory Header:\n");
-  fprintf (stdout, "LOID = {{%d|%d}, {%d|%d}}\n",
+  fprintf (fp, "\n--------------------------------------------\n");
+  fprintf (fp, "LARGEOBJMGR_RCVSTATE_INFORMATION:\n");
+  fprintf (fp, "\nDirectory Header:\n");
+  fprintf (fp, "LOID = {{%d|%d}, {%d|%d}}\n",
 	   rcv->dir_head.loid.vfid.volid, rcv->dir_head.loid.vfid.fileid,
 	   rcv->dir_head.loid.vpid.volid, rcv->dir_head.loid.vpid.pageid);
 
-  largeobjmgr_dirheader_dump (&rcv->dir_head);
+  largeobjmgr_dirheader_dump (fp, &rcv->dir_head);
 
   /* dump entry information */
-  fprintf (stdout, "\nEntry Index: %d\n", rcv->ent_ind);
+  fprintf (fp, "\nEntry Index: %d\n", rcv->ent_ind);
   if (rcv->page_type == L_IND_PAGE)
     {
-      fprintf (stdout, "\nDirectory Index Entry: ");
-      largeobjmgr_dirmap_dump (&rcv->ent.i, rcv->ent_ind);
+      fprintf (fp, "\nDirectory Index Entry: ");
+      largeobjmgr_dirmap_dump (fp, &rcv->ent.i, rcv->ent_ind);
     }
   else if (rcv->page_type == L_DIR_PAGE)
     {
-      fprintf (stdout, "\nDirectory Entry: ");
-      largeobjmgr_direntry_dump (&rcv->ent.d, rcv->ent_ind);
+      fprintf (fp, "\nDirectory Entry: ");
+      largeobjmgr_direntry_dump (fp, &rcv->ent.d, rcv->ent_ind);
     }
-  fprintf (stdout, "\n");
+  fprintf (fp, "\n");
 
-  fprintf (stdout, "\n--------------------------------------------\n");
+  fprintf (fp, "\n--------------------------------------------\n");
 }
 
 /*

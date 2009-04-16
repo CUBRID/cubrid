@@ -25,11 +25,9 @@
 #ifndef	_BROKER_CONFIG_H_
 #define	_BROKER_CONFIG_H_
 
-#define	APPL_SERVER_UTS_C	0
-#define	APPL_SERVER_AM		1
-#define	APPL_SERVER_UPLOAD  	2
-#define	APPL_SERVER_UTS_W	3
-#define	APPL_SERVER_CAS		4
+#define	APPL_SERVER_CAS		0
+#define	APPL_SERVER_CAS_ORACLE	1
+#define	APPL_SERVER_CAS_MYSQL	2
 
 #define MAX_BROKER_NUM          100
 
@@ -39,8 +37,6 @@
 #define	DEFAULT_AS_MAX_NUM	40
 
 #define	DEFAULT_SERVER_MAX_SIZE	20
-#define	DEFAULT_COMPRESS_SIZE	100
-#define	DEFAULT_PRIORITY_GAP	10
 #define	DEFAULT_TIME_TO_KILL	120	/* seconds */
 #define SQL_LOG_TIME_MAX	-1
 
@@ -101,23 +97,14 @@ struct t_broker_info
   char appl_server;
   char auto_add_appl_server;
   char log_backup;
-  char session_flag;
-  char set_cookie;
-  char error_log;
   char access_log;
-  char entry_value_trim;
-  char oid_check;
   char sql_log_mode;
-  char enc_appl_flag;
   char stripped_column_name;
   char keep_connection;
   char cache_user_info;
   char sql_log2;
   char statement_pooling;
   char sql_log_single_line;
-  char doc_root[CONF_LOG_FILE_LEN];
-  char file_upload_temp_dir[CONF_LOG_FILE_LEN];
-  char file_upload_delimiter[16];
   char name[BROKER_NAME_LEN];
   int pid;
   int port;
@@ -129,11 +116,9 @@ struct t_broker_info
 #endif
   int appl_server_shm_id;
   int appl_server_max_size;
-  int compress_size;
   int session_timeout;
   int sql_log_time;
   int job_queue_size;
-  int priority_gap;
   int time_to_kill;
   int err_code;
   int os_err_code;

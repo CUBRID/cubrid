@@ -40,7 +40,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#endif /* WINDOWS */
+#include <fcntl.h>
+#endif /* !WINDOWS */
 
 #if defined(_AIX)
 #include <sys/select.h>
@@ -56,11 +57,12 @@
 #include "connection_globals.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
+#include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
 #include "tcp.h"
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -75,20 +77,6 @@
 #define MUTEX_UNLOCK(a)
 #endif /* !SERVER_MODE */
 
-/* TODO: replace to portable function */
-#if defined(LINUX) && defined(I386)
-extern char *cuserid (char *s);
-#endif /* LINUX && I386 */
-
-#ifdef PACKET_TRACE
-#define TRACE(string, arg1)        \
-        do {                       \
-          er_log_debug(ARG_FILE_LINE, string, arg1);  \
-        }                          \
-        while (0);
-#else /* PACKET_TRACE */
-#define TRACE(string, arg1)
-#endif /* PACKET_TRACE */
 
 #if defined(WINDOWS)
 typedef char *caddr_t;
@@ -121,8 +109,15 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 #endif /* SERVER_MODE */
 #endif /* WINDOWS */
 
+static int css_sprintf_conn_infoids (int fd, const char **client_user_name,
+				     const char **client_host_name,
+				     int *client_pid);
 static int css_vector_send (int fd, struct iovec *vec[], int *len,
-			    int bytes_written);
+			    int bytes_written, int timeout);
+static void css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
+			       const char *buff, int len, int *templen);
+static int css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p,
+			       int total_len, int vector_length, int timeout);
 
 static int css_net_send2 (CSS_CONN_ENTRY * conn,
 			  const char *buff1, int len1,
@@ -170,6 +165,10 @@ static int css_net_send8 (CSS_CONN_ENTRY * conn,
 			  const char *buff6, int len6,
 			  const char *buff7, int len7,
 			  const char *buff8, int len8);
+static void css_set_net_header (NET_HEADER * header_p, int type,
+				short function_code, int request_id,
+				int buffer_size, int transaction_id,
+				int db_error);
 
 #if !defined(SERVER_MODE)
 static int
@@ -365,59 +364,106 @@ css_net_send_no_block (int fd, const char *buffer, int size)
  *   fd(in): sockert descripter
  *   ptr(out): buffer
  *   nbytes(in): count of bytes will be read
+ *   timeout(in): timeout in mili-second
  */
 int
-css_readn (int fd, char *ptr, int nbytes)
+css_readn (int fd, char *ptr, int nbytes, int timeout)
 {
-  int nleft, nread;
-  int num_retries = 0, sleep_nsecs = 1;
-
-  nleft = nbytes;
-
-  while (nleft > 0)
-    {
-      nread = recv (fd, ptr, nleft, 0);
-      if (nread < 0)
-	{
-#if defined(WINDOWS)
-	  int winsock_error;
-	  winsock_error = WSAGetLastError ();
-
-	  if (winsock_error == WSAEINTR)
-	    {
-	      continue;
-	    }
-#else /* WINDOWS */
-	  TRACE (" nread = %d, ", nread);
-	  TRACE (" errno(%d)\n", errno);
-
-	  if (errno == EINTR)
-	    {
-	      continue;
-	    }
-	  else if ((errno == EAGAIN || errno == EACCES)
-		   && num_retries < CSS_TCP_MIN_NUM_RETRIES)
-	    {
-	      num_retries++;
-	      (void) sleep (sleep_nsecs);
-	      sleep_nsecs *= 2;
-	      continue;
-	    }
+  int nleft, n;
+#if !defined (WINDOWS)
+  fd_set rfds, efds;
+  struct timeval tv;
+#else /* !WINDOWS */
+  int winsock_error;
 #endif /* WINDOWS */
 
-#if defined(WINDOWS) || !defined(SERVER_MODE)
-	  css_set_networking_error (fd);
-#endif
-	  return nread;		/* error, return < 0 */
+  if (fd < 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "css_readn: fd < 0");
+      errno = EINVAL;
+      return -1;
+    }
+
+  if (nbytes <= 0)
+    return 0;
+
+  nleft = nbytes;
+  do
+    {
+#if !defined (WINDOWS)
+      if (timeout >= 0)
+	{
+	  FD_ZERO (&rfds);
+	  FD_SET (fd, &rfds);
+	  FD_ZERO (&efds);
+	  FD_SET (fd, &efds);
+	  tv.tv_sec = timeout / 1000;
+	  tv.tv_usec = (timeout % 1000) * 1000;
+	  n = select (FD_SETSIZE, &rfds, NULL, &efds, &tv);
+	  if (n == 0)
+	    {
+	      /*
+	       * 0 means it timed out and no fd is changed.
+	       * Check if the peer is alive or not.
+	       */
+	      if (css_peer_alive (fd, timeout))
+		{
+		  continue;
+		}
+	      else
+		{
+		  errno = ETIMEDOUT;
+		  return -1;
+		}
+	    }
+	  if (n < 0 && errno != EINTR)
+	    {
+	      return -1;
+	    }
+	  if (FD_ISSET (fd, &efds))
+	    {
+	      return -1;
+	    }
 	}
-      else if (nread == 0)
+#endif /* !WINDOWS */
+    read_again:
+      n = recv (fd, ptr, nleft, 0);
+      if (n == 0)
 	{
 	  break;		/* EOF */
 	}
-
-      nleft -= nread;
-      ptr += nread;
+      else if (n < 0)
+	{
+#if !defined(WINDOWS)
+	  if (errno == EINTR)
+	    {
+	      goto read_again;
+	    }
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
+	    {
+	      continue;
+	    }
+#else /* !WINDOWS */
+	  winsock_error = WSAGetLastError ();
+	  if (winsock_error == WSAEINTR)
+	    {
+	      goto read_again;
+	    }
+#endif /* WINDOWS */
+#if !defined (SERVER_MODE)
+	  css_set_networking_error (fd);
+#endif /* !SERVER_MODE */
+#ifdef CUBRID_DEBUG
+	  er_log_debug (ARG_FILE_LINE,
+			"css_readn: returning error n %d, errno %d\n",
+			n, errno);
+#endif
+	  return n;		/* error, return < 0 */
+	}
+      nleft -= n;
+      ptr += n;
     }
+  while (nleft > 0);
 
   return (nbytes - nleft);	/*  return >= 0 */
 }
@@ -450,7 +496,7 @@ css_read_remaining_bytes (int fd, int len)
 	  buf_size = sizeof (temp_buffer);
 	}
 
-      nbytes = css_readn (fd, temp_buffer, buf_size);
+      nbytes = css_readn (fd, temp_buffer, buf_size, -1);
       /*
        * nbytes will be less than the size of the buffer if any of the
        * following hold:
@@ -474,9 +520,10 @@ css_read_remaining_bytes (int fd, int len)
  *   fd(in): socket descripter
  *   buffer(out): buffer for date be read
  *   maxlen(out): count of bytes was read
+ *   timeout(in): timeout value in mili-second
  */
 int
-css_net_recv (int fd, char *buffer, int *maxlen)
+css_net_recv (int fd, char *buffer, int *maxlen, int timeout)
 {
   int nbytes;
   int templen;
@@ -484,18 +531,24 @@ css_net_recv (int fd, char *buffer, int *maxlen)
 
   do
     {
-      nbytes = css_readn (fd, (char *) &templen, sizeof (int));
+      nbytes = css_readn (fd, (char *) &templen, sizeof (int), timeout);
       if (nbytes < 0)
 	{
-	  TRACE ("css_net_recv returning ERROR_WHEN_READING_SIZE %d bytes\n",
-		 nbytes);
+#ifdef CUBRID_DEUBG
+	  er_log_debug (ARG_FILE_LINE,
+			"css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d\n",
+			nbytes);
+#endif
 	  return ERROR_WHEN_READING_SIZE;
 	}
 
       if (nbytes != sizeof (int))
 	{
-	  TRACE ("css_net_recv returning ERROR_WHEN_READING_SIZE %d\n",
-		 nbytes);
+#ifdef CUBRID_DEBUG
+	  er_log_debug (ARG_FILE_LINE,
+			"css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d \n",
+			nbytes);
+#endif
 	  return ERROR_WHEN_READING_SIZE;
 	}
 
@@ -512,10 +565,14 @@ css_net_recv (int fd, char *buffer, int *maxlen)
       length_to_read = templen;
     }
 
-  nbytes = css_readn (fd, buffer, length_to_read);
+  nbytes = css_readn (fd, buffer, length_to_read, timeout);
   if (nbytes < length_to_read)
     {
-      TRACE ("css_net_recv returning ERROR_ON_READ error %d\n", nbytes);
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE,
+		    "css_net_recv: returning ERROR_ON_READ bytes %d\n",
+		    nbytes);
+#endif
       return ERROR_ON_READ;
     }
 
@@ -532,8 +589,11 @@ css_net_recv (int fd, char *buffer, int *maxlen)
 
   if (nbytes != templen)
     {
-      TRACE ("css_net_recv returning READ_LENGTH_MISMATCH error %d\n",
-	     nbytes);
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE,
+		    "css_net_recv: returning READ_LENGTH_MISMATCH bytes %d\n",
+		    nbytes);
+#endif
       return READ_LENGTH_MISMATCH;
     }
 
@@ -692,7 +752,8 @@ free_vector_buffer (int index)
  *       That's what all the callers do anyway.
  */
 static int
-css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written)
+css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written,
+		 int timeout)
 {
   int i, total_size, available, amount, rc;
   char *src, *dest;
@@ -798,16 +859,36 @@ error:
 }
 
 #else /* WINDOWS */
+/*
+ * css_vector_send() -
+ *   return: size of sent if success, or error code
+ *   fd(in): socket descripter
+ *   vec(in): vector buffer
+ *   len(in): vector length
+ *   bytes_written(in):
+ *   timeout(in): timeout value in mili-seconds
+ */
 static int
-css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written)
+css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written,
+		 int timeout)
 {
-  int i, rc;
-  int num_retries = 0, sleep_nsecs = 1;
+  int i, n;
+  fd_set wfds, efds;
+  struct timeval tv;
 
-  if (bytes_written)
+  if (fd < 0)
     {
-      TRACE ("css_vector_send retry called for %d\n", bytes_written);
+      er_log_debug (ARG_FILE_LINE, "css_vector_send: fd < 0");
+      errno = EINVAL;
+      return -1;
+    }
 
+  if (bytes_written > 0)
+    {
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE,
+		    "css_vector_send: retry called for %d\n", bytes_written);
+#endif
       for (i = 0; i < *len; i++)
 	{
 	  /* TODO: fix warning here */
@@ -821,47 +902,80 @@ css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written)
 	    }
 	}
       (*vec)[i].iov_len -= bytes_written;
-
-#if defined(HPUX) || defined(AIX) || defined(LINUX)
       (*vec)[i].iov_base = ((char *) ((*vec)[i].iov_base)) + bytes_written;
-#else
-      (*vec)[i].iov_base += bytes_written;
-#endif
 
       (*vec) += i;
       *len -= i;
     }
 
-  while (true)
+  do
     {
-      errno = 0;
-      rc = writev (fd, *vec, *len);
-      if (rc <= 0)
+      if (timeout >= 0)
+	{
+	  FD_ZERO (&wfds);
+	  FD_SET (fd, &wfds);
+	  FD_ZERO (&efds);
+	  FD_SET (fd, &efds);
+	  tv.tv_sec = timeout / 1000;
+	  tv.tv_usec = (timeout % 1000) * 1000;
+	  n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
+	  if (n == 0)
+	    {
+	      /*
+	       * 0 means it timed out and no fd is changed.
+	       * Check if the peer is alive or not.
+	       */
+	      if (css_peer_alive (fd, timeout))
+		{
+		  continue;
+		}
+	      else
+		{
+		  errno = ETIMEDOUT;
+		  return -1;
+		}
+	    }
+	  if (n < 0 && errno != EINTR)
+	    {
+	      return -1;
+	    }
+	  if (FD_ISSET (fd, &efds))
+	    {
+	      return -1;
+	    }
+	}
+    write_again:
+      n = writev (fd, *vec, *len);
+      if (n == 0)
+	{
+	  break;		/* ??? */
+	}
+      else if (n < 0)
 	{
 	  if (errno == EINTR)
 	    {
-	      continue;
+	      goto write_again;
 	    }
-	  else if ((errno == EAGAIN || errno == EACCES)
-		   && num_retries < CSS_TCP_MIN_NUM_RETRIES)
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
 	    {
-	      num_retries++;
-	      (void) sleep (sleep_nsecs);
-	      sleep_nsecs *= 2;
 	      continue;
 	    }
-
-#if !defined(SERVER_MODE)
+#if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
+#endif /* !SERVER_MODE */
+#ifdef CUBRID_DEBUG
+	  er_log_debug (ARG_FILE_LINE,
+			"css_vector_send: returning error n %d, errno %d\n",
+			n, errno);
 #endif
+	  return n;		/* error, return < 0 */
 	}
-
-      break;
     }
+  while (false);
 
-  return rc;
+  return n;
 }
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
 
 static void
 css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
@@ -874,16 +988,25 @@ css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
   vec2_p->iov_len = len;
 }
 
+/*
+ * css_send_io_vector -
+ *   return:
+ *   conn(in):
+ *   vec_p(in):
+ *   total_len(in):
+ *   vector_length(in):
+ *   timeout(in): timeout value in mili-seconds
+ */
 static int
 css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, int total_len,
-		    int vector_length)
+		    int vector_length, int timeout)
 {
   int rc;
 
   rc = 0;
   while (total_len > 0)
     {
-      rc = css_vector_send (conn->fd, &vec_p, &vector_length, rc);
+      rc = css_vector_send (conn->fd, &vec_p, &vector_length, rc, timeout);
       if (rc < 0)
 	{
 	  css_shutdown_conn (conn);
@@ -901,11 +1024,12 @@ css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, int total_len,
  *   fd(in): socket descripter
  *   buff(in): buffer for data will be sent
  *   len(in): length for data will be sent
+ *   timeout(in): timeout value in mili-seconds
  *
  * Note: Used by client and server.
  */
 int
-css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len)
+css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout)
 {
   int templen;
   struct iovec iov[2];
@@ -914,7 +1038,7 @@ css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len)
   css_set_io_vector (&(iov[0]), &(iov[1]), buff, len, &templen);
   total_len = len + sizeof (int);
 
-  return css_send_io_vector (conn, iov, total_len, 2);
+  return css_send_io_vector (conn, iov, total_len, 2, timeout);
 }
 
 /*
@@ -942,7 +1066,9 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + sizeof (int) * 2;
 
-  return css_send_io_vector (conn, iov, total_len, 4);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 4,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 /*
@@ -973,7 +1099,9 @@ css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + sizeof (int) * 3;
 
-  return css_send_io_vector (conn, iov, total_len, 6);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 6,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 /*
@@ -1008,7 +1136,9 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + sizeof (int) * 4;
 
-  return css_send_io_vector (conn, iov, total_len, 8);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 8,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 #if !defined(SERVER_MODE)
@@ -1036,7 +1166,9 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + len5 + sizeof (int) * 5;
 
-  return css_send_io_vector (conn, iov, total_len, 10);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 10,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 #endif /* !SERVER_MODE */
 
@@ -1079,7 +1211,9 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + sizeof (int) * 6;
 
-  return css_send_io_vector (conn, iov, total_len, 12);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 12,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 #if !defined(SERVER_MODE)
@@ -1111,7 +1245,9 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len =
     len1 + len2 + len3 + len4 + len5 + len6 + len7 + sizeof (int) * 7;
 
-  return css_send_io_vector (conn, iov, total_len, 14);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 14,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 #endif /* !SERVER_MODE */
 
@@ -1163,7 +1299,9 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + len8
     + sizeof (int) * 8;
 
-  return css_send_io_vector (conn, iov, total_len, 16);
+  /* timeout in mili-second in css_send_io_vector() */
+  return css_send_io_vector (conn, iov, total_len, 16,
+			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 /*
@@ -1176,7 +1314,8 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 int
 css_net_read_header (int fd, char *buffer, int *maxlen)
 {
-  return css_net_recv (fd, buffer, maxlen);
+  /* timeout in mili-seconds in css_net_recv() */
+  return css_net_recv (fd, buffer, maxlen, PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
 static void
@@ -1241,8 +1380,9 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
     }
   else
     {
-      if (css_net_send (conn, (char *) &local_header,
-			sizeof (NET_HEADER)) == NO_ERRORS)
+      /* timeout in mili-second in css_net_send() */
+      if (css_net_send (conn, (char *) &local_header, sizeof (NET_HEADER),
+			PRM_TCP_CONNECTION_TIMEOUT * 1000) == NO_ERRORS)
 	{
 	  return NO_ERRORS;
 	}
@@ -1658,10 +1798,14 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
   css_set_net_header (&header, ERROR_TYPE, 0, rid,
 		      buffer_size, conn->transaction_id, conn->db_error);
 
-  rc = css_net_send (conn, (char *) &header, sizeof (NET_HEADER));
+  /* timeout in mili-seconds in css_net_send() */
+  rc = css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
+		     PRM_TCP_CONNECTION_TIMEOUT * 1000);
   if (rc == NO_ERRORS)
     {
-      return (css_net_send (conn, buffer, buffer_size));
+      /* timeout in mili-seconds in css_net_send() */
+      return (css_net_send (conn, buffer, buffer_size,
+			    PRM_TCP_CONNECTION_TIMEOUT * 1000));
     }
   else
     {
@@ -1687,14 +1831,11 @@ css_send_oob (CSS_CONN_ENTRY * conn, char byte, const char *buffer,
   css_set_net_header (&header, OOB_TYPE, 0, 0,
 		      buffer_size, conn->transaction_id, conn->db_error);
 
-  if (css_broadcast_to_client (conn->fd, byte))
+  if (css_net_send2 (conn,
+		     (char *) &header, sizeof (NET_HEADER),
+		     buffer, buffer_size) == NO_ERRORS)
     {
-      if (css_net_send2 (conn,
-			 (char *) &header, sizeof (NET_HEADER),
-			 buffer, buffer_size) == NO_ERRORS)
-	{
-	  rc = NO_ERRORS;
-	}
+      rc = NO_ERRORS;
     }
 
   return (rc);

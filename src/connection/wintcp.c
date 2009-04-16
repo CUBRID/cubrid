@@ -151,20 +151,28 @@ css_windows_shutdown (void)
  *   port(in):
  */
 int
-css_tcp_client_open (char *host_name, int port)
+css_tcp_client_open (const char *host_name, int port)
 {
-  return css_tcp_client_open_withretry (host_name, port, true);
+  int fd;
+
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+  if (fd < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
+    }
+  return fd;
 }
 
 /*
- * css_tcp_client_open_withretry() -
+ * css_tcp_client_open_with_retry() -
  *   return:
  *   hostname(in):
  *   port(in):
  *   willretry(in):
  */
 int
-css_tcp_client_open_withretry (char *host_name, int port, bool will_retry)
+css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry)
 {
   int bool_value;
   int s, err;
@@ -559,8 +567,7 @@ css_tcp_master_open (int port, int *sockfd)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ERR_CSS_WINTCP_PORT_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_PORT_ERROR, 0);
       return ERR_CSS_WINTCP_PORT_ERROR;
     }
 

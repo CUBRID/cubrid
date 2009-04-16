@@ -222,11 +222,14 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/lock_table.c \
 	$(TRANSACTION_DIR)/log_comm.c \
 	$(TRANSACTION_DIR)/recovery_cl.c \
-	$(TRANSACTION_DIR)/transaction_cl.c
+	$(TRANSACTION_DIR)/transaction_cl.c \
+	$(TRANSACTION_DIR)/log_writer.c \
+	$(TRANSACTION_DIR)/log_applier.c
 STORAGE_SOURCES = \
 	$(STORAGE_DIR)/storage_common.c \
 	$(STORAGE_DIR)/oid.c \
-	$(STORAGE_DIR)/statistics_cl.c 
+	$(STORAGE_DIR)/statistics_cl.c \
+	$(STORAGE_DIR)/file_io.c
 
 lib_LTLIBRARIES = libcubridcs.la
 libcubridcs_la_SOURCES = \
@@ -244,7 +247,7 @@ libcubridcs_la_SOURCES = \
 	$(JSP_SOURCES) \
 	$(TRANSACTION_SOURCES) \
 	$(STORAGE_SOURCES)
-dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/ld.g
+dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/loader_grammar.g
 libcubridcs_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridcs_la_LIBADD = $(LIBADD_DL)
 libcubridcs_la_LINK = $(LINK)

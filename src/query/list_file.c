@@ -2204,7 +2204,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
 	{
 	  int sleep_sec = 0, sleep_msec = 0;
 
-	  if ((sleep_msec += 500) >= 1000000)
+	  if ((sleep_msec += 5000) >= 1000000)
 	    {
 	      sleep_sec++;
 	      sleep_msec = 0;
@@ -5332,7 +5332,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       if (rc == false)
 	{
 	  csect_exit (CSECT_QPROC_LIST_CACHE);
-	  thread_sleep (0, 100);
+	  thread_sleep (0, 10000);	/* 10 msec */
 	  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) !=
 	      NO_ERROR)
 	    {

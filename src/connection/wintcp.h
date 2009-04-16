@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -45,9 +45,9 @@ extern int css_windows_startup (void);
 extern void css_windows_shutdown (void);
 extern int css_gethostname (char *passed_name, int length);
 
-extern int css_tcp_client_open (char *hostname, int port);
-extern int css_tcp_client_open_withretry (char *hostname, int port,
-					  bool willretry);
+extern int css_tcp_client_open (const char *hostname, int port);
+extern int css_tcp_client_open_with_retry (const char *hostname, int port,
+					   bool willretry);
 extern void css_shutdown_socket (int fd);
 extern int css_fd_down (int fd);
 extern unsigned int css_gethostid (void);

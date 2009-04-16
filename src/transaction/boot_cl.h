@@ -19,7 +19,7 @@
 
 
 /*
- * boot_cl.h - Boot managment in the client (interface)
+ * boot_cl.h - Boot management in the client (interface)
  *
  * Note: See .c file for overview and description of the interface functions.
  *
@@ -34,6 +34,8 @@
 #include <sys/time.h>
 #endif /* !WINDOWS */
 
+#include "porting.h"
+#include "boot.h"
 #include "error_manager.h"
 #include "storage_common.h"
 #include "transaction_cl.h"
@@ -42,23 +44,24 @@
 
 /* Volume assigned for new files/objects  (e.g., heap files) */
 extern VOLID boot_User_volid;
+#if !defined(SA_MODE)
+/* Server host connected */
+extern char boot_Host_connected[MAXHOSTNAMELEN + 1];
+#endif /* !SA_MODE */
 
 extern struct timeval boot_Server_clock;
 extern struct timeval boot_Client_clock;
 
-extern int
-boot_initialize_client (const char *program_name, bool print_version,
-			const char *db_name, const char *db_path,
-			const char *vol_path, const char *log_path,
-			const char *db_server_host, bool db_overwrite,
-			const char *db_comments, DKNPAGES npages,
-			const char *file_addmore_vols,
-			PGLENGTH db_desired_pagesize, DKNPAGES log_npages);
-extern int boot_restart_client (const char *program_name, bool print_restart,
-				const char *vlabel);
+extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
+				   BOOT_DB_PATH_INFO * db_path_info,
+				   bool db_overwrite, DKNPAGES npages,
+				   const char *file_addmore_vols,
+				   PGLENGTH db_desired_pagesize,
+				   DKNPAGES log_npages);
+extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool iserfinal);
 extern void boot_donot_shutdown_client_at_exit (void);
-extern void boot_server_die (void);
+extern void boot_server_die_or_changed ();
 extern void boot_client_all_finalize (bool iserfinal);
 #if !defined(SA_MODE)
 extern char *boot_get_host_connected (void);

@@ -212,7 +212,8 @@ extern int largeobjmgr_dir_insert (THREAD_ENTRY * thread_p,
 extern int largeobjmgr_dir_update (THREAD_ENTRY * thread_p,
 				   LARGEOBJMGR_DIRSTATE * ds,
 				   LARGEOBJMGR_DIRENTRY * X);
-extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, LOID * loid);
+extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp,
+				  LOID * loid);
 extern bool largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid);
 extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid,
 				       int offset, int opr_mode,
@@ -238,7 +239,8 @@ extern int largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid,
 
 extern int largeobjmgr_rv_dir_rcv_state_undoredo (THREAD_ENTRY * thread_p,
 						  LOG_RCV * recv);
-extern void largeobjmgr_rv_dir_rcv_state_dump (int length, void *data);
+extern void largeobjmgr_rv_dir_rcv_state_dump (FILE * fp, int length,
+					       void *data);
 extern int largeobjmgr_rv_dir_page_region_undoredo (THREAD_ENTRY * thread_p,
 						    LOG_RCV * recv);
 extern int largeobjmgr_rv_dir_new_page_undo (THREAD_ENTRY * thread_p,

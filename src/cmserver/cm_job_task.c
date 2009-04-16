@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1251,13 +1251,13 @@ ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
 	    {
 	      if (i == (attr_count - 1))
 		{
-		  sprintf (query + strlen (query), "\"%s\" %s );", attr_names[i],
-			   attr_orders[i]);
+		  sprintf (query + strlen (query), "\"%s\" %s );",
+			   attr_names[i], attr_orders[i]);
 		}
 	      else
 		{
-		  sprintf (query + strlen (query), "\"%s\" %s ,", attr_names[i],
-			   attr_orders[i]);
+		  sprintf (query + strlen (query), "\"%s\" %s ,",
+			   attr_names[i], attr_orders[i]);
 		}
 	    }
 
@@ -1293,13 +1293,15 @@ ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
       if (class_name != NULL)
 	{
 	  memset (query, 0, sizeof (char) * 512);
-	  sprintf (query, "ALTER TABLE \"%s\" ADD CONSTRAINT \"%s\" FOREIGN KEY ( ",
+	  sprintf (query,
+		   "ALTER TABLE \"%s\" ADD CONSTRAINT \"%s\" FOREIGN KEY ( ",
 		   class_name, name);
 	  for (i = 0; i < attr_count; i++)
 	    {
 	      if (i == (attr_count - 1))
 		{
-		  sprintf (query + strlen (query), "\"%s\" ) references \"%s\" ( ",
+		  sprintf (query + strlen (query),
+			   "\"%s\" ) references \"%s\" ( ",
 			   foreign_key_names[i], reference_class_name);
 		}
 	      else
@@ -2203,12 +2205,10 @@ ts2_get_broker_on_conf (nvplist * in, nvplist * out, char *_dbmt_error)
 	nv_add_nvp (out, "sql_log", "OFF");
       nv_add_nvp_int (out, "sql_log_time", br_info->sql_log_time);
       nv_add_nvp_int (out, "appl_server_max_size", br_info->as_max_size);
-      nv_add_nvp_int (out, "compress_size", br_info->compress_size);
       if (br_info->log_backup)
 	nv_add_nvp (out, "log_backup", "ON");
       else
 	nv_add_nvp (out, "log_backup", "OFF");
-      nv_add_nvp_int (out, "priority_gap", br_info->priority_gap);
       nv_add_nvp_int (out, "time_to_kill", br_info->time_to_kill);
     }
   uca_br_info_free (&uc_info);
@@ -5401,7 +5401,7 @@ ts_unloaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   unlink (tmpfile);
 
   /* makeup upload result information in unload.log file */
-  sprintf (buf, "unload.log");
+  sprintf (buf, "%s_unloaddb.log", dbname);
   nv_add_nvp (res, "open", "result");
   if ((infile = fopen (buf, "rt")) != NULL)
     {
@@ -7337,7 +7337,8 @@ ts_get_tran_info (nvplist * req, nvplist * res, char *_dbmt_error)
 int
 ts_killtran (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  char *dbname, *dbpasswd, *type, *param;
+  char *dbname, *dbpasswd, *type, *val;
+  char param[256];
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char *argv[10];
   int argc = 0;
@@ -7347,8 +7348,11 @@ ts_killtran (nvplist * req, nvplist * res, char *_dbmt_error)
   dbpasswd = nv_get_val (req, "_DBPASSWD");
   if ((type = nv_get_val (req, "type")) == NULL)
     return ERR_PARAM_MISSING;
-  if ((param = nv_get_val (req, "parameter")) == NULL)
+  if ((val = nv_get_val (req, "parameter")) == NULL)
     return ERR_PARAM_MISSING;
+
+  strncpy (param, val, sizeof (param) - 1);
+  param[sizeof (param) - 1] = '\0';
 
   cubrid_cmd_name (cmd_name);
   argv[argc++] = cmd_name;
@@ -7360,6 +7364,11 @@ ts_killtran (nvplist * req, nvplist * res, char *_dbmt_error)
     }
   if (strcmp (type, "t") == 0)
     {
+      /* remove (+) from formated string such as "1(+) | 1(-)" */
+      char *p = strstr (param, "(");
+      if (p != NULL)
+	*p = '\0';
+
       argv[argc++] = "--" KILLTRAN_KILL_TRANSACTION_INDEX_L;
     }
   else if (strcmp (type, "u") == 0)
@@ -7376,7 +7385,7 @@ ts_killtran (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   argv[argc++] = param;
-  argv[argc++] = "--" KILLTRAN_CONFIRM_L;
+  argv[argc++] = "--" KILLTRAN_FORCE_L;
   argv[argc++] = dbname;
   argv[argc++] = NULL;
 
@@ -7427,7 +7436,7 @@ ts_lockdb (nvplist * req, nvplist * res, char *_dbmt_error)
     {
       if (sscanf (buf, "%s", s) == 1)
 	fputs (buf, outfile);
-      if (kr == 0 && !strcmp (s, "∂Ù"))
+      if (kr == 0 && !strcmp (s, "¬∂√¥"))
 	kr = 1;
     }
   fclose (infile);
@@ -7688,46 +7697,50 @@ ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
   return ERR_NO_ERROR;
 }
 
-int 
-ts_get_autoexecquery_error_log(nvplist* req, nvplist* res, char* _dbmt_error) {
-	char buf[1024], logfile[256], s1[256], s2[256], s3[256], s4[256], time[32],
-	dbname[256], username[256], query_id[64], error_code[64];
-	FILE* infile;
+int
+ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
+				char *_dbmt_error)
+{
+  char buf[1024], logfile[256], s1[256], s2[256], s3[256], s4[256], time[32],
+    dbname[256], username[256], query_id[64], error_code[64];
+  FILE *infile;
 
-	sprintf(logfile, "%s/log/manager/auto_execquery.log", sco.szCubrid);
-	if ((infile = fopen(logfile, "r")) == NULL)
-		return ERR_NO_ERROR;
+  sprintf (logfile, "%s/log/manager/auto_execquery.log", sco.szCubrid);
+  if ((infile = fopen (logfile, "r")) == NULL)
+    return ERR_NO_ERROR;
 
-	while (fgets(buf, sizeof(buf), infile)) {
-		if (sscanf(buf, "%s %s", s1, s2) != 2)
-			continue;
-		if (!strncmp(s1, "DATE:", 5)) {
-			sprintf(time, "%s %s", s1 + 5, s2 + 5); /* 5 = strlen("DATE:"); 5 = strlen("TIME:"); */
-			if (fgets(buf, sizeof(buf), infile) == NULL)
-				break;
+  while (fgets (buf, sizeof (buf), infile))
+    {
+      if (sscanf (buf, "%s %s", s1, s2) != 2)
+	continue;
+      if (!strncmp (s1, "DATE:", 5))
+	{
+	  sprintf (time, "%s %s", s1 + 5, s2 + 5);	/* 5 = strlen("DATE:"); 5 = strlen("TIME:"); */
+	  if (fgets (buf, sizeof (buf), infile) == NULL)
+	    break;
 
-			s3[0] = 0;
-			sscanf(buf, "%s %s %s %s", s1, s2, s3, s4);
-			sprintf(dbname, "%s", s1 + 7); 		/* 7 = strlen("DBNAME:") */
-			sprintf(username, "%s", s2 + 14); 	/* 14 = strlen("EMGR-USERNAME:") */
-			sprintf(query_id, "%s", s3 + 9); 	/* 9 = strlen("QUERY-ID:") */
-			sprintf(error_code, "%s", s4 + 11); /* 11 = strlen("ERROR-CODE:") */
-			if (fgets(buf, sizeof(buf), infile) == NULL)
-				break;
+	  s3[0] = 0;
+	  sscanf (buf, "%s %s %s %s", s1, s2, s3, s4);
+	  sprintf (dbname, "%s", s1 + 7);	/* 7 = strlen("DBNAME:") */
+	  sprintf (username, "%s", s2 + 14);	/* 14 = strlen("EMGR-USERNAME:") */
+	  sprintf (query_id, "%s", s3 + 9);	/* 9 = strlen("QUERY-ID:") */
+	  sprintf (error_code, "%s", s4 + 11);	/* 11 = strlen("ERROR-CODE:") */
+	  if (fgets (buf, sizeof (buf), infile) == NULL)
+	    break;
 
-			uRemoveCRLF(buf);
-			nv_add_nvp(res, "open", "error");
-			nv_add_nvp(res, "dbname", dbname);
-			nv_add_nvp(res, "username", username);
-			nv_add_nvp(res, "query_id", query_id);
-			nv_add_nvp(res, "error_time", time);
-			nv_add_nvp(res, "error_code", error_code);
-			nv_add_nvp(res, "error_desc", buf + 3);
-			nv_add_nvp(res, "close", "error");
-		}
+	  uRemoveCRLF (buf);
+	  nv_add_nvp (res, "open", "error");
+	  nv_add_nvp (res, "dbname", dbname);
+	  nv_add_nvp (res, "username", username);
+	  nv_add_nvp (res, "query_id", query_id);
+	  nv_add_nvp (res, "error_time", time);
+	  nv_add_nvp (res, "error_code", error_code);
+	  nv_add_nvp (res, "error_desc", buf + 3);
+	  nv_add_nvp (res, "close", "error");
 	}
+    }
 
-	return ERR_NO_ERROR;
+  return ERR_NO_ERROR;
 }
 
 /***************************************************************************
@@ -8784,8 +8797,9 @@ _tsAppendDBList (nvplist * res, char dbdir_flag)
 	continue;
       if ((hp = gethostbyname (dbinfo[2])) == NULL)
 	continue;
-      if (*(int*)(hp->h_addr_list[0]) == htonl(0x7f000001) ||	// if the ip equals 127.0.0.1
-		  memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
+      /*if the ip equals 127.0.0.1 */
+      if (*(int *) (hp->h_addr_list[0]) == htonl (0x7f000001) ||
+	  memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
 	{
 	  nv_add_nvp (res, "dbname", dbinfo[0]);
 
@@ -10120,7 +10134,7 @@ _ts_lockdb_parse_kr (nvplist * res, FILE * infile)
 	}
       else if (flag == 1)
 	{
-	  if (strcmp (s, "∆Æ∑£¿Ëº«") == 0)
+	  if (strcmp (s, "√Ü¬Æ¬∑¬£√Ä√®¬º√á") == 0)
 	    {
 	      scan_matched = sscanf (buf, "%*s %*s %s %s %s", s1, s2, s3);
 
@@ -10153,10 +10167,11 @@ _ts_lockdb_parse_kr (nvplist * res, FILE * infile)
 
 	      fgets (buf, 1024, infile);
 	      buf[strlen (buf) - 1] = '\0';
-	      nv_add_nvp (res, "isolevel", buf + strlen ("∞›∏Æµµ "));
+	      nv_add_nvp (res, "isolevel", buf + strlen ("¬∞√ù¬∏¬Æ¬µ¬µ "));
 
 	      fgets (buf, 1024, infile);
-	      if (strncmp (buf, "ºˆ«‡ªÛ≈¬", strlen ("ºˆ«‡ªÛ≈¬")) == 0)
+	      if (strncmp
+		  (buf, "¬º√∂√á√†¬ª√≥√Ö√Ç", strlen ("¬º√∂√á√†¬ª√≥√Ö√Ç")) == 0)
 		{
 		  fgets (buf, 1024, infile);
 		}
@@ -10824,21 +10839,26 @@ ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
   nv_locate (req, "planlist", &index, &length);
 
   /* check query string length */
-	for (i = index + 1; i < index + length; i += 6) {
-		/* get query string */
-		nv_lookup(req, i + 3, &name, &value);
-		if (strcmp(name, "query_string") != 0) {
-			sprintf(_dbmt_error, "%s","nv order error. [i+3] must is [query_string]");
-			return ERR_WITH_MSG;
-		}
-
-		if (strlen(value) > MAX_AUTOQUERY_SCRIPT_SIZE) {
-			/* error handle */
-			sprintf(_dbmt_error,"query script too long. do not exceed MAX_AUTOQUERY_SCRIPT_SIZE(%d) bytes.", 
-					MAX_AUTOQUERY_SCRIPT_SIZE);
-			return ERR_WITH_MSG;
-		}
+  for (i = index + 1; i < index + length; i += 6)
+    {
+      /* get query string */
+      nv_lookup (req, i + 3, &name, &value);
+      if (strcmp (name, "query_string") != 0)
+	{
+	  sprintf (_dbmt_error, "%s",
+		   "nv order error. [i+3] must is [query_string]");
+	  return ERR_WITH_MSG;
 	}
+
+      if (strlen (value) > MAX_AUTOQUERY_SCRIPT_SIZE)
+	{
+	  /* error handle */
+	  sprintf (_dbmt_error,
+		   "query script too long. do not exceed MAX_AUTOQUERY_SCRIPT_SIZE(%d) bytes.",
+		   MAX_AUTOQUERY_SCRIPT_SIZE);
+	  return ERR_WITH_MSG;
+	}
+    }
 
   conf_file = temp_file = 0;
   name = value = NULL;
@@ -10980,7 +11000,8 @@ ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
   char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH];
   char auto_exec_query_conf_file[512];
   char id_num[64], db_name[64], user[64], period[8];
-  char detail1[32], detail2[8], query_string[MAX_AUTOQUERY_SCRIPT_SIZE + 1], detail[64];
+  char detail1[32], detail2[8], query_string[MAX_AUTOQUERY_SCRIPT_SIZE + 1],
+    detail[64];
   char *dbname, *dbmt_username;
 
   conf_get_dbmt_file (FID_AUTO_EXECQUERY_CONF, auto_exec_query_conf_file);
@@ -11004,7 +11025,7 @@ ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   nv_add_nvp (res, "open", "planlist");
-  while (fgets (buf, sizeof(buf), conf_file))
+  while (fgets (buf, sizeof (buf), conf_file))
     {
       int scan_matched;
       char *p;
@@ -11056,7 +11077,7 @@ op_auto_exec_query_get_newplan_id (char *id_buf, char *conf_filename)
       conf_file = fopen (conf_filename, "r");
       if (conf_file)
 	{
-	  while (fgets (buf, sizeof(buf), conf_file))
+	  while (fgets (buf, sizeof (buf), conf_file))
 	    {
 	      sscanf (buf, "%*s %s", id_num);
 	      if (atoi (id_num) == index)

@@ -457,7 +457,7 @@ static OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p,
 					int *idx_incache);
 static int heap_classrepr_find_index_id (OR_CLASSREP * classrepr,
 					 BTID * btid);
-static int heap_classrepr_dump (THREAD_ENTRY * thread_p,
+static int heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				const OID * class_oid,
 				const OR_CLASSREP * repr);
 #ifdef DEBUG_CLASREPR_CACHE
@@ -652,7 +652,7 @@ static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p,
 					      int *att_ids,
 					      HEAP_CACHE_ATTRINFO * attrinfo);
 
-static int heap_dump_hdr (HEAP_HDR_STATS * heap_hdr);
+static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
 static DISK_ISVALID heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk);
 static DISK_ISVALID heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk);
@@ -2121,8 +2121,8 @@ heap_classrepr_dump_cache (bool simple_dump)
  * Note: Dump the class representation cache.
  */
 static int
-heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
-		     const OR_CLASSREP * repr)
+heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
+		     const OID * class_oid, const OR_CLASSREP * repr)
 {
   OR_ATTRIBUTE *attrepr;
   int i, k;
@@ -2156,7 +2156,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
       goto exit_on_error;
     }
 
-  fprintf (stdout, " Class-OID = %d|%d|%d, Classname = %s, reprid = %d,\n"
+  fprintf (fp, " Class-OID = %d|%d|%d, Classname = %s, reprid = %d,\n"
 	   " Attrs: Tot = %d, Nfix = %d, Nvar = %d, Nshare = %d, Nclass = %d,\n"
 	   " Total_length_of_fixattrs = %d,\n",
 	   (int) class_oid->volid, class_oid->pageid,
@@ -2168,7 +2168,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
   free_and_init (classname);
   classname = NULL;
 
-  fprintf (stdout, " Attribute Specifications:\n");
+  fprintf (fp, " Attribute Specifications:\n");
   for (i = 0, attrepr = repr->attributes;
        i < repr->n_attributes; i++, attrepr++)
     {
@@ -2179,7 +2179,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
 	  attr_name = "?????";
 	}
 
-      fprintf (stdout,
+      fprintf (fp,
 	       "\n Attrid = %d, Attrname = %s, type = %s,\n"
 	       " location = %d, position = %d,\n",
 	       attrepr->id, attr_name, pr_type_name (attrepr->type),
@@ -2192,7 +2192,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
 	    {
 	      goto exit_on_error;
 	    }
-	  fprintf (stdout,
+	  fprintf (fp,
 		   " Inherited from Class: oid = %d|%d|%d, Name = %s\n",
 		   (int) attrepr->classoid.volid,
 		   attrepr->classoid.pageid,
@@ -2203,10 +2203,10 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
 
       if (attrepr->n_btids > 0)
 	{
-	  fprintf (stdout, " Number of Btids = %d,\n", attrepr->n_btids);
+	  fprintf (fp, " Number of Btids = %d,\n", attrepr->n_btids);
 	  for (k = 0; k < attrepr->n_btids; k++)
 	    {
-	      fprintf (stdout, " BTID: VFID %d|%d, Root_PGID %d\n",
+	      fprintf (fp, " BTID: VFID %d|%d, Root_PGID %d\n",
 		       (int) attrepr->btids[k].vfid.volid,
 		       attrepr->btids[k].vfid.fileid,
 		       attrepr->btids[k].root_pageid);
@@ -2216,12 +2216,12 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
       /*
        * Dump the default value if any.
        */
-      fprintf (stdout, " Default disk value format:\n");
-      fprintf (stdout, "   length = %d, value = ", attrepr->val_length);
+      fprintf (fp, " Default disk value format:\n");
+      fprintf (fp, "   length = %d, value = ", attrepr->val_length);
 
       if (attrepr->val_length <= 0)
 	{
-	  fprintf (stdout, "NULL");
+	  fprintf (fp, "NULL");
 	}
       else
 	{
@@ -2250,11 +2250,11 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, const OID * class_oid,
 	      /*
 	       * An error was found during the reading of the attribute value
 	       */
-	      fprintf (stdout, "Error transforming the default value\n");
+	      fprintf (fp, "Error transforming the default value\n");
 	      break;
 	    }
 	}
-      fprintf (stdout, "\n");
+      fprintf (fp, "\n");
     }
 
   free_and_init (recdes.data);
@@ -2272,7 +2272,7 @@ exit_on_error:
       recdes.data = NULL;
     }
 
-  fprintf (stdout, "Dump has been aborted...");
+  fprintf (fp, "Dump has been aborted...");
 
   if (ret == NO_ERROR)
     {
@@ -13539,8 +13539,8 @@ exit_on_error:
  * Note: Dump attribute value of given attribute information.
  */
 void
-heap_attrinfo_dump (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-		    bool dump_schema)
+heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp,
+		    HEAP_CACHE_ATTRINFO * attr_info, bool dump_schema)
 {
   int i;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr   */
@@ -13549,7 +13549,7 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
   /* check to make sure the attr_info has been used */
   if (attr_info->num_values == -1)
     {
-      fprintf (stdout, "  Empty attrinfo\n");
+      fprintf (fp, "  Empty attrinfo\n");
       return;
     }
 
@@ -13560,24 +13560,24 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
   if (dump_schema == true)
     {
       ret =
-	heap_classrepr_dump (thread_p, &attr_info->class_oid,
+	heap_classrepr_dump (thread_p, fp, &attr_info->class_oid,
 			     attr_info->read_classrepr);
     }
 
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      fprintf (stdout, "  Attrid = %d, state = %d, type = %s\n",
+      fprintf (fp, "  Attrid = %d, state = %d, type = %s\n",
 	       value->attrid, value->state,
 	       pr_type_name (value->read_attrepr->type));
       /*
        * Dump the value in memory format
        */
 
-      fprintf (stdout, "  Memory_value_format:\n");
-      fprintf (stdout, "    value = ");
-      db_value_fprint (stdout, &value->dbvalue);
-      fprintf (stdout, "\n\n");
+      fprintf (fp, "  Memory_value_format:\n");
+      fprintf (fp, "    value = ");
+      db_value_fprint (fp, &value->dbvalue);
+      fprintf (fp, "\n\n");
     }
 
 }
@@ -15312,6 +15312,7 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
     {
       *btnamepp = strdup (indexp->btname);
     }
+
   /* free the class representation */
   ret = heap_classrepr_free (classrepp, &idx_in_cache);
   if (ret != NO_ERROR)
@@ -16008,7 +16009,7 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
  *   heap_hdr(in): Header structure
  */
 static int
-heap_dump_hdr (HEAP_HDR_STATS * heap_hdr)
+heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr)
 {
   int i, j;
   int avg_length;
@@ -16018,37 +16019,37 @@ heap_dump_hdr (HEAP_HDR_STATS * heap_hdr)
 		? (int) ((heap_hdr->estimates.recs_sumlen /
 			  (float) heap_hdr->estimates.num_recs) + 0.9) : 0);
 
-  fprintf (stdout, "unfill_space = %4d\n", heap_hdr->unfill_space);
-  fprintf (stdout, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d,\n",
+  fprintf (fp, "unfill_space = %4d\n", heap_hdr->unfill_space);
+  fprintf (fp, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d,\n",
 	   heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid,
 	   heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
-  fprintf (stdout, "Estimated: num_pages = %d, num_recs = %d, "
+  fprintf (fp, "Estimated: num_pages = %d, num_recs = %d, "
 	   " avg reclength = %d\n",
 	   heap_hdr->estimates.num_pages,
 	   heap_hdr->estimates.num_recs, avg_length);
-  fprintf (stdout, "Estimated: num high best = %d, "
+  fprintf (fp, "Estimated: num high best = %d, "
 	   "num others(not in array) high best = %d\n",
 	   heap_hdr->estimates.num_high_best,
 	   heap_hdr->estimates.num_other_high_best);
-  fprintf (stdout, "BEST1_SPACE_VPID = %4d|%4d %4d\n",
+  fprintf (fp, "BEST1_SPACE_VPID = %4d|%4d %4d\n",
 	   heap_hdr->estimates.best[HEAP_BEST1].vpid.volid,
 	   heap_hdr->estimates.best[HEAP_BEST1].vpid.pageid,
 	   heap_hdr->estimates.best[HEAP_BEST1].freespace);
-  fprintf (stdout, "Hint of best set of vpids with head = %d\n",
+  fprintf (fp, "Hint of best set of vpids with head = %d\n",
 	   heap_hdr->estimates.head);
 
   for (j = 0, i = HEAP_BEST2_START; i < HEAP_NUM_BEST_SPACESTATS; j++, i++)
     {
       if (j != 0 && j % 5 == 0)
 	{
-	  fprintf (stdout, "\n");
+	  fprintf (fp, "\n");
 	}
-      fprintf (stdout, "%4d|%4d %4d,",
+      fprintf (fp, "%4d|%4d %4d,",
 	       heap_hdr->estimates.best[i].vpid.volid,
 	       heap_hdr->estimates.best[i].vpid.pageid,
 	       heap_hdr->estimates.best[i].freespace);
     }
-  fprintf (stdout, "\n");
+  fprintf (fp, "\n");
 
   return ret;
 }
@@ -16064,7 +16065,7 @@ heap_dump_hdr (HEAP_HDR_STATS * heap_hdr)
  * of rec_p is true. This function is used for DEBUGGING PURPOSES.
  */
 void
-heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
+heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool rec_p)
 {
   VPID vpid;			/* Page-volume identifier            */
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure          */
@@ -16079,10 +16080,10 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
   FILE_HEAP_DES hfdes;
   int ret = NO_ERROR;
 
-  fprintf (stdout, "\n\n*** DUMPING HEAP FILE: ");
-  fprintf (stdout, "volid = %d, Fileid = %d, Header-pageid = %d ***\n",
+  fprintf (fp, "\n\n*** DUMPING HEAP FILE: ");
+  fprintf (fp, "volid = %d, Fileid = %d, Header-pageid = %d ***\n",
 	   hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-  (void) file_dump_descriptor (thread_p, &hfid->vfid);
+  (void) file_dump_descriptor (thread_p, fp, &hfid->vfid);
 
   /* Fetch the header page of the heap file */
 
@@ -16108,7 +16109,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-  ret = heap_dump_hdr (heap_hdr);
+  ret = heap_dump_hdr (fp, heap_hdr);
   if (ret != NO_ERROR)
     {
       pgbuf_unfix (thread_p, pgptr);
@@ -16132,14 +16133,14 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
 	  /* something went wrong, return */
 	  return;
 	}
-      spage_dump (thread_p, pgptr, 0);
+      spage_dump (thread_p, fp, pgptr, 0);
       (void) heap_vpid_next (hfid, pgptr, &vpid);
       pgbuf_unfix (thread_p, pgptr);
       pgptr = NULL;
     }
 
   /* Dump file table configuration */
-  if (file_dump (thread_p, &hfid->vfid) != NO_ERROR)
+  if (file_dump (thread_p, fp, &hfid->vfid) != NO_ERROR)
     {
       return;
     }
@@ -16147,8 +16148,8 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
   if (!VFID_ISNULL (&ovf_vfid))
     {
       /* There is an overflow file for this heap file */
-      fprintf (stdout, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
-      if (file_dump (thread_p, &ovf_vfid) != NO_ERROR)
+      fprintf (fp, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
+      if (file_dump (thread_p, fp, &ovf_vfid) != NO_ERROR)
 	{
 	  return;
 	}
@@ -16169,7 +16170,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
 	  return;
 	}
 
-      ret = heap_classrepr_dump (thread_p, &hfdes.class_oid,
+      ret = heap_classrepr_dump (thread_p, fp, &hfdes.class_oid,
 				 attr_info.last_classrepr);
       if (ret != NO_ERROR)
 	{
@@ -16195,7 +16196,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
 			    &scan_cache, PEEK) == S_SUCCESS)
 	    {
 	      or_class_oid (&peek_recdes, &class_oid);
-	      fprintf (stdout,
+	      fprintf (fp,
 		       "Object-OID = %d|%d|%d, Class-OID = %d|%d|%d,\n"
 		       "  Length on disk = %d,\n", (int) oid.volid,
 		       oid.pageid, (int) oid.slotid,
@@ -16205,17 +16206,17 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
 	      if (heap_attrinfo_read_dbvalues
 		  (thread_p, &oid, &peek_recdes, &attr_info) != NO_ERROR)
 		{
-		  fprintf (stdout, "  Error ... continue\n");
+		  fprintf (fp, "  Error ... continue\n");
 		  continue;
 		}
-	      heap_attrinfo_dump (thread_p, &attr_info, false);
+	      heap_attrinfo_dump (thread_p, fp, &attr_info, false);
 	    }
 	  heap_scancache_end (thread_p, &scan_cache);
 	}
       heap_attrinfo_end (thread_p, &attr_info);
     }
 
-  fprintf (stdout, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
+  fprintf (fp, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
 
 /*
@@ -16225,7 +16226,7 @@ heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p)
  *              objects are not printed.
  */
 void
-heap_dump_all (THREAD_ENTRY * thread_p, bool rec_p)
+heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool rec_p)
 {
   int num_files;
   HFID hfid;
@@ -16255,7 +16256,7 @@ heap_dump_all (THREAD_ENTRY * thread_p, bool rec_p)
       if (file_find_nthpages (thread_p, &hfid.vfid, &vpid, 0, 1) == 1)
 	{
 	  hfid.hpgid = vpid.pageid;
-	  heap_dump (thread_p, &hfid, rec_p);
+	  heap_dump (thread_p, fp, &hfid, rec_p);
 	}
     }
 }
@@ -16265,7 +16266,7 @@ heap_dump_all (THREAD_ENTRY * thread_p, bool rec_p)
  *   return:
  */
 void
-heap_dump_all_capacities (THREAD_ENTRY * thread_p)
+heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 {
   HFID hfid;
   VPID vpid;
@@ -16289,7 +16290,7 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
       return;
     }
 
-  fprintf (stdout, "IO_PAGESIZE = %d, DB_PAGESIZE = %d, Recv_overhead = %d\n",
+  fprintf (fp, "IO_PAGESIZE = %d, DB_PAGESIZE = %d, Recv_overhead = %d\n",
 	   IO_PAGESIZE, DB_PAGESIZE, IO_PAGESIZE - DB_PAGESIZE);
 
   /* Go to each file, check only the heap files */
@@ -16314,7 +16315,7 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
 				 &avg_freespace_nolast, &avg_reclength,
 				 &avg_overhead) == NO_ERROR)
 	    {
-	      fprintf (stdout,
+	      fprintf (fp,
 		       "HFID:%d|%d|%d, Num_recs = %d, Num_reloc_recs = %d,\n"
 		       "    Num_recs_inovf = %d, Avg_reclength = %d,\n"
 		       "    Num_pages = %d, Avg_free_space_per_page = %d,\n"
@@ -16333,11 +16334,11 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p)
 		  && heap_attrinfo_start (thread_p, &hfdes.class_oid, -1,
 					  NULL, &attr_info) == NO_ERROR)
 		{
-		  (void) heap_classrepr_dump (thread_p, &hfdes.class_oid,
+		  (void) heap_classrepr_dump (thread_p, fp, &hfdes.class_oid,
 					      attr_info.last_classrepr);
 		  heap_attrinfo_end (thread_p, &attr_info);
 		}
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 	}
     }
@@ -17141,21 +17142,21 @@ heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore)
  * Note: Dump all valid chnguess entries.
  */
 void
-heap_chnguess_dump (void)
+heap_chnguess_dump (FILE * fp)
 {
   int max_tranindex, tran_index, i;
   HEAP_CHNGUESS_ENTRY *entry;
 
   if (heap_Guesschn != NULL)
     {
-      fprintf (stdout, "*** Dump of CLASS_OID to CHNGUESS at clients *** \n");
-      fprintf (stdout, "Schema_change = %d, clock_hand = %d,\n",
+      fprintf (fp, "*** Dump of CLASS_OID to CHNGUESS at clients *** \n");
+      fprintf (fp, "Schema_change = %d, clock_hand = %d,\n",
 	       heap_Guesschn->schema_change, heap_Guesschn->clock_hand);
-      fprintf (stdout, "Nentries = %d, Nactive_entries = %u,"
+      fprintf (fp, "Nentries = %d, Nactive_entries = %u,"
 	       " maxnum of clients = %d, nbytes = %d\n",
 	       heap_Guesschn->num_entries, mht_count (heap_Guesschn->ht),
 	       heap_Guesschn->num_clients, heap_Guesschn->nbytes);
-      fprintf (stdout, "Hash Table = %p, Entries = %p, Bitindex = %p\n",
+      fprintf (fp, "Hash Table = %p, Entries = %p, Bitindex = %p\n",
 	       heap_Guesschn->ht, heap_Guesschn->entries,
 	       heap_Guesschn->bitindex);
 
@@ -17166,8 +17167,8 @@ heap_chnguess_dump (void)
 
 	  if (!OID_ISNULL (&entry->oid))
 	    {
-	      fprintf (stdout, " \nEntry_id %d", entry->idx);
-	      fprintf (stdout,
+	      fprintf (fp, " \nEntry_id %d", entry->idx);
+	      fprintf (fp,
 		       "OID = %2d|%4d|%2d, chn = %d, recently_free = %d,",
 		       entry->oid.volid, entry->oid.pageid, entry->oid.slotid,
 		       entry->chn, entry->recently_accessed);
@@ -17177,16 +17178,16 @@ heap_chnguess_dump (void)
 		{
 		  if (tran_index % 40 == 0)
 		    {
-		      fprintf (stdout, "\n ");
+		      fprintf (fp, "\n ");
 		    }
 		  else if (tran_index % 10 == 0)
 		    {
-		      fprintf (stdout, " ");
+		      fprintf (fp, " ");
 		    }
-		  fprintf (stdout, "%d",
+		  fprintf (fp, "%d",
 			   HEAP_BIT_GET (entry->bits, tran_index) ? 1 : 0);
 		}
-	      fprintf (stdout, "\n");
+	      fprintf (fp, "\n");
 	    }
 	}
     }
@@ -17481,14 +17482,14 @@ heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * Note: Dump statistics recovery information
  */
 void
-heap_rv_dump_statistics (int ignore_length, void *data)
+heap_rv_dump_statistics (FILE * fp, int ignore_length, void *data)
 {
   int ret = NO_ERROR;
 
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure    */
 
   heap_hdr = (HEAP_HDR_STATS *) data;
-  ret = heap_dump_hdr (heap_hdr);
+  ret = heap_dump_hdr (fp, heap_hdr);
 }
 
 /*
@@ -17498,12 +17499,12 @@ heap_rv_dump_statistics (int ignore_length, void *data)
  *   data(in): The data being logged
  */
 void
-heap_rv_dump_chain (int ignore_length, void *data)
+heap_rv_dump_chain (FILE * fp, int ignore_length, void *data)
 {
   HEAP_CHAIN *chain;
 
   chain = (HEAP_CHAIN *) data;
-  fprintf (stdout, "NEXT_VPID = %4d|%4d, PREV_VPID = %4d|%4d,\n",
+  fprintf (fp, "NEXT_VPID = %4d|%4d, PREV_VPID = %4d|%4d,\n",
 	   chain->next_vpid.volid, chain->next_vpid.pageid,
 	   chain->prev_vpid.volid, chain->prev_vpid.pageid);
 }
@@ -17733,9 +17734,9 @@ heap_rv_redo_reuse (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * Note: Dump information about reuse of page.
  */
 void
-heap_rv_dump_reuse (int ignore_length, void *ignore_data)
+heap_rv_dump_reuse (FILE * fp, int ignore_length, void *ignore_data)
 {
-  fprintf (stdout, "Delete all objects in page for reuse purposes of page\n");
+  fprintf (fp, "Delete all objects in page for reuse purposes of page\n");
 }
 
 /*

@@ -39,6 +39,7 @@ package cubrid.jdbc.jci;
 import java.net.Socket;
 import java.net.InetAddress;
 import java.util.Vector;
+import java.util.ArrayList;
 import java.io.*;
 import javax.transaction.xa.Xid;
 import cubrid.sql.CUBRIDOID;
@@ -54,34 +55,6 @@ import com.cubrid.jsp.Server;
 #ifdef SEND_APP_INFO
 import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 #endif
-
-/*
- * class UConnection은 CAS와의 connection을 만들고 Transaction을 관리한다.또한
- * SQL Statement를 prepare하며 여러가지의 DB 정보를 가져오거나 Set할 수 있다.
- *
- * 모든 public interface는 method 수행 중에 발생한 error를 UError object인
- * errorHandler에 set한다. 따라서 UConnection의 public interface를 호출할 때에는
- * 반드시 method getRecentError()를 call하여 error를 check하여야 한다.
- *
- * Internal Note
- *
- * flag isClosed를 가지고 있어 CAS와의 Connection이 끊어졌을 때 method들이 call될
- * 때에는 Error를 Set한다.
- * endTransaction(commit or rollback)을 할경우 CAS로부터 connection이 단절되므로
- * flag needReconnection을 가지고 이를 check하고 connection이 끊겼을 경우 다시
- * CAS와의 connection을 만든다.
- * oid관련 interface에 argument로 넘어오는 oid string은
- * '@page_id|slot_id|volumn_id'
- * format이어야 한다.
- *
- * Connection Mechanism
- *
- * server와의 connect 단계를 Driver Info를 보내는 단계와 Db Info를 보내는 단계로
- * 나누어 Driver Info를 보낸 후 새 port가 넘어올 경우 새로운 port로 다시
- * connect하도록 한다.
-
- * since 1.0
- */
 
 public class UConnection
 {
@@ -129,6 +102,8 @@ public class UConnection
   private final static int LOCK_TIMEOUT_NOT_USED = -2;
   private final static int LOCK_TIMEOUT_INFINITE = -1;
 
+  private final static int SOCKET_TIMEOUT = 5000;
+
   String conCharsetName;
   UOutputBuffer outBuffer;
   CUBRIDConnection cubridcon;
@@ -136,9 +111,9 @@ public class UConnection
   boolean update_executed; /* for result cache */
 
   private OutputStream out;
-  private InputStream in;
+  private UTimedInputStream in;
   private boolean needReconnection;
-  private DataInputStream input;
+  private UTimedDataInputStream input;
   private DataOutputStream output;
   private String CASIp;
   private int CASPort;
@@ -152,8 +127,11 @@ public class UConnection
   private int lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
   private boolean lastAutoCommit = true;
   private String dbname, user, passwd;
+  private ArrayList aConList = null;
+  private int activeConId = 0;
   // jci 3.0
   private byte[] broker_info = null;
+  private byte[] save_broker_info = null;
   private byte con_status = CON_STATUS_OUT_TRAN;
 
   private boolean isServerSideJdbc = false;
@@ -209,6 +187,35 @@ public class UConnection
     }
   }
 
+  UConnection(ArrayList aConList, String dbname, String user, String passwd)
+      throws CUBRIDException
+  {
+    this.aConList = aConList;
+
+    ArrayList aCon = (ArrayList) aConList.get(0);
+    CASIp = (String) aCon.get(0);
+    CASPort = ((Integer)aCon.get(1)).intValue();
+
+    this.dbname = dbname;
+    this.user = user;
+    this.passwd = passwd;
+    update_executed = false;
+
+    needReconnection = true;
+    conCharsetName = UJCIManager.sysCharsetName;
+
+#ifndef IS_PROJ
+    String version = getDatabaseProductVersion();
+#endif
+    UError cpErr = errorHandler;
+    endTransaction(true);
+#ifndef IS_PROJ
+    if (version == null) {
+      throw new CUBRIDException(cpErr);
+    }
+#endif
+  }
+
   /*
    * the constructor of the class UConnection for class UStatement method cancel
    */
@@ -253,6 +260,7 @@ public class UConnection
     {
       client = socket;
       client.setTcpNoDelay(true);
+      client.setSoTimeout(SOCKET_TIMEOUT);
 
       out = client.getOutputStream();
       output = new DataOutputStream(client.getOutputStream());
@@ -260,8 +268,8 @@ public class UConnection
       out.flush();
       output.flush();
 
-      in = client.getInputStream();
-      input = new DataInputStream(client.getInputStream());
+      in = new UTimedInputStream(client.getInputStream(), CASIp);
+      input = new UTimedDataInputStream(client.getInputStream(), CASIp);
     }
     catch (IOException e)
     {
@@ -290,12 +298,6 @@ public class UConnection
     return conCharsetName;
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인 set
-   * type attribute에 value를 element로 add한다. Error Code : ER_IS_CLOSED,
-   * ER_ILLEGAL_DATA_SIZE, ER_INVALID_ARGUMENT, ER_COMMUNICATION
-   */
-
   synchronized public void addElementToSet(CUBRIDOID oid, String attributeName,
       Object value)
   {
@@ -320,16 +322,6 @@ public class UConnection
       return;
     }
   }
-
-  /*
-   * Statement의 batch execute를 위한 interface이다. BatchSqlStmt list를 batch
-   * execute하며 각 statement의 결과는 integer array로 return되어 진다. result
-   * value는 각 statement가 success한 경우 result count(0이상)를 나타내고 fail인
-   * 경우 -3값을 갖는다. BatchSqlStmt[I]가 "q1;q2;…;qn"과 같을 때 q1만이
-   * execute되며 q2,…,qn은 무시된다. BatchSqlStmt가 null이면
-   * ER_INVALID_ARGUMENT error가 set된다. Error Code : ER_IS_CLOSED,
-   * ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public UBatchResult batchExecute(String batchSqlStmt[])
   {
@@ -398,12 +390,6 @@ public class UConnection
     return null;
   }
 
-  /*
-   * CAS와의 connection을 close한다. 현재 transaction list에 statement를 가지고
-   * 있다면 transaction을 rollback하고 각 statement들을 close한 다음
-   * connection을 close한다. Error Code : ER_IS_CLOSED, ER_COMMUNICATION
-   */
-
   synchronized public void close()
   {
     errorHandler = new UError();
@@ -443,12 +429,6 @@ public class UConnection
     isClosed = true;
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인
-   * sequence type attribute의 index번째 element를 drop한다. Error Code :
-   * ER_IS_CLOSED, ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
-
   synchronized public void dropElementInSequence(CUBRIDOID oid,
       String attributeName, int index)
   {
@@ -486,12 +466,6 @@ public class UConnection
     }
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인 set
-   * type attribute에 value에 해당되는 element를 drop한다. Error Code :
-   * ER_IS_CLOSED, ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
-
   synchronized public void dropElementInSet(CUBRIDOID oid,
       String attributeName, Object value)
   {
@@ -516,13 +490,6 @@ public class UConnection
       return;
     }
   }
-
-  /*
-   * Transaction을 commit하거나 rollback한다. commit나 rollback이 이루어지면
-   * 관련된 모든 statement와 connection은 close되며 CAS와의 connection이
-   * 끊어진다. Error Code : ER_IS_CLOSED, ER_UNKNOWN, ER_ILLEGAL_DATA_SIZE,
-   * ER_COMMUNICATION
-   */
 
   synchronized public void endTransaction(boolean type)
   {
@@ -609,12 +576,6 @@ public class UConnection
     return out;
   }
 
-  /*
-   * 주어진 Oid값에 의해 얻어지는 UStatement를 return한다. 주어진 Oid에 해당되는
-   * object instance의 특정 attribute만을 검색할 수도 있다. Error Code :
-   * ER_IS_CLOSED, ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
-
   synchronized public UStatement getByOID(CUBRIDOID oid, String[] attributeName)
   {
     UStatement returnValue = null;
@@ -665,11 +626,6 @@ public class UConnection
     return returnValue;
   }
 
-  /*
-   * CUBRID의 current product version을 가져온다. Error Code : ER_IS_CLOSED,
-   * ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
-
   synchronized public String getDatabaseProductVersion()
   {
     errorHandler = new UError();
@@ -703,11 +659,6 @@ public class UConnection
     }
     return null;
   }
-
-  /*
-   * CUBRID의 Isolation level을 get하는 method이다. Error Code : ER_IS_CLOSED,
-   * ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public int getIsolationLevel()
   {
@@ -746,11 +697,6 @@ public class UConnection
     return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 #endif
   }
-
-  /*
-   * class UConnection의 가장 최근에 불려진 public interface에서 발생한 error
-   * 값을 얻는 method이다.
-   */
 
   public UError getRecentError()
   {
@@ -804,14 +750,6 @@ public class UConnection
 
     return ret_val;
   }
-
-  /*
-   * Database의 Schema 정보를 가져오는 interface이다. className과
-   * attributePattern는 pattern과 name이 올 수 있으며 이 때 상황에 맞게 flag값이
-   * set되어야 한다. 0:No Pattern, 1:Class Pattern, 2:Attribute Pattern, 3:Both
-   * Pattern Error Code : ER_IS_CLOSED, ER_SCHEMA_TYPE, ER_ILLEGAL_FLAG,
-   * ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public UStatement getSchemaInfo(int type, String className,
       String attributePattern, byte flag)
@@ -878,13 +816,6 @@ public class UConnection
     // transactionList.add(returnValue);
     return returnValue;
   }
-
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인
-   * collection type (set, multiset, sequence) attribute의 element 개수를
-   * return한다. Error Code : ER_IS_CLOSED, ER_INVALID_ARGUMENT,
-   * ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public int getSizeOfCollection(CUBRIDOID oid,
       String attributeName)
@@ -966,13 +897,6 @@ public class UConnection
     return null;
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인
-   * sequence type attribute의 attribute에 value를 index번째 element로
-   * insert한다. Error Code : ER_IS_CLOSED, ER_INVALID_ARGUMENT,
-   * ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
-
   synchronized public void insertElementIntoSequence(CUBRIDOID oid,
       String attributeName, int index, Object value)
   {
@@ -1000,26 +924,10 @@ public class UConnection
     }
   }
 
-  /*
-   * this UConnection object가 close되었는지를 나타내는 flag를 return한다.
-   */
-
   public boolean isClosed()
   {
     return isClosed;
   }
-
-  /*
-   * UStatement를 생성하여 SQL문을 prepare한다. prepare된 SQL문에 대해서 input
-   * binding parameter에 대한 정보와, SQL문이 select일 경우 column에 대한 정보를
-   * UStatement의 method를 통해 얻을 수 있다. SqlStmt가 'q1;q2;...;qn'처럼
-   * 구성되어 있을 경우 얻어지는 parameter의 개수는 q1, q2, …, qn의 모든
-   * parameter의 개수이다. Updatable UStatement를 만들기 위해서는 prepare시
-   * isUpdatable이 true, statement type이 select이어야 하고 result set에 OID가
-   * include되어져야 한다. 위의 조건에 만족하지 못할 경우 isUpdatable flag가
-   * true로 set되어 있다 할지라도 read-only UStatement가 만들어진다. Error Code
-   * : ER_IS_CLOSED, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public UStatement prepare(String sqlStatement, byte prepareFlag)
   {
@@ -1077,6 +985,8 @@ public class UConnection
 
     if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
     {
+      if (errorHandler.getJdbcErrorCode() == -111)
+        need_checkcas = true;
       if (need_checkcas)
       {
         if (check_cas() == false)
@@ -1106,12 +1016,6 @@ public class UConnection
     pooled_ustmts.add(returnValue);
     return returnValue;
   }
-
-  /*
-   * 주어진 oid instance에 값을 update하는 method이다. 특정 attribute만을
-   * 지정하여 값을 update할 수 있다. Error Code : ER_IS_CLOSED,
-   * ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public void putByOID(CUBRIDOID oid, String attributeName[],
       Object values[])
@@ -1145,7 +1049,6 @@ public class UConnection
 
       UInputBuffer inBuffer;
       inBuffer = send_recv_msg();
-
       if (getAutoCommit())
       {
         turnOnAutoCommitBySelf();
@@ -1160,13 +1063,6 @@ public class UConnection
       errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
     }
   }
-
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인
-   * sequence type attribute에 value를 index번째 element로 replace한다. Error
-   * Code : ER_IS_CLOSED, ER_INVALID_ARGUMENT, ER_ILLEGAL_DATA_SIZE,
-   * ER_COMMUNICATION
-   */
 
   synchronized public void putElementInSequence(CUBRIDOID oid,
       String attributeName, int index, Object value)
@@ -1194,12 +1090,6 @@ public class UConnection
       return;
     }
   }
-
-  /*
-   * Database의 Isolation level을 set하는 method이다. Isolation level은
-   * CUBRIDIsolationLevel에서 Set한 범위 내에 포함되어야 한다. Error Code :
-   * ER_IS_CLOSED, ER_ISO_TYPE, ER_ILLEGAL_DATA_SIZE, ER_COMMUNICATION
-   */
 
   synchronized public void setIsolationLevel(int level)
   {
@@ -1733,12 +1623,21 @@ public class UConnection
     return url_cache;
   }
 
-  /*
-   * endTransaction이 일어나 CAS와 connection이 단절되었을 때 다시 CAS와의
-   * connection을 만들어주는 method이다.
-   */
+  private void switchBrokerInfoOnFailback()
+  {
+    if (this.activeConId == 0)
+    {
+      broker_info[0] = save_broker_info[0];
+      broker_info[1] = save_broker_info[1];
+    }
+    else
+    {
+      broker_info[0] = 0;
+      broker_info[1] = 0;
+    }
+  }
 
-  private void reconnect() throws IOException, UJciException
+  private void reconnectWorker() throws IOException, UJciException
   {
     initConnection(CASIp, CASPort);
     sendDriverInfo();
@@ -1752,7 +1651,58 @@ public class UConnection
     /*
      * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
      */
+    switchBrokerInfoOnFailback();
+  }
 
+  private boolean setActiveConnection(int conId)
+  {
+    if (conId >= this.aConList.size())
+      return false;
+
+    ArrayList aCon = (ArrayList) this.aConList.get(conId);
+    this.CASIp = (String) aCon.get(0);
+    this.CASPort = ((Integer) aCon.get(1)).intValue();
+    this.activeConId = conId;
+    return true;
+  }
+
+  private void reconnect() throws IOException, UJciException
+  {
+    if (this.aConList == null) {
+      reconnectWorker();
+
+    } else {
+      int nextConId = 1;
+      setActiveConnection(0);
+
+      while(true)
+      {
+    	try
+    	{
+    	  reconnectWorker();
+    	    break;
+    	}
+    	catch (Exception e)
+    	{
+    	  if (e instanceof IOException || //e instanceof UJciException ||
+		      ((UJciException)e).getJciError() == UErrorCode.ER_COMMUNICATION ||
+		      //((UJciException)e).getJciError() == UErrorCode.ER_DBMS ||
+		      ((UJciException)e).getJciError() == UErrorCode.ER_CONNECTION)
+	      {
+    		if (setActiveConnection(nextConId++) == false)
+		    {
+		      e.printStackTrace();
+		      throw new UJciException(UErrorCode.ER_COMMUNICATION, 0, e.getMessage());
+		    }
+		  }
+		  else
+		  {
+		    e.printStackTrace();
+		    throw new UJciException(UErrorCode.ER_UNKNOWN, 0, e.getMessage());
+		  }
+		}
+      }
+	}
   }
 
   // jci 3.0
@@ -1789,6 +1739,10 @@ public class UConnection
             if (broker_info == null)
               broker_info = new byte[4];
             inBuffer.readBytes(broker_info);
+            if (save_broker_info == null)
+              save_broker_info = new byte[4];
+            save_broker_info[0] = broker_info[0];
+            save_broker_info[1] = broker_info[1];
           }
         }
       }
@@ -1805,14 +1759,15 @@ public class UConnection
     {
       client = new Socket(InetAddress.getByName(ip), port);
       client.setTcpNoDelay(true);
+      client.setSoTimeout(SOCKET_TIMEOUT);
 
       out = client.getOutputStream();
       output = new DataOutputStream(client.getOutputStream());
       out.flush();
       output.flush();
 
-      in = client.getInputStream();
-      input = new DataInputStream(client.getInputStream());
+      in = new UTimedInputStream(client.getInputStream(), CASIp);
+      input = new UTimedDataInputStream(client.getInputStream(), CASIp);
     }
     catch (IOException e)
     {
@@ -1930,10 +1885,6 @@ public class UConnection
 
 #endif
 
-  /*
-   * server쪽에 JDBC Driver info를 넘겨준다.
-   */
-
   private void sendDriverInfo() throws IOException
   {
     synchronized (output)
@@ -1942,12 +1893,6 @@ public class UConnection
       output.flush();
     }
   }
-
-  /*
-   * server와의 connection을 만들 때 server쪽에서 새로운 port number가 넘어오지
-   * 않으면 현재의 connection을 계속 사용하고 새로운 port number가 넘어오면
-   * 새로운 port로 server쪽과 connection을 다시 만드는 부분이다.
-   */
 
   private void whetherConnectOtherPortOrNot() throws IOException, UJciException
   {

@@ -74,7 +74,7 @@ struct sort_args
   OID *fk_refcls_oid;
   BTID *fk_refcls_pk_btid;
   int cache_attr_id;
-  const char *fkname;
+  const char *fk_name;
 };
 
 typedef struct btree_page BTREE_PAGE;
@@ -185,7 +185,7 @@ static void print_list (const BTREE_NODE * this_list);
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
- *   fkname(in):
+ *   fk_name(in):
  *
  */
 BTID *
@@ -194,7 +194,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   int *attr_ids, HFID * hfids, int unique_flag,
 		   int reverse_flag, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
-		   const char *fkname)
+		   const char *fk_name)
 {
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
@@ -270,7 +270,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->cache_attr_id = cache_attr_id;
-  sort_args->fkname = fkname;
+  sort_args->fk_name = fk_name;
 
   /*
    * Start a heap scancache for reading objects using the first nun-null heap
@@ -2260,13 +2260,13 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fkname(in):
+ *   fk_name(in):
  */
 int
 btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 			 OID * oid, DB_VALUE * keyval, int n_attrs,
 			 OID * pk_cls_oid, BTID * pk_btid, int cache_attr_id,
-			 const char *fkname)
+			 const char *fk_name)
 {
   OID unique_oid;
   bool is_null;
@@ -2289,7 +2289,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 				      pk_cls_oid, &unique_oid,
 				      true) != BTREE_KEY_FOUND)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 1, fkname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 1, fk_name);
       ret = ER_FK_INVALID;
       goto exit_on_error;
     }
@@ -2532,7 +2532,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 					   sort_args->fk_refcls_oid,
 					   sort_args->fk_refcls_pk_btid,
 					   sort_args->cache_attr_id,
-					   sort_args->fkname) != NO_ERROR)
+					   sort_args->fk_name) != NO_ERROR)
 		{
 		  return SORT_ERROR_OCCURRED;
 		}
@@ -2828,11 +2828,11 @@ btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * Note: Dump the information to undo the creation of an index file
  */
 void
-btree_rv_dump_create_index (int length_ignore, void *data)
+btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data)
 {
   VFID *vfid;
 
   vfid = (VFID *) data;
-  (void) fprintf (stdout, "Undo creation of Index vfid: %d|%d\n",
+  (void) fprintf (fp, "Undo creation of Index vfid: %d|%d\n",
 		  vfid->volid, vfid->fileid);
 }

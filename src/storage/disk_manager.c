@@ -271,7 +271,7 @@ static bool disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore);
 static int disk_map_init (THREAD_ENTRY * thread_p, INT16 volid,
 			  INT32 at_fpageid, INT32 at_lpageid,
 			  INT32 nalloc_bits, DISK_VOLPURPOSE vol_purpose);
-static int disk_map_dump (THREAD_ENTRY * thread_p, VPID * vpid,
+static int disk_map_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid,
 			  const char *at_name, INT32 at_fpageid,
 			  INT32 at_lpageid, INT32 all_fid, INT32 all_lid);
 
@@ -305,12 +305,13 @@ static DISK_ISVALID disk_id_isvalid (THREAD_ENTRY * thread_p, INT16 volid,
 static INT32 disk_get_num_overhead_for_newvol (INT32 npages);
 static int disk_repair (THREAD_ENTRY * thread_p, INT16 volid, int dk_type);
 
-static int disk_dump_goodvol_system (THREAD_ENTRY * thread_p, INT16 volid,
-				     INT32 fs_sectid, INT32 ls_sectid,
-				     INT32 fs_pageid, INT32 ls_pageid);
+static int disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp,
+				     INT16 volid, INT32 fs_sectid,
+				     INT32 ls_sectid, INT32 fs_pageid,
+				     INT32 ls_pageid);
 static bool disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid,
 				   void *ignore);
-static int disk_vhdr_dump (const DISK_VAR_HEADER * vhdr);
+static int disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr);
 
 static int disk_rv_alloctable_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 				      DISK_ALLOCTABLE_MODE mode);
@@ -5449,7 +5450,7 @@ error:
  *       are printed. This function is used for debugging purposes.
  */
 static int
-disk_dump_goodvol_system (THREAD_ENTRY * thread_p, INT16 volid,
+disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
 			  INT32 fs_sectid, INT32 ls_sectid, INT32 fs_pageid,
 			  INT32 ls_pageid)
 {
@@ -5474,7 +5475,7 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
-  disk_vhdr_dump (vhdr);
+  disk_vhdr_dump (fp, vhdr);
 
   /* Make sure the input parameters are OK */
   if (fs_sectid < 0)
@@ -5516,34 +5517,34 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
   /* Display Sector allocator Map table */
-  (void) fprintf (stdout, "\nSECTOR ALLOCATOR MAP TABLE\n");
-  if (disk_map_dump (thread_p, &vpid, "SECTOR ID",
+  (void) fprintf (fp, "\nSECTOR ALLOCATOR MAP TABLE\n");
+  if (disk_map_dump (thread_p, fp, &vpid, "SECTOR ID",
 		     (fs_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1,
 		     (ls_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1,
 		     fs_sectid, ls_sectid) != NO_ERROR)
     {
-      (void) fprintf (stdout,
+      (void) fprintf (fp,
 		      "Problems dumping sector table of volume = %s\n",
 		      disk_vhdr_get_vol_fullname (vhdr));
     }
   else
     {
       /* Display Page allocator Map table */
-      (void) fprintf (stdout, "\nPAGE ALLOCATOR MAP TABLE\n");
-      if (disk_map_dump (thread_p, &vpid, "PAGE ID",
+      (void) fprintf (fp, "\nPAGE ALLOCATOR MAP TABLE\n");
+      if (disk_map_dump (thread_p, fp, &vpid, "PAGE ID",
 			 (fs_pageid / DISK_PAGE_BIT) +
 			 vhdr->page_alloctb_page1,
 			 (ls_pageid / DISK_PAGE_BIT) +
 			 vhdr->page_alloctb_page1, fs_pageid,
 			 ls_pageid) != NO_ERROR)
 	{
-	  (void) fprintf (stdout,
+	  (void) fprintf (fp,
 			  "Problems dumping page table of volume = %s\n",
 			  disk_vhdr_get_vol_fullname (vhdr));
 	}
     }
 
-  (void) fprintf (stdout, "\n\n");
+  (void) fprintf (fp, "\n\n");
   pgbuf_unfix (thread_p, hdr_pgptr);
   hdr_pgptr = NULL;
 
@@ -5568,41 +5569,41 @@ exit_on_error:
  * Note: This function is used for debugging purposes.
  */
 static int
-disk_vhdr_dump (const DISK_VAR_HEADER * vhdr)
+disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 {
 #if defined(SERVER_MODE)
   char time_val[64];
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  (void) fprintf (stdout, " MAGIC SYMBOL = %s at disk location = %d\n",
+  (void) fprintf (fp, " MAGIC SYMBOL = %s at disk location = %d\n",
 		  vhdr->magic, offsetof (FILEIO_PAGE, page) +
 		  offsetof (DISK_VAR_HEADER, magic));
-  (void) fprintf (stdout, " io_pagesize = %d,\n", vhdr->iopagesize);
-  (void) fprintf (stdout, " VID = %d, VOL_FULLNAME = %s\n"
+  (void) fprintf (fp, " io_pagesize = %d,\n", vhdr->iopagesize);
+  (void) fprintf (fp, " VID = %d, VOL_FULLNAME = %s\n"
 		  " VOL PURPOSE = %s\n VOL_REMARKS = %s\n",
 		  vhdr->volid, disk_vhdr_get_vol_fullname (vhdr),
 		  disk_purpose_to_string (vhdr->purpose),
 		  disk_vhdr_get_vol_remarks (vhdr));
-  (void) fprintf (stdout, " NEXT_VOL_FULLNAME = %s\n",
+  (void) fprintf (fp, " NEXT_VOL_FULLNAME = %s\n",
 		  disk_vhdr_get_next_vol_fullname (vhdr));
-  (void) fprintf (stdout, " LAST SYSTEM PAGE = %d\n", vhdr->sys_lastpage);
-  (void) fprintf (stdout, " SECTOR: SIZE IN PAGES = %10d, TOTAL = %10d,",
+  (void) fprintf (fp, " LAST SYSTEM PAGE = %d\n", vhdr->sys_lastpage);
+  (void) fprintf (fp, " SECTOR: SIZE IN PAGES = %10d, TOTAL = %10d,",
 		  vhdr->sect_npgs, vhdr->total_sects);
-  (void) fprintf (stdout, " FREE = %10d,\n %10s HINT_ALLOC = %10d\n",
+  (void) fprintf (fp, " FREE = %10d,\n %10s HINT_ALLOC = %10d\n",
 		  vhdr->free_sects, " ", vhdr->hint_allocsect);
-  (void) fprintf (stdout, " PAGE:   TOTAL = %10d, FREE = %10d\n",
+  (void) fprintf (fp, " PAGE:   TOTAL = %10d, FREE = %10d\n",
 		  vhdr->total_pages, vhdr->free_pages);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  " SAT:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n",
 		  vhdr->sect_alloctb_npages, vhdr->sect_alloctb_page1);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  " PAT:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n",
 		  vhdr->page_alloctb_npages, vhdr->page_alloctb_page1);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  " Warning ratio = %.2f, NEXT AUTOMATIC WARNING TO RUNNING"
 		  " OUT OF SPACE AT = %d\n", vhdr->warn_ratio, vhdr->warnat);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  " Database creation time = %s\n"
 		  " Lowest Checkpoint for recovery = %d|%d\n",
 #if defined(SERVER_MODE) && !defined(WINDOWS)
@@ -5612,7 +5613,7 @@ disk_vhdr_dump (const DISK_VAR_HEADER * vhdr)
 		  ctime (&vhdr->db_creation), vhdr->chkpt_lsa.pageid,
 #endif /* SERVER_MODE && !WINDOWS */
 		  vhdr->chkpt_lsa.offset);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "Boot_hfid: volid %d, fileid %d header_pageid %d\n",
 		  vhdr->boot_hfid.vfid.volid, vhdr->boot_hfid.vfid.fileid,
 		  vhdr->boot_hfid.hpgid);
@@ -5633,25 +5634,24 @@ disk_vhdr_dump (const DISK_VAR_HEADER * vhdr)
  * Note: This function is used for debugging purposes.
  */
 static int
-disk_map_dump (THREAD_ENTRY * thread_p, VPID * vpid, const char *at_name,
-	       INT32 at_fpageid, INT32 at_lpageid, INT32 all_fid,
-	       INT32 all_lid)
+disk_map_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid,
+	       const char *at_name, INT32 at_fpageid, INT32 at_lpageid,
+	       INT32 all_fid, INT32 all_lid)
 {
   int i;
   PAGE_PTR at_pgptr = NULL;	/* Pointer to Sector/page allocator table */
   unsigned char *at_chptr;	/* Char Pointer to Sector/page allocator table */
   unsigned char *out_chptr;	/* Outside of page */
 
-  fprintf (stdout,
-	   "%10s 0123456789 0123456789 0123456789 0123456789", at_name);
+  fprintf (fp, "%10s 0123456789 0123456789 0123456789 0123456789", at_name);
 
   /* Skip over the desired number */
   if (all_fid % 10)
     {
-      fprintf (stdout, "\n%10d ", all_fid);
+      fprintf (fp, "\n%10d ", all_fid);
       for (i = 0; i < all_fid % 10; i++)
 	{
-	  fprintf (stdout, " ");
+	  fprintf (fp, " ");
 	}
     }
 
@@ -5674,19 +5674,19 @@ disk_map_dump (THREAD_ENTRY * thread_p, VPID * vpid, const char *at_name,
 	    {
 	      if (all_fid % 40 == 0)
 		{
-		  fprintf (stdout, "\n%10d ", all_fid);
+		  fprintf (fp, "\n%10d ", all_fid);
 		}
 	      else if (all_fid % 10 == 0)
 		{
-		  fprintf (stdout, " ");
+		  fprintf (fp, " ");
 		}
-	      fprintf (stdout, "%d", disk_bit_is_set (at_chptr, i) ? 1 : 0);
+	      fprintf (fp, "%d", disk_bit_is_set (at_chptr, i) ? 1 : 0);
 	    }
 	}
       pgbuf_unfix (thread_p, at_pgptr);
       at_pgptr = NULL;
     }
-  fprintf (stdout, "\n");
+  fprintf (fp, "\n");
 
   return NO_ERROR;
 }
@@ -5697,7 +5697,7 @@ disk_map_dump (THREAD_ENTRY * thread_p, VPID * vpid, const char *at_name,
  *   return: NO_ERROR;
  */
 int
-disk_dump_all (THREAD_ENTRY * thread_p)
+disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp)
 {
   int ret = NO_ERROR;
 
@@ -5718,8 +5718,9 @@ disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 {
   int ret = NO_ERROR;
 
-  ret = disk_dump_goodvol_system (thread_p, volid, NULL_PAGEID, NULL_PAGEID,
-				  NULL_PAGEID, NULL_PAGEID);
+  ret =
+    disk_dump_goodvol_system (thread_p, stdout, volid, NULL_PAGEID,
+			      NULL_PAGEID, NULL_PAGEID, NULL_PAGEID);
 
   return true;
 }
@@ -5785,13 +5786,13 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_hdr (int length_ignore, void *data)
+disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data)
 {
   DISK_VAR_HEADER *vhdr;
   int ret = NO_ERROR;
 
   vhdr = (DISK_VAR_HEADER *) data;
-  ret = disk_vhdr_dump (vhdr);
+  ret = disk_vhdr_dump (fp, vhdr);
 }
 
 /*
@@ -5837,9 +5838,9 @@ disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_init_map (int length_ignore, void *data)
+disk_rv_dump_init_map (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Nalloc_bits = %d\n", *(INT32 *) data);
+  fprintf (fp, "Nalloc_bits = %d\n", *(INT32 *) data);
 }
 
 /*
@@ -5870,9 +5871,9 @@ disk_vhdr_rv_undoredo_free_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_vhdr_rv_dump_free_sectors (int length_ignore, void *data)
+disk_vhdr_rv_dump_free_sectors (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Nalloc_sects = %d\n", abs (*(INT32 *) data));
+  fprintf (fp, "Nalloc_sects = %d\n", abs (*(INT32 *) data));
 }
 
 /*
@@ -5907,9 +5908,9 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_vhdr_rv_dump_free_pages (int length_ignore, void *data)
+disk_vhdr_rv_dump_free_pages (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Nalloc_pages = %d\n", abs (*(INT32 *) data));
+  fprintf (fp, "Nalloc_pages = %d\n", abs (*(INT32 *) data));
 }
 
 /*
@@ -5989,13 +5990,12 @@ disk_rv_clear_alloctable (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_alloctable (int length_ignore, void *data)
+disk_rv_dump_alloctable (FILE * fp, int length_ignore, void *data)
 {
   DISK_RECV_MTAB_BITS *mtb;	/* Recovery structure of bits */
 
   mtb = (DISK_RECV_MTAB_BITS *) data;
-  fprintf (stdout, "Start_bit = %u, Num_bits = %d\n", mtb->start_bit,
-	   mtb->num);
+  fprintf (fp, "Start_bit = %u, Num_bits = %d\n", mtb->start_bit, mtb->num);
 }
 
 /*
@@ -6149,12 +6149,12 @@ disk_rv_clear_alloctable_with_vhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_alloctable_with_vhdr (int length_ignore, void *data)
+disk_rv_dump_alloctable_with_vhdr (FILE * fp, int length_ignore, void *data)
 {
   DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
 
   mtb = (DISK_RECV_MTAB_BITS_WITH *) data;
-  fprintf (stdout,
+  fprintf (fp,
 	   "Start_bit = %u, Num_bits = %d, Deallocation_type = %d\n",
 	   mtb->start_bit, mtb->num, mtb->deallid_type);
 }
@@ -6184,9 +6184,9 @@ disk_rv_redo_magic (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_magic (int length_ignore, void *data)
+disk_rv_dump_magic (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Magic = %s\n", (char *) data);
+  fprintf (fp, "Magic = %s\n", (char *) data);
 }
 
 /*
@@ -6222,13 +6222,13 @@ disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_set_creation_time (int length_ignore, void *data)
+disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 {
   DISK_RECV_CHANGE_CREATION *change;
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (stdout, "Label = %s, Db_creation = %ld, chkpt = %d|%d\n",
+  fprintf (fp, "Label = %s, Db_creation = %ld, chkpt = %d|%d\n",
 	   change->vol_fullname, change->db_creation,
 	   change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
 }
@@ -6259,9 +6259,9 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_link (int length_ignore, void *data)
+disk_rv_dump_link (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Next_Volextension = %s\n", (char *) data);
+  fprintf (fp, "Next_Volextension = %s\n", (char *) data);
 }
 
 /*
@@ -6295,12 +6295,12 @@ disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-disk_rv_dump_set_boot_hfid (int length_ignore, void *data)
+disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
 {
   HFID *hfid;
 
   hfid = (HFID *) data;
-  fprintf (stdout, "Heap: Volid = %d, Fileid = %d, Header_pageid = %d\n",
+  fprintf (fp, "Heap: Volid = %d, Fileid = %d, Header_pageid = %d\n",
 	   hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
 }
 

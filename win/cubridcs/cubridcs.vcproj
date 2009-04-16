@@ -681,6 +681,10 @@
 				Name="storage"
 				>
 				<File
+					RelativePath="..\..\src\storage\file_io.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\storage\oid.c"
 					>
 				</File>
@@ -718,6 +722,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\transaction\log_compress.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\transaction\log_writer.c"
 					>
 				</File>
 				<File

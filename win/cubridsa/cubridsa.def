@@ -280,6 +280,7 @@ EXPORTS
     db_get_constraints
     db_get_currency_default
     db_get_database_comments
+    db_get_client_type
     db_get_database_name
     db_get_date
     db_get_db_value_query_result
@@ -437,6 +438,7 @@ EXPORTS
     db_open_file_name
     db_parameter_name
     db_parameter_next
+    db_ping_server
     db_preload_classes
     db_print
     db_print_mop
@@ -520,6 +522,7 @@ EXPORTS
     db_set_cardinality
     db_set_class_method_arg_domain
     db_set_client_cache_time
+    db_set_client_type
     db_set_compare
     db_set_copy
     db_set_create

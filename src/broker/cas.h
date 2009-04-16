@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -36,7 +36,6 @@
 #include "cas_cci.h"
 #include "cas_common.h"
 
-
 /* server error code */
 #define CAS_ER_GLO			-999
 #define CAS_ER_GLO_CMD			-1023
@@ -54,7 +53,9 @@ typedef struct t_req_info T_REQ_INFO;
 struct t_req_info
 {
   T_BROKER_VERSION client_version;
+  int need_auto_commit;
   char need_rollback;
+  char need_reconnect;
 };
 
 #ifndef LIBCAS_FOR_JSP

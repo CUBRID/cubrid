@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -156,8 +156,7 @@ static int total_approximate_class_objects = 0;
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
 #define MSG_FORMAT 		"    %-25s  |  %10d (%3d%% / %3d%%)"
-#define UNLOAD_LOG_FILENAME	"unload.log"
-static FILE *unloadlog_filename = NULL;
+static FILE *unloadlog_file = NULL;
 
 
 static int get_estimated_objs (HFID * hfid, int *est_objects);
@@ -436,7 +435,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extractobjects (char *exec_name)
+extractobjects (const char *exec_name)
 {
   int i;
   HFID *hfid;
@@ -454,6 +453,7 @@ extractobjects (char *exec_name)
   void (*prev_term_handler) (int sig);
   void (*prev_quit_handler) (int sig);
   LOG_LSA lsa;
+  char unloadlog_filename[PATH_MAX];
 
   /* register new signal handlers */
   prev_intr_handler =
@@ -873,9 +873,9 @@ extractobjects (char *exec_name)
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  unloadlog_filename = fopen (UNLOAD_LOG_FILENAME, "w+");
-  fprintf (unloadlog_filename, HEADER_FORMAT, "Class Name",
-	   "Total Instances");
+  sprintf (unloadlog_filename, "%s_unloaddb.log", output_prefix);
+  unloadlog_file = fopen (unloadlog_filename, "w+");
+  fprintf (unloadlog_file, HEADER_FORMAT, "Class Name", "Total Instances");
   if (verbose_flag)
     {
       fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
@@ -906,9 +906,9 @@ extractobjects (char *exec_name)
 				       MSGCAT_UTIL_SET_UNLOADDB,
 				       UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
-      fprintf (unloadlog_filename, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_UNLOADDB,
-						   UNLOADDB_MSG_OBJECTS_FAILED),
+      fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_UNLOADDB,
+					       UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
     }
   else if (verbose_flag)
@@ -921,14 +921,14 @@ extractobjects (char *exec_name)
 
   if (failed_objects == 0)
     {
-      fprintf (unloadlog_filename, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_UNLOADDB,
-						   UNLOADDB_MSG_OBJECTS_DUMPED),
+      fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_UNLOADDB,
+					       UNLOADDB_MSG_OBJECTS_DUMPED),
 	       total_objects);
     }
-  fprintf (unloadlog_filename, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_UNLOADDB,
-					       UNLOADDB_MSG_LOG_LSA),
+  fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_UNLOADDB,
+					   UNLOADDB_MSG_LOG_LSA),
 	   lsa.pageid, lsa.offset);
 
   /* flush remaining buffer */
@@ -939,8 +939,8 @@ extractobjects (char *exec_name)
 
 /* in case of both normal and error */
 end:
-  if (unloadlog_filename != NULL)
-    fclose (unloadlog_filename);
+  if (unloadlog_file != NULL)
+    fclose (unloadlog_file);
 
   /*
    * Cleanup
@@ -1025,6 +1025,7 @@ process_class (int cl_no)
   struct _timeb timebuffer;
   time_t start = 0;
 #endif
+  int total;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1175,23 +1176,22 @@ process_class (int cl_no)
   hfid = sm_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
     {
-      fprintf (unloadlog_filename, MSG_FORMAT "\n", class_ptr->header.name, 0,
-	       100,
-	       (total_objects ==
-		total_approximate_class_objects) ? 100 : (int) (100 *
-								((float)
-								 total_objects
-								 /
-								 (float)
-								 total_approximate_class_objects)));
-      fflush (unloadlog_filename);
+      if (total_objects == total_approximate_class_objects)
+	{
+	  total = 100;
+	}
+      else
+	{
+	  total = 100 *
+	    ((float) total_objects / (float) total_approximate_class_objects);
+	}
+      fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name, 0,
+	       100, total);
+      fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0, 100,
-		   (total_objects == total_approximate_class_objects) ? 100 :
-		   (int) (100 *
-			  ((float) total_objects /
-			   (float) total_approximate_class_objects)));
+	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0,
+		   100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1201,23 +1201,22 @@ process_class (int cl_no)
 
   if (locator_flush_all_instances (class_, false) != NO_ERROR)
     {
-      fprintf (unloadlog_filename, MSG_FORMAT "\n", class_ptr->header.name, 0,
-	       100,
-	       (total_objects ==
-		total_approximate_class_objects) ? 100 : (int) (100 *
-								((float)
-								 total_objects
-								 /
-								 (float)
-								 total_approximate_class_objects)));
-      fflush (unloadlog_filename);
+      if (total_objects == total_approximate_class_objects)
+	{
+	  total = 100;
+	}
+      else
+	{
+	  total = 100 *
+	    ((float) total_objects / (float) total_approximate_class_objects);
+	}
+      fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name, 0,
+	       100, total);
+      fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0, 100,
-		   (total_objects == total_approximate_class_objects) ? 100 :
-		   (int) (100 *
-			  ((float) total_objects /
-			   (float) total_approximate_class_objects)));
+	  fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, 0,
+		   100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1267,8 +1266,9 @@ process_class (int cl_no)
 		  ++class_objects;
 		  ++total_objects;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if ((error = desc_disk_to_obj (class_, class_ptr, &recdes,
-						 desc_obj)) == NO_ERROR)
+		  if ((error =
+		       desc_disk_to_obj (class_, class_ptr, &recdes,
+					 desc_obj)) == NO_ERROR)
 		    {
 		      if ((error = process_object (desc_obj, &obj->oid,
 						   referenced_class)) !=
@@ -1333,6 +1333,15 @@ process_class (int cl_no)
 
   total_approximate_class_objects +=
     (class_objects - approximate_class_objects);
+  if (total_objects == total_approximate_class_objects)
+    {
+      total = 100;
+    }
+  else
+    {
+      total = 100 *
+	((float) total_objects / (float) total_approximate_class_objects);
+    }
   if (verbose_flag)
     {
 #if !defined(WINDOWS)
@@ -1340,24 +1349,12 @@ process_class (int cl_no)
       (void) os_set_signal_handler (SIGALRM, prev_handler);
 #endif
 
-      fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name, class_objects,
-	       100,
-	       (total_objects ==
-		total_approximate_class_objects) ? 100 : (int) (100 *
-								((float)
-								 total_objects
-								 /
-								 (float)
-								 total_approximate_class_objects)));
-
+      fprintf (stdout, MSG_FORMAT "\n", class_ptr->header.name,
+	       class_objects, 100, total);
       fflush (stdout);
     }
-  fprintf (unloadlog_filename, MSG_FORMAT "\n", class_ptr->header.name,
-	   class_objects, 100,
-	   (total_objects == total_approximate_class_objects) ? 100 :
-	   (int) (100 *
-		  ((float) total_objects /
-		   (float) total_approximate_class_objects)));
+  fprintf (unloadlog_file, MSG_FORMAT "\n", class_ptr->header.name,
+	   class_objects, 100, total);
 
 exit_on_end:
 
@@ -1612,7 +1609,7 @@ process_value (DB_VALUE * value)
 	  {
 	    cls_no = *cls_no_ptr;
 	    if (!input_filename || include_references
-	        || (IS_CLASS_REQUESTED (cls_no)))
+		|| (IS_CLASS_REQUESTED (cls_no)))
 	      {
 		update_hash (ref_oid, &ref_class_oid, &ref_data);
 		if (debug_flag)
@@ -1880,8 +1877,9 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	  if ((class_ = locator_find_class (downcase_class_name)) != NULL)
 	    {
 	      class_list[i] = class_;
-	      error = do_is_partitioned_classobj (&is_partition, class_, NULL,
-						  &sub_partitions);
+	      error =
+		do_is_partitioned_classobj (&is_partition, class_, NULL,
+					    &sub_partitions);
 	      if (is_partition == 1)
 		{
 		  for (j = 0; sub_partitions[j]; j++)

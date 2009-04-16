@@ -1157,6 +1157,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
   for (page_id = 0; page_id < npages; page_id++)
     {
+#if !defined(CS_MODE)
       /* check for interrupts from user (i.e. Ctrl-C) */
       if (page_id % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL)
 	{
@@ -1165,6 +1166,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	      return NULL;
 	    }
 	}
+#endif /* !CS_MODE */
 
       if (fileio_write (vol_fd, io_page_p, page_id) == NULL)
 	{
@@ -1330,6 +1332,7 @@ fileio_create (const char *db_full_name_p, const char *vol_label_p,
   int o_sync;
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
 
+#if !defined(CS_MODE)
   /* Make sure that the volume is not already mounted.
      if it is, dismount the volume. */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
@@ -1337,6 +1340,7 @@ fileio_create (const char *db_full_name_p, const char *vol_label_p,
     {
       fileio_dismount (vol_fd);
     }
+#endif /* !CS_MODE */
 
   o_sync = (is_do_sync != false) ? O_SYNC : 0;
 
@@ -1397,6 +1401,7 @@ fileio_create (const char *db_full_name_p, const char *vol_label_p,
 	    }
 	}
 
+#if !defined(CS_MODE)
       if (fileio_cache (vol_id, vol_label_p, vol_fd, lockf_type) != vol_fd)
 	{
 	  /* This should not happen, the volume seems to be mounted by
@@ -1407,6 +1412,7 @@ fileio_create (const char *db_full_name_p, const char *vol_label_p,
 
 	  return vol_fd;
 	}
+#endif /* !CS_MODE */
     }
 
   return vol_fd;
@@ -1462,10 +1468,12 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p,
 		  /* sleep for 100 mili-seconds : consider cs & sa mode */
 		  select (0, NULL, NULL, NULL, &to);
 
+#if !defined(CS_MODE)
 		  if (pgbuf_is_log_check_for_interrupts (thread_p) == true)
 		    {
 		      return NULL_VOLDES;
 		    }
+#endif
 		  continue;
 		}
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1523,8 +1531,10 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
   struct stat buf;
   bool is_raw_device = false;
 
+#if !defined(CS_MODE)
   /* Record number of calls in statistics */
   mnt_io_format_vols (thread_p);
+#endif /* !CS_MODE */
 
   /* Check for bad number of pages...and overflow */
   if (npages <= 0)
@@ -1828,12 +1838,14 @@ fileio_unformat (const char *vol_label_p)
      does not exist anylonger once the volume is dismounted */
   strncpy (tmp_vol_label, vol_label_p, PATH_MAX);
 
+#if !defined(CS_MODE)
   /* Dismount the volume if it is mounted */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
   if (vol_fd != NULL_VOLDES)
     {
       fileio_dismount (vol_fd);
     }
+#endif /* !CS_MODE */
 
   (void) remove (tmp_vol_label);
 }
@@ -2011,6 +2023,7 @@ fileio_mount (const char *db_full_name_p, const char *vol_label_p,
   time_t last_modification_time;
   off_t last_size;
 
+#if !defined(CS_MODE)
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLDES);
 
   /* Is volume already mounted ? */
@@ -2019,6 +2032,7 @@ fileio_mount (const char *db_full_name_p, const char *vol_label_p,
     {
       return vol_fd;
     }
+#endif /* !CS_MODE */
 
   o_sync = (is_do_sync != false) ? O_SYNC : 0;
 
@@ -2074,12 +2088,14 @@ start:
 	}
     }
 
+#if !defined(CS_MODE)
   /* Cache mounting information */
   if (fileio_cache (vol_id, vol_label_p, vol_fd, lockf_type) != vol_fd)
     {
       fileio_dismount (vol_fd);
       return NULL_VOLDES;
     }
+#endif /* !CS_MODE */
 
 #if !defined(WINDOWS)
   if (PRM_DBFILES_PROTECT == true && vol_fd > 0)
@@ -3394,12 +3410,14 @@ fileio_is_volume_exist (const char *vol_label_p)
 {
   int vol_fd;
 
+#if !defined(CS_MODE)
   /* Is volume already mounted ? */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
   if (vol_fd != NULL_VOLDES)
     {
       return true;
     }
+#endif /* !CS_MODE */
 
   /* Check the existance of the file by opening the file */
   vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
@@ -6281,6 +6299,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p,
 }
 #endif /* SERVER_MODE */
 
+#if !defined(CS_MODE)
 /*
  * fileio_backup_volume () - Include the given database volume/file as part of
  *                       the backup
@@ -6699,6 +6718,7 @@ error:
   session_p->dbfile.vlabel = NULL;
   return ER_FAILED;
 }
+#endif /* !CS_MODE */
 
 /*
  * io_backup_flush () - Flush any buffered data
@@ -8283,7 +8303,6 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
   thread_info_p = &session_p->read_thread_info;
   queue_p = &thread_info_p->io_queue;
   backup_header_p = session_p->bkup.bkuphdr;
-
   node = NULL;
 
   switch (backup_header_p->zip_method)
@@ -8388,6 +8407,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 		goto exit_on_error;
 	      }
 	  }
+
       }
       break;
 
@@ -8408,7 +8428,6 @@ exit_on_end:
     }
 
   return error;
-
 exit_on_error:
 
   if (error == NO_ERROR)
@@ -8418,6 +8437,7 @@ exit_on_error:
   goto exit_on_end;
 }
 
+#if !defined(CS_MODE)
 /*
  * fileio_restore_volume () - Restore a volume/file of given database
  *   return:
@@ -8705,6 +8725,7 @@ error:
 
   return ER_FAILED;
 }
+#endif /* !CS_MODE */
 
 /*
  * io_restore_write () - Write the content of the page described by pageid

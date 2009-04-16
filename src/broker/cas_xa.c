@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -47,7 +47,10 @@ static int compare_xid (XID * xid1, XID * xid2);
 
 int xa_prepare_flag = 0;
 
-CAS_FUNC_PROTOTYPE (fn_xa_prepare)
+int
+fn_xa_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
 #ifdef CAS_SUPPORT_XA
   XID xid;
@@ -92,7 +95,10 @@ CAS_FUNC_PROTOTYPE (fn_xa_prepare)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_xa_recover)
+int
+fn_xa_recover (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
 #ifdef CAS_SUPPORT_XA
   int count;
@@ -129,7 +135,10 @@ CAS_FUNC_PROTOTYPE (fn_xa_recover)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_xa_end_tran)
+int
+fn_xa_end_tran (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
 #ifdef CAS_SUPPORT_XA
   int tran_type;

@@ -3820,7 +3820,7 @@ ws_put_prop (MOP op, int key, void *value)
   int status = -1;
 
   /* Error if connect status is invalid */
-  if (db_Connect_status)
+  if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
     {
       for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key;
 	   p = p->next);
@@ -3864,7 +3864,7 @@ ws_get_prop (MOP op, int key, void **value)
   int status = -1;
 
   /* Error if connect status is invalid */
-  if (db_Connect_status)
+  if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
     {
       for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key;
 	   p = p->next);

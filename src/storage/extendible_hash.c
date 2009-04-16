@@ -3033,9 +3033,13 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 		}
 	    }
 
-	  memcpy ((char *) new_dir_page_p + new_dir_offset,
-		  (char *) old_dir_page_p + old_dir_offset,
-		  sizeof (EHASH_DIR_RECORD));
+	  if ((char *) new_dir_page_p + new_dir_offset
+	      != (char *) old_dir_page_p + old_dir_offset)
+	    {
+	      memcpy ((char *) new_dir_page_p + new_dir_offset,
+		      (char *) old_dir_page_p + old_dir_offset,
+		      sizeof (EHASH_DIR_RECORD));
+	    }
 
 	  /* Advance the destination pointer to new spot */
 	  new_dir_offset -= sizeof (EHASH_DIR_RECORD);
@@ -4781,10 +4785,9 @@ static int
 ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 		  DB_TYPE key_type, char *bucket_record_p,
 		  OID * assoc_value_p,
-		  int *out_apply_error, int (*apply_function) (THREAD_ENTRY * thread_p,
-					                       void *key,
-					                       void *data, void *args),
-		  void *args)
+		  int *out_apply_error,
+		  int (*apply_function) (THREAD_ENTRY * thread_p, void *key,
+					 void *data, void *args), void *args)
 {
   char *long_str, *str_next_key_p, *temp_p;
   short key_size;
@@ -4948,10 +4951,10 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	  bucket_record_p = ehash_read_oid_from_record (bucket_record_p,
 							&assoc_value);
 
-	  if (ehash_apply_each (thread_p, ehid_p, &recdes, dir_header_p->key_type,
-				bucket_record_p, &assoc_value,
-				&apply_error_code, apply_function,
-                                args) != NO_ERROR)
+	  if (ehash_apply_each
+	      (thread_p, ehid_p, &recdes, dir_header_p->key_type,
+	       bucket_record_p, &assoc_value, &apply_error_code,
+	       apply_function, args) != NO_ERROR)
 	    {
 	      pgbuf_unfix (thread_p, bucket_page_p);
 	      pgbuf_unfix (thread_p, dir_page_p);

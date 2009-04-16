@@ -69,10 +69,11 @@ typedef enum
 } STRING_STYLE;
 
 #if defined(SERVER_MODE)
-int db_Connect_status = 1;
+int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
-int db_Connect_status = 0;
-bool db_Replication_agent_mode = false;
+int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
+bool db_Log_replication_mode = false;
 #endif
 int db_Disable_modifications = 0;
 
@@ -2865,7 +2866,7 @@ db_get_currency_default ()
 }
 
 /*
- * transfer_string() - 
+ * transfer_string() -
  * return     : an error indicator.
  *
  * dst(out)   : pointer to destination buffer area
@@ -2882,7 +2883,7 @@ db_get_currency_default ()
  *              or fixed)
  * codeset(in): International codeset for the character string.  This is needed
  *              to properly pad the strings.
- * 
+ *
  */
 static int
 transfer_string (char *dst, int *xflen, int *outlen,

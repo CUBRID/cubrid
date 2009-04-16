@@ -199,7 +199,30 @@ public class DBAttribute {
 			}else{
 				return "B'"+attdeft+"'";
 			}
-		}		
+		}else if (atttype.toLowerCase().startsWith("set_of")||atttype.toLowerCase().startsWith("multiset_of")||atttype.toLowerCase().startsWith("sequence_of")) {
+			if (attdeft.startsWith("{")&&attdeft.endsWith("}")||attdeft.equals(""))
+				return attdeft;
+			else {
+				//assert every set/multiset/sequence has only type
+				assert(-1==atttype.indexOf(","));
+				int index=atttype.indexOf("(");
+				String subtype=atttype.substring(index+1,atttype.length()-1);
+				StringBuffer bf=new StringBuffer();
+				if(-1==attdeft.indexOf(",")){
+					bf.append(formatDefault(subtype,attdeft));
+				}else{
+					String[] values=attdeft.split(",");
+					for (int j = 0; j < values.length; j++) {	                    
+						String value=values[j];
+						if(j>0){
+							bf.append(",");
+						}
+						bf.append(formatDefault(subtype,value));
+					}
+				}
+				return "{"+bf.toString()+"}";
+			}
+		}			
 		return attdeft;		
 	}
 	

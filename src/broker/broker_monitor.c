@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_monitor.c - 
+ * broker_monitor.c -
  */
 
 #ident "$Id$"
@@ -30,15 +30,15 @@
 #include <time.h>
 #include <string.h>
 
-#if defined(WIN32)
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
-#elif !defined(MONITOR2)
+#else
 #include <curses.h>
 #endif
 
-#ifdef WIN32
+#ifdef WINDOWS
 #include <sys/timeb.h>
 #else
 #include <sys/types.h>
@@ -52,18 +52,18 @@
 #include "broker_util.h"
 #include "broker_process_size.h"
 #include "porting.h"
-#ifndef WIN32
+#ifndef WINDOWS
 #include "broker_process_info.h"
 #endif
 
-#ifdef WIN32
+#ifdef WINDOWS
 #include "broker_getopt.h"
 #endif
 
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 
-#ifdef WIN32
+#ifdef WINDOWS
 #define STR_TO_SCREEN(MSG)	\
 	do {			\
 		DWORD	size;	\
@@ -73,13 +73,10 @@
 #define STR_TO_SCREEN(MSG)	addstr(MSG)
 #endif
 
-#if defined(MONITOR2)
-#define STR_OUT(FMT, STR)	printf(FMT, STR)
-#else
 #define STR_OUT(FMT, STR)		\
 	do {				\
 	  char		out_buf[1024];	\
-	  if (refresh_sec > 0) {	\
+	  if (refresh_sec > 0 && !tty_mode) {	\
 	    sprintf(out_buf, FMT, STR);	\
 	    STR_TO_SCREEN(out_buf);	\
 	  }				\
@@ -87,14 +84,10 @@
 	    printf(FMT, STR);		\
 	  }				\
 	} while (0)
-#endif
 
-#ifdef MONITOR2
-#define PRINT_NEWLINE()		printf("\n");
-#else
 #define PRINT_NEWLINE()			\
 	do {				\
-	  if (refresh_sec > 0) {	\
+	  if (refresh_sec > 0 && !tty_mode) {	\
 	    clrtoeol();			\
 	    STR_TO_SCREEN("\n");	\
 	  }				\
@@ -102,9 +95,8 @@
 	    printf("\n");		\
 	  }				\
 	} while (0)
-#endif
 
-#ifdef WIN32
+#ifdef WINDOWS
 #define GET_CHAR(VAR)					\
 	do {						\
 	  int	i;					\
@@ -132,9 +124,9 @@ static int br_monitor (char *br_vector);
 #ifdef GET_PSINFO
 static void time_format (int t, char *time_str);
 #endif
-static void print_header (int check_period, char use_pdh_flag);
+static void print_header (char use_pdh_flag);
 
-#ifdef WIN32
+#ifdef WINDOWS
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
@@ -149,15 +141,16 @@ extern int optind, opterr, optopt;
 #endif
 
 static T_SHM_BROKER *shm_br;
-static int check_period;
 static char display_job_queue;
 static int refresh_sec = 0;
 static char br_monitor_flag = FALSE;
 static int last_access_sec = 0;
+static int tty_mode = FALSE;
+static int tty_print_header = TRUE;
 
 static int max_col_len = 0;
 
-#ifdef WIN32
+#ifdef WINDOWS
 HANDLE h_console;
 CONSOLE_SCREEN_BUFFER_INFO scr_info;
 #endif
@@ -170,8 +163,7 @@ main (int argc, char **argv)
   int num_broker, master_shm_id;
   int err, i;
   char *br_vector;
-#if defined(MONITOR2)
-#elif defined(WIN32)
+#if defined(WINDOWS)
 #else
   WINDOW *win;
 #endif
@@ -208,17 +200,14 @@ main (int argc, char **argv)
   for (i = 0; i < shm_br->num_broker; i++)
     br_vector[i] = 0;
 
-  check_period = 0;
   display_job_queue = FALSE;
 
   if (get_args (argc, argv, br_vector) < 0)
     return 1;
 
-  if (refresh_sec > 0)
+  if (refresh_sec > 0 && !tty_mode)
     {
-#if defined(MONITOR2)
-      refresh_sec = 0;
-#elif defined(WIN32)
+#if defined(WIN32)
       h_console = GetStdHandle (STD_OUTPUT_HANDLE);
       if (h_console == NULL)
 	{
@@ -239,15 +228,13 @@ main (int argc, char **argv)
 
   while (1)
     {
-      if (refresh_sec > 0)
+      if (refresh_sec > 0 && !tty_mode)
 	{
-#ifndef MONITOR2
 	  move (0, 0);
 	  refresh ();
-#endif
 	}
 
-#ifndef WIN32
+#ifndef WINDOWS
       if (shm_br == NULL || shm_br->magic == 0)
 	{
 	  if (shm_br)
@@ -263,14 +250,11 @@ main (int argc, char **argv)
 	    br_monitor (br_vector);
 	  else
 	    appl_monitor (br_vector);
-#ifndef WIN32
+#ifndef WINDOWS
 	}
 #endif
 
-#if defined(MONITOR2)
-      break;
-#else
-      if (refresh_sec > 0)
+      if (refresh_sec > 0 && !tty_mode)
 	{
 	  int in_ch = 0;
 
@@ -290,19 +274,21 @@ main (int argc, char **argv)
 	      refresh ();
 	    }
 	}
+      else if (refresh_sec > 0)
+	{
+	  SLEEP_MILISEC (refresh_sec, 0);
+	  fflush (stdout);
+	}
       else
 	{
 	  break;
 	}
-#endif
     }				/* end of while(1) */
 
   uw_shm_detach (shm_br);
 
-#ifndef MONITOR2
-  if (refresh_sec > 0)
+  if (refresh_sec > 0 && !tty_mode)
     endwin ();
-#endif
 
   exit (0);
 }
@@ -313,16 +299,16 @@ get_args (int argc, char *argv[], char *br_vector)
   int c, j;
   int status;
   char br_name_opt_flag = FALSE, errflag = FALSE;
-#ifndef WIN32
+#ifndef WINDOWS
   regex_t re;
 #endif
 
-  while ((c = getopt (argc, argv, "bqt:s:l:")) != EOF)
+  while ((c = getopt (argc, argv, "bqts:l:")) != EOF)
     {
       switch (c)
 	{
 	case 't':
-	  check_period = atoi (optarg);
+	  tty_mode = TRUE;
 	  break;
 	case 'q':
 	  display_job_queue = TRUE;
@@ -341,11 +327,6 @@ get_args (int argc, char *argv[], char *br_vector)
 	}
     }
 
-  if (last_access_sec > 0)
-    {
-      check_period = 0;
-    }
-
   if (errflag == TRUE)
     {
       return -1;
@@ -354,7 +335,7 @@ get_args (int argc, char *argv[], char *br_vector)
   for (; optind < argc; optind++)
     {
       br_name_opt_flag = TRUE;
-#ifndef WIN32
+#ifndef WINDOWS
       if (regcomp (&re, argv[optind], 0) != 0)
 	{
 	  fprintf (stderr, "%s\r\n", argv[optind]);
@@ -363,7 +344,7 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
       for (j = 0; j < shm_br->num_broker; j++)
 	{
-#ifdef WIN32
+#ifdef WINDOWS
 	  status =
 	    (strstr (shm_br->br_info[j].name, argv[optind]) != NULL) ? 0 : 1;
 #else
@@ -374,7 +355,7 @@ get_args (int argc, char *argv[], char *br_vector)
 	      br_vector[j] = 1;
 	    }
 	}
-#ifndef WIN32
+#ifndef WINDOWS
       regfree (&re);
 #endif
     }
@@ -483,7 +464,7 @@ appl_monitor (char *br_vector)
 	    }
 	  else
 	    {
-#ifdef WIN32
+#ifdef WINDOWS
 	      use_pdh_flag = shm_appl->use_pdh_flag;
 #else
 	      use_pdh_flag = 0;
@@ -519,18 +500,14 @@ appl_monitor (char *br_vector)
 	      else
 		STR_OUT ("%s", "AUTO-ADD-OFF, ");
 
-	      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+	      if ((shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+		  || (shm_br->br_info[i].appl_server ==
+		      APPL_SERVER_CAS_ORACLE)
+		  || (shm_br->br_info[i].appl_server ==
+		      APPL_SERVER_CAS_MYSQL))
 		{
 		  STR_OUT ("TIMEOUT:%d, ",
 			   shm_br->br_info[i].session_timeout);
-		}
-	      else
-		{
-		  if (shm_br->br_info[i].session_flag == ON)
-		    STR_OUT ("SESSION-ON(%d), ",
-			     shm_br->br_info[i].session_timeout);
-		  else
-		    STR_OUT ("%s", "SESSION-OFF, ");
 		}
 
 	      if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
@@ -570,36 +547,9 @@ appl_monitor (char *br_vector)
 
 	      PRINT_NEWLINE ();
 
-	      print_header (check_period, use_pdh_flag);
+	      print_header (use_pdh_flag);
 
 	      TIMEVAL_MAKE (&cur_tv);
-
-	      if (check_period > 0)
-		{
-		  for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		    {
-		      if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
-			{
-			  sec_array[j] =
-			    TIMEVAL_GET_SEC (&cur_tv) -
-			    shm_appl->as_info[j].last_access_time;
-			  if (sec_array[j] > check_period)
-			    sec_array[j] = check_period;
-			}
-		      else
-			sec_array[j] = 0;
-		      msec_array[j] = 0;
-		    }
-		  ut_get_request_time (&cur_tv,
-				       shm_br->br_info[i].appl_server_max_num,
-				       shm_br->br_info[i].access_log_file,
-				       sec_array, msec_array, check_period);
-
-		  ut_get_num_request (&cur_tv,
-				      shm_br->br_info[i].appl_server_max_num,
-				      shm_br->br_info[i].access_log_file,
-				      num_req_array, check_period);
-		}
 
 	      current_time = time (NULL);
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
@@ -632,22 +582,13 @@ appl_monitor (char *br_vector)
 		  col_len +=
 		    sprintf (line_buf + col_len, "%5d ",
 			     shm_appl->as_info[j].num_request);
-		  if (check_period > 0)
-		    {
-		      col_len +=
-			sprintf (line_buf + col_len, "%5d ",
-				 num_req_array[j]);
-		      col_len +=
-			sprintf (line_buf + col_len, "%3d.%d ", sec_array[j],
-				 msec_array[j] / 100);
-		    }
-#ifdef WIN32
+#ifdef WINDOWS
 		  col_len +=
 		    sprintf (line_buf + col_len, "%5d ",
 			     shm_appl->as_info[j].as_port);
 #endif
 
-#ifdef WIN32
+#ifdef WINDOWS
 		  if (shm_appl->use_pdh_flag == TRUE)
 		    {
 		      col_len +=
@@ -661,7 +602,11 @@ appl_monitor (char *br_vector)
 #endif
 		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
 		    {
-		      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+		      if ((shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+			  || (shm_br->br_info[i].appl_server ==
+			      APPL_SERVER_CAS_ORACLE)
+			  || (shm_br->br_info[i].appl_server ==
+			      APPL_SERVER_CAS_MYSQL))
 			{
 			  if (shm_appl->as_info[j].con_status ==
 			      CON_STATUS_OUT_TRAN)
@@ -681,7 +626,7 @@ appl_monitor (char *br_vector)
 			col_len +=
 			  sprintf (line_buf + col_len, "%-12s", " BUSY  ");
 		    }
-#ifdef WIN32
+#ifdef WINDOWS
 		  else if (shm_appl->as_info[j].uts_status ==
 			   UTS_STATUS_BUSY_WAIT)
 		    col_len +=
@@ -711,7 +656,7 @@ appl_monitor (char *br_vector)
 		    sprintf (line_buf + col_len, "%5.2f", proc_info.pcpu);
 		  time_format (proc_info.cpu_time, time_str);
 		  col_len += sprintf (line_buf + col_len, "%7s ", time_str);
-#elif WIN32
+#elif WINDOWS
 		  if (shm_appl->use_pdh_flag == TRUE)
 		    {
 		      float pct_cpu;
@@ -806,11 +751,11 @@ br_monitor (char *br_vector)
   static unsigned long *num_tx_olds = NULL;
   static unsigned long *num_qx_olds = NULL;
   static time_t time_old;
-  unsigned long num_tx_cur;
-  unsigned long num_qx_cur;
+  unsigned long num_tx_cur = 0;
+  unsigned long num_qx_cur = 0;
   time_t time_cur;
-  int tps;
-  int qps;
+  unsigned long tps = 0;
+  unsigned long qps = 0;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
@@ -831,10 +776,15 @@ br_monitor (char *br_vector)
   buf_len += sprintf (buf + buf_len, "%5s", "SQLL");
   buf_len += sprintf (buf + buf_len, "%5s", "CONN");
 
-  STR_OUT ("%s", buf);
-  PRINT_NEWLINE ();
-  for (i = strlen (buf); i > 0; i--)
-    STR_OUT ("%s", "=");
+  if (tty_mode == FALSE || tty_print_header == TRUE)
+    {
+      STR_OUT ("%s", buf);
+      PRINT_NEWLINE ();
+      for (i = strlen (buf); i > 0; i--)
+	STR_OUT ("%s", "=");
+      tty_print_header = FALSE;
+    }
+
   PRINT_NEWLINE ();
   if (num_tx_olds == NULL)
     {
@@ -842,7 +792,6 @@ br_monitor (char *br_vector)
 	(unsigned long *) calloc (sizeof (unsigned long), shm_br->num_broker);
       (void) time (&time_old);
     }
-
   if (num_qx_olds == NULL)
     {
       num_qx_olds =
@@ -907,15 +856,17 @@ br_monitor (char *br_vector)
 			num_query_processed;
 
 		    }
-		  tps = (int) ((num_tx_cur - num_tx_olds[i]) /
-			       difftime (time_cur, time_old));
+		  tps =
+		    ((num_tx_cur - num_tx_olds[i]) / difftime (time_cur,
+							       time_old));
 		  qps =
-		    (int) ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
-								     time_old));
+		    ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
+							       time_old));
+
 		  num_tx_olds[i] = num_tx_cur;
 		  num_qx_olds[i] = num_qx_cur;
-		  STR_OUT (" %3d", tps);
-		  STR_OUT (" %3d", qps);
+		  STR_OUT (" %3ld", tps);
+		  STR_OUT (" %3ld", qps);
 		}
 	      else
 		{
@@ -928,10 +879,7 @@ br_monitor (char *br_vector)
 	      else
 		STR_OUT ("%5s", "OFF");
 
-	      if (shm_br->br_info[i].session_flag == ON)
-		STR_OUT ("%5d", shm_br->br_info[i].session_timeout);
-	      else
-		STR_OUT ("%5s", "OFF");
+	      STR_OUT ("%5d", shm_br->br_info[i].session_timeout);
 
 	      if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
 		{
@@ -993,7 +941,7 @@ time_format (int t, char *time_str)
 #endif
 
 static void
-print_header (int check_period, char use_pdh_flag)
+print_header (char use_pdh_flag)
 {
   char buf[128];
   char line_buf[128];
@@ -1003,15 +951,10 @@ print_header (int check_period, char use_pdh_flag)
   col_len += sprintf (buf + col_len, "%2s", "ID ");
   col_len += sprintf (buf + col_len, "%6s", "PID ");
   col_len += sprintf (buf + col_len, "%6s", "C ");
-  if (check_period > 0)
-    {
-      col_len += sprintf (buf + col_len, "%6s", "C/T ");
-      col_len += sprintf (buf + col_len, "%6s", "PTIME ");
-    }
-#ifdef WIN32
+#ifdef WINDOWS
   col_len += sprintf (buf + col_len, "%6s", "PORT ");
 #endif
-#ifdef WIN32
+#ifdef WINDOWS
   if (use_pdh_flag == TRUE)
     {
       col_len += sprintf (buf + col_len, "%5s", "PSIZE ");
@@ -1026,7 +969,7 @@ print_header (int check_period, char use_pdh_flag)
 #ifdef GET_PSINFO
   col_len += sprintf (buf + col_len, "%5s", "CPU ");
   col_len += sprintf (buf + col_len, "%8s", "CTIME ");
-#elif WIN32
+#elif WINDOWS
   if (use_pdh_flag == TRUE)
     {
       col_len += sprintf (buf + col_len, "%5s", "CPU ");
@@ -1046,7 +989,7 @@ print_header (int check_period, char use_pdh_flag)
   PRINT_NEWLINE ();
 }
 
-#ifdef WIN32
+#ifdef WINDOWS
 static void
 refresh ()
 {

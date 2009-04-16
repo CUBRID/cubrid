@@ -280,6 +280,12 @@ uCheckSystemConfig (FILE * log_fp)
     }
 #endif
 
+  /* create tmp directory */
+  if (access (sco.dbmt_tmp_dir, F_OK) < 0)
+    {
+      mkdir (sco.dbmt_tmp_dir, 0755);
+    }
+
   /* CUBRID databases.txt file check */
   sprintf (filepath, "%s/%s", sco.szCubrid_databases, CUBRID_DATABASE_TXT);
   if (access (filepath, F_OK) < 0)

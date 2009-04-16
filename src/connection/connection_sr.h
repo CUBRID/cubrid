@@ -37,6 +37,7 @@
 #include "critical_section.h"
 #include "thread_impl.h"
 
+
 extern CSS_CONN_ENTRY *css_Conn_array;
 extern CSS_CONN_ENTRY *css_Active_conn_anchor;
 extern CSS_CRITICAL_SECTION css_Active_conn_csect;
@@ -72,10 +73,11 @@ extern CSS_CONN_ENTRY *css_find_conn_from_fd (int fd);
 extern void css_shutdown_conn_by_tran_index (int tran_index);
 
 extern int css_net_send_no_block (int fd, const char *buffer, int size);
-extern int css_readn (int fd, char *ptr, int nbytes);
+extern int css_readn (int fd, char *ptr, int nbytes, int timeout);
 extern void css_read_remaining_bytes (int fd, int len);
-extern int css_net_recv (int fd, char *buffer, int *maxlen);
-extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len);
+extern int css_net_recv (int fd, char *buffer, int *maxlen, int timeout);
+extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
+			 int timeout);
 extern int css_net_read_header (int fd, char *buffer, int *maxlen);
 
 extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn,
@@ -119,8 +121,6 @@ extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id,
 
 extern unsigned int css_return_eid_from_conn (CSS_CONN_ENTRY * conn,
 					      unsigned short rid);
-extern unsigned short css_return_rid_from_eid (unsigned int eid);
-extern unsigned short css_return_entry_id_from_eid (unsigned int eid);
 
 extern int css_return_queued_data (CSS_CONN_ENTRY * conn,
 				   unsigned short rid, char **buffer,

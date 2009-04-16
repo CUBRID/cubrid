@@ -40,6 +40,7 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #endif /* WINDOWS */
+#include <assert.h>
 
 #include "porting.h"
 #include "chartype.h"
@@ -80,8 +81,8 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "connection_sr.h"
+#include "server_support.h"
 #endif /* SERVER_MODE */
-
 #include "server_interface.h"
 #include "jsp_sr.h"
 #include "thread_impl.h"
@@ -197,19 +198,14 @@ static VOLID boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
 					 bool ext_overwrite);
 static char *boot_find_new_db_path (char *db_pathbuf,
 				    const char *fileof_vols_and_wherepaths);
-static int boot_create_all_volumes (THREAD_ENTRY * thread_p,
-				    const char *db_comments,
-				    DKNPAGES db_npages,
-				    const char *file_addmore_vols,
-				    const char *log_path,
-				    const char *log_prefix,
-				    DKNPAGES log_npages,
-				    const char *client_prog_name,
-				    const char *client_user_name,
-				    const char *client_host_name,
-				    int client_process_id,
-				    int client_lock_wait,
-				    TRAN_ISOLATION client_isolation);
+static int
+boot_create_all_volumes (THREAD_ENTRY * thread_p,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential,
+			 const char *db_comments, DKNPAGES db_npages,
+			 const char *file_addmore_vols, const char *log_path,
+			 const char *log_prefix, DKNPAGES log_npages,
+			 int client_lock_wait,
+			 TRAN_ISOLATION client_isolation);
 static int boot_remove_all_volumes (THREAD_ENTRY * thread_p,
 				    const char *db_fullname,
 				    const char *log_path,
@@ -2471,27 +2467,20 @@ boot_ctrl_c_in_init_server (int ignore_signo)
  *       started.
  */
 int
-xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
+xboot_initialize_server (THREAD_ENTRY * thread_p,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential,
+			 BOOT_DB_PATH_INFO * db_path_info,
 			 bool db_overwrite, PGLENGTH db_desired_pagesize,
-			 const char *db_name, const char *xdb_path,
-			 const char *vol_path, const char *db_comments,
 			 DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *db_server_host, const char *xlog_path,
-			 DKNPAGES xlog_npages, OID * rootclass_oid,
-			 HFID * rootclass_hfid, const char *client_prog_name,
-			 const char *client_user_name,
-			 const char *client_host_name, int client_process_id,
-			 int client_lock_wait,
+			 DKNPAGES log_npages, OID * rootclass_oid,
+			 HFID * rootclass_hfid, int client_lock_wait,
 			 TRAN_ISOLATION client_isolation)
 {
-  volatile DKNPAGES log_npages = xlog_npages;
-  volatile int tran_index = NULL_TRAN_INDEX;
-  const char *volatile log_prefix = NULL;
-  const char *volatile db_path = xdb_path;
-  const char *volatile log_path = xlog_path;
-  DB_INFO *volatile db = NULL;
+  int tran_index = NULL_TRAN_INDEX;
+  const char *log_prefix = NULL;
+  DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
-  volatile int dbtxt_vdes = NULL_VOLDES;
+  int dbtxt_vdes = NULL_VOLDES;
   char db_pathbuf[PATH_MAX];
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
@@ -2503,6 +2492,9 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
   char *new_db_path = NULL;
   char *new_log_path = NULL;
   bool is_exist_volume;
+
+  assert (client_credential != NULL);
+  assert (db_path_info != NULL);
 
 #if defined(SERVER_MODE)
   if (!lang_init ())
@@ -2537,7 +2529,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_UNABLE_TO_RESTART_SERVER, 0);
       er_log_debug (ARG_FILE_LINE,
-		    "xbo_init_server: ** SYSTEM COMPILATION ERROR **"
+		    "xboot_initialize_server: ** SYSTEM COMPILATION ERROR **"
 		    " Length (i.e., %d) of ROOTCLASS_NAME(i.e, %s) is bigger than"
 		    " length (i.e., %d) of bo_Dbparm->rootclass_name field",
 		    strlen (ROOTCLASS_NAME) + 1, ROOTCLASS_NAME,
@@ -2547,10 +2539,10 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
     }
 #endif /* CUBRID_DEBUG */
 
-  if (db_name == NULL)
+  if (client_credential->db_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
-	      db_name);
+	      client_credential->db_name);
       return NULL_TRAN_INDEX;
     }
 
@@ -2566,23 +2558,25 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
    * for db path,
    * convert to absolute path, remove useless PATHSLASH
    */
-  if (db_path == NULL)
+  if (db_path_info->db_path == NULL)
     {
-      db_path = "";
+      db_path_info->db_path = "";
     }
   else
     {
-      if (realpath ((char *) db_path, db_pathbuf) != NULL)
+      if (realpath ((char *) db_path_info->db_path, db_pathbuf) != NULL)
 	{
-	  db_path = db_pathbuf;
+	  db_path_info->db_path = db_pathbuf;
 	}
       /* remove useless PATHSLASH in db path */
-      if (db_path != NULL
-	  && (new_db_path = (char *) malloc (strlen (db_path) + 1)) != NULL)
+      if (db_path_info->db_path != NULL
+	  && (new_db_path =
+	      (char *) malloc (strlen (db_path_info->db_path) + 1)) != NULL)
 	{
-	  if (boot_remove_useless_path_separator (new_db_path, db_path))
+	  if (boot_remove_useless_path_separator (new_db_path,
+						  db_path_info->db_path))
 	    {
-	      db_path = new_db_path;
+	      db_path_info->db_path = new_db_path;
 	    }
 	}
     }
@@ -2591,7 +2585,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
    * for log path,
    * convert to absolute path, remove useless PATHSLASH
    */
-  if (log_path == NULL)
+  if (db_path_info->log_path == NULL)
     {
       /*
        * nop, do not set as ""
@@ -2602,17 +2596,19 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
     }
   else
     {
-      if (realpath ((char *) log_path, log_pathbuf) != NULL)
+      if (realpath ((char *) db_path_info->log_path, log_pathbuf) != NULL)
 	{
-	  log_path = log_pathbuf;
+	  db_path_info->log_path = log_pathbuf;
 	}
       /* remove useless PATHSLASH in log path */
-      if (log_path != NULL
-	  && (new_log_path = (char *) malloc (strlen (log_path) + 1)) != NULL)
+      if (db_path_info->log_path != NULL
+	  && (new_log_path =
+	      (char *) malloc (strlen (db_path_info->log_path) + 1)) != NULL)
 	{
-	  if (boot_remove_useless_path_separator (new_log_path, log_path))
+	  if (boot_remove_useless_path_separator (new_log_path,
+						  db_path_info->log_path))
 	    {
-	      log_path = new_log_path;
+	      db_path_info->log_path = new_log_path;
 	    }
 	}
     }
@@ -2621,7 +2617,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
    * Compose the full name of the database
    */
 
-  COMPOSE_FULL_NAME (boot_Db_full_name, db_path, db_name);
+  COMPOSE_FULL_NAME (boot_Db_full_name, db_path_info->db_path,
+		     client_credential->db_name);
 
   /*
    * Inform the error subsystem of the location of the database name, for use
@@ -2644,7 +2641,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
       (void) xboot_shutdown_server (thread_p, true);
     }
 
-  log_prefix = fileio_get_base_file_name (db_name);
+  log_prefix = fileio_get_base_file_name (client_credential->db_name);
 
   /*
    * Find logging information to create the log volume. If the page size is
@@ -2657,7 +2654,6 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
       /* Use the default that is the size of the database */
       log_npages = db_npages;
     }
-
   if (log_npages < 10)
     {
       log_npages = 10;
@@ -2693,13 +2689,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 	}
     }
 
-  if (dir != NULL && ((db = cfg_find_db_list (dir, db_name)) != NULL))
+  if (dir != NULL
+      && ((db = cfg_find_db_list (dir, client_credential->db_name)) != NULL))
     {
       if (db_overwrite == false)
 	{
 	  /* There is a database with the same name and we cannot overwrite it */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1,
-		  db_name);
+		  client_credential->db_name);
 	  goto exit_on_error;
 	}
       else
@@ -2711,9 +2708,9 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 	   * Note: we do not call xboot_delete since it shuttdown the system and
 	   *       update database.txt that we have a read copy of its content.
 	   */
-	  error_code =
-	    boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path,
-				     log_prefix, false, true);
+	  error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name,
+						db_path_info->log_path,
+						log_prefix, false, true);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -2729,19 +2726,19 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
       dir = NULL;
     }
 
-  error_code =
-    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_path,
-				   log_prefix, vol_real_path,
-				   &is_exist_volume);
+  error_code = logpb_check_exist_any_volumes (thread_p, boot_Db_full_name,
+					      db_path_info->log_path,
+					      log_prefix, vol_real_path,
+					      &is_exist_volume);
   if (error_code != NO_ERROR || is_exist_volume)
     {
       goto exit_on_error;
     }
 
 #if !defined(WINDOWS)
-  if (vol_path != NULL)
+  if (db_path_info->vol_path != NULL)
     {
-      if (realpath ((char *) vol_path, vol_real_path) == NULL)
+      if (realpath ((char *) db_path_info->vol_path, vol_real_path) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_LINK,
 		  2, vol_real_path, boot_Db_full_name);
@@ -2779,8 +2776,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4,
-	      db_path, db_name, strlen (boot_Db_full_name),
-	      DB_MAX_PATH_LENGTH);
+	      db_path_info->db_path, client_credential->db_name,
+	      strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH);
       goto exit_on_error;
     }
 
@@ -2789,15 +2786,12 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 
   if (_setjmp (bo_Init_server_jmpbuf) == 0)
     {
-      tran_index = boot_create_all_volumes (thread_p, db_comments, db_npages,
-					    file_addmore_vols,
-					    log_path,
+      tran_index = boot_create_all_volumes (thread_p, client_credential,
+					    db_path_info->db_comments,
+					    db_npages, file_addmore_vols,
+					    db_path_info->log_path,
 					    (const char *) log_prefix,
-					    log_npages, client_prog_name,
-					    client_user_name,
-					    client_host_name,
-					    client_process_id,
-					    client_lock_wait,
+					    log_npages, client_lock_wait,
 					    client_isolation);
       if (tran_index != NULL_TRAN_INDEX)
 	{
@@ -2825,17 +2819,19 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 		}
 	    }
 
-	  db = cfg_find_db_list (dir, db_name);
+	  db = cfg_find_db_list (dir, client_credential->db_name);
 
 	  /* Now create the entry in the database table */
 	  if (db == NULL)
 	    {
-	      db = cfg_add_db (&dir, db_name, db_path, log_path,
-			       db_server_host);
+	      db = cfg_add_db (&dir, client_credential->db_name,
+			       db_path_info->db_path, db_path_info->log_path,
+			       db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_path, log_path, db_server_host);
+	      cfg_update_db (db, db_path_info->db_path,
+			     db_path_info->log_path, db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL
@@ -2884,7 +2880,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_BO_UNABLE_TO_RESTART_SERVER, 0);
 	      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
-					      log_path,
+					      db_path_info->log_path,
 					      (const char *) log_prefix, true,
 					      true);
 	      tran_index = NULL_TRAN_INDEX;
@@ -2893,9 +2889,10 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
       else
 	{			/* fail - remove all */
 	  (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
-					  log_path, (const char *) log_prefix,
-					  true, true);
-	  if (vol_path != NULL)
+					  db_path_info->log_path,
+					  (const char *) log_prefix, true,
+					  true);
+	  if (db_path_info->vol_path != NULL)
 	    {
 	      (void) unlink (boot_Db_full_name);
 	    }
@@ -2910,7 +2907,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
        * Ctrl-C was executed
        * Clean created volumes
        */
-      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path,
+      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
+				      db_path_info->log_path,
 				      (const char *) log_prefix, true, true);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
 
@@ -2947,14 +2945,17 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, int print_version,
   rootclass_hfid->vfid.fileid = boot_Db_parm->rootclass_hfid.vfid.fileid;
   rootclass_hfid->hpgid = boot_Db_parm->rootclass_hfid.hpgid;
 
-  if (print_version)
-    {
-      strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_GENERAL,
-				       MSGCAT_GENERAL_DATABASE_INIT),
-	       BOOT_FORMAT_MAX_LENGTH);
-      fprintf (stdout, format, rel_name ());
-    }
+  /* print_version string */
+#if defined (NDEBUG)
+  strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_GENERAL,
+				   MSGCAT_GENERAL_DATABASE_INIT),
+	   BOOT_FORMAT_MAX_LENGTH);
+  fprintf (stdout, format, rel_name (), rel_build_number ());
+#else /* NDEBUG */
+  fprintf (stdout, "\n%s (%s) (debug build)\n\n", rel_name (),
+	   rel_build_number ());
+#endif /* !NDEBUG */
 
 exit_on:
 
@@ -3013,7 +3014,7 @@ exit_on_error:
  *       during the restart process.
  */
 int
-boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
+boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 		     const char *db_name, bool from_backup,
 		     BO_RESTART_ARG * r_args)
 {
@@ -3216,9 +3217,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
       /*
        * RESTART FROM BACKUP
        */
-      error_code =
-	logpb_restore (thread_p, boot_Db_full_name, log_path, log_prefix,
-		       r_args);
+      error_code = logpb_restore (thread_p, boot_Db_full_name, log_path,
+				  log_prefix, r_args);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3239,8 +3239,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
    */
 
   /* Mount the data volume */
-  error_code =
-    boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name,
+			   NULL);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -3330,8 +3330,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
    */
 
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
-					NULL, NULL, NULL, -1, NULL,
-					TRAN_LOCK_INFINITE_WAIT,
+					NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 					TRAN_DEFAULT_ISOLATION);
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -3408,17 +3407,32 @@ boot_restart_server (THREAD_ENTRY * thread_p, int print_restart,
 
   /* if starting jvm fail, it would be ignored. */
   (void) jsp_start_server (db_name, db->pathname);
+
+#if defined (SERVER_MODE)
+  /* set server's starting mode for HA according to the 'ha_mode' parameter */
+  css_change_ha_server_state (thread_p,
+			      PRM_HA_MODE ? HA_SERVER_STATE_STANDBY :
+			      HA_SERVER_STATE_ACTIVE, false, false);
+  /* set number of hosts */
+  css_set_ha_num_of_hosts (db->num_hosts);
+#endif
+
   cfg_free_directory (dir);
 
   /* server is up! */
   boot_server (UP);
   if (print_restart)
     {
+#if defined (NDEBUG)
       strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_GENERAL,
 				       MSGCAT_GENERAL_DATABASE_INIT),
 	       BOOT_FORMAT_MAX_LENGTH);
       fprintf (stdout, format, rel_name ());
+#else /* NDEBUG */
+      fprintf (stdout, "\n%s (%s) (debug build)\n\n", rel_name (),
+	       rel_build_number ());
+#endif /* !NDEBUG */
     }
 
   return NO_ERROR;
@@ -3559,39 +3573,54 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal)
  *       and the transaction state is returned as a side effect.
  */
 int
-xboot_register_client (THREAD_ENTRY * thread_p, int print_restart,
-		       const char *db_name, OID * rootclass_oid,
-		       HFID * rootclass_hfid, const char *client_prog_name,
-		       const char *client_user_name,
-		       const char *client_host_name, int client_process_id,
+xboot_register_client (THREAD_ENTRY * thread_p,
+		       const BOOT_CLIENT_CREDENTIAL * client_credential,
+		       OID * rootclass_oid, HFID * rootclass_hfid,
 		       int client_lock_wait, TRAN_ISOLATION client_isolation,
-		       TRAN_STATE * transtate, PGLENGTH * current_pagesize)
+		       TRAN_STATE * tran_state, PGLENGTH * current_pagesize)
 {
   int tran_index;
 
 #if defined(SA_MODE)
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_ISSERVER_RESTARTED ()
-      && boot_restart_server (thread_p, print_restart, db_name, false,
-			      NULL) != NO_ERROR)
+      && boot_restart_server (thread_p, false, client_credential->db_name,
+			      false, NULL) != NO_ERROR)
     {
-      *transtate = TRAN_UNACTIVE_UNKNOWN;
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
     }
 #else /* SA_MODE */
   /* If the server is not restarted, returns an error */
   if (!BO_ISSERVER_RESTARTED ())
     {
-      *transtate = TRAN_UNACTIVE_UNKNOWN;
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
     }
 #endif /* SA_MODE */
 
+#if defined(SERVER_MODE)
+  /* Check the server's state for HA action for this client */
+  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+    {
+      if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
+			"css_check_ha_server_state_for_client() error\n");
+	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	  return NULL_TRAN_INDEX;
+	}
+    }
+  if (client_credential->client_type == BOOT_CLIENT_LOG_REPLICATOR)
+    {
+      css_notify_ha_log_applier_state (thread_p,
+				       HA_LOG_APPLIER_STATE_UNREGISTERED);
+    }
+#endif /* SERVER_MODE */
+
   /* Assign a transaction index to the client */
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
-					client_prog_name, client_user_name,
-					client_host_name,
-					client_process_id, transtate,
+					client_credential, tran_state,
 					client_lock_wait, client_isolation);
   if (tran_index != NULL_TRAN_INDEX)
     {
@@ -3622,7 +3651,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, int print_restart,
  *       and allocated memory, on behalf of the client.
  */
 int
-xboot_unregister_client (THREAD_ENTRY * thrd, int tran_index)
+xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 {
   int save_index;
 #if defined(SERVER_MODE)
@@ -3632,29 +3661,49 @@ xboot_unregister_client (THREAD_ENTRY * thrd, int tran_index)
 
   if (BO_ISSERVER_RESTARTED () && tran_index != NULL_TRAN_INDEX)
     {
-      save_index = LOG_FIND_THREAD_TRAN_INDEX (thrd);
+      LOG_TDES *tdes;
 
-      LOG_SET_CURRENT_TRAN_INDEX (thrd, tran_index);
+      save_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
+      tdes = LOG_FIND_TDES (tran_index);
 #if defined(SERVER_MODE)
-      conn = thrd->conn_entry;
+      conn = thread_p->conn_entry;
       client_id = (conn != NULL) ? conn->client_id : -1;
-      if (LOG_FIND_TDES (tran_index) == NULL
-	  || LOG_FIND_TDES (tran_index)->client_id != client_id)
+      if (tdes == NULL || tdes->client_id != client_id)
 	{
-	  THREAD_SET_TRAN_INDEX (thrd, save_index);
+	  THREAD_SET_TRAN_INDEX (thread_p, save_index);
 	  return NO_ERROR;
+	}
+
+      /* check if the client was a log applier */
+      if (tdes->client.client_type == BOOT_CLIENT_LOG_REPLICATOR)
+	{
+	  css_notify_ha_log_applier_state (thread_p,
+					   HA_LOG_APPLIER_STATE_UNREGISTERED);
+	}
+      /* Check the server's state for HA action for this client */
+      if (tdes->client.client_type != BOOT_CLIENT_LOG_REPLICATOR
+	  && tdes->client.client_type != BOOT_CLIENT_ADMIN_UTILITY)
+	{
+	  if (css_check_ha_server_state_for_client (thread_p, 2) != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "xboot_unregister_client: "
+			    "css_check_ha_server_state_for_client() error\n");
+	    }
 	}
 #endif /* SERVER_MODE */
 
       /* If the transaction is active abort it */
-      if (logtb_is_current_active (thrd))
+      if (LOG_ISTRAN_ACTIVE (tdes))	/*logtb_is_current_active (thread_p) */
 	{
-	  (void) xtran_server_abort (thrd);
+	  (void) xtran_server_abort (thread_p);
 	}
 
       /* Release the transaction index */
-      logtb_release_tran_index (thrd, tran_index);
-      LOG_SET_CURRENT_TRAN_INDEX (thrd, save_index);
+      logtb_release_tran_index (thread_p, tran_index);
+
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_index);
     }
 
 #if defined(CUBRID_DEBUG)
@@ -3664,15 +3713,6 @@ xboot_unregister_client (THREAD_ENTRY * thrd, int tran_index)
 #if defined(SA_MODE)
   (void) xboot_shutdown_server (NULL, true);
 #endif /* SA_MODE */
-
-  /*
-   * Force standard outputs. This is good idea for our QA regression testing,
-   * since we would like to get any server output with the corresponding
-   * client output when sharing the same output stream handle.
-   */
-
-  (void) fflush (stdout);
-  (void) fflush (stderr);
 
   return NO_ERROR;
 }
@@ -4061,7 +4101,6 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	    const char *new_volext_path,
 	    const char *fileof_vols_and_copypaths, bool newdb_overwrite)
 {
-  char *alloc_serverhost = NULL;
   DB_INFO *dir = NULL;
   DB_INFO *db = NULL;
   const char *newlog_prefix;
@@ -4069,6 +4108,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   char newdb_pathbuf[PATH_MAX];
   char newdb_pathbuf2[PATH_MAX];
   char newlog_pathbuf[PATH_MAX];
+  char newdb_server_host_buf[MAXHOSTNAMELEN + 1];
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
@@ -4121,21 +4161,18 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 
   if (newdb_server_host == NULL)
     {
-      alloc_serverhost = (char *) malloc (MAXHOSTNAMELEN);
-      if (alloc_serverhost == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      if (GETHOSTNAME (alloc_serverhost, MAXHOSTNAMELEN) != 0)
+#if 0				/* use Unix-domain socket for localhost */
+      if (GETHOSTNAME (newdb_server_host_buf, MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error;
 	}
-      newdb_server_host = alloc_serverhost;
+#else
+      strcpy (newdb_server_host_buf, "localhost");
+#endif
+      newdb_server_host = newdb_server_host_buf;
     }
 
   /* Make sure that the full path for the new database is not too long */
@@ -4234,10 +4271,6 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 				   newdb_path, newlog_path, newdb_server_host,
 				   new_volext_path, fileof_vols_and_copypaths,
 				   false);
-	  if (alloc_serverhost)
-	    {
-	      free_and_init (alloc_serverhost);
-	    }
 
 	  return error_code;
 	}
@@ -4344,22 +4377,10 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
       fileio_dismount (dbtxt_vdes);
     }
 
-  /* Deallocate any allocated structures */
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
-    }
-
   (void) xboot_shutdown_server (thread_p, false);
   return error_code;
 
 error:
-  /* Deallocate any allocated structures */
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
-    }
-
   if (dir != NULL)
     {
       cfg_free_directory (dir);
@@ -4418,10 +4439,10 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 		   bool newdb_overwrite, bool extern_rename,
 		   bool force_delete)
 {
-  char *alloc_serverhost = NULL;
   DB_INFO *dir = NULL;
   DB_INFO *db = NULL;
   const char *newlog_prefix;
+  char newdb_server_host_buf[MAXHOSTNAMELEN + 1];
   char newdb_fullname[PATH_MAX];
   char newdb_pathbuf[PATH_MAX];
   char newlog_pathbuf[PATH_MAX];
@@ -4519,21 +4540,18 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 
   if (newdb_server_host == NULL)
     {
-      alloc_serverhost = (char *) malloc (MAXHOSTNAMELEN);
-      if (alloc_serverhost == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      if (GETHOSTNAME (alloc_serverhost, MAXHOSTNAMELEN) != 0)
+#if 0				/* use Unix-domain socekt for localhost */
+      if (GETHOSTNAME (newdb_server_host_buf, MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error;
 	}
-      newdb_server_host = alloc_serverhost;
+#else
+      strcpy (newdb_server_host_buf, "localhost");
+#endif
+      newdb_server_host = newdb_server_host_buf;
     }
 
   /* Make sure that the full path for the new database is not too long */
@@ -4670,12 +4688,6 @@ end:
       fileio_dismount (dbtxt_vdes);
     }
 
-  /* Deallocate any allocated structures */
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
-    }
-
   return error_code;
 
 error:
@@ -4688,11 +4700,6 @@ error:
   if (dbtxt_vdes != NULL_VOLDES)
     {
       fileio_dismount (dbtxt_vdes);
-    }
-
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
     }
 
   return error_code;
@@ -4934,12 +4941,11 @@ error_dirty_delete:
  *   client_isolation(in):
  */
 static int
-boot_create_all_volumes (THREAD_ENTRY * thread_p, const char *db_comments,
-			 DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *log_path, const char *log_prefix,
-			 DKNPAGES log_npages, const char *client_prog_name,
-			 const char *client_user_name,
-			 const char *client_host_name, int client_process_id,
+boot_create_all_volumes (THREAD_ENTRY * thread_p,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential,
+			 const char *db_comments, DKNPAGES db_npages,
+			 const char *file_addmore_vols, const char *log_path,
+			 const char *log_prefix, DKNPAGES log_npages,
 			 int client_lock_wait,
 			 TRAN_ISOLATION client_isolation)
 {
@@ -4947,6 +4953,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const char *db_comments,
   VOLID db_volid = NULL_VOLID;
   RECDES recdes;
   int error_code;
+
+  assert (client_credential != NULL);
 
   error_code = spage_boot (thread_p);
   if (error_code != NO_ERROR)
@@ -4960,9 +4968,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const char *db_comments,
     }
 
   /* Create the active log and initialize the log and recovery manager */
-  error_code =
-    log_create (thread_p, boot_Db_full_name, log_path, log_prefix,
-		log_npages);
+  error_code = log_create (thread_p, boot_Db_full_name, log_path, log_prefix,
+			   log_npages);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -4973,9 +4980,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const char *db_comments,
   /* Assign an index to current thread of execution (i.e., a client id) */
 
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
-					client_prog_name, client_user_name,
-					client_host_name,
-					client_process_id, NULL,
+					client_credential, NULL,
 					client_lock_wait, client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
     {

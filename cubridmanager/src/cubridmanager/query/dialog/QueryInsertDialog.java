@@ -183,8 +183,8 @@ public class QueryInsertDialog extends Dialog {
 									insertQuery)) {
 								cntTotalInsertedRecord++;
 								lblTotalInsertedCount.setText(Messages
-										.getString("QEDIT.TOTAL")
-										+ cntTotalInsertedRecord
+										.getString("QEDIT.TOTAL") + " "
+										+ cntTotalInsertedRecord + " "
 										+ Messages.getString("QEDIT.INSERTED"));
 							}
 							txtHistory.append(insertQuery);
@@ -206,6 +206,8 @@ public class QueryInsertDialog extends Dialog {
 						clearInsert();
 						clearHistory();
 						lblTotalInsertedCount.setText("");
+						keyText.dispose();
+						keyEditor.dispose();
 					}
 				});
 		btnClose = new Button(composite, SWT.NONE);
@@ -367,8 +369,6 @@ public class QueryInsertDialog extends Dialog {
 
 	
 	private void clearInsert() {
-		keyText.dispose();
-		keyEditor.dispose();
 		for (int i = 0; i < tblInsert.getItemCount(); i++) {
 			tblInsert.getItem(i).setText(2, "");
 		}
@@ -380,7 +380,7 @@ public class QueryInsertDialog extends Dialog {
 
 	private void setTxtInsert() {
 		StringBuffer sql = new StringBuffer("insert into ");
-		sql.append(tableName);
+		sql.append("\"" + tableName + "\"");
 		sql.append(" (");
 		StringBuffer columns = new StringBuffer("");
 		StringBuffer values = new StringBuffer("");
@@ -393,77 +393,15 @@ public class QueryInsertDialog extends Dialog {
 					columns.append(", ");
 					values.append(", ");
 				}
-				columns.append(tblInsert.getItem(i).getText(0));
-				if (type.startsWith("set")) {
-					if (value.startsWith("{"))
-						values.append(value);
-					else {
-						values.append("{");
-						values.append(value);
-						values.append("}");
-					}
-				} else if (type.startsWith("character")) {
-					if (value.startsWith("'"))
-						values.append(value);
-					else {
-						values.append("'");
-						values.append(value);
-						values.append("'");
-					}
-				} else if (type.startsWith("national")) {
-					if (value.toUpperCase().startsWith("N'"))
-						values.append(value);
-					else if (value.startsWith("'")) {
-						values.append("N");
-						values.append(value);
-					} else {
-						values.append("N'");
-						values.append(value);
-						values.append("'");
-					}
-				} else if (type.startsWith("bit")) {
-					if (value.toUpperCase().startsWith("X'") || value.toUpperCase().startsWith("B'"))
-						values.append(value);
-					else if (value.replaceAll("'", "").replaceAll("0", "")
-							.replaceAll("1", "").length() == 0) {
-						values.append("B'");
-						values.append(value);
-						values.append("'");
-					} else if (value.startsWith("'")) {
-						values.append("X");
-						values.append(value);
-					} else {
-						values.append("X'");
-						values.append(value);
-						values.append("'");
-					}
-				} else if (type.startsWith("time")) {
-					if (value.toUpperCase().startsWith("TO_TIME")
-							|| value.startsWith("'")
-							|| value.toUpperCase().startsWith("SYS")
-							|| value.toUpperCase().startsWith("CURRENT")
-							|| value.toUpperCase().startsWith("TIME"))
-						values.append(value);
-					else {
-						values.append("'");
-						values.append(value);
-						values.append("'");
-					}
-				} else if (type.startsWith("date")) {
-					if (value.toUpperCase().startsWith("TO_DATE")
-							|| value.startsWith("'")
-							|| value.toUpperCase().startsWith("SYS")
-							|| value.toUpperCase().startsWith("CURRENT")
-							|| value.toUpperCase().startsWith("DATE"))
-						values.append(value);
-					else {
-						values.append("'");
-						values.append(value);
-						values.append("'");
-					}
-				} else
-					values.append(value);
-			}
+				columns.append("\"" + tblInsert.getItem(i).getText(0) + "\"");
+				
+				try {
+					value = DBAttribute.formatDefault(type, value);
+				} catch (Exception e) {
+					// ignored it
+				}
+				values.append(value);
+ 			}
 		}
 		if (columns.length() > 0 && values.length() > 0) {
 			sql.append(columns);

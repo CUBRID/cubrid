@@ -474,7 +474,9 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       return 0;
     }
 
-  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+  if ((shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+      || (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
+      || (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_MYSQL))
     {
       ut_kill_process (shm_appl->as_info[as_index].pid,
 		       shm_br->br_info[br_index].name, as_index);
@@ -1188,25 +1190,6 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
 	  goto set_broker_conf_error;
 	}
     }
-  else if (strcasecmp (conf_name, "COMPRESS_SIZE") == 0)
-    {
-      if (shm_appl)
-	{
-	  int comp_size;
-
-	  CONF_GET_VALUE_POSITIVE_INT (comp_size, conf_value,
-				       DEFAULT_COMPRESS_SIZE);
-	  comp_size *= 1024;	/* bytes */
-	  shm_br->br_info[br_index].compress_size = comp_size;
-	  shm_appl->compress_size = comp_size;
-	}
-      else
-	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
-	  goto set_broker_conf_error;
-	}
-    }
   else if (strcasecmp (conf_name, "LOG_BACKUP") == 0)
     {
       int log_backup;
@@ -1218,14 +1201,6 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
 	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].log_backup = log_backup;
-    }
-  else if (strcasecmp (conf_name, "PRIORITY_GAP") == 0)
-    {
-      int priority_gap;
-
-      CONF_GET_VALUE_POSITIVE_INT (priority_gap, conf_value,
-				   DEFAULT_PRIORITY_GAP);
-      shm_br->br_info[br_index].priority_gap = priority_gap;
     }
   else if (strcasecmp (conf_name, "TIME_TO_KILL") == 0)
     {
@@ -1478,7 +1453,10 @@ admin_del_cas_log (int master_shmid, char *broker, int asid)
   asid--;
 
   if (shm_appl->as_info[asid].service_flag != SERVICE_ON
-      || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+      || ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+	  && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
+	  && (shm_br->br_info[br_index].appl_server !=
+	      APPL_SERVER_CAS_MYSQL)))
     {
       goto error;
     }
@@ -1646,13 +1624,17 @@ static int
 	       br_info->appl_server_shm_id);
       putenv (appl_server_shm_key_str);
 
-      if (br_info->appl_server == APPL_SERVER_CAS)
+      if ((br_info->appl_server == APPL_SERVER_CAS)
+	  || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
+	  || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
 	broker_exe_name = NAME_CAS_BROKER;
       else
 	broker_exe_name = NAME_BROKER;
 
 #ifdef WIN32
-      if (br_info->appl_server == APPL_SERVER_CAS
+      if (((br_info->appl_server == APPL_SERVER_CAS)
+	   || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
+	   || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
 	  && br_info->appl_server_port < 0)
 	broker_exe_name = NAME_CAS_BROKER2;
 #endif
@@ -1689,7 +1671,6 @@ static int
   shm_appl->sql_log_mode = br_info->sql_log_mode;
   shm_appl->sql_log_time = br_info->sql_log_time;
   shm_appl->sql_log_max_size = br_info->sql_log_max_size;
-  shm_appl->compress_size = br_info->compress_size;
   shm_appl->appl_server_max_size = br_info->appl_server_max_size;
   shm_appl->session_timeout = br_info->session_timeout;
   shm_appl->sql_log2 = br_info->sql_log2;
@@ -1703,21 +1684,12 @@ static int
   shm_appl->statement_pooling = br_info->statement_pooling;
   shm_appl->sql_log_single_line = br_info->sql_log_single_line;
 
-  shm_appl->session_flag = br_info->session_flag;
-  shm_appl->set_cookie = br_info->set_cookie;
-  shm_appl->error_log = br_info->error_log;
-  shm_appl->entry_value_trim = br_info->entry_value_trim;
-  shm_appl->oid_check = br_info->oid_check;
   shm_appl->access_log = br_info->access_log;
-  shm_appl->enc_appl_flag = br_info->enc_appl_flag;
 
   shm_appl->jdbc_cache = br_info->jdbc_cache;
   shm_appl->jdbc_cache_only_hint = br_info->jdbc_cache_only_hint;
   shm_appl->jdbc_cache_life_time = br_info->jdbc_cache_life_time;
 
-  strcpy (shm_appl->doc_root, br_info->doc_root);
-  strcpy (shm_appl->file_upload_temp_dir, br_info->file_upload_temp_dir);
-  strcpy (shm_appl->file_upload_delimiter, br_info->file_upload_delimiter);
   strcpy (shm_appl->broker_name, br_info->name);
 
   for (i = 0; i < shm_appl->num_appl_server; i++)
@@ -1941,7 +1913,9 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       putenv (error_log_lock_file);
 
 #ifdef RUN_PURIFY
-      if (br_info->appl_server == APPL_SERVER_CAS)
+      if ((br_info->appl_server == APPL_SERVER_CAS)
+	  || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
+	  || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
 	putenv ("PUREOPTIONS=-program-name=cas");
 #endif
 
@@ -2055,29 +2029,12 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
 	}
     }
 
-  if (appl_server_type == APPL_SERVER_UTS_C)
-    return APPL_SERVER_UTS_C_NAME;
-  if (appl_server_type == APPL_SERVER_UTS_W)
-    return APPL_SERVER_UTS_W_NAME;
-  if (appl_server_type == APPL_SERVER_UPLOAD)
-    return APPL_SERVER_UPLOAD_NAME;
-  if (appl_server_type == APPL_SERVER_AM)
-    return APPL_SERVER_AM_NAME;
+  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
+    return APPL_SERVER_CAS_ORACLE_NAME;
+  if (appl_server_type == APPL_SERVER_CAS_MYSQL)
+    return APPL_SERVER_CAS_MYSQL_NAME;
 
-  /* appl_server_type == APPL_SERVER_CAS */
-#ifdef WIN32
-  appl_name = APPL_SERVER_CAS_NAME;
-#else
-  dbms_version = get_cubrid_version ();
-
-  if (dbms_version >= MAKE_VERSION (5, 2)
-      && dbms_version < MAKE_VERSION (6, 0))
-    appl_name = APPL_SERVER_CAS_U52_NAME;
-  else
-    appl_name = APPL_SERVER_CAS_NAME;
-#endif
-
-  return appl_name;
+  return APPL_SERVER_CAS_NAME;
 }
 
 #ifndef WIN32

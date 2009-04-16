@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -91,7 +91,7 @@ struct thread_entry
 #endif				/* WINDOWS */
   int type;			/* thread type */
   THREAD_T tid;			/* thread id */
-  int client_id;		/* client id whom this thread is responsing */
+  int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
   MUTEX_T tran_index_lock;
   unsigned int rid;		/* request id which this thread is processing */
@@ -153,15 +153,12 @@ struct daemon_thread_monitor
 typedef void *CSS_THREAD_ARG;
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-/* AsyncCommit */
 extern DAEMON_THREAD_MONITOR css_Log_flush_thread;
 
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
 
-extern void thread_set_current_thread_info (int client_id,
-					    unsigned int rid, int tran_index);
 extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 
 extern int thread_initialize_manager (int nthreads);

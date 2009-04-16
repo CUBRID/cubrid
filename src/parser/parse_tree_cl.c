@@ -759,6 +759,26 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser,
 
   *new_node = *old_node;
 
+  /* if node is copied from another parser context, deepcopy string contents */
+  if (old_node->parser_id != parser->id)
+    {
+      if (new_node->node_type == PT_NAME)
+	{
+	  new_node->info.name.original =
+	    pt_append_string (parser, NULL, old_node->info.name.original);
+	  new_node->info.name.resolved =
+	    pt_append_string (parser, NULL, old_node->info.name.resolved);
+	}
+      else if (new_node->node_type == PT_VALUE)
+	{
+	  if (new_node->info.value.text)
+	    {
+	      new_node->info.value.text =
+		pt_append_string (parser, NULL, old_node->info.value.text);
+	    }
+	}
+    }
+
   /* if we are operating in a context of db_values, copy it too */
   if (new_node->node_type == PT_VALUE
       && new_node->info.value.db_value_is_in_workspace

@@ -132,6 +132,10 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_LOADDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_UNLOADDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COMPACTDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_PARAMDUMP, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_CHANGEMODE, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_COPYLOGDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_APPLYLOGDB, MASK_ADMIN},
   {-1, ""}
 };
 
@@ -1431,14 +1435,14 @@ load_properties (void)
   if (sysprm_obtain_parameters (service_list, 4096) == NO_ERROR)
     {
       char *save_ptr1, *save_ptr2, *value, *util;
-      char *delim = " \t=\"\n";
+      char *delim = "\t=\"";
       value = strtok_r (service_list, delim, &save_ptr1);
       value = strtok_r (NULL, delim, &save_ptr1);
       if (value != NULL)
 	{
 	  for (util = value;; util = NULL)
 	    {
-	      util = strtok_r (util, " \t,\n", &save_ptr2);
+	      util = strtok_r (util, " \t,", &save_ptr2);
 	      if (util == NULL)
 		{
 		  break;
@@ -1468,7 +1472,7 @@ load_properties (void)
   if (sysprm_obtain_parameters (server_list, 4096) == NO_ERROR)
     {
       char *save_ptr, *value;
-      char *delim = " \t=\"";
+      char *delim = "\t=\"";
       value = strtok_r (server_list, delim, &save_ptr);
       value = strtok_r (NULL, delim, &save_ptr);
       if (value != NULL)

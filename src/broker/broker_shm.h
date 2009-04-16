@@ -202,14 +202,8 @@ struct t_appl_server_info
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;
 struct t_shm_appl_server
 {
-  char session_flag;
-  char set_cookie;
-  char error_log;
   char access_log;
-  char entry_value_trim;
-  char oid_check;
   char sql_log_mode;
-  char enc_appl_flag;
   char stripped_column_name;
   char keep_connection;
   char cache_user_info;
@@ -226,16 +220,12 @@ struct t_shm_appl_server
 #endif
   char log_dir[PATH_MAX];
   char err_log_dir[PATH_MAX];
-  char doc_root[PATH_MAX];
-  char file_upload_temp_dir[PATH_MAX];
-  char file_upload_delimiter[16];
   char broker_name[BROKER_NAME_LEN];
   char appl_server_name[APPL_SERVER_NAME_MAX_SIZE];
 #ifdef USE_MUTEX
   int lock;
 #endif				/* USE_MUTEX */
   int magic;
-  int compress_size;
   int appl_server_max_size;
   int session_timeout;
   int num_appl_server;

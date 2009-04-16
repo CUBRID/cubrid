@@ -39,6 +39,10 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#if !defined(WINDOWS)
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#endif
 #if defined(AIX)
 #include <netinet/if_ether.h>
 #include <net/if_dl.h>
@@ -57,6 +61,7 @@
 #include <sys/stat.h>
 #endif /* LINUX */
 #include <netinet/tcp.h>
+#include <assert.h>
 
 #include "porting.h"
 #if defined(SERVER_MODE)
@@ -80,10 +85,21 @@
 
 static const int css_Maximum_server_count = 5;
 
-#if defined(SERVER_MODE) && !defined(SOLARIS) && !defined(AIX) && !defined(HPUX)
+#ifndef HAVE_GETHOSTBYNAME_R
 static MUTEX_T gethostbyname_lock = MUTEX_INITIALIZER;
-#endif /* SERVER_MODE && !SOLARIS && !AIX && !HPUX */
+#endif /* HAVE_GETHOSTBYNAME_R */
 
+#if !defined (WINDOWS)
+#define SET_NONBLOCKING(fd) { \
+      int flags = fcntl (fd, F_GETFL); \
+      flags |= O_NONBLOCK; \
+      fcntl (fd, F_SETFL, flags); \
+}
+#endif /* !WINDOWS */
+
+static void css_sockopt (int sd);
+static int css_sockaddr (const char *host, int port, struct sockaddr *saddr,
+			 socklen_t * slen);
 static int css_fd_error (int fd);
 
 /*
@@ -96,7 +112,7 @@ int
 css_tcp_client_open (const char *host, int port)
 {
   int fd;
-  fd = css_tcp_client_open_withretry (host, port, true);
+  fd = css_tcp_client_open_with_retry (host, port, true);
 
   if (fd < 0)
     {
@@ -106,314 +122,400 @@ css_tcp_client_open (const char *host, int port)
   return fd;
 }
 
-
-static int
-css_tcp_apply_env_variable (int fd)
+static void
+css_sockopt (int sd)
 {
   if (PRM_TCP_RCVBUF_SIZE > 0)
     {
-      if (setsockopt (fd, SOL_SOCKET, SO_RCVBUF, &PRM_TCP_RCVBUF_SIZE,
-		      sizeof (PRM_TCP_RCVBUF_SIZE)) == -1)
-	{
-	  perror ("setsockopt");
-	  fprintf (stderr, "Fatal error: setting SO_RCVBUF to %d.\n",
-		   PRM_TCP_RCVBUF_SIZE);
-	  return ER_FAILED;
-	}
+      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, &PRM_TCP_RCVBUF_SIZE,
+		  sizeof (PRM_TCP_RCVBUF_SIZE));
     }
 
   if (PRM_TCP_SNDBUF_SIZE > 0)
     {
-      if (setsockopt (fd, SOL_SOCKET, SO_SNDBUF, &PRM_TCP_SNDBUF_SIZE,
-		      sizeof (PRM_TCP_SNDBUF_SIZE)) == -1)
-	{
-	  perror ("setsockopt");
-	  fprintf (stderr, "Fatal error: setting SO_SNDBUF to %d.\n",
-		   PRM_TCP_SNDBUF_SIZE);
-	  return ER_FAILED;
-	}
+      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, &PRM_TCP_SNDBUF_SIZE,
+		  sizeof (PRM_TCP_SNDBUF_SIZE));
     }
 
   if (PRM_TCP_NODELAY > 0)
     {
-      if (setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, &PRM_TCP_NODELAY,
-		      sizeof (PRM_TCP_NODELAY)) == -1)
-	{
-	  perror ("setsockopt");
-	  fprintf (stderr, "Fatal error: setting TCP_NODELAY to %d.\n",
-		   PRM_TCP_NODELAY);
-	}
+      setsockopt (sd, IPPROTO_TCP, TCP_NODELAY, &PRM_TCP_NODELAY,
+		  sizeof (PRM_TCP_NODELAY));
     }
-
-  return NO_ERROR;
 }
 
 /*
- * css_tcp_client_open_withretry () -
+ * css_sockaddr()
  *   return:
  *   host(in):
  *   port(in):
- *   willretry(in):
+ *   saddr(out):
+ *   slen(out):
  */
-int
-css_tcp_client_open_withretry (const char *host, int port, bool will_retry)
+static int
+css_sockaddr (const char *host, int port, struct sockaddr *saddr,
+	      socklen_t * slen)
 {
-  int fd = -1;
-  int resvport;
-  unsigned int inaddr;
-  struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
-  struct sockaddr_un unix_srv_addr;
-  int af;
-  in_addr_t addr;
-  time_t start_contime;
-  int nsecs;
-  int sleep_nsecs = 1;
-  int success = -1;
-  int num_retries = 0;
+  struct sockaddr_in tcp_saddr;
+  struct sockaddr_un unix_saddr;
+  in_addr_t in_addr;
 
   /*
-   * Initialize the servers internet address structure.
-   * We'll store the actual 4-byte Inernet address and the
-   * 2-byte port# below.
+   * Construct address for TCP socket
    */
-
-  memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
-  tcp_srv_addr.sin_family = AF_INET;
-
-  if (port > 0)
-    {
-      tcp_srv_addr.sin_port = htons (port);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_PORT_ERROR, 0);
-      return -1;
-    }
+  memset ((void *) &tcp_saddr, 0, sizeof (tcp_saddr));
+  tcp_saddr.sin_family = AF_INET;
+  tcp_saddr.sin_port = htons (port);
 
   /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
-
-  inaddr = inet_addr (host);
-  if (inaddr != INADDR_NONE)
+  in_addr = inet_addr (host);
+  if (in_addr != INADDR_NONE)
     {
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr,
-	      sizeof (inaddr));
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) &in_addr,
+	      sizeof (in_addr));
     }
   else
     {
-#if !defined(SERVER_MODE) || defined(AIX) || defined(HPUX)
-      struct hostent *hp;
-
-      hp = gethostbyname (host);
-      if (hp == NULL)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return -1;
-	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr,
-	      hp->h_length);
-#elif defined(SERVER_MODE) && defined(SOLARIS)
-      struct hostent hp, *p;
-      size_t hstbuflen;
-      char tmphstbuf[2048];
+#ifdef HAVE_GETHOSTBYNAME_R
+# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+      struct hostent *hp, hent;
       int herr;
+      char buf[1024];
 
-      hstbuflen = 2048;
-      p = gethostbyname_r (host, &hp, tmphstbuf, hstbuflen, &herr);
-
-      if (p == NULL)
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 ||
+	  hp == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return -1;
+	  return ER_FAILED;
 	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp.h_addr,
-	      hp.h_length);
-#else /* SERVER_MODE && SOLARIS */
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
+	      hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+      struct hostent hent;
+      int herr;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  return ER_FAILED;
+	}
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
+	      hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_HPUX)
+      struct hostent hent;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf) == -1)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  return ER_FAILED;
+	}
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
+	      hent.h_length);
+# else
+#   error "HAVE_GETHOSTBYNAME_R"
+# endif
+#else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
       int r;
 
       MUTEX_LOCK (r, gethostbyname_lock);
-
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
 	  MUTEX_UNLOCK (gethostbyname_lock);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return -1;
+	  return ER_FAILED;
 	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr,
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr,
 	      hp->h_length);
-
       MUTEX_UNLOCK (gethostbyname_lock);
-#endif /* SERVER_MODE && SOLARIS */
+#endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
+  /*
+   * Construct address for Unix domain socket
+   */
   sprintf (css_Master_unix_domain_path, "%s/%s%d",
 	   P_tmpdir, envvar_prefix (), port);
 
-  memcpy ((void *) &inaddr, (void *) &tcp_srv_addr.sin_addr, sizeof (inaddr));
-  addr = inet_addr ("127.0.0.1");	/* localhost */
-  if (addr == inaddr)
+  /*
+   * Compare with the TCP address with localhost.
+   * If it is, use Unix domain socket rather than TCP for the performance
+   */
+  memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
+  if (in_addr == inet_addr ("127.0.0.1"))
     {
-      af = AF_UNIX;
-      memset ((void *) &unix_srv_addr, 0, sizeof (unix_srv_addr));
-      unix_srv_addr.sun_family = AF_UNIX;
-      strcpy (unix_srv_addr.sun_path, css_Master_unix_domain_path);
+      memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
+      unix_saddr.sun_family = AF_UNIX;
+      strcpy (unix_saddr.sun_path, css_Master_unix_domain_path);
+      *slen = sizeof (unix_saddr);
+      memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
     }
   else
     {
-      af = AF_INET;
+      *slen = sizeof (tcp_saddr);
+      memcpy ((void *) saddr, (void *) &tcp_saddr, *slen);
     }
 
-#if 1
-  /* 
-   * Temporary fix 
-   * AF_UNIX does not support OOB message.
-   */
-  af = AF_INET;
-#endif
+  return NO_ERROR;
+}
+
+/*
+ * css_tcp_client_open_with_retry () -
+ *   return:
+ *   host(in):
+ *   port(in):
+ *   willretry(in):
+ */
+int
+css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
+{
+  int sd = -1;
+  struct sockaddr *saddr;
+  socklen_t slen;
+  time_t start_contime;
+  int nsecs, sleep_nsecs = 1;
+  int success, num_retries = 0;
+  union
+  {
+    struct sockaddr_in in;
+    struct sockaddr_un un;
+  } saddr_buf;
+
+  assert (host != NULL);
+  assert (port > 0);
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  if (css_sockaddr (host, port, saddr, &slen) != NO_ERROR)
+    return -1;
 
   start_contime = time (NULL);
   do
     {
+      sd = socket (saddr->sa_family, SOCK_STREAM, 0);
+      if (sd < 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
+	  return -1;
+	}
+      else
+	{
+	  css_sockopt (sd);
+	}
+
       /*
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
        * To avoid a possible infinite loop, we only retry five times
        */
-
-      if (port >= 0)
-	{
-	  fd = socket (af, SOCK_STREAM, 0);
-	  if (fd < 0)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
-	      return -1;
-	    }
-	  else
-	    {
-	      if (css_tcp_apply_env_variable (fd) != NO_ERROR)
-		{
-		  exit (99);
-		}
-	    }
-	}
-      else
-	{
-	  resvport = IPPORT_RESERVED - 1;
-	  fd = rresvport (&resvport);
-	  if (fd < 0)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ERR_CSS_TCP_CANNOT_RESERVE_PORT, 0);
-	      return -1;
-	    }
-	}
-
     again_eintr:
-      /* Connect to the master server  */
-      if (af == AF_INET)
+      if ((success = connect (sd, saddr, slen)) == 0)
 	{
-	  success = connect (fd, (struct sockaddr *) &tcp_srv_addr,
-			     sizeof (tcp_srv_addr));
+	  /* connection is established successfully */
+	  break;
 	}
-      else
+      if (errno == EINTR)
 	{
-	  success = connect (fd, (struct sockaddr *) &unix_srv_addr,
-			     sizeof (unix_srv_addr));
+	  goto again_eintr;
 	}
 
-      if (success < 0)
+      if ((errno == ECONNREFUSED || errno == ETIMEDOUT) && will_retry == true)
 	{
-	  if (errno == EINTR)
+	  nsecs = (int) difftime (time (NULL), start_contime);
+	  nsecs -= PRM_TCP_CONNECTION_TIMEOUT;
+	  if (nsecs >= 0 && num_retries > TCP_MIN_NUM_RETRIES)
 	    {
-	      goto again_eintr;
-	    }
-
-	  if ((errno == ECONNREFUSED || errno == ETIMEDOUT)
-	      && will_retry == true)
-	    {
-	      nsecs = (int) difftime (time (NULL), start_contime);
-	      nsecs -= PRM_TCP_CONNECTION_TIMEOUT;
-
-	      if (nsecs >= 0 && num_retries > TCP_MIN_NUM_RETRIES)
-		{
-		  will_retry = false;
-		}
-	      else
-		{
-		  /*
-		   * Wait a little bit to change the load of the server. Don't wait for
-		   * more than 1/2 min or the timeout period
-		   */
-		  if (sleep_nsecs > 30)
-		    {
-		      sleep_nsecs = 30;
-		    }
-
-		  /*
-		   * Sleep only when we have not timeout
-		   */
-		  /*
-		   * Sleep only when we have not timed out. That is, when nsecs is
-		   * negative.
-		   */
-
-		  if (nsecs < 0 && sleep_nsecs > (-nsecs))
-		    {
-		      sleep_nsecs = -nsecs;
-		    }
-
-		  if (nsecs < 0)
-		    {
-		      (void) sleep (sleep_nsecs);
-		      sleep_nsecs *= 2;	/* Go 1, 2, 4, 8, etc */
-		    }
-
-		  num_retries++;
-		}
+	      will_retry = false;
 	    }
 	  else
 	    {
-	      will_retry = false;	/* Don't retry */
-	    }
+	      /*
+	       * Wait a little bit to change the load of the server.
+	       * Don't wait for more than 1/2 min or the timeout period
+	       */
+	      if (sleep_nsecs > 30)
+		{
+		  sleep_nsecs = 30;
+		}
 
-	  close (fd);
-	  fd = -1;
-	  continue;
+	      /*
+	       * Sleep only when we have not timed out. That is, when nsecs is
+	       * negative.
+	       */
+	      if (nsecs < 0 && sleep_nsecs > (-nsecs))
+		{
+		  sleep_nsecs = -nsecs;
+		}
+	      if (nsecs < 0)
+		{
+		  (void) sleep (sleep_nsecs);
+		  sleep_nsecs *= 2;	/* Go 1, 2, 4, 8, etc */
+		}
+	      num_retries++;
+	    }
 	}
-      break;
+      else
+	{
+	  will_retry = false;	/* Don't retry */
+	}
+
+      /*
+       * According to the Sun man page of connect & listen. When a connect
+       * was forcefully rejected. The calling program must close the
+       * socket descriptor, before another connect is retried.
+       *
+       * The server's host is probably overloaded. Sleep for a while, then
+       * try again. We sleep a different number of seconds between 1 and 30
+       * to avoid having the same situation with other processes that could
+       * have reached the timeout/refuse connection.
+       *
+       * The sleep time is guessing that the server is not going to be
+       * overloaded by connections in that amount of time.
+       *
+       * Similar things are suggested by R. Stevens Unix Network programming
+       * book. See Remote Command execution example in Chapter 14
+       *
+       * See connect and listen MAN pages.
+       */
+      close (sd);
+      sd = -1;
     }
   while (success < 0 && will_retry == true);
-
 
   if (success < 0)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "Failed with number of retries = %d during connection\n",
-		    num_retries);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_retry:"
+		    "connection failed with retries %d errno %d\n",
+		    num_retries, errno);
 #endif /* CUBRID_DEBUG */
       return -1;
     }
 
-  if (num_retries > 0)
+  return sd;
+}
+
+#if !defined (WINDOWS)
+/*
+ * css_tcp_client_open_with_timeout() -
+ *   return: socket descriptor
+ *   host(in): host name
+ *   port(in): port no
+ *   timeout(in): timeout in mili-seconds
+ */
+int
+css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
+{
+  int sd = -1;
+  struct sockaddr *saddr;
+  socklen_t slen;
+  int n;
+  struct timeval tv;
+  fd_set wfds, efds;
+  union
+  {
+    struct sockaddr_in in;
+    struct sockaddr_un un;
+  } saddr_buf;
+
+  assert (host != NULL);
+  assert (port > 0);
+  assert (timeout >= 0);
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  if (css_sockaddr (host, port, saddr, &slen) != NO_ERROR)
+    return -1;
+
+  sd = socket (saddr->sa_family, SOCK_STREAM, 0);
+  if (sd < 0)
     {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "Connected after number of retries = %d\n", num_retries);
-#endif /* CUBRID_DEBUG */
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
+      return -1;
+    }
+  else
+    {
+      css_sockopt (sd);
+      SET_NONBLOCKING (sd);
     }
 
-  return fd;
+again_eintr:
+  if ((n = connect (sd, saddr, slen)) == 0)
+    {
+      /* connection is established immediately */
+      return sd;
+    }
+  if (errno == EINTR)
+    {
+      goto again_eintr;
+    }
+
+  if (errno != EINPROGRESS)
+    {
+      close (sd);
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
+		    "connection failed with errno %d", errno);
+#endif /* CUBRID_DEBUG */
+      return -1;
+    }
+
+
+  FD_ZERO (&wfds);
+  FD_SET (sd, &wfds);
+  FD_ZERO (&efds);
+  FD_SET (sd, &efds);
+  /* wait mili-seconds of the timeout */
+  tv.tv_sec = timeout / 1000;
+  tv.tv_usec = (timeout % 1000) * 1000;
+  if ((n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv)) == 0)
+    {
+      /* 0 means it timed out and no fd is changed */
+      errno = ETIMEDOUT;
+      close (sd);
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
+		    "connection failed with timeout %d", timeout);
+#endif /* CUBRID_DEBUG */
+      return -1;
+    }
+  /* has connection been established? */
+  if (n > 0)
+    {
+      slen = sizeof (n);
+      getsockopt (sd, SOL_SOCKET, SO_ERROR, (void *) &n, &slen);
+      /* error status 0 means success, otherwise it contains the errno */
+      if (n != 0)
+	{
+	  errno = n;
+	  n = -1;
+	}
+    }
+  /* any error was in there? */
+  if (n < 0)
+    {
+      close (sd);
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
+		    "connection failed errno %d", errno);
+#endif /* CUBRID_DEBUG */
+      return -1;
+    }
+
+  return sd;
 }
+#endif /* !WINDOWS */
 
 /*
  * css_tcp_master_open () -
@@ -900,11 +1002,7 @@ css_open_new_socket_from_master (int fd, unsigned short *rid)
   fcntl (new_fd, F_SETOWN, pid);
 #endif /* not SYSV */
 
-  if (css_tcp_apply_env_variable (new_fd) != NO_ERROR)
-    {
-      return -1;
-    }
-
+  css_sockopt (new_fd);
   return new_fd;
 }
 
@@ -1047,75 +1145,9 @@ css_gethostid (void)
 {
   unsigned int id = 0;
 
-#if defined(SYSV)
-  /* HPUX, AIX implementations */
-  char host_name[MAXHOSTNAMELEN];
-  unsigned int inaddr;
-
-  if (gethostname (host_name, MAXHOSTNAMELEN) != -1)
-    {
-      inaddr = inet_addr (host_name);
-      if (inaddr != INADDR_NONE)
-	{
-	  id = (unsigned int) inaddr;
-	}
-      else
-	{
-#if !defined(SERVER_MODE) || defined(AIX) || defined(HPUX)
-	  struct hostent *hp;
-
-	  hp = gethostbyname (host_name);
-	  if (hp == NULL)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ERR_CSS_TCP_HOST_NAME_ERROR, 1, host_name);
-	      return 0;
-	    }
-
-	  id = *(unsigned int *) (hp->h_addr);
-#elif defined(SERVER_MODE) && defined(SOLARIS)
-	  struct hostent hp, *p;
-	  size_t hstbuflen;
-	  char tmphstbuf[2048];
-	  int herr;
-
-	  hstbuflen = 2048;
-
-	  p = gethostbyname_r (host_name, &hp, tmphstbuf, hstbuflen, &herr);
-	  if (p == NULL)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ERR_CSS_TCP_HOST_NAME_ERROR, 1, host_name);
-	      return 0;
-	    }
-
-	  id = *(unsigned int *) (hp.h_addr);
-#else /* SERVER_MODE && not SOLARIS && not AIX && not HPUX */
-	  struct hostent *hp;
-	  int r;
-
-	  MUTEX_LOCK (r, gethostbyname_lock);
-
-	  hp = gethostbyname (host_name);
-	  if (hp == NULL)
-	    {
-	      MUTEX_UNLOCK (gethostbyname_lock);
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ERR_CSS_TCP_HOST_NAME_ERROR, 1, host_name);
-	      return 0;
-	    }
-
-	  id = *(unsigned int *) (hp->h_addr);
-
-	  MUTEX_UNLOCK (gethostbyname_lock);
-#endif /* SERVER_MODE && not SOLARIS && not AIX && not HPUX */
-	}
-    }
-#else /* not SYSV */
-  /* Everyone else */
+#ifdef HAVE_GETHOSTID
   id = (unsigned int) gethostid ();
-#endif /* not SYSV */
-
+#endif /* !HAVE_GETHOSTID */
   return id;
 }
 
@@ -1212,3 +1244,273 @@ css_fd_down (int fd)
 
   return rc;
 }
+
+#if !defined (WINDOWS)
+#define SET_NONBLOCKING(fd) { \
+      int flags = fcntl (fd, F_GETFL); \
+      flags |= O_NONBLOCK; \
+      fcntl (fd, F_SETFL, flags); \
+}
+
+/*
+ * in_cksum - Checksum routine for Internet Protocol family headers
+ */
+static int
+in_cksum (u_short * addr, int len)
+{
+  int nleft = len;
+  u_short *w = addr;
+  int sum = 0;
+  u_short answer = 0;
+
+  /*
+   * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+   * sequential 16 bit words to it, and at the end, fold back all the
+   * carry bits from the top 16 bits into the lower 16 bits.
+   */
+  while (nleft > 1)
+    {
+      sum += *w++;
+      nleft -= 2;
+    }
+
+  /* mop up an odd byte, if necessary */
+  if (nleft == 1)
+    {
+      *(u_char *) (&answer) = *(u_char *) w;
+      sum += answer;
+    }
+
+  /* add back carry outs from top 16 bits to low 16 bits */
+  sum = (sum >> 16) + (sum & 0xffff);	/* add hi 16 to low 16 */
+  sum += (sum >> 16);		/* add carry */
+  answer = ~sum;		/* truncate to 16 bits */
+  return (answer);
+}
+
+/*
+ * css_ping() - ping implementation
+ *              Send a ICMP_ECHO_REQUEST packet every second until either the
+ *              timeout expires or a answer is received.
+ *  return: 0 if an ICMP_ECHO_REPLY is received, otherwise errno
+ *          ETIME if timed out
+ *  sd(in): raw socket
+ *  sa_send(in): peer address
+ *  timeout(in): timeout in mili seconds
+ */
+int
+css_ping (int sd, struct sockaddr_in *sa_send, int timeout)
+{
+  char sendbuf[1500], recvbuf[1500];
+  struct icmp *icmp;
+  struct ip *ip;
+  struct sockaddr_in sa_recv;
+  struct timeval tv;
+  fd_set fds;
+  uint16_t pid;
+  int size, seq, n, hlen;
+  size_t plen;
+  socklen_t slen;
+
+  /* icmp_id is a 16 bit data type, therefore down cast the pid */
+  pid = (uint16_t) getpid ();
+  size = 60 * 1024;
+  setsockopt (sd, SOL_SOCKET, SO_RCVBUF, &size, sizeof (size));
+
+  /* make the socket non blocking so we can use select */
+  SET_NONBLOCKING (sd);
+
+  seq = 0;
+  do
+    {
+      /* create the ICMP request */
+      icmp = (struct icmp *) sendbuf;
+      icmp->icmp_type = ICMP_ECHO;
+      icmp->icmp_code = 0;
+      icmp->icmp_id = htons (pid);
+      icmp->icmp_seq = htons (seq);
+      seq++;
+      gettimeofday (&tv, NULL);
+      memcpy (icmp->icmp_data, &tv, sizeof (tv));
+      plen = ICMP_ADVLENMIN + sizeof (tv);
+      icmp->icmp_cksum = 0;
+      icmp->icmp_cksum = in_cksum ((u_short *) icmp, plen);
+      /* send it */
+      n = sendto (sd, sendbuf, plen, 0, (struct sockaddr *) sa_send,
+		  sizeof (struct sockaddr));
+      if (n < 0 && errno != EINPROGRESS)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"css_ping: can't send ICMP packet to %s errno %d\n",
+			inet_ntoa (sa_send->sin_addr), errno);
+	  close (sd);
+	  return errno;
+	}
+
+      FD_ZERO (&fds);
+      FD_SET (sd, &fds);
+      /* wait one second */
+      tv.tv_sec = timeout >= 1000 ? 1 : 0;
+      tv.tv_usec = timeout >= 1000 ? 0 : timeout * 1000;
+      n = select (FD_SETSIZE, &fds, NULL, NULL, &tv);
+      if (n < 0 && errno != EINTR)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_ping: select() errno %d\n",
+			errno);
+	  close (sd);
+	  return errno;
+	}
+      if (n > 0)
+	{
+	  /* something is available to read */
+	  slen = sizeof (sa_recv);
+	  n = recvfrom (sd, recvbuf, sizeof (recvbuf), 0,
+			(struct sockaddr *) &sa_recv, &slen);
+	  ip = (struct ip *) recvbuf;
+	  hlen = (ip->ip_hl) << 2;
+	  icmp = (struct icmp *) (recvbuf + hlen);
+	  /*
+	   * We did received somthing, but is it what we were expecting?
+	   * Is is ICMP_ECHO_REPLY packet with the proper PID value?
+	   */
+	  if ((n - hlen >= 8) && icmp->icmp_type == ICMP_ECHOREPLY &&
+	      (ntohs (icmp->icmp_id) == pid) &&
+	      (sa_send->sin_addr.s_addr == sa_recv.sin_addr.s_addr))
+	    {
+	      /*er_log_debug (ARG_FILE_LINE, "css_ping: success\n"); */
+	      close (sd);
+	      return 0;
+	    }
+	}
+      timeout -= 1000;
+    }
+  while (timeout > 0);
+  /* timed out */
+  er_log_debug (ARG_FILE_LINE, "css_ping: timed out\n");
+  close (sd);
+  return ETIME;
+}
+
+/*
+ * css_peer_alive() - check if the peer is alive or not
+ *                    Try to ping the peer or connect to the port 7 (ECHO)
+ *    return: true or false
+ *    sd(in): socket descriptor connected to the peer
+ *    timeout(in): timeout in mili seconds
+ */
+bool
+css_peer_alive (int sd, int timeout)
+{
+  int nsd, n, size;
+  struct sockaddr_in saddr;
+  socklen_t slen;
+  struct timeval tv;
+  fd_set wfds, efds;
+
+  slen = sizeof (saddr);
+  if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "css_peer_alive: returning errno %d from getpeername()\n",
+		    errno);
+      return false;
+    }
+
+  /* if Unix domain socket, the peer(=local) is alive always */
+  if (saddr.sin_family != AF_INET)
+    {
+      return true;
+    }
+
+#if 0				/* temporarily disabled */
+  /* try to make raw socket to ping the peer */
+  if ((nsd = socket (AF_INET, SOCK_RAW, IPPROTO_ICMP)) >= 0)
+    {
+      return (css_ping (nsd, &saddr, timeout) == 0);
+    }
+#endif
+  /* failed to make a ICMP socket; try to connect to the port ECHO */
+  if ((nsd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "css_peer_alive: errno %d from socket(SOCK_STREAM)\n",
+		    errno);
+      return false;
+    }
+
+  /* make the socket non blocking so we can use select */
+  SET_NONBLOCKING (nsd);
+
+  saddr.sin_port = htons (7);	/* port ECHO */
+  n = connect (nsd, (struct sockaddr *) &saddr, slen);
+
+  /*
+   * Connection will be established or refused immediately.
+   * Either way it means that the peer host is alive.
+   */
+  if (n == 0 || n == ECONNREFUSED)
+    {
+      close (nsd);
+      return true;
+    }
+  else
+    {
+      switch (errno)
+	{
+	case EINPROGRESS:	/* non-blocking, asynchronously */
+	  break;
+	case ENETUNREACH:	/* network unreachable */
+	case EAFNOSUPPORT:	/* address family not supported */
+	case EADDRNOTAVAIL:	/* address is not available on the remote machine */
+	case EINVAL:		/* on some linux, connecting to the loopback */
+	  er_log_debug (ARG_FILE_LINE,
+			"css_peer_alive: errno %d from connect()\n", errno);
+	  close (nsd);
+	  return false;
+	default:		/* otherwise, connection failed */
+	  er_log_debug (ARG_FILE_LINE,
+			"css_peer_alive: errno %d from connect()\n", errno);
+	  close (nsd);
+	  return false;
+	}
+
+      FD_ZERO (&wfds);
+      FD_SET (nsd, &wfds);
+      FD_ZERO (&efds);
+      FD_SET (nsd, &efds);
+      /* wait mili-seconds of the timeout */
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = (timeout % 1000) * 1000;
+      n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
+      if (n < 0 && errno != EINTR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"css_peer_alive: errno %d from select()\n", errno);
+	  close (nsd);
+	  return false;
+	}
+      if (n == 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_peer_alive: timed out %d\n",
+			timeout);
+	  close (nsd);
+	  return false;
+	}
+      /* has connection been established? */
+      size = sizeof (n);
+      if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
+	{
+	  n = errno;
+	}
+      if (n == 0 || n == ECONNREFUSED)
+	{
+	  close (nsd);
+	  return true;
+	}
+      er_log_debug (ARG_FILE_LINE,
+		    "css_peer_alive: errno %d from connect()\n", n);
+      close (nsd);
+      return false;
+    }				/* else */
+}
+#endif /* !WINDOWS */

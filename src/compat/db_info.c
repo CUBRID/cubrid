@@ -643,7 +643,8 @@ db_type_from_string (const char *name)
   if (name != NULL)
     {
       type = pr_find_type (name);
-      if ((type == NULL) && (db_Connect_status == 1))
+      if ((type == NULL)
+	  && (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED))
 	{
 	  domain = pt_string_to_db_domain (name, NULL);
 	  if (domain)

@@ -921,10 +921,7 @@ br_info_copy (T_DM_UC_BR_INFO * dest_info, T_BR_INFO * src_info)
   dest_info->pcpu = src_info->pcpu;
   dest_info->cpu_time = src_info->cpu_time;
   dest_info->num_req = src_info->num_req;
-  if (src_info->session_flag == FLAG_ON)
-    sprintf (strbuf, "%d", src_info->session_timeout);
-  else
-    strcpy (strbuf, "OFF");
+  sprintf (strbuf, "%d", src_info->session_timeout);
   dest_info->session_timeout = strdup (strbuf);
   dest_info->sql_log_on_off = src_info->sql_log_on_off;
   dest_info->shm_id = src_info->shm_id;
@@ -943,9 +940,7 @@ br_info_copy (T_DM_UC_BR_INFO * dest_info, T_BR_INFO * src_info)
     strcpy (dest_info->auto_add, "OFF");
   dest_info->log_dir = strdup (src_info->log_dir);
   dest_info->as_max_size = src_info->as_max_size;
-  dest_info->compress_size = src_info->compress_size;
   dest_info->log_backup = src_info->log_backup_flag;
-  dest_info->priority_gap = src_info->priority_gap;
   dest_info->time_to_kill = src_info->time_to_kill;
   dest_info->access_list_flag = src_info->access_list_flag;
   dest_info->source_env_flag = src_info->source_env_flag;

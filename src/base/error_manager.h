@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -155,7 +155,7 @@ extern void er_set_with_oserror (int severity, const char *file_name,
 				 ...);
 typedef void (*er_log_handler_t) (unsigned int);
 extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
-						 
+
 
 extern int er_errid (void);
 extern int er_severity (void);
@@ -165,10 +165,14 @@ extern const char *er_msg (void);
 extern void er_all (int *err_id, int *severity, int *nlevels,
 		    int *line_no, const char **file_name, const char **msg);
 extern void er_print (void);
+#if defined(NDEBUG)
+#define er_log_debug(...)
+#else /* NDEBUG */
 extern void er_log_debug (const char *file_name, const int line_no,
 			  const char *fmt, ...);
-extern void *er_get_area_error (int *length);
-extern void er_set_area_error (void *server_area);
+#endif /* !NDEBUG */
+extern void *er_get_area_error (void *buffer, int *length);
+extern int er_set_area_error (void *server_area);
 extern int er_stack_push (void);
 extern int er_stack_pop (void);
 extern void er_stack_clear (void);

@@ -44,7 +44,6 @@
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_User_page_size =
   IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
-static int db_Max_path_len = PATH_MAX;
 
 static PGLENGTH find_valid_page_size (PGLENGTH page_size);
 
@@ -68,17 +67,6 @@ PGLENGTH
 db_io_page_size (void)
 {
   return db_Io_page_size;
-}
-
-/*
- * db_max_path_len(): returns the max path length
- *
- *   returns: max path length
- */
-int
-db_max_path_len (void)
-{
-  return db_Max_path_len;
 }
 
 /*

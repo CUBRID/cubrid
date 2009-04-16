@@ -593,6 +593,8 @@ extern "C"
   extern int dbcs_get_next (PARSER_CONTEXT * parser);
   extern void dbcs_start_input (void);
 
+  extern void parser_free_lcks_classes (PARSER_CONTEXT * parser);
+
 #ifdef __cplusplus
 }
 #endif

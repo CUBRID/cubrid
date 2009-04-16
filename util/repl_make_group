@@ -1,4 +1,4 @@
-#!/usr/bin/ksh
+#!/bin/sh
 ###############################################################################
 #  Script Name : repl_make_group
 #
@@ -380,7 +380,7 @@ init_class_info_and_repl_group()
          fi
        fi
     fi
-    (( count=count+1 ))
+    count=$(($count+1))
   done
   execute_sql 3
   if [ "$?" -ne 0 ]
@@ -538,7 +538,7 @@ get_master_ip()
       master_host=`eval expr $master_host`
       break;
     fi
-    (( count=count+1 ))
+    count=$(($count+1))
   done < .repl_group.tmp
   echo "MASTER_HOST : $master_host"
 }
@@ -571,7 +571,7 @@ set_repl_group_using_file()
         then
           print_error add_error $result "n"
         fi
-        (( total_cnt=total_cnt+1 ))
+        total_cnt=$(($total_cnt+1))
       else
         if [ "$check_class_result" -eq 2 ]
         then
@@ -795,8 +795,8 @@ do
     slave_db_name=`eval expr $slave_db_name`
     all_repl=`eval expr $all_repl`
     break; 
-  fi
-  (( count=count+1 ))
+  fi 
+  count=$(($count+1))
 done
 
 
@@ -852,7 +852,7 @@ else
           echo "    $class_name"
           class_name_list=$class_name_list" "$class_name
       fi
-      (( count=count+1 ))
+      count=$(($count+1))
     done
     if [ $count -eq 5 -a -z "$class_name" ]
     then

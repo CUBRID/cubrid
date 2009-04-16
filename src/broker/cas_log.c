@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -48,9 +48,7 @@
 #include "broker_env_def.h"
 #include "broker_filename.h"
 
-#ifdef WIN32
 #include "cas_db_inc.h"
-#endif
 
 #define MAKE_SQL_LOG_FILENAME(FILENAME, BR_NAME, AS_INDEX)	\
 	do {							\
@@ -309,6 +307,35 @@ cas_log_write_query_string (char *query, char print_new_line)
     }
 #endif
 }
+
+#if !defined (NDEBUG)
+void
+cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp)
+    {
+      va_list ap;
+      time_t t;
+      struct tm lt;
+      T_TIMEVAL tv;
+
+      TIMEVAL_MAKE (&tv);
+      t = TIMEVAL_GET_SEC (&tv);
+      lt = *localtime (&t);
+
+      va_start (ap, fmt);
+      fprintf (log_fp, "%02d/%02d %02d:%02d:%02d.%03d (debug) ",
+	       lt.tm_mon + 1, lt.tm_mday,
+	       lt.tm_hour, lt.tm_min, lt.tm_sec, TIMEVAL_GET_MSEC (&tv));
+      vfprintf (log_fp, fmt, ap);
+      fprintf (log_fp, "\n");
+      fflush (log_fp);
+      va_end (ap);
+    }
+#endif
+}
+#endif
 
 #ifdef CAS_ERROR_LOG
 void
@@ -674,11 +701,11 @@ cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
   from = cas_EHCTX->from;
   to = cas_EHCTX->to;
 
-  if(clear)
-  {
-    cas_EHCTX->from = 0;
-    cas_EHCTX->to = 0;
-  }
+  if (clear)
+    {
+      cas_EHCTX->from = 0;
+      cas_EHCTX->to = 0;
+    }
 
   /* ", EID = <int> ~ <int>" : 32 bytes suffice */
   if (bufsz < 32)
@@ -696,14 +723,14 @@ cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
     }
 
   /* actual print */
-  if(to != 0)
-  {
-    snprintf(buf_p, 32, ", EID = %u ~ %u", from, to);
-  }
+  if (to != 0)
+    {
+      snprintf (buf_p, 32, ", EID = %u ~ %u", from, to);
+    }
   else
-  {
-    snprintf(buf_p, 32,  ", EID = %u", from);
-  }
+    {
+      snprintf (buf_p, 32, ", EID = %u", from);
+    }
 
   return buf_p;
 }

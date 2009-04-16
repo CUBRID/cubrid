@@ -59,6 +59,10 @@ $       33      alterdbhost
 $       35      repl_server
 $       36      repl_agent
 $       37      plandump
+$       38      paramdump
+$       39      changemode
+$       40      copylogdb
+$       41      appylogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character `%c' in database name `%s'\n
@@ -96,6 +100,10 @@ Available admin utility-name:\n\
     plandump\n\
     loaddb\n\
     unloaddb\n\
+    paramdump\n\
+    changemode\n\
+    copylogdb\n\
+    applylogdb\n\
 \n\
 %s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.com\n
@@ -143,6 +151,10 @@ Available administrator's utilities:\n\
     restoredb\n\
     spacedb\n\
     unloaddb\n\
+    paramdump\n\
+    changemode\n\
+    copylogdb\n\
+    applylogdb\n\
 \n\
 %s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.com\n
@@ -169,7 +181,7 @@ Available command:\n\
     start\n\
     stop\n\
     restart\n\
-    status      [-b] [-q] [-t <sec>] [-s <sec>] [<expr>]\n\
+    status      [-b] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          broker-name\n\
     off         broker-name\n
 27 cubrid utility, version %s\n\
@@ -183,15 +195,15 @@ Available command:\n\
 usage: %s repl_server <command> [args]\n\
 \n\
 Available command:\n\
-    start       database-name server-network-port [-a max-agent-num] [-e error-file]\n\
-    stop        database-name\n\
+    start       master-database-name server-network-port [-a max-agent-num] [-e error-file]\n\
+    stop        master-database-name\n\
     status\n
 29 cubrid utility, version %s\n\
 usage: %s repl_agent <command> [args]\n\
 \n\
 Available command:\n\
-    start       database-name [dba-password]\n\
-    stop        database-name\n\
+    start       dist-database-name [dba-password]\n\
+    stop        dist-database-name\n\
     status\n
 30 '%s' argument is not needed.\n
 31 A database-name is missing.\n
@@ -314,7 +326,7 @@ valid options:\n\
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'
+19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
 20 Restoredb cancelled or an error occurred.\n
 60 \
 restoredb: Restore a database.\n\
@@ -641,6 +653,7 @@ valid options:\n\
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
 15 Couldn't open output file `%s'\n
+59 lockdb cannot run as standlone mode.\n
 60 \
 lockdb: Display lock-status of the database.\n\
 usage: %s lockdb [OPTION] database-name\n\
@@ -662,6 +675,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Killing transaction associated with transaction index %d\n
 30 Killing of the following transactions has failed\n\n
 31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
+59 killrtan cannot run as standlone mode.\n
 60 \
 killtran: Manage transactions of the database.\n\
 usage: %s killtran [OPTION] database-name\n\
@@ -672,7 +686,8 @@ valid options:\n\
       --kill-host-name=HOST          kill all transactions with client HOST\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
-  -d, --display-information          display information about active transactions\n
+  -d, --display-information          display information about active transactions\n\
+  -f, --force                        kill the transaction without a prompt for verification\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
@@ -770,6 +785,7 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file `%s'\n
+59 plandump cannot run as standlone mode.\n
 60 \
 plandump: Display or control cached query plans.\n\
 usage: %s plandump [OPTION] database-name\n\
@@ -777,3 +793,57 @@ usage: %s plandump [OPTION] database-name\n\
 valid options:\n\
   -d, --drop                   drop all plans in the server's cache\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+
+$set 38 MSGCAT_UTIL_SET_DUMPPARAM
+11 Cannot open output file `%s'\n
+60 \
+paramdump: Dump system parameter settings.\n\
+usage: %s paramdump [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
+
+$set 39 MSGCAT_UTIL_SET_CHANGEMODE
+11 Worng value \"%s\" for the server's HA running mode.\n
+12 Cannot change the server's HA running mode.\n
+21 Enter DBA password:
+22 The server `%s''s current HA running mode is %s.\n
+23 The server `%s''s HA running mode is changed to \"%s\".\n
+59 changemode cannot run as standlone mode.\n
+60 \
+changemode: Display or change the server's HA running mode.\n\
+usage: %s changemode [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -m, --mode=MODE             change the server mode to MODE; default; none\n\
+  -w, --wait                  wait util the mode is changed\n\
+  -f, --force                 force to change\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+
+$set 40 MSGCAT_UTIL_SET_COPYLOGDB
+11 Worng value \"%s\" for the copylogdb's running mode.\n
+21 Enter DBA password:
+59 copylogdb cannot run as standlone mode.\n
+60 \
+copylogdb: Copy log pages from the server.\n\
+usage: %s copylogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n\
+  -m, --mode=MODE             operation mode; default: async\n\
+                              MODE: async or sync\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+
+$set 41 MSGCAT_UTIL_SET_APPLYLOGDB
+21 Enter DBA password:
+59 applylogdb cannot run as standlone mode.\n
+60 \
+applylogdb: Apply copied log to the server.\n\
+usage: %s applylogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH of copied log volumes\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+

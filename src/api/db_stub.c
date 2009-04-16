@@ -2863,25 +2863,35 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn,
 {
   int error = NO_ERROR;
   char port_string[8];
+  BOOT_CLIENT_CREDENTIAL client_credential;
 
   strncpy (db_Program_name, program, PATH_MAX);
   db_Database_name[0] = '\0';
-  db_Connect_status = 1;
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
   if (port > 0)
     {
       sprintf (port_string, "%d", port);
       sysprm_set_force ("cubrid_port_id", port_string);
     }
-  error = boot_restart_client (program, (bool) print_version, volume);
+  client_credential.client_type = BOOT_CLIENT_DEFAULT;;
+  client_credential.client_info = NULL;
+  client_credential.db_name = volume;
+  client_credential.db_user = db_get_user_name ();
+  client_credential.db_password = NULL;
+  client_credential.program_name = program;
+  client_credential.login_name = NULL;
+  client_credential.host_name = NULL;
+  client_credential.process_id = -1;
+  error = boot_restart_client (&client_credential);
 
   if (error != NO_ERROR)
     {
-      db_Connect_status = 0;
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
     }
   else
     {
-      db_Connect_status = 1;
+      db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
       strcpy (db_Database_name, volume);
       au_link_static_methods ();
       esm_load_esm_classes ();

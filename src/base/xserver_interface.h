@@ -35,6 +35,7 @@
 
 #include "error_manager.h"
 #include "storage_common.h"
+#include "boot.h"
 #include "locator.h"
 #include "log_comm.h"
 #include "perf_monitor.h"
@@ -45,43 +46,29 @@
 
 extern unsigned int db_on_server;
 
-extern int xboot_initialize_server (THREAD_ENTRY * thread_p,
-				    int print_version, bool db_overwrite,
-				    PGLENGTH db_desired_pagesize,
-				    const char *db_name, const char *xdb_path,
-				    const char *vol_path,
-				    const char *db_comments,
-				    DKNPAGES db_npages,
-				    const char *file_addmore_vols,
-				    const char *db_server_host,
-				    const char *xlog_path,
-				    DKNPAGES xlog_npages, OID * rootclass_oid,
-				    HFID * rootclass_hfid,
-				    const char *client_prog_name,
-				    const char *client_user_name,
-				    const char *client_host_name,
-				    int client_process_id,
-				    int client_lock_wait,
-				    TRAN_ISOLATION client_isolation);
-extern int xboot_register_client (THREAD_ENTRY * thread_p, int print_restart,
-				  const char *db_name, OID * rootclass_oid,
-				  HFID * rootclass_hfid,
-				  const char *client_prog_name,
-				  const char *client_user_name,
-				  const char *client_host_name,
-				  int client_process_id, int client_lock_wait,
-				  TRAN_ISOLATION client_isolation,
-				  TRAN_STATE * transtate,
-				  PGLENGTH * current_pagesize);
+extern int
+xboot_initialize_server (THREAD_ENTRY * thread_p,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential,
+			 BOOT_DB_PATH_INFO * db_path_info,
+			 bool db_overwrite, PGLENGTH db_desired_pagesize,
+			 DKNPAGES db_npages, const char *file_addmore_vols,
+			 DKNPAGES xlog_npages, OID * rootclass_oid,
+			 HFID * rootclass_hfid, int client_lock_wait,
+			 TRAN_ISOLATION client_isolation);
+extern int
+xboot_register_client (THREAD_ENTRY * thread_p,
+		       const BOOT_CLIENT_CREDENTIAL * client_credential,
+		       OID * rootclass_oid, HFID * rootclass_hfid,
+		       int client_lock_wait, TRAN_ISOLATION client_isolation,
+		       TRAN_STATE * tran_state, PGLENGTH * current_pagesize);
 extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives,
-			 const char *backup_verbose_file,
-			 int num_threads,
+			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level,
-			 int inc_activelog, PAGEID safe_pageid);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
+			 PAGEID safe_pageid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int check_flag);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
@@ -171,7 +158,7 @@ extern int xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
 					   TP_DOMAIN * key_type, int n_attrs,
 					   int *attr_ids, OID * pk_cls_oid,
 					   BTID * pk_btid, int cache_attr_id,
-					   char *fkname);
+					   char *fk_name);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
@@ -276,7 +263,7 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				HFID * hfids, int unique_flag,
 				int reverse_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fkname);
+				const char *fk_name);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 					DB_VALUE * key, OID * class_oid,

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -46,26 +46,46 @@
 #include "log_comm.h"
 #include "parser.h"
 
-#define db_locate_numeric(value) ((value)->data.num.d.buf)
+/* GLOBAL STATE */
+#define DB_CONNECTION_STATUS_NOT_CONNECTED      0
+#define DB_CONNECTION_STATUS_CONNECTED          1
+#define DB_CONNECTION_STATUS_RESET              -1
+extern int db_Connect_status;
+extern int db_Disable_modifications;
+
+#define DB_CLIENT_TYPE_SYSTEM_INTERNAL  0
+#define DB_CLIENT_TYPE_DEFAULT          1
+#define DB_CLIENT_TYPE_CSQL             2
+#define DB_CLIENT_TYPE_BROKER           3
+#define DB_CLIENT_TYPE_ADMIN_UTILITY    4
+#define DB_CLIENT_TYPE_LOG_REPLICATOR   5
+extern int db_Client_type;
+
+#if !defined(SERVER_MODE)
+extern char db_Database_name[];
+extern bool db_Log_replication_mode;
+#endif
+extern char db_Program_name[];
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
    various validations before executing. */
-#define CHECK_CONNECT_VOID()      \
-  do {                            \
-    if (db_Connect_status == 0) { \
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0); \
-      return;                     \
-    }                             \
+#define CHECK_CONNECT_VOID()                                            \
+  do {                                                                  \
+    if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)            \
+    {                                                                   \
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);   \
+      return;                                                           \
+    }                                                                   \
   } while (0)
 
-#define CHECK_CONNECT_AND_RETURN_EXPR(return_expr_)                   \
-  do {                                                                \
-    if (db_Connect_status == 0)                                       \
-    {                                                                 \
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0); \
-      return (return_expr_);                                          \
-    }                                                                 \
+#define CHECK_CONNECT_AND_RETURN_EXPR(return_expr_)                     \
+  do {                                                                  \
+    if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)            \
+    {                                                                   \
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);   \
+      return (return_expr_);                                            \
+    }                                                                   \
   } while (0)
 
 #define CHECK_CONNECT_ERROR()     \
@@ -86,18 +106,18 @@
 #define CHECK_CONNECT_FALSE()     \
   CHECK_CONNECT_AND_RETURN_EXPR(false)
 
-#define CHECK_MODIFICATION_VOID()   \
-  do {                              \
-    if (db_Disable_modifications) { \
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
-      return;                       \
-    }                               \
+#define CHECK_MODIFICATION_VOID()                                               \
+  do {                                                                          \
+    if (db_Disable_modifications) {                                             \
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);      \
+      return;                                                                   \
+    }                                                                           \
   } while (0)
 
-#define CHECK_MODIFICATION_AND_RETURN_EXPR(return_expr_) \
-  if (db_Disable_modifications) {    \
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
-    return (return_expr_); \
+#define CHECK_MODIFICATION_AND_RETURN_EXPR(return_expr_)                        \
+  if (db_Disable_modifications) {                                               \
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);        \
+    return (return_expr_);                                                      \
   }
 
 #define CHECK_MODIFICATION_ERROR()   \
@@ -108,6 +128,22 @@
 
 #define CHECK_MODIFICATION_MINUSONE() \
   CHECK_MODIFICATION_AND_RETURN_EXPR(-1)
+
+#ifndef CHECK_MODIFICATION_NO_RETURN
+#if defined (SA_MODE)
+#define CHECK_MODIFICATION_NO_RETURN(error) \
+  error = NO_ERROR;
+#else /* SA_MODE */
+#define CHECK_MODIFICATION_NO_RETURN(error)                                     \
+  if (db_Disable_modifications) {                                               \
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);        \
+    er_log_debug (ARG_FILE_LINE, "db_Disable_modification == 1");               \
+    error = ER_DB_NO_MODIFICATIONS;                                             \
+  } else {                                                                      \
+    error = NO_ERROR;                                                           \
+  }
+#endif /* !SA_MODE */
+#endif /* CHECK_MODIFICATION_NO_RETURN */
 
 /* Argument checking macros */
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
@@ -184,16 +220,8 @@
 
 #define DB_GET_OID(value)		(db_get_oid(value))
 
+#define db_locate_numeric(value) ((value)->data.num.d.buf)
 
-/* GLOBAL STATE */
-extern int db_Connect_status;
-extern int db_Disable_modifications;
-extern bool db_Replication_agent_mode;
-
-#if !defined(SERVER_MODE)
-extern char db_Database_name[];
-#endif
-extern char db_Program_name[];
 
 extern int db_init (const char *program, int print_version,
 		    const char *dbname, const char *db_path,

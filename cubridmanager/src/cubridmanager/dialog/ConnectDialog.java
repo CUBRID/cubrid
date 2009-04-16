@@ -688,11 +688,12 @@ public class ConnectDialog extends Dialog {
 				ClientSocket cs = new ClientSocket();
 				String setPasswdMsg = new String();
 				setPasswdMsg = "targetid:" + "admin" + "\n";
-				setPasswdMsg += "newpassword:" + password.toString();
+				setPasswdMsg += "newpassword:" + password ;
 				if (!cs.SendBackGround(sShell, setPasswdMsg, "setdbmtpasswd",
 						Messages.getString("MENU.USERADMIN"))) {
 					return false;
 				}
+				MainRegistry.UserPassword = password ;
 			}
 			else
 			{

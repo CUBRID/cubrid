@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -39,6 +39,7 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #endif /* WINDOWS */
+#include <assert.h>
 
 #include "porting.h"
 
@@ -55,6 +56,8 @@
 #endif /* WINDOWS */
 
 
+static char CFG_HOST_SEPARATOR = ':';
+
 static char *cfg_next_char (char *str_p);
 static char *cfg_next_line (char *str_p);
 static char *cfg_pop_token (char *str_p, char **token_p);
@@ -64,14 +67,10 @@ static void cfg_get_directory_filename (char *buffer, int *local);
 static int cfg_ensure_directory_write (void);
 static FILE *cfg_open_directory_file (bool write_flag);
 
-static char *cfg_pop_host (char *host_list, char *buffer, int *length);
+static char **cfg_copy_hosts (const char **host_array, int *num_hosts);
+static const char *cfg_pop_host (const char *host_list, char *buffer,
+				 int *length);
 static bool cfg_host_exists (char *host_list, char *hostname, int num_items);
-
-static char *cfg_create_host_buffer (const char *primary_host_name,
-				     bool append_local_host, int *cnt);
-static char **cfg_create_host_array (char *hosts_data, int num_hosts,
-				     int *count);
-static char *cfg_get_prm_dbhosts (void);
 
 #if defined(WINDOWS)
 static DB_INFO *make_fake_db (const char *name, const char *hostname);
@@ -428,14 +427,11 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		  str = cfg_pop_token (str, &db->pathname);
 		  str = cfg_pop_token (str, &primary_host);
 		  db->hosts =
-		    cfg_get_hosts (db->name, primary_host, &db->num_hosts,
-				   true);
-
+		    cfg_get_hosts (primary_host, &db->num_hosts, false);
 		  if (primary_host != NULL)
 		    {
 		      free_and_init (primary_host);
 		    }
-
 		  str = cfg_pop_token (str, &db->logpath);
 
 		  if (databases == NULL)
@@ -530,13 +526,11 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	      str = cfg_pop_linetoken (str, &db->pathname);
 	      str = cfg_pop_linetoken (str, &primary_host);
 	      db->hosts =
-		cfg_get_hosts (db->name, primary_host, &db->num_hosts, true);
-
+		cfg_get_hosts (primary_host, &db->num_hosts, false);
 	      if (primary_host != NULL)
 		{
 		  free_and_init (primary_host);
 		}
-
 	      str = cfg_pop_linetoken (str, &db->logpath);
 
 	      if (databases == NULL)
@@ -607,29 +601,42 @@ cfg_write_directory (const DB_INFO * databases)
       sigprocmask (SIG_SETMASK, &new_mask, &old_mask);
 #endif /* !WINDOWS */
 
+      fprintf (file_p, "#db-name\tvol-path\t\tdb-host\t\tlog-path\n");
       for (db_info_p = databases; db_info_p != NULL;
 	   db_info_p = db_info_p->next)
 	{
+	  bool t = (strlen (db_info_p->name) < 8);
 #if defined(WINDOWS)
 	  char short_path[256];
 	  GetShortPathName (db_info_p->pathname, short_path, 256);
-	  fprintf (file_p, "%s %s ", db_info_p->name, short_path);
+	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""),
+		   short_path);
 #else /* WINDOWS */
-	  fprintf (file_p, "%s %s ", db_info_p->name, db_info_p->pathname);
+	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""),
+		   db_info_p->pathname);
 #endif /* WINDOWS */
 
-	  if (db_info_p->hosts != NULL)
+	  if (db_info_p->hosts != NULL && *(db_info_p->hosts) != NULL)
 	    {
-	      fprintf (file_p, "%s ", (*(db_info_p->hosts)));
+	      char **array = db_info_p->hosts;
+	      fprintf (file_p, "%s", *array++);
+	      while (*array != NULL)
+		{
+		  fprintf (file_p, ":%s", *array++);
+		}
+	    }
+	  else
+	    {
+	      fprintf (file_p, "localhost");
 	    }
 
 	  if (db_info_p->logpath != NULL)
 	    {
 #if defined(WINDOWS)
 	      GetShortPathName (db_info_p->logpath, short_path, 256);
-	      fprintf (file_p, "%s ", short_path);
+	      fprintf (file_p, "\t%s ", short_path);
 #else /* WINDOWS */
-	      fprintf (file_p, "%s ", db_info_p->logpath);
+	      fprintf (file_p, "\t%s ", db_info_p->logpath);
 #endif /* WINDOWS */
 	    }
 	  fprintf (file_p, "\n");
@@ -659,8 +666,9 @@ cfg_write_directory (const DB_INFO * databases)
 void
 cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 {
-  char line[PATH_MAX];
+  char line[LINE_MAX], *s;
   const DB_INFO *db_info_p;
+  int n;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -681,12 +689,35 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 #endif /* !WINDOWS */
 
   lseek (vdes, 0L, SEEK_SET);
+  n = sprintf (line, "#db-name\tvol-path\t\tdb-host\t\tlog-path\n");
+  write (vdes, line, n);
   for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
     {
-      sprintf (line, "%s %s %s %s\n", db_info_p->name, db_info_p->pathname,
-	       db_info_p->hosts ? (*(db_info_p->hosts)) : "",
-	       db_info_p->logpath ? db_info_p->logpath : "");
-      write (vdes, line, strlen (line));
+      bool t = (strlen (db_info_p->name) < 8);
+      s = line;
+      s += sprintf (s, "%s%s\t%s\t", db_info_p->name,
+		    (t ? "\t" : ""), db_info_p->pathname);
+
+      if (db_info_p->hosts != NULL && *(db_info_p->hosts) != NULL)
+	{
+	  char **array = db_info_p->hosts;
+	  s += sprintf (s, "%s", *array++);
+	  while (*array != NULL)
+	    {
+	      s += sprintf (s, ":%s", *array++);
+	    }
+	}
+      else
+	{
+	  s += sprintf (s, "localhost");
+	}
+      if (db_info_p->logpath)
+	{
+	  s += sprintf (s, "\t%s", db_info_p->logpath);
+	}
+      s += sprintf (s, "\n");
+      n = s - line;
+      write (vdes, line, n);
     }
 #if defined(WINDOWS)
   _chsize (vdes, lseek (vdes, 0L, SEEK_CUR));
@@ -813,8 +844,7 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath,
 	}
       db_info_p->logpath = str;
 
-      ptr_p =
-	cfg_get_hosts (db_info_p->name, host, &db_info_p->num_hosts, true);
+      ptr_p = cfg_get_hosts (host, &db_info_p->num_hosts, false);
       if (db_info_p->hosts != NULL)
 	{
 	  cfg_free_hosts (db_info_p->hosts);
@@ -835,7 +865,7 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath,
  */
 DB_INFO *
 cfg_new_db (const char *name, const char *path,
-	    const char *logpath, char **hosts)
+	    const char *logpath, const char **hosts)
 {
   DB_INFO *db_info_p;
   char localhost[MAXHOSTNAMELEN];
@@ -861,21 +891,13 @@ cfg_new_db (const char *name, const char *path,
    * if NULL hosts is passed in, then create a new host list, with the
    * local host as the primary.
    */
-
   if (hosts == NULL)
     {
-      if (GETHOSTNAME (localhost, DB_SIZEOF (localhost)) != 0)
-	{
-	  /* unknown error */
-	  strcpy (localhost, "???");
-	}
-      db_info_p->hosts =
-	cfg_get_hosts (db_info_p->name, localhost, &db_info_p->num_hosts,
-		       true);
+      db_info_p->hosts = cfg_get_hosts (NULL, &db_info_p->num_hosts, true);
     }
   else
     {
-      db_info_p->hosts = cfg_copy_hosts (hosts);
+      db_info_p->hosts = cfg_copy_hosts (hosts, &db_info_p->num_hosts);
     }
   db_info_p->pathname = strdup (path);
   if (db_info_p->pathname == NULL)
@@ -958,18 +980,22 @@ cfg_add_db (DB_INFO ** dir, const char *name, const char *path,
 {
   DB_INFO *db_info_p;
   int num_hosts = 0;
-  char **hosts = NULL;
 
-  hosts = cfg_get_hosts (name, host, &num_hosts, true);
-
-  db_info_p = cfg_new_db (name, path, logpath, hosts);
-
-  cfg_free_hosts (hosts);
+  if (host != NULL)
+    {
+      const char *hosts[2];
+      hosts[0] = host;
+      hosts[1] = NULL;
+      db_info_p = cfg_new_db (name, path, logpath, hosts);
+    }
+  else
+    {
+      db_info_p = cfg_new_db (name, path, logpath, NULL);
+    }
 
   if (db_info_p != NULL)
     {
       db_info_p->next = *dir;
-      db_info_p->num_hosts = num_hosts;
       *dir = db_info_p;
     }
 
@@ -979,10 +1005,10 @@ cfg_add_db (DB_INFO ** dir, const char *name, const char *path,
 /*
  * cfg_find_db()
  *    return: database descriptor
- *    name(in): database name
+ *    db_name(in): database name
  */
 DB_INFO *
-cfg_find_db (const char *name)
+cfg_find_db (const char *db_name)
 {
   DB_INFO *dir_info_p, *db_info_p;
 
@@ -994,23 +1020,23 @@ cfg_find_db (const char *name)
 	{
 #if !defined(CS_MODE)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2,
-		  name, DATABASES_FILENAME);
+		  db_name, DATABASES_FILENAME);
 #else /* !CS_MODE */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2,
-		  name, DATABASES_FILENAME);
+		  db_name, DATABASES_FILENAME);
 #endif /* !CS_MODE */
 	}
       else
 	{
-	  db_info_p = cfg_find_db_list (dir_info_p, name);
+	  db_info_p = cfg_find_db_list (dir_info_p, db_name);
 	  if (db_info_p == NULL)
 	    {
 #if !defined(CS_MODE)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE,
-		      2, name, DATABASES_FILENAME);
+		      2, db_name, DATABASES_FILENAME);
 #else /* !CS_MODE */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_CFG_FIND_DATABASE, 2, name, DATABASES_FILENAME);
+		      ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
 #endif /* !CS_MODE */
 	    }
 	  else
@@ -1093,58 +1119,47 @@ cfg_delete_db (DB_INFO ** dir_info_p, const char *name)
  *    dbname(in): database name to connect to. (this is for future use)
  *    prim_host(in): primary hostname for database.
  *    count(in): count will contain the number of host found after processing
- *    append_local_host(in): boolean indicating if the local host name should
- *                           be appended to the list.
+ *    include_local_host(in): boolean indicating if the local host name should
+ *                            be prepended to the list.
  */
 char **
-cfg_get_hosts (const char *dbname, const char *prim_host,
-	       int *count, bool append_local_host)
+cfg_get_hosts (const char *prim_host, int *count, bool include_local_host)
 {
   /* pointers to array of hosts, to return */
-  char **host_array = NULL;
-
-  /* Buffer to hold host names */
-  char *hosts_data = NULL;
+  char **host_array;
+  char *hosts_data;
+  int i;
 
   *count = 0;
 
   /*
    * get a clean host list, i.e., null fields and duplicate hosts removed.
    * prim_host will be prepended to the list, and the local host will
-   * will be appended if append_local_host is true.
+   * will be appended if include_local_host is true.
    */
-
-  hosts_data = cfg_create_host_buffer (prim_host, append_local_host, count);
-
-  /* Check if we have a list of hosts */
-
-  if (*count == 0)
+  hosts_data = cfg_create_host_list (prim_host, include_local_host, count);
+  if (*count == 0 || hosts_data == NULL)
     {
-      if (hosts_data != NULL)
-	{
-	  free_and_init (hosts_data);
-	}
-      return (NULL);
+      return NULL;
     }
 
-  /* Create a list of pointers to point to the hosts in hosts_data */
-  host_array = cfg_create_host_array (hosts_data, *count, count);
-
-  if (*count == 0)
+  /* create a list of pointers to point to the hosts in hosts_data */
+  host_array = (char **) calloc (*count + 1, sizeof (char **));
+  if (host_array == NULL)
     {
+      free_and_init (hosts_data);
+      return NULL;
+    }
+  for (i = 0; i < *count; i++)
+    {
+      host_array[i] = hosts_data;
+      hosts_data = strchr (hosts_data, CFG_HOST_SEPARATOR);
       if (hosts_data != NULL)
 	{
-	  free_and_init (hosts_data);
+	  *hosts_data++ = '\0';
 	}
-      if (host_array != NULL)
-	{
-	  free_and_init (host_array);
-	}
-      hosts_data = NULL;
-      host_array = NULL;
     }
-  /* send back host count, and new array */
-  return (host_array);
+  return host_array;
 }
 
 /*
@@ -1157,15 +1172,13 @@ cfg_free_hosts (char **host_array)
 {
   if (host_array != NULL)
     {
-      /* Free array databuffer */
       if (*host_array != NULL)
 	{
 	  free_and_init (*host_array);
 	}
-      /* Free the array pointers to buffer */
       free_and_init (host_array);
     }
-}				/* cfg_free_hosts() */
+}
 
 /*
  * cfg_pop_host() - pointer to next character in string
@@ -1179,12 +1192,11 @@ cfg_free_hosts (char **host_array)
  *    Note : Sending in a NULL buffer will mean the function will assign length
  *           to the length of the next host in the list only.
  */
-static char *
-cfg_pop_host (char *host_list, char *buffer, int *length)
+static const char *
+cfg_pop_host (const char *host_list, char *buffer, int *length)
 {
   int current_host_length = 0;
-  char *start = NULL;
-  char *host;
+  const char *start, *host;
 
   host = host_list;
 
@@ -1238,7 +1250,7 @@ cfg_pop_host (char *host_list, char *buffer, int *length)
       *length = current_host_length;
     }
   return (host);
-}				/* cfg_pop_host() */
+}
 
 /*
  * cfg_host_exists() - Traverses the host_list to locate hostname.
@@ -1279,61 +1291,56 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
  *    return: returns a pointer to a copy of the array holding hostnames.
  *    host_array(in): Pointer to array holding host names
  */
-char **
-cfg_copy_hosts (char **host_array)
+static char **
+cfg_copy_hosts (const char **host_array, int *num_hosts)
 {
   char **new_array;
-  char *new_buffer;
-  const char *current_host;
+  const char *host;
+  char *buffer;
+  int num, buffer_size;
 
-  int buffer_size;
-  int num_hosts = 0;
-  int i;
+  assert (host_array != NULL);
+  assert (num_hosts != NULL);
 
-  current_host = (*(host_array));
-  num_hosts = 0;
-
+  *num_hosts = 0;
   buffer_size = 0;
-  /* find last element in array */
-  while ((*(host_array + num_hosts)) != NULL)
+  /* count the number of hosts array and calculate the size of buffer */
+  for (num = 0, host = host_array[0]; host; num++, host = host_array[num])
     {
-      current_host = (*(host_array + num_hosts));
-      num_hosts++;
+      buffer_size += strlen (host) + 1;
     }
-  /* size of data is address of last byte - address of first byte */
-  buffer_size = (current_host + strlen (current_host) + 1) - (*host_array);
-  new_array = (char **) calloc (num_hosts + 1, DB_SIZEOF (char **));
+  if (num == 0)
+    {
+      return NULL;
+    }
 
+  /* copy the hosts array into the buffer and make new pointer array */
+  buffer = (char *) malloc (buffer_size);
+  if (buffer == NULL)
+    {
+      return NULL;
+    }
+  new_array = (char **) calloc (num + 1, sizeof (char **));
   if (new_array == NULL)
-    return (NULL);
-
-  new_buffer = (char *) malloc (DB_SIZEOF (char) * buffer_size);
-  if (new_buffer == NULL)
     {
-      free_and_init (new_array);
-      return (NULL);
+      free_and_init (buffer);
+      return NULL;
     }
-
-  if (memcpy (new_buffer, *host_array, buffer_size) != new_buffer)
+  for (num = 0, host = host_array[0]; host; num++, host = host_array[num])
     {
-      free_and_init (new_buffer);
-      free_and_init (new_array);
-      return (NULL);
+      new_array[num] = strcpy (buffer, host);
+      buffer += strlen (host) + 1;
     }
+  *num_hosts = num;
 
-  /* Assign the pointers, with same offsets */
-  for (i = 0; i < num_hosts; i++)
-    {
-      *(new_array + i) = (new_buffer + ((*(host_array + i)) - (*host_array)));
-    }
   return (new_array);
-}				/* cfg_cpy_hosts() */
+}
 
 /*
- * cfg_create_host_buf()
+ * cfg_create_host_lsit()
  *    return: returns a pointer to a copy of the array holding hostnames
  *    primary_host_name(in): String containing primary host name.
- *    append_local_host(in): Flag indicating if the local hostname should be
+ *    include_local_host(in): Flag indicating if the local hostname should be
  *                       included in the list.
  *    count(out): Pointer to integer which will be assigned the number of hosts
  *             in list.
@@ -1341,239 +1348,128 @@ cfg_copy_hosts (char **host_array)
  *    Note : Null or empty hostnames are ignored, and duplicates are not
  *           included in the list.
  */
-static char *
-cfg_create_host_buffer (const char *primary_host_name, bool append_local_host,
-			int *count)
+char *
+cfg_create_host_list (const char *primary_host_name, bool include_local_host,
+		      int *count)
 {
-  int hosts_str_length, current_host_length, local_host_length;
-  int primary_host_length, new_buffer_length;
+  int host_list_length, host_length, host_count;
+  const char *str_ptr;
+  char *full_host_list, *host_ptr;
+  char local_host[MAXHOSTNAMELEN + 1];
 
-  char *prm_host_list = NULL;
-  char *full_host_list = NULL;
-  char *full_host_ptr = NULL;
-  char *prm_host_ptr = NULL;
+  assert (count != NULL);
 
-  char local_host[MAXHOSTNAMELEN];
+  host_list_length = 0;
+  /* include local host to list if required */
+  *local_host = '\0';
+  if (include_local_host)
+    {
+#if 0				/* use Unix-domain socket for localhost */
+      if (GETHOSTNAME (local_host, MAXHOSTNAMELEN) == 0)
+	{
+	  local_host[MAXHOSTNAMELEN] = '\0';
+	  host_list_length += strlen (local_host) + 1;
+	}
+#else
+      strcpy (local_host, "localhost");
+      host_list_length += strlen (local_host) + 1;
+#endif
+    }
+  /* check the given primary hosts list */
+  if (primary_host_name != NULL && *primary_host_name != '\0')
+    {
+      host_list_length += strlen (primary_host_name) + 1;
+    }
 
   /* get the hosts list from parameters */
-
-  prm_host_list = cfg_get_prm_dbhosts ();
-
-  if ((prm_host_list == NULL) || (*prm_host_list == '\0'))
+  if (PRM_CFG_DB_HOSTS != NULL && *PRM_CFG_DB_HOSTS != '\0')
     {
-      hosts_str_length = 0;
+      host_list_length += strlen (PRM_CFG_DB_HOSTS) + 1;
     }
-  else
-    {
-      hosts_str_length = strlen (prm_host_list);
-    }
-
-  /* Append local host to list if required */
-  if ((!append_local_host) || (GETHOSTNAME (local_host, MAXHOSTNAMELEN) != 0))
-    {
-      /* unknown error */
-      strcpy (local_host, "???");
-      local_host_length = 3;
-    }
-  else
-    {
-      local_host_length = (strlen (local_host) + 1);
-    }
-
-  /* Check we have a valid primary host name */
-  if ((primary_host_name != NULL) && (*primary_host_name != '\0'))
-    {
-      primary_host_length = (strlen (primary_host_name) + 1);
-    }
-  else
-    {
-      primary_host_length = 0;
-    }
-
-  /* Create a buffer to hold the concatenated host list */
-  new_buffer_length =
-    hosts_str_length + primary_host_length + local_host_length;
-  if (new_buffer_length > 0)
-    {
-      /* make space for data + separator + end of line terminator */
-      full_host_list = (char *) malloc (new_buffer_length + 2);
-      if (full_host_list == NULL)
-	{
-	  *count = 0;
-	  return (NULL);
-	}
-      *full_host_list = '\0';
-    }
-  else
-    {
-      *count = 0;
-      return (NULL);
-    }
-
-  *count = 0;
-
-  /* Prepend primary host to list */
-  if (primary_host_length != 0)
-    {
-      sprintf (full_host_list, "%s%c", primary_host_name, CFG_HOST_SEPARATOR);
-      (*count)++;
-    }
-
-  /* set up host pointer, into parameter supplied db_hosts */
-  prm_host_ptr = prm_host_list;
-
-  /* set up pointer to the new of the new list */
-  full_host_ptr = full_host_list + strlen (full_host_list);
-
-  if (prm_host_ptr != NULL)
-    {
-      /* Create new list ignoring null fields and spaces, and removing duplicates */
-      while ((*prm_host_ptr != '\0'))
-	{
-	  current_host_length = 0;
-	  prm_host_ptr =
-	    cfg_pop_host (prm_host_ptr, full_host_ptr, &current_host_length);
-	  if ((current_host_length != 0) && (current_host_length != -1))
-	    {
-	      if (!cfg_host_exists (full_host_list, full_host_ptr, *count))
-		{
-		  *count = (*count) + 1;
-		  /* Add separator and terminate string */
-		  full_host_ptr += current_host_length;
-		  *full_host_ptr = CFG_HOST_SEPARATOR;
-		  *(full_host_ptr + 1) = '\0';
-		  full_host_ptr++;
-		}
-	      else
-		{
-		  *full_host_ptr = '\0';
-		}
-	    }
-	}
-    }
-  /* append local host */
-  if (local_host_length > 0)
-    {
-      if (!cfg_host_exists (full_host_list, local_host, *count))
-	{
-	  strcat (full_host_list, local_host);
-	  (*count)++;
-	}
-    }
-  /* Remove last host separator */
-  if (*(full_host_list + strlen (full_host_list) - 1) == CFG_HOST_SEPARATOR)
-    *(full_host_ptr - 1) = '\0';
 
   /*
-   * If we duplicates existed in the list, there will be some unused space
-   * which we should give back.
+   * concatenate host lists with separator
+   * count the number of hosts in the list
+   * ignore null and space
+   * removing duplicates
    */
-  if (full_host_list != NULL)
+  if (host_list_length == 0)
     {
-      int length_parsed_list;
-      char *parsed_list;
-
-      /* if full_host_list has changed we have some unused space at the end */
-      length_parsed_list = strlen (full_host_list);
-      if (length_parsed_list != new_buffer_length)
+      return NULL;
+    }
+  full_host_list = (char *) malloc (host_list_length + 1);
+  if (full_host_list == NULL)
+    {
+      return NULL;
+    }
+  host_count = 0;
+  host_ptr = full_host_list;
+  *host_ptr = '\0';
+  /* add the given primary hosts to the list */
+  if (primary_host_name != NULL && *primary_host_name != '\0')
+    {
+      str_ptr = primary_host_name;
+      while (*str_ptr != '\0')
 	{
-	  parsed_list =
-	    (char *) malloc (DB_SIZEOF (char) * length_parsed_list + 1);
-	  if (parsed_list == NULL)
+	  str_ptr = cfg_pop_host (str_ptr, host_ptr, &host_length);
+	  if (host_length > 0)
 	    {
-	      free_and_init (full_host_list);
-	      *count = 0;
-	      return (NULL);
+	      if (!cfg_host_exists (full_host_list, host_ptr, host_count))
+		{
+		  host_count++;
+		  host_ptr += host_length;
+		  *host_ptr++ = CFG_HOST_SEPARATOR;
+		}
+	      *host_ptr = '\0';
 	    }
-	  else
+	}
+    }
+  /* append the hosts from the parameter to the list */
+  if (PRM_CFG_DB_HOSTS != NULL && *PRM_CFG_DB_HOSTS != '\0')
+    {
+      str_ptr = PRM_CFG_DB_HOSTS;
+      while (*str_ptr != '\0')
+	{
+	  str_ptr = cfg_pop_host (str_ptr, host_ptr, &host_length);
+	  if (host_length > 0)
 	    {
-	      strcpy (parsed_list, full_host_list);
-	      free_and_init (full_host_list);
-	      return (parsed_list);
+	      if (!cfg_host_exists (full_host_list, host_ptr, host_count))
+		{
+		  host_count++;
+		  host_ptr += host_length;
+		  *host_ptr++ = CFG_HOST_SEPARATOR;
+		}
+	      *host_ptr = '\0';
 	    }
 	}
-      else
-	{
-	  return (full_host_list);
-	}
     }
-  else
+  /* append local host if exists */
+  if (*local_host != '\0')
     {
-      return (NULL);
+      if (!cfg_host_exists (full_host_list, local_host, host_count))
+	{
+	  strcpy (host_ptr, local_host);
+	  host_ptr += strlen (local_host);
+	  host_count++;
+	}
     }
-}				/* cfg_create_host_buf() */
-
-/*
- * cfg_create_host_array()
- *    return: returns a pointer to a copy of the array holding hostnames
- *    hosts_data(in): Buffer holding hostnames separated by CFG_HOST_SEPARATOR
- *    num_hosts(in): Number of hosts in buffer.
- *    count(out): Pointer to integer which will be assigned the number of hosts
- *              in list.
- *
- *    Note : Null or empty hostnames are ignored, and duplicates
- *           are not included in the list.
- */
-static char **
-cfg_create_host_array (char *hosts_data, int num_hosts, int *count)
-{
-  char **host_array = NULL;
-  char *hosts_data_p = NULL;
-  char *current_host_str = NULL;
-
-  *count = 0;
-
-  /*
-   * Make an array of pointers with an
-   * extra slot for the end of array null terminator
-   * Use calloc to initialize array to NULLS.
-   */
-  host_array = (char **) calloc (num_hosts + 1, DB_SIZEOF (char **));
-  if (host_array == NULL)
+  /* remove last separator */
+  if (*(host_ptr - 1) == CFG_HOST_SEPARATOR)
     {
-      if (hosts_data != NULL)
-	{
-	  free_and_init (hosts_data);
-	}
-      return (NULL);
+      *(host_ptr - 1) = '\0';
     }
 
-  /* Assign pointers into hosts_data */
-
-  hosts_data_p = hosts_data;
-
-  while (hosts_data_p != NULL)
+  /* return host list and counter */
+  if (host_count != 0)
     {
-      current_host_str = hosts_data_p;
-      hosts_data_p = strchr (hosts_data_p, CFG_HOST_SEPARATOR);
-      if (hosts_data_p != NULL)
-	{
-	  *hosts_data_p = '\0';
-	  hosts_data_p++;
-	}
-      if (*current_host_str != '\0')
-	{
-	  *(host_array + (*count)) = current_host_str;
-	  (*count)++;
-	}
+      *count = host_count;
+      return full_host_list;
     }
 
-  /* terminate the list for safety */
-  *(host_array + (*count)) = NULL;
-  return (host_array);
-}				/* cfg_create_host_array() */
-
-/*
- * cfg_get_prm_dbhosts() - Returns pointer to global parameter,
- *                         PRM_CFG_DB_HOSTS
- *    return: return PRM_CFG_DB_HOSTS *
- *
- */
-static char *
-cfg_get_prm_dbhosts (void)
-{
-  return ((char *) PRM_CFG_DB_HOSTS);
-}				/* prm_get_dbhosts() */
+  /* no valid host name */
+  free_and_init (full_host_list);
+  return NULL;
+}
 
 #if defined(WINDOWS)
 /*

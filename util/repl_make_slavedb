@@ -1,4 +1,4 @@
-#!/bin/ksh
+#!/bin/sh
 ###############################################################################
 #  Script Name : repl_make_slavedb
 #
@@ -828,7 +828,7 @@ do
        break;
      fi
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done
 
 if [ -z "$dist_log_path" ]
@@ -1003,7 +1003,7 @@ do
        $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" > /dev/null
      fi
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done
 
 # drop user defined triggers
@@ -1026,7 +1026,7 @@ do
        $rootdir/bin/csql $slave_db_name -u DBA -p "$dba_pass" -c "$sql" 
      fi
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done
 
 if [ "$kor_yn" = "yes" ]
@@ -1056,7 +1056,7 @@ do
        $rootdir/bin/csql $distdb_name -u DBA -p "$distpw" -c "$sql" > .slave.tmp
      fi
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done
 
 $rootdir/bin/repl_make_group "$master_db_name" "$distdb_name" -p "$distpw"

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,8 +19,8 @@
 
 
 /*
- * replication.h - the header file of replication module 
- * 
+ * replication.h - the header file of replication module
+ *
  */
 
 #ifndef _REPLICATION_H_
@@ -39,11 +39,11 @@
 #include "thread_impl.h"
 
 
-/* Replication would be started only when 
+/* Replication would be started only when
  *    is_replicated is set by 1  (cubrid.conf)
  *    the target index is unique (would be replaced by primary key index)
  *    the caller wants to replicate
- *    the master has been backuped 
+ *    the master has been backuped
  *    is_repliated is set by 1 for the target class
  */
 #define IS_REPLICATED_MODE(class_oid, unique, need_replication)             \
@@ -87,16 +87,16 @@ struct repl_savepoint_info
 };
 
 /*
- * STATES OF TRANSACTIONS                            
+ * STATES OF TRANSACTIONS
  */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #if !defined(WINDOWS)
 /* for replication, declare replication log dump function */
-extern void repl_data_insert_log_dump (int length, void *data);
-extern void repl_data_udpate_log_dump (int length, void *data);
-extern void repl_data_delete_log_dump (int length, void *data);
-extern void repl_schema_log_dump (int length, void *data);
+extern void repl_data_insert_log_dump (FILE * fp, int length, void *data);
+extern void repl_data_udpate_log_dump (FILE * fp, int length, void *data);
+extern void repl_data_delete_log_dump (FILE * fp, int length, void *data);
+extern void repl_schema_log_dump (FILE * fp, int length, void *data);
 extern bool repl_class_is_replicated (OID * class_oid);
 extern void repl_log_send (void);
 extern int repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid);

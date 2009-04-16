@@ -35,8 +35,9 @@ extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
 extern int css_net_send_no_block (int fd, const char *buffer, int size);
 
-extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len);
-extern int css_net_recv (int, char *, int *);
+extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
+			 int timeout);
+extern int css_net_recv (int fd, char *buffer, int *maxlen, int timeout);
 extern int css_net_read_header (int fd, char *buffer, int *maxlen);
 
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id,
@@ -108,15 +109,15 @@ extern int css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn,
 extern int css_test_for_open_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (int fd);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
-extern int css_readn (int fd, char *ptr, int nbytes);
+extern int css_readn (int fd, char *ptr, int nbytes, int timeout);
 
 extern char *css_return_data_buffer (CSS_CONN_ENTRY * conn,
-                                     unsigned short request_id,
-                                     int *buffer_size);
+				     unsigned short request_id,
+				     int *buffer_size);
 extern char *css_return_oob_buffer (int *buffer_size);
 
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn,
-                                    unsigned short request_id, char **buffer,
-                                    int *buffer_size, int *rc);
+				    unsigned short request_id, char **buffer,
+				    int *buffer_size, int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 #endif /* _CONNECTION_CL_H_ */

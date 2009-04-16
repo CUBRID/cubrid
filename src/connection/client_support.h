@@ -81,7 +81,7 @@ extern unsigned int css_receive_oob_from_server (unsigned int eid,
 						 char **buffer, int *size);
 extern unsigned int css_receive_error_from_server (unsigned int eid,
 						   char **buffer, int *size);
-extern void css_terminate (void);
+extern void css_terminate (bool server_error);
 extern void css_cleanup_client_queues (char *host_name);
 
 #endif /* _CLIENT_SUPPORT_H_ */

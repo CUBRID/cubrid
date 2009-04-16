@@ -3243,8 +3243,14 @@ internal_malloc_stats (mstate m)
 static void *
 mmap_alloc (mstate m, size_t nb)
 {
+#if defined(ENABLE_SEPARATE_MMAP_EVENT_TRACE)
+  size_t mmsize =
+    granularity_align (nb + MMAP_TRACE_H_SIZE + SIX_SIZE_T_SIZES +
+		       CHUNK_ALIGN_MASK);
+#else
   size_t mmsize =
     granularity_align (nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
+#endif
   if (mmsize > nb)
     {				/* Check for wrap around 0 */
       char *mm = (char *) (DIRECT_MMAP (mmsize));
@@ -3265,6 +3271,15 @@ mmap_alloc (mstate m, size_t nb)
 	    m->max_footprint = m->footprint;
 	  assert (is_aligned (chunk2mem (p)));
 	  check_mmapped_chunk (m, p);
+#if defined(ENABLE_SEPARATE_MMAP_EVENT_TRACE)
+	  do
+	    {
+	      void *h;
+	      h = chunk_plus_offset (p, psize - MMAP_TRACE_H_SIZE);
+	      mmap_called (m, mm, (MMAP_TRACE_H *) h);
+	    }
+	  while (0);
+#endif
 	  return chunk2mem (p);
 	}
     }
@@ -4960,6 +4975,15 @@ mspace_free (mspace msp, void *mem)
 		    {
 		      prevsize &= ~IS_MMAPPED_BIT;
 		      psize += prevsize + MMAP_FOOT_PAD;
+#if defined(ENABLE_SEPARATE_MMAP_EVENT_TRACE)
+		      do
+			{
+			  void *ptr = (char *) p - prevsize;
+			  MMAP_TRACE_H *h = (char *) next - MMAP_TRACE_H_SIZE;
+			  munmap_is_to_be_called (msp, ptr, h);
+			}
+		      while (0);
+#endif
 		      if (CALL_MUNMAP ((char *) p - prevsize, psize) == 0)
 			fm->footprint -= psize;
 		      goto postaction;
@@ -5496,4 +5520,3 @@ History:
 /*===========================================================================*/
 /*===========================================================================*/
 /*===========================================================================*/
-

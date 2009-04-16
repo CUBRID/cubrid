@@ -956,6 +956,10 @@ public class UStatement
 
     if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
     {
+      if (errorHandler.getJdbcErrorCode() == -111)
+      {
+        relatedConnection.need_checkcas = true;
+      }
       if (relatedConnection.brokerInfoStatementPooling() == true
           && retry_flag == true)
       {
@@ -986,6 +990,20 @@ public class UStatement
       }
       else
       {
+        if (relatedConnection.need_checkcas
+            && relatedConnection.check_cas() == false)
+        {
+          try
+          {
+            relatedConnection.clientSocketClose();
+          }
+          catch (Exception e)
+          {
+          }
+          errorHandler.clear();
+          execute(isAsync, maxRow, maxField, allExecute, is_sensitive,
+              is_scrollable, query_plan_flag, only_query_plan, cache_data);
+        }
         return;
       }
     }

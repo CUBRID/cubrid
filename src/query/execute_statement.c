@@ -157,7 +157,6 @@ do_create_serial_internal (MOP * serial_object,
   db_make_null (&value);
 
   serial_class = db_find_class (SR_CLASS_NAME);
-
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -304,9 +303,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   /* serial_name : <class_name>_ai_<att_name> */
   serial_name = (char *) malloc (strlen (class_name) + strlen (att_name) + 5);
-
   if (serial_name == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -382,7 +381,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, int *found,
 
   *found = 0;
 
+  er_stack_push ();
   class_mop = sm_find_class (SR_CLASS_NAME);
+  er_stack_pop ();
   if (class_mop == NULL)
     {
       return ER_FAILED;
@@ -391,6 +392,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, int *found,
   p = (char *) malloc (strlen (serial_name) + 1);
   if (p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
       return ER_FAILED;
     }
 
@@ -398,8 +400,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, int *found,
 
   db_make_string (&val, p);
 
+  er_stack_push ();
   mop = db_find_unique (class_mop, SR_ATT_NAME, &val);
-
+  er_stack_pop ();
   if (mop)
     {
       *found = 1;
@@ -465,6 +468,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
 
@@ -476,27 +480,28 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   p = (char *) malloc (strlen (name) + 1);
   if (p == NULL)
     {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
   intl_mbs_lower (name, p);
 
   r = do_get_serial_obj_id (&serial_obj_id, &found, p);
-
-  if (r == 0 && found)
+  if (r == NO_ERROR && found)
     {
-      error = MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error, name);
+      error = ER_QPROC_SERIAL_ALREADY_EXIST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, name);
       goto end;
     }
 
   /* get all values as string */
-  (void) numeric_coerce_string_to_num ("0", &zero);
-  (void)
-    numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
-				  &e37);
-  (void)
-    numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
-				  &under_e36);
+  numeric_coerce_string_to_num ("0", &zero);
+  numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
+				&e37);
+  numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
+				&under_e36);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -533,9 +538,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       inc_val_flag = DB_GET_INT (&cmp_result);
       if (inc_val_flag == 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO, 0);
 	  goto end;
 	}
     }
@@ -702,9 +707,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* max_val > 1.0e37 */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
 	  goto end;
 	}
 
@@ -717,9 +722,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* min_val < -1.0e36 */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
 	  goto end;
 	}
 
@@ -738,9 +743,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* min_val > start_val || min_val >= max_val */
       if (DB_GET_INT (&cmp_result) > 0 || DB_GET_INT (&cmp_result2) >= 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -753,9 +758,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* max_val < start_val */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -770,9 +775,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* (max_val-min_val) < inc_val */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
 	  goto end;
 	}
     }
@@ -787,9 +792,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* max_val > 1.0e37 */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
 	  goto end;
 	}
 
@@ -802,9 +807,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* min_val < -1.0e36 */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
 	  goto end;
 	}
 
@@ -823,9 +828,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* max_val < start_val || max_val <= min_val */
       if (DB_GET_INT (&cmp_result) < 0 || DB_GET_INT (&cmp_result2) <= 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -838,9 +843,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* min_val > start_val */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -855,9 +860,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* (min_val-max_val) > inc_val */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
 	  goto end;
 	}
     }
@@ -951,10 +956,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   db_make_null (&max_val);
   db_make_null (&min_val);
 
-  (void) numeric_coerce_string_to_num ("0", &zero);
-  (void)
-    numeric_coerce_string_to_num ("99999999999999999999999999999999999999",
-				  &e38);
+  numeric_coerce_string_to_num ("0", &zero);
+  numeric_coerce_string_to_num ("99999999999999999999999999999999999999",
+				&e38);
 
   auto_increment_node = att->info.attr_def.auto_increment;
   if (auto_increment_node == NULL)
@@ -990,7 +994,6 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   r = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-
   if (r == 0 && found)
     {
       error = ER_AUTO_INCREMENT_SERIAL_ALREADY_EXIST;
@@ -1229,6 +1232,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
 
@@ -1239,22 +1243,24 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   name = (char *) PT_NODE_SR_NAME (statement);
 
   r = do_get_serial_obj_id (&serial_obj_id, &found, name);
-
-  if (r == 0 && found)
+  if (r == NO_ERROR && found)
     {
       serial_object = db_object (&serial_obj_id);
       if (serial_object == NULL)
 	{
-	  error = MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error,
-		      name);
+	  error = ER_QPROC_SERIAL_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
 	  goto end;
 	}
     }
   else
     {
-      error = MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+      error = ER_QPROC_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
       goto end;
     }
 
@@ -1266,8 +1272,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (!DB_IS_NULL (&class_name_val))
     {
-      error = MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+      error = ER_QPROC_CANNOT_UPDATE_SERIAL;
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ, name);
       pr_clear_value (&class_name_val);
       goto end;
     }
@@ -1293,8 +1300,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       && strcasecmp (user_name, "dba") != 0
       && strcasecmp (creator_name, user_name) != 0)
     {
-      error = MSGCAT_RUNTIME_RT_SERIAL_ALTER_NOT_ALLOWED;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, 0);
+      error = ER_QPROC_CANNOT_UPDATE_SERIAL;
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_RT_SERIAL_ALTER_NOT_ALLOWED, 0);
       pr_clear_value (&creator_name_val);
       pr_clear_value (&user_name_val);
       goto end;
@@ -1327,13 +1335,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* Now, get new values from node */
 
-  (void) numeric_coerce_string_to_num ("0", &zero);
-  (void)
-    numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
-				  &e37);
-  (void)
-    numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
-				  &under_e36);
+  numeric_coerce_string_to_num ("0", &zero);
+  numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
+				&e37);
+  numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
+				&under_e36);
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC,
@@ -1365,9 +1371,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* new_inc_val == 0 */
       if (new_inc_val_flag == 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_INC_VAL_ZERO, 0);
 	  goto end;
 	}
     }
@@ -1523,9 +1529,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /*  new_max_val > 1.0e37 */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
 	  goto end;
 	}
       error =
@@ -1538,9 +1544,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* new_min_val < -1.0e36 */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
 	  goto end;
 	}
 
@@ -1563,16 +1569,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (min_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	      goto end;
 	    }
 	}
@@ -1586,9 +1592,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -1605,23 +1611,23 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (inc_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else if (max_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	      goto end;
 	    }
 	}
@@ -1637,9 +1643,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* new_max_val > 1.0e37 */
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0);
 	  goto end;
 	}
 
@@ -1653,9 +1659,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* new_min_val < -1.0e36 */
       if (DB_GET_INT (&cmp_result) < 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_QPROC_SERIAL_RANGE_OVERFLOW;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0);
 	  goto end;
 	}
 
@@ -1678,16 +1684,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (max_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	      goto end;
 	    }
 	}
@@ -1701,9 +1707,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (DB_GET_INT (&cmp_result) > 0)
 	{
-	  error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, error,
-		      0);
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	  goto end;
 	}
 
@@ -1720,23 +1726,23 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (inc_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else if (min_val_change)
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, 0);
 	      goto end;
 	    }
 	  else
 	    {
-	      error = MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID;
+	      error = ER_INVALID_SERIAL_VALUE;
 	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
-			  error, 0);
+			  MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID, 0);
 	      goto end;
 	    }
 	}
@@ -1876,28 +1882,31 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
 
   name = (char *) PT_NODE_SR_NAME (statement);
 
   r = do_get_serial_obj_id (&serial_obj_id, &found, name);
-
-  if (r == 0 && found)
+  if (r == NO_ERROR && found)
     {
       serial_object = db_object (&serial_obj_id);
       if (serial_object == NULL)
 	{
-	  error = MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED;
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error,
-		      name);
+	  error = ER_QPROC_SERIAL_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
 	  goto end;
 	}
     }
   else
     {
-      error = MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+      error = ER_QPROC_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
       goto end;
     }
 
@@ -1909,8 +1918,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (!DB_IS_NULL (&class_name_val))
     {
-      error = MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+      error = ER_QPROC_CANNOT_UPDATE_SERIAL;
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ, name);
       pr_clear_value (&class_name_val);
       goto end;
     }
@@ -1936,8 +1946,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       && strcasecmp (user_name, "dba") != 0
       && strcasecmp (creator_name, user_name) != 0)
     {
-      error = MSGCAT_RUNTIME_RT_SERIAL_ALTER_NOT_ALLOWED;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, 0);
+      error = ER_QPROC_CANNOT_UPDATE_SERIAL;
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_RT_SERIAL_ALTER_NOT_ALLOWED, 0);
       pr_clear_value (&creator_name_val);
       pr_clear_value (&user_name_val);
       goto end;
@@ -1966,9 +1977,6 @@ end:
     }
   return error;
 }
-
-
-
 
 
 
@@ -2237,6 +2245,15 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  if (error == ER_FAILED)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	}
+    }
   return error;
 }
 
@@ -2283,6 +2300,14 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+  if (err == ER_FAILED)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  err = ER_GENERIC_ERROR;
+	}
+    }
   return err;
 }				/* do_prepare_statement() */
 
@@ -2500,6 +2525,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  if (err == ER_FAILED)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  err = ER_GENERIC_ERROR;
+	}
+    }
   return err;
 }				/* do_execute_statement() */
 
@@ -2750,7 +2783,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return error;
 	    }
 
-	  if (is_partition == 1)
+	  if (is_partition == PARTITIONED_CLASS
+	      || is_partition == PARTITION_CLASS)
 	    {
 	      for (i = 0; sub_partitions[i]; i++)
 		{
@@ -5402,7 +5436,7 @@ update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
   if (newobj)
     {
       /* partition */
-      exist_active_triggers = sm_active_triggers (smclass);
+      exist_active_triggers = sm_active_triggers (smclass, TR_EVENT_ALL);
       if (exist_active_triggers)
 	{
 	  if (exist_active_triggers < 0)
@@ -6696,6 +6730,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
   int no_consts;
   int server_allowed;
   int has_uniques;
+  int is_partition;
   float waitsecs = -2, old_waitsecs = -2;
   PT_NODE *hint_arg;
 
@@ -6711,7 +6746,17 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       goto exit_on_error;
     }
 
-  error = sm_class_has_triggers (class_obj, &trigger_involved);
+  error = do_is_partitioned_classobj (&is_partition, class_obj, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  /* if class is partitioned and has any trigger, update must be executed in the client */
+  error = sm_class_has_triggers (class_obj, &trigger_involved,
+				 ((is_partition) ? TR_EVENT_ALL :
+				  TR_EVENT_UPDATE));
+
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -6736,6 +6781,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
   server_allowed = ((!trigger_involved)
 		    && (spec->info.spec.flat_entity_list->info.name.
 			virt_object == NULL));
+
   lhs = statement->info.update.assignment->info.expr.arg1;
   if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
     {
@@ -6992,7 +7038,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
          to be performed through the workspace  */
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls
 					   au_fetch_class() */
-      err = sm_class_has_triggers (class_obj, &has_trigger);
+      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
+
       AU_RESTORE (au_save);
       /* err = has_proxy_trigger(flat, &has_trigger); */
       if (err != NO_ERROR)
@@ -7088,6 +7135,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->recompile == 0)
 	    {
 	      err = query_prepare (qstr, NULL, 0, &xasl_id);
+	      if (err != NO_ERROR)
+		{
+		  err = er_errid ();
+		}
 	    }
 	  else
 	    {
@@ -7886,7 +7937,8 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       return er_errid ();
     }
 
-  error = sm_class_has_triggers (class_obj, &trigger_involved);
+  error =
+    sm_class_has_triggers (class_obj, &trigger_involved, TR_EVENT_DELETE);
   if (error != NO_ERROR)
     {
       return error;
@@ -8073,7 +8125,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
          to be performed through the workspace  */
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls
 					   au_fetch_class() */
-      err = sm_class_has_triggers (class_obj, &has_trigger);
+      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
       AU_RESTORE (au_save);
       /* err = has_proxy_trigger(flat, &has_trigger); */
       if (err != NO_ERROR)
@@ -8116,6 +8168,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->recompile == 0)
 	    {
 	      err = query_prepare (qstr, NULL, 0, &xasl_id);
+	      if (err != NO_ERROR)
+		{
+		  err = er_errid ();
+		}
 	    }
 	  else
 	    {
@@ -8939,7 +8995,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
     }
 
   error = sm_class_has_triggers (class_->info.name.db_object,
-				 &trigger_involved);
+				 &trigger_involved, TR_EVENT_INSERT);
   if (error != NO_ERROR)
     {
       return error;
@@ -10101,7 +10157,7 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 						  dbattr->header.name);
 		  r = do_get_serial_obj_id (&serial_obj_id, &found,
 					    auto_increment_name);
-		  if (r == 0 && found)
+		  if (r == NO_ERROR && found)
 		    {
 		      dbattr->auto_increment = db_object (&serial_obj_id);
 		    }
@@ -10266,10 +10322,14 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (; vc != NULL; vc = vc->next)
 	{
 	  DB_VALUE *db_val;
+	  bool to_break = false;
+
 	  *next_val_list =
 	    (DB_VALUE_LIST *) calloc (1, sizeof (DB_VALUE_LIST));
 	  if (*next_val_list == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE_LIST));
 	      return er_errid ();
 	    }
 	  (*next_val_list)->next = (DB_VALUE_LIST *) 0;
@@ -10283,7 +10343,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   * use pt_evaluate_tree() to extract the db_value from a host
 	   * variable;  instead extract it ourselves.
 	   */
-	  if (vc->node_type == PT_HOST_VAR)
+	  if (PT_IS_CONST (vc))
 	    {
 	      db_val = pt_value_to_db (parser, vc);
 	    }
@@ -10292,7 +10352,8 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      pt_evaluate_tree (parser, vc, &db_value);
 	      if (parser->error_msgs)
 		{
-		  break;
+		  /* to maintain the list to free all the allocated */
+		  to_break = true;
 		}
 	      db_val = &db_value;
 	    }
@@ -10300,6 +10361,10 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (*next_val_list)->val = *db_val;
 
 	  next_val_list = &(*next_val_list)->next;
+	  if (to_break)
+	    {
+	      break;
+	    }
 	}
 
       /*
@@ -10324,7 +10389,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (; val_list && vc; vc = vc->next)
 	{
 	  vl = val_list->next;
-	  if (vc->node_type != PT_HOST_VAR)
+	  if (!PT_IS_CONST (vc))
 	    {
 	      db_value_clear (&val_list->val);
 	    }
@@ -10681,6 +10746,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->recompile == 0)
     {
       err = query_prepare (qstr, NULL, 0, &xasl_id);
+      if (err != NO_ERROR)
+	{
+	  err = er_errid ();
+	}
     }
   else
     {

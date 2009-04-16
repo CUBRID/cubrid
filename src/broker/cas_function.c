@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -60,8 +60,8 @@ struct t_glo_cmd_info
   const char *method_name;
 };
 
-static char *get_schema_type_str (int schema_type);
-static char *get_tran_type_str (int tran_type);
+static const char *get_schema_type_str (int schema_type);
+static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value);
 static char *get_error_log_eids ();
 #ifndef LIBCAS_FOR_JSP
@@ -136,7 +136,10 @@ static int query_sequence_num = 0;
 #define QUERY_SEQ_NUM_NEXT_VALUE()      ++query_sequence_num
 #define QUERY_SEQ_NUM_CURRENT_VALUE()   query_sequence_num
 
-CAS_FUNC_PROTOTYPE (fn_end_tran)
+int
+fn_end_tran (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int tran_type;
   int err_code;
@@ -231,7 +234,10 @@ CAS_FUNC_PROTOTYPE (fn_end_tran)
   return -1;
 }
 
-CAS_FUNC_PROTOTYPE (fn_prepare)
+int
+fn_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char *sql_stmt;
   char flag;
@@ -280,9 +286,9 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
       *s = '\0';
     }
 #endif
-  srv_h_id =
-    ux_prepare (sql_stmt, flag, auto_commit_mode, CAS_FN_ARG_NET_BUF,
-		CAS_FN_ARG_REQ_INFO, QUERY_SEQ_NUM_CURRENT_VALUE ());
+  srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode,
+			 CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
+			 QUERY_SEQ_NUM_CURRENT_VALUE ());
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
@@ -296,7 +302,9 @@ CAS_FUNC_PROTOTYPE (fn_prepare)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_execute)
+int
+fn_execute (int sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
   int srv_h_id;
   char flag;
@@ -382,6 +390,9 @@ CAS_FUNC_PROTOTYPE (fn_execute)
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), FALSE,
 		 "%s srv_h_id %d ", exec_func_name, srv_h_id);
   cas_log_write_query_string (srv_handle->sql_stmt, TRUE);
+  cas_log_debug (ARG_FILE_LINE, "%s%s",
+		 auto_commit_mode ? "auto_commit_mode " : "",
+		 forward_only_cursor ? "forward_only_cursor " : "");
 
 #ifndef LIBCAS_FOR_JSP
   if (sql_log_mode & SQL_LOG_MODE_BIND_VALUE)
@@ -439,13 +450,17 @@ CAS_FUNC_PROTOTYPE (fn_execute)
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
-      ux_fetch (srv_handle, 1, 50, 0, 0, CAS_FN_ARG_NET_BUF);
+      ux_fetch (srv_handle, 1, 50, 0, 0, CAS_FN_ARG_NET_BUF,
+		CAS_FN_ARG_REQ_INFO);
     }
 
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_db_parameter)
+int
+fn_get_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int param_name;
 
@@ -499,7 +514,10 @@ CAS_FUNC_PROTOTYPE (fn_get_db_parameter)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_set_db_parameter)
+int
+fn_set_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int param_name;
 
@@ -567,7 +585,10 @@ CAS_FUNC_PROTOTYPE (fn_set_db_parameter)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_close_req_handle)
+int
+fn_close_req_handle (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -584,7 +605,7 @@ CAS_FUNC_PROTOTYPE (fn_close_req_handle)
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle && srv_handle->auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #else
   srv_handle = NULL;
@@ -600,7 +621,10 @@ CAS_FUNC_PROTOTYPE (fn_close_req_handle)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_cursor)
+int
+fn_cursor (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   int offset;
@@ -621,7 +645,9 @@ CAS_FUNC_PROTOTYPE (fn_cursor)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_fetch)
+int
+fn_fetch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
+	  T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   int cursor_pos;
@@ -652,12 +678,15 @@ CAS_FUNC_PROTOTYPE (fn_fetch)
 		 srv_h_id, cursor_pos, fetch_count);
 
   ux_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index,
-	    CAS_FN_ARG_NET_BUF);
+	    CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
 
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_schema_info)
+int
+fn_schema_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int schema_type;
   char *class_name, *attr_name;
@@ -692,7 +721,10 @@ CAS_FUNC_PROTOTYPE (fn_schema_info)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_oid_get)
+int
+fn_oid_get (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int pageid;
   short slotid, volid;
@@ -713,7 +745,10 @@ CAS_FUNC_PROTOTYPE (fn_oid_get)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_oid_put)
+int
+fn_oid_put (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   if (CAS_FN_ARG_ARGC < 3 || CAS_FN_ARG_ARGC % 3 != 1)
     {
@@ -728,7 +763,10 @@ CAS_FUNC_PROTOTYPE (fn_oid_put)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_glo_new)
+int
+fn_glo_new (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char *class_name;
   int file_size;
@@ -818,7 +856,10 @@ CAS_FUNC_PROTOTYPE (fn_glo_new)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_glo_save)
+int
+fn_glo_save (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   DB_OBJECT *obj;
   char flag;
@@ -896,7 +937,10 @@ CAS_FUNC_PROTOTYPE (fn_glo_save)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_glo_load)
+int
+fn_glo_load (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   DB_OBJECT *obj;
   int err_code;
@@ -923,7 +967,10 @@ CAS_FUNC_PROTOTYPE (fn_glo_load)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_db_version)
+int
+fn_get_db_version (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char auto_commit_mode;
   cas_log_write (0, TRUE, "get_version");
@@ -941,14 +988,17 @@ CAS_FUNC_PROTOTYPE (fn_get_db_version)
 #ifndef LIBCAS_FOR_JSP
   if (auto_commit_mode == TRUE)
     {
-      need_auto_commit = TRAN_AUTOCOMMIT;
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 #endif
 
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_class_num_objs)
+int
+fn_get_class_num_objs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char *class_name;
   char flag;
@@ -970,7 +1020,9 @@ CAS_FUNC_PROTOTYPE (fn_get_class_num_objs)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_oid)
+int
+fn_oid (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
+	T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   DB_OBJECT *obj;
   char cmd;
@@ -1103,8 +1155,10 @@ CAS_FUNC_PROTOTYPE (fn_oid)
   return 0;
 }
 
-
-CAS_FUNC_PROTOTYPE (fn_collection)
+int
+fn_collection (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char cmd;
   DB_OBJECT *obj;
@@ -1305,7 +1359,10 @@ fn_col_finale:
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_next_result)
+int
+fn_next_result (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   char flag;
@@ -1334,7 +1391,10 @@ CAS_FUNC_PROTOTYPE (fn_next_result)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_execute_batch)
+int
+fn_execute_batch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   /* argv[0] : auto commit flag */
   cas_log_write (0, TRUE, "execute_batch %d", CAS_FN_ARG_ARGC - 1);
@@ -1347,7 +1407,10 @@ CAS_FUNC_PROTOTYPE (fn_execute_batch)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_execute_array)
+int
+fn_execute_array (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1382,7 +1445,10 @@ CAS_FUNC_PROTOTYPE (fn_execute_array)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_cursor_update)
+int
+fn_cursor_update (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   int cursor_pos;
@@ -1409,7 +1475,10 @@ CAS_FUNC_PROTOTYPE (fn_cursor_update)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_attr_type_str)
+int
+fn_get_attr_type_str (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int size;
   char *class_name;
@@ -1430,7 +1499,10 @@ CAS_FUNC_PROTOTYPE (fn_get_attr_type_str)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_query_info)
+int
+fn_get_query_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char info_type;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -1510,7 +1582,10 @@ end:
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_savepoint)
+int
+fn_savepoint (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int err_code;
   char cmd;
@@ -1556,7 +1631,10 @@ CAS_FUNC_PROTOTYPE (fn_savepoint)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_parameter_info)
+int
+fn_parameter_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
 
@@ -1573,8 +1651,10 @@ CAS_FUNC_PROTOTYPE (fn_parameter_info)
   return 0;
 }
 
-
-CAS_FUNC_PROTOTYPE (fn_glo_cmd)
+int
+fn_glo_cmd (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int glo_cmd;
   DB_OBJECT *glo_obj;
@@ -1807,16 +1887,20 @@ glo_cmd_end:
   return 0;
 }
 
-
-
-CAS_FUNC_PROTOTYPE (fn_con_close)
+int
+fn_con_close (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   cas_log_write (0, TRUE, "con_close");
   net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
   return -1;
 }
 
-CAS_FUNC_PROTOTYPE (fn_check_cas)
+int
+fn_check_cas (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int retcode = 0;
 
@@ -1827,27 +1911,22 @@ CAS_FUNC_PROTOTYPE (fn_check_cas)
       NET_ARG_GET_STR (msg, msg_size, CAS_FN_ARG_ARGV[0]);
       cas_log_write (0, TRUE, "client_msg:%s", msg);
 
-#if 0				/* yaw */
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
-#endif
     }
   else
     {
-      cas_log_write (0, TRUE, "check_cas");
       retcode = ux_check_connection ();
-#if 0				/* yaw */
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, retcode, NULL);
-#endif
+      cas_log_write (0, TRUE, "check_cas %d", retcode);
     }
 
-#if 1				/* yaw */
   if (retcode)
     net_buf_cp_int (CAS_FN_ARG_NET_BUF, retcode, NULL);
-#endif
   return retcode;
 }
 
-CAS_FUNC_PROTOTYPE (fn_make_out_rs)
+int
+fn_make_out_rs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
 
@@ -1863,7 +1942,10 @@ CAS_FUNC_PROTOTYPE (fn_make_out_rs)
   return 0;
 }
 
-CAS_FUNC_PROTOTYPE (fn_get_generated_keys)
+int
+fn_get_generated_keys (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1891,7 +1973,7 @@ CAS_FUNC_PROTOTYPE (fn_get_generated_keys)
   return 0;
 }
 
-static char *
+static const char *
 get_schema_type_str (int schema_type)
 {
   if (schema_type < 1 || schema_type > CCI_SCH_LAST)
@@ -1900,7 +1982,7 @@ get_schema_type_str (int schema_type)
   return (schema_type_str[schema_type - 1]);
 }
 
-static char *
+static const char *
 get_tran_type_str (int tran_type)
 {
   if (tran_type < 1 || tran_type > 2)

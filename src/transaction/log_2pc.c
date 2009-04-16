@@ -64,12 +64,13 @@ struct log_2pc_global_data
   int (*lookup_participant) (void *particp_id, int num_particps,
 			     void *block_particps_ids);
   char *(*sprintf_participant) (void *particp_id);
-  void (*dump_participants) (int block_length, void *block_particps_id);
+  void (*dump_participants) (FILE * fp, int block_length,
+			     void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
     bool (*send_commit) (int gtrid, int num_particps,
-		      int *particp_indices, void *block_particps_ids);
+			 int *particp_indices, void *block_particps_ids);
     bool (*send_abort) (int gtrid, int num_particps, int *particp_indices,
-		     void *block_particps_ids, int collect);
+			void *block_particps_ids, int collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
   { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
@@ -164,17 +165,17 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 						int num_particps,
 						void *block_particps_ids),
 		     char *(*sprintf_participant) (void *particp_id),
-		     void (*dump_participants) (int block_length,
+		     void (*dump_participants) (FILE * fp, int block_length,
 						void *block_particps_id),
 		     int (*send_prepare) (int gtrid, int num_particps,
 					  void *block_particps_ids),
 		     bool (*send_commit) (int gtrid, int num_particps,
-					 int *particp_indices,
-					 void *block_particps_ids),
+					  int *particp_indices,
+					  void *block_particps_ids),
 		     bool (*send_abort) (int gtrid, int num_particps,
-					int *particp_indices,
-					void *block_particps_ids,
-					int collect))
+					 int *particp_indices,
+					 void *block_particps_ids,
+					 int collect))
 {
   log_2pc_Userfun.get_participants = get_participants;
   log_2pc_Userfun.lookup_participant = lookup_participant;
@@ -289,13 +290,14 @@ log_2pc_sprintf_particp (void *particp_id)
  *              length is used to find out the number of participants.
  */
 void
-log_2pc_dump_participants (int block_length, void *block_particps_ids)
+log_2pc_dump_participants (FILE * fp, int block_length,
+			   void *block_particps_ids)
 {
   if (log_2pc_Userfun.dump_participants == NULL)
     {
       return;
     }
-  (*log_2pc_Userfun.dump_participants) (block_length, block_particps_ids);
+  (*log_2pc_Userfun.dump_participants) (fp, block_length, block_particps_ids);
 }
 
 /*
@@ -1201,9 +1203,7 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    */
   if ((!LSA_ISNULL (&tdes->client_posp_lsa)
        || !LSA_ISNULL (&tdes->client_undo_lsa))
-      && (strcmp (tdes->client.user_name, log_Client_name_unknown) != 0
-	  && strcmp (tdes->client.user_name,
-		     client_tdes->client.user_name) != 0))
+      && strcmp (tdes->client.db_user, client_tdes->client.db_user) != 0)
     {
       return ER_LOG_2PC_CANNOT_ATTACH;
     }
@@ -1583,7 +1583,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   prepared = (struct log_2pc_prepcommit *) LOG_APPEND_PTR ();
 
-  memcpy (prepared->user_name, tdes->client.user_name, LOG_USERNAME_MAX);
+  memcpy (prepared->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_object_locks = acq_locks.nobj_locks;
@@ -1660,8 +1660,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks,
   prepared = (struct log_2pc_prepcommit *) ((char *) log_page_p->area +
 					    log_lsa->offset);
 
-  logtb_set_client_ids_all (&tdes->client, NULL, NULL, prepared->user_name,
-			    log_Client_process_id_unknown);
+  logtb_set_client_ids_all (&tdes->client, 0, NULL, prepared->user_name, NULL,
+			    NULL, NULL, -1);
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
@@ -1744,7 +1744,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks,
  * NOTE:Dump global transaction user information
  */
 void
-log_2pc_dump_gtrinfo (int length, void *data)
+log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
 {
 }
 
@@ -1759,13 +1759,13 @@ log_2pc_dump_gtrinfo (int length, void *data)
  * NOTE: Dump the acquired object lock structure.
  */
 void
-log_2pc_dump_acqobj_locks (int length, void *data)
+log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
 {
   LK_ACQUIRED_LOCKS acq_locks;
 
   acq_locks.nobj_locks = length / sizeof (LK_ACQOBJ_LOCK);
   acq_locks.obj = (LK_ACQOBJ_LOCK *) data;
-  lock_dump_acquired (&acq_locks);
+  lock_dump_acquired (fp, &acq_locks);
 }
 
 /*
@@ -1779,13 +1779,13 @@ log_2pc_dump_acqobj_locks (int length, void *data)
  * NOTE:Dump the acquired page lock structure.
  */
 void
-log_2pc_dump_acqpage_locks (int length, void *data)
+log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data)
 {
   LK_ACQUIRED_LOCKS acq_locks;
 
   acq_locks.nobj_locks = 0;
   acq_locks.obj = NULL;
-  lock_dump_acquired (&acq_locks);
+  lock_dump_acquired (fp, &acq_locks);
 }
 
 /*
@@ -1815,7 +1815,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   start_2pc = (struct log_2pc_start *) LOG_APPEND_PTR ();
 
-  memcpy (start_2pc->user_name, tdes->client.user_name, LOG_USERNAME_MAX);
+  memcpy (start_2pc->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;
@@ -2255,9 +2255,8 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   /*
    * Obtain the participant information for this coordinator
    */
-  logtb_set_client_ids_all (&tdes->client, NULL, NULL,
-			    start_2pc->user_name,
-			    log_Client_process_id_unknown);
+  logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name,
+			    NULL, NULL, NULL, -1);
   tdes->gtrid = start_2pc->gtrid;
 
   num_particps = start_2pc->num_particps;

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -88,6 +88,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   const char *exec_name = arg->command_name;
+  char er_msg_file[PATH_MAX];
   int error;
   int status = 0;
   int i;
@@ -132,12 +133,17 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (!output_prefix)
     output_prefix = database_name;
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, exec_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   /*
    * Open db
    */
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("dba", NULL)) ||
-      (error = db_restart (arg->argv0, true, database_name)))
+      (error = db_restart (exec_name, true, database_name)))
     {
       (void) fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
       status = error;
@@ -202,13 +208,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  goto end;
 	}
       if (!status && (do_schema || !do_objects))
-	if (extractschema ((char *) exec_name, 1))	/* do authorization as well */
+	/* do authorization as well in extractschema() */
+	if (extractschema (exec_name, 1))
 	  {
 	    status = 1;
 	  }
 
       if (!status && (do_objects || !do_schema))
-	if (extractobjects ((char *) exec_name))
+	if (extractobjects (exec_name))
 	  {
 	    status = 1;
 	  }

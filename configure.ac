@@ -93,6 +93,9 @@ AC_CHECK_HEADERS([limits.h],
 AC_CHECK_HEADERS([limits.h],
 	[],
 	[AC_DEFINE([NAME_MAX], [255], [Max file name length])])
+AC_CHECK_HEADERS([limits.h],
+	[],
+	[AC_DEFINE([LINE_MAX], [2048], [Max line length])])
 AC_CHECK_HEADERS([sys/param.h sys/socket.h nl_types.h regex.h getopt.h libgen.h rpc/des_crypt.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -134,6 +137,47 @@ AC_CHECK_FUNCS([getrlimit sysconf])
 # Checks for system functions for which we have replacements.
 AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \
 		  getopt getopt_long dirname basename])
+
+# Check gethostbyname_r function
+AC_MSG_CHECKING([for glibc gethostbyname_r])
+AC_TRY_LINK([#include <netdb.h>],
+	[struct hostent result_buf;
+	 char buf[1024];
+	 struct hostent *result;
+	 int h_erropp;
+	 gethostbyname_r("localhost", &result_buf, buf, sizeof(buf), &result, &h_erropp);
+	],
+	[AC_MSG_RESULT([yes])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_GLIBC, 1, [Using glibc version of gethostbyname_r()])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	],
+	[AC_MSG_RESULT([no])]
+)
+AC_MSG_CHECKING([for Solaris/Irix gethostbyname_r])
+AC_TRY_LINK([#include <netdb.h>],
+	[struct hostent result;
+	 char buf[1024];
+	 int h_errnop;
+	 gethostbyname_r("localhost", &result, buf, sizeof(buf), &h_errnop);
+	],
+	[AC_MSG_RESULT([yes])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_SOLARIS, 1, [Using Solaris gethostbyname_r()])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	],
+	[AC_MSG_RESULT([no])]
+)
+AC_MSG_CHECKING([for HP-UX gethostbyname_r])
+AC_TRY_LINK([#include <netdb.h>],
+	[struct hostent result;
+	 char buf[1024];
+	 gethostbyname_r("localhost", &result, buf);
+	],
+	[AC_MSG_RESULT([yes])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HPUX, 1, [Using HPUX gethostbyname_r()])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the `gethostbyname_r' function.])
+	],
+	[AC_MSG_RESULT([no])]
+)
 
 # Checks system services
 AC_SYS_LARGEFILE
@@ -265,14 +309,12 @@ AS_IF([test "x$with_jdk" != "xno"],
 		  AC_MSG_ERROR(jni_md.h is required.))
 
     AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
-    remember_CFLAGS="$CFLAGS"
     CFLAGS="$CFLAGS $JAVA_INC"
     AC_LINK_IFELSE([
 #include <jni.h>
 int main(void) { return 0; }
 		   ],[AC_MSG_RESULT(yes)],
 		   [AC_MSG_ERROR([Cannot compile a JNI program. See config.log for details.])])
-    CFLAGS="$remember_CFLAGS"
     ],
     [SYS_DEFS="$SYS_DEFS -DDISABLE_JSP"])
 AC_SUBST(JDK6_DEFINE)
@@ -291,10 +333,10 @@ if test "$with_libedit" = "builtin"
 then
 	AC_CONFIG_SUBDIRS([external/libedit-20070831-2.10])
 	LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
-	LIBEDIT_INC="-I\$(top_builddir)/external/include/editline"
+	LIBEDIT_INC="-I\$(top_builddir)/external/include"
 else
 	LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
-	LIBEDIT_INC="-I$with_libedit/include/editline"
+	LIBEDIT_INC="-I$with_libedit/include"
 fi
 
 AC_ARG_WITH([lzo2],
@@ -312,6 +354,7 @@ then
 else
 	LZO_LIBS="-L$with_lzo2/lib -llzo2"
 	LZO_INC="-I$with_lzo2/include/lzo"
+	LDFLAGS="$LDFLAGS $LZO_LIBS"
 fi
 
 AC_ARG_WITH([pcre],
@@ -340,10 +383,10 @@ if test "$with_gc" = "builtin"
 then
 	AC_CONFIG_SUBDIRS([external/gc6.7])
 	GC_LIBS="\$(top_builddir)/external/lib/libgc.la"
-	GC_INC="-I\$(top_builddir)/external/include"
+	GC_INC="-I\$(top_builddir)/external/include/gc"
 else
 	GC_LIBS="-L$with_gc/lib -lgc"
-	GC_INC="-I$with_gc/include"
+	GC_INC="-I$with_gc/include/gc"
 fi
 
 AC_PREFIX_DEFAULT("$HOME/cubrid")

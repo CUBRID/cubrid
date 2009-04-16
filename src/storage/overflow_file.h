@@ -58,14 +58,16 @@ extern int overflow_get_capacity (THREAD_ENTRY * thread_p,
 extern int overflow_estimate_npages_needed (THREAD_ENTRY * thread_p,
 					    int total_novf_sets,
 					    int avg_ovfdata_size);
-extern int overflow_dump (THREAD_ENTRY * thread_p, VPID * ovf_vpid);
+extern int overflow_dump (THREAD_ENTRY * thread_p, FILE * fp,
+			  VPID * ovf_vpid);
 extern int overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
-extern void overflow_rv_newpage_logical_dump_undo (int length_ignore,
+extern void overflow_rv_newpage_logical_dump_undo (FILE * fp,
+						   int length_ignore,
 						   void *data);
 extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);
 extern int overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void overflow_rv_link_dump (int length_ignore, void *data);
+extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
 
 #endif /* _OVERFLOW_FILE_H_ */

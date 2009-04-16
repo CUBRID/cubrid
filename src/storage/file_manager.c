@@ -373,7 +373,8 @@ static unsigned int file_new_files_hash_key (const void *hash_key,
 static int file_new_files_hash_cmpeq (const void *hash_key1,
 				      const void *hash_key2);
 
-static int file_dump_all_newfiles (THREAD_ENTRY * thread_p, bool tmptmp_only);
+static int file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp,
+				   bool tmptmp_only);
 static const char *file_type_to_string (FILE_TYPE fstruct_type);
 static const VFID *file_cache_newfile (THREAD_ENTRY * thread_p,
 				       const VFID * vfid,
@@ -419,7 +420,7 @@ static int file_descriptor_destroy_rest_pages (THREAD_ENTRY * thread_p,
 					       FILE_HEADER * fhdr);
 static int file_descriptor_find_num_rest_pages (THREAD_ENTRY * thread_p,
 						FILE_HEADER * fhdr);
-static int file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
+static int file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 					  const FILE_HEADER * fhdr);
 
 static PAGE_PTR file_expand_ftab (THREAD_ENTRY * thread_p,
@@ -544,15 +545,16 @@ static int file_allocset_find_num_deleted (THREAD_ENTRY * thread_p,
 					   FILE_ALLOCSET * allocset,
 					   int *num_deleted,
 					   int *num_marked_deleted);
-static int file_allocset_dump (const FILE_ALLOCSET * allocset,
+static int file_allocset_dump (FILE * fp, const FILE_ALLOCSET * allocset,
 			       bool doprint_title);
-static int file_allocset_dump_tables (THREAD_ENTRY * thread_p,
+static int file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
 				      const FILE_HEADER * fhdr,
 				      const FILE_ALLOCSET * allocset);
 
 static int file_compress (THREAD_ENTRY * thread_p, const VFID * vfid);
-static int file_dump_fhdr (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr);
-static int file_dump_ftabs (THREAD_ENTRY * thread_p,
+static int file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp,
+			   const FILE_HEADER * fhdr);
+static int file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp,
 			    const FILE_HEADER * fhdr);
 
 static const VFID *file_tracker_register (THREAD_ENTRY * thread_p,
@@ -594,25 +596,28 @@ static int file_rv_tracker_unregister_logical_undo (THREAD_ENTRY * thread_p,
 static int file_rv_fhdr_last_allocset_helper (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv, int delta);
 
-static void file_descriptor_dump_heap (THREAD_ENTRY * thread_p,
+static void file_descriptor_dump_heap (THREAD_ENTRY * thread_p, FILE * fp,
 				       const FILE_HEAP_DES * heap_file_des_p);
-static void file_descriptor_dump_multi_page_object_heap (const
-							 FILE_OVF_HEAP_DES *
-							 ovf_hfile_des_p);
-static void file_descriptor_dump_btree_overflow_key_file_des (const
-							      FILE_OVF_BTREE_DES
-							      *
-							      btree_ovf_des_p);
-static void file_print_name_of_class (THREAD_ENTRY * thread_p,
+static void
+file_descriptor_dump_multi_page_object_heap (FILE * fp,
+					     const FILE_OVF_HEAP_DES *
+					     ovf_hfile_des_p);
+static void
+file_descriptor_dump_btree_overflow_key_file_des (FILE * fp,
+						  const FILE_OVF_BTREE_DES
+						  * btree_ovf_des_p);
+static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp,
 				      const OID * class_oid_p);
 static void file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
+					       FILE * fp,
 					       const OID * inst_oid_p);
 static void file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
+						  FILE * fp,
 						  const OID * class_oid_p,
 						  const int attr_id);
 
 static int file_descriptor_get_length (const FILE_TYPE file_type);
-static void file_descriptor_dump (THREAD_ENTRY * thread_p,
+static void file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  const FILE_TYPE file_type,
 				  const void *file_descriptor_p);
 
@@ -1221,7 +1226,7 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
  *       purpose, it can be indicated by given argument.
  */
 static int
-file_dump_all_newfiles (THREAD_ENTRY * thread_p, bool tmptmp_only)
+file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp, bool tmptmp_only)
 {
   FILE_NEWFILE *entry;
   int ret = NO_ERROR;
@@ -1234,14 +1239,14 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, bool tmptmp_only)
 
   if (file_Tracker->newfiles.head != NULL)
     {
-      (void) fprintf (stdout, "DUMPING new files..\n");
+      (void) fprintf (fp, "DUMPING new files..\n");
     }
 
   /* Deallocate all transient entries of new files */
   for (entry = file_Tracker->newfiles.head; entry != NULL;
        entry = entry->next)
     {
-      (void) fprintf (stdout, "New File = %d|%d, Type = %s, undolog = %d,\n"
+      (void) fprintf (fp, "New File = %d|%d, Type = %s, undolog = %d,\n"
 		      " Created by Tran_index = %d, next = %p, prev = %p\n",
 		      entry->vfid.fileid, entry->vfid.volid,
 		      file_type_to_string (entry->file_type),
@@ -1249,7 +1254,7 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, bool tmptmp_only)
 		      entry->prev);
       if (tmptmp_only == false || entry->file_type == FILE_TMP_TMP)
 	{
-	  ret = file_dump (thread_p, &entry->vfid);
+	  ret = file_dump (thread_p, fp, &entry->vfid);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -2292,7 +2297,7 @@ exit_on_error:
  *   fhdr(out): File header
  */
 static int
-file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
+file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 			       const FILE_HEADER * fhdr)
 {
   int rest_length, dump_length;
@@ -2305,13 +2310,13 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
 
   if (fhdr->des.total_length <= 0)
     {
-      fprintf (stdout, "\n");
+      fprintf (fp, "\n");
       return NO_ERROR;
     }
 
   if (fhdr->des.total_length == fhdr->des.first_length)
     {
-      file_descriptor_dump (thread_p, fhdr->type, fhdr->des.piece);
+      file_descriptor_dump (thread_p, fp, fhdr->type, fhdr->des.piece);
     }
   else
     {
@@ -2343,7 +2348,7 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
 	case FILE_EXTENDIBLE_HASH_DIRECTORY:
 	case FILE_LONGDATA:
 	  {
-	    file_descriptor_dump (thread_p, fhdr->type, file_des);
+	    file_descriptor_dump (thread_p, fp, fhdr->type, file_des);
 	    break;
 	  }
 	case FILE_CATALOG:
@@ -2360,7 +2365,7 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
 	    for (i = 0, dumpfrom = fhdr->des.piece;
 		 i < fhdr->des.first_length; i++)
 	      {
-		(void) fputc (*dumpfrom++, stdout);
+		(void) fputc (*dumpfrom++, fp);
 	      }
 
 	    /* The rest if any */
@@ -2390,14 +2395,14 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p,
 
 		    for (i = 0, dumpfrom = rest->piece; i < dump_length; i++)
 		      {
-			(void) fputc (*dumpfrom++, stdout);
+			(void) fputc (*dumpfrom++, fp);
 		      }
 		    vpid = rest->next_part_vpid;
 		    pgbuf_unfix (thread_p, pgptr);
 		    pgptr = NULL;
 		  }
 	      }
-	    fprintf (stdout, "\n");
+	    fprintf (fp, "\n");
 	    break;
 	  }
 	}
@@ -4425,7 +4430,7 @@ file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid,
  *   vfid(in): Complete file identifier
  */
 int
-file_dump_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
 {
   PAGE_PTR fhdr_pgptr = NULL;
   FILE_HEADER *fhdr;
@@ -4443,7 +4448,7 @@ file_dump_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  ret = file_descriptor_dump_internal (thread_p, fhdr);
+  ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -10480,18 +10485,18 @@ exit_on_error:
  *   fhdr(in): Dump the given file header
  */
 static int
-file_dump_fhdr (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
+file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 {
 #if defined(SERVER_MODE)
   char time_val[64];
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "*** FILE HEADER TABLE DUMP FOR FILE IDENTIFIER = %d"
 		  " ON VOLUME = %d ***\n", fhdr->vfid.fileid,
 		  fhdr->vfid.volid);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "File_type = %s, Ismark_as_deleted = %s,\n"
 		  "Creation_time = %s", file_type_to_string (fhdr->type),
 		  (fhdr->ismark_as_deleted == true) ? "true" : "false",
@@ -10501,22 +10506,22 @@ file_dump_fhdr (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
 		  ctime (&fhdr->creation)
 #endif /* SERVER_MODE && !WINDOWS */
     );
-  (void) fprintf (stdout, "File Descriptor comments = ");
-  ret = file_descriptor_dump_internal (thread_p, fhdr);
+  (void) fprintf (fp, "File Descriptor comments = ");
+  ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
-  (void) fprintf (stdout, "Num_allocsets = %d, Num_user_pages = %d,"
+  (void) fprintf (fp, "Num_allocsets = %d, Num_user_pages = %d,"
 		  " Num_mark_deleted = %d\n",
 		  fhdr->num_allocsets, fhdr->num_user_pages,
 		  fhdr->num_user_pages_mrkdelete);
-  (void) fprintf (stdout, "Num_ftb_pages = %d, Next_ftb_page = %d|%d,"
+  (void) fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d,"
 		  " Last_ftb_page = %d|%d,\n",
 		  fhdr->num_table_vpids,
 		  fhdr->next_table_vpid.volid, fhdr->next_table_vpid.pageid,
 		  fhdr->last_table_vpid.volid, fhdr->last_table_vpid.pageid);
-  (void) fprintf (stdout, "Last allocset at VPID: %d|%d, offset = %d\n",
+  (void) fprintf (fp, "Last allocset at VPID: %d|%d, offset = %d\n",
 		  fhdr->last_allocset_vpid.volid,
 		  fhdr->last_allocset_vpid.pageid,
 		  fhdr->last_allocset_offset);
@@ -10539,14 +10544,14 @@ exit_on_error:
  *   fhdr(in): Pointer to file header
  */
 static int
-file_dump_ftabs (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
+file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 {
   PAGE_PTR ftb_pgptr = NULL;
   VPID ftb_vpid;
   int num_out;			/* Number of identifer that has been printed */
   int ret = NO_ERROR;
 
-  (void) fprintf (stdout, "FILE TABLE PAGES:\n");
+  (void) fprintf (fp, "FILE TABLE PAGES:\n");
 
   ftb_vpid.volid = fhdr->vfid.volid;
   ftb_vpid.pageid = fhdr->vfid.fileid;
@@ -10556,7 +10561,7 @@ file_dump_ftabs (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
     {
       if (num_out >= 6)
 	{
-	  (void) fprintf (stdout, "\n");
+	  (void) fprintf (fp, "\n");
 	  num_out = 1;
 	}
       else
@@ -10564,7 +10569,7 @@ file_dump_ftabs (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
 	  num_out++;
 	}
 
-      (void) fprintf (stdout, "%d|%d ", ftb_vpid.volid, ftb_vpid.pageid);
+      (void) fprintf (fp, "%d|%d ", ftb_vpid.volid, ftb_vpid.pageid);
 
       ftb_pgptr = pgbuf_fix (thread_p, &ftb_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			     PGBUF_UNCONDITIONAL_LATCH);
@@ -10582,7 +10587,7 @@ file_dump_ftabs (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr)
       pgbuf_unfix (thread_p, ftb_pgptr);
       ftb_pgptr = NULL;
     }
-  (void) fprintf (stdout, "\n");
+  (void) fprintf (fp, "\n");
 
 end:
 
@@ -10610,41 +10615,42 @@ exit_on_error:
  *   doprint_title(in): wheater or not to print a title
  */
 static int
-file_allocset_dump (const FILE_ALLOCSET * allocset, bool doprint_title)
+file_allocset_dump (FILE * fp, const FILE_ALLOCSET * allocset,
+		    bool doprint_title)
 {
   int ret = NO_ERROR;
 
   if (doprint_title == true)
     {
-      (void) fprintf (stdout, "ALLOCATION SET:\n");
+      (void) fprintf (fp, "ALLOCATION SET:\n");
     }
 
-  (void) fprintf (stdout, "Volid=%d, Num_sects = %d, Num_pages = %d,"
+  (void) fprintf (fp, "Volid=%d, Num_sects = %d, Num_pages = %d,"
 		  " Num_entries_to_compact = %d\n",
 		  allocset->volid, allocset->num_sects, allocset->num_pages,
 		  allocset->num_holes);
 
-  (void) fprintf (stdout, "Next_allocation_set: Page = %d|%d, Offset = %d\n",
+  (void) fprintf (fp, "Next_allocation_set: Page = %d|%d, Offset = %d\n",
 		  allocset->next_allocset_vpid.volid,
 		  allocset->next_allocset_vpid.pageid,
 		  allocset->next_allocset_offset);
 
-  (void) fprintf (stdout, "Sector Table (Start): Page = %d|%d, Offset = %d\n",
+  (void) fprintf (fp, "Sector Table (Start): Page = %d|%d, Offset = %d\n",
 		  allocset->start_sects_vpid.volid,
 		  allocset->start_sects_vpid.pageid,
 		  allocset->start_sects_offset);
-  (void) fprintf (stdout, "               (End): Page = %d|%d, Offset = %d\n",
+  (void) fprintf (fp, "               (End): Page = %d|%d, Offset = %d\n",
 		  allocset->end_sects_vpid.volid,
 		  allocset->end_sects_vpid.pageid,
 		  allocset->end_sects_offset);
-  (void) fprintf (stdout, "          Current_sectid = %d\n",
+  (void) fprintf (fp, "          Current_sectid = %d\n",
 		  allocset->curr_sectid);
 
-  (void) fprintf (stdout, "Page Table   (Start): Page = %d|%d, Offset = %d\n",
+  (void) fprintf (fp, "Page Table   (Start): Page = %d|%d, Offset = %d\n",
 		  allocset->start_pages_vpid.volid,
 		  allocset->start_pages_vpid.pageid,
 		  allocset->start_pages_offset);
-  (void) fprintf (stdout, "               (End): Page = %d|%d, Offset = %d\n",
+  (void) fprintf (fp, "               (End): Page = %d|%d, Offset = %d\n",
 		  allocset->end_pages_vpid.volid,
 		  allocset->end_pages_vpid.pageid,
 		  allocset->end_pages_offset);
@@ -10660,7 +10666,8 @@ file_allocset_dump (const FILE_ALLOCSET * allocset, bool doprint_title)
  *   allocset(in): Pointer to allocation set
  */
 static int
-file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
+file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
+			   const FILE_HEADER * fhdr,
 			   const FILE_ALLOCSET * allocset)
 {
   PAGE_PTR pgptr = NULL;
@@ -10672,7 +10679,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
   int ret = NO_ERROR;
 
   /* Dump the sector table */
-  (void) fprintf (stdout, "Allocated Sectors:\n");
+  (void) fprintf (fp, "Allocated Sectors:\n");
 
   num_out = 0;
   num_aids = 0;
@@ -10704,7 +10711,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	      num_aids++;
 	      if (num_out >= 7)
 		{
-		  (void) fprintf (stdout, "\n");
+		  (void) fprintf (fp, "\n");
 		  num_out = 1;
 		}
 	      else
@@ -10712,7 +10719,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 		  num_out++;
 		}
 
-	      (void) fprintf (stdout, "%10d ", *aid_ptr);
+	      (void) fprintf (fp, "%10d ", *aid_ptr);
 	    }
 	}
 
@@ -10733,17 +10740,17 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
       pgbuf_unfix (thread_p, pgptr);
       pgptr = NULL;
     }
-  (void) fprintf (stdout, "\n");
+  (void) fprintf (fp, "\n");
 
   if (allocset->num_sects != num_aids)
     {
-      (void) fprintf (stdout, "WARNING: Number of sectors = %d does not match"
+      (void) fprintf (fp, "WARNING: Number of sectors = %d does not match"
 		      " sectors = %d in allocationset header\n",
 		      num_aids, allocset->num_sects);
     }
 
   /* Dump the page table */
-  (void) fprintf (stdout, "Allocated pages:\n");
+  (void) fprintf (fp, "Allocated pages:\n");
 
   num_out = 0;
   num_aids = 0;
@@ -10772,7 +10779,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	{
 	  if (num_out >= 7)
 	    {
-	      (void) fprintf (stdout, "\n");
+	      (void) fprintf (fp, "\n");
 	      num_out = 1;
 	    }
 	  else
@@ -10782,15 +10789,15 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 
 	  if (*aid_ptr == NULL_PAGEID)
 	    {
-	      (void) fprintf (stdout, "       DEL ");
+	      (void) fprintf (fp, "       DEL ");
 	    }
 	  else if (*aid_ptr == NULL_PAGEID_MARKED_DELETED)
 	    {
-	      (void) fprintf (stdout, "    MRKDEL ");
+	      (void) fprintf (fp, "    MRKDEL ");
 	    }
 	  else
 	    {
-	      (void) fprintf (stdout, "%10d ", *aid_ptr);
+	      (void) fprintf (fp, "%10d ", *aid_ptr);
 	      num_aids++;
 	    }
 	}
@@ -10815,12 +10822,12 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 
   if (allocset->num_pages != num_aids)
     {
-      (void) fprintf (stdout, "WARNING: Number of pages = %d does not match"
+      (void) fprintf (fp, "WARNING: Number of pages = %d does not match"
 		      "pages = %d in allocationset header\n",
 		      num_aids, allocset->num_pages);
     }
 
-  (void) fprintf (stdout, "\n");
+  (void) fprintf (fp, "\n");
 
 end:
 
@@ -10847,7 +10854,7 @@ exit_on_error:
  *   vfid(in): Complete file identifier
  */
 int
-file_dump (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
 {
   FILE_HEADER *fhdr;
   FILE_ALLOCSET *allocset;
@@ -10873,17 +10880,17 @@ file_dump (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   /* Display General Information */
-  (void) fprintf (stdout, "\n\n");
+  (void) fprintf (fp, "\n\n");
 
   /* Dump the header */
-  ret = file_dump_fhdr (thread_p, fhdr);
+  ret = file_dump_fhdr (thread_p, fp, fhdr);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
 
   /* Dump all page identifiers of file table */
-  ret = file_dump_ftabs (thread_p, fhdr);
+  ret = file_dump_ftabs (thread_p, fp, fhdr);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -10910,19 +10917,19 @@ file_dump (THREAD_ENTRY * thread_p, const VFID * vfid)
       allocset =
 	(FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
 
-      (void) fprintf (stdout, "ALLOCATION SET NUM %d located at"
+      (void) fprintf (fp, "ALLOCATION SET NUM %d located at"
 		      "vpid = %d|%d offset = %d:\n",
 		      setno, allocset_vpid.volid, allocset_vpid.pageid,
 		      allocset_offset);
-      ret = file_allocset_dump (allocset, false);
+      ret = file_allocset_dump (fp, allocset, false);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      (void) fprintf (stdout, "First page in this allocation set is the"
+      (void) fprintf (fp, "First page in this allocation set is the"
 		      " nthpage = %d\n", num_pages);
-      ret = file_allocset_dump_tables (thread_p, fhdr, allocset);
+      ret = file_allocset_dump_tables (thread_p, fp, fhdr, allocset);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -10958,7 +10965,7 @@ file_dump (THREAD_ENTRY * thread_p, const VFID * vfid)
       pgbuf_unfix (thread_p, allocset_pgptr);
       allocset_pgptr = NULL;
     }
-  (void) fprintf (stdout, "\n\n");
+  (void) fprintf (fp, "\n\n");
 
   pgbuf_unfix (thread_p, fhdr_pgptr);
   fhdr_pgptr = NULL;
@@ -11610,7 +11617,7 @@ exit_on_error:
  *   return: void
  */
 int
-file_tracker_dump (THREAD_ENTRY * thread_p)
+file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
   PAGE_PTR trk_fhdr_pgptr = NULL;
   int num_files;
@@ -11645,7 +11652,7 @@ file_tracker_dump (THREAD_ENTRY * thread_p)
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
 
   /* Display General Information */
-  (void) fprintf (stdout, "\n\n DUMPING EACH FILE: Total Num of Files = %d\n",
+  (void) fprintf (fp, "\n\n DUMPING EACH FILE: Total Num of Files = %d\n",
 		  num_files);
 
   for (i = 0; i < num_files; i += num_found)
@@ -11664,7 +11671,7 @@ file_tracker_dump (THREAD_ENTRY * thread_p)
 	{
 	  vfid.volid = set_vpids[j].volid;
 	  vfid.fileid = set_vpids[j].pageid;
-	  ret = file_dump (thread_p, &vfid);
+	  ret = file_dump (thread_p, fp, &vfid);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -11672,7 +11679,7 @@ file_tracker_dump (THREAD_ENTRY * thread_p)
 
 	  if (VFID_EQ (&vfid, file_Tracker->vfid))
 	    {
-	      fprintf (stdout,
+	      fprintf (fp,
 		       "\n**NOTE: Num_alloc_pgs for tracker are number of"
 		       " allocated files...\n");
 	    }
@@ -11681,14 +11688,14 @@ file_tracker_dump (THREAD_ENTRY * thread_p)
 
   if (i != num_files)
     {
-      (void) fprintf (stdout, "Error: %d expected files, %d found files\n",
+      (void) fprintf (fp, "Error: %d expected files, %d found files\n",
 		      num_files, i);
     }
 
   pgbuf_unfix (thread_p, trk_fhdr_pgptr);
   trk_fhdr_pgptr = NULL;
 
-  ret = file_dump_all_newfiles (thread_p, true);
+  ret = file_dump_all_newfiles (thread_p, fp, true);
 
 end:
 
@@ -12208,7 +12215,7 @@ exit_on_error:
  *   return: NO_ERROR
  */
 int
-file_dump_all_capacities (THREAD_ENTRY * thread_p)
+file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 {
   int num_files;
   VFID vfid;
@@ -12231,7 +12238,7 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p)
   file_des = area;
   file_des_size = FILE_DUMP_DES_AREA_SIZE;
 
-  fprintf (stdout, "    VFID   npages    type             FDES\n");
+  fprintf (fp, "    VFID   npages    type             FDES\n");
 
   /* Find the specifications of each file */
   for (i = 0; i < num_files; i++)
@@ -12266,21 +12273,21 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      fprintf (stdout, "%4d|%4d %5d  %-22s ",
+      fprintf (fp, "%4d|%4d %5d  %-22s ",
 	       vfid.volid, vfid.fileid, num_pages,
 	       file_type_to_string (type));
       if (file_does_marked_as_deleted (thread_p, &vfid) == true)
 	{
-	  fprintf (stdout, "Marked as deleted...");
+	  fprintf (fp, "Marked as deleted...");
 	}
 
       if (size > 0)
 	{
-	  file_descriptor_dump (thread_p, type, file_des);
+	  file_descriptor_dump (thread_p, fp, type, file_des);
 	}
       else
 	{
-	  fprintf (stdout, "\n");
+	  fprintf (fp, "\n");
 	}
     }
 
@@ -12489,12 +12496,12 @@ file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_dump_create_tmp (int length_ignore, void *data)
+file_rv_dump_create_tmp (FILE * fp, int length_ignore, void *data)
 {
   VFID *vfid;
 
   vfid = (VFID *) data;
-  (void) fprintf (stdout, "Undo creation of Tmp vfid: %d|%d\n",
+  (void) fprintf (fp, "Undo creation of Tmp vfid: %d|%d\n",
 		  vfid->volid, vfid->fileid);
 }
 
@@ -12507,12 +12514,12 @@ file_rv_dump_create_tmp (int length_ignore, void *data)
  *   data(in): The data being logged
  */
 void
-file_rv_dump_ftab_chain (int length_ignore, void *data)
+file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data)
 {
   FILE_FTAB_CHAIN *recv;	/* Recovery information for double link chain */
 
   recv = (FILE_FTAB_CHAIN *) data;
-  (void) fprintf (stdout, "Next_ftb_vpid:%d|%d, Previous_ftb_vpid = %d|%d\n",
+  (void) fprintf (fp, "Next_ftb_vpid:%d|%d, Previous_ftb_vpid = %d|%d\n",
 		  recv->next_ftbvpid.volid, recv->next_ftbvpid.pageid,
 		  recv->prev_ftbvpid.volid, recv->prev_ftbvpid.pageid);
 }
@@ -12524,11 +12531,11 @@ file_rv_dump_ftab_chain (int length_ignore, void *data)
  *   data(in): The data being logged
  */
 void
-file_rv_dump_fhdr (int length_ignore, void *data)
+file_rv_dump_fhdr (FILE * fp, int length_ignore, void *data)
 {
   int ret = NO_ERROR;
 
-  ret = file_dump_fhdr (NULL, (FILE_HEADER *) data);
+  ret = file_dump_fhdr (NULL, fp, (FILE_HEADER *) data);
   if (ret != NO_ERROR)
     {
       return;
@@ -12542,7 +12549,7 @@ file_rv_dump_fhdr (int length_ignore, void *data)
  *   data(in): The data being logged
  */
 void
-file_rv_dump_idtab (int length, void *data)
+file_rv_dump_idtab (FILE * fp, int length, void *data)
 {
   int i;
   INT32 *aid_ptr;		/* Pointer to portion of sector/page table */
@@ -12551,9 +12558,9 @@ file_rv_dump_idtab (int length, void *data)
   length = length / sizeof (*aid_ptr);
   for (i = 0; i < length; i++, aid_ptr++)
     {
-      (void) fprintf (stdout, "%d ", *aid_ptr);
+      (void) fprintf (fp, "%d ", *aid_ptr);
     }
-  (void) fprintf (stdout, "\n");
+  (void) fprintf (fp, "\n");
 }
 
 /*
@@ -12613,9 +12620,9 @@ exit_on_error:
  *   data(in): The data being logged
  */
 void
-file_rv_dump_marked_as_deleted (int length_ignore, void *data)
+file_rv_dump_marked_as_deleted (FILE * fp, int length_ignore, void *data)
 {
-  (void) fprintf (stdout, "Marked_deleted = %d\n", *(int *) data);
+  (void) fprintf (fp, "Marked_deleted = %d\n", *(int *) data);
 }
 
 /*
@@ -12649,13 +12656,13 @@ file_rv_allocset_undoredo_sector (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_sector (int length_ignore, void *data)
+file_rv_allocset_dump_sector (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_ALLOCSET_SECTOR *rvsect;
 
   rvsect = (FILE_RECV_ALLOCSET_SECTOR *) data;
 
-  (void) fprintf (stdout, "Num_sects = %d, Curr_sectid = %d,\n"
+  (void) fprintf (fp, "Num_sects = %d, Curr_sectid = %d,\n"
 		  "Sector Table end: pageid = %d|%d, offset = %d\n",
 		  rvsect->num_sects, rvsect->curr_sectid,
 		  rvsect->end_sects_vpid.volid, rvsect->end_sects_vpid.pageid,
@@ -12696,20 +12703,20 @@ file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_page (int length_ignore, void *data)
+file_rv_allocset_dump_page (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_EXPAND_SECTOR *rvstb;
 
   rvstb = (FILE_RECV_EXPAND_SECTOR *) data;
 
-  fprintf (stdout, "Page Table   (Start): Page = %d|%d, Offset = %d\n",
+  fprintf (fp, "Page Table   (Start): Page = %d|%d, Offset = %d\n",
 	   rvstb->start_pages_vpid.volid,
 	   rvstb->start_pages_vpid.pageid, rvstb->start_pages_offset);
-  fprintf (stdout, "               (End): Page = %d|%d, Offset = %d\n",
+  fprintf (fp, "               (End): Page = %d|%d, Offset = %d\n",
 	   rvstb->end_pages_vpid.volid, rvstb->end_pages_vpid.pageid,
 	   rvstb->end_pages_offset);
 
-  fprintf (stdout, " Num_entries_to_compact = %d\n", rvstb->num_holes);
+  fprintf (fp, " Num_entries_to_compact = %d\n", rvstb->num_holes);
 }
 
 /*
@@ -12742,12 +12749,12 @@ file_rv_fhdr_undoredo_expansion (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_dump_expansion (int length_ignore, void *data)
+file_rv_fhdr_dump_expansion (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_FTB_EXPANSION *rvftb;
 
   rvftb = (FILE_RECV_FTB_EXPANSION *) data;
-  fprintf (stdout, "Num_ftb_pages = %d, Next_ftb_page = %d|%d"
+  fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d"
 	   " Last_ftb_page = %d|%d,\n",
 	   rvftb->num_table_vpids,
 	   rvftb->next_table_vpid.volid, rvftb->next_table_vpid.pageid,
@@ -12761,11 +12768,11 @@ file_rv_fhdr_dump_expansion (int length_ignore, void *data)
  *   data(in): The data being logged
  */
 void
-file_rv_dump_allocset (int length_ignore, void *data)
+file_rv_dump_allocset (FILE * fp, int length_ignore, void *data)
 {
   int ret = NO_ERROR;
 
-  ret = file_allocset_dump ((FILE_ALLOCSET *) data, true);
+  ret = file_allocset_dump (fp, (FILE_ALLOCSET *) data, true);
   if (ret != NO_ERROR)
     {
       return;
@@ -12801,13 +12808,13 @@ file_rv_allocset_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_link (int length_ignore, void *data)
+file_rv_allocset_dump_link (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_ALLOCSET_LINK *rvlink;	/* Link related information */
 
   rvlink = (FILE_RECV_ALLOCSET_LINK *) data;
 
-  fprintf (stdout, "Next_allocation_set: Page = %d|%d Offset = %d\n",
+  fprintf (fp, "Next_allocation_set: Page = %d|%d Offset = %d\n",
 	   rvlink->next_allocset_vpid.volid,
 	   rvlink->next_allocset_vpid.pageid, rvlink->next_allocset_offset);
 }
@@ -12892,13 +12899,13 @@ file_rv_fhdr_change_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_dump_last_allocset (int length_ignore, void *data)
+file_rv_fhdr_dump_last_allocset (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_ALLOCSET_LINK *rvlink;
 
   rvlink = (FILE_RECV_ALLOCSET_LINK *) data;
 
-  fprintf (stdout, "Last_allocation_set: Page = %d|%d Offset = %d\n",
+  fprintf (fp, "Last_allocation_set: Page = %d|%d Offset = %d\n",
 	   rvlink->next_allocset_vpid.volid,
 	   rvlink->next_allocset_vpid.pageid, rvlink->next_allocset_offset);
 }
@@ -12937,16 +12944,16 @@ file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_add_pages (int length_ignore, void *data)
+file_rv_allocset_dump_add_pages (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_ALLOCSET_PAGES *rvpgs;
 
   rvpgs = (FILE_RECV_ALLOCSET_PAGES *) data;
 
-  fprintf (stdout, " Num_user_pages = %d, Current_sectid = %d\n",
+  fprintf (fp, " Num_user_pages = %d, Current_sectid = %d\n",
 	   rvpgs->num_pages, rvpgs->num_holes);
-  fprintf (stdout, " Num_entries_to_compact = %d\n", rvpgs->num_holes);
-  fprintf (stdout, "Page Table   (End): Page = %d|%d Offset = %d\n",
+  fprintf (fp, " Num_entries_to_compact = %d\n", rvpgs->num_holes);
+  fprintf (fp, "Page Table   (End): Page = %d|%d Offset = %d\n",
 	   rvpgs->end_pages_vpid.volid, rvpgs->end_pages_vpid.pageid,
 	   rvpgs->end_pages_offset);
 }
@@ -12977,9 +12984,9 @@ file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_dump_add_pages (int length_ignore, void *data)
+file_rv_fhdr_dump_add_pages (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Num_user_pages = %d\n", *(INT32 *) data);
+  fprintf (fp, "Num_user_pages = %d\n", *(INT32 *) data);
 }
 
 /*
@@ -13014,9 +13021,10 @@ file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p,
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_dump_mark_deleted_pages (int length_ignore, void *data)
+file_rv_fhdr_dump_mark_deleted_pages (FILE * fp, int length_ignore,
+				      void *data)
 {
-  fprintf (stdout, "Npages = %d mark as deleted\n", abs (*(INT32 *) data));
+  fprintf (fp, "Npages = %d mark as deleted\n", abs (*(INT32 *) data));
 }
 
 /*
@@ -13050,9 +13058,9 @@ file_rv_allocset_undoredo_delete_pages (THREAD_ENTRY * thread_p,
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_delete_pages (int length_ignore, void *data)
+file_rv_allocset_dump_delete_pages (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Npages = %d deleted\n", abs (*(INT32 *) data));
+  fprintf (fp, "Npages = %d deleted\n", abs (*(INT32 *) data));
 }
 
 /*
@@ -13081,9 +13089,9 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_delete_pages_dump (int length_ignore, void *data)
+file_rv_fhdr_delete_pages_dump (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (stdout, "Num_user_pages deleted = %d\n", *(INT32 *) data);
+  fprintf (fp, "Num_user_pages deleted = %d\n", *(INT32 *) data);
 }
 
 /*
@@ -13119,17 +13127,17 @@ file_rv_allocset_undoredo_sectortab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_allocset_dump_sectortab (int length_ignore, void *data)
+file_rv_allocset_dump_sectortab (FILE * fp, int length_ignore, void *data)
 {
   FILE_RECV_SHIFT_SECTOR_TABLE *rvsect;
 
   rvsect = (FILE_RECV_SHIFT_SECTOR_TABLE *) data;
 
-  fprintf (stdout,
+  fprintf (fp,
 	   "Sector Table  (Start): Page = %d|%d, Offset = %d\n",
 	   rvsect->start_sects_vpid.volid,
 	   rvsect->start_sects_vpid.pageid, rvsect->start_sects_offset);
-  fprintf (stdout, "               (End): Page = %d|%d, Offset = %d\n",
+  fprintf (fp, "               (End): Page = %d|%d, Offset = %d\n",
 	   rvsect->end_sects_vpid.volid, rvsect->end_sects_vpid.pageid,
 	   rvsect->end_sects_offset);
 
@@ -13164,12 +13172,13 @@ file_rv_descriptor_undoredo_firstrest_nextvpid (THREAD_ENTRY * thread_p,
  *   data(in): The data being logged
  */
 void
-file_rv_descriptor_dump_firstrest_nextvpid (int length_ignore, void *data)
+file_rv_descriptor_dump_firstrest_nextvpid (FILE * fp, int length_ignore,
+					    void *data)
 {
   VPID *vpid;
 
   vpid = (VPID *) data;
-  fprintf (stdout, "First Rest of file Desc VPID: %d|%d",
+  fprintf (fp, "First Rest of file Desc VPID: %d|%d",
 	   vpid->volid, vpid->pageid);
 }
 
@@ -13201,13 +13210,13 @@ file_rv_descriptor_undoredo_nrest_nextvpid (THREAD_ENTRY * thread_p,
  *   data(in): The data being logged
  */
 void
-file_rv_descriptor_dump_nrest_nextvpid (int length_ignore, void *data)
+file_rv_descriptor_dump_nrest_nextvpid (FILE * fp, int length_ignore,
+					void *data)
 {
   VPID *vpid;
 
   vpid = (VPID *) data;
-  fprintf (stdout, "N Rest of file Desc VPID: %d|%d",
-	   vpid->volid, vpid->pageid);
+  fprintf (fp, "N Rest of file Desc VPID: %d|%d", vpid->volid, vpid->pageid);
 }
 
 /*
@@ -13235,12 +13244,12 @@ file_rv_tracker_undo_register (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_tracker_dump_undo_register (int length_ignore, void *data)
+file_rv_tracker_dump_undo_register (FILE * fp, int length_ignore, void *data)
 {
   VFID *vfid;
 
   vfid = (VFID *) data;
-  fprintf (stdout, "VFID: %d|%d\n", vfid->volid, vfid->fileid);
+  fprintf (fp, "VFID: %d|%d\n", vfid->volid, vfid->fileid);
 }
 
 /*
@@ -13456,8 +13465,8 @@ file_descriptor_get_length (const FILE_TYPE file_type)
  */
 
 static void
-file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
-		      const void *file_des_p)
+file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
+		      const FILE_TYPE file_type, const void *file_des_p)
 {
   if (file_des_p == NULL)
     {
@@ -13470,12 +13479,13 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
       break;
 
     case FILE_HEAP:
-      file_descriptor_dump_heap (thread_p,
+      file_descriptor_dump_heap (thread_p, fp,
 				 (const FILE_HEAP_DES *) file_des_p);
       break;
 
     case FILE_MULTIPAGE_OBJECT_HEAP:
-      file_descriptor_dump_multi_page_object_heap ((const FILE_OVF_HEAP_DES *)
+      file_descriptor_dump_multi_page_object_heap (fp,
+						   (const FILE_OVF_HEAP_DES *)
 						   file_des_p);
       break;
 
@@ -13483,14 +13493,15 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
       {
 	const FILE_BTREE_DES *btree_des_p = (FILE_BTREE_DES *) file_des_p;
 
-	file_print_name_of_class_with_attrid (thread_p,
+	file_print_name_of_class_with_attrid (thread_p, fp,
 					      &btree_des_p->class_oid,
 					      btree_des_p->attr_id);
 	break;
       }
 
     case FILE_BTREE_OVERFLOW_KEY:
-      file_descriptor_dump_btree_overflow_key_file_des ((const
+      file_descriptor_dump_btree_overflow_key_file_des (fp,
+							(const
 							 FILE_OVF_BTREE_DES *)
 							file_des_p);
       break;
@@ -13500,7 +13511,7 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
       {
 	const FILE_EHASH_DES *ext_hash_des_p = (FILE_EHASH_DES *) file_des_p;
 
-	file_print_name_of_class_with_attrid (thread_p,
+	file_print_name_of_class_with_attrid (thread_p, fp,
 					      &ext_hash_des_p->class_oid,
 					      ext_hash_des_p->attr_id);
 	break;
@@ -13509,7 +13520,7 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
       {
 	const FILE_LO_DES *lo_des_p = (FILE_LO_DES *) file_des_p;
 
-	file_print_class_name_of_instance (thread_p, &lo_des_p->oid);
+	file_print_class_name_of_instance (thread_p, fp, &lo_des_p->oid);
 	break;
       }
     case FILE_CATALOG:
@@ -13519,46 +13530,49 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const FILE_TYPE file_type,
     case FILE_EITHER_TMP:
     case FILE_UNKNOWN_TYPE:
     default:
-      fprintf (stdout, "....Don't know how to dump desc..\n");
+      fprintf (fp, "....Don't know how to dump desc..\n");
       break;
     }
 }
 
 static void
-file_descriptor_dump_heap (THREAD_ENTRY * thread_p,
+file_descriptor_dump_heap (THREAD_ENTRY * thread_p, FILE * fp,
 			   const FILE_HEAP_DES * heap_file_des_p)
 {
-  file_print_name_of_class (thread_p, &heap_file_des_p->class_oid);
+  file_print_name_of_class (thread_p, fp, &heap_file_des_p->class_oid);
 }
 
 static void
-file_descriptor_dump_multi_page_object_heap (const FILE_OVF_HEAP_DES *
+file_descriptor_dump_multi_page_object_heap (FILE * fp,
+					     const FILE_OVF_HEAP_DES *
 					     ovf_hfile_des_p)
 {
-  fprintf (stdout, "Overflow for HFID: %2d|%4d|%4d\n",
+  fprintf (fp, "Overflow for HFID: %2d|%4d|%4d\n",
 	   ovf_hfile_des_p->hfid.vfid.volid,
 	   ovf_hfile_des_p->hfid.vfid.fileid, ovf_hfile_des_p->hfid.hpgid);
 }
 
 static void
-file_descriptor_dump_btree_overflow_key_file_des (const FILE_OVF_BTREE_DES *
+file_descriptor_dump_btree_overflow_key_file_des (FILE * fp,
+						  const FILE_OVF_BTREE_DES *
 						  btree_ovf_des_p)
 {
-  fprintf (stdout, "Overflow keys for BTID: %2d|%4d|%4d\n",
+  fprintf (fp, "Overflow keys for BTID: %2d|%4d|%4d\n",
 	   btree_ovf_des_p->btid.vfid.volid,
 	   btree_ovf_des_p->btid.vfid.fileid,
 	   btree_ovf_des_p->btid.root_pageid);
 }
 
 static void
-file_print_name_of_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
+file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp,
+			  const OID * class_oid_p)
 {
   char *class_name_p = NULL;
 
   if (!OID_ISNULL (class_oid_p))
     {
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
-      fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s)\n",
+      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s)\n",
 	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
 	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p)
@@ -13568,12 +13582,12 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
     }
   else
     {
-      fprintf (stdout, "\n");
+      fprintf (fp, "\n");
     }
 }
 
 static void
-file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
+file_print_class_name_of_instance (THREAD_ENTRY * thread_p, FILE * fp,
 				   const OID * inst_oid_p)
 {
   char *class_name_p = NULL;
@@ -13581,7 +13595,7 @@ file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
   if (!OID_ISNULL (inst_oid_p))
     {
       class_name_p = heap_get_class_name_of_instance (thread_p, inst_oid_p);
-      fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s)\n",
+      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s)\n",
 	       inst_oid_p->volid, inst_oid_p->pageid, inst_oid_p->slotid,
 	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p)
@@ -13591,12 +13605,12 @@ file_print_class_name_of_instance (THREAD_ENTRY * thread_p,
     }
   else
     {
-      fprintf (stdout, "\n");
+      fprintf (fp, "\n");
     }
 }
 
 static void
-file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
+file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p, FILE * fp,
 				      const OID * class_oid_p,
 				      const int attr_id)
 {
@@ -13605,7 +13619,7 @@ file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
   if (!OID_ISNULL (class_oid_p))
     {
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
-      fprintf (stdout, "CLASS_OID:%2d|%4d|%2d (%s), ATTRID: %2d\n",
+      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s), ATTRID: %2d\n",
 	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
 	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*", attr_id);
       if (class_name_p)
@@ -13615,6 +13629,6 @@ file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
     }
   else
     {
-      fprintf (stdout, "\n");
+      fprintf (fp, "\n");
     }
 }

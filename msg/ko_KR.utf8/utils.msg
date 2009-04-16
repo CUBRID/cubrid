@@ -59,6 +59,10 @@ $       33      alterdbhost
 $       35      repl_server
 $       36      repl_agent
 $       37      plandump
+$       38      paramdump
+$       39      changemode
+$       40      copylogdb
+$       41      applylogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 `%c'이(가) 데이터베이스 이름 `%s'에 포함되어 있습니다\n
@@ -96,6 +100,10 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     plandump\n\
     loaddb\n\
     unloaddb\n\
+    paramdump\n\
+    changemode\n\
+    copylogdb\n\
+    applylogdb\n\
 \n\
 %s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
@@ -143,6 +151,10 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     restoredb\n\
     spacedb\n\
     unloaddb\n\
+    paramdump\n\
+    changemode\n\
+    copylogdb\n\
+    applylogdb\n\
 \n\
 %s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
@@ -169,7 +181,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start\n\
     stop\n\
     restart\n\
-    status      [-b] [-q] [-t <sec>] [-s <sec>] [<expr>]\n\
+    status      [-b] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n
 27 cubrid 유틸리티, 버전 %s\n\
@@ -183,15 +195,15 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 사용법: %s repl_server <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       <데이터베이스 이름> <서버 네트워크 포트> [-a 최대 agent 개수] [-e 에러 파일]\n\
-    stop        <데이터베이스 이름>\n\
+    start       <마스터 데이터베이스 이름> <서버 네트워크 포트> [-a 최대 agent 개수] [-e 에러 파일]\n\
+    stop        <마스터 데이터베이스 이름>\n\
     status\n
 29 cubrid 유틸리티, 버전 %s\n\
 사용법: %s repl_agent <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       <데이터베이스 이름> [DBA 패스워드]\n\
-    stop        <데이터베이스 이름>\n\
+    start       <배포 데이터베이스 이름> [DBA 패스워드]\n\
+    stop        <배포 데이터베이스 이름>\n\
     status\n
 30 '%s' 인자가 필요 없습니다.\n
 31 데이터베이스 이름이 누락됐습니다.\n
@@ -313,7 +325,7 @@ optimizedb: 데이터베이스 최적화.\n\
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 날짜 형식 오류, 날짜 형식: 일-월-년:시:분:초(dd-mm-yyyy:hh:mm:ss) 또는 'backuptime'
+19 날짜 형식 오류, 날짜 형식: 일-월-년:시:분:초(dd-mm-yyyy:hh:mm:ss) 또는 'backuptime'\n
 20 복구 취소되었거나 에러 발생\n
 60 \
 restoredb: 데이터베이스 복구\n\
@@ -641,6 +653,7 @@ diagdb: 데이터베이스 정보 덤프\n\
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
 15 출력 파일 `%s'을 열 수 없습니다.\n
+59 lockdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %s lockdb [옵션] <데이터베이스 이름>\n\
@@ -662,6 +675,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 트랜잭션 인덱스 %d로 지정된 트랜잭션들을 종료시킵니다\n
 30 다음 트랜잭션들의 종료에 실패했습니다\n\n
 31 트랜잭션이 종료되지 않았습니다. 롤백 진행 중일 수 있습니다.\n 잠시 기다렸다가 확인하고 재시도하시기 바랍니다.\n
+59 killtran은 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 killtran: 데이터베이스 transaction 제거 관리\n\
 사용법: %s killtran [옵션] <데이터베이스 이름>\n\
@@ -672,7 +686,8 @@ killtran: 데이터베이스 transaction 제거 관리\n\
       --kill-host-name=HOST          HOST로 지정되는 클라이언트의 모든 트랜잭션 종료\n\
       --kill-program-name=NAME       NAME으로 지정되는 모든 트랜잭션 종료\n\
   -p, --dba-password=PASS            DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
-  -d, --display-information          현재 활성화된 트랜잭션에 대한 정보 보여줌\n
+  -d, --display-information          현재 활성화된 트랜잭션에 대한 정보 보여줌\n\
+  -f, --force                        사용자 확인 없이 지정된 트랜잭션 종료\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
@@ -770,6 +785,7 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 `%s'을 열 수 없습니다\n
+59 plandump는 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %s plandump [옵션] <데이터베이스 이름>\n\
@@ -777,3 +793,57 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 옵션:\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+
+$set 38 MSGCAT_UTIL_SET_DUMPPARAM
+11 Cannot open output file `%s'\n
+60 \
+paramdump: Dump system parameter settings.\n\
+usage: %s paramdump [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
+
+$set 39 MSGCAT_UTIL_SET_CHANGEMODE
+11 Worng value \"%s\" for the server's HA running mode.\n
+12 Cannot change the server's HA running mode.\n
+21 Enter DBA password:
+22 The server `%s''s current HA running mode is %s.\n
+23 The server `%s''s HA running mode is changed to \"%s\".\n
+59 changemode는 스탠드얼론 모드로 실행할 수 없습니다.\n
+60 \
+changemode: Display or change the server's HA running mode.\n\
+usage: %s changemode [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -m, --mode=MODE             change the server mode to MODE; default; none\n\
+  -w, --wait                  wait util the server mode is changed\n\
+  -f, --force                 force to change\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+
+$set 40 MSGCAT_UTIL_SET_COPYLOGDB
+21 Enter DBA password:
+59 copylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
+60 \
+copylogdb: Copy log pages from the server.\n\
+usage: %s copylogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n\
+  -m, --mode=MODE             operation mode; default: async\n\
+                              MODE: async or sync\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+
+$set 41 MSGCAT_UTIL_SET_APPLYLOGDB
+11 Worng value \"%s\" for the copylogdb's running mode.\n
+21 Enter DBA password:
+59 applylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
+60 \
+applylogdb: Apply copied log to the server.\n\
+usage: %s applylogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH of copied log volumes\n\
+  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+

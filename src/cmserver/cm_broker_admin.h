@@ -109,7 +109,6 @@ typedef struct
   int num_req;
   char *session_timeout;
   int as_max_size;
-  int compress_size;
   char log_backup;
   char sql_log_on_off;
   char sql_log_append_mode;
@@ -117,7 +116,6 @@ typedef struct
   char source_env_flag;
   char access_list_flag;
   int sql_log_time;
-  int priority_gap;
   int time_to_kill;
   char status[16];
   char auto_add[4];

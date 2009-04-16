@@ -219,10 +219,10 @@ static void log_client_append_done_actions (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes,
 					    LOG_RECTYPE rectype,
 					    LOG_LSA * next_lsa);
-static void log_ascii_dump (int length, void *data);
-static void log_dump_data (THREAD_ENTRY * thread_p, int length,
+static void log_ascii_dump (FILE * out_fp, int length, void *data);
+static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 			   LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			   void (*dumpfun) (int, void *),
+			   void (*dumpfun) (FILE * fp, int, void *),
 			   LOG_ZIP * log_dump_ptr);
 static void log_dump_header (FILE * out_fp, struct log_header *log_header_p);
 static LOG_PAGE *log_dump_record_client_name (THREAD_ENTRY * thread_p,
@@ -322,6 +322,10 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p,
 						      FILE * out_fp,
 						      LOG_LSA * lsa_p,
 						      LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p,
+						  FILE * out_fp,
+						  LOG_LSA * log_lsa,
+						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
 				  LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
@@ -484,6 +488,9 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_UNLOCK_COMMIT";
     case LOG_UNLOCK_ABORT:
       return "LOG_UNLOCK_ABORT";
+
+    case LOG_DUMMY_HA_SERVER_STATE:
+      return "LOG_DUMMY_HA_SERVER_STATE";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
@@ -2053,7 +2060,7 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2426,7 +2433,7 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   /* END append */
   logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2706,7 +2713,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -3101,7 +3108,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
 
-  if (PRM_REPLICATION_MODE)
+  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -3839,6 +3846,41 @@ log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
+ * log_append_ha_server_state -
+ *
+ * return: nothing
+ */
+void
+log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+  struct log_ha_server_state *ha_server_state;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  LOG_CS_ENTER (thread_p);
+
+  /* START appending */
+  logpb_start_append (thread_p, LOG_DUMMY_HA_SERVER_STATE, tdes);
+
+  /* ADD the data header */
+  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*ha_server_state));
+
+  ha_server_state = (struct log_ha_server_state *) LOG_APPEND_PTR ();
+  ha_server_state->state = state;
+
+  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*ha_server_state));
+
+  /* END append */
+  /* need to flush because LWT must deliver the log header page to the remote */
+  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+
+  LOG_CS_EXIT ();
+}
+
+/*
  * log_skip_tailsa_logging - A log entry was not recorded intentionally
  *                                 by the caller
  *
@@ -4019,7 +4061,7 @@ log_append_client_name (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, LOG_USERNAME_MAX);
 
   user_name = LOG_APPEND_PTR ();
-  memcpy (user_name, tdes->client.user_name, LOG_USERNAME_MAX);
+  memcpy (user_name, tdes->client.db_user, LOG_USERNAME_MAX);
 
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, LOG_USERNAME_MAX);
 
@@ -4635,7 +4677,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        */
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  if (PRM_REPLICATION_MODE)
+	  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      /* for CC(Click Counter) : at here */
@@ -5263,8 +5305,10 @@ log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_CS_ENTER (thread_p);
 
   logpb_start_append (thread_p, iscommitted, tdes);
+  log_Gl.writer_info.skip_flush = true;
   logpb_end_append (thread_p, (iscommitted == LOG_UNLOCK_COMMIT) ?
 		    LOG_NEED_FLUSH : LOG_DONT_NEED_FLUSH, false);
+  log_Gl.writer_info.skip_flush = false;
 
   LOG_CS_EXIT ();
 }
@@ -5553,7 +5597,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 
       log_free_modifed_class_list (thread_p, tdes, false);
 
-      if (PRM_REPLICATION_MODE)
+      if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  log_append_repl_info (thread_p, tdes, true);
@@ -6252,13 +6296,11 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	     */
 	    if (LOG_ISRESTARTED () && tdes->isloose_end == false)
 	      {
-		new_tran_index = logtb_assign_tran_index (thread_p,
-							  NULL_TRANID,
-							  TRAN_RECOVERY, NULL,
-							  NULL, NULL, -1,
-							  NULL,
-							  PRM_LK_TIMEOUT_SECS,
-							  TRAN_SERIALIZABLE);
+		new_tran_index =
+		  logtb_assign_tran_index (thread_p, NULL_TRANID,
+					   TRAN_RECOVERY, NULL, NULL,
+					   PRM_LK_TIMEOUT_SECS,
+					   TRAN_SERIALIZABLE);
 		new_tdes = LOG_FIND_TDES (new_tran_index);
 		if (new_tran_index == NULL_TRAN_INDEX || new_tdes == NULL)
 		  {
@@ -6637,6 +6679,7 @@ log_client_find_system_error (LOG_RECTYPE record_type,
     case LOG_END_CHKPT:
     case LOG_2PC_RECV_ACK:
     case LOG_DUMMY_CRASH_RECOVERY:
+    case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
     default:
@@ -6851,6 +6894,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_REPLICATION_SCHEMA:
 		    case LOG_UNLOCK_COMMIT:
 		    case LOG_UNLOCK_ABORT:
+		    case LOG_DUMMY_HA_SERVER_STATE:
 		      break;
 
 		    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
@@ -7522,14 +7566,14 @@ xlog_client_complete_undo (THREAD_ENTRY * thread_p)
  *              It is used when a dump function is not provided.
  */
 static void
-log_ascii_dump (int length, void *data)
+log_ascii_dump (FILE * out_fp, int length, void *data)
 {
   char *ptr;			/* Pointer to data */
   int i;
 
   for (i = 0, ptr = (char *) data; i < length; i++)
     {
-      (void) fputc (*ptr++, stdout);
+      (void) fputc (*ptr++, out_fp);
     }
 }
 
@@ -7549,9 +7593,9 @@ log_ascii_dump (int length, void *data)
  *              This function is used for debugging purposes.
  */
 static void
-log_dump_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
-	       LOG_PAGE * log_page_p, void (*dumpfun) (int, void *),
-	       LOG_ZIP * log_dump_ptr)
+log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
+	       LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+	       void (*dumpfun) (FILE *, int, void *), LOG_ZIP * log_dump_ptr)
 {
   char *ptr;			/* Pointer to data to be printed            */
   bool is_zip = false;
@@ -7583,12 +7627,13 @@ log_dump_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
 
       if (is_zip && is_unzip)
 	{
-	  (*dumpfun) (log_dump_ptr->data_length, log_dump_ptr->log_data);
+	  (*dumpfun) (out_fp, log_dump_ptr->data_length,
+		      log_dump_ptr->log_data);
 	  log_lsa->offset += length;
 	}
       else
 	{
-	  (*dumpfun) (length, ptr);
+	  (*dumpfun) (out_fp, length, ptr);
 	  log_lsa->offset += length;
 	}
     }
@@ -7610,11 +7655,12 @@ log_dump_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
 
       if (is_zip && is_unzip)
 	{
-	  (*dumpfun) (log_dump_ptr->data_length, log_dump_ptr->log_data);
+	  (*dumpfun) (out_fp, log_dump_ptr->data_length,
+		      log_dump_ptr->log_data);
 	}
       else
 	{
-	  (*dumpfun) (length, ptr);
+	  (*dumpfun) (out_fp, length, ptr);
 	}
       free_and_init (ptr);
     }
@@ -7707,14 +7753,14 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), log_lsa, log_page_p);
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, undo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
 		   NULL) ? RV_fun[rcvindex].
 		  dump_undofun : log_ascii_dump), log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, redo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
 		   NULL) ? RV_fun[rcvindex].
@@ -7750,7 +7796,7 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, undo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
 		   NULL) ? RV_fun[rcvindex].
@@ -7786,7 +7832,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print REDO(AFTER) DATA */
   fprintf (stdout, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, redo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
 		   NULL) ? RV_fun[rcvindex].
@@ -7824,7 +7870,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print RUN POSTPONE (REDO/AFTER) DATA */
   fprintf (out_fp, "-->> Run Postpone (Redo/After) Data:\n");
-  log_dump_data (thread_p, redo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
 		   NULL) ? RV_fun[rcvindex].
@@ -7857,7 +7903,7 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print Database External DATA */
   fprintf (out_fp, "-->> Database external Data:\n");
-  log_dump_data (thread_p, redo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].
 		  dump_redofun : log_ascii_dump), NULL);
@@ -7893,7 +7939,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print COMPENSATE DATA */
   fprintf (out_fp, "-->> Compensate Data:\n");
-  log_dump_data (thread_p, length_compensate, log_lsa,
+  log_dump_data (thread_p, out_fp, length_compensate, log_lsa,
 		 log_page_p,
 		 (RV_fun[rcvindex].dump_undofun !=
 		  NULL) ? RV_fun[rcvindex].
@@ -7951,14 +7997,14 @@ log_dump_record_client_user_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
 #if defined(SA_MODE)
-  log_dump_data (thread_p, undo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RVCL_fun[rcvclient_index].dump_undofun !=
 		   NULL) ? RVCL_fun[rcvclient_index].
 		  dump_undofun : log_ascii_dump), NULL);
 #else /* SA_MODE */
-  log_dump_data (thread_p, undo_length, log_lsa, log_page_p, log_ascii_dump,
-		 NULL);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
+		 log_ascii_dump, NULL);
 #endif /* SA_MODE */
 
   return log_page_p;
@@ -7995,14 +8041,14 @@ log_dump_record_client_user_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   fprintf (out_fp, "-->> Client-User postpone Redo (After) Data:\n");
 #if defined(SA_MODE)
-  log_dump_data (thread_p, redo_length, log_lsa,
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RVCL_fun[rcvclient_index].dump_redofun !=
 		   NULL) ? RVCL_fun[rcvclient_index].
 		  dump_redofun : log_ascii_dump), NULL);
 #else /* SA_MODE */
-  log_dump_data (thread_p, redo_length, log_lsa, log_page_p, log_ascii_dump,
-		 NULL);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
+		 log_ascii_dump, NULL);
 #endif /* SA_MODE */
 
   return log_page_p;
@@ -8095,7 +8141,7 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp,
   fprintf (out_fp, ", Target log lsa = %d|%d\n", repl_log->lsa.pageid,
 	   repl_log->lsa.offset);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-  log_dump_data (thread_p, repl_log->length, log_lsa, log_page_p,
+  log_dump_data (thread_p, out_fp, repl_log->length, log_lsa, log_page_p,
 		 log_ascii_dump, NULL);
 
   return log_page_p;
@@ -8231,11 +8277,11 @@ log_dump_record_check_point (THREAD_ENTRY * thread_p, FILE * out_fp,
   length_topope =
     (sizeof (struct log_chkpt_topops_commit_posp) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
-  log_dump_data (thread_p, length_active_tran, log_lsa,
+  log_dump_data (thread_p, out_fp, length_active_tran, log_lsa,
 		 log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)
     {
-      log_dump_data (thread_p, length_active_tran, log_lsa,
+      log_dump_data (thread_p, out_fp, length_active_tran, log_lsa,
 		     log_page_p, logpb_dump_checkpoint_topops, NULL);
     }
 
@@ -8264,7 +8310,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   /* Print savept name */
   fprintf (out_fp, "     Savept Name =");
-  log_dump_data (thread_p, length_save_point, log_lsa,
+  log_dump_data (thread_p, out_fp, length_save_point, log_lsa,
 		 log_page_p, log_ascii_dump, NULL);
 
   return log_page_p;
@@ -8296,7 +8342,7 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp,
   /* Dump global transaction user information */
   if (prepared->gtrinfo_length > 0)
     {
-      log_dump_data (thread_p, prepared->gtrinfo_length, log_lsa,
+      log_dump_data (thread_p, out_fp, prepared->gtrinfo_length, log_lsa,
 		     log_page_p, log_2pc_dump_gtrinfo, NULL);
     }
 
@@ -8304,7 +8350,7 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp,
   if (nobj_locks > 0)
     {
       size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-      log_dump_data (thread_p, size, log_lsa, log_page_p,
+      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p,
 		     log_2pc_dump_acqobj_locks, NULL);
     }
 
@@ -8330,8 +8376,8 @@ log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
   /* Read in the participants info. block from the log */
-  log_dump_data (thread_p, (start_2pc->particp_id_length *
-			    start_2pc->num_particps),
+  log_dump_data (thread_p, out_fp, (start_2pc->particp_id_length *
+				    start_2pc->num_particps),
 		 log_lsa, log_page_p, log_2pc_dump_participants, NULL);
 
   return log_page_p;
@@ -8350,6 +8396,23 @@ log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, FILE * out_fp,
     ((struct log_2pc_particp_ack *) ((char *) log_page_p->area
 				     + log_lsa->offset));
   fprintf (out_fp, "  Participant index = %d\n", received_ack->particp_index);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
+log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp,
+				 LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  struct log_ha_server_state *ha_server_state;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_server_state),
+				    log_lsa, log_page_p);
+  ha_server_state =
+    ((struct log_ha_server_state *) ((char *) log_page_p->area
+				     + log_lsa->offset));
+  fprintf (out_fp, "  HA server state = %d\n", ha_server_state->state);
 
   return log_page_p;
 }
@@ -8450,6 +8513,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
       break;
 
     case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_SCHEMA:
       log_page_p =
 	log_dump_record_replication (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -8511,6 +8575,12 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
 					     log_page_p);
       break;
 
+    case LOG_DUMMY_HA_SERVER_STATE:
+      log_page_p =
+	log_dump_record_ha_server_state (thread_p, out_fp, log_lsa,
+					 log_page_p);
+      break;
+
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
@@ -8565,8 +8635,9 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
  *              This function is used for debugging purposes.
  */
 void
-log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
-	  DKNPAGES dump_npages, TRANID desired_tranid)
+xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
+	   PAGEID start_logpageid, DKNPAGES dump_npages,
+	   TRANID desired_tranid)
 {
   LOG_LSA lsa;			/* LSA of log record to dump */
   int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
@@ -8579,7 +8650,12 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
 
   LOG_ZIP *log_dump_ptr = NULL;
 
-  fprintf (stdout,
+  if (out_fp == NULL)
+    {
+      out_fp = stdout;
+    }
+
+  fprintf (out_fp,
 	   "**************** DUMP LOGGING INFORMATION ************\n");
   /* Dump the transaction table and the log buffers */
 
@@ -8587,13 +8663,13 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
   LOG_CS_ENTER (thread_p);
   log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
-  logtb_dump_trantable (thread_p, stdout);
-  logpb_dump (stdout);
+  logtb_dump_trantable (thread_p, out_fp);
+  logpb_dump (out_fp);
   logpb_force (thread_p);
   logpb_flush_header (thread_p);
 
   /* Now start dumping the log */
-  log_dump_header (stdout, &log_Gl.hdr);
+  log_dump_header (out_fp, &log_Gl.hdr);
 
   lsa.pageid = start_logpageid;
   lsa.offset = NULL_OFFSET;
@@ -8632,7 +8708,7 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
       dump_npages = log_Gl.hdr.npages;
     }
 
-  fprintf (stdout, "\n START DUMPING LOG_RECORDS: %s, start_logpageid = %d,\n"
+  fprintf (out_fp, "\n START DUMPING LOG_RECORDS: %s, start_logpageid = %d,\n"
 	   " Num_pages_to_dump = %d, desired_tranid = %d\n",
 	   (isforward ? "Forward" : "Backaward"), start_logpageid,
 	   dump_npages, desired_tranid);
@@ -8647,7 +8723,7 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
       log_dump_ptr = log_zip_alloc (LOGAREA_SIZE, false);
       if (log_dump_ptr == NULL)
 	{
-	  fprintf (stdout, " Error memory alloc... Quit\n");
+	  fprintf (out_fp, " Error memory alloc... Quit\n");
 	  return;
 	}
     }
@@ -8657,7 +8733,7 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
     {
       if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
 	{
-	  fprintf (stdout, " Error reading page %d... Quit\n", lsa.pageid);
+	  fprintf (out_fp, " Error reading page %d... Quit\n", lsa.pageid);
 	  return;
 	}
       /*
@@ -8703,12 +8779,12 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
 		|| (!LSA_EQ (&next_lsa, &log_rec->forw_lsa)
 		    && !LSA_ISNULL (&log_rec->forw_lsa)))
 	      {
-		fprintf (stdout, "\n\n>>>>>****\n");
-		fprintf (stdout,
+		fprintf (out_fp, "\n\n>>>>>****\n");
+		fprintf (out_fp,
 			 "Guess next address = %d|%d for LSA = %d|%d\n",
 			 next_lsa.pageid, next_lsa.offset, lsa.pageid,
 			 lsa.offset);
-		fprintf (stdout, "<<<<<****\n");
+		fprintf (out_fp, "<<<<<****\n");
 	      }
 	  }
 
@@ -8719,10 +8795,10 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
 		{
 		  if (log_startof_nxrec (thread_p, &lsa, false) == NULL)
 		    {
-		      fprintf (stdout, "\n****\n");
-		      fprintf (stdout,
+		      fprintf (out_fp, "\n****\n");
+		      fprintf (out_fp,
 			       "log_dump: Problems finding next record. BYE\n");
-		      fprintf (stdout, "\n****\n");
+		      fprintf (out_fp, "\n****\n");
 		      break;
 		    }
 		}
@@ -8758,7 +8834,7 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
 	      continue;
 	    }
 
-	  fprintf (stdout, "\nLSA = %3d|%3d, Forw log = %3d|%3d,"
+	  fprintf (out_fp, "\nLSA = %3d|%3d, Forw log = %3d|%3d,"
 		   " Backw log = %3d|%3d,\n"
 		   "     Trid = %3d, Prev tran logrec = %3d|%3d\n"
 		   "     Type = %s",
@@ -8773,10 +8849,10 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
 	      if (type != LOG_DUMMY_FILLPAGE_FORARCHIVE)
 		{
 		  /* Incomplete log record... quit */
-		  fprintf (stdout, "\n****\n");
-		  fprintf (stdout,
+		  fprintf (out_fp, "\n****\n");
+		  fprintf (out_fp,
 			   "log_dump: Incomplete log_record.. Quit\n");
-		  fprintf (stdout, "\n****\n");
+		  fprintf (out_fp, "\n****\n");
 		}
 	      continue;
 	    }
@@ -8805,11 +8881,10 @@ log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
       log_zip_free (log_dump_ptr);
     }
 
-  fprintf (stdout, "\n FINISH DUMPING LOG_RECORDS \n");
-  fprintf (stdout,
+  fprintf (out_fp, "\n FINISH DUMPING LOG_RECORDS \n");
+  fprintf (out_fp,
 	   "******************************************************\n");
-  fflush (stdout);
-  fflush (stderr);
+  fflush (out_fp);
 
   return;
 }
@@ -9354,6 +9429,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    case LOG_REPLICATION_SCHEMA:
 	    case LOG_UNLOCK_COMMIT:
 	    case LOG_UNLOCK_ABORT:
+	    case LOG_DUMMY_HA_SERVER_STATE:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -9725,6 +9801,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			case LOG_REPLICATION_SCHEMA:
 			case LOG_UNLOCK_COMMIT:
 			case LOG_UNLOCK_ABORT:
+			case LOG_DUMMY_HA_SERVER_STATE:
 			  break;
 
 			case LOG_POSTPONE:
@@ -10276,10 +10353,10 @@ log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * NOTE:Dump the information to recover a set of characters/bytes.
  */
 void
-log_rv_dump_char (int length, void *data)
+log_rv_dump_char (FILE * fp, int length, void *data)
 {
-  log_ascii_dump (length, data);
-  fprintf (stdout, "\n");
+  log_ascii_dump (fp, length, data);
+  fprintf (fp, "\n");
 }
 
 /*

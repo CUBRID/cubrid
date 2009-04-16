@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -338,7 +338,7 @@ parse_user_define_line (char *line_buffer, FILE * output_file)
 static int
 parse_user_define_file (FILE * user_define_file, FILE * output_file)
 {
-  int status;
+  int status = NO_ERROR;
   int line_number = 1;
   char line_buffer[MAX_LINE_LEN];
 
@@ -368,6 +368,7 @@ int
 createdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   int status;
   FILE *output_file = NULL;
   FILE *user_define_file = NULL;
@@ -475,7 +476,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
 					MSGCAT_UTIL_SET_CREATEDB,
 					CREATEDB_MSG_CREATING),
 	   volume_page_count);
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
   db_login ("dba", NULL);
   status = db_init (program_name, true, database_name, volume_path,
 		    NULL, log_path, host_name, overwrite, comment,
@@ -563,7 +571,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql_arg.auto_commit = true;
       csql_arg.db_name = database_name;
       csql_arg.in_file_name = init_file_name;
-      csql (arg->argv0, &csql_arg);
+      csql (arg->command_name, &csql_arg);
     }
 
   return EXIT_SUCCESS;
@@ -593,6 +601,7 @@ int
 deletedb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   FILE *output_file = NULL;
   const char *output_file_name;
   const char *database_name;
@@ -635,7 +644,12 @@ deletedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
   if (boot_delete (database_name, force_delete) != NO_ERROR)
     {
@@ -738,7 +752,7 @@ int
 restoredb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-
+  char er_msg_file[PATH_MAX];
   int status;
   struct tm time_data;
   char *up_to_date;
@@ -797,7 +811,12 @@ restoredb (UTIL_FUNCTION_ARG * arg)
       restart_arg.stopat = time (NULL);
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
   if (partial_recovery == true)
     {
@@ -843,6 +862,7 @@ int
 renamedb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *src_db_name;
   const char *dest_db_name;
   const char *ext_path;
@@ -887,9 +907,14 @@ renamedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, src_db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
       fprintf (stdout, "%s\n", db_error_string (3));
       goto error_exit;
@@ -929,6 +954,7 @@ int
 installdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *server_name;
   const char *db_path;
   const char *log_path;
@@ -980,9 +1006,14 @@ installdb (UTIL_FUNCTION_ARG * arg)
 
   cfg_added = true;
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1028,6 +1059,7 @@ int
 copydb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *src_db_name;
   const char *dest_db_name;
   const char *server_name;
@@ -1073,10 +1105,15 @@ copydb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (arg->argv0, TRUE, src_db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1110,6 +1147,7 @@ int
 optimizedb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *class_name;
   int status;
@@ -1131,9 +1169,14 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1193,6 +1236,7 @@ int
 diagdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *db_name;
   DIAGDUMP_TYPE diag;
 
@@ -1209,9 +1253,14 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
-  if (db_restart (arg->argv0, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
       fprintf (stdout, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1226,21 +1275,21 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps the allocated file stats */
       printf ("\n*** DUMP OF FILE STATISTICS ***\n");
-      file_tracker_dump (NULL);
+      file_tracker_dump (NULL, stdout);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       printf ("\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      file_dump_all_capacities (NULL);
+      file_dump_all_capacities (NULL, stdout);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       printf ("\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      heap_dump_all_capacities (NULL);
+      heap_dump_all_capacities (NULL, stdout);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
@@ -1248,7 +1297,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps lower level info about capacity of
        * all indices */
       printf ("\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      btree_dump_capacity_all (NULL);
+      btree_dump_capacity_all (NULL, stdout);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
@@ -1262,14 +1311,14 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps lower level info about the disk */
       printf ("\n*** DUMP OF DISK STATISTICS ***\n");
-      disk_dump_all (NULL);
+      disk_dump_all (NULL, stdout);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CATALOG)
     {
       /* this dumps the content of catalog */
       printf ("\n*** DUMP OF CATALOG ***\n");
-      catalog_dump (NULL, 1);
+      catalog_dump (NULL, stdout, 1);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_LOG)
@@ -1294,8 +1343,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       while (yn[0] != 'y');
       printf ("\n*** DUMP OF LOG ***\n");
-      log_dump (NULL, isforward, start_logpageid, dump_npages,
-		desired_tranid);
+      xlog_dump (NULL, stdout, isforward, start_logpageid, dump_npages,
+		 desired_tranid);
     }
   db_shutdown ();
 
@@ -1581,7 +1630,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   int dbtxt_vdes = NULL_VOLDES;
   int log_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  char *alloc_serverhost = NULL;
+  char host_name_buf[MAXHOSTNAMELEN + 1];
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   const char *log_prefix;
@@ -1603,17 +1652,17 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   /* If a host was not given, assume the current host */
   if (host_name == NULL)
     {
-      if ((alloc_serverhost = (char *) malloc (MAXHOSTNAMELEN)) == NULL)
-	{
-	  goto error;
-	}
-      if (GETHOSTNAME (alloc_serverhost, MAXHOSTNAMELEN) != 0)
+#if 0				/* use Unix-domain socket for localhost */
+      if (GETHOSTNAME (host_name_buf, MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  goto error;
 	}
-      host_name = alloc_serverhost;
+#else
+      strcpy (host_name_buf, "localhost");
+#endif
+      host_name = host_name_buf;
     }
 
   /* get the database directory information in write mode */
@@ -1685,7 +1734,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 	{
 	  cfg_free_hosts (db->hosts);
 	}
-      db->hosts = cfg_get_hosts (db->name, host_name, &num_hosts, true);
+      db->hosts = cfg_get_hosts (host_name, &num_hosts, false);
     }
 
   /* Dismount lgat */
@@ -1714,10 +1763,6 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       fileio_dismount (dbtxt_vdes);
     }
 
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
-    }
   return EXIT_SUCCESS;
 
 error:
@@ -1734,10 +1779,6 @@ error:
       fileio_dismount (dbtxt_vdes);
     }
 
-  if (alloc_serverhost)
-    {
-      free_and_init (alloc_serverhost);
-    }
   return EXIT_FAILURE;
 
 print_alterdbhost_usage:

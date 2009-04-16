@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,13 +19,15 @@
 
 
 /*
- * recovery.h: recovery functions (at server) 
+ * recovery.h: recovery functions (at server)
  */
 
 #ifndef _RECOVERY_H_
 #define _RECOVERY_H_
 
 #ident "$Id$"
+
+#include <stdio.h>
 
 #include "log_comm.h"
 #include "error_manager.h"
@@ -34,7 +36,7 @@
 typedef enum
 {
   /*
-     RULE ********************************************* 
+     RULE *********************************************
 
      NEW ENTRIES SHOULD BE ADDED AT THE BOTTON OF THE FILE TO AVOID FULL
      RECOMPILATIONS (e.g., the file can be utimed) and to AVOID OLD DATABASES
@@ -152,13 +154,13 @@ typedef enum
 } LOG_RCVINDEX;
 
 /*
- * RECOVERY STRUCTURE SEEN BY RECOVERY FUNCTIONS                 
+ * RECOVERY STRUCTURE SEEN BY RECOVERY FUNCTIONS
  */
 typedef struct log_rcv LOG_RCV;
 struct log_rcv
 {				/* Recovery information */
   PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery
-				   functions, however it should be set dirty whenever is 
+				   functions, however it should be set dirty whenever is
 				   needed
 				 */
   PGLENGTH offset;		/* Offset/slot of data in the above page to recover    */
@@ -169,7 +171,7 @@ struct log_rcv
 };
 
 /*
- * STRUCTURE ENTRY OF RECOVERY FUNCTIONS                     
+ * STRUCTURE ENTRY OF RECOVERY FUNCTIONS
  */
 
 struct rvfun
@@ -178,8 +180,8 @@ struct rvfun
   const char *recv_string;
   int (*undofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);	/* Undo function      */
   int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);	/* Redo function      */
-  void (*dump_undofun) (int length, void *data);	/* Dump undo function */
-  void (*dump_redofun) (int length, void *data);	/* Dump redo function */
+  void (*dump_undofun) (FILE * fp, int length, void *data);	/* Dump undo function */
+  void (*dump_redofun) (FILE * fp, int length, void *data);	/* Dump redo function */
 };
 
 extern struct rvfun RV_fun[];

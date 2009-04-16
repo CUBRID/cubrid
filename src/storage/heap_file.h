@@ -433,13 +433,14 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					 HEAP_SCANCACHE * scan_cache);
 
 /* For Debugging */
-extern void heap_dump (THREAD_ENTRY * thread_p, HFID * hfid, bool rec_p);
-extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p,
+extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid,
+		       bool rec_p);
+extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				HEAP_CACHE_ATTRINFO * attr_info,
 				bool dump_schema);
-extern void heap_dump_all (THREAD_ENTRY * thread_p, bool rec_p);
-extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p);
-extern void heap_chnguess_dump (void);
+extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool rec_p);
+extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern void heap_chnguess_dump (FILE * fp);
 
 /* partition-support */
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p,
@@ -453,8 +454,9 @@ extern int heap_attrinfo_set_uninitalized_global (THREAD_ENTRY * thread_p,
 /* Recovery functions */
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void heap_rv_dump_statistics (int ignore_length, void *data);
-extern void heap_rv_dump_chain (int ignore_length, void *data);
+extern void heap_rv_dump_statistics (FILE * fp, int ignore_length,
+				     void *data);
+extern void heap_rv_dump_chain (FILE * fp, int ignore_length, void *data);
 extern int heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -465,6 +467,6 @@ extern int heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_update_type (THREAD_ENTRY * thread_p,
 					 LOG_RCV * rcv);
 extern int heap_rv_redo_reuse (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void heap_rv_dump_reuse (int ignore_length, void *data);
+extern void heap_rv_dump_reuse (FILE * fp, int ignore_length, void *data);
 
 #endif /* _HEAP_FILE_H_ */

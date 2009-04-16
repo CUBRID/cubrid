@@ -46,13 +46,12 @@ import java.text.NumberFormat;
 import java.util.Vector;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.action.IMenuListener;
 import org.eclipse.jface.action.IMenuManager;
+import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.ToolBarManager;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DefaultUndoManager;
 import org.eclipse.jface.text.FindReplaceDocumentAdapter;
@@ -80,6 +79,8 @@ import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.VerifyEvent;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
@@ -88,12 +89,15 @@ import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.ProgressBar;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
 import org.eclipse.swt.widgets.Table;
@@ -174,7 +178,7 @@ public class QueryEditor extends ViewPart {
 	private TabItem logTabResult = null;
 	private File file = null;
 	private String fileName = null;
-	private Connection conn;
+	private Connection queryConn;
 	private boolean isAutocommit = MainRegistry.queryEditorOption.autocommit;
 	// private ToolItem itemPaste = null;
 	// private ToolItem itemCut = null;
@@ -200,11 +204,16 @@ public class QueryEditor extends ViewPart {
 	public boolean isQueryPlanDlgOpen = false;
 	private Vector vectorQueryPlans = new Vector();
 	private boolean useCompletions = true;
-	private Job runJob = null;
 	private Text logSqlText = null;
 	private StyledText logMessagesArea = null;
 	private int line = 0;
 	private Color lineNumColor = null;
+	private Thread queryThread;
+	private ProgressBar runQueryPb;
+	private Button stopButton;
+	private String conStr;
+	private QueryExecuter result = null;
+	private boolean isCancel = false;
 
 	public QueryEditor() throws SQLException, ClassNotFoundException {
 		super();
@@ -225,13 +234,13 @@ public class QueryEditor extends ViewPart {
 		qe = this;
 		setUpDocument();
 
-		String conStr = WorkView.connector.getConnectionStr();
+		conStr = WorkView.connector.getConnectionStr();
 		if (WorkView.EditorSequence != null)
 			EditorSequence = new String(WorkView.EditorSequence);
 		if (WorkView.EditorCommand != null)
 			EditorCommand = new String(WorkView.EditorCommand);
 
-		setConnection(conStr);
+		queryConn = getConnection(conStr);
 	}
 
 	/**
@@ -295,7 +304,7 @@ public class QueryEditor extends ViewPart {
 
 		parent.addDisposeListener(new DisposeListener() {
 			public void widgetDisposed(DisposeEvent e) {
-				if (conn != null) {
+				if (queryConn != null) {
 					if (!isAutocommit && isActive) {
 						MessageBox mb = new MessageBox(Application.mainwindow
 								.getShell(), SWT.ICON_QUESTION | SWT.YES
@@ -306,9 +315,9 @@ public class QueryEditor extends ViewPart {
 						int state = mb.open();
 						try {
 							if (state == SWT.YES)
-								conn.commit();
+								queryConn.commit();
 							else
-								conn.rollback();
+								queryConn.rollback();
 						} catch (Exception ee) {
 						}
 					}
@@ -322,22 +331,23 @@ public class QueryEditor extends ViewPart {
 				if (editorCommand[1].equals("SELECTALL")) {
 					setPartName(Messages.getString("TOOL.TABLESELECTALLACTION")
 							+ " " + editorCommand[0]);
-					conn
+					queryConn
 							.setTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED);
-					((CUBRIDConnection) conn).setLockTimeout(1);
+					((CUBRIDConnection) queryConn).setLockTimeout(1);
 					String sql = "select * from \"" + editorCommand[0] + "\";";
 					txaEdit.setText(sql);
 					runQuery(sql);
 				} else if (editorCommand[1].equals("SCRIPTRUN")) {
 					setPartName(Messages.getString("TITLE.SCRIPTRUN"));
-					conn
+					queryConn
 							.setTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED);
-					((CUBRIDConnection) conn).setLockTimeout(1);
+					((CUBRIDConnection) queryConn).setLockTimeout(1);
 				}
 			} catch (SQLException e1) {
 				CommonTool.debugPrint(e1);
 			}
 		}
+		initializeToolBar();
 
 		// TODO : File save routine when closing windows.
 		/*
@@ -350,17 +360,16 @@ public class QueryEditor extends ViewPart {
 	public void dispose() {
 		super.dispose();
 		try {
-			if (runJob != null) {
-				runJob.cancel();
-				runJob = null;
-			}
-			if (conn != null)
-				conn.close();
+			if (queryConn != null)
+				queryConn.close();
+			if (queryThread != null && !queryThread.isInterrupted())
+				queryThread.interrupt();
+			queryThread = null;
 			clearResult();
 		} catch (Exception e) {
 			CommonTool.debugPrint(e);
 		} finally {
-			conn = null;
+			queryConn = null;
 			if (font != null)
 				font.dispose();
 			if (document != null) {
@@ -789,7 +798,7 @@ public class QueryEditor extends ViewPart {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						try {
-							conn.commit();
+							queryConn.commit();
 							setActive(false);
 						} catch (SQLException ex) {
 							CommonTool.ErrorBox(ex.getErrorCode()
@@ -814,7 +823,7 @@ public class QueryEditor extends ViewPart {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						try {
-							conn.rollback();
+							queryConn.rollback();
 							setActive(false);
 						} catch (SQLException ex) {
 							CommonTool.ErrorBox(ex.getErrorCode()
@@ -1215,7 +1224,7 @@ public class QueryEditor extends ViewPart {
 
 	public void RollBackAction() {
 		try {
-			conn.rollback();
+			queryConn.rollback();
 			setActive(false);
 		} catch (SQLException ex) {
 			CommonTool.ErrorBox(ex.getErrorCode() + MainConstants.NEW_LINE
@@ -1349,12 +1358,12 @@ public class QueryEditor extends ViewPart {
 		isClosing = true;
 
 		try {
-			if (conn != null)
-				conn.close();
+			if (queryConn != null)
+				queryConn.close();
 		} catch (Exception e) {
 			CommonTool.debugPrint(e);
 		} finally {
-			conn = null;
+			queryConn = null;
 		}
 		return true;
 	}
@@ -1481,7 +1490,7 @@ public class QueryEditor extends ViewPart {
 		isAutocommit = autocommit;
 		setActive(false);
 		try {
-			conn.setAutoCommit(isAutocommit);
+			queryConn.setAutoCommit(isAutocommit);
 		} catch (SQLException e) {
 			CommonTool.ErrorBox(Messages.getString("QEDIT.SETAUTOCOMMITERR")
 					+ MainConstants.NEW_LINE + e.getErrorCode()
@@ -1491,10 +1500,10 @@ public class QueryEditor extends ViewPart {
 		}
 	}
 
-	private void setConnection(String conStr) {
+	private Connection getConnection(String conStr) {
 		try {
 			Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-			conn = DriverManager.getConnection(conStr);
+			Connection conn = DriverManager.getConnection(conStr);
 			if (MainRegistry.isProtegoBuild()) {
 				conKey = ((CUBRIDConnection) conn)
 						.Login(MainRegistry.UserSignedData);
@@ -1502,6 +1511,7 @@ public class QueryEditor extends ViewPart {
 			}
 
 			conn.setAutoCommit(isAutocommit);
+			return conn;
 
 		} catch (SQLException e) {
 			CommonTool.ErrorBox(Messages.getString("QEDIT.SETCONNERR")
@@ -1515,6 +1525,7 @@ public class QueryEditor extends ViewPart {
 					+ Messages.getString("QEDIT.ERRORHEAD") + e.getMessage());
 			CommonTool.debugPrint(e);
 		}
+		return null;
 	}
 
 	private void runQuery() {
@@ -1538,13 +1549,15 @@ public class QueryEditor extends ViewPart {
 		CUBRIDStatement statement = null;
 
 		qVector = queriesToQuery(queries);
+		Connection queryPlanConn = getConnection(conStr);
 		int i = 0;
 		try {
 			for (i = 0; i < qVector.size(); i++) {
 				String sql = qVector.get(i).toString();
-				statement = (CUBRIDStatement) conn.createStatement();
+				String fileterSql = SqlParser.convertComment(sql);
+				statement = (CUBRIDStatement) queryPlanConn.createStatement();
 				vectorQueryPlans.add(new StructQueryPlan(sql, statement
-						.getQueryplan(sql)));
+						.getQueryplan(fileterSql)));
 				QueryUtil.freeQuery(statement);
 			}
 		} catch (Exception ee) {
@@ -1558,7 +1571,7 @@ public class QueryEditor extends ViewPart {
 
 			if (isAutocommit)
 				try {
-					conn.rollback();
+					queryPlanConn.rollback();
 				} catch (SQLException e1) {
 				}
 
@@ -1596,6 +1609,7 @@ public class QueryEditor extends ViewPart {
 			CommonTool.debugPrint(ee);
 		} finally {
 			QueryUtil.freeQuery(statement);
+			QueryUtil.freeQuery(queryPlanConn);
 		}
 		itemRun.setEnabled(true);
 		itemQueryPlan.setEnabled(true);
@@ -1607,14 +1621,11 @@ public class QueryEditor extends ViewPart {
 		logTabResult = null;
 		itemRun.setEnabled(false);
 		itemQueryPlan.setEnabled(false);
-		if (runJob != null) {
-			runJob.cancel();
-			runJob = null;
-		}
-		runJob = new Job(Messages.getString("PROGRESSMONITOR.RUNQUERY")) {
-			public IStatus run(IProgressMonitor monitor) {
+		isCancel = false;
+		makeProgressBar();
+		queryThread = new Thread(Messages.getString("PROGRESSMONITOR.RUNQUERY")) {
+			public void run() {
 				final Vector qVector = queriesToQuery(queries);
-				monitor.beginTask("", qVector.size() * 2 + 2);
 				vectorQueryPlans.clear();
 				int i = 0;
 				int cntResults = 0;
@@ -1626,25 +1637,22 @@ public class QueryEditor extends ViewPart {
 				double elapsedTime = 0.0;
 				NumberFormat nf = NumberFormat.getInstance();
 				nf.setMaximumFractionDigits(3);
-				QueryExecuter result = null;
 				String multiQuerySql = null;
 				try {
-					if (qVector.size() > 0 && !monitor.isCanceled())
-						isIsolationHigher = isIsolationHigherThanRepeatableRead(conn, isActive);
-					monitor.worked(1);
-					for (i = 0; i < qVector.size() && !monitor.isCanceled(); i++) {
+					if (qVector.size() > 0)
+						isIsolationHigher = isIsolationHigherThanRepeatableRead(queryConn, isActive);
+					for (i = 0; i < qVector.size(); i++) {
 						String sql = qVector.get(i).toString();
-						monitor.subTask(i + 1 + Messages.getString("TASK.QUERYDESC"));
 						if (MainRegistry.queryEditorOption.recordlimit > 0) {
 							multiQuerySql = SqlParser.parse(sql);
 						}
 						if (multiQuerySql == null) {
 							beginTimestamp = System.currentTimeMillis();
-							stmt = (CUBRIDPreparedStatement) conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY,
+							String fileterSql = SqlParser.convertComment(sql);
+							stmt = (CUBRIDPreparedStatement) queryConn.prepareStatement(fileterSql, ResultSet.TYPE_FORWARD_ONLY,
 							        (MainRegistry.queryEditorOption.oidinfo) ? ResultSet.CONCUR_UPDATABLE
 							                : ResultSet.CONCUR_READ_ONLY, ResultSet.HOLD_CURSORS_OVER_COMMIT);
 						}
-						monitor.worked(1);
 						if (multiQuerySql != null) {
 							result = new QueryExecuter(QueryEditor.this, cntResults, "");
 							result.setMultiQuerySql(multiQuerySql);
@@ -1758,14 +1766,13 @@ public class QueryEditor extends ViewPart {
 								vectorQueryPlans.add(new StructQueryPlan(sql, ""));
 						}
 						QueryUtil.freeQuery(stmt, rs);
-						monitor.worked(1);
 					}
-					if (isAutocommit && !monitor.isCanceled())
-						conn.commit();
+					if (isAutocommit)
+						queryConn.commit();
 				} catch (final SQLException e) {
 					try {
-						if (isAutocommit && !monitor.isCanceled())
-							conn.rollback();
+						if (isAutocommit)
+							queryConn.rollback();
 					} catch (SQLException e1) {
 					}
 					if (multiQuerySql != null && result != null) {
@@ -1787,15 +1794,31 @@ public class QueryEditor extends ViewPart {
 						        + Messages.getString("QEDIT.ERRORHEAD") + e.getMessage();
 						CommonTool.debugPrint(e);
 					}
-				} finally {
+				}finally {
+					if (logs.trim().length() > 0 && isCancel) {
+						logs = Messages.getString("QUERY.CANCEL");
+					}
 					final String logsBak = logs;
 					final String noSelectSqlBak = noSelectSql;
 					final int cntResultsBak = i;
 					final boolean hasModifyQueryBak = hasModifyQuery;
 					final boolean isIsolationHigherBak = isIsolationHigher;
-					Application.mainwindow.getShell().getDisplay().syncExec(new Runnable() {
+					if (Application.mainwindow == null)
+						return;
+					Shell shell = Application.mainwindow.getShell();
+					if(shell==null || shell.isDisposed())
+						return;
+					Display display = shell.getDisplay();
+					if(display==null || display.isDisposed())
+						return;
+					display.syncExec(new Runnable() {
 						public void run() {
 							if (tabMiddle != null && !tabMiddle.isDisposed()) {
+								while (tabMiddle.getItemCount() > 0) {
+									if (!tabMiddle.getItem(0).getControl().isDisposed())
+										tabMiddle.getItem(0).getControl().dispose();
+									tabMiddle.getItem(0).dispose();
+								}
 								if (cntResultsBak < 1 && logsBak.trim().length() <= 0)
 									makeEmptyResult();
 								else {
@@ -1809,8 +1832,8 @@ public class QueryEditor extends ViewPart {
 
 								if (!hasModifyQueryBak && !isIsolationHigherBak) {
 									try {
-										if (conn != null && !conn.isClosed())
-											conn.commit();
+										if (queryConn != null && !queryConn.isClosed())
+											queryConn.commit();
 									} catch (SQLException e) {
 										CommonTool.debugPrint(e);
 									}
@@ -1824,13 +1847,49 @@ public class QueryEditor extends ViewPart {
 						}
 					});
 					QueryUtil.freeQuery(stmt, rs);
-					monitor.worked(1);
-					monitor.done();
 				}
-				return Status.OK_STATUS;
 			}
 		};
-		runJob.schedule();
+		queryThread.start();
+	}
+	
+	private void makeProgressBar() {
+		if (tabMiddle == null || tabMiddle.isDisposed()) {
+			return;
+		}
+		Composite comp = new Composite(tabMiddle, SWT.NONE);
+		comp.setLayout(new GridLayout(6, true));
+		runQueryPb = new ProgressBar(comp, SWT.HORIZONTAL | SWT.INDETERMINATE);
+		GridData gridData = new GridData(GridData.FILL_HORIZONTAL);
+		gridData.horizontalSpan = 5;
+		runQueryPb.setLayoutData(gridData);
+
+		stopButton = new Button(comp, SWT.PUSH);
+		stopButton.setText(Messages.getString("BUTTON.STOP"));
+		gridData = new GridData(GridData.FILL_HORIZONTAL);
+		gridData.horizontalSpan = 1;
+		stopButton.setLayoutData(gridData);
+
+		stopButton.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				if (queryThread != null) {
+					isCancel = true;
+					if (result != null)
+						result.dispose();
+					try {
+						if (stmt != null){
+							stmt.cancel();
+						}
+					} catch (SQLException e1) {
+					}
+					QueryUtil.freeQuery(stmt, rs);
+					queryThread = null;
+				}
+			}
+		});
+		TabItem tab = new TabItem(tabMiddle, SWT.NONE);
+		tab.setText(Messages.getString("PROGRESSMONITOR.RUNQUERY"));
+		tab.setControl(comp);
 	}
 
 	private void makeResult(QueryExecuter result) {
@@ -1947,14 +2006,14 @@ public class QueryEditor extends ViewPart {
 
 	public void updateResult(String strOid, String column, String value)
 			throws SQLException {
-		CUBRIDOID oid = CUBRIDOID.getNewInstance((CUBRIDConnection) conn,
+		CUBRIDOID oid = CUBRIDOID.getNewInstance((CUBRIDConnection) queryConn,
 				strOid);
 		if (value.equals(STR_NULL))
 			value = null;
 		oid.setValues(new String[] { column }, new Object[] { value });
 
 		if (isAutocommit)
-			conn.commit();
+			queryConn.commit();
 
 		setActive(true);
 
@@ -1965,11 +2024,11 @@ public class QueryEditor extends ViewPart {
 	public void deleteResult(String[] strOid) throws SQLException {
 		int i = 0;
 		for (i = 0; i < strOid.length; i++)
-			CUBRIDOID.getNewInstance((CUBRIDConnection) conn, strOid[i])
+			CUBRIDOID.getNewInstance((CUBRIDConnection) queryConn, strOid[i])
 					.remove();
 
 		if (isAutocommit)
-			conn.commit();
+			queryConn.commit();
 
 		setActive(true);
 
@@ -1978,14 +2037,14 @@ public class QueryEditor extends ViewPart {
 	}
 
 	public Connection getConnection() {
-		return conn;
+		return queryConn;
 	}
 
 	private String createDropEventQuery(String table) {
 		String query = new String();
 		String columns = new String();
 		try {
-			DatabaseMetaData dbmd = conn.getMetaData();
+			DatabaseMetaData dbmd = queryConn.getMetaData();
 			ResultSet column = dbmd.getColumns(null, null, table, null);
 			boolean isFirst = true;
 			while (column.next()) {
@@ -2338,5 +2397,8 @@ public class QueryEditor extends ViewPart {
 			CommonTool.debugPrint(e);
 			return false;
 		}
+	}
+	private void initializeToolBar() {
+		IToolBarManager toolBarManager = getViewSite().getActionBars().getToolBarManager();
 	}
 }

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -68,7 +68,12 @@ typedef enum
   MSGCAT_UTIL_SET_LOADJAVA = 34,
   MSGCAT_UTIL_SET_REPLSERVER = 35,
   MSGCAT_UTIL_SET_REPLAGENT = 36,
-  MSGCAT_UTIL_SET_PLANDUMP = 37
+  MSGCAT_UTIL_SET_PLANDUMP = 37,
+  MSGCAT_UTIL_SET_PARAMDUMP = 38,
+  MSGCAT_UTIL_SET_CHANGEMODE = 39,
+  MSGCAT_UTIL_SET_COPYLOGDB = 40,
+  MSGCAT_UTIL_SET_APPLYLOGDB = 41,
+  MSGCAT_UTIL_SET_LOGFILEDUMP = 42
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -264,6 +269,7 @@ typedef enum
 typedef enum
 {
   LOCKDB_MSG_BAD_OUTPUT = 15,
+  LOCKDB_MSG_NOT_IN_STANDALONE = 59,
   LOCKDB_MSG_USAGE = 60
 } MSGCAT_LOCKDB_MSG;
 
@@ -282,6 +288,7 @@ typedef enum
   KILLTRAN_MSG_KILLING = 29,
   KILLTRAN_MSG_KILL_FAILED = 30,
   KILLTRAN_MSG_KILL_TIMEOUT = 31,
+  KILLTRAN_MSG_NOT_IN_STANDALONE = 59,
   KILLTRAN_MSG_USAGE = 60
 } MSGCAT_KILLTRAN_MSG;
 
@@ -289,6 +296,7 @@ typedef enum
 typedef enum
 {
   PLANDUMP_MSG_BAD_OUTPUT = 15,
+  PLANDUMP_MSG_NOT_IN_STANDALONE = 59,
   PLANDUMP_MSG_USAGE = 60
 } MSGCAT_PLANDUMP_MSG;
 
@@ -465,6 +473,49 @@ typedef enum
   MIGDB_MSG_FH_PAGE_BITMAP_SIZE = 26
 } MSGCAT_MIGDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_PARAMDUMP */
+typedef enum
+{
+  PARAMDUMP_MSG_BAD_OUTPUT = 11,
+  PARAMDUMP_MSG_USAGE = 60
+} MSGCAT_PARAMDUMP_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_CHANGEMODE */
+typedef enum
+{
+  CHANGEMODE_MSG_BAD_MODE = 11,
+  CHANGEMODE_MSG_CANNOT_CHANGE = 12,
+  CHANGEMODE_MSG_DBA_PASSWORD = 21,
+  CHANGEMODE_MSG_SERVER_MODE = 22,
+  CHANGEMODE_MSG_SERVER_MODE_CHANGED = 23,
+  CHANGEMODE_MSG_NOT_IN_STANDALONE = 59,
+  CHANGEMODE_MSG_USAGE = 60
+} MSGCAT_CHANGEMODE_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_COPYLOGDB */
+typedef enum
+{
+  COPYLOGDB_MSG_BAD_MODE = 11,
+  COPYLOGDB_MSG_DBA_PASSWORD = 21,
+  COPYLOGDB_MSG_NOT_IN_STANDALONE = 59,
+  COPYLOGDB_MSG_USAGE = 60
+} MSGCAT_COPYLOGDB_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_APPLYLOGDB */
+typedef enum
+{
+  APPLYLOGDB_MSG_DBA_PASSWORD = 21,
+  APPLYLOGDB_MSG_NOT_IN_STANDALONE = 59,
+  APPLYLOGDB_MSG_USAGE = 60
+} MSGCAT_APPLYLOGDB_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_LOGFILEDUMP */
+typedef enum
+{
+  LOGFILEDUMP_MSG_USAGE = 60
+} MSGCAT_LOGFILEDUMP_MSG;
+
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -490,7 +541,12 @@ typedef enum
   ESTIMATE_INDEX,
   LOADDB,
   UNLOADDB,
-  COMPACTDB
+  COMPACTDB,
+  PARAMDUMP,
+  CHANGEMODE,
+  COPYLOGDB,
+  APPLYLOGDB,
+  LOGFILEDUMP
 } UTIL_INDEX;
 
 typedef enum
@@ -556,6 +612,7 @@ typedef struct
 #define UTIL_CSQL_NAME          "csql" UTIL_EXE_EXT
 #define UTIL_CUBRID_REL_NAME    "cubrid_rel" UTIL_EXE_EXT
 #define UTIL_OLD_COMMDB_NAME    "commdb" UTIL_EXE_EXT
+#define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -616,6 +673,11 @@ typedef struct
 #define UTIL_OPTION_LOADDB                      "loaddb"
 #define UTIL_OPTION_UNLOADDB                    "unloaddb"
 #define UTIL_OPTION_COMPACTDB                   "compactdb"
+#define UTIL_OPTION_PARAMDUMP                   "paramdump"
+#define UTIL_OPTION_CHANGEMODE                  "changemode"
+#define UTIL_OPTION_COPYLOGDB                   "copylogdb"
+#define UTIL_OPTION_APPLYLOGDB                  "applylogdb"
+#define UTIL_OPTION_LOGFILEDUMP                 "logfiledump"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -798,8 +860,8 @@ typedef struct
 #define KILLTRAN_DBA_PASSWORD_L                 "dba-password"
 #define KILLTRAN_DISPLAY_INFORMATION_S          'd'
 #define KILLTRAN_DISPLAY_INFORMATION_L          "display-information"
-#define KILLTRAN_CONFIRM_S                      'c'
-#define KILLTRAN_CONFIRM_L                      "confirm"
+#define KILLTRAN_FORCE_S                        'f'
+#define KILLTRAN_FORCE_L                        "force"
 
 /* loaddb option list */
 #define LOAD_USER_S                             'u'
@@ -916,6 +978,40 @@ typedef struct
 #define COMMDB_HOST_S                           'h'
 #define COMMDB_HOST_L                           "host"
 
+/* paramdump option list */
+#define PARAMDUMP_OUTPUT_FILE_S                        'o'
+#define PARAMDUMP_OUTPUT_FILE_L                 "output-file"
+#define PARAMDUMP_SA_MODE_S                     'S'
+#define PARAMDUMP_SA_MODE_L                     "SA-mode"
+#define PARAMDUMP_CS_MODE_S                     'C'
+#define PARAMDUMP_CS_MODE_L                     "CS-mode"
+
+/* changemode option list */
+#define CHANGEMODE_MODE_S                       'm'
+#define CHANGEMODE_MODE_L                       "mode"
+#define CHANGEMODE_WAIT_S                       'w'
+#define CHANGEMODE_WAIT_L                       "wait"
+#define CHANGEMODE_FORCE_S                      'f'
+#define CHANGEMODE_FORCE_L                      "force"
+#define CHANGEMODE_DBA_PASSWORD_S               'p'
+#define CHANGEMODE_DBA_PASSWORD_L               "dba-password"
+
+/* copylogdb option list */
+#define COPYLOG_LOG_PATH_S                      'L'
+#define COPYLOG_LOG_PATH_L                      "log-path"
+#define COPYLOG_MODE_S                          'm'
+#define COPYLOG_MODE_L                          "mode"
+#define COPYLOG_DBA_PASSWORD_S                  'p'
+#define COPYLOG_DBA_PASSWORD_L                  "dba-password"
+
+/* applylogdb option list */
+#define APPLYLOG_LOG_PATH_S                     'L'
+#define APPLYLOG_LOG_PATH_L                     "log-path"
+#define APPLYLOG_DBA_PASSWORD_S                 'p'
+#define APPLYLOG_DBA_PASSWORD_L                 "dba-password"
+#define APPLYLOG_TEST_LOG_S                     't'
+#define APPLYLOG_TEST_LOG_L                     "test-log"
+
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
@@ -946,6 +1042,15 @@ extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map,
 extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
 
 extern FILE *fopen_ex (const char *filename, const char *type);
+
+typedef struct
+{
+  int keyval;
+  char *keystr;
+} UTIL_KEYWORD;
+
+extern int utility_keyword_value (UTIL_KEYWORD * keywords,
+				  int *keyval_p, char **keystr_p);
 
 /* admin utility main functions */
 typedef struct
@@ -984,5 +1089,9 @@ extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
 extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
 extern int estimatedb_hash (UTIL_FUNCTION_ARG * arg_map);
 extern int alterdbhost (UTIL_FUNCTION_ARG * arg_map);
+extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
+extern int changemode (UTIL_FUNCTION_ARG * arg_map);
+extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
+extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
 
 #endif /* _UTILITY_H_ */

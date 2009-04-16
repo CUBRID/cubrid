@@ -2643,9 +2643,19 @@ public class ClientSocket {
 		String Priority = "";
 		Trigger tr = null;
 		for (int i = 10, n = toks.length; i < n;) {
-			if (toks[i].equals("open") && toks[i + 1].equals("triggerinfo"))
+			if (toks[i].equals("open") && toks[i + 1].equals("triggerinfo")) {
 				flag_data = true;
-			else if (toks[i].equals("close")
+				Name = "";
+				ConditionTime = "";
+				EventType = "";
+				EventTarget = "";
+				ConditionString = "";
+				ActionTime = "";
+				ActionType = "";
+				ActionString = "";
+				Status = "";
+				Priority = "";
+			} else if (toks[i].equals("close")
 					&& toks[i + 1].equals("triggerinfo")) {
 				flag_data = false;
 				tr = new Trigger(Name, ConditionTime, EventType, EventTarget,

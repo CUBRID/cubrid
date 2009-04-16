@@ -421,14 +421,14 @@ repl_load_agent_list (char *file_name)
 }
 
 static void
-usage (const char *argv0)
+usage_cubrid_repl_server (const char *argv0)
 {
   char *exec_name;
 
   exec_name = basename ((char *) argv0);
   msgcat_init ();
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, 1, 29),
-	   VERSION, exec_name, exec_name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, 1, 28),
+	   VERSION, "cubrid", exec_name);
   msgcat_final ();
 }
 
@@ -511,7 +511,7 @@ main (int argc, char **argv)
 	  break;
 	case 'h':
 	default:
-	  usage (argv[0]);
+	  usage_cubrid_repl_server (argv[0]);
 	  return -1;
 	}
     }
@@ -525,7 +525,7 @@ main (int argc, char **argv)
   if (strlen (db_Name) < 1 || port_Num <= 0)
     {
       msgcat_init ();
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, 1, 22));
+      usage_cubrid_repl_server (argv[0]);
       msgcat_final ();
       return (-1);
     }

@@ -315,6 +315,5 @@ main (int argc, char **argv)
 {
 }
 #endif
-
-return ret_val;
+  return ret_val;
 }

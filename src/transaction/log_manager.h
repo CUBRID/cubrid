@@ -196,6 +196,7 @@ extern void log_append_logical_compensate (THREAD_ENTRY * thread_p,
 					   LOG_LSA * undo_nxlsa);
 extern void log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				     LOG_RECTYPE logrec_type);
+extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_skip_tailsa_logging (THREAD_ENTRY * thread_p,
 				     LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
@@ -265,7 +266,7 @@ extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p,
 				      const char *logpath,
 				      const char *prefix_logname);
 extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void log_rv_dump_char (int length, void *data);
+extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 				int flush_data_pages);
@@ -273,8 +274,8 @@ extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 /*
  * FOR DEBUGGING
  */
-extern void
-log_dump (THREAD_ENTRY * thread_p, int isforward, PAGEID start_logpageid,
-	  DKNPAGES dump_npages, TRANID desired_tranid);
+extern void xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
+		       PAGEID start_logpageid, DKNPAGES dump_npages,
+		       TRANID desired_tranid);
 
 #endif /* _LOG_MANAGER_H_ */

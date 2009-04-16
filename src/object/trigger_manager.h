@@ -325,8 +325,7 @@ extern int tr_trigger_condition (DB_OBJECT * trigger_object,
 				 char **condition);
 extern int tr_trigger_condition_time (DB_OBJECT * trigger_object,
 				      DB_TRIGGER_TIME * tr_time);
-extern int tr_trigger_action (DB_OBJECT * trigger_object,
-			      char **action);
+extern int tr_trigger_action (DB_OBJECT * trigger_object, char **action);
 extern int tr_trigger_action_time (DB_OBJECT * trigger_object,
 				   DB_TRIGGER_TIME * tr_time);
 extern int tr_trigger_action_type (DB_OBJECT * trigger_object,
@@ -349,7 +348,9 @@ extern void tr_gc_schema_cache (TR_SCHEMA_CACHE * cache,
 extern int tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list);
 extern int tr_validate_schema_cache (TR_SCHEMA_CACHE * cache);
 
-extern int tr_active_schema_cache (TR_SCHEMA_CACHE * cache);
+extern int tr_active_schema_cache (TR_SCHEMA_CACHE * cache,
+				   DB_TRIGGER_EVENT event_type,
+				   bool * has_event_type_triggers);
 extern int tr_delete_schema_cache (TR_SCHEMA_CACHE * cache,
 				   DB_OBJECT * class_object);
 

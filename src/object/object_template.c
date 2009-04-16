@@ -2343,7 +2343,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    * figure out what kind of triggers to fire here, only do this
    * if the class indicates that there are active triggers
    */
-  trigstate = sm_active_triggers (class_);
+  trigstate = sm_active_triggers (class_, TR_EVENT_ALL);
   if (trigstate < 0)
     {
       return er_errid ();

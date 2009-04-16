@@ -1,4 +1,4 @@
-#!/bin/ksh
+#!/bin/sh
 ###############################################################################
 #  Script Name : log_lsa
 #
@@ -308,7 +308,7 @@ do
     hostname=`eval expr $hostname`
     break;
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done < .result.tmp
 
 # unload classes
@@ -353,7 +353,7 @@ do
     passwd=`eval expr $passwd`
     break;
   fi
-  (( count=count+1 ))
+  count=$(($count+1))
 done < .result.tmp
 
 # master objects file : delete class hash info
@@ -405,7 +405,7 @@ do
     offset=$offset
     break;
   fi 
-  (( count=count+1 ))
+  count=$(($count+1))
 done < $unload_log_file
 
 class_names=""

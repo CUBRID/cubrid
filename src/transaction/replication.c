@@ -62,7 +62,7 @@ static REPL_SAVEPOINT_INFO *repl_alloc_savepoint_info (const char *sp_name);
  * NOTE:
  */
 void
-repl_data_insert_log_dump (int length, void *data)
+repl_data_insert_log_dump (FILE * fp, int length, void *data)
 {
   char *class_name;
   DB_VALUE key;
@@ -70,12 +70,12 @@ repl_data_insert_log_dump (int length, void *data)
 
   ptr = or_unpack_string_nocopy ((char *) data, &class_name);
   ptr = or_unpack_value (ptr, &key);
-  fprintf (stdout, "      class_name: %s\n", class_name);
-  fprintf (stdout, "      pk_value: ");
+  fprintf (fp, "      class_name: %s\n", class_name);
+  fprintf (fp, "      pk_value: ");
   db_value_print (&key);
   pr_clear_value (&key);
-  fprintf (stdout, "\n");
-  fflush (stdout);
+  fprintf (fp, "\n");
+  fflush (fp);
 }
 
 /*
@@ -89,12 +89,12 @@ repl_data_insert_log_dump (int length, void *data)
  * NOTE:
  */
 void
-repl_data_udpate_log_dump (int length, void *data)
+repl_data_udpate_log_dump (FILE * fp, int length, void *data)
 {
   /* currently same logic as insert case, but I can't gaurantee it's true
    * after this...
    */
-  repl_data_insert_log_dump (length, data);
+  repl_data_insert_log_dump (fp, length, data);
 }
 
 /*
@@ -108,12 +108,12 @@ repl_data_udpate_log_dump (int length, void *data)
  * NOTE:
  */
 void
-repl_data_delete_log_dump (int length, void *data)
+repl_data_delete_log_dump (FILE * fp, int length, void *data)
 {
   /* currently same logic as insert case, but I can't gaurantee it's true
    * after this...
    */
-  repl_data_insert_log_dump (length, data);
+  repl_data_insert_log_dump (fp, length, data);
 }
 
 /*
@@ -127,7 +127,7 @@ repl_data_delete_log_dump (int length, void *data)
  * NOTE:
  */
 void
-repl_schema_log_dump (int length, void *data)
+repl_schema_log_dump (FILE * fp, int length, void *data)
 {
   int type;
   char *class_name, *ddl;
@@ -136,10 +136,10 @@ repl_schema_log_dump (int length, void *data)
   ptr = or_unpack_int ((char *) data, &type);
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_string_nocopy (ptr, &ddl);
-  fprintf (stdout, "      type: %d\n", type);
-  fprintf (stdout, "      class_name: %s\n", class_name);
-  fprintf (stdout, "      DDL: %s\n", ddl);
-  fflush (stdout);
+  fprintf (fp, "      type: %d\n", type);
+  fprintf (fp, "      class_name: %s\n", class_name);
+  fprintf (fp, "      DDL: %s\n", ddl);
+  fflush (fp);
 }
 
 /*
@@ -461,6 +461,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   repl_rec->length = OR_INT_SIZE;	/* REPL_INFO_SCHEMA.statement_type */
   repl_rec->length += or_packed_string_length (repl_schema->name);
   repl_rec->length += or_packed_string_length (repl_schema->ddl);
+  repl_rec->length += or_packed_string_length (tdes->client.db_user);
   if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
     {
       REPL_ERROR (error, "can't allocate memory");
@@ -470,6 +471,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   ptr = or_pack_int (ptr, repl_schema->statement_type);
   ptr = or_pack_string (ptr, repl_schema->name);
   ptr = or_pack_string (ptr, repl_schema->ddl);
+  ptr = or_pack_string (ptr, tdes->client.db_user);
 
   LSA_SET_NULL (&repl_rec->lsa);
 

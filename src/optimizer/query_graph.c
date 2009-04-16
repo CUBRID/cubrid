@@ -376,7 +376,6 @@ qo_set_optimization_param (void *retval, QO_PARAM param, ...)
 
   switch (param)
     {
-
     case QO_PARAM_LEVEL:
       if (retval)
 	*(int *) retval = PRM_OPTIMIZATION_LEVEL;
@@ -387,6 +386,7 @@ qo_set_optimization_param (void *retval, QO_PARAM param, ...)
       {
 	const char *plan_name;
 	int cost_fn;
+
 	plan_name = va_arg (args, char *);
 	cost_fn = va_arg (args, int);
 	plan_name = qo_plan_set_cost_fn (plan_name, cost_fn);
@@ -418,13 +418,17 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
    */
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (!OPTIMIZATION_ENABLED (level))
-    return NULL;
+    {
+      return NULL;
+    }
 
   /* if its not a select, we're not interested, also if it is
    * merge we give up.
    */
   if (tree->node_type != PT_SELECT)
-    return NULL;
+    {
+      return NULL;
+    }
 
   env = qo_env_init (parser, tree);
   if (env == NULL)
@@ -472,6 +476,7 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
   fprintf (stderr, "*** optimizer aborting ***\n");
 #endif /* CUBRID_DEBUG */
   qo_env_free (env);
+
   return NULL;
 }
 
@@ -522,7 +527,6 @@ qo_optimize_helper (QO_ENV * env)
 	 */
 	if (is_dependent_table (spec))
 	  {
-
 	    /*
 	     * Find all of the segments (i.e., attributes) referenced in
 	     * the derived table expression, and then find the set of
@@ -659,9 +663,13 @@ qo_optimize_helper (QO_ENV * env)
    */
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level))
-    qo_env_dump (env, query_plan_dump_fp);
+    {
+      qo_env_dump (env, query_plan_dump_fp);
+    }
   if (plan == NULL)
-    qo_env_free (env);
+    {
+      qo_env_free (env);
+    }
 
   return plan;
 
@@ -681,14 +689,20 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   int i;
 
   if (query == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   env = qo_env_new (parser, query);
   if (env == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   if (qo_validate (env))
-    goto error;
+    {
+      goto error;
+    }
 
   env->segs = NALLOCATE (env, QO_SEGMENT, env->nsegs);
   env->nodes = NALLOCATE (env, QO_NODE, env->nnodes);
@@ -701,14 +715,22 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       || env->nodes == NULL
       || (env->nterms && env->terms == NULL)
       || env->eqclasses == NULL || env->partitions == NULL)
-    goto error;
+    {
+      goto error;
+    }
 
   for (i = 0; i < env->nsegs; ++i)
-    qo_seg_clear (env, i);
+    {
+      qo_seg_clear (env, i);
+    }
   for (i = 0; i < env->nnodes; ++i)
-    qo_node_clear (env, i);
+    {
+      qo_node_clear (env, i);
+    }
   for (i = 0; i < env->nterms; ++i)
-    qo_term_clear (env, i);
+    {
+      qo_term_clear (env, i);
+    }
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
@@ -788,7 +810,9 @@ qo_validate (QO_ENV * env)
     }
 
   if (env->nnodes > OPTIMIZATION_LIMIT)
-    return true;
+    {
+      return true;
+    }
 
   return false;
 
@@ -857,7 +881,6 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
 
   for (name = get_referenced_attrs (entity); name != NULL; name = name->next)
     {
-
       env->nsegs++;
     }
 
@@ -870,18 +893,14 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
   for (next_entity = entity->info.spec.path_entities;
        next_entity != NULL; next_entity = next_entity->next)
     {
-
       (void) graph_size_for_entity (env, next_entity);
-
     }
 
   /* create a term for each conjunct in the entity's path_conjuncts */
   for (conj = entity->info.spec.path_conjuncts;
        conj != NULL; conj = conj->next)
     {
-
       env->nterms++;
-
     }
 
   /* reserve space for explicit join dummy term */
@@ -945,7 +964,6 @@ build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
   *continue_walk = PT_LIST_WALK;
 
   return tree;
-
 }
 
 /*
@@ -975,8 +993,7 @@ build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
   (void) build_graph_for_entity (env, tree, QO_BUILD_PATH);
 
   return tree;
-
-}				/* build_query_graph_post */
+}
 
 /*
  * build_graph_for_entity () - This routine will create nodes and segments
@@ -1027,7 +1044,9 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
    */
 
   for (attr = attr_list; attr && !IS_OID (attr); attr = attr->next)
-    ;
+    {
+      ;
+    }
 
   /*
    * 'attr' will be non-null iff the oid "attribute" of the class
@@ -1058,7 +1077,6 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
    */
   for (name = attr_list; name != NULL; name = name->next)
     {
-
       seg = qo_insert_segment (node, NULL, name, env);
 
       if ((name->type_enum == PT_TYPE_SET) ||
@@ -1070,9 +1088,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
       else
 	{
 	  QO_SEG_SET_VALUED (seg) = false;
-
 	}
-
 
       if (name->info.name.meta_class == PT_META_ATTR)
 	{
@@ -1085,7 +1101,6 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
 
       /* this needs to check a flag Bill is going to add--CHECK!!!!! */
       QO_SEG_SHARED_ATTR (seg) = false;
-
     }
 
 build_path:
@@ -1099,7 +1114,6 @@ build_path:
   for (next_entity = entity->info.spec.path_entities;
        next_entity != NULL; next_entity = next_entity->next)
     {
-
       next_node = build_graph_for_entity (env, next_entity,
 					  (QO_BUILD_STATUS) (QO_BUILD_ENTITY |
 							     QO_BUILD_PATH));
@@ -1113,7 +1127,6 @@ build_path:
 
       (void) qo_join_segment (node, next_node, next_entity->info.spec.
 			      path_conjuncts->info.expr.arg1, env);
-
     }
 
   /* create a term for the entity's path_conjunct if one exists */
@@ -1124,7 +1137,6 @@ build_path:
     }
 
   return node;
-
 }
 
 /*
@@ -1162,7 +1174,6 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   if (entity->info.spec.derived_table == NULL
       && (info = qo_get_class_info (env, node)) != NULL)
     {
-
       QO_NODE_INFO (node) = info;
       for (i = 0, n = info->n; i < n; i++)
 	{
@@ -1211,7 +1222,9 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 					  (double) xasl->projected_size)
 		    / (double) IO_PAGESIZE;
 		  if (QO_NODE_TCARD (node) == 0)
-		    QO_NODE_TCARD (node) = 1;
+		    {
+		      QO_NODE_TCARD (node) = 1;
+		    }
 		}
 	      break;
 	    default:
@@ -1271,7 +1284,6 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
     }
 
   return node;
-
 }
 
 /*
@@ -1304,7 +1316,6 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
     }
 
   return ((found) ? QO_ENV_NODE (env, i) : NULL);
-
 }
 
 /*
@@ -1364,7 +1375,6 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
   env->nsegs++;
 
   return seg;
-
 }
 
 /*
@@ -1387,7 +1397,6 @@ qo_join_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * name, QO_ENV * env)
   QO_SEG_TAIL (seg) = tail;	/* may be redundant */
 
   return seg;
-
 }
 
 /*
@@ -1419,7 +1428,6 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
     }
 
   return ((found) ? QO_ENV_SEG (env, i) : NULL);
-
 }
 
 /*
@@ -1456,7 +1464,6 @@ qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     }
 
   return tree;			/* don't alter tree structure */
-
 }
 
 /*
@@ -1740,7 +1747,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
   bitset_init (&rhs_nodes, env);
 
   if (pt_expr->node_type != PT_EXPR)
-    goto wrapup;
+    {
+      goto wrapup;
+    }
 
   /* only intersting in one predicate term; if 'term' has 'or_next', it was
      derived from OR term */
@@ -1902,8 +1911,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	{
 	  n = bitset_first_member (&lhs_segs);
 	  if (n != -1)
-	    /* record in the term that it has indexable segment as LHS */
-	    term->index_seg[i++] = QO_ENV_SEG (env, n);
+	    {
+	      /* record in the term that it has indexable segment as LHS */
+	      term->index_seg[i++] = QO_ENV_SEG (env, n);
+	    }
 	}
 
       /* examine if LHS is indexable or not? */
@@ -1935,8 +1946,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	  n = bitset_first_member (&rhs_segs);
 	  if (n != -1)
-	    /* record in the term that it has indexable segment as RHS */
-	    term->index_seg[i++] = QO_ENV_SEG (env, n);
+	    {
+	      /* record in the term that it has indexable segment as RHS */
+	      term->index_seg[i++] = QO_ENV_SEG (env, n);
+	    }
 	}			/* if (rhs_indexable) */
 
 
@@ -1986,6 +1999,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       else
 	{
 	  bool inst_num = false;
+
 	  (void) parser_walk_tree (parser, pt_expr, pt_check_instnum_pre,
 				   NULL, pt_check_instnum_post, &inst_num);
 	  QO_TERM_CLASS (term) =
@@ -2140,7 +2154,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
     }				/* if (n == 1) */
 
 
-
   if (n == 2)
     {
       /* Although it may be tempting to say that the head node is the first
@@ -2202,6 +2215,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  if (QO_SEG_HEAD (head_seg) != head_node)
 	    {
 	      QO_SEGMENT *tmp;
+
 	      tmp = head_seg;
 	      head_seg = tail_seg;
 	      tail_seg = tmp;
@@ -2365,10 +2379,14 @@ wrapup:
     case PT_PATH_INNER:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
       if (QO_NODE_NCARD (QO_TERM_TAIL (term)) == 0)
-	QO_TERM_SELECTIVITY (term) = 0.0;
+	{
+	  QO_TERM_SELECTIVITY (term) = 0.0;
+	}
       else
-	QO_TERM_SELECTIVITY (term) =
-	  1.0 / QO_NODE_NCARD (QO_TERM_TAIL (term));
+	{
+	  QO_TERM_SELECTIVITY (term) =
+	    1.0 / QO_NODE_NCARD (QO_TERM_TAIL (term));
+	}
       break;
 
     case PT_PATH_OUTER:
@@ -2467,7 +2485,6 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 
   /* reset the temp pointer so we don't have a dangler */
   QO_ENV_TMP_BITSET (env) = NULL;
-
 }
 
 /*
@@ -2516,7 +2533,6 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     }
 
   return tree;			/* don't alter tree structure */
-
 }
 
 /*
@@ -2566,7 +2582,6 @@ expr_is_mergable (PT_NODE * pt_expr)
 	  if (pt_expr->info.expr.op == PT_EQ)
 	    {
 	      return true;
-
 	    }
 	  else if (pt_expr->info.expr.op == PT_RANGE)
 	    {
@@ -2601,7 +2616,6 @@ expr_is_equi_join (PT_NODE * pt_expr)
 	  if (pt_expr->info.expr.op == PT_EQ)
 	    {
 	      return pt_is_attr (pt_expr->info.expr.arg2);
-
 	    }
 	  else if (pt_expr->info.expr.op == PT_RANGE)
 	    {
@@ -2629,22 +2643,22 @@ expr_is_equi_join (PT_NODE * pt_expr)
 static bool
 is_dependent_table (PT_NODE * entity)
 {
-  return (entity->info.spec.derived_table && (
-					       /* this test is too pessimistic. The argument must depend
-					        * on a previous entity spec in the from list.
-					        * >>>> fix me some day <<<<
-					        */
-					       entity->info.spec.
-					       derived_table_type ==
-					       PT_IS_SET_EXPR ||
-					       /* is cselect derived table of method */
-					       entity->info.spec.
-					       derived_table_type ==
-					       PT_IS_CSELECT
-					       || entity->info.spec.
-					       derived_table->info.query.
-					       correlation_level == 1));
+  if (entity->info.spec.derived_table)
+    {
+      /* this test is too pessimistic.  The argument must depend
+       * on a previous entity spec in the from list.
+       * >>>> fix me some day <<<<
+       */
+      if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR ||	/* is cselect derived table of method */
+	  entity->info.spec.derived_table_type == PT_IS_CSELECT
+	  || entity->info.spec.derived_table->info.query.correlation_level ==
+	  1)
+	{
+	  return true;
+	}
+    }
 
+  return false;
 }
 
 /*
@@ -2688,7 +2702,9 @@ get_term_subqueries (QO_ENV * env, QO_TERM * term)
    *
    */
   if (pt_expr == NULL)
-    return;
+    {
+      return;
+    }
 
   next = pt_expr->next;
   pt_expr->next = NULL;
@@ -2934,7 +2950,9 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
     }
 
   if (pt_expr == NULL)
-    return;
+    {
+      return;
+    }
 
   /* At here, do not traverse OR list */
   switch (pt_expr->node_type)
@@ -3025,18 +3043,25 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
   UINTPTR spec = 0;
 
   if (expr == NULL)
-    return 0;
+    {
+      return false;
+    }
   else if (expr->node_type == PT_NAME)
-    spec = expr->info.name.spec_id;
+    {
+      spec = expr->info.name.spec_id;
+    }
   else if (expr->node_type == PT_DOT_)
-    spec = expr->info.dot.arg2->info.name.spec_id;
+    {
+      spec = expr->info.dot.arg2->info.name.spec_id;
+    }
   else
-    return false;
+    {
+      return false;
+    }
 
   return (pt_find_entity (env->parser,
 			  env->pt_tree->info.query.q.select.from,
-			  spec) != NULL);
-
+			  spec) != NULL) ? true : false;
 }
 
 /*
@@ -3052,7 +3077,10 @@ static bool
 is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 {
   if (expr == NULL)
-    return false;
+    {
+      return false;
+    }
+
   switch (expr->node_type)
     {
     case PT_VALUE:
@@ -3063,7 +3091,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      return expr->info.query.correlation_level != 1;
+      return (expr->info.query.correlation_level != 1) ? true : false;
 
     case PT_NAME:
       /*
@@ -3093,7 +3121,8 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_TIMES:
 	case PT_DIVIDE:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_UNARY_MINUS:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_BETWEEN_AND:
@@ -3102,7 +3131,8 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_BETWEEN_GT_LE:
 	case PT_BETWEEN_GT_LT:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_BETWEEN_EQ_NA:
 	case PT_BETWEEN_INF_LE:
 	case PT_BETWEEN_INF_LT:
@@ -3111,10 +3141,11 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_MODULUS:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_RAND:
 	case PT_DRAND:
-	  return 1;
+	  return true;
 	case PT_FLOOR:
 	case PT_CEIL:
 	case PT_SIGN:
@@ -3128,19 +3159,24 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_TRUNC:
 	case PT_LOG:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_INSTR:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
-		  && is_pseudo_const (env, expr->info.expr.arg3));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg3)) ? true : false;
 	case PT_POSITION:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?
-		      is_pseudo_const (env, expr->info.expr.arg3) : 1));
+		      is_pseudo_const (env,
+				       expr->info.expr.
+				       arg3) : true)) ? true : false;
 	case PT_CHAR_LENGTH:
 	case PT_OCTET_LENGTH:
 	case PT_BIT_LENGTH:
@@ -3152,7 +3188,9 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_RTRIM:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env, expr->info.expr.arg2) : 1));
+		      is_pseudo_const (env,
+				       expr->info.expr.
+				       arg2) : true)) ? true : false;
 
 	case PT_LPAD:
 	case PT_RPAD:
@@ -3161,21 +3199,25 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?
-		      is_pseudo_const (env, expr->info.expr.arg3) : 1));
+		      is_pseudo_const (env,
+				       expr->info.expr.
+				       arg3) : true)) ? true : false;
 	case PT_ADD_MONTHS:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_LAST_DAY:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_MONTHS_BETWEEN:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_SYS_DATE:
 	case PT_SYS_TIME:
 	case PT_SYS_TIMESTAMP:
 	case PT_LOCAL_TRANSACTION_ID:
 	case PT_CURRENT_USER:
-	  return 1;
+	  return true;
 	case PT_TO_CHAR:
 	case PT_TO_DATE:
 	case PT_TO_TIME:
@@ -3183,33 +3225,39 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_TO_NUMBER:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env, expr->info.expr.arg2) : 1));
+		      is_pseudo_const (env,
+				       expr->info.expr.
+				       arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
-	  return 1;
+	  return true;
 	case PT_CAST:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_CASE:
 	case PT_DECODE:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_NULLIF:
 	case PT_COALESCE:
 	case PT_NVL:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_NVL2:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
-		  && is_pseudo_const (env, expr->info.expr.arg3));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg3)) ? true : false;
 	case PT_EXTRACT:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_LEAST:
 	case PT_GREATEST:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2));
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	default:
-	  return 0;
+	  return false;
 	}
 
     case PT_FUNCTION:
@@ -3223,6 +3271,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	 * function call, with PT_NAMEs 'a', 'b', and 'c' as its arglist.
 	 */
 	PT_NODE *p;
+
 	if (expr->info.function.function_type != F_SET
 	    && expr->info.function.function_type != F_MULTISET
 	    && expr->info.function.function_type != F_SEQUENCE)
@@ -3287,7 +3336,6 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   qo_expr_segs (env, node, &tmp->segs);
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
   tmp->idx = n;
-
 }
 
 
@@ -3441,7 +3489,6 @@ get_rank (QO_ENV * env)
     {
       get_term_rank (env, QO_ENV_TERM (env, i));
     }
-
 }
 
 /*
@@ -3669,9 +3716,11 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
   PT_NODE *indexp;
 
   if (!using_index)
-    /* no USING INDEX clause in the query;
-       all QO_NODE_USING_INDEX(node) will contain NULL */
-    return;
+    {
+      /* no USING INDEX clause in the query;
+         all QO_NODE_USING_INDEX(node) will contain NULL */
+      return;
+    }
 
   /* for each node */
   for (i = 0; i < env->nnodes; i++)
@@ -3771,7 +3820,7 @@ qo_alloc_index (QO_ENV * env, int n)
     }
 
   return indexp;
-}				/* qo_alloc_index() */
+}
 
 /*
  * qo_free_index () - Free the QO_INDEX structure and all elements contained
@@ -3787,7 +3836,9 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
   QO_INDEX_ENTRY *entryp;
 
   if (!indexp)
-    return;
+    {
+      return;
+    }
 
   for (i = 0; i < indexp->max; i++)
     {
@@ -3807,7 +3858,7 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
     }
 
   DEALLOCATE (env, indexp);
-}				/* qo_free_index() */
+}
 
 /*
  * qo_get_class_info () -
@@ -3846,7 +3897,7 @@ qo_get_class_info (QO_ENV * env, QO_NODE * node)
 
   return info;
 
-}				/* qo_get_class_info */
+}
 
 /*
  * qo_free_class_info () - Free the vector and all interally-allocated
@@ -3861,7 +3912,9 @@ qo_free_class_info (QO_ENV * env, QO_CLASS_INFO * info)
   int i;
 
   if (info == NULL)
-    return;
+    {
+      return;
+    }
 
   /*
    * The CLASS_STATS structures that are pointed to by the various
@@ -3881,7 +3934,7 @@ qo_free_class_info (QO_ENV * env, QO_CLASS_INFO * info)
     }
   DEALLOCATE (env, info);
 
-}				/* qo_free_class_info */
+}
 
 /*
  * count_classes () - Count the number of object-based classes in the domain set
@@ -3895,12 +3948,11 @@ count_classes (PT_NODE * p)
 
   for (n = 0; p; p = p->next)
     {
-      n += 1;
+      n++;
     }
 
   return n;
-
-}				/* count_classes */
+}
 
 /*
  * grok_classes () -
@@ -3977,8 +4029,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
     }
 
   return info;
-
-}				/* grok_classes */
+}
 
 /*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
@@ -4010,11 +4061,13 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
   if (QO_NODE_INFO (nodep) == NULL ||
       !(QO_NODE_INFO (nodep)->info[0].normal_class))
-    /* if there's no class information or the class is not normal class */
-    return NULL;
+    {
+      /* if there's no class information or the class is not normal class */
+      return NULL;
+    }
 
   /* number of class information entries */
-  n = QO_NODE_INFO (nodep)->n;
+  n = QO_NODE_INFO_N (nodep);
   QO_ASSERT (env, n > 0);
 
   /* pointer to QO_CLASS_INFO_ENTRY[] array of the node */
@@ -4112,11 +4165,15 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      if (qo_data_compare (&attr_statsp->min_value,
 				   &cum_statsp->min_value,
 				   cum_statsp->type) < 0)
-		cum_statsp->min_value = attr_statsp->min_value;
+		{
+		  cum_statsp->min_value = attr_statsp->min_value;
+		}
 	      if (qo_data_compare (&attr_statsp->max_value,
 				   &cum_statsp->max_value,
 				   cum_statsp->type) > 0)
-		cum_statsp->max_value = attr_statsp->max_value;
+		{
+		  cum_statsp->max_value = attr_statsp->max_value;
+		}
 	      /* 'qo_data_compare()' is a simplized function that works
 	         with DB_DATA instead of DB_VALUE. However, this way
 	         would be enough to get minimum/maximum existing value,
@@ -4190,7 +4247,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      cum_statsp->key_size = bt_statsp->key_size;
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys)
-		DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		{
+		  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		}
 	      cum_statsp->pkeys =
 		ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
 	      if (!cum_statsp->pkeys)
@@ -4200,7 +4259,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		  return NULL;
 		}
 	      for (j = 0; j < cum_statsp->key_size; j++)
-		cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		{
+		  cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		}
 
 	      /* immediately return the allocated QO_ATTR_INFO */
 	      return attr_infop;
@@ -4229,7 +4290,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		  cum_statsp->key_size = bt_statsp->key_size;
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
-		    DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    {
+		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    }
 		  cum_statsp->pkeys =
 		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
 		  if (!cum_statsp->pkeys)
@@ -4239,7 +4302,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		      return NULL;
 		    }
 		  for (j = 0; j < cum_statsp->key_size; j++)
-		    cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		    {
+		      cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		    }
 		}
 	    }
 	}
@@ -4270,7 +4335,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      cum_statsp->key_size = bt_statsp->key_size;
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys)
-		DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		{
+		  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		}
 	      cum_statsp->pkeys =
 		ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
 	      if (!cum_statsp->pkeys)
@@ -4280,7 +4347,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		  return NULL;
 		}
 	      for (j = 0; j < cum_statsp->key_size; j++)
-		cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		{
+		  cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
+		}
 	    }
 	}
 
@@ -4288,7 +4357,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
   /* return the allocated QO_ATTR_INFO */
   return attr_infop;
-}				/* qo_get_attr_info() */
+}
 
 /*
  * qo_free_attr_info () - Free the vector and any internally allocated
@@ -4312,7 +4381,7 @@ qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info)
       DEALLOCATE (env, info);
     }
 
-}				/* qo_free_attr_info */
+}
 
 /*
  * qo_get_index_info () - Get index statistical information
@@ -4345,20 +4414,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
        i < QO_NI_N (node_indexp); i++, ni_entryp++)
     {
-
-      /* initialize QO_ATTR_CUM_STATS structure of QO_NODE_INDEX_ENTRY */
       cum_statsp = &(ni_entryp)->cum_stats;
-      /* cum_statsp->type = (index_entryp->stats)->type; */
-      cum_statsp->valid_limits = false;
-      OR_PUT_INT (&cum_statsp->min_value, 0);
-      OR_PUT_INT (&cum_statsp->max_value, 0);
       cum_statsp->is_indexed = true;
-      cum_statsp->leafs = cum_statsp->pages = cum_statsp->height =
-	cum_statsp->keys = cum_statsp->oids = cum_statsp->nulls =
-	cum_statsp->ukeys = 0;
-      cum_statsp->key_type = NULL;
-      cum_statsp->key_size = 0;
-      cum_statsp->pkeys = NULL;
 
       /* The linked list of QO_INDEX_ENTRY was built by 'qo_find_node_index()'
          function. It is the list of compatible indexes under class
@@ -4437,11 +4494,15 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  if (qo_data_compare (&attr_statsp->min_value,
 				       &cum_statsp->min_value,
 				       cum_statsp->type) < 0)
-		    cum_statsp->min_value = attr_statsp->min_value;
+		    {
+		      cum_statsp->min_value = attr_statsp->min_value;
+		    }
 		  if (qo_data_compare (&attr_statsp->max_value,
 				       &cum_statsp->max_value,
 				       cum_statsp->type) > 0)
-		    cum_statsp->max_value = attr_statsp->max_value;
+		    {
+		      cum_statsp->max_value = attr_statsp->max_value;
+		    }
 		  /* 'qo_data_compare()' is a simplized function that works
 		     with DB_DATA instead of DB_VALUE. However, this way
 		     would be enough to get minimum/maximum existing value,
@@ -4467,8 +4528,10 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 
 	    }			/* for (k = 0, ...) */
 	  if (k == attr_statsp->n_btstats)
-	    /* cannot find index in this attribute. what happens? */
-	    continue;
+	    {
+	      /* cannot find index in this attribute. what happens? */
+	      continue;
+	    }
 
 	  if (QO_NODE_ENTITY_SPEC (node)->info.spec.only_all == PT_ALL)
 	    {
@@ -4496,7 +4559,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  cum_statsp->key_size = bt_statsp->key_size;
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
-		    DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    {
+		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    }
 		  cum_statsp->pkeys =
 		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
 		  if (!cum_statsp->pkeys)
@@ -4505,7 +4570,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		      return;	/* give up */
 		    }
 		  for (k = 0; k < cum_statsp->key_size; k++)
-		    cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+		    {
+		      cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+		    }
 
 		  /* immediately finish getting index statistics */
 		  return;
@@ -4534,7 +4601,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		      cum_statsp->key_size = bt_statsp->key_size;
 		      /* alloc pkeys[] within the current optimizer environment */
 		      if (cum_statsp->pkeys)
-			DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+			{
+			  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+			}
 		      cum_statsp->pkeys =
 			ALLOC_ATTR_CUM_STATS_PKEYS (env,
 						    cum_statsp->key_size);
@@ -4544,7 +4613,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 			  return;	/* give up */
 			}
 		      for (k = 0; k < cum_statsp->key_size; k++)
-			cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+			{
+			  cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+			}
 		    }
 		}
 	    }
@@ -4577,7 +4648,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  cum_statsp->key_size = bt_statsp->key_size;
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
-		    DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    {
+		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		    }
 		  cum_statsp->pkeys =
 		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
 		  if (!cum_statsp->pkeys)
@@ -4586,14 +4659,16 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		      return;	/* give up */
 		    }
 		  for (k = 0; k < cum_statsp->key_size; k++)
-		    cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+		    {
+		      cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
+		    }
 		}
 	    }
 	}			/* for (j = 0, ... ) */
 
     }				/* for (i = 0, ...) */
 
-}				/* qo_get_index_info() */
+}
 
 /*
  * qo_free_node_index_info () - Free the vector and any internally allocated
@@ -4625,7 +4700,7 @@ qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp)
 
       DEALLOCATE (env, node_indexp);
     }
-}				/* qo_free_node_index_info */
+}
 
 /*
  * qo_data_compare () -
@@ -4708,7 +4783,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
   statblock->num_objects =
     (statblock->heap_size * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
-}				/* qo_estimate_statistics */
+}
 
 /*
  * qo_env_new () -
@@ -4723,7 +4798,9 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
 
   env = (QO_ENV *) malloc (sizeof (QO_ENV));
   if (env == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   env->parser = parser;
   env->pt_tree = query;
@@ -4773,7 +4850,7 @@ qo_malloc (QO_ENV * env, unsigned size, const char *file, int line)
     }
   return p;
 
-}				/* qo_malloc */
+}
 #endif
 
 /*
@@ -4813,42 +4890,54 @@ qo_env_free (QO_ENV * env)
       if (env->segs)
 	{
 	  for (i = 0; i < env->Nsegs; ++i)
-	    qo_seg_free (QO_ENV_SEG (env, i));
+	    {
+	      qo_seg_free (QO_ENV_SEG (env, i));
+	    }
 	  DEALLOCATE (env, env->segs);
 	}
 
       if (env->nodes)
 	{
 	  for (i = 0; i < env->Nnodes; ++i)
-	    qo_node_free (QO_ENV_NODE (env, i));
+	    {
+	      qo_node_free (QO_ENV_NODE (env, i));
+	    }
 	  DEALLOCATE (env, env->nodes);
 	}
 
       if (env->eqclasses)
 	{
 	  for (i = 0; i < env->neqclasses; ++i)
-	    qo_eqclass_free (QO_ENV_EQCLASS (env, i));
+	    {
+	      qo_eqclass_free (QO_ENV_EQCLASS (env, i));
+	    }
 	  DEALLOCATE (env, env->eqclasses);
 	}
 
       if (env->terms)
 	{
 	  for (i = 0; i < env->Nterms; ++i)
-	    qo_term_free (QO_ENV_TERM (env, i));
+	    {
+	      qo_term_free (QO_ENV_TERM (env, i));
+	    }
 	  DEALLOCATE (env, env->terms);
 	}
 
       if (env->partitions)
 	{
 	  for (i = 0; i < env->npartitions; ++i)
-	    qo_partition_free (QO_ENV_PARTITION (env, i));
+	    {
+	      qo_partition_free (QO_ENV_PARTITION (env, i));
+	    }
 	  DEALLOCATE (env, env->partitions);
 	}
 
       if (env->subqueries)
 	{
 	  for (i = 0; i < env->nsubqueries; ++i)
-	    qo_subquery_free (&env->subqueries[i]);
+	    {
+	      qo_subquery_free (&env->subqueries[i]);
+	    }
 	  DEALLOCATE (env, env->subqueries);
 	}
 
@@ -4856,7 +4945,9 @@ qo_env_free (QO_ENV * env)
       bitset_delset (&(env->fake_terms));
 
       if (env->planner)
-	qo_planner_free (env->planner);
+	{
+	  qo_planner_free (env->planner);
+	}
 
       free_and_init (env);
     }
@@ -4955,7 +5046,9 @@ qo_discover_edges (QO_ENV * env)
 	{
 	  term2 = QO_ENV_TERM (env, t2);
 	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
-	    qo_exchange (term1, term2);
+	    {
+	      qo_exchange (term1, term2);
+	    }
 	}
     }
   /* sort sarg-term on selectivity as descending order */
@@ -4966,7 +5059,9 @@ qo_discover_edges (QO_ENV * env)
 	{
 	  term2 = QO_ENV_TERM (env, t2);
 	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
-	    qo_exchange (term1, term2);
+	    {
+	      qo_exchange (term1, term2);
+	    }
 	}
     }
 
@@ -5004,7 +5099,9 @@ qo_discover_edges (QO_ENV * env)
 	      if (i != j
 		  && bitset_is_equivalent (&(QO_TERM_NODES (edge)),
 					   &(QO_TERM_NODES (edge2))))
-		QO_TERM_JOIN_TYPE (edge2) = QO_TERM_JOIN_TYPE (edge);
+		{
+		  QO_TERM_JOIN_TYPE (edge2) = QO_TERM_JOIN_TYPE (edge);
+		}
 	    }
 	}
 
@@ -5077,7 +5174,9 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
          with them. They can't be implemented as indexed sargs, either,
          so don't worry about them here. */
       if (!QO_TERM_PT_EXPR (qo_termp))
-	continue;
+	{
+	  continue;
+	}
       /* 'analyze_term()' function verifies that all indexable
          terms are expression so that they have 'pt_expr' filed of type
          PT_EXPR. */
@@ -5085,12 +5184,14 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
       /* if the segments that give rise to the term are in the given segment
          set */
       if (bitset_intersects (&(QO_TERM_SEGS (qo_termp)), segsp))
-	/* collect this term */
-	bitset_add (termsp, t);
+	{
+	  /* collect this term */
+	  bitset_add (termsp, t);
+	}
 
     }				/* for (t = 0; t < env->nterms; t++) */
 
-}				/* qo_find_index_terms */
+}
 
 /*
  * qo_find_index_seg_terms () - Find the terms which contain the passed segment.
@@ -5121,13 +5222,17 @@ qo_find_index_seg_terms (QO_ENV * env, int seg_idx,
       /* ignore this term if it is not marked as indexable by
          'analyze_term()' */
       if (!qo_termp->can_use_index)
-	continue;
+	{
+	  continue;
+	}
 
       /* Fake terms (e.g., dependency links) won't have pt_expr's associated
          with them. They can't be implemented as indexed sargs, either,
          so don't worry about them here. */
       if (!QO_TERM_PT_EXPR (qo_termp))
-	continue;
+	{
+	  continue;
+	}
       /* 'analyze_term()' function verifies that all indexable
          terms are expression so that they have 'pt_expr' filed of type
          PT_EXPR. */
@@ -5170,7 +5275,9 @@ is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2)
    *  be equivalent (cheap test).
    */
   if (index1->nsegs != index2->nsegs)
-    return false;
+    {
+      return false;
+    }
 
   /*
    * Now compare the two indexes element by element
@@ -5263,14 +5370,18 @@ is_index_compatible (QO_CLASS_INFO * class_info, int n,
   int i;
 
   if (n >= class_info->n)
-    return NULL;
+    {
+      return NULL;
+    }
 
   class_entry = &(class_info->info[n]);
   class_indexes = class_entry->index;
 
   i = qo_find_matching_index (index_entry, class_indexes);
   if (i < 0)
-    return NULL;
+    {
+      return NULL;
+    }
 
   index = QO_INDEX_INDEX (class_indexes, i);
   if (n == (class_info->n - 1))
@@ -5282,9 +5393,13 @@ is_index_compatible (QO_CLASS_INFO * class_info, int n,
     {
       index->next = is_index_compatible (class_info, n + 1, index);
       if (index->next == NULL)
-	return NULL;
+	{
+	  return NULL;
+	}
       else
-	return index;
+	{
+	  return index;
+	}
     }
 
 /*  return NULL;*/
@@ -5362,7 +5477,7 @@ qo_find_index_segs (QO_ENV * env,
   return (seg_idx[0] != -1) ? true : false;
   /* this index is feasible to use if at least the first attribute of index
      is specified(matched) */
-}				/* qo_find_index_segs() */
+}
 
 /*
  * qo_find_node_indexes () -
@@ -5397,7 +5512,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   class_infop = QO_NODE_INFO (nodep);
 
   if (class_infop->n <= 0)
-    return;			/* no classes, nothing to do process */
+    {
+      return;			/* no classes, nothing to do process */
+    }
 
 
   /* for each class in the hierarachy, search the class constraint cache
@@ -5416,7 +5533,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       for (consp = constraints; consp; consp = consp->next)
 	{
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
-	    n++;
+	    {
+	      n++;
+	    }
 	}
       /* allocate room for the constraint indexes */
       /* we don't have apriori knowledge about which constraints will be
@@ -5432,15 +5551,19 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	{
 
 	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
-	    continue;		/* neither INDEX nor UNIQUE constraint, skip */
+	    {
+	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
+	    }
 
 	  uip = QO_NODE_USING_INDEX (nodep);
 	  j = -1;
 	  if (uip)
 	    {
 	      if (QO_UI_N (uip) == 0)
-		/* USING INDEX NONE case */
-		continue;
+		{
+		  /* USING INDEX NONE case */
+		  continue;
+		}
 	      /* search USING INDEX list */
 	      found = false;
 	      for (j = 0; j < QO_UI_N (uip); j++)
@@ -5455,18 +5578,22 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		{
 		  /* USING INDEX ALL EXCEPT case */
 		  if (found)
-		    /* this constraint(index) is specified in
-		       USING INDEX ALL EXCEPT clause; do not use it */
-		    continue;
+		    {
+		      /* this constraint(index) is specified in
+		         USING INDEX ALL EXCEPT clause; do not use it */
+		      continue;
+		    }
 		  j = -1;
 		}
 	      else
 		{		/* QO_UI_FORCE(uip, j) could be either -1, 0, or 1 */
 		  /* normal USING INDEX case */
 		  if (!found)
-		    /* this constraint(index) is not specified in
-		       USING INDEX clause; do not use it */
-		    continue;
+		    {
+		      /* this constraint(index) is not specified in
+		         USING INDEX clause; do not use it */
+		      continue;
+		    }
 		}
 	    }
 
@@ -5476,7 +5603,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	  /* count the number of columns on this constraint */
 	  for (col_num = 0; consp->attributes[col_num]; col_num++)
-	    ;
+	    {
+	      ;
+	    }
 	  if (col_num <= NELEMENTS)
 	    {
 	      seg_idx = seg_idx_arr;
@@ -5484,7 +5613,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  else
 	    {
 	      /* allocate seg_idx */
-	      if ((seg_idx = (int *) malloc (sizeof (int) * col_num)) == NULL)
+	      seg_idx = (int *) malloc (sizeof (int) * col_num);
+	      if (seg_idx == NULL)
 		{
 		  /* cannot allocate seg_idx, use seg_idx_arr instead. */
 		  seg_idx = seg_idx_arr;
@@ -5530,7 +5660,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		{
 		  bitset_init (&(index_entryp->seg_equal_terms[j]), env);
 		  bitset_init (&(index_entryp->seg_other_terms[j]), env);
-		  if ((index_entryp->seg_idxs[j] = seg_idx[j]) != -1)
+		  index_entryp->seg_idxs[j] = seg_idx[j];
+		  if (index_entryp->seg_idxs[j] != -1)
 		    {
 		      qo_find_index_seg_terms (env, seg_idx[j],
 					       &(index_entryp->
@@ -5543,32 +5674,33 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      (indexp->n)++;
 
-	    }			/* if (found) */
+	    }
 
 	  bitset_delset (&(index_segs));
 	  bitset_delset (&(index_terms));
 	  if (seg_idx != seg_idx_arr)
-	    free_and_init (seg_idx);
+	    {
+	      free_and_init (seg_idx);
+	    }
 
 	}			/* for (consp = constraintp; consp; consp = consp->next) */
 
     }				/* for (i = 0; i < class_infop->n; i++) */
   /* class_infop->n >= 1 */
 
-
   /* find and mark indexes which are compatible across class heirarchy */
 
-  n = 0;
-  indexp = class_infop->info[n].index;
+  indexp = class_infop->info[0].index;
 
   /* allocate room for the compatible heirarchical indexex */
   /* We'll go ahead and allocate room for each index in the top level
      class. This is the worst case situation and it simplifies the code
      a bit. */
-  /* Malloc a QO_INDEX struct with n entries. */
+  /* Malloc and Init a QO_INDEX struct with n entries. */
   node_indexp =
     QO_NODE_INDEXES (nodep) =
     (QO_NODE_INDEX *) malloc (SIZEOF_NODE_INDEX (indexp->n));
+  memset (node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
 
   QO_NI_N (node_indexp) = 0;
 
@@ -5581,8 +5713,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       index_entryp = QO_INDEX_INDEX (indexp, i);
       /* get compatible(equivalent) index of the next class
          'index_entryp->next' points to it */
-      index_entryp->next =
-	is_index_compatible (class_infop, n + 1, index_entryp);
+      index_entryp->next = is_index_compatible (class_infop, 1, index_entryp);
 
       if ((index_entryp->next != NULL) || (class_infop->n == 1))
 	{
@@ -5596,7 +5727,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	}
     }				/* for (i = 0; i < indexp->n; i++) */
 
-}				/* qo_find_node_indexes() */
+}
 
 /*
  * qo_discover_indexes () -
@@ -5635,7 +5766,6 @@ qo_discover_indexes (QO_ENV * env)
 	  qo_find_node_indexes (env, nodep);
 	  /* collect statistic infomation on discovered indexes */
 	  qo_get_index_info (env, nodep);
-
 	}
       else
 	{
@@ -5721,7 +5851,7 @@ qo_discover_indexes (QO_ENV * env)
 
     }				/* for (i = 0; i < env->nterms; i++) */
 
-}				/* qo_discover_indexes() */
+}
 
 /*
  * qo_discover_partitions () -
@@ -5769,7 +5899,9 @@ qo_discover_partitions (QO_ENV * env)
        */
       hi = bitset_iterate (&(QO_TERM_NODES (term)), &bi);
       while (buddy[hi] != -1)
-	hi = buddy[hi];
+	{
+	  hi = buddy[hi];
+	}
 
       /*
        * Now buddy up all of the other nodes encompassed by this term.
@@ -5780,12 +5912,16 @@ qo_discover_partitions (QO_ENV * env)
 	   * Run to the top of the tree in which node[ti] resides.
 	   */
 	  while (buddy[ti] != -1)
-	    ti = buddy[ti];
+	    {
+	      ti = buddy[ti];
+	    }
 	  /*
 	   * Join the two trees together.
 	   */
 	  if (hi != ti)
-	    buddy[hi] = ti;
+	    {
+	      buddy[hi] = ti;
+	    }
 	}
     }
 
@@ -5801,7 +5937,9 @@ qo_discover_partitions (QO_ENV * env)
 	   * Find the root of the tree to which node[n] belongs.
 	   */
 	  while (buddy[r] != -1)
-	    r = buddy[r];
+	    {
+	      r = buddy[r];
+	    }
 	  /*
 	   * If a partition hasn't already been assigned for this tree,
 	   * assign one now.
@@ -5905,7 +6043,9 @@ qo_assign_eq_classes (QO_ENV * env)
   bitset_init (&segs, env);
   eq_map = NALLOCATE (env, QO_EQCLASS *, env->nsegs);
   for (i = 0; i < env->nsegs; ++i)
-    eq_map[i] = NULL;
+    {
+      eq_map[i] = NULL;
+    }
 
   for (i = 0; i < env->nedges; i++)
     {
@@ -5913,7 +6053,9 @@ qo_assign_eq_classes (QO_ENV * env)
 
       term = QO_ENV_TERM (env, i);
       if (QO_TERM_NOMINAL_SEG (term))
-	bitset_union (&segs, &(QO_TERM_SEGS (term)));
+	{
+	  bitset_union (&segs, &(QO_TERM_SEGS (term)));
+	}
     }
 
   /*
@@ -5923,7 +6065,9 @@ qo_assign_eq_classes (QO_ENV * env)
   for (i = 0; i < env->nsegs; ++i)
     {
       if (!BITSET_MEMBER (segs, i))
-	continue;
+	{
+	  continue;
+	}
 
       if (eq_map[i] == NULL)
 	{
@@ -5935,20 +6079,26 @@ qo_assign_eq_classes (QO_ENV * env)
 	   */
 	  for (root = seg; QO_SEG_EQ_ROOT (root);
 	       root = QO_SEG_EQ_ROOT (root))
-	    ;
+	    {
+	      ;
+	    }
 	  /*
 	   * Assign a new EqClass to that root if one hasn't already
 	   * been assigned.
 	   */
 	  if (eq_map[QO_SEG_IDX (root)] == NULL)
-	    qo_eqclass_add ((eq_map[QO_SEG_IDX (root)] =
-			     qo_eqclass_new (env)), root);
+	    {
+	      qo_eqclass_add ((eq_map[QO_SEG_IDX (root)] =
+			       qo_eqclass_new (env)), root);
+	    }
 	  /*
 	   * Now add the original segment to the same equivalence
 	   * class.
 	   */
 	  if (root != seg)
-	    qo_eqclass_add (eq_map[QO_SEG_IDX (root)], seg);
+	    {
+	      qo_eqclass_add (eq_map[QO_SEG_IDX (root)], seg);
+	    }
 	  eq_map[i] = eq_map[QO_SEG_IDX (root)];
 	}
     }
@@ -5995,13 +6145,15 @@ qo_assign_eq_classes (QO_ENV * env)
 static void
 qo_env_dump (QO_ENV * env, FILE * f)
 {
+  int i;
+
   if (f == NULL)
-    f = stdout;
+    {
+      f = stdout;
+    }
 
   if (env->nsegs)
     {
-      int i;
-
       fprintf (f, "Join graph segments (f indicates final):\n");
       for (i = 0; i < env->nsegs; ++i)
 	{
@@ -6021,7 +6173,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
 
   if (env->nnodes)
     {
-      int i;
       fprintf (f, "Join graph nodes:\n");
       for (i = 0; i < env->nnodes; ++i)
 	{
@@ -6034,7 +6185,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
 
   if (env->neqclasses)
     {
-      int i;
       fprintf (f, "Join graph equivalence classes:\n");
       for (i = 0; i < env->neqclasses; ++i)
 	{
@@ -6052,7 +6202,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
    */
   if (env->nedges)
     {
-      int i;
       fputs ("Join graph edges:\n", f);
       for (i = 0; i < env->nedges; ++i)
 	{
@@ -6064,7 +6213,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
 
   if (env->nterms - env->nedges)
     {
-      int i;
       fputs ("Join graph terms:\n", f);
       for (i = env->nedges; i < env->nterms; ++i)
 	{
@@ -6076,7 +6224,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
 
   if (env->nsubqueries)
     {
-      int i;
       fputs ("Join graph subqueries:\n", f);
       for (i = 0; i < env->nsubqueries; ++i)
 	{
@@ -6088,7 +6235,6 @@ qo_env_dump (QO_ENV * env, FILE * f)
 
   if (env->npartitions > 1)
     {
-      int i;
       fputs ("Join graph partitions:\n", f);
       for (i = 0; i < env->npartitions; ++i)
 	{
@@ -6151,7 +6297,9 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
-    qo_free_node_index_info (QO_NODE_ENV (node), QO_NODE_INDEXES (node));
+    {
+      qo_free_node_index_info (QO_NODE_ENV (node), QO_NODE_INDEXES (node));
+    }
   DEALLOCATE (env, QO_NODE_USING_INDEX (node));
 }
 
@@ -6171,7 +6319,9 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   sel_limit =
     (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
-    QO_NODE_SELECTIVITY (node) = sel_limit;
+    {
+      QO_NODE_SELECTIVITY (node) = sel_limit;
+    }
 }
 
 /*
@@ -6184,7 +6334,9 @@ void
 qo_node_fprint (QO_NODE * node, FILE * f)
 {
   if (QO_NODE_NAME (node))
-    fprintf (f, "%s", QO_NODE_NAME (node));
+    {
+      fprintf (f, "%s", QO_NODE_NAME (node));
+    }
   fprintf (f, " node[%d]", QO_NODE_IDX (node));
 }
 
@@ -6205,7 +6357,7 @@ qo_node_dump (QO_NODE * node, FILE * f)
 
   if (QO_NODE_INFO (node))
     {
-      n = QO_NODE_INFO (node)->n;
+      n = QO_NODE_INFO_N (node);
       if (n > 1)
 	{
 	  fprintf (f, "(");	/* left paren */
@@ -6234,9 +6386,13 @@ qo_node_dump (QO_NODE * node, FILE * f)
     }
   name = QO_NODE_NAME (node);
   if (n == 1)
-    fprintf (f, "%s", (name ? name : "(unknown)"));
+    {
+      fprintf (f, "%s", (name ? name : "(unknown)"));
+    }
   else
-    fprintf (f, "as %s", (name ? name : "(unknown)"));
+    {
+      fprintf (f, "as %s", (name ? name : "(unknown)"));
+    }
 
   if (entity->info.spec.range_var->alias_print)
     {
@@ -6287,7 +6443,9 @@ static void
 qo_seg_free (QO_SEGMENT * seg)
 {
   if (QO_SEG_INFO (seg) != NULL)
-    qo_free_attr_info (QO_SEG_ENV (seg), QO_SEG_INFO (seg));
+    {
+      qo_free_attr_info (QO_SEG_ENV (seg), QO_SEG_INFO (seg));
+    }
   bitset_delset (&(QO_SEG_INDEX_TERMS (seg)));
 }
 
@@ -6483,12 +6641,18 @@ qo_equivalence (QO_SEGMENT * sega, QO_SEGMENT * segb)
 {
 
   while (QO_SEG_EQ_ROOT (sega))
-    sega = QO_SEG_EQ_ROOT (sega);
+    {
+      sega = QO_SEG_EQ_ROOT (sega);
+    }
   while (QO_SEG_EQ_ROOT (segb))
-    segb = QO_SEG_EQ_ROOT (segb);
+    {
+      segb = QO_SEG_EQ_ROOT (segb);
+    }
 
   if (sega != segb)
-    QO_SEG_EQ_ROOT (sega) = segb;
+    {
+      QO_SEG_EQ_ROOT (sega) = segb;
+    }
 }
 
 /*
@@ -6530,7 +6694,9 @@ void
 qo_eqclass_fprint_wrt (QO_EQCLASS * eqclass, BITSET * nodeset, FILE * f)
 {
   if (eqclass == QO_UNORDERED)
-    fputs ("UNORDERED", f);
+    {
+      fputs ("UNORDERED", f);
+    }
   else if (bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
     {
       /*
@@ -6542,7 +6708,9 @@ qo_eqclass_fprint_wrt (QO_EQCLASS * eqclass, BITSET * nodeset, FILE * f)
 	       QO_TERM_IDX (QO_EQCLASS_TERM (eqclass)));
     }
   else
-    qo_seg_fprint (qo_eqclass_wrt (eqclass, nodeset), f);
+    {
+      qo_seg_fprint (qo_eqclass_wrt (eqclass, nodeset), f);
+    }
 }
 
 /*
@@ -6584,9 +6752,13 @@ qo_term_fprint (QO_TERM * term, FILE * f)
 	case QO_TC_PATH:
 	  qo_node_fprint (QO_TERM_HEAD (term), f);
 	  if (!QO_TERM_SEG (term) || !QO_SEG_NAME (QO_TERM_SEG (term)))
-	    fprintf (f, " () -> ");
+	    {
+	      fprintf (f, " () -> ");
+	    }
 	  else
-	    fprintf (f, " %s -> ", QO_SEG_NAME (QO_TERM_SEG (term)));
+	    {
+	      fprintf (f, " %s -> ", QO_SEG_NAME (QO_TERM_SEG (term)));
+	    }
 	  qo_node_fprint (QO_TERM_TAIL (term), f);
 	  break;
 
@@ -6654,9 +6826,13 @@ qo_term_dump (QO_TERM * term, FILE * f)
     case QO_TC_PATH:
       qo_node_fprint (QO_TERM_HEAD (term), f);
       if (!QO_TERM_SEG (term) || !QO_SEG_NAME (QO_TERM_SEG (term)))
-	fprintf (f, " () -> ");
+	{
+	  fprintf (f, " () -> ");
+	}
       else
-	fprintf (f, " %s -> ", QO_SEG_NAME (QO_TERM_SEG (term)));
+	{
+	  fprintf (f, " %s -> ", QO_SEG_NAME (QO_TERM_SEG (term)));
+	}
       qo_node_fprint (QO_TERM_TAIL (term), f);
       break;
 
@@ -6758,7 +6934,9 @@ qo_term_dump (QO_TERM * term, FILE * f)
     }
 
   if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
-    fputs (" (mergeable)", f);
+    {
+      fputs (" (mergeable)", f);
+    }
 
   switch (QO_TERM_JOIN_TYPE (term))
     {
@@ -6823,7 +7001,9 @@ qo_subquery_dump (QO_ENV * env, QO_SUBQUERY * subq, FILE * f)
        i != -1; i = bitset_next_member (&bi))
     {
       if (separator)
-	fputs (separator, f);
+	{
+	  fputs (separator, f);
+	}
       qo_seg_fprint (QO_ENV_SEG (env, i), f);
       separator = " ";
     }
@@ -6926,7 +7106,6 @@ qo_partition_dump (QO_PARTITION * part, FILE * f)
   fputs (")", f);
 }
 
-
 /*
  * qo_print_stats () -
  *   return:
@@ -6958,6 +7137,7 @@ qo_seg_nodes (QO_ENV * env, BITSET * segset, BITSET * result)
   BITSET_CLEAR (*result);
   for (i = bitset_iterate (segset, &si); i != -1;
        i = bitset_next_member (&si))
-    bitset_add (result, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, i))));
-
+    {
+      bitset_add (result, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, i))));
+    }
 }

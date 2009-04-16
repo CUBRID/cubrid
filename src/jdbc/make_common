@@ -10,7 +10,7 @@ JSP_OUTPUT = jspserver.jar
 CPP_DEF_DRIVER = -DJDBC_DRIVER_MAJOR_VERSION=$(JDBC_DRIVER_MAJOR_VERSION)      \
           -DJDBC_DRIVER_MINOR_VERSION=$(JDBC_DRIVER_MINOR_VERSION)      \
           -DJDBC_DRIVER_PATCH_VERSION=$(JDBC_DRIVER_PATCH_VERSION)      \
-          -DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER) 
+          -DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER)
 
 CPP_DEF_JSP = -DJDBC_DRIVER_MAJOR_VERSION=$(JDBC_DRIVER_MAJOR_VERSION)      \
           -DJDBC_DRIVER_MINOR_VERSION=$(JDBC_DRIVER_MINOR_VERSION)      \
@@ -82,6 +82,8 @@ JDBC_SRCS =	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UFunctionCode.java		\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UGetTypeConvertedValue.java	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UInputBuffer.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UTimedInputStream.java		\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UTimedDataInputStream.java	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIUtil.java			\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UOutputBuffer.java		\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UParameter.java			\

@@ -104,7 +104,7 @@ static int spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 static int spage_free_saved_spaces_helper (const void *vpid_key, void *ent,
 					   void *tid);
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
-						    VPID * vpid);
+						    FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
 static int spage_compact (PAGE_PTR pgptr);
 
@@ -167,10 +167,10 @@ static const char *spage_record_type_string (INT16 record_type);
 static const char *spage_anchor_flag_string (INT16 anchor_type);
 static const char *spage_alignment_string (unsigned short alignment);
 
-static void spage_dump_header (const SPAGE_HEADER * sphdr);
-static void spage_dump_slots (const SPAGE_SLOT * sptr, PGNSLOTS nslots,
-			      unsigned short alignment);
-static void spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id,
+static void spage_dump_header (FILE * fp, const SPAGE_HEADER * sphdr);
+static void spage_dump_slots (FILE * fp, const SPAGE_SLOT * sptr,
+			      PGNSLOTS nslots, unsigned short alignment);
+static void spage_dump_record (FILE * Fp, PAGE_PTR page_p, PGSLOTID slot_id,
 			       SPAGE_SLOT * slot_p);
 static void spage_check (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
@@ -774,7 +774,7 @@ spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
  *   vpid(in):  Volume and page identifier
  */
 static void
-spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
+spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp,
 					VPID * vpid_p)
 {
   SPAGE_SAVE_ENTRY *entry_p;
@@ -791,7 +791,7 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
   head_p = (SPAGE_SAVE_HEAD *) mht_get (spage_Mht_saving, vpid_p);
   if (head_p != NULL)
     {
-      fprintf (stdout,
+      fprintf (fp,
 	       "Other savings of VPID = %d|%d returned savings = %d\n",
 	       head_p->vpid.volid, head_p->vpid.pageid,
 	       head_p->return_savings);
@@ -801,7 +801,7 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 
       while (entry_p != NULL)
 	{
-	  fprintf (stdout, "   Tranid = %d save = %d\n",
+	  fprintf (fp, "   Tranid = %d save = %d\n",
 		   entry_p->tranid, entry_p->saved);
 	  entry_p = entry_p->next;
 	}
@@ -3565,30 +3565,30 @@ spage_alignment_string (unsigned short alignment)
  * Note: This function is used for debugging purposes.
  */
 static void
-spage_dump_header (const SPAGE_HEADER * page_header_p)
+spage_dump_header (FILE * fp, const SPAGE_HEADER * page_header_p)
 {
   assert (page_header_p != NULL);
 
   /* Dump header information */
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "NUM SLOTS = %d, NUM RECS = %d, TYPE OF SLOTS = %s,\n",
 		  page_header_p->num_slots, page_header_p->num_records,
 		  spage_anchor_flag_string (page_header_p->anchor_type));
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "ALIGNMENT-TO = %s, WASTED AREA FOR ALIGNMENT = %d,\n",
 		  spage_alignment_string (page_header_p->alignment),
 		  page_header_p->waste_align);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d,"
 		  " FREE SPACE OFFSET = %d,\n", page_header_p->total_free,
 		  page_header_p->cont_free,
 		  page_header_p->offset_to_free_area);
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "IS_SAVING = %d, LAST TRANID SAVING = %d,"
 		  " LOCAL TRANSACTION_SAVINGS = %d\n",
 		  page_header_p->is_saving, page_header_p->last_tranid,
 		  page_header_p->saved);
-  (void) fprintf (stdout, "TOTAL_SAVED = %d\n", page_header_p->total_saved);
+  (void) fprintf (fp, "TOTAL_SAVED = %d\n", page_header_p->total_saved);
 }
 
 /*
@@ -3602,7 +3602,7 @@ spage_dump_header (const SPAGE_HEADER * page_header_p)
  *       This function is used for debugging purposes.
  */
 static void
-spage_dump_slots (const SPAGE_SLOT * slot_p, PGNSLOTS num_slots,
+spage_dump_slots (FILE * fp, const SPAGE_SLOT * slot_p, PGNSLOTS num_slots,
 		  unsigned short alignment)
 {
   int i;
@@ -3612,21 +3612,22 @@ spage_dump_slots (const SPAGE_SLOT * slot_p, PGNSLOTS num_slots,
 
   for (i = 0; i < num_slots; slot_p--, i++)
     {
-      (void) fprintf (stdout, "\nSlot-id = %2d, offset = %4d, type = %s",
+      (void) fprintf (fp, "\nSlot-id = %2d, offset = %4d, type = %s",
 		      i, slot_p->offset_to_record,
 		      spage_record_type_string (slot_p->record_type));
       if (slot_p->offset_to_record != NULL_OFFSET)
 	{
 	  DB_WASTED_ALIGN (slot_p->record_length, alignment, waste);
-	  (void) fprintf (stdout, ", length = %4d, waste = %u",
+	  (void) fprintf (fp, ", length = %4d, waste = %u",
 			  slot_p->record_length, waste);
 	}
-      (void) fprintf (stdout, "\n");
+      (void) fprintf (fp, "\n");
     }
 }
 
 static void
-spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * slot_p)
+spage_dump_record (FILE * fp, PAGE_PTR page_p, PGSLOTID slot_id,
+		   SPAGE_SLOT * slot_p)
 {
   VFID *vfid;
   OID *oid;
@@ -3635,17 +3636,17 @@ spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * slot_p)
 
   if (slot_p->offset_to_record != NULL_OFFSET)
     {
-      (void) fprintf (stdout, "\nSlot-id = %2d\n", slot_id);
+      (void) fprintf (fp, "\nSlot-id = %2d\n", slot_id);
       switch (slot_p->record_type)
 	{
 	case REC_BIGONE:
 	  vfid = (VFID *) (page_p + slot_p->offset_to_record);
-	  fprintf (stdout, "VFID = %d|%d\n", vfid->volid, vfid->fileid);
+	  fprintf (fp, "VFID = %d|%d\n", vfid->volid, vfid->fileid);
 	  break;
 
 	case REC_RELOCATION:
 	  oid = (OID *) (page_p + slot_p->offset_to_record);
-	  fprintf (stdout, "OID = %d|%d|%d\n",
+	  fprintf (fp, "OID = %d|%d|%d\n",
 		   oid->volid, oid->pageid, oid->slotid);
 	  break;
 
@@ -3653,14 +3654,14 @@ spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * slot_p)
 	  record_p = (char *) page_p + slot_p->offset_to_record;
 	  for (i = 0; i < slot_p->record_length; i++)
 	    {
-	      (void) fputc (*record_p++, stdout);
+	      (void) fputc (*record_p++, fp);
 	    }
-	  (void) fprintf (stdout, "\n");
+	  (void) fprintf (fp, "\n");
 	}
     }
   else
     {
-      (void) fprintf (stdout, "\nSlot-id = %2d has been deleted\n", slot_id);
+      (void) fprintf (fp, "\nSlot-id = %2d has been deleted\n", slot_id);
     }
 }
 
@@ -3675,7 +3676,8 @@ spage_dump_record (PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * slot_p)
  *       true. This function is used for debugging purposes.
  */
 void
-spage_dump (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int is_record_printed)
+spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_p,
+	    int is_record_printed)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
@@ -3683,29 +3685,29 @@ spage_dump (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int is_record_printed)
 
   assert (page_p != NULL);
 
-  (void) fprintf (stdout,
+  (void) fprintf (fp,
 		  "\n*** Dumping pageid = %d of volume = %s ***\n",
 		  pgbuf_get_page_id (page_p),
 		  pgbuf_get_volume_label (page_p));
 
   page_header_p = (SPAGE_HEADER *) page_p;
-  spage_dump_header (page_header_p);
+  spage_dump_header (fp, page_header_p);
 
   /* Dump each slot and its corresponding record */
   slot_p = spage_find_slot (page_p, page_header_p, 0, false);
-  spage_dump_slots (slot_p, page_header_p->num_slots,
+  spage_dump_slots (fp, slot_p, page_header_p->num_slots,
 		    page_header_p->alignment);
 
   if (is_record_printed)
     {
-      (void) fprintf (stdout, "\nRecords in ascii follow ...\n");
+      (void) fprintf (fp, "\nRecords in ascii follow ...\n");
       for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
 	{
-	  spage_dump_record (page_p, i, slot_p);
+	  spage_dump_record (fp, page_p, i, slot_p);
 	}
     }
 
-  spage_dump_saved_spaces_by_other_trans (thread_p,
+  spage_dump_saved_spaces_by_other_trans (thread_p, fp,
 					  pgbuf_get_vpid_ptr (page_p));
   spage_check (thread_p, page_p);
 }

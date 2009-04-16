@@ -340,9 +340,13 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   while (vc)
     {
       DB_VALUE *db_value;
+      bool to_break = false;
+
       *next_value_list = (DB_ARG_LIST *) calloc (1, sizeof (DB_ARG_LIST));
       if (*next_value_list == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (DB_ARG_LIST));
 	  return er_errid ();
 	}
 
@@ -357,7 +361,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
          use pt_evaluate_tree() to extract the db_value from a host
          variable;  instead extract it ourselves.
        */
-      if (PT_IS_HOSTVAR (vc) || PT_IS_PARAMETER (vc))
+      if (PT_IS_CONST (vc))
 	{
 	  db_value = pt_value_to_db (parser, vc);
 	}
@@ -366,6 +370,8 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value = (DB_VALUE *) calloc (1, sizeof (DB_VALUE));
 	  if (db_value == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
 	      return er_errid ();
 	    }
 
@@ -373,17 +379,21 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_evaluate_tree (parser, vc, db_value);
 	  if (parser->error_msgs)
 	    {
-	      break;
+	      /* to maintain the list to free all the allocated */
+	      to_break = true;
 	    }
 
-	  db_value = db_value;
 	}
 
-      (*next_value_list)->label = vc->info.name.original;
       (*next_value_list)->val = db_value;
 
       next_value_list = &(*next_value_list)->next;
       vc = vc->next;
+
+      if (to_break)
+	{
+	  break;
+	}
     }
 
   if (parser->error_msgs)
@@ -401,7 +411,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   while (value_list && vc)
     {
       vl = value_list->next;
-      if (!PT_IS_HOSTVAR (vc) && !PT_IS_PARAMETER (vc))
+      if (!PT_IS_CONST (vc))
 	{
 	  db_value_clear (value_list->val);
 	  free_and_init (value_list->val);
@@ -2369,7 +2379,7 @@ jsp_connect_server (void)
   int server_port = -1;
   unsigned int inaddr;
   int b;
-  char *server_host = "127.0.0.1"; /* assume as local host */
+  char *server_host = "127.0.0.1";	/* assume as local host */
 
   server_port = jsp_get_server_port ();
   if (server_port < 0)
@@ -2390,7 +2400,7 @@ jsp_connect_server (void)
   if (inaddr != INADDR_NONE)
     {
       memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr,
-              sizeof (inaddr));
+	      sizeof (inaddr));
     }
   else
     {
@@ -2398,14 +2408,14 @@ jsp_connect_server (void)
       hp = gethostbyname (server_host);
 
       if (hp == NULL)
-        {
-          er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-                               ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
-          return er_errid ();
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
+	  return er_errid ();
 
-        }
+	}
       memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr,
-              hp->h_length);
+	      hp->h_length);
     }
 
   tcp_srv_addr.sin_port = htons (server_port);

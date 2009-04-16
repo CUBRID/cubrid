@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cas_net_buf.h - 
+ * cas_net_buf.h -
  */
 
 #ifndef	_CAS_NET_BUF_H_
@@ -54,13 +54,8 @@
 #define net_ntohd(X)		net_htond(X)
 #endif
 
-#ifdef CAS_DEBUG
 #define NET_BUF_ERROR_MSG_SET(NET_BUF, ERR_CODE, ERR_MSG)	\
-     net_buf_error_msg_set_debug(NET_BUF, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
-#else
-#define NET_BUF_ERROR_MSG_SET(NET_BUF, ERR_CODE, ERR_MSG)	\
-     net_buf_error_msg_set(NET_BUF, ERR_CODE, ERR_MSG)
-#endif
+     net_buf_error_msg_set(NET_BUF, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
 
 #define NET_BUF_CP_OBJECT(BUF, OID_P)			\
 	do {						\
@@ -113,13 +108,8 @@ extern int net_buf_cp_float (T_NET_BUF *, float);
 extern int net_buf_cp_double (T_NET_BUF *, double);
 extern int net_buf_cp_short (T_NET_BUF *, short);
 
-#ifdef CAS_DEBUG
-extern void net_buf_error_msg_set_debug (T_NET_BUF * net_buf, int errcode,
-					 char *errstr, char *file, int line);
-#else
 extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errcode,
-				   char *errstr);
-#endif
+				   char *errstr, char *file, int line);
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
 extern float net_htonf (float from);

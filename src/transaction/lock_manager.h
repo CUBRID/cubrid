@@ -177,7 +177,7 @@ extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p,
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p,
 						      LK_ACQUIRED_LOCKS *
 						      acqlocks);
-extern void lock_dump_acquired (LK_ACQUIRED_LOCKS * acqlocks);
+extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_start_instant_lock_mode (int tran_index);
 extern void lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p,
 					 int tran_index, bool need_unlock);

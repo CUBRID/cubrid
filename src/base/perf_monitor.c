@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -100,31 +100,35 @@ static MNT_SERVER_EXEC_STATS mnt_Server_stats;
 int
 mnt_start_stats (void)
 {
-  int answer;
+  int err;
 
   /* Restart the statistics */
-  if ((answer = mnt_server_start_stats ()) != ER_FAILED)
+  err = mnt_server_start_stats ();
+  if (err != ER_FAILED)
     {
       mnt_Iscollecting_stats = true;
       mnt_client_reset_stats ();
     }
-  return answer;
+  return err;
 }
 
 /*
  * mnt_stop_stats - Stop collecting client execution statistics
- *   return: none
+ *   return: NO_ERROR or ER_FAILED
  */
-void
+int
 mnt_stop_stats (void)
 {
+  int err = NO_ERROR;
+
   if (mnt_Iscollecting_stats != false)
     {
-      mnt_server_stop_stats ();
+      err = mnt_server_stop_stats ();
       mnt_client_reset_stats ();
       mnt_Iscollecting_stats = false;
       mnt_Stats.server_stats = NULL;
     }
+  return err;
 }
 
 /*

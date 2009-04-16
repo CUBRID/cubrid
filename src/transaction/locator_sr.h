@@ -187,7 +187,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 				HFID * hfid, TP_DOMAIN * key_type,
 				int n_attrs, int *attr_ids, OID * pk_cls_oid,
 				BTID * pk_btid, int cache_attr_id,
-				char *fkname);
+				char *fk_name);
 #endif /* SERVER_MODE */
 
 #endif /* _LOCATOR_SR_H_ */

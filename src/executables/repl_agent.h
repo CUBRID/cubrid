@@ -34,7 +34,6 @@
 #include "log_compress.h"
 
 #define IP_ADDR_LENGTH                  50
-#define DB_NAME_LENGTH                  256
 #define MAX_NUM_OF_SLAVES               1
 #define MAX_NUM_OF_MASTERS              1
 #define SIZE_OF_TRAIL_LOG               DB_SIZEOF(MASTER_MAP)
@@ -164,7 +163,7 @@ typedef struct
 /* to maintain the connection info */
 typedef struct
 {
-  char dbname[DB_NAME_LENGTH];
+  char dbname[DB_MAX_IDENTIFIER_LENGTH];	/* 255 */
   char master_IP[IP_ADDR_LENGTH];
   int portnum;
   char userid[DB_MAX_USER_LENGTH];	/* 32 */
@@ -182,6 +181,7 @@ typedef struct repl_item
   int type;
   char *class_name;
   DB_VALUE key;
+  DB_OBJECT *record;
   LOG_LSA lsa;
   struct repl_item *next;
 } REPL_ITEM;

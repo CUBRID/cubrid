@@ -1173,7 +1173,7 @@ exit_on_error:
  *   ovf_vpid(in): Overflow address
  */
 int
-overflow_dump (THREAD_ENTRY * thread_p, VPID * ovf_vpid)
+overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
 {
   OVERFLOW_FIRST_PART *first_part;
   OVERFLOW_REST_PART *rest_parts;
@@ -1210,7 +1210,7 @@ overflow_dump (THREAD_ENTRY * thread_p, VPID * ovf_vpid)
 				      (char *) pgptr) : remain_length);
       for (i = 0; i < dump_length; i++)
 	{
-	  (void) fputc (*dumpfrom++, stdout);
+	  (void) fputc (*dumpfrom++, fp);
 	}
 
       remain_length -= dump_length;
@@ -1324,12 +1324,13 @@ overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-overflow_rv_newpage_logical_dump_undo (int length_ignore, void *data)
+overflow_rv_newpage_logical_dump_undo (FILE * fp, int length_ignore,
+				       void *data)
 {
   OVERFLOW_RECV_LINKS *newpg;
 
   newpg = (OVERFLOW_RECV_LINKS *) data;
-  (void) fprintf (stdout, "Deallocating page %d|%d"
+  (void) fprintf (fp, "Deallocating page %d|%d"
 		  " from Volid = %d, Fileid = %d\n",
 		  newpg->new_vpid.volid, newpg->new_vpid.pageid,
 		  newpg->ovf_vfid.volid, newpg->ovf_vfid.fileid);
@@ -1382,11 +1383,11 @@ overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-overflow_rv_link_dump (int length_ignore, void *data)
+overflow_rv_link_dump (FILE * fp, int length_ignore, void *data)
 {
   VPID *vpid;
 
   vpid = (VPID *) data;
-  fprintf (stdout, "Overflow Reference to Volid = %d|Pageid = %d\n",
+  fprintf (fp, "Overflow Reference to Volid = %d|Pageid = %d\n",
 	   vpid->volid, vpid->pageid);
 }

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -37,6 +37,7 @@
 #include "log_comm.h"
 #include "recovery.h"
 #include "porting.h"
+#include "boot.h"
 #include "critical_section.h"
 #include "release_string.h"
 #include "file_io.h"
@@ -47,15 +48,27 @@
 #endif /* SOLARIS */
 
 #if defined(SERVER_MODE)
-#define LOG_CS_ENTER(thread_p) csect_enter((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_EXIT() csect_exit(CSECT_LOG)
+#define LOG_CS_ENTER(thread_p) \
+        csect_enter((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_ENTER_READ_MODE(thread_p) \
+        csect_enter_as_reader((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_DEMOTE(thread_p) \
+        csect_demote((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_PROMOTE(thread_p) \
+        csect_promote((thread_p), CSECT_LOG, INF_WAIT)
+#define LOG_CS_EXIT() \
+        csect_exit(CSECT_LOG)
 #define TR_TABLE_CS_ENTER(thread_p) \
-  csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
+        csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
-  csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
-#define TR_TABLE_CS_EXIT()  csect_exit(CSECT_TRAN_TABLE)
+        csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
+#define TR_TABLE_CS_EXIT() \
+        csect_exit(CSECT_TRAN_TABLE)
 #else /* SERVER_MODE */
 #define LOG_CS_ENTER(thread_p)
+#define LOG_CS_ENTER_READ_MODE(thread_p)
+#define LOG_CS_DEMOTE(thread_p)
+#define LOG_CS_PROMOTE(thread_p)
 #define LOG_CS_EXIT()
 #define TR_TABLE_CS_ENTER(thread_p)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
@@ -249,10 +262,38 @@
             ((double)(end_time.tv_sec - start_time.tv_sec) + \
              (end_time.tv_usec - start_time.tv_usec)/1000000.0)
 
+/* special action for log applier */
+#if defined (SERVER_MODE)
+#define LOG_CHECK_LOG_APPLIER(thread_p) \
+  (thread_p != NULL &&  \
+   logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_REPLICATOR)
+#else
+#define LOG_CHECK_LOG_APPLIER(thread_p) (0)
+#endif /* !SERVER_MODE */
+
+extern int db_Disable_modifications;
+#ifndef CHECK_MODIFICATION_NO_RETURN
+#if defined (SA_MODE)
+#define CHECK_MODIFICATION_NO_RETURN(error) \
+  error = NO_ERROR;
+#else /* SA_MODE */
+#define CHECK_MODIFICATION_NO_RETURN(error)  \
+  if (db_Disable_modifications) {            \
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
+    er_log_debug (ARG_FILE_LINE, "db_Disable_modification == 1"); \
+    error = ER_DB_NO_MODIFICATIONS;          \
+  } else {                                   \
+    error = NO_ERROR;                        \
+  }
+#endif /* !SA_MODE */
+#endif /* CHECK_MODIFICATION_NO_RETURN */
+
 /* for debugging */
 #define LOG_DEBUG_MSG    (0x0002)
 #define LOG_DEBUG_STAT   (0x0004)
 #define LOG_DEBUG_MUTEX  (0x0008)
+
+#define LOGWR_DEBUG_MSG  (0x0001)
 
 #if defined(LOG_DEBUG)
 #define LOG_MUTEX_LOCK(rv, mutex) log_lock_mutex_debug(ARG_FILE_LINE, #mutex)
@@ -315,13 +356,30 @@ enum log_getnewtrid
  */
 enum LOG_PSTATUS
 {
-  LOG_PSTAT_CLEAR = 0x0,
-  LOG_PSTAT_BACKUP_INPROGRESS = 0x1,	/* only one backup at a time */
-  LOG_PSTAT_RESTORE_INPROGRESS = 0x2	/* unset upon successful restore */
+  LOG_PSTAT_CLEAR = 0x00,
+  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
+  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
+  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
+};
+
+enum LOG_HA_SRVSTAT
+{
+  LOG_HA_SRVSTAT_IDLE = 0,
+  LOG_HA_SRVSTAT_ACTIVE = 1,
+  LOG_HA_SRVSTAT_TO_BE_ACTIVE = 2,
+  LOG_HA_SRVSTAT_STANDBY = 3,
+  LOG_HA_SRVSTAT_TO_BE_STANDBY = 4,
+  LOG_HA_SRVSTAT_DEAD = 5
+};
+
+enum LOG_HA_FILESTAT
+{
+  LOG_HA_FILESTAT_CLEAR = 0,
+  LOG_HA_FILESTAT_SYNCHRONIZED = 1
 };
 
 /*
- *       		          LOG PAGE
+ * LOG PAGE
  */
 
 typedef struct log_hdrpage LOG_HDRPAGE;
@@ -360,7 +418,8 @@ typedef struct log_mutex_info
 } log_mutex_info;
 #endif /* LOG_DEBUG */
 
-typedef enum
+typedef enum log_flush_type LOG_FLUSH_TYPE;
+enum log_flush_type
 {
   /* flush pages in commit process */
   LOG_FLUSH_NORMAL = 0,
@@ -370,7 +429,7 @@ typedef enum
      because some threads can't release log cs. (archive, log buffer replace)
    */
   LOG_FLUSH_DIRECT
-} LOG_FLUSH_TYPE;
+};
 
 /*
  * Flush information shared by LFT and normal transaction.
@@ -392,7 +451,7 @@ struct log_flush_info
   LOG_PAGE **toflush;
 
 #if defined(SERVER_MODE)
-  /* for pretecting LOG_FLUSH_INFO */
+  /* for protecting LOG_FLUSH_INFO */
   MUTEX_T flush_mutex;
 #if defined(LOG_DEBUG)
 
@@ -417,6 +476,46 @@ struct log_group_commit_info
   COND_T gc_cond;
 };
 
+typedef enum logwr_mode LOGWR_MODE;
+enum logwr_mode
+{
+  LOGWR_MODE_ASYNC = 1,
+  LOGWR_MODE_SEMISYNC,
+  LOGWR_MODE_SYNC
+};
+
+typedef enum logwr_status LOGWR_STATUS;
+enum logwr_status
+{
+  LOGWR_STATUS_WAIT,
+  LOGWR_STATUS_FETCH,
+  LOGWR_STATUS_DONE,
+  LOGWR_STATUS_DELAY,
+  LOGWR_STATUS_ERROR
+};
+
+typedef struct logwr_entry LOGWR_ENTRY;
+struct logwr_entry
+{
+  THREAD_ENTRY *thread_p;
+  PAGEID fpageid;
+  LOGWR_MODE mode;
+  LOGWR_STATUS status;
+  LOGWR_ENTRY *next;
+};
+
+typedef struct logwr_info LOGWR_INFO;
+struct logwr_info
+{
+  LOGWR_ENTRY *writer_list;
+  MUTEX_T wr_list_mutex;
+  COND_T flush_start_cond;
+  MUTEX_T flush_start_mutex;
+  COND_T flush_end_cond;
+  MUTEX_T flush_end_mutex;
+  bool skip_flush;
+};
+
 struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log            */
@@ -429,7 +528,8 @@ struct log_append_info
 
 };
 
-typedef enum
+typedef enum log_2pc_execute LOG_2PC_EXECUTE;
+enum log_2pc_execute
 {
   LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
   LOG_2PC_EXECUTE_PREPARE,	/* For a participant that is also a non root
@@ -448,7 +548,7 @@ typedef enum
 					   the first phase (i.e., prepare) of the
 					   2PC
 					 */
-} LOG_2PC_EXECUTE;
+};
 
 typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
 struct log_2pc_gtrinfo
@@ -496,11 +596,14 @@ struct log_topops_stack
 };
 
 typedef struct log_clientids LOG_CLIENTIDS;
-struct log_clientids
-{				/* User, host, and process_id */
-  char prog_name[PATH_MAX];
-  char user_name[LOG_USERNAME_MAX];
-  char host_name[MAXHOSTNAMELEN];
+struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
+{
+  int client_type;
+  char client_info[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char db_user[LOG_USERNAME_MAX];
+  char program_name[PATH_MAX + 1];
+  char login_name[L_cuserid + 1];
+  char host_name[MAXHOSTNAMELEN + 1];
   int process_id;
 };
 
@@ -678,7 +781,7 @@ struct log_header
 				 * log. The value is generated by the log
 				 * manager
 				 */
-  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
+  char db_release[CUBRID_REL_STRING_MAX_LENGTH];	/* CUBRID Release */
   float db_compatibility;	/* Compatibility of the database against the
 				 * current release of CUBRID
 				 */
@@ -731,6 +834,10 @@ struct log_header
   /* backup specific info
    * for future growth
    */
+
+  int ha_server_status;
+  int ha_file_status;
+  LOG_LSA eof_lsa;
 };
 
 struct log_arv_header
@@ -750,7 +857,8 @@ struct log_arv_header
   int arv_num;			/* The archive number                       */
 };
 
-typedef enum
+typedef enum log_rectype LOG_RECTYPE;
+enum log_rectype
 {
   /* In order of likely of appearance in the log */
   LOG_SMALLER_LOGREC_TYPE,	/* A lower bound check             */
@@ -862,17 +970,19 @@ typedef enum
 				   before calling lock_unlock_all()
 				 */
   LOG_DIFF_UNDOREDO_DATA,	/* diff undo redo data             */
+  LOG_DUMMY_HA_SERVER_STATE,	/* HA server state */
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks       */
-} LOG_RECTYPE;
+};
 
-typedef enum
+typedef enum log_repl_flush LOG_REPL_FLUSH;
+enum log_repl_flush
 {
   LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
   LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
   LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit
 				 *  and rollback
 				 */
-} LOG_REPL_FLUSH;
+};
 
 typedef struct log_repl LOG_REPL_RECORD;
 struct log_repl
@@ -1090,7 +1200,7 @@ struct log_topop_result
 /* Log a prepare to commit record */
 struct log_2pc_prepcommit
 {
-  char user_name[LOG_USERNAME_MAX];	/* Name of the client */
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
   int gtrinfo_length;		/* length of the global transaction info */
   unsigned int num_object_locks;	/* Total number of update-type locks
@@ -1106,7 +1216,7 @@ struct log_2pc_prepcommit
 /* Start 2PC protocol. Record information about identifiers of participants. */
 struct log_2pc_start
 {
-  char user_name[LOG_USERNAME_MAX];	/* Name of the client */
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global tran      */
   int num_particps;		/* number of participants             */
   int particp_id_length;	/* length of a participant identifier */
@@ -1127,6 +1237,12 @@ struct log_donetime
   time_t at_time;		/* Database creation time. For safety reasons */
 };
 
+/* Log the change of the server's HA state */
+struct log_ha_server_state
+{
+  int state;			/* ha_Server_state */
+};
+
 typedef struct log_crumb LOG_CRUMB;
 struct log_crumb
 {
@@ -1135,7 +1251,8 @@ struct log_crumb
 };
 
 /* state of recovery process */
-typedef enum
+typedef enum log_recvphase LOG_RECVPHASE;
+enum log_recvphase
 {
   LOG_RESTARTED,		/* Normal processing.. recovery has been
 				   executed.
@@ -1148,7 +1265,7 @@ typedef enum
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC
 				   protocol at the time of the crash
 				 */
-} LOG_RECVPHASE;
+};
 
 struct log_archives
 {
@@ -1187,15 +1304,14 @@ struct log_global
   /* Buffer for log hdr I/O, size : SIZEOF_LOG_PAGE_SIZE */
   LOG_PAGE *loghdr_pgptr;
 
-  /*  2 thread cannot enter to flush */
-  MUTEX_T flush_run_mutex;
-
   /* Flush information for dirty log pages */
   LOG_FLUSH_INFO flush_info;
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
 
+  /* remote log writer information */
+  LOGWR_INFO writer_info;
 };
 
 /* logging statistics */
@@ -1310,11 +1426,6 @@ extern char log_Name_info[];
 extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 
-extern char log_Client_progname_unknown[];
-extern char log_Client_name_unknown[];
-extern char log_Client_host_unknown[];
-extern int log_Client_process_id_unknown;
-
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (void);
 extern bool logpb_is_initialize_pool (void);
@@ -1412,22 +1523,22 @@ extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname,
 extern void logpb_do_checkpoint (void);
 #endif /* SERVER_MODE */
 extern PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
-extern void logpb_dump_checkpoint_trans (int length, void *data);
-extern void logpb_dump_checkpoint_topops (int length, void *data);
+extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length,
+					 void *data);
+extern void logpb_dump_checkpoint_topops (FILE * out_fp, int length,
+					  void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 			 const char *allbackup_path,
 			 FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives,
-			 const char *backup_verbose_file,
-			 int num_threads,
+			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level,
-			 int skip_activelog, PAGEID safe_pageid);
-extern int
-logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
-		const char *logpath, const char *prefix_logname,
-		const char *newall_path, bool ask_forpath,
-		BO_RESTART_ARG * r_args);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
+			 PAGEID safe_pageid);
+extern int logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
+			   const char *logpath, const char *prefix_logname,
+			   const char *newall_path, bool ask_forpath,
+			   BO_RESTART_ARG * r_args);
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *logpath, const char *prefix_logname,
 			  BO_RESTART_ARG * r_args);
@@ -1479,7 +1590,7 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 						int num_particps,
 						void *block_particps_ids),
 		     char *(*fmt_participant) (void *particp_id),
-		     void (*dump_participants) (int block_length,
+		     void (*dump_participants) (FILE * fp, int block_length,
 						void *block_particps_id),
 		     int (*send_prepare) (int gtrid, int num_particps,
 					  void *block_particps_ids),
@@ -1491,7 +1602,7 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 					 void *block_particps_ids,
 					 int collect));
 extern char *log_2pc_sprintf_particp (void *particp_id);
-extern void log_2pc_dump_participants (int block_length,
+extern void log_2pc_dump_participants (FILE * fp, int block_length,
 				       void *block_particps_ids);
 extern bool log_2pc_send_prepare (int gtrid, int num_particps,
 				  void *block_particps_ids);
@@ -1524,9 +1635,9 @@ extern TRAN_STATE log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 extern void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks,
 				  LOG_TDES * tdes, LOG_LSA * lsa,
 				  LOG_PAGE * log_pgptr);
-extern void log_2pc_dump_gtrinfo (int length, void *data);
-extern void log_2pc_dump_acqobj_locks (int length, void *data);
-extern void log_2pc_dump_acqpage_locks (int length, void *data);
+extern void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
+extern void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
+extern void log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data);
 extern LOG_TDES *log_2pc_alloc_coord_info (LOG_TDES * tdes,
 					   int num_particps,
 					   int particp_id_length,
@@ -1554,11 +1665,11 @@ extern int logtb_get_number_assigned_tran_indices (void);
 extern int logtb_get_number_of_total_tran_indices (void);
 extern bool logtb_am_i_sole_tran (THREAD_ENTRY * thread_p);
 extern void logtb_i_am_not_sole_tran (void);
+extern bool logtb_am_i_dba_client (THREAD_ENTRY * thread_p);
 extern int
 logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
-			 TRAN_STATE state, const char *client_prog_name,
-			 const char *client_user_name,
-			 const char *client_host_name, int client_process_id,
+			 TRAN_STATE state,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 TRAN_STATE * current_state, int waitsecs,
 			 TRAN_ISOLATION isolation);
 extern LOG_TDES *logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p,
@@ -1572,26 +1683,33 @@ extern void logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 extern void logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid);
-extern int
-logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
-				const char *host_name, int process_id);
+extern int logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
+					   const char *host_name,
+					   int process_id);
 extern TRANID logtb_find_tranid (int tran_index);
 extern TRANID logtb_find_current_tranid (THREAD_ENTRY * thread_p);
-extern void
-logtb_set_client_ids_all (LOG_CLIENTIDS * client, const char *prog_name,
-			  const char *host_name, const char *user_name,
-			  int process_id);
+extern void logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
+				      const char *client_info,
+				      const char *db_user,
+				      const char *program_name,
+				      const char *login_name,
+				      const char *host_name, int process_id);
+extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p,
+					  int client_type);
+extern int logtb_count_clients (THREAD_ENTRY * thread_p);
+extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
-extern bool logtb_is_repl_agent_client (THREAD_ENTRY * thread_p);
+extern int logtb_find_client_name_host_pid (int tran_index,
+					    char **client_prog_name,
+					    char **client_user_name,
+					    char **client_host_name,
+					    int *client_pid);
 
-extern int
-logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
-				 char **client_user_name,
-				 char **client_host_name, int *client_pid);
 #if defined(SERVER_MODE)
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 				       char **buffer_p, int *size_p);
 #endif /* SERVER_MODE */
+extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
 extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
@@ -1625,6 +1743,8 @@ extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 #if defined(SERVER_MODE)
 extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
+extern void logtb_disable_update (THREAD_ENTRY * thread_p);
+extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern int logtb_set_current_tran_index (THREAD_ENTRY * thread_p,
 					 int tran_index);

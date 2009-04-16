@@ -31,7 +31,6 @@
 #include "connection_cl.h"
 #include "connection_less.h"
 
-static unsigned short css_return_entry_id_from_eid (unsigned int eid);
 static unsigned short css_make_entry_id (CSS_MAP_ENTRY * anchor);
 static CSS_MAP_ENTRY *css_get_queued_entry (char *host,
 					    CSS_MAP_ENTRY * anchor);
@@ -53,29 +52,6 @@ css_make_eid (unsigned short entry_id, unsigned short rid)
 }
 
 /*
- * css_return_rid_from_eid() - decode the eid and return the request id
- *   return: request id
- *   eid(in): enquiry id
- */
-unsigned short
-css_return_rid_from_eid (unsigned int eid)
-{
-  return ((unsigned short) LOW16BITS (eid));
-}
-
-/*
- * css_return_entry_id_from_eid() - return the connection identifier from
- *                                  the eid.
- *   return: entry id
- *   eid(in): enquiry id
- */
-static unsigned short
-css_return_entry_id_from_eid (unsigned int eid)
-{
-  return ((unsigned short) HIGH16BITS (eid));
-}
-
-/*
  * css_return_entry_from_eid() - lookup a queue entry based on the entry id
  *   return: map entry if find, or NULL
  *   eid(in): enquiry id
@@ -87,7 +63,7 @@ css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor)
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short entry_id;
 
-  entry_id = css_return_entry_id_from_eid (eid);
+  entry_id = CSS_ENTRYID_FROM_EID (eid);
   for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (map_entry_p->id == entry_id)

@@ -51,7 +51,8 @@ extern int xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
 extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
 extern int xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
 
-extern void largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n);
+extern void largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid,
+			      int n);
 extern bool largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid);
 
 extern int largeobjmgr_rv_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
@@ -62,18 +63,22 @@ extern int largeobjmgr_rv_get_newpage_redo (THREAD_ENTRY * thread_p,
 					    LOG_RCV * recv);
 extern int largeobjmgr_rv_split_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int largeobjmgr_rv_split_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void largeobjmgr_rv_split_dump (int length_ignore, void *data);
+extern void largeobjmgr_rv_split_dump (FILE * fp, int length_ignore,
+				       void *data);
 extern int largeobjmgr_rv_overwrite (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void largeobjmgr_rv_overwrite_dump (int length, void *dump_data);
+extern void largeobjmgr_rv_overwrite_dump (FILE * fp, int length,
+					   void *dump_data);
 extern int largeobjmgr_rv_putin (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int largeobjmgr_rv_takeout (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void largeobjmgr_rv_putin_dump (int length_ignore, void *data);
-extern void largeobjmgr_rv_takeout_dump (int length_ignore, void *dump_data);
+extern void largeobjmgr_rv_putin_dump (FILE * fp, int length_ignore,
+				       void *data);
+extern void largeobjmgr_rv_takeout_dump (FILE * fp, int length_ignore,
+					 void *dump_data);
 extern int largeobjmgr_rv_append_redo (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
 extern int largeobjmgr_rv_append_undo (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
-extern void largeobjmgr_rv_append_dump_undo (int length_ignore,
+extern void largeobjmgr_rv_append_dump_undo (FILE * fp, int length_ignore,
 					     void *dump_data);
 
 #endif /* _LARGE_OBJECT_H_ */

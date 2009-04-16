@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -124,6 +124,8 @@ extern int PRM_LIST_QUERY_CACHE_MODE;
 extern int PRM_LIST_MAX_QUERY_CACHE_ENTRIES;
 extern int PRM_LIST_MAX_QUERY_CACHE_PAGES;
 extern bool PRM_REPLICATION_MODE;
+extern bool PRM_HA_MODE;
+extern int PRM_HA_SERVER_MODE;
 extern bool PRM_JAVA_STORED_PROCEDURE;
 extern bool PRM_COMPAT_PRIMARY_KEY;
 extern bool PRM_BLOCK_DDL_STATEMENT;
@@ -160,10 +162,12 @@ extern const char *PRM_SERVICE_SERVER_LIST;
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
 extern void sysprm_final (void);
+extern void sysprm_dump_system_parameters (FILE * fp);
 extern int sysprm_change_parameters (const char *data);
 extern int sysprm_obtain_parameters (char *data, int len);
 extern int sysprm_change_server_parameters (const char *data);
 extern int sysprm_obtain_server_parameters (char *data, int len);
+extern void sysprm_tune_client_parameters (void);
 #if !defined (CS_MODE)
 extern int xsysprm_change_server_parameters (const char *data);
 extern int xsysprm_obtain_server_parameters (char *data, int len);

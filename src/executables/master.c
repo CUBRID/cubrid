@@ -522,7 +522,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
 	  name_length = sizeof (buffer);
-	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length) ==
+	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) ==
 	      NO_ERRORS)
 	    {
 	      css_Active_server_count++;
@@ -637,20 +637,22 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		}
 	      else
 		{
-		  if (css_send_new_request_to_server
-		      (temp->fd, conn->fd, rid))
+		  if (css_send_new_request_to_server (temp->fd, conn->fd,
+						      rid))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
 		      return;
 		    }
 		  else
-		    if ((temp = css_return_entry_of_server (server_name,
-							    css_Master_socket_anchor))
-			!= NULL)
 		    {
-		      css_remove_entry_by_conn (temp->conn_ptr,
-						&css_Master_socket_anchor);
+		      temp = css_return_entry_of_server (server_name,
+							 css_Master_socket_anchor);
+		      if (temp != NULL)
+			{
+			  css_remove_entry_by_conn (temp->conn_ptr,
+						    &css_Master_socket_anchor);
+			}
 		    }
 		}
 	    }

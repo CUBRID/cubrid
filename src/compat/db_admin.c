@@ -68,7 +68,7 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
  The macros for testing this variable were moved to db.h so the query
  interface functions can use them as well. */
 
-char db_Database_name[256];
+char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 
 static void install_static_methods (void);
@@ -121,8 +121,10 @@ db_init (const char *program, int print_version,
   char more_vol_info_temp_file[L_tmpnam];
   const char *more_vol_info_file = NULL;
   int error = NO_ERROR;
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  BOOT_DB_PATH_INFO db_path_info;
 
-  db_Connect_status = 1;
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
   if (addmore_vols_file == NULL)
     {
@@ -184,11 +186,26 @@ db_init (const char *program, int print_version,
 	}
     }
 
-  error =
-    boot_initialize_client (program, (bool) print_version, dbname, db_path,
-			    vol_path, log_path, host_name, overwrite,
-			    comments, (DKNPAGES) npages, addmore_vols_file,
-			    (PGLENGTH) desired_pagesize, log_npages);
+  client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
+  client_credential.client_info = NULL;
+  client_credential.db_name = dbname;
+  client_credential.db_user = NULL;
+  client_credential.db_password = NULL;
+  client_credential.program_name = program;
+  client_credential.login_name = NULL;
+  client_credential.host_name = NULL;
+  client_credential.process_id = -1;
+
+  db_path_info.db_path = db_path;
+  db_path_info.vol_path = vol_path;
+  db_path_info.log_path = log_path;
+  db_path_info.db_host = host_name;
+  db_path_info.db_comments = comments;
+
+  error = boot_initialize_client (&client_credential, &db_path_info,
+				  (bool) overwrite, (DKNPAGES) npages,
+				  addmore_vols_file,
+				  (PGLENGTH) desired_pagesize, log_npages);
 
   if (more_vol_info_file != NULL)
     {
@@ -197,11 +214,11 @@ db_init (const char *program, int print_version,
 
   if (error != NO_ERROR)
     {
-      db_Connect_status = 0;
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
     }
   else
     {
-      db_Connect_status = 1;
+      db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
       /* should be part of boot_initialize_client when we figure out what this does */
       install_static_methods ();
     }
@@ -348,6 +365,28 @@ db_get_database_comments (void)
   return (comment);
 }
 
+int
+db_get_client_type ()
+{
+  return db_Client_type;
+}
+
+void
+db_set_client_type (int client_type)
+{
+  if (client_type > DB_CLIENT_TYPE_LOG_REPLICATOR
+      || client_type <= DB_CLIENT_TYPE_SYSTEM_INTERNAL)
+    {
+      db_Client_type = DB_CLIENT_TYPE_DEFAULT;
+    }
+  else
+    {
+      db_Client_type = client_type;
+    }
+}
+
+
+
 /*
  * DATABASE ACCESS
  */
@@ -420,6 +459,7 @@ int
 db_restart (const char *program, int print_version, const char *volume)
 {
   int error = NO_ERROR;
+  BOOT_CLIENT_CREDENTIAL client_credential;
 
   if (program == NULL || volume == NULL)
     {
@@ -435,16 +475,25 @@ db_restart (const char *program, int print_version, const char *volume)
       /* authorization will need to access the database and call some db_
          functions so assume connection will be ok until after boot_restart_client
          returns */
-      db_Connect_status = 1;
+      db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
-      error = boot_restart_client (program, (bool) print_version, volume);
+      client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;;
+      client_credential.client_info = NULL;
+      client_credential.db_name = volume;
+      client_credential.db_user = NULL;
+      client_credential.db_password = NULL;
+      client_credential.program_name = program;
+      client_credential.login_name = NULL;
+      client_credential.host_name = NULL;
+      client_credential.process_id = -1;
+      error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
 	{
-	  db_Connect_status = 0;
+	  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 	}
       else
 	{
-	  db_Connect_status = 1;
+	  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 	  strcpy (db_Database_name, volume);
 	  install_static_methods ();
 #if !defined(WINDOWS)
@@ -478,13 +527,25 @@ db_shutdown (void)
 
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
-  db_Connect_status = 0;
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Program_name[0] = '\0';
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
 
   return (error);
+}
+
+int
+db_ping_server (int client_val, int *server_val)
+{
+  int error = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+#if defined (CS_MODE)
+  error = net_client_ping_server (client_val, server_val);
+#endif /* CS_MODE */
+  return error;
 }
 
 /*

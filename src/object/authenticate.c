@@ -127,7 +127,7 @@ const char *AU_DBA_USER_NAME = "dba";
 #define GRANT_ENTRY_CACHE(index) 	((index) + 2)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
-#define ENCODE_PREFIX_DEFAULT		(char)0
+#define ENCODE_PREFIX_DEFAULT           (char)0
 #define ENCODE_PREFIX_DES               (char)1
 #define ENCODE_PREFIX_SHA1              (char)2
 #define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
@@ -2059,6 +2059,17 @@ encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
     }
 }
 
+/*
+ * au_user_name_dup -  Returns the duplicated string of the name of the current
+ *                     user. The string must be freed after use.
+ *   return: user name (strdup)
+ */
+const char *
+au_user_name_dup (void)
+{
+  return strdup (Au_user_name);
+}
+
 /* mangle the name so it isn't so obvious in nm */
 #define unencrypt_password              io_relseek
 
@@ -2442,7 +2453,6 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval,
       db_make_error (returnval, error);
     }
 }
-
 
 /*
  * GROUP HIERARCHY MAINTENANCE
@@ -5037,7 +5047,7 @@ au_user_name (void)
     {
       /*
        * Database hasn't been started yet, return the registered name
-       * if any.  Probably don't really have to handle this condition.
+       * if any.
        */
       if (strlen (Au_user_name) == 0)
 	{
@@ -5047,6 +5057,12 @@ au_user_name (void)
       else
 	{
 	  name = ws_copy_string (Au_user_name);
+	  /*
+	   * When this function is called before the workspace memory
+	   * manager was not initialized in the case of client
+	   * initialization(db_restart()), ws_copy_string() will return
+	   * NULL.
+	   */
 	}
     }
   else
@@ -5081,7 +5097,7 @@ au_user_name (void)
  *    Note, we may only allow this to be called for the "original" user
  *    that logged in to the system.  If we allow it for all users,
  *    there is a potential hole where we could access the password
- *    while another user is temporarily active.   
+ *    while another user is temporarily active.
  */
 int
 au_user_password (char *buffer)
@@ -5933,7 +5949,7 @@ au_start (void)
    * NEED TO MAKE SURE THIS IS 1 IF THE SERVER CRASHED BECAUSE WE'RE
    * GOING TO CALL db_ FUNCTIONS
    */
-  db_Connect_status = 1;
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
   /*
    * It is important not to enable authorization until after the

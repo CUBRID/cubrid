@@ -19,7 +19,7 @@
 
 
 /*
- * connection_defs.h - all the #define, the structure defs and the typedefs 
+ * connection_defs.h - all the #define, the structure defs and the typedefs
  *          for the client/server implementation
  */
 
@@ -203,6 +203,67 @@ enum
 };
 
 /*
+ * HA server mode
+ */
+typedef enum ha_server_mode HA_SERVER_MODE;
+enum ha_server_mode
+{
+  HA_SERVER_MODE_NA = -1,
+  HA_SERVER_MODE_ACTIVE = 0,
+  HA_SERVER_MODE_STANDBY = 1,
+  HA_SERVER_MODE_BACKUP = 2,
+  HA_SERVER_MODE_PRIMARY = 0,	/* alias of active */
+  HA_SERVER_MODE_SECONDARY = 1,	/* alias of standby */
+  HA_SERVER_MODE_TERNARY = 2	/* alias of backup */
+};
+#define HA_SERVER_MODE_ACTIVE_STR      "active"
+#define HA_SERVER_MODE_STANDBY_STR     "standby"
+#define HA_SERVER_MODE_BACKUP_STR      "backup"
+#define HA_SERVER_MODE_PRIMARY_STR      "primary"
+#define HA_SERVER_MODE_SECONDARY_STR    "secondary"
+#define HA_SERVER_MODE_TERNARY_STR      "ternary"
+
+/*
+ * HA server state
+ */
+typedef enum ha_server_state HA_SERVER_STATE;
+enum ha_server_state
+{
+  HA_SERVER_STATE_NA = -1,	/* N/A */
+  HA_SERVER_STATE_IDLE = 0,	/* initial state */
+  HA_SERVER_STATE_ACTIVE = 1,
+  HA_SERVER_STATE_TO_BE_ACTIVE = 2,
+  HA_SERVER_STATE_STANDBY = 3,
+  HA_SERVER_STATE_TO_BE_STANDBY = 4,
+  HA_SERVER_STATE_DEAD = 5	/* server is dead - virtual state; not exists */
+};
+#define HA_SERVER_STATE_IDLE_STR                "idle"
+#define HA_SERVER_STATE_ACTIVE_STR              "active"
+#define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
+#define HA_SERVER_STATE_STANDBY_STR             "standby"
+#define HA_SERVER_STATE_TO_BE_STANDBY_STR       "to-be-standby"
+#define HA_SERVER_STATE_DEAD_STR                "dead"
+
+/*
+ * HA log applier state
+ */
+typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
+enum ha_log_applier_state
+{
+  HA_LOG_APPLIER_STATE_NA = -1,
+  HA_LOG_APPLIER_STATE_UNREGISTERED = 0,
+  HA_LOG_APPLIER_STATE_RECOVERING = 1,
+  HA_LOG_APPLIER_STATE_WORKING = 2,
+  HA_LOG_APPLIER_STATE_DONE = 3,
+  HA_LOG_APPLIER_STATE_ERROR = 4
+};
+#define HA_LOG_APPLIER_STATE_UNREGISTERED_STR   "unregistered"
+#define HA_LOG_APPLIER_STATE_RECOVERING_STR     "recovering"
+#define HA_LOG_APPLIER_STATE_WORKING_STR        "working"
+#define HA_LOG_APPLIER_STATE_DONE_STR           "done"
+#define HA_LOG_APPLIER_STATE_ERROR_STR          "error"
+
+/*
  * This constant defines the maximum size of a msg from the master to the
  * server.  Every msg between the master and the server will transmit this
  * many bytes.  A constant msg size is necessary since the protocol does
@@ -235,6 +296,9 @@ enum
 #define HIGH16BITS(X) (((X) >> 16) & 0xffffL)
 #define LOW16BITS(X)  ((X) & 0xffffL)
 #define DEFAULT_HEADER_DATA {0,0,0,0,0,0,0,0,0}
+
+#define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
+#define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
 /*
  * This is the format of the header for each command packet that is sent
@@ -289,23 +353,19 @@ struct css_conn_entry
 #endif				/* WINDOWS */
 
   unsigned short request_id;
-  int status;
+  int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int transaction_id;
   int client_id;
   int db_error;
+  bool in_transaction;		/* this client is in-transaction or out-of- */
+  bool reset_on_commit;		/* set reset_on_commit when commit/abort */
 
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
-  int error_p;			/* set in css_thread_kill. later.. */
   CSS_CRITICAL_SECTION csect;
-  bool stop_talk;		/* busy count */
+  bool stop_talk;		/* block and stop this connection */
 
-  int pid;			/* client pid */
-  char *name;			/* client program name */
   char *version_string;		/* client version string */
-
-  int timeout_duration;		/* client timeout seconds  */
-  struct timeval *client_timeout;
 
   struct sockaddr_in *local_name;
   struct sockaddr_in *foreign_name;

@@ -727,17 +727,17 @@ public class CUBRIDStatement implements Statement
     if (sql == null)
       return "";
 
-    plan = u_con.getQueryplanOnly (sql);
+      plan = u_con.getQueryplanOnly (sql);
 
-    error = u_con.getRecentError ();
-    error_code = error.getErrorCode();
+      error = u_con.getRecentError ();
+      error_code = error.getErrorCode();
 
-    con.autoRollback();
-
-    if ( error_code != UErrorCode.ER_NO_ERROR )
-    {
-       throw new CUBRIDException(error); 
-    }
+      con.autoRollback();
+      
+      if ( error_code != UErrorCode.ER_NO_ERROR )
+      {
+        throw new CUBRIDException (error);
+      }
 
     if (plan == null)
       return "";
@@ -755,15 +755,15 @@ public class CUBRIDStatement implements Statement
 
     String plan = u_stmt.getQueryplan ();
 
-    error = u_stmt.getRecentError ();
+    error = u_stmt.getRecentError();
     error_code = error.getErrorCode();
 
     con.autoRollback();
-    
-    if( error_code != UErrorCode.ER_NO_ERROR)
+
+    if ( error_code != UErrorCode.ER_NO_ERROR)
     {
-         throw new CUBRIDException(error); 
-    } 
+      throw new CUBRIDException (error);
+    }
 
     if (plan == null)
       return "";

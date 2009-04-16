@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -185,7 +185,7 @@ struct fileio_backup_header
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic
 					   Unix utility */
   int bk_hdr_version;		/* For future compatibility checking */
-  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
+  char db_release[CUBRID_REL_STRING_MAX_LENGTH];	/* CUBRID Release */
   char db_fullname[FILEIO_MAX_BACKUP_PATH_LENGTH];	/* Fullname of backed up database.
 							   Really more than one byte */
   time_t db_creation;		/* Database creation time */

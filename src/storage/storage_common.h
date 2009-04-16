@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -149,7 +149,7 @@ struct log_lsa
 
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
-#define DB_MAX_PATH_LENGTH      (db_max_path_len())
+#define DB_MAX_PATH_LENGTH      PATH_MAX
 
 typedef char *PAGE_PTR;		/* Pointer to a page */
 
@@ -373,6 +373,8 @@ struct bo_restart_arg
 #define CUBRID_MAGIC_LOG_ARCHIVE       "CUBRID/LogArchive"
 #define CUBRID_MAGIC_LOG_INFO          "CUBRID/LogInfo"
 #define CUBRID_MAGIC_DATABASE_BACKUP   "CUBRID/Backup"
+/* Release string length in the log header */
+#define CUBRID_REL_STRING_MAX_LENGTH    15
 
 /* B+tree local statististical information for Uniqueness enforcement */
 typedef struct btree_unique_stats BTREE_UNIQUE_STATS;
@@ -423,7 +425,6 @@ typedef enum
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
-extern int db_max_path_len (void);
 extern INT16 db_set_page_size (INT16 iopagesize);
 extern INT16 db_network_page_size (void);
 extern void db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd);

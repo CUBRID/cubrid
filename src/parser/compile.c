@@ -489,13 +489,13 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_ERRORc (parser, statement, db_error_string (3));
     }
 
-  if (parser->lcks_classes == NULL)
-    {
-      /* parser->lcks_classes will be freed at parser_free_parser() */
-      parser->lcks_classes = lcks.classes;
-      parser->num_lcks_classes = lcks.num_classes;
-      lcks.classes = NULL;
-    }
+  /* free already assigned parser->lcks_classes if exist */
+  parser_free_lcks_classes (parser);
+
+  /* parser->lcks_classes will be freed at parser_free_parser() */
+  parser->lcks_classes = lcks.classes;
+  parser->num_lcks_classes = lcks.num_classes;
+  lcks.classes = NULL;
 
 cleanup:
   if (lcks.classes)

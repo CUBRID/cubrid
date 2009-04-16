@@ -48,198 +48,164 @@
 #define STAT_SIZE_MEMORY 72
 #define STAT_SIZE_PACKED OR_INT_SIZE * 18
 
-#define NET_CLIENT_SERVER_HAND_SHAKE "$Id$"
-#define NET_PINGBUF_SIZE 300
 
+/* These define the requests that the server will respond to */
+enum net_server_request
+{
+  NET_SERVER_REQUEST_START = 0,
 
-/* These define the reqests that the server will respond to */
-#define SERVER_PING_WITH_HANDSHAKE_XXXXXXUNUSED               1
-#define SERVER_BO_INIT_SERVER		                      2
-#define SERVER_BO_RESTART_SERVER	                      3
-#define SERVER_BO_REGISTER_CLIENT                             4
-#define SERVER_BO_UNREGISTER_CLIENT                           5
-#define SERVER_BO_SIMULATE_SERVER_CRASH                       6
-#define SERVER_BO_BACKUP				      7
-#define SERVER_BO_ADD_VOLEXT				      8
-#define SERVER_BO_CHECK_DBCONSISTENCY			      9
-#define SERVER_BO_FIND_NPERM_VOLS                            10
+  NET_SERVER_PING_WITH_HANDSHAKE,
+  NET_SERVER_PING,
 
-#define SERVER_TM_SERVER_COMMIT		                     11
-#define SERVER_TM_SERVER_ABORT		                     12
-#define SERVER_TM_SERVER_START_TOPOP                         13
-#define SERVER_TM_SERVER_END_TOPOP                           14
-#define SERVER_TM_SERVER_SAVEPOINT                           15
-#define SERVER_TM_SERVER_PARTIAL_ABORT                       16
-#define SERVER_TM_SERVER_HAS_UPDATED                         17
-#define SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED            18
-#define SERVER_TM_ISBLOCKED	                             19
-#define SERVER_TM_WAIT_SERVER_ACTIVE_TRANS                   20
+  NET_SERVER_BO_INIT_SERVER,
+  NET_SERVER_BO_REGISTER_CLIENT,
+  NET_SERVER_BO_UNREGISTER_CLIENT,
+  NET_SERVER_BO_BACKUP,
+  NET_SERVER_BO_ADD_VOLEXT,
+  NET_SERVER_BO_CHECK_DBCONSISTENCY,
+  NET_SERVER_BO_FIND_NPERM_VOLS,
+  NET_SERVER_BO_FIND_NTEMP_VOLS,
+  NET_SERVER_BO_FIND_LAST_TEMP,
+  NET_SERVER_BO_CHANGE_HA_MODE,
 
-#define SERVER_LC_FETCH			                     22
-#define SERVER_LC_FETCHALL		                     23
-#define SERVER_LC_FETCH_LOCKSET  			     24
-#define SERVER_LC_FETCH_ALLREFS_LOCKSET                      25
-#define SERVER_LC_GET_CLASS		                     26
-#define SERVER_LC_FIND_CLASSOID		                     27
-#define SERVER_LC_DOESEXIST                                  28
-#define SERVER_LC_FORCE			                     29
-#define SERVER_LC_RESERVE_CLASSNAME	                     30
-#define SERVER_LC_DELETE_CLASSNAME	                     31
-#define SERVER_LC_RENAME_CLASSNAME	                     32
-#define SERVER_LC_ASSIGN_OID		                     33
-#define SERVER_LC_NOTIFY_ISOLATION_INCONS                    34
-#define SERVER_LC_FIND_LOCKHINT_CLASSOIDS                    35
-#define SERVER_LC_FETCH_LOCKHINT_CLASSES                     36
+  NET_SERVER_TM_SERVER_COMMIT,
+  NET_SERVER_TM_SERVER_ABORT,
+  NET_SERVER_TM_SERVER_START_TOPOP,
+  NET_SERVER_TM_SERVER_END_TOPOP,
+  NET_SERVER_TM_SERVER_SAVEPOINT,
+  NET_SERVER_TM_SERVER_PARTIAL_ABORT,
+  NET_SERVER_TM_SERVER_HAS_UPDATED,
+  NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED,
+  NET_SERVER_TM_ISBLOCKED,
+  NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS,
+  NET_SERVER_TM_SERVER_GET_GTRINFO,
+  NET_SERVER_TM_SERVER_SET_GTRINFO,
+  NET_SERVER_TM_SERVER_2PC_START,
+  NET_SERVER_TM_SERVER_2PC_PREPARE,
+  NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED,
+  NET_SERVER_TM_SERVER_2PC_ATTACH_GT,
+  NET_SERVER_TM_SERVER_2PC_PREPARE_GT,
+  NET_SERVER_TM_LOCAL_TRANSACTION_ID,
 
-#define SERVER_HEAP_CREATE		                     37
-#define SERVER_HEAP_DESTROY		                     39
-#define SERVER_HEAP_DESTROY_WHEN_NEW                           40
+  NET_SERVER_LC_FETCH,
+  NET_SERVER_LC_FETCHALL,
+  NET_SERVER_LC_FETCH_LOCKSET,
+  NET_SERVER_LC_FETCH_ALLREFS_LOCKSET,
+  NET_SERVER_LC_GET_CLASS,
+  NET_SERVER_LC_FIND_CLASSOID,
+  NET_SERVER_LC_DOESEXIST,
+  NET_SERVER_LC_FORCE,
+  NET_SERVER_LC_RESERVE_CLASSNAME,
+  NET_SERVER_LC_DELETE_CLASSNAME,
+  NET_SERVER_LC_RENAME_CLASSNAME,
+  NET_SERVER_LC_ASSIGN_OID,
+  NET_SERVER_LC_NOTIFY_ISOLATION_INCONS,
+  NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS,
+  NET_SERVER_LC_FETCH_LOCKHINT_CLASSES,
+  NET_SERVER_LC_ASSIGN_OID_BATCH,
+  NET_SERVER_LC_BUILD_FK_OBJECT_CACHE,
+  NET_SERVER_LC_REM_CLASS_FROM_INDEX,
 
-#define SERVER_LARGEOBJMGR_CREATE 		                     41
-#define SERVER_LARGEOBJMGR_READ 		                     42
-#define SERVER_LARGEOBJMGR_WRITE 		                     43
-#define SERVER_LARGEOBJMGR_INSERT 		                     44
-#define SERVER_LARGEOBJMGR_DESTROY		                     45
-#define SERVER_LARGEOBJMGR_DELETE		                     46
-#define SERVER_LARGEOBJMGR_APPEND		                     47
-#define SERVER_LARGEOBJMGR_TRUNCATE		                     48
-#define SERVER_LARGEOBJMGR_COMPRESS		                     49
-#define SERVER_LARGEOBJMGR_LENGTH		                     50
+  NET_SERVER_HEAP_CREATE,
+  NET_SERVER_HEAP_DESTROY,
+  NET_SERVER_HEAP_DESTROY_WHEN_NEW,
+  NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES,
+  NET_SERVER_HEAP_HAS_INSTANCE,
 
-#define SERVER_LOG_RESET_WAITSECS                            51
-#define SERVER_LOG_RESET_ISOLATION                           52
-#define SERVER_LOG_SET_INTERRUPT                             53
-#define SERVER_LOG_CLIENT_UNDO                               54
-#define SERVER_LOG_CLIENT_POSTPONE                           55
-#define SERVER_LOG_HAS_FINISHED_CLIENT_POSTPONE              56
-#define SERVER_LOG_HAS_FINISHED_CLIENT_UNDO                  57
-#define SERVER_LOG_CLIENT_GET_FIRST_POSTPONE                 58
-#define SERVER_LOG_CLIENT_GET_FIRST_UNDO                     59
-#define SERVER_LOG_CLIENT_GET_NEXT_POSTPONE                  60
-#define SERVER_LOG_CLIENT_GET_NEXT_UNDO                      61
-#define SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO 62
+  NET_SERVER_LARGEOBJMGR_CREATE,
+  NET_SERVER_LARGEOBJMGR_READ,
+  NET_SERVER_LARGEOBJMGR_WRITE,
+  NET_SERVER_LARGEOBJMGR_INSERT,
+  NET_SERVER_LARGEOBJMGR_DESTROY,
+  NET_SERVER_LARGEOBJMGR_DELETE,
+  NET_SERVER_LARGEOBJMGR_APPEND,
+  NET_SERVER_LARGEOBJMGR_TRUNCATE,
+  NET_SERVER_LARGEOBJMGR_COMPRESS,
+  NET_SERVER_LARGEOBJMGR_LENGTH,
 
-#define SERVER_LK_DUMP                                       63
+  NET_SERVER_LOG_RESET_WAITSECS,
+  NET_SERVER_LOG_RESET_ISOLATION,
+  NET_SERVER_LOG_SET_INTERRUPT,
+  NET_SERVER_LOG_CLIENT_UNDO,
+  NET_SERVER_LOG_CLIENT_POSTPONE,
+  NET_SERVER_LOG_HAS_FINISHED_CLIENT_POSTPONE,
+  NET_SERVER_LOG_HAS_FINISHED_CLIENT_UNDO,
+  NET_SERVER_LOG_CLIENT_GET_FIRST_POSTPONE,
+  NET_SERVER_LOG_CLIENT_GET_FIRST_UNDO,
+  NET_SERVER_LOG_CLIENT_GET_NEXT_POSTPONE,
+  NET_SERVER_LOG_CLIENT_GET_NEXT_UNDO,
+  NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO,
+  NET_SERVER_LOG_DUMP_STAT,
+  NET_SERVER_LOG_GETPACK_TRANTB,
 
-#define SERVER_BTREE_ADDINDEX                                   64
-#define SERVER_BTREE_DELINDEX                                   65
-#define SERVER_BTREE_LOADINDEX				     66
+  NET_SERVER_LK_DUMP,
 
-#define SERVER_BTREE_FIND_UNIQUE				     69
-#define SERVER_BTREE_CLASS_UNIQUE_TEST                          70
+  NET_SERVER_BTREE_ADDINDEX,
+  NET_SERVER_BTREE_DELINDEX,
+  NET_SERVER_BTREE_LOADINDEX,
+  NET_SERVER_BTREE_FIND_UNIQUE,
+  NET_SERVER_BTREE_CLASS_UNIQUE_TEST,
+  NET_SERVER_BTREE_GET_STATISTICS,
 
-#define SERVER_DISK_TOTALPGS                                   71
-#define SERVER_DISK_FREEPGS                                    72
-#define SERVER_DISK_REMARKS                                    73
-#define SERVER_DISK_PURPOSE                                    74
-#define SERVER_DISK_PURPOSE_TOTALPGS_AND_FREEPGS               75
-#define SERVER_DISK_VLABEL                                     76
+  NET_SERVER_DISK_TOTALPGS,
+  NET_SERVER_DISK_FREEPGS,
+  NET_SERVER_DISK_REMARKS,
+  NET_SERVER_DISK_PURPOSE,
+  NET_SERVER_DISK_PURPOSE_TOTALPGS_AND_FREEPGS,
+  NET_SERVER_DISK_VLABEL,
 
-#define SERVER_QST_SERVER_GET_STATISTICS                     77
-#define SERVER_QST_UPDATE_CLASS_STATISTICS                   78
-#define SERVER_QST_UPDATE_STATISTICS                         79
+  NET_SERVER_QST_SERVER_GET_STATISTICS,
+  NET_SERVER_QST_UPDATE_CLASS_STATISTICS,
+  NET_SERVER_QST_UPDATE_STATISTICS,
 
-#define SERVER_QM_QUERY_PREPARE				     80
-#define SERVER_QM_QUERY_EXECUTE				     81
-#define SERVER_QM_QUERY_PREPARE_AND_EXECUTE		     82
-#define SERVER_QM_QUERY_END				     83
-#define SERVER_QM_QUERY_DROP_PLAN			     84
-#define SERVER_QM_QUERY_DROP_ALL_PLANS			     85
+  NET_SERVER_QM_QUERY_PREPARE,
+  NET_SERVER_QM_QUERY_EXECUTE,
+  NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE,
+  NET_SERVER_QM_QUERY_END,
+  NET_SERVER_QM_QUERY_DROP_PLAN,
+  NET_SERVER_QM_QUERY_DROP_ALL_PLANS,
+  NET_SERVER_QM_QUERY_SYNC,
+  NET_SERVER_QM_GET_QUERY_INFO,
+  NET_SERVER_QM_QUERY_EXECUTE_ASYNC,
+  NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC,
+  NET_SERVER_QM_QUERY_DUMP_PLANS,
+  NET_SERVER_QM_QUERY_DUMP_CACHE,
 
-#define SERVER_LS_GET_LIST_FILE_PAGE                         86
+  NET_SERVER_LS_GET_LIST_FILE_PAGE,
 
-#define SERVER_MNT_SERVER_START_STATS			     87
-#define SERVER_MNT_SERVER_STOP_STATS			     88
-#define SERVER_MNT_SERVER_RESET_STATS			     89
-#define SERVER_MNT_SERVER_COPY_STATS			     90
+  NET_SERVER_MNT_SERVER_START_STATS,
+  NET_SERVER_MNT_SERVER_STOP_STATS,
+  NET_SERVER_MNT_SERVER_RESET_STATS,
+  NET_SERVER_MNT_SERVER_COPY_STATS,
 
-#define SERVER_CT_CAN_ACCEPT_NEW_REPR			     91
+  NET_SERVER_CT_CAN_ACCEPT_NEW_REPR,
 
-#define SERVER_BO_KILL_SERVER                                92
-#define SERVER_BO_SIMULATE_SERVER                            93
-#define SERVER_TEST_PERFORMANCE                              94
+  NET_SERVER_CSS_KILL_TRANSACTION,
 
-#define SERVER_SET_CLIENT_TIMEOUT                            95
-#define SERVER_RESTART_EVENT_HANDLER                         96
-#define SERVER_CSS_KILL_TRANSACTION                          97
-#define SERVER_LOG_GETPACK_TRANTB			     98
+  NET_SERVER_QPROC_GET_SYS_TIMESTAMP,
+  NET_SERVER_QPROC_GET_CURRENT_VALUE,
+  NET_SERVER_QPROC_GET_NEXT_VALUE,
+  NET_SERVER_QPROC_GET_SERVER_INFO,
 
-#define SERVER_LC_ASSIGN_OID_BATCH                           99
+  NET_SERVER_PRM_SET_PARAMETERS,
+  NET_SERVER_PRM_GET_PARAMETERS,
 
-#define SERVER_MSQL_START                                    100
-#define SERVER_MSQL_END                                      200
+  NET_SERVER_JSP_GET_SERVER_PORT,
 
-#define SERVER_BO_FIND_NTEMP_VOLS                            201
-#define SERVER_BO_FIND_LAST_TEMP                             202
+  NET_SERVER_REPL_INFO,
+  NET_SERVER_REPL_LOG_GET_APPEND_LSA,
 
-#define SERVER_LC_REM_CLASS_FROM_INDEX                       203
+  NET_SERVER_LOGWR_GET_LOG_PAGES,
 
-#define SERVER_TM_SERVER_GET_GTRINFO                         210
-#define SERVER_TM_SERVER_SET_GTRINFO                         211
-#define SERVER_TM_SERVER_2PC_START                           212
-#define SERVER_TM_SERVER_2PC_PREPARE                         213
-#define SERVER_TM_SERVER_2PC_RECOVERY_PREPARED               214
-#define SERVER_TM_SERVER_2PC_ATTACH_GT                       215
-#define SERVER_TM_SERVER_2PC_PREPARE_GT                      216
+  NET_SERVER_TEST_PERFORMANCE,
 
-/*
- * New codes for Streaming Queries
- */
-#define SERVER_QM_QUERY_SYNC			     	     296
-#define SERVER_QM_GET_QUERY_INFO			     297
-#define SERVER_QM_QUERY_EXECUTE_ASYNC			     298
-#define SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC	     299
-
-/*
- * New code for getting SYS_DATE, SYS_TIME, SYS_TIMESTAMP value
- */
-#define SERVER_QPROC_GET_SYS_TIMESTAMP                          400
-#define SERVER_QPROC_GET_CURRENT_VALUE                          401
-#define SERVER_QPROC_GET_NEXT_VALUE                             402
-
-#define SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES                 410
-#define SERVER_BTREE_GET_STATISTICS                             411
-#define SERVER_HEAP_HAS_INSTANCE                               415
-
-#define SERVER_QPROC_GET_SERVER_INFO			     420
-
-#define	SERVER_TM_LOCAL_TRANSACTION_ID                       425
-
-/*
- * for SET SYSTEM PARAMETERS statement
- */
-#define SERVER_PRM_SET_PARAMETERS                            500
-#define SERVER_PRM_GET_PARAMETERS                            501
-
-#define SERVER_QM_QUERY_DUMP_PLANS                           502
-#define SERVER_QM_QUERY_DUMP_CACHE                           503
-
-/* AsyncCommit */
-#define SERVER_LOG_DUMP_STAT                                 504
-
-
-/*
- * for stored procedure
-*/
-#define SERVER_JSP_GET_SERVER_PORT                           600
-
-/*
- * for replication
- */
-#define SERVER_REPL_INFO                                     700
-#define SERVER_REPL_LOG_GET_APPEND_LSA                       701
-
-/* for FK */
-#define SERVER_LC_BUILD_FK_OBJECT_CACHE                      800
-
-#define SERVER_PING_WITH_HANDSHAKE                           999	/* NEW PING */
-
-/* this is the last entry. It is also used for the end of an
- * array of statistics information on client/server communication.
- * Consequently, considerable care should be taken in changing this
- * value.
- */
-#define SERVER_SHUTDOWN					     1000
+  NET_SERVER_SHUTDOWN,
+  /*
+   * this is the last entry. It is also used for the end of an
+   * array of statistics information on client/server communication.
+   */
+  NET_SERVER_REQUEST_END
+};
 
 /* Server capabilities */
 #define NET_INTERRUPT_ENABLED_CAP 0x80000000

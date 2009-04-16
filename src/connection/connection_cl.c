@@ -56,6 +56,7 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "memory_alloc.h"
+#include "system_parameter.h"
 #include "environment_variable.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -101,7 +102,8 @@ static CSS_CONN_ENTRY *css_common_connect (const char *host_name,
 					   int connect_type,
 					   const char *server_name,
 					   int server_name_length,
-					   int port, unsigned short *rid);
+					   int port, int timeout,
+					   unsigned short *rid);
 static CSS_CONN_ENTRY *css_server_connect (char *host_name,
 					   CSS_CONN_ENTRY * conn,
 					   char *server_name,
@@ -113,13 +115,13 @@ static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name,
 static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id);
 static int css_return_queued_data (CSS_CONN_ENTRY * conn,
-                                   unsigned short request_id, char **buffer,
-                                   int *buffer_size, int *rc);
+				   unsigned short request_id, char **buffer,
+				   int *buffer_size, int *rc);
 static int css_return_queued_request (CSS_CONN_ENTRY * conn,
-                                      unsigned short *rid, int *request,
-                                      int *buffer_size);
-static  int css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer,
-                                  int *buffer_size);
+				      unsigned short *rid, int *request,
+				      int *buffer_size);
+static int css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer,
+				  int *buffer_size);
 
 
 /*
@@ -368,15 +370,20 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
 
-  if (!conn || conn->status != CONN_OPEN)
+  if (!conn || conn->status == CONN_CLOSED)
     {
       return CONNECTION_CLOSED;
     }
 
-  header.type = htonl (CLOSE_TYPE);
-  header.transaction_id = htonl (conn->transaction_id);
-  header.db_error = htonl (conn->db_error);
-  css_net_send (conn, (char *) &header, sizeof (NET_HEADER));
+  if (conn->status == CONN_OPEN)
+    {
+      header.type = htonl (CLOSE_TYPE);
+      header.transaction_id = htonl (conn->transaction_id);
+      header.db_error = htonl (conn->db_error);
+      /* timeout in mili-second in css_net_send() */
+      css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
+		    PRM_TCP_CONNECTION_TIMEOUT * 1000);
+    }
 
   css_remove_all_unexpected_packets (conn);
   css_shutdown_conn (conn);
@@ -569,7 +576,9 @@ begin:
 		{
 		  do
 		    {
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size);
+		      /* timeout in mili-second in css_net_recv() */
+		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
+					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
 		    }
 		  while (rc == INTERRUPTED_READ);
 
@@ -687,7 +696,9 @@ begin:
 		{
 		  do
 		    {
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size);
+		      /* timeout in mili-second in css_net_recv() */
+		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
+					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
 		    }
 		  while (rc == INTERRUPTED_READ);
 
@@ -791,7 +802,9 @@ begin:
 		{
 		  do
 		    {
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size);
+		      /* timeout in mili-second in css_net_recv() */
+		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
+					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
 		    }
 		  while (rc == INTERRUPTED_READ);
 		}
@@ -831,16 +844,26 @@ begin:
  *   server_name(in):
  *   server_name_length(in):
  *   port(in):
+ *   timeout(in): timeout in seconds
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
 css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 		    int connect_type, const char *server_name,
-		    int server_name_length, int port, unsigned short *rid)
+		    int server_name_length, int port, int timeout,
+		    unsigned short *rid)
 {
   int fd;
 
-  fd = css_tcp_client_open ((char *) host_name, port);
+#if !defined (WINDOWS)
+  if (timeout > 0)
+    /* timeout in mili-seconds in css_tcp_client_open_with_timeout() */
+    fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+  else
+    fd = css_tcp_client_open_with_retry (host_name, port, true);
+#else /* !WINDOWS */
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif /* WINDOWS */
   if (fd >= 0)
     {
       conn->fd = fd;
@@ -849,6 +872,12 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 	{
 	  return conn;
 	}
+    }
+  else
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
+
     }
   return NULL;
 }
@@ -876,8 +905,10 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
       length = 0;
     }
 
+  /* timeout in second in css_common_connect() */
   return (css_common_connect (host_name, conn, DATA_REQUEST, server_name,
-			      length, css_Service_id, rid));
+			      length, css_Service_id,
+			      PRM_TCP_CONNECTION_TIMEOUT, rid));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -905,8 +936,9 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn,
    * know we'll be connecting to the right server, don't bother sending
    * the server name.
    */
+  /* timeout in second in css_common_connect() */
   if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0,
-			  port_id, rid) != NULL)
+			  port_id, PRM_TCP_CONNECTION_TIMEOUT, rid) != NULL)
     {
       /* now ask for a reply from the server */
       css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
@@ -967,7 +999,7 @@ css_connect_to_master_server (int master_port_id,
 			     ? SERVER_REQUEST_NEW : SERVER_REQUEST);
 
       if (css_common_connect (hname, conn, connection_protocol, server_name,
-			      name_length, master_port_id, &rid) == NULL)
+			      name_length, master_port_id, 0, &rid) == NULL)
 	{
 	  css_free_conn (conn);
 	  return NULL;
@@ -975,7 +1007,7 @@ css_connect_to_master_server (int master_port_id,
       else
 	{
 	  if (css_readn (conn->fd, (char *) &response_buff,
-			 sizeof (int)) == sizeof (int))
+			 sizeof (int), -1) == sizeof (int))
 	    {
 	      response = ntohl (response_buff);
 
@@ -1010,7 +1042,7 @@ css_connect_to_master_server (int master_port_id,
 		    }
 
 		  response = htonl (server_port_id);
-		  css_net_send (conn, (char *) &response, sizeof (int));
+		  css_net_send (conn, (char *) &response, sizeof (int), -1);
 
 		  /* this connection remains our only contact with the master */
 		  return conn;
@@ -1040,6 +1072,7 @@ css_connect_to_master_server (int master_port_id,
 			  /* don't use free_and_init on pname since it came from tempnam() */
 			  free (pname);
 			  css_free_conn (conn);
+			  close (socket_fd);
 			  return (css_make_conn (datagram_fd));
 			}
 		      else
@@ -1089,6 +1122,8 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   unsigned short rid;
   char *buffer;
   char reason_buffer[sizeof (int)];
+  char *error_area;
+  int error_length;
 
   conn = css_make_conn (-1);
   if (conn == NULL)
@@ -1119,8 +1154,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	    case SERVER_STARTED:
 	      if (++retry_count > 20)
 		{
-		  css_free_conn (conn);
-		  return NULL;
+		  break;
 		}
 	      else
 		{
@@ -1147,25 +1181,20 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 		}
 	      break;
 
+	    case SERVER_IS_RECOVERING:
 	    case SERVER_CLIENTS_EXCEEDED:
 	      {
-		char *error_area;
-		int error_length;
-
 		if (css_receive_error (conn, rid, &error_area, &error_length))
 		  {
 		    er_set_area_error ((void *) error_area);
 		    free_and_init (error_area);
 		  }
-		css_free_conn (conn);
-
-		return NULL;
+		break;
 	      }
 
 	    case SERVER_NOT_FOUND:
 	    default:
-	      css_free_conn (conn);
-	      return NULL;
+	      break;
 	    }
 	}
     }
@@ -1197,7 +1226,7 @@ css_connect_to_master_for_info (const char *host_name, int port_id,
     }
 
   return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0,
-			      port_id, rid));
+			      port_id, 0, rid));
 }
 
 /*
@@ -1218,7 +1247,7 @@ css_does_master_exist (int port_id)
     }
 
   /* Don't waste time retrying between master to master connections */
-  fd = css_tcp_client_open_withretry (hostname, port_id, false);
+  fd = css_tcp_client_open_with_retry (hostname, port_id, false);
   if (fd >= 0)
     {
       css_shutdown_socket (fd);
@@ -1283,7 +1312,7 @@ css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id)
  */
 char *
 css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id,
-                        int *buffer_size)
+			int *buffer_size)
 {
   CSS_QUEUE_ENTRY *buffer_q_entry_p;
   char *buffer;
@@ -1292,13 +1321,14 @@ css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id,
   if (buffer_q_entry_p != NULL)
     {
       if (*buffer_size > buffer_q_entry_p->size)
-        {
-          *buffer_size = buffer_q_entry_p->size;
-        }
+	{
+	  *buffer_size = buffer_q_entry_p->size;
+	}
 
       buffer = buffer_q_entry_p->buffer;
       buffer_q_entry_p->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
+      css_queue_remove_header_entry_ptr (&conn->buffer_queue,
+					 buffer_q_entry_p);
 
       return buffer;
     }
@@ -1341,7 +1371,7 @@ css_return_oob_buffer (int *buffer_size)
  */
 static int
 css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id,
-                        char **buffer, int *buffer_size, int *rc)
+			char **buffer, int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *data_q_entry_p, *buffer_q_entry_p;
 
@@ -1358,25 +1388,26 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id,
        * (error code -187, "Communications buffer not used").
        */
       buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue,
-                                               request_id);
+					       request_id);
       if (buffer_q_entry_p != NULL)
-        {
-          *buffer = buffer_q_entry_p->buffer;
-          *buffer_size = data_q_entry_p->size;
-          buffer_q_entry_p->buffer = NULL;
-          memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
-          css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
-        }
+	{
+	  *buffer = buffer_q_entry_p->buffer;
+	  *buffer_size = data_q_entry_p->size;
+	  buffer_q_entry_p->buffer = NULL;
+	  memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
+	  css_queue_remove_header_entry_ptr (&conn->buffer_queue,
+					     buffer_q_entry_p);
+	}
       else
-        {
-          *buffer = data_q_entry_p->buffer;
-          *buffer_size = data_q_entry_p->size;
-          /*
-           * Null this out so that the call to css_queue_remove_header_entry_ptr()
-           * below doesn't free the buffer out from underneath our caller.
-           */
-          data_q_entry_p->buffer = NULL;
-        }
+	{
+	  *buffer = data_q_entry_p->buffer;
+	  *buffer_size = data_q_entry_p->size;
+	  /*
+	   * Null this out so that the call to css_queue_remove_header_entry_ptr()
+	   * below doesn't free the buffer out from underneath our caller.
+	   */
+	  data_q_entry_p->buffer = NULL;
+	}
 
       *rc = data_q_entry_p->rc;
       conn->transaction_id = data_q_entry_p->transaction_id;
@@ -1427,7 +1458,7 @@ css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer, int *buffer_size)
  */
 int
 css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
-                         char **buffer, int *buffer_size, int *rc)
+			 char **buffer, int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *error_q_entry_p, *p;
   CSS_QUEUE_ENTRY entry;
@@ -1447,31 +1478,31 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
        * when it is set during method call.
        */
       if (*rc == ER_LK_UNILATERALLY_ABORTED)
-        {
-          for (p = conn->error_queue; p; p = p->next)
-            {
-              entry = *p;
+	{
+	  for (p = conn->error_queue; p; p = p->next)
+	    {
+	      entry = *p;
 
-              if (p->size < *buffer_size)
-                {
-                  p->buffer = (char *) malloc (*buffer_size);
-                  if (p->buffer)
-                    {
-                      free_and_init (entry.buffer);
-                    }
-                  else
-                    {
-                      p->buffer = entry.buffer;
-                      p->db_error = *rc;
-                      continue;
-                    }
-                }
+	      if (p->size < *buffer_size)
+		{
+		  p->buffer = (char *) malloc (*buffer_size);
+		  if (p->buffer)
+		    {
+		      free_and_init (entry.buffer);
+		    }
+		  else
+		    {
+		      p->buffer = entry.buffer;
+		      p->db_error = *rc;
+		      continue;
+		    }
+		}
 
-              p->size = *buffer_size;
-              memcpy (p->buffer, *buffer, p->size);
-              p->db_error = *rc;
-            }
-        }
+	      p->size = *buffer_size;
+	      memcpy (p->buffer, *buffer, p->size);
+	      p->db_error = *rc;
+	    }
+	}
 
       return 1;
     }
@@ -1490,7 +1521,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
  */
 static int
 css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
-                           int *request, int *buffer_size)
+			   int *request, int *buffer_size)
 {
   CSS_QUEUE_ENTRY *request_q_entry_p;
   NET_HEADER *buffer;

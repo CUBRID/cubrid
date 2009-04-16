@@ -3658,6 +3658,7 @@ start:
     {
       return NULL;
     }
+  memset (disk_repr_p, 0, sizeof (DISK_REPR));
 
   if (catalog_fetch_disk_representation (thread_p, disk_repr_p,
 					 &catalog_record) != NO_ERROR)
@@ -3687,6 +3688,8 @@ start:
       return NULL;
     }
 
+  n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
+
   if (disk_repr_p->n_fixed > 0)
     {
       disk_repr_p->fixed = (DISK_ATTR *) db_private_alloc (thread_p,
@@ -3697,6 +3700,14 @@ start:
       if (!disk_repr_p->fixed)
 	{
 	  goto exit_on_error;
+	}
+
+      /* init */
+      for (i = 0; i < disk_repr_p->n_fixed; i++)
+	{
+	  disk_attr_p = &disk_repr_p->fixed[i];
+	  disk_attr_p->value = NULL;
+	  disk_attr_p->bt_stats = NULL;
 	}
     }
   else
@@ -3715,28 +3726,18 @@ start:
 	{
 	  goto exit_on_error;
 	}
+
+      /* init */
+      for (i = disk_repr_p->n_fixed; i < n_attrs; i++)
+	{
+	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
+	  disk_attr_p->value = NULL;
+	  disk_attr_p->bt_stats = NULL;
+	}
     }
   else
     {
       disk_repr_p->variable = NULL;
-    }
-
-  n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
-
-  /* init */
-  for (i = 0; i < n_attrs; i++)
-    {
-      if (i < disk_repr_p->n_fixed)
-	{
-	  disk_attr_p = &disk_repr_p->fixed[i];
-	}
-      else
-	{
-	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
-	}
-
-      disk_attr_p->value = NULL;
-      disk_attr_p->bt_stats = NULL;
     }
 
   /* alloc and assign */
@@ -4609,7 +4610,7 @@ catalog_print_entry (THREAD_ENTRY * thread_p, void *key, void *val,
  *                 1 : for catalog and catalog index slotted page dump
  */
 void
-catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
+catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 {
   CATALOG_CLASS_ID_LIST *class_id_list = NULL, *class_id_p;
   OID class_id;
@@ -4622,12 +4623,12 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
   PAGE_PTR page_p;
   RECDES record;
 
-  fprintf (stdout, "\n <<<<< C A T A L O G   D U M P >>>>> \n\n");
+  fprintf (fp, "\n <<<<< C A T A L O G   D U M P >>>>> \n\n");
 
-  fprintf (stdout, "\n Catalog Index Dump: \n\n");
+  fprintf (fp, "\n Catalog Index Dump: \n\n");
   ehash_map (thread_p, &catalog_Id.xhid, catalog_print_entry, (void *) 0);
 
-  fprintf (stdout, "\n Catalog Dump: \n\n");
+  fprintf (fp, "\n Catalog Dump: \n\n");
   ehash_map (thread_p, &catalog_Id.xhid, catalog_get_key_list,
 	     (void *) &class_id_list);
 
@@ -4638,22 +4639,20 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
       class_id.pageid = class_id_p->class_id.pageid;
       class_id.slotid = class_id_p->class_id.slotid;
 
-      fprintf (stdout,
-	       " -------------------------------------------------\n");
-      fprintf (stdout, " CLASS_ID: { %d , %d , %d } \n", class_id.volid,
+      fprintf (fp, " -------------------------------------------------\n");
+      fprintf (fp, " CLASS_ID: { %d , %d , %d } \n", class_id.volid,
 	       class_id.pageid, class_id.slotid);
 
       /* Get the class specific information for this class */
       class_info_p = catalog_get_class_info (thread_p, &class_id);
       if (class_info_p != NULL)
 	{
-	  fprintf (stdout, " Class Specific Information: \n\n");
-	  fprintf (stdout, " HFID: { vfid = { %d , %d }, hpgid = %d }\n",
+	  fprintf (fp, " Class Specific Information: \n\n");
+	  fprintf (fp, " HFID: { vfid = { %d , %d }, hpgid = %d }\n",
 		   class_info_p->hfid.vfid.fileid,
 		   class_info_p->hfid.vfid.volid, class_info_p->hfid.hpgid);
-	  fprintf (stdout, " Total Pages in Heap: %d\n",
-		   class_info_p->tot_pages);
-	  fprintf (stdout, " Total Objects: %d\n", class_info_p->tot_objects);
+	  fprintf (fp, " Total Pages in Heap: %d\n", class_info_p->tot_pages);
+	  fprintf (fp, " Total Objects: %d\n", class_info_p->tot_objects);
 	  catalog_free_class_info (class_info_p);
 	}
 
@@ -4662,7 +4661,7 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
       repr_id_set = NULL;
       catalog_get_representation_directory (thread_p, &class_id, &repr_id_set,
 					    &repr_count);
-      fprintf (stdout, " Repr_cnt: %d \n", repr_count);
+      fprintf (fp, " Repr_cnt: %d \n", repr_count);
 
       repr_id_p = repr_id_set;
       for (repr_id_p += repr_count - 1; repr_count; repr_id_p--, repr_count--)
@@ -4691,7 +4690,7 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
   if (dump_flag == 1)
     {
       /* slotted page dump */
-      fprintf (stdout, "\n Catalog Directory Dump: \n\n");
+      fprintf (fp, "\n Catalog Directory Dump: \n\n");
       ehash_map (thread_p, &catalog_Id.xhid, catalog_get_key_list,
 		 (void *) &class_id_list);
 
@@ -4702,16 +4701,16 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
 	  class_id.pageid = class_id_p->class_id.pageid;
 	  class_id.slotid = class_id_p->class_id.slotid;
 
-	  fprintf (stdout,
+	  fprintf (fp,
 		   " -------------------------------------------------\n");
-	  fprintf (stdout, " CLASS_ID: { %d , %d , %d } \n", class_id.volid,
+	  fprintf (fp, " CLASS_ID: { %d , %d , %d } \n", class_id.volid,
 		   class_id.pageid, class_id.slotid);
 
 	  /* get the representations identifiers set for the class */
 	  repr_id_set = NULL;
 	  catalog_get_representation_directory (thread_p, &class_id,
 						&repr_id_set, &repr_count);
-	  fprintf (stdout, " REPR_CNT: %d \n", repr_count);
+	  fprintf (fp, " REPR_CNT: %d \n", repr_count);
 	  repr_id_p = repr_id_set;
 
 	  for (repr_id_p += repr_count - 1; repr_count;
@@ -4719,7 +4718,7 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
 	    {
 	      if (*repr_id_p != NULL_REPRID)
 		{
-		  fprintf (stdout, " Repr_id: %d\n", *repr_id_p);
+		  fprintf (fp, " Repr_id: %d\n", *repr_id_p);
 		}
 	    }
 
@@ -4733,7 +4732,7 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
       class_id_list = NULL;
 
       n = file_get_numpages (thread_p, &catalog_Id.vfid);
-      fprintf (stdout, "Total Pages Count: %d\n\n", n);
+      fprintf (fp, "Total Pages Count: %d\n\n", n);
       overflow_count = 0;
 
       /* find the list of overflow page identifiers */
@@ -4760,14 +4759,13 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
 	  pgbuf_unfix (thread_p, page_p);
 	}
 
-      fprintf (stdout, "Regular Pages Count: %d\n\n", n - overflow_count);
-      fprintf (stdout, "Overflow Pages Count: %d\n\n", overflow_count);
+      fprintf (fp, "Regular Pages Count: %d\n\n", n - overflow_count);
+      fprintf (fp, "Overflow Pages Count: %d\n\n", overflow_count);
 
       for (i = 0; i < n; i++)
 	{
-	  fprintf (stdout,
-		   "\n-----------------------------------------------\n");
-	  fprintf (stdout, "\n Page %d \n", i);
+	  fprintf (fp, "\n-----------------------------------------------\n");
+	  fprintf (fp, "\n Page %d \n", i);
 
 	  if (file_find_nthpages (thread_p, &catalog_Id.vfid, &page_id, i, 1)
 	      == -1)
@@ -4783,15 +4781,15 @@ catalog_dump (THREAD_ENTRY * thread_p, int dump_flag)
 	    }
 
 	  spage_get_record (page_p, CATALOG_HEADER_SLOT, &record, PEEK);
-	  fprintf (stdout, "\nPage_Id: {%d , %d}\n", page_id.pageid,
+	  fprintf (fp, "\nPage_Id: {%d , %d}\n", page_id.pageid,
 		   page_id.volid);
-	  fprintf (stdout, "Directory Cnt: %d\n",
+	  fprintf (fp, "Directory Cnt: %d\n",
 		   *(int *) ((int *) record.data + 1));
-	  fprintf (stdout, "Overflow Page Id: {%d , %d}\n\n",
+	  fprintf (fp, "Overflow Page Id: {%d , %d}\n\n",
 		   ((VPID *) record.data)->pageid,
 		   ((VPID *) record.data)->volid);
 
-	  spage_dump (thread_p, page_p, 0);
+	  spage_dump (thread_p, fp, page_p, 0);
 	  pgbuf_unfix (thread_p, page_p);
 	}
     }

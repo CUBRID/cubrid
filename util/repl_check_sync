@@ -1,4 +1,4 @@
-#!/bin/ksh
+#!/bin/sh
 ###############################################################################
 #  Script Name : check_repl_sync
 #
@@ -154,14 +154,14 @@ do
         then
             echo "$ip $line"
         fi
-        (( linecount=linecount+1 ))
+        linecount=$(($linecount+1))
     done < .result.out
     if [ "$linecount" -lt 4 ]
     then
       echo "can not connect repl_agent($ip, $port)"
       break
     fi
-    (( count=count+1 ))
+    count=$(($count+1))
 done
 rm .tmp.out
 rm .result.out

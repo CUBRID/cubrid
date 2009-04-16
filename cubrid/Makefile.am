@@ -144,7 +144,8 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/replication.c \
 	$(TRANSACTION_DIR)/recovery.c \
 	$(TRANSACTION_DIR)/transaction_sr.c \
-	$(TRANSACTION_DIR)/wait_for_graph.c
+	$(TRANSACTION_DIR)/wait_for_graph.c \
+	$(TRANSACTION_DIR)/log_writer.c
 STORAGE_SOURCES = \
 	$(STORAGE_DIR)/btree.c \
 	$(STORAGE_DIR)/btree_load.c \

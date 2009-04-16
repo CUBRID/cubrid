@@ -478,14 +478,14 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   int unique, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			   int cache_attr_id, const char *fkname);
+			   int cache_attr_id, const char *fk_name);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int build_fk_obj_cache (MOP classop, SM_CLASS * class_,
 			       SM_ATTRIBUTE ** key_attrs,
 			       const int *asc_desc, OID * pk_cls_oid,
 			       BTID * pk_btid, int cache_attr_id,
-			       char *fkname);
+			       char *fk_name);
 static int update_foreign_key_ref (MOP ref_clsop,
 				   SM_FOREIGN_KEY_INFO * fk_info);
 static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
@@ -3761,13 +3761,14 @@ sm_update_trigger_cache (DB_OBJECT * classop,
  *    Returns <0 if errors were encountered.
  *   return: non-zero if the class has active triggers
  *   class(in/out): class structure
+ *   event_type(in) : event type of trigger to check.
  */
-
 int
-sm_active_triggers (SM_CLASS * class_)
+sm_active_triggers (SM_CLASS * class_, DB_TRIGGER_EVENT event_type)
 {
   SM_ATTRIBUTE *att;
   int status;
+  bool has_event_type_triggers = false;
 
   /* If trigger firing has been disabled we do not want to search for
    * active triggers.
@@ -3775,50 +3776,63 @@ sm_active_triggers (SM_CLASS * class_)
   if (tr_get_execution_state () != true)
     return (0);
 
-  if (!class_->triggers_validated)
+  if (event_type == TR_EVENT_ALL && (class_->triggers_validated))
     {
-      class_->has_active_triggers = 0;
-
-      status = tr_active_schema_cache ((TR_SCHEMA_CACHE *) class_->triggers);
-      if (status < 0)
-	return status;
-
-      if (status > 0)
-	class_->has_active_triggers = 1;
-      else
-	{
-	  /* no class level triggers, look for attribute level triggers */
-	  for (att = class_->ordered_attributes;
-	       att != NULL && !class_->has_active_triggers;
-	       att = att->order_link)
-	    {
-
-	      status =
-		tr_active_schema_cache ((TR_SCHEMA_CACHE *) att->triggers);
-	      if (status < 0)
-		return status;
-	      else if (status)
-		class_->has_active_triggers = 1;
-	    }
-	  if (!class_->has_active_triggers)
-	    {
-	      FOR_ATTRIBUTES (class_->class_attributes, att)
-	      {
-		status =
-		  tr_active_schema_cache ((TR_SCHEMA_CACHE *) att->triggers);
-		if (status < 0)
-		  return status;
-		else if (status)
-		  class_->has_active_triggers = 1;
-	      }
-	    }
-	}
-
-      /* don't repeat this process again */
-      class_->triggers_validated = 1;
+      return (class_->has_active_triggers);
     }
 
-  return (class_->has_active_triggers);
+  class_->has_active_triggers = 0;
+
+  status =
+    tr_active_schema_cache ((TR_SCHEMA_CACHE *) class_->triggers,
+			    event_type, &has_event_type_triggers);
+  if (status < 0)
+    {
+      return status;
+    }
+  else if (status)
+    {
+      class_->has_active_triggers = 1;
+    }
+
+  /* no class level event type triggers, look for attribute level triggers */
+  for (att = class_->ordered_attributes;
+       att != NULL && !has_event_type_triggers; att = att->order_link)
+    {
+      status =
+	tr_active_schema_cache ((TR_SCHEMA_CACHE *) att->triggers,
+				event_type, &has_event_type_triggers);
+      if (status < 0)
+	{
+	  return status;
+	}
+      else if (status)
+	{
+	  class_->has_active_triggers = 1;
+	}
+    }
+
+  if (!has_event_type_triggers)
+    {
+      FOR_ATTRIBUTES (class_->class_attributes, att)
+      {
+	status =
+	  tr_active_schema_cache ((TR_SCHEMA_CACHE *) att->triggers,
+				  event_type, &has_event_type_triggers);
+	if (status < 0)
+	  {
+	    return status;
+	  }
+	else if (status)
+	  {
+	    class_->has_active_triggers = 1;
+	  }
+      }
+    }
+  /* don't repeat this process again */
+  class_->triggers_validated = 1;
+
+  return ((has_event_type_triggers) ? 1 : 0);
 }
 
 /*
@@ -3831,10 +3845,12 @@ sm_active_triggers (SM_CLASS * class_)
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   status_ptr(in): return status (non-zero if triggers for the class)
+ *   event_type(in): event type of trigger to find.
  */
 
 int
-sm_class_has_triggers (DB_OBJECT * classop, int *status_ptr)
+sm_class_has_triggers (DB_OBJECT * classop, int *status_ptr,
+		       DB_TRIGGER_EVENT event_type)
 {
   int error;
   SM_CLASS *class_;
@@ -3844,7 +3860,7 @@ sm_class_has_triggers (DB_OBJECT * classop, int *status_ptr)
        au_fetch_class (classop, &class_, AU_FETCH_READ,
 		       AU_SELECT)) == NO_ERROR)
     {
-      status = sm_active_triggers (class_);
+      status = sm_active_triggers (class_, event_type);
       if (status < 0)
 	error = er_errid ();
       else
@@ -8822,7 +8838,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
- *   fkname(in):
+ *   fk_name(in):
  */
 
 static int
@@ -8830,7 +8846,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		SM_ATTRIBUTE ** attrs, const int *asc_desc, int unique,
 		int reverse, const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		int cache_attr_id, const char *fkname)
+		int cache_attr_id, const char *fk_name)
 {
   int error = NO_ERROR;
   DB_TYPE type;
@@ -8930,7 +8946,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	    error = btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, hfids, unique, reverse,
 				      fk_refcls_oid, fk_refcls_pk_btid,
-				      cache_attr_id, fkname);
+				      cache_attr_id, fk_name);
 
 	  free_and_init (attr_ids);
 	  free_and_init (oids);
@@ -9021,13 +9037,13 @@ rem_class_from_index (OID * oid, BTID * index, HFID * heap)
  *   pk_cls_oid(in):
  *   pk_btid(in):
  *   cache_attr_id(in):
- *   fkname(in):
+ *   fk_name(in):
  */
 
 static int
 build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 		    const int *asc_desc, OID * pk_cls_oid, BTID * pk_btid,
-		    int cache_attr_id, char *fkname)
+		    int cache_attr_id, char *fk_name)
 {
   int error = NO_ERROR;
   int i, n_attrs;
@@ -9062,7 +9078,7 @@ build_fk_obj_cache (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 
       error = locator_build_fk_obj_cache (cls_oid, hfid, domain, n_attrs,
 					  attr_ids, pk_cls_oid, pk_btid,
-					  cache_attr_id, fkname);
+					  cache_attr_id, fk_name);
 
       free_and_init (attr_ids);
     }
@@ -9303,6 +9319,11 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 {
   int error = NO_ERROR;
   int reverse;
+
+  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
+    {
+      return NO_ERROR;
+    }
 
   if (BTID_IS_NULL (&con->index))
     {
@@ -11023,7 +11044,7 @@ sm_delete_class_mop (MOP op)
 	    }
 
 	  /* remove auto_increment serial object if exist */
-	  if (!db_Replication_agent_mode)
+	  if (!db_Log_replication_mode)
 	    {
 	      for (att = class_->ordered_attributes;
 		   att; att = att->order_link)

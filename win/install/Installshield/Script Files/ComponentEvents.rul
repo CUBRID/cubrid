@@ -149,39 +149,39 @@ begin
 		// .contributions.*
 		szFile = szDir^".contributions.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);   
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);   
 
 		// .extraData.*
 		szFile = szDir^".extraData.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		
 		// .mainData.*
 		szFile = szDir^".mainData.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 
 		// .orphans.*
 		szFile = szDir^".orphans.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		
 		// .table.*
 		szFile = szDir^".table.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		
 		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.core.runtime\\.manager";
 		if (ExistsDir(szDir) == EXISTS) then
 			// .fileTable.*
 			szFile = szDir^".fileTable.*";
 			LongPathToQuote(szFile, TRUE);
-			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 
 			// .fileTableLock
 			szFile = szDir^".fileTableLock";
 			LongPathToQuote(szFile, TRUE);
-			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode); 
+			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode); 
 		endif;
 	endif;
 
@@ -190,34 +190,34 @@ begin
 		// .bundledata.*
 		szFile = szDir^".bundledata.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		
 		// .lazy.*
 		szFile = szDir^".lazy.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		                                                                         
 		// .state.*
 		szFile = szDir^".state.*";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		
 		//	splash.bmp
 		szFile = szDir^"splash.bmp";
 		LongPathToQuote(szFile, TRUE);
-		_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 
 		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.osgi\\.manager";
 		if (ExistsDir(szDir) == EXISTS) then
 			// .fileTable.*	
 			szFile = szDir^".fileTable.*";
 			LongPathToQuote(szFile, TRUE);
-			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
                                                                             
 			// .fileTableLock	
 			szFile = szDir^".fileTableLock";
 			LongPathToQuote(szFile, TRUE);
-			_LaunchAppEx(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
+			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
 		endif;
 	endif;
 end;

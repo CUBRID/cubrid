@@ -40,6 +40,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "system_parameter.h"
 #include "connection_list_cl.h"
 
 static CSS_QUEUE_ENTRY *css_make_queue_entry (unsigned int key, char *buffer,
@@ -226,7 +227,8 @@ css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor)
  *   request_id(in):
  */
 void
-css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id)
+css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor,
+			       unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -268,7 +270,7 @@ css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request
  */
 void
 css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor,
-			     CSS_QUEUE_ENTRY * entry)
+				   CSS_QUEUE_ENTRY * entry)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -366,7 +368,9 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
   do
     {
-      rc = css_net_recv (conn->fd, buffer, &size);
+      /* timeout in mili-seconds in css_net_recv() */
+      rc = css_net_recv (conn->fd, buffer, &size,
+			 PRM_TCP_CONNECTION_TIMEOUT * 1000);
     }
   while (rc == INTERRUPTED_READ);
 

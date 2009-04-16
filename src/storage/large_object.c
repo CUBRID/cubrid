@@ -83,7 +83,7 @@ static int largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid,
 				  int op_mode, int offset, int length,
 				  char *buffer);
 
-static void largeobjmgr_rv_slot_dump (LARGEOBJMGR_RV_SLOT * lomrv);
+static void largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv);
 static bool largeobjmgr_slot_split_possible (THREAD_ENTRY * thread_p,
 					     PAGE_PTR page_ptr);
 static int largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p,
@@ -161,9 +161,9 @@ static bool largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY *
  *   lomrv(in):
  */
 static void
-largeobjmgr_rv_slot_dump (LARGEOBJMGR_RV_SLOT * lomrv)
+largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv)
 {
-  fprintf (stdout, "Slotid = %d offset = %d length = %d\n",
+  fprintf (fp, "Slotid = %d offset = %d length = %d\n",
 	   lomrv->slotid, lomrv->offset, lomrv->length);
 }
 
@@ -884,7 +884,7 @@ largeobjmgr_deallocset_all_pages (THREAD_ENTRY * thread_p,
  * Note: This routine is provided only for debugging purposes.
  */
 void
-largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
+largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
   LARGEOBJMGR_DIRENTRY *dir_entry_p;
@@ -901,15 +901,15 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 
   ds = &ds_info;
 
-  fprintf (stdout, "\n========= LARGE OBJECT DUMP ===========\n\n");
-  fprintf (stdout, "LOID = {{%d, %d} , {%d, %d}}\n",
+  fprintf (fp, "\n========= LARGE OBJECT DUMP ===========\n\n");
+  fprintf (fp, "LOID = {{%d, %d} , {%d, %d}}\n",
 	   loid->vfid.volid, loid->vfid.fileid,
 	   loid->vpid.volid, loid->vpid.pageid);
-  fprintf (stdout, "\n");
+  fprintf (fp, "\n");
 
   if (n != 1)			/* dump LO directory */
     {
-      largeobjmgr_dir_dump (thread_p, loid);
+      largeobjmgr_dir_dump (thread_p, fp, loid);
     }
 
   if (n == 1 || n == 2)		/* LO content dump */
@@ -917,7 +917,7 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
       if (largeobjmgr_dir_open (thread_p, loid, 0, LARGEOBJMGR_READ_MODE, ds)
 	  == S_ERROR)
 	{
-	  fprintf (stdout, " Error opening directory...\n");
+	  fprintf (fp, " Error opening directory...\n");
 	  return;
 	}
       if (ds->tot_length > 0)
@@ -927,20 +927,20 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 	      dir_entry_p = ds->curdir.idxptr;
 	      if (LARGEOBJMGR_ISHOLE_DIRENTRY (dir_entry_p))	/* entry contains a hole */
 		{
-		  fprintf (stdout, "\n[  Slotid: %d\n", dir_entry_p->slotid);
-		  fprintf (stdout, "  Length: %d\n\n", dir_entry_p->u.length);
+		  fprintf (fp, "\n[  Slotid: %d\n", dir_entry_p->slotid);
+		  fprintf (fp, "  Length: %d\n\n", dir_entry_p->u.length);
 		  for (k = 0; k < dir_entry_p->u.length; k++)
 		    {
-		      fprintf (stdout, "%c", '0');
+		      fprintf (fp, "%c", '0');
 		    }
 		}
 	      else
 		{
-		  fprintf (stdout, "\n[ VPID: {%d, %d}\n",
+		  fprintf (fp, "\n[ VPID: {%d, %d}\n",
 			   dir_entry_p->u.vpid.volid,
 			   dir_entry_p->u.vpid.pageid);
-		  fprintf (stdout, "  Slotid: %d\n", dir_entry_p->slotid);
-		  fprintf (stdout, "  Length: %d\n\n", dir_entry_p->length);
+		  fprintf (fp, "  Slotid: %d\n", dir_entry_p->slotid);
+		  fprintf (fp, "  Length: %d\n\n", dir_entry_p->length);
 
 		  page_ptr = pgbuf_fix (thread_p, &dir_entry_p->u.vpid,
 					OLD_PAGE, PGBUF_LATCH_READ,
@@ -951,14 +951,14 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 			  (page_ptr, dir_entry_p->slotid, &recdes,
 			   PEEK) != S_SUCCESS)
 			{
-			  fprintf (stdout, "Error Reading slot record\n");
+			  fprintf (fp, "Error Reading slot record\n");
 			}
 		      else
 			{
 			  for (k = 0, slot_char_p = (char *) recdes.data;
 			       k < recdes.length; k++, slot_char_p++)
 			    {
-			      fprintf (stdout, "%c", *slot_char_p);
+			      fprintf (fp, "%c", *slot_char_p);
 			    }
 			}
 		      pgbuf_unfix (thread_p, page_ptr);
@@ -966,10 +966,10 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 		    }
 		  else
 		    {
-		      fprintf (stdout, "ERROR: fetching page..");
+		      fprintf (fp, "ERROR: fetching page..");
 		    }
 		}
-	      fprintf (stdout, " ]\n");
+	      fprintf (fp, " ]\n");
 	    }
 	  while (largeobjmgr_dir_scan_next (thread_p, ds) == S_SUCCESS);
 	}
@@ -999,8 +999,8 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 
 	      if (k == dir_vpid_cnt)
 		{
-		  fprintf (stdout, "\n[ Page Position: %d\n", pg_pos);
-		  fprintf (stdout, "    VPID: {%d, %d}\n", vpid.volid,
+		  fprintf (fp, "\n[ Page Position: %d\n", pg_pos);
+		  fprintf (fp, "    VPID: {%d, %d}\n", vpid.volid,
 			   vpid.pageid);
 
 		  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
@@ -1011,8 +1011,9 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, LOID * loid, int n)
 		      break;
 		    }
 
-		  spage_dump (thread_p, page_ptr, (n == 3) ? false : true);
-		  fprintf (stdout, " ]\n");
+		  spage_dump (thread_p, fp, page_ptr,
+			      (n == 3) ? false : true);
+		  fprintf (fp, " ]\n");
 		  pgbuf_unfix (thread_p, page_ptr);
 		  page_ptr = NULL;
 		}
@@ -3342,9 +3343,9 @@ largeobjmgr_rv_split_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-largeobjmgr_rv_split_dump (int length_ignore, void *data)
+largeobjmgr_rv_split_dump (FILE * fp, int length_ignore, void *data)
 {
-  largeobjmgr_rv_slot_dump ((LARGEOBJMGR_RV_SLOT *) data);
+  largeobjmgr_rv_slot_dump (fp, (LARGEOBJMGR_RV_SLOT *) data);
 }
 
 /*
@@ -3396,7 +3397,7 @@ largeobjmgr_rv_overwrite (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   dump_data(in): The data being logged
  */
 void
-largeobjmgr_rv_overwrite_dump (int length, void *dump_data)
+largeobjmgr_rv_overwrite_dump (FILE * fp, int length, void *dump_data)
 {
   int offset;
   char *data;
@@ -3407,8 +3408,8 @@ largeobjmgr_rv_overwrite_dump (int length, void *dump_data)
   data += sizeof (offset);
   length -= sizeof (offset);
 
-  fprintf (stdout, "Offset = %d, Overwrite_data =", offset);
-  log_rv_dump_char (length, data);
+  fprintf (fp, "Offset = %d, Overwrite_data =", offset);
+  log_rv_dump_char (fp, length, data);
 }
 
 /*
@@ -3490,9 +3491,9 @@ largeobjmgr_rv_takeout (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-largeobjmgr_rv_putin_dump (int length_ignore, void *data)
+largeobjmgr_rv_putin_dump (FILE * fp, int length_ignore, void *data)
 {
-  largeobjmgr_rv_slot_dump ((LARGEOBJMGR_RV_SLOT *) data);
+  largeobjmgr_rv_slot_dump (fp, (LARGEOBJMGR_RV_SLOT *) data);
 }
 
 /*
@@ -3502,7 +3503,7 @@ largeobjmgr_rv_putin_dump (int length_ignore, void *data)
  *   dump_data(in): The data being logged
  */
 void
-largeobjmgr_rv_takeout_dump (int length_ignore, void *dump_data)
+largeobjmgr_rv_takeout_dump (FILE * fp, int length_ignore, void *dump_data)
 {
   char *data;
   LARGEOBJMGR_RV_SLOT *lomrv;
@@ -3511,8 +3512,8 @@ largeobjmgr_rv_takeout_dump (int length_ignore, void *dump_data)
   lomrv = (LARGEOBJMGR_RV_SLOT *) data;
   data += sizeof (LARGEOBJMGR_RV_SLOT);
 
-  largeobjmgr_rv_slot_dump (lomrv);
-  log_rv_dump_char (lomrv->length, data);
+  largeobjmgr_rv_slot_dump (fp, lomrv);
+  log_rv_dump_char (fp, lomrv->length, data);
 }
 
 /*
@@ -3589,12 +3590,13 @@ largeobjmgr_rv_append_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   dump_data(in):
  */
 void
-largeobjmgr_rv_append_dump_undo (int length_ignore, void *dump_data)
+largeobjmgr_rv_append_dump_undo (FILE * fp, int length_ignore,
+				 void *dump_data)
 {
   char *data;
   LARGEOBJMGR_RV_SLOT *lomrv;
 
   data = (char *) dump_data;
   lomrv = (LARGEOBJMGR_RV_SLOT *) data;
-  largeobjmgr_rv_slot_dump (lomrv);
+  largeobjmgr_rv_slot_dump (fp, lomrv);
 }

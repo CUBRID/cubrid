@@ -4,6 +4,7 @@ EXPORTS
 ; variables
 ;
     PRM_TCP_PORT_ID
+    boot_Host_connected
 ;
 ; functions
 ;
@@ -206,6 +207,7 @@ EXPORTS
     db_object
     db_objlist_free
     db_open_buffer
+    db_ping_server
     db_push_values
     db_put
     db_query_column_count
@@ -525,6 +527,7 @@ EXPORTS
     db_get_class_attribute_names
     db_get_class_method_names
     db_get_database_comments
+    db_get_client_type
     db_get_elo
     db_get_error
     db_get_errors
@@ -650,6 +653,7 @@ EXPORTS
     db_seq_print
     db_set_cardinality
     db_set_class_method_arg_domain
+    db_set_client_type
     db_set_compare
     db_set_copy
     db_set_create

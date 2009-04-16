@@ -26,8 +26,6 @@
 // Include header files
     
 #include "ifx.h" //DO NOT REMOVE 
-#include "LaunchAppEx.h"
-#include "LaunchAppEx.rul"
 ////////////////////// string defines ////////////////////////////
 
 //////////////////// installation declarations ///////////////////
@@ -69,7 +67,61 @@ NUMBER  nvCodePage;
 #define	ST_CUBRID_VERSION		@PRODUCT_VERSION
 #define ODBC_VERSION            @PRODUCT_VERSION
 
+#ifndef STILL_ACTIVE
+	#define STILL_ACTIVE    0x00000103
+#endif
+
 prototype SdLicenseCustom(STRING, STRING, STRING, STRING);
+
+prototype RunProgram(STRING, STRING, NUMBER, NUMBER, NUMBER, BYREF NUMBER);
+prototype BOOL kernel32.CreateProcessA(POINTER, BYVAL STRING, POINTER, 
+               POINTER, BOOL, NUMBER, POINTER, POINTER, POINTER, 
+               POINTER);
+prototype BOOL kernel32.GetExitCodeProcess(NUMBER, POINTER);
+prototype NUMBER kernel32.WaitForSingleObject(NUMBER, NUMBER);
+prototype BOOL kernel32.CloseHandle(HWND);
+
+function RunProgram(szProgram, szCmdLine, nWait, nShow, nTimeOut, nvExitCode)
+    STARTUPINFO siData;
+    PROCESS_INFORMATION piData;
+begin
+   	siData.cb = 68;
+	siData.lpReserved = NULL;
+	siData.lpDesktop = NULL;
+	siData.lpTitle = NULL;
+	siData.dwX = 0;
+	siData.dwY = 0;
+	siData.dwXSize = 0;
+	siData.dwYSize = 0;
+	siData.dwXCountChars = 0;
+	siData.dwYCountChars = 0;
+	siData.dwFillAttribute = 0;
+	siData.dwFlags = 1;
+	siData.wShowWindow = nShow;
+	siData.lpReserved2 = NULL;
+	siData.hStdInput = NULL;
+	siData.hStdOutput = NULL;
+	siData.hStdError = NULL;
+
+    if (CreateProcessA(NULL, szProgram + " " + szCmdLine, NULL, NULL,
+                       TRUE, 0, NULL, NULL, &siData, &piData) = 0) then
+       return (-1);
+    endif;
+
+	if ( nWait != WAIT ) then
+       nvExitCode = 0;
+       return 0;
+	endif;
+	
+    WaitForSingleObject(piData.hProcess, nTimeOut);
+
+    GetExitCodeProcess(piData.hProcess, &nvExitCode);
+
+    CloseHandle(piData.hProcess);
+    CloseHandle(piData.hThread);    
+
+    return 0;
+end;
 
 function SdLicenseCustom( szTitle, szMsg, szQuestion, szLicenseFile )
 	STRING  szDlg, szTemp, szFinalFile;
@@ -693,7 +745,7 @@ Dlg_Completed:
 	setupfilecopy_param = SRCDIR;                       
 	LongPathToQuote(setupfilecopy_program, TRUE);
 	LongPathToQuote(setupfilecopy_param, TRUE);
-	_LaunchAppEx(setupfilecopy_program, "-d " + setupfilecopy_param, NOWAIT, SW_HIDE, -1, ExitCode);
+	RunProgram(setupfilecopy_program, "-d " + setupfilecopy_param, NOWAIT, SW_HIDE, -1, ExitCode);
 */
     return 0;
 end;
@@ -727,7 +779,7 @@ begin
 	LongPathToQuote(distfilename, TRUE);
 	LongPathToQuote(versionfilename, TRUE);
 	
-	_LaunchAppEx(confcopy_program, conffilename + " " + distfilename + " " + versionfilename, WAIT, SW_HIDE, -1, ExitCode);
+	RunProgram(confcopy_program, conffilename + " " + distfilename + " " + versionfilename, WAIT, SW_HIDE, -1, ExitCode);
 end;
 //---------------------------------------------------------------------------
 // OnSetUpdateMode
