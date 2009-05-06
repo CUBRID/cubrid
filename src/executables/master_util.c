@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -25,9 +25,12 @@
 
 #include "config.h"
 
+#include <sys/types.h>
+#include <signal.h>
 #include <stdio.h>
 
 #include "system_parameter.h"
+#include "master_util.h"
 
 /*
  * master_util_config_startup() - get port id and service name from parameters
@@ -40,7 +43,7 @@ bool
 master_util_config_startup (const char *db_name, int *port_id)
 {
   sysprm_load_and_init (db_name, NULL);
-  *port_id = PRM_TCP_PORT_ID;
+  *port_id = prm_get_master_port_id ();
 
   /*
    * Must give either port_id or service_name

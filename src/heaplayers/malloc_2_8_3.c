@@ -1,9 +1,33 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *
+ */
+
 /* 
  * Following is Doug Lea's memory allocator with USE_MALLOC_INSTEAD 
  * feature amendment
  *
  * USE_MALLOC_INSTEAD
  * When this feature is enabled, uses system malloc/free instead of mmap/munmap.
+ * 
+ * ENABLE_SEPARATE_MMAP_EVENT_TRACE
+ * Fix the problem that mmaped (malloced when USE_MALLOC_INSTEAD is 1)
+ * memory region (which is returned by mmap_alloc function) is not
+ * automatically freed when destroy_mspace is called.
  * 
  */
 
@@ -3294,9 +3318,15 @@ mmap_resize (mstate m, mchunkptr oldp, size_t nb)
   if (is_small (nb))		/* Can't shrink mmap regions below small size */
     return 0;
   /* Keep old chunk if big enough but not too big */
+#if defined(ENABLE_SEPARATE_MMAP_EVENT_TRACE)
+  if (oldsize >= nb + SIZE_T_SIZE + MMAP_TRACE_H_SIZE &&
+      (oldsize - nb) <= (mparams.granularity <<1))
+    return oldp;
+#else
   if (oldsize >= nb + SIZE_T_SIZE &&
       (oldsize - nb) <= (mparams.granularity << 1))
     return oldp;
+#endif /* ENABLE_SEPARATE_MMAP_EVENT_TRACE */
   else
     {
       size_t offset = oldp->prev_foot & ~IS_MMAPPED_BIT;

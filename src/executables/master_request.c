@@ -136,7 +136,7 @@ css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
   if (sock_entry->conn_ptr &&
       !sock_entry->info_p &&
       !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd) &&
-      sock_entry->conn_ptr->fd > 0)
+      !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
     {
       send (sock_entry->conn_ptr->fd, (char *) &request, sizeof (int), 0);
     }
@@ -155,7 +155,7 @@ css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
   if (sock_entry->conn_ptr &&
       !sock_entry->info_p &&
       !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd) &&
-      sock_entry->conn_ptr->fd > 0)
+      !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
     {
       send (sock_entry->conn_ptr->fd, message, MASTER_TO_SRV_MSG_SIZE, 0);
     }
@@ -203,7 +203,7 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
   struct timeval timeout;
   int time_left;
   char time_string[1028];
-  char *master_release = (char *) rel_release_string ();;
+  char *master_release = (char *) rel_release_string ();
 
   if (css_Master_timeout == NULL)
     {
@@ -257,7 +257,7 @@ css_process_server_count_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
@@ -289,7 +289,7 @@ css_process_driver_count_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && temp->name[0] == '-')
 	{
 	  count++;
@@ -318,7 +318,7 @@ css_process_repl_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && (temp->name[0] == '+' || temp->name[0] == '&'))
 	{
 	  count++;
@@ -347,7 +347,8 @@ css_process_all_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name)
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
+	  && temp->name)
 	{
 	  count++;
 	}
@@ -377,7 +378,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
@@ -407,7 +408,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
@@ -447,7 +448,7 @@ css_process_driver_list_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && temp->name[0] == '-')
 	{
 
@@ -475,7 +476,7 @@ css_process_driver_list_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && temp->name[0] == '-')
 	{
 
@@ -513,7 +514,7 @@ css_process_repl_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && (temp->name[0] == '&' || temp->name[0] == '+'))
 	{
 	  if (temp->name[0] == '&')
@@ -547,7 +548,7 @@ css_process_repl_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name && (temp->name[0] == '&' || temp->name[0] == '+'))
 	{
 	  if (temp->name[0] == '&')
@@ -594,7 +595,8 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name)
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
+	  && temp->name)
 	{
 	  switch (temp->name[0])
 	    {
@@ -634,7 +636,8 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name)
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
+	  && temp->name)
 	{
 	  switch (temp->name[0])
 	    {
@@ -935,7 +938,7 @@ css_process_shutdown (char *time_buffer)
       /* do not send shutdown command to master and connector, only to servers:
        * cause connector crash
        */
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
@@ -952,8 +955,9 @@ css_process_shutdown (char *time_buffer)
 	  master_util_wait_proc_terminate (temp->pid);
 	}
       /* for the replication processes, replication processes stop by SIGTERM */
-      else if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	       temp->name && (temp->name[0] == '+' || temp->name[0] == '&'))
+      else if (!IS_INVALID_SOCKET (temp->fd)
+	       && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
+	       && (temp->name[0] == '+' || temp->name[0] == '&'))
 	{
 	  css_send_term_signal (temp->pid);
 	}
@@ -1000,7 +1004,7 @@ css_process_stop_shutdown (void)
       /* do not send shutdown command to master and connector, only to servers:
        * cause connector crash
        */
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
@@ -1024,12 +1028,12 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   unsigned short request_id;
   char *buffer;
 
-  if ((rc = css_receive_request (conn, &request_id, &request, &buffer_size))
-      == NO_ERRORS)
+  rc = css_receive_request (conn, &request_id, &request, &buffer_size);
+  if (rc == NO_ERRORS)
     {
-      if (buffer_size &&
-	  css_receive_data (conn, request_id, &buffer,
-			    &buffer_size) != NO_ERRORS)
+      if (buffer_size
+	  && css_receive_data (conn, request_id, &buffer,
+			       &buffer_size) != NO_ERRORS)
 	{
 	  css_cleanup_info_connection (conn);
 	  return;

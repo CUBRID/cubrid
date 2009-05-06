@@ -57,9 +57,15 @@
 /* this must be the last header file included! */
 #include "dbval.h"
 
+#if __WORDSIZE == 32
+#define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
+#else
+#define GET_PTR_FOR_HASH(key) ((unsigned int)((key) && 0xFFFFFFFF))
+#endif
+
 /* constants for rehash */
-static const float MHT_REHASH_TRESHOLD = 0.7;
-static const float MHT_REHASH_FACTOR = 1.3;
+static const float MHT_REHASH_TRESHOLD = 0.7f;
+static const float MHT_REHASH_FACTOR = 1.3f;
 
 /* options for mht_put() */
 typedef enum mht_put_opt MHT_PUT_OPT;
@@ -100,7 +106,7 @@ static const void *mht_put_internal (MHT_TABLE * ht, const void *key,
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key,
 				      void *data, MHT_PUT_OPT opt);
 
-static unsigned int mht_get_shiftmult32 (const unsigned int key,
+static unsigned int mht_get_shiftmult32 (unsigned int key,
 					 const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static unsigned int mht_get32_next_power_of_2 (unsigned int const ht_size);
@@ -470,7 +476,7 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
 {
   assert (key != NULL);
 
-  return (const unsigned int) key % ht_size;
+  return GET_PTR_FOR_HASH (key) % ht_size;
 }
 
 /*
@@ -500,6 +506,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_SHORT:
 	  hash = (unsigned int) db_get_short (val);
 	  break;
+	case DB_TYPE_BIGINT:
+	  {
+	    DB_BIGINT bigint;
+	    unsigned int x, y;
+
+	    bigint = db_get_bigint (val);
+	    x = bigint >> 32;
+	    y = (unsigned int) bigint;
+	    hash = x ^ y;
+	    break;
+	  }
 	case DB_TYPE_FLOAT:
 	  hash = (unsigned int) db_get_float (val);
 	  break;
@@ -524,6 +541,13 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	  hash = (unsigned int) *(db_get_timestamp (val));
+	  break;
+	case DB_TYPE_DATETIME:
+	  {
+	    DB_DATETIME *datetime;
+	    datetime = db_get_datetime (val);
+	    hash = (unsigned int) (datetime->date ^ datetime->time);
+	  }
 	  break;
 	case DB_TYPE_DATE:
 	  hash = (unsigned int) *(db_get_date (val));
@@ -553,7 +577,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  }
 	  break;
 	case DB_TYPE_OBJECT:
-	  hash = (unsigned int) db_get_object (val);
+	  hash = GET_PTR_FOR_HASH (db_get_object (val));
 	  break;
 	case DB_TYPE_OID:
 	  hash = (unsigned int) OID_PSEUDO_KEY (db_get_oid (val));
@@ -579,7 +603,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  }
 	  break;
 	case DB_TYPE_POINTER:
-	  hash = (unsigned int) db_get_pointer (val);
+	  hash = GET_PTR_FOR_HASH (db_get_pointer (val));
 	  break;
 	case DB_TYPE_ELO:
 	case DB_TYPE_SUB:
@@ -589,7 +613,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_RESULTSET:
 	case DB_TYPE_TABLE:
 	default:
-	  hash = (unsigned int) val;
+	  hash = GET_PTR_FOR_HASH (val);
 	  break;
 	}
     }
@@ -879,7 +903,8 @@ mht_rehash (MHT_TABLE * ht)
 
   /* Find an estimated size for hash table entries */
 
-  rehash_factor = 1.0 + (float) ht->ncollisions / (float) ht->nentries;
+  rehash_factor = (float) (1.0 +
+			   ((float) ht->ncollisions / (float) ht->nentries));
   if (MHT_REHASH_FACTOR > rehash_factor)
     {
       est_size = (unsigned int) (ht->size * MHT_REHASH_FACTOR);
@@ -1768,6 +1793,17 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	case DB_TYPE_SMALLINT:
 	  hashcode = mht_get_shiftmult32 (val->data.sh, ht_size);
 	  break;
+	case DB_TYPE_BIGINT:
+	  {
+	    DB_BIGINT bigint;
+	    unsigned int x, y;
+
+	    bigint = db_get_bigint (val);
+	    x = bigint >> 32;
+	    y = (unsigned int) bigint;
+	    hashcode = mht_get_shiftmult32 (x ^ y, ht_size);
+	    break;
+	  }
 	case DB_TYPE_DATE:
 	  hashcode = mht_get_shiftmult32 (val->data.date, ht_size);
 	  break;
@@ -1776,6 +1812,10 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	  hashcode = mht_get_shiftmult32 (val->data.utime, ht_size);
+	  break;
+	case DB_TYPE_DATETIME:
+	  hashcode = mht_get_shiftmult32 (val->data.datetime.date ^
+					  val->data.datetime.time, ht_size);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:

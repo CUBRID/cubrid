@@ -175,13 +175,12 @@ int
 server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
 			    char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3)) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int reply_size;
   char *ptr, *client_release;
   const char *server_release;
   int status = CSS_NO_ERRORS;
-  bool compatible = true;
 
   if (reqlen > 0)
     {
@@ -210,23 +209,18 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
       if (!server_release || !client_release
 	  || rel_compare (server_release, client_release) != 0)
 	{
-	  compatible = false;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_RELEASE,
 		  2, server_release, client_release);
 	  return_error_to_client (thread_p, rid);
 	}
     }
 
-  reply_size = or_packed_string_length (server_release) + OR_INT_SIZE;
-  if (compatible)
-    {
-      ptr = or_pack_string (reply, (char *) server_release);
-    }
-  else
-    {
-      ptr = or_pack_string (reply, (char *) "?.?.?");
-    }
+  reply_size = or_packed_string_length (server_release) + OR_INT_SIZE	/* null string, for backward compatibility */
+    + OR_INT_SIZE + OR_INT_SIZE;
+  ptr = or_pack_string (reply, (char *) server_release);
+  ptr = or_pack_string (ptr, NULL);	/* for backward compatibility */
   ptr = or_pack_int (ptr, server_capabilities ());
+  ptr = or_pack_int (ptr, rel_bit_platform ());
   css_send_data_to_client (thread_p->conn_entry, rid, reply, reply_size);
 
   return status;
@@ -278,7 +272,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -363,7 +357,7 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 				prefetching, &copy_area);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -452,7 +446,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -545,7 +539,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (doesexist == LC_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -619,7 +613,7 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xlocator_notify_isolation_incons (thread_p, &copy_area);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -767,7 +761,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	  if (success != NO_ERROR)
 	    {
-	      return_error_to_client (thread_p, rid);;
+	      return_error_to_client (thread_p, rid);
 	    }
 
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid,
@@ -847,7 +841,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if ((lockset == NULL) || (lockset->length <= 0))
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
@@ -869,7 +863,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (success != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
 
       if (copy_area != NULL)
@@ -993,7 +987,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (lockset != NULL && lockset->length > 0)
@@ -1005,7 +999,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 
       if (!packed)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	  success = ER_FAILED;
 	}
     }
@@ -1093,7 +1087,7 @@ slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (found == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, found);
@@ -1130,7 +1124,7 @@ slocator_reserve_classname (THREAD_ENTRY * thread_p, unsigned int rid,
   reserved = xlocator_reserve_class_name (thread_p, classname, &class_oid);
   if (reserved == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, reserved);
@@ -1163,7 +1157,7 @@ slocator_delete_class_name (THREAD_ENTRY * thread_p, unsigned int rid,
   deleted = xlocator_delete_class_name (thread_p, classname);
   if (deleted == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, deleted);
@@ -1201,7 +1195,7 @@ slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int rid,
 					&class_oid);
   if (renamed == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, renamed);
@@ -1243,7 +1237,7 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -1282,7 +1276,7 @@ sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 					      &buffer_length);
   if (buffer == NULL && buffer_length < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       buffer_length = 0;
     }
 
@@ -1328,7 +1322,7 @@ slog_client_get_first_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1393,7 +1387,7 @@ slog_client_get_next_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1458,7 +1452,7 @@ slog_client_get_first_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1523,7 +1517,7 @@ slog_client_get_next_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (log_area == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1589,7 +1583,7 @@ slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY * thread_p,
 
   if (log_area == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       desc_ptr = NULL;
       desc_size = 0;
       content_ptr = NULL;
@@ -1880,7 +1874,7 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (error_code != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, error_code);
@@ -2080,7 +2074,7 @@ shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   error = xheap_create (thread_p, &hfid, &class_oid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_errcode (reply, error);
@@ -2114,7 +2108,7 @@ shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   error = xheap_destroy (thread_p, &hfid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2147,7 +2141,7 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xheap_destroy_newly_created (thread_p, &hfid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2350,7 +2344,7 @@ stran_server_start_topop (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -2422,7 +2416,7 @@ stran_server_savepoint (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -2461,7 +2455,7 @@ stran_server_partial_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       && state != TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS)
     {
       /* Likely the abort failed.. somehow */
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) state);
@@ -2576,8 +2570,8 @@ stran_server_set_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
 
   (void) or_unpack_int (request, &gtrid);
 
-  if (css_receive_data_from_client
-      (thread_p->conn_entry, rid, (char **) &info, (int *) &size))
+  if (css_receive_data_from_client (thread_p->conn_entry, rid, 
+				    (char **) &info, (int *) &size))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
@@ -2590,7 +2584,7 @@ stran_server_set_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, success);
@@ -2640,7 +2634,7 @@ stran_server_get_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       size = 0;
     }
 
@@ -2674,7 +2668,7 @@ stran_server_2pc_start (THREAD_ENTRY * thread_p, unsigned int rid,
   gtrid = xtran_server_2pc_start (thread_p);
   if (gtrid < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, gtrid);
@@ -2705,7 +2699,7 @@ stran_server_2pc_prepare (THREAD_ENTRY * thread_p, unsigned int rid,
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* the prepare failed. */
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, state);
@@ -2744,7 +2738,7 @@ stran_server_2pc_recovery_prepared (THREAD_ENTRY * thread_p, unsigned int rid,
   count = xtran_server_2pc_recovery_prepared (thread_p, gtrids, size);
   if (count < 0 || count > size)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   reply_size = OR_INT_SIZE + (OR_INT_SIZE * size);
@@ -2793,7 +2787,7 @@ stran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p,
   tran_index = xtran_server_2pc_attach_global_tran (thread_p, gtrid);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, tran_index);
@@ -2828,7 +2822,7 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* Likely the prepare failed.. somehow */
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, state);
@@ -2881,6 +2875,8 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &db_overwrite);
   ptr = or_unpack_int (ptr, &db_desired_pagesize);
+  ptr = or_unpack_int (ptr, &db_npages);
+  ptr = or_unpack_int (ptr, &log_npages);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.log_path);
@@ -2894,7 +2890,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
   tran_index = xboot_initialize_server (thread_p, &client_credential,
 					&db_path_info, db_overwrite,
 					db_desired_pagesize,
-					(DKNPAGES) db_npages,
+					db_npages,
 					file_addmore_vols, log_npages,
 					&rootclass_oid, &rootclass_hfid,
 					client_lock_wait, client_isolation);
@@ -2969,7 +2965,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1,
 		      DIAG_VAL_SETTYPE_INC, NULL);
 #endif
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   gettimeofday (&server_clock, NULL);
@@ -3061,7 +3057,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   /*
@@ -3117,7 +3113,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (volid == NULL_VOLID)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) volid);
@@ -3158,7 +3154,7 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
 	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, success);
@@ -3295,15 +3291,19 @@ slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		     int reqlen)
 {
   LOID loid;
-  int datasize, length, est_length, csserror;
+  int length, csserror;
+  FSIZE_T datasize, est_length;
+  INT64 tmp_int64;
   char *buffer, *ptr;
   OID oid;
   OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_loid (request, &loid);
-  ptr = or_unpack_int (ptr, &datasize);
-  ptr = or_unpack_int (ptr, &est_length);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  datasize = tmp_int64;
+  ptr = or_unpack_int64 (ptr, &tmp_int64);
+  est_length = tmp_int64;
+  ptr = or_unpack_loid (ptr, &loid);
   ptr = or_unpack_oid (ptr, &oid);
 
   csserror = 0;
@@ -3311,7 +3311,7 @@ slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   if (datasize)
     {
       csserror = css_receive_data_from_client (thread_p->conn_entry,
-					       rid, &buffer, (int *) &length);
+					       rid, &buffer, &length);
     }
 
   if (csserror)
@@ -3326,7 +3326,7 @@ slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       if (xlargeobjmgr_create (thread_p, &loid, datasize, buffer,
 			       est_length, &oid) == NULL)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
 
       ptr = or_pack_loid (reply, &loid);
@@ -3366,7 +3366,7 @@ slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, success);
@@ -3390,14 +3390,18 @@ slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		   int reqlen)
 {
   LOID loid;
-  int offset, length, rlength;
+  FSIZE_T rlength;
+  FSIZE_T offset, length;
+  INT64 tmp_int64;
   char *buffer, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_loid (request, &loid);
-  ptr = or_unpack_int (ptr, &offset);
-  ptr = or_unpack_int (ptr, &length);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  offset = tmp_int64;
+  ptr = or_unpack_int64 (ptr, &tmp_int64);
+  length = tmp_int64;
+  ptr = or_unpack_loid (ptr, &loid);
 
   buffer = (char *) db_private_alloc (thread_p, length);
   if (buffer == NULL)
@@ -3409,13 +3413,13 @@ slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       rlength = xlargeobjmgr_read (thread_p, &loid, offset, length, buffer);
       if (rlength < 0)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
 
-      ptr = or_pack_int (reply, rlength);
-      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply),
-					 buffer, rlength);
+      ptr = or_pack_int64 (reply, rlength);
+      css_send_reply_and_large_data_to_client (rid, reply,
+					       OR_ALIGNED_BUF_SIZE (a_reply),
+					       buffer, rlength);
       db_private_free_and_init (thread_p, buffer);
     }
 }
@@ -3436,46 +3440,118 @@ slargeobjmgr_write (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		    int reqlen)
 {
   LOID loid;
-  int datasize, offset;
-  int csserror, length, rlength;
+  FSIZE_T datasize, offset, processed_length, rlength;
+  INT64 tmp_int64;
+  int num_data, i;
+  int csserror;
   char *buffer, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char **buffers = NULL;
+  int *data_buffer_length = NULL;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &datasize);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  datasize = tmp_int64;
+  ptr = or_unpack_int64 (ptr, &tmp_int64);
+  offset = tmp_int64;
   ptr = or_unpack_loid (ptr, &loid);
-  ptr = or_unpack_int (ptr, &offset);
+  ptr = or_unpack_int (ptr, &num_data);
 
   csserror = 0;
+  processed_length = 0;
   buffer = NULL;
+
   if (datasize)
     {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
-					       &buffer, (int *) &length);
-    }
+      buffers = (char **) malloc (sizeof (char *) * num_data);
+      if (buffers == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      data_buffer_length = (int *) malloc (sizeof (int) * num_data);
+      if (data_buffer_length == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
 
-  if (csserror)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
-	      0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
+      for (i = 0; i < num_data; i++)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffers[i],
+						   &data_buffer_length[i]);
+	  if (csserror)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NET_SERVER_DATA_RECEIVE, 0);
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      rlength = ER_NET_SERVER_DATA_RECEIVE;
+	      num_data = i + 1;
+	      goto error;
+	    }
+	}
+
+      for (i = 0; i < num_data; i++)
+	{
+	  rlength = xlargeobjmgr_write (thread_p, &loid, offset,
+					data_buffer_length[i], buffers[i]);
+	  if (rlength < 0)
+	    {
+	      goto error;
+	    }
+	  processed_length += rlength;
+	  offset += data_buffer_length[i];
+	}
     }
   else
     {
-      rlength = xlargeobjmgr_write (thread_p, &loid, offset, length, buffer);
+      rlength = xlargeobjmgr_write (thread_p, &loid, offset, 0, buffer);
       if (rlength < 0)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  goto error;
 	}
+      processed_length += rlength;
+    }
 
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply,
-			       OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-  if (buffer != NULL)
+end:
+  ptr = or_pack_int64 (reply, processed_length);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  for (i = 0; i < num_data; i++)
     {
-      free_and_init (buffer);
+      if (buffers[i] != NULL)
+	{
+	  free_and_init (buffers[i]);
+	}
     }
+
+  if (buffers != NULL)
+    {
+      free_and_init (buffers);
+    }
+  if (data_buffer_length != NULL)
+    {
+      free_and_init (data_buffer_length);
+    }
+
+  return;
+
+error:
+  /* ER_LK_UNILATERALLY_ABORTED may not occur,
+   * but if it occurs, rollback transaction
+   */
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_server_unilaterally_abort_tran (thread_p);
+    }
+  return_error_to_client (thread_p, rid);
+  processed_length = rlength;
+
+  goto end;
 }
 
 /*
@@ -3490,50 +3566,122 @@ slargeobjmgr_write (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   LOID loid;
-  int datasize, offset;
-  int csserror, length, rlength;
-  char *ptr, *buffer;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  FSIZE_T datasize;
+  INT64 tmp_int64;
+  FSIZE_T offset;
+  int num_data, i;
+  int csserror;
+  FSIZE_T rlength, processed_length;
+  char *ptr;
+  char **buffers = NULL;
+  int *data_buf_len_vector = NULL;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &datasize);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  datasize = (FSIZE_T) tmp_int64;
+  ptr = or_unpack_int64 (ptr, &tmp_int64);
+  offset = (FSIZE_T) tmp_int64;
   ptr = or_unpack_loid (ptr, &loid);
-  ptr = or_unpack_int (ptr, &offset);
+  ptr = or_unpack_int (ptr, &num_data);
 
+  processed_length = 0;
   csserror = 0;
-  buffer = NULL;
   if (datasize)
     {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
-					       &buffer, (int *) &length);
-    }
+      buffers = (char **) malloc (sizeof (char *) * num_data);
+      if (buffers == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      data_buf_len_vector = (int *) malloc (sizeof (int) * num_data);
+      if (data_buf_len_vector == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
 
-  if (csserror)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
-	      0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
+      for (i = 0; i < num_data; i++)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffers[i],
+						   &data_buf_len_vector[i]);
+	  if (csserror)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NET_SERVER_DATA_RECEIVE, 0);
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      rlength = ER_NET_SERVER_DATA_RECEIVE;
+	      num_data = i + 1;
+	      goto error;
+	    }
+	}
+
+      for (i = 0; i < num_data; i++)
+	{
+	  rlength = xlargeobjmgr_insert (thread_p, &loid, offset,
+					 data_buf_len_vector[i], buffers[i]);
+	  if (rlength < 0)
+	    {
+	      goto error;
+	    }
+	  processed_length += rlength;
+	  offset += data_buf_len_vector[i];
+	}
     }
   else
     {
-      rlength = xlargeobjmgr_insert (thread_p, &loid, offset, length, buffer);
+      rlength = xlargeobjmgr_insert (thread_p, &loid, offset, 0, NULL);
       if (rlength < 0)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  goto error;
 	}
+      processed_length += rlength;
+    }
 
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply,
-			       OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-  if (buffer != NULL)
+end:
+  ptr = or_pack_int64 (reply, processed_length);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  for (i = 0; i < num_data; i++)
     {
-      free_and_init (buffer);
+      if (buffers[i] != NULL)
+	{
+	  free_and_init (buffers[i]);
+	}
     }
+
+  if (buffers != NULL)
+    {
+      free_and_init (buffers);
+    }
+  if (data_buf_len_vector != NULL)
+    {
+      free_and_init (data_buf_len_vector);
+    }
+
+  return;
+
+error:
+/* ER_LK_UNILATERALLY_ABORTED may not occur,
+ * but if it occurs, rollback transaction
+ */
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_server_unilaterally_abort_tran (thread_p);
+    }
+  return_error_to_client (thread_p, rid);
+  processed_length = rlength;
+
+  goto end;
 }
 
 /*
@@ -3548,26 +3696,30 @@ slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   LOID loid;
-  int offset, length, rlength;
+  FSIZE_T rlength;
+  FSIZE_T offset, length;
+  INT64 tmp_int64;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_loid (request, &loid);
-  ptr = or_unpack_int (ptr, &offset);
-  ptr = or_unpack_int (ptr, &length);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  offset = tmp_int64;
+  ptr = or_unpack_int64 (ptr, &tmp_int64);
+  length = tmp_int64;
+  ptr = or_unpack_loid (ptr, &loid);
 
   rlength = xlargeobjmgr_delete (thread_p, &loid, offset, length);
   if (rlength < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
-  ptr = or_pack_int (reply, rlength);
+  ptr = or_pack_int64 (reply, rlength);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -3584,49 +3736,118 @@ slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-slargeobjmgr_append (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+slargeobjmgr_append (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   LOID loid;
-  int datasize;
-  int csserror, length, rlength;
-  char *ptr, *buffer;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  FSIZE_T datasize, rlength, processed_length;
+  INT64 tmp_int64;
+  int csserror, num_data;
+  char *ptr;
+  char **buffers = NULL;
+  int *data_buffers_vector = NULL;
+  int i;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &datasize);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  datasize = tmp_int64;
   ptr = or_unpack_loid (ptr, &loid);
+  ptr = or_unpack_int (ptr, &num_data);
 
   csserror = 0;
-  buffer = NULL;
+  processed_length = 0;
+
   if (datasize)
     {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
-					       &buffer, (int *) &length);
-    }
+      buffers = (char **) malloc (sizeof (char *) * num_data);
+      if (buffers == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      data_buffers_vector = (int *) malloc (sizeof (int) * num_data);
+      if (data_buffers_vector == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  rlength = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
 
-  if (csserror)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
-	      0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
+      for (i = 0; i < num_data; i++)
+	{
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffers[i],
+						   &data_buffers_vector[i]);
+	  if (csserror)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NET_SERVER_DATA_RECEIVE, 0);
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      rlength = ER_NET_SERVER_DATA_RECEIVE;
+	      num_data = i + 1;
+	      goto error;
+	    }
+	}
+
+      for (i = 0; i < num_data; i++)
+	{
+	  rlength = xlargeobjmgr_append (thread_p, &loid,
+					 data_buffers_vector[i], buffers[i]);
+	  if (rlength < 0)
+	    {
+	      goto error;
+	    }
+	  processed_length += rlength;
+	}
     }
   else
     {
-      rlength = xlargeobjmgr_append (thread_p, &loid, length, buffer);
+      rlength = xlargeobjmgr_append (thread_p, &loid, 0, NULL);
       if (rlength < 0)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  goto error;
 	}
+      processed_length += rlength;
+    }
 
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply,
-			       OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-  if (buffer != NULL)
+end:
+  ptr = or_pack_int64 (reply, processed_length);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  for (i = 0; i < num_data; i++)
     {
-      free_and_init (buffer);
+      if (buffers[i] != NULL)
+	{
+	  free_and_init (buffers[i]);
+	}
     }
+
+  if (buffers != NULL)
+    {
+      free_and_init (buffers);
+    }
+  if (data_buffers_vector != NULL)
+    {
+      free_and_init (data_buffers_vector);
+    }
+
+  return;
+
+error:
+  /* ER_LK_UNILATERALLY_ABORTED may not occur,
+   * but if it occurs, rollback transaction
+   */
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_server_unilaterally_abort_tran (thread_p);
+    }
+  return_error_to_client (thread_p, rid);
+  processed_length = rlength;
+
+  goto end;
 }
 
 /*
@@ -3645,21 +3866,23 @@ slargeobjmgr_truncate (THREAD_ENTRY * thread_p, unsigned int rid,
 		       char *request, int reqlen)
 {
   LOID loid;
-  int offset, rlength;
+  FSIZE_T offset, rlength;
+  INT64 tmp_int64;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_loid (request, &loid);
-  ptr = or_unpack_int (ptr, &offset);
+  ptr = or_unpack_int64 (request, &tmp_int64);
+  offset = tmp_int64;
+  ptr = or_unpack_loid (ptr, &loid);
 
   rlength = xlargeobjmgr_truncate (thread_p, &loid, offset);
   if (rlength < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
-  ptr = or_pack_int (reply, rlength);
+  ptr = or_pack_int64 (reply, rlength);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -3689,7 +3912,7 @@ slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xlargeobjmgr_compress (thread_p, &loid);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, success);
@@ -3709,13 +3932,13 @@ slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   LOID loid;
-  int length;
+  FSIZE_T length;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_loid (request, &loid);
@@ -3723,10 +3946,10 @@ slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   length = xlargeobjmgr_length (thread_p, &loid);
   if (length < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
-  ptr = or_pack_int (reply, length);
+  ptr = or_pack_int64 (reply, length);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -3756,7 +3979,7 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xstats_update_class_statistics (thread_p, &classoid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -3786,7 +4009,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   error = xstats_update_statistics (thread_p);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -3806,8 +4029,8 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		  int reqlen)
+sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid,
+		  char *request, int reqlen)
 {
   BTID btid;
   BTID *return_btid;
@@ -3816,11 +4039,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int attr_id, unique_btree;
   int reverse_btree;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_domain (ptr, &key_type, 0);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
@@ -3828,11 +4050,11 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &reverse_btree);
 
   return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid,
-				  attr_id, unique_btree, reverse_btree, 0, 0,
-				  0);
+				  attr_id, unique_btree, reverse_btree, 0,
+				  0, 0);
   if (return_btid == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, er_errid ());
@@ -3853,8 +4075,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		   int reqlen)
+sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
+		   char *request, int reqlen)
 {
   BTID btid;
   BTID *return_btid;
@@ -3869,11 +4091,10 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int n_classes, n_attrs, *attr_ids;
   TP_DOMAIN *key_type;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_domain (ptr, &key_type, 0);
 
   ptr = or_unpack_int (ptr, &n_classes);
@@ -3888,7 +4109,6 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_oid (ptr, &fk_refcls_oid);
   ptr = or_unpack_btid (ptr, &fk_refcls_pk_btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string_nocopy (ptr, &fk_name);
 
@@ -3899,7 +4119,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 				   cache_attr_id, fk_name);
   if (return_btid == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, er_errid ());
@@ -3924,8 +4144,8 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   BTID btid;
   int success;
@@ -3938,7 +4158,7 @@ sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -3958,8 +4178,8 @@ sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid,
-				  char *request, int reqlen)
+slocator_remove_class_from_index (THREAD_ENTRY * thread_p,
+				  unsigned int rid, char *request, int reqlen)
 {
   OID oid;
   BTID btid;
@@ -3971,7 +4191,6 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_oid (request, &oid);
   ptr = or_unpack_btid (ptr, &btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_hfid (ptr, &hfid);
 
   success = (xlocator_remove_class_from_index (thread_p, &oid,
@@ -3979,7 +4198,7 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -3999,8 +4218,8 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		    int reqlen)
+sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid,
+		    char *request, int reqlen)
 {
   BTID btid;
   OID class_oid;
@@ -4012,7 +4231,6 @@ sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_value (ptr, &key);
   ptr = or_unpack_oid (ptr, &class_oid);
 
@@ -4021,7 +4239,7 @@ sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 				false);
   if (success == BTREE_ERROR_OCCURRED)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   /* free storage if the key was a string */
@@ -4056,7 +4274,7 @@ sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -4091,7 +4309,7 @@ sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   npages = xdisk_get_total_numpages (thread_p, volid);
   if (npages < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, npages);
@@ -4126,7 +4344,7 @@ sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   npages = xdisk_get_free_numpages (thread_p, volid);
   if (npages < 0)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, npages);
@@ -4161,7 +4379,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   remark = xdisk_get_remarks (thread_p, (VOLID) int_volid);
   if (remark == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       area_length = 0;
       area = NULL;
     }
@@ -4171,7 +4389,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
       else
@@ -4223,7 +4441,7 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   vol_purpose = xdisk_get_purpose (thread_p, volid);
   if (vol_purpose < DISK_UNKNOWN_PURPOSE)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, vol_purpose);
@@ -4243,8 +4461,8 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p, unsigned int rid,
-				  char *request, int reqlen)
+sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
+				  unsigned int rid, char *request, int reqlen)
 {
   int int_volid;
   VOLID volid;
@@ -4264,7 +4482,7 @@ sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p, unsigned int rid,
 						     &vol_nfree_pages);
   if (volid == NULL_VOLID)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, vol_purpose);
@@ -4302,7 +4520,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (xdisk_get_fullname (thread_p, (VOLID) int_volid, vol_fullname) == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       area_length = 0;
       area = NULL;
     }
@@ -4312,7 +4530,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
       else
@@ -4346,16 +4564,18 @@ void
 sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
 			   char *request, int reqlen)
 {
-  int query_id;
+  QUERY_ID query_id;
   int volid, pageid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char page_buf[IO_MAX_PAGE_SIZE];
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   int page_size;
   int error = NO_ERROR;
 
-  ptr = or_unpack_int (request, &query_id);
+  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+
+  ptr = or_unpack_ptr (request, &query_id);
   ptr = or_unpack_int (ptr, &volid);
   ptr = or_unpack_int (ptr, &pageid);
 
@@ -4365,7 +4585,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
     }
 
   error = xqfile_get_list_file_page (thread_p, query_id, volid, pageid,
-				     page_buf, &page_size);
+				     aligned_page_buf, &page_size);
   if (error != NO_ERROR)
     {
       if (error == ER_INTERRUPT && query_id >= 0
@@ -4374,7 +4594,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
 	  xqmgr_sync_query (thread_p, query_id, false, NULL, true);
 	}
 
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       goto empty_page;
     }
   if (page_size == 0)
@@ -4385,19 +4605,19 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
-				     OR_ALIGNED_BUF_SIZE (a_reply), page_buf,
-				     page_size);
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     aligned_page_buf, page_size);
   return;
 
 empty_page:
   /* setup empty list file page and return it */
-  qmgr_setup_empty_list_file (page_buf);
+  qmgr_setup_empty_list_file (aligned_page_buf);
   page_size = QFILE_PAGE_HEADER_SIZE;
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
-				     OR_ALIGNED_BUF_SIZE (a_reply), page_buf,
-				     page_size);
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     aligned_page_buf, page_size);
 }
 
 /*
@@ -4459,7 +4679,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 			 xasl_size, &xasl_id);
   if (xasl_stream && !p)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
   if (xasl_stream)
     {
@@ -4505,17 +4725,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   XASL_ID xasl_id;
   QFILE_LIST_ID *list_id;
-  int csserror, dbval_cnt, data_size, replydata_size, page_size,
-    query_id = -1;
+  int csserror, dbval_cnt, data_size, replydata_size, page_size;
+  QUERY_ID query_id = NULL_QUERY_ID;
   char *ptr, *data = NULL, *reply, *replydata = NULL;
   PAGE_PTR page_ptr;
-  char page_buf[IO_MAX_PAGE_SIZE];	/* page buffer */
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   DB_VALUE *dbvals = NULL, *dbval;
   QUERY_FLAG query_flag;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE
+		  + OR_CACHE_TIME_SIZE) a_reply;
   int i;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
+
+  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4575,7 +4798,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 				 &clt_cache_time, &srv_cache_time);
   if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   /* clear and free space for DB_VALUEs after the query is executed
@@ -4612,9 +4835,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 			QFILE_GET_TUPLE_LENGTH (page_ptr +
 						QFILE_GET_LAST_TUPLE_OFFSET
 						(page_ptr))));
-	  (void) memcpy (page_buf, page_ptr, page_size);
+	  (void) memcpy (aligned_page_buf, page_ptr, page_size);
 	  qmgr_free_old_page (thread_p, page_ptr, list_id->tfile_vfid);
-	  page_ptr = page_buf;
+	  page_ptr = aligned_page_buf;
 	}
       else
 	{
@@ -4643,13 +4866,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
     }
   /* pack size of a page to return as a third argumnet of the reply */
   ptr = or_pack_int (ptr, page_size);
   /* query id to return as a fourth argument of the reply */
-  ptr = or_pack_int (ptr, query_id);
+  ptr = or_pack_ptr (ptr, query_id);
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
@@ -4685,19 +4908,22 @@ void
 sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				 unsigned int rid, char *request, int reqlen)
 {
-  int query_id, var_count, var_datasize, var_actual_datasize;
+  int var_count, var_datasize, var_actual_datasize;
+  QUERY_ID query_id;
   QFILE_LIST_ID *q_result;
   int csserror, i, listid_length;
   char *xasl_buffer;
   int xasl_size;
   char *ptr, *var_data, *list_data;
   DB_VALUE *dbvals;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   PAGE_PTR page_ptr;
   int page_size;
-  char page_buf[IO_MAX_PAGE_SIZE];	/* page buffer */
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
+
+  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
   xasl_buffer = NULL;
   xasl_size = 0;
@@ -4784,7 +5010,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   if (q_result == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) QUERY_END);
@@ -4819,7 +5045,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 					    (page_ptr));
 		}
 	      /* to free page_ptr early */
-	      memcpy (page_buf, page_ptr, page_size);
+	      memcpy (aligned_page_buf, page_ptr, page_size);
 	      qmgr_free_old_page (thread_p, page_ptr, q_result->tfile_vfid);
 	    }
 	  else
@@ -4844,7 +5070,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	}
       ptr = or_pack_int (ptr, listid_length);
       ptr = or_pack_int (ptr, page_size);
-      ptr = or_pack_int (ptr, query_id);
+      ptr = or_pack_ptr (ptr, query_id);
       if (listid_length > 0)
 	{
 	  list_data = (char *) db_private_alloc (thread_p, listid_length);
@@ -4860,14 +5086,14 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
        * since the client will unpack them.
        */
       ptr = or_pack_int (ptr, listid_length);
-      ptr = or_pack_int (ptr, 0);
-      ptr = or_pack_int (ptr, 0);
+      ptr = or_pack_int (ptr, 0);	/* page size */
+      ptr = or_pack_ptr (ptr, 0);	/* query_id */
     }
 
   css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
 				       OR_ALIGNED_BUF_SIZE (a_reply),
-				       list_data, listid_length, page_buf,
-				       page_size);
+				       list_data, listid_length,
+				       aligned_page_buf, page_size);
 
 cleanup:
   if (xasl_buffer)
@@ -4908,18 +5134,18 @@ void
 sqmgr_end_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		 char *request, int reqlen)
 {
-  int query_id;
+  QUERY_ID query_id;
   int success = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &query_id);
+  (void) or_unpack_ptr (request, &query_id);
   if (query_id > 0)
     {
       success = xqmgr_end_query (thread_p, query_id);
       if (success != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -4970,7 +5196,7 @@ sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid,
 				  drop);
   if (status != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   /* pack status (DB_IN32) as a reply */
@@ -5009,7 +5235,7 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   status = xqmgr_drop_all_query_plans (thread_p);
   if (status != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   /* pack status (DB_IN32) as a reply */
@@ -5055,8 +5281,8 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid,
   outfp = tmpfile ();
   if (outfp == NULL)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			   0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_GENERIC_ERROR, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (thread_p, buffer);
       return;
@@ -5138,8 +5364,8 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   outfp = tmpfile ();
   if (outfp == NULL)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			   0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_GENERIC_ERROR, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       db_private_free_and_init (thread_p, buffer);
       return;
@@ -5200,14 +5426,14 @@ void
 sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid,
 		      char *request, int reqlen)
 {
-  int query_id;
+  QUERY_ID query_id;
   int count;
   int length;
   char *buf;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &query_id);
+  (void) or_unpack_ptr (request, &query_id);
 
   count = xqmgr_get_query_info (thread_p, query_id);
 
@@ -5242,10 +5468,10 @@ sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		  int reqlen)
+sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
+		  char *request, int reqlen)
 {
-  int query_id;
+  QUERY_ID query_id;
   int wait, success;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
@@ -5254,7 +5480,7 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int list_length;
   char *list_data;
 
-  ptr = or_unpack_int (request, &query_id);
+  ptr = or_unpack_ptr (request, &query_id);
   ptr = or_unpack_int (ptr, &wait);
 
   memset (&new_list_id, 0, sizeof (QFILE_LIST_ID));
@@ -5283,7 +5509,7 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
        * xqmgr_sync_query() had set this error
        * so that the transaction will be rolled back.
        */
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       list_length = 0;
     }
   else
@@ -5292,8 +5518,8 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
-				     OR_ALIGNED_BUF_SIZE (a_reply), list_data,
-				     list_length);
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     list_data, list_length);
   qfile_clear_list_id (&new_list_id);
   db_private_free_and_init (thread_p, list_data);
 }
@@ -5308,9 +5534,10 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid)
+sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid,
+		       char *request_ignore, int reqlen_ignore)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_UTIME_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   DB_VALUE sys_timestamp;
@@ -5367,7 +5594,7 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (buffer == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       buffer_length = 0;
     }
   else
@@ -5398,8 +5625,8 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		    int reqlen)
+sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
+		    char *request, int reqlen)
 {
   DB_VALUE oid, next_val;
   char *buffer;
@@ -5429,7 +5656,7 @@ sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (buffer == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       buffer_length = 0;
     }
   else
@@ -5470,7 +5697,7 @@ smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xmnt_server_start_stats (thread_p);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -5551,10 +5778,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
      structure definition */
 #if !defined(PRODUCTION)
   {
-    int size;
-
-    size = STAT_SIZE_MEMORY;
-    if ((DB_ALIGN (size, 8) + sizeof (MUTEX_T))
+    if ((DB_ALIGN (STAT_SIZE_MEMORY, 8) + sizeof (MUTEX_T))
 	!= sizeof (MNT_SERVER_EXEC_STATS))
       {
 	/* could use er_set here but is an unusual condition that will
@@ -5599,7 +5823,7 @@ sct_can_accept_new_repr (THREAD_ENTRY * thread_p, unsigned int rid,
 						       &hfid, &can_accept);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) success);
@@ -5628,7 +5852,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
   char *databuf;
   char *ptr;
   unsigned int rid;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   rid = thread_get_comm_request_id (thread_p);
@@ -5776,7 +6000,7 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
   oidset = locator_unpack_oid_set_to_new (thread_p, request + OR_INT_SIZE);
   if (oidset == NULL)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       return;
     }
 
@@ -5800,7 +6024,7 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   css_send_data_to_client (thread_p->conn_entry, rid, request, reqlen);
@@ -5820,8 +6044,9 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
-				   char *request, int reqlen)
+slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
+				   unsigned int rid, char *request,
+				   int reqlen)
 {
   int num_classes;
   char **many_classnames;
@@ -5893,7 +6118,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if (allfind != LC_CLASSNAME_EXIST)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (found_lockhint != NULL && found_lockhint->length > 0)
@@ -5905,7 +6130,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (!packed)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	  allfind = LC_CLASSNAME_ERROR;
 	}
     }
@@ -5979,8 +6204,8 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
-				 char *request, int reqlen)
+slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p,
+				 unsigned int rid, char *request, int reqlen)
 {
   int success;
   LC_COPYAREA *copy_area;
@@ -6024,7 +6249,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   if ((lockhint == NULL) || (lockhint->length <= 0))
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
@@ -6046,7 +6271,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid,
 						 &copy_area);
       if (success != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);;
+	  return_error_to_client (thread_p, rid);
 	}
 
       if (copy_area != NULL)
@@ -6145,7 +6370,7 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -6217,7 +6442,8 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
 				FILEIO_REMOTE_PROMPT_TYPE prompt_id,
 				const char *prompt,
 				const char *failure_prompt, int range_low,
-				int range_high, const char *secondary_prompt,
+				int range_high,
+				const char *secondary_prompt,
 				int reprompt_value)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
@@ -6250,11 +6476,11 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  ptr = or_pack_string (databuf, (char *) prompt);
-  ptr = or_pack_string (ptr, (char *) failure_prompt);
+  ptr = or_pack_string (databuf, prompt);
+  ptr = or_pack_string (ptr, failure_prompt);
   ptr = or_pack_int (ptr, range_low);
   ptr = or_pack_int (ptr, range_high);
-  ptr = or_pack_string (ptr, (char *) secondary_prompt);
+  ptr = or_pack_string (ptr, secondary_prompt);
   ptr = or_pack_int (ptr, reprompt_value);
 
   rc = css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
@@ -6372,8 +6598,8 @@ xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
  * NOTE:
  */
 void
-shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid,
-				  char *request, int reqlen)
+shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
+				  unsigned int rid, char *request, int reqlen)
 {
   HFID hfid;
   int success, approximation, nobjs, npages;
@@ -6391,7 +6617,7 @@ shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) success);
@@ -6430,7 +6656,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
     ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -6455,8 +6681,8 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		     int reqlen)
+sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
 {
   int success = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
@@ -6475,9 +6701,9 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	{
 	  switch ((1 << i))
 	    {
-	    case SI_SYS_TIMESTAMP:
-	      success = (db_sys_timestamp (&value[i]) == NO_ERROR)
-		? NO_ERROR : ER_FAILED;
+	    case SI_SYS_DATETIME:
+	      success = ((db_sys_datetime (&value[i]) == NO_ERROR)
+			 ? NO_ERROR : ER_FAILED);
 	      break;
 
 	    case SI_LOCAL_TRANSACTION_ID:
@@ -6486,13 +6712,13 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 			 NO_ERROR) ? NO_ERROR : ER_FAILED;
 	      break;
 	    }
-	  buffer_length += or_db_value_size (&value[i]);
+	  buffer_length += OR_VALUE_ALIGNED_SIZE (&value[i]);
 	  /* increase buf length */
 	}
     }
   if (success == ER_FAILED)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   if (success == NO_ERROR)
@@ -6555,7 +6781,7 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   rc = xsysprm_change_server_parameters (data);
   if (rc != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, rc);
@@ -6601,7 +6827,8 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_int (reply, len);
       ptr = or_pack_int (ptr, rc);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply),
+					 reply,
+					 OR_ALIGNED_BUF_SIZE (a_reply),
 					 data, len);
 
     }
@@ -6623,8 +6850,8 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-		  int reqlen)
+shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid,
+		  char *request, int reqlen)
 {
   HFID hfid;
   OID class_oid;
@@ -6640,7 +6867,7 @@ shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (r == -1)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) r);
@@ -6823,7 +7050,6 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int_array (ptr, n_attrs, &attr_ids);
   ptr = or_unpack_oid (ptr, &pk_cls_oid);
   ptr = or_unpack_btid (ptr, &pk_btid);
-  ptr = PTR_ALIGN (ptr, OR_INT_SIZE);
   ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string (ptr, &fk_name);
 
@@ -6832,7 +7058,7 @@ slocator_build_fk_object_cache (THREAD_ENTRY * thread_p, unsigned int rid,
 				      &pk_btid, cache_attr_id,
 				      fk_name) != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);;
+      return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, er_errid ());

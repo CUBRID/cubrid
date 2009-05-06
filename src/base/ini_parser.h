@@ -8,10 +8,10 @@
  * the rights to use, copy, modify, merge, publish, distribute, sublicense,
  * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -51,8 +51,8 @@ extern char *ini_getsecname (INI_TABLE * ini, int n);
 extern int ini_hassec (const char *key);
 extern int ini_seccmp (const char *key1, const char *key2);
 
-extern char *ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
-			 char *def);
+extern const char *ini_getstr (INI_TABLE * ini, const char *sec,
+			       const char *key, const char *def);
 extern int ini_getint (INI_TABLE * ini, const char *sec, const char *key,
 		       int def);
 extern int ini_getuint (INI_TABLE * ini, const char *sec, const char *key,

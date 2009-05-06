@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_command_execute.h - 
+ * cm_command_execute.h -
  */
 
 #ifndef _CM_COMMAND_EXECUTE_H_
@@ -58,7 +58,7 @@
 
 #define CUBRID_CMD_NAME_LEN	128
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define CUBRID_DIR_BIN          "bin\\"
 #else
 #define CUBRID_DIR_BIN          "bin/"
@@ -108,18 +108,19 @@ typedef T_CMD_RESULT T_START_SERVER_RESULT;
 typedef T_CMD_RESULT T_STOP_SERVER_RESULT;
 typedef T_CMD_RESULT T_CSQL_RESULT;
 
-T_COMMDB_RESULT *cmd_commdb ();
-T_SPACEDB_RESULT *cmd_spacedb (char *dbname, T_CUBRID_MODE mode);
+T_COMMDB_RESULT *cmd_commdb (void);
+T_SPACEDB_RESULT *cmd_spacedb (const char *dbname, T_CUBRID_MODE mode);
 T_CSQL_RESULT *cmd_csql (char *dbname, char *uid, char *passwd,
 			 T_CUBRID_MODE mode, char *infile, char *command);
 int cmd_start_server (char *dbname, char *err_buf, int err_buf_size);
 int cmd_stop_server (char *dbname, char *err_buf, int err_buf_size);
-void cmd_start_master ();
+void cmd_start_master (void);
 
 char *cubrid_cmd_name (char *buf);
 void cmd_result_free (T_CMD_RESULT * res);
 void cmd_spacedb_result_free (T_SPACEDB_RESULT * res);
-int read_error_file (char *err_file, char *err_buf, int err_buf_size);
-int read_error_file2 (char *err_file, char *err_buf, int err_buf_size, int* err_code);
+int read_error_file (const char *err_file, char *err_buf, int err_buf_size);
+int read_error_file2 (char *err_file, char *err_buf, int err_buf_size,
+		      int *err_code);
 int read_csql_error_file (char *err_file, char *err_buf, int err_buf_size);
 #endif /* _CM_COMMAND_EXECUTE_H_ */

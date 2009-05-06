@@ -37,7 +37,7 @@ AC_PROG_LIBTOOL
 AC_PROG_INSTALL
 AC_PROG_YACC
 AC_PROG_LEX
-CFLAGS="$remeber_CFLAGS"
+CFLAGS="$remember_CFLAGS"
 CXXFLAGS="$remember_CXXFLAGS"
 LDFLAGS="$remember_LDFLAGS"
 
@@ -64,7 +64,7 @@ MACHINE_TYPE="$host_cpu"
 export BIT_MODEL SYSTEM_TYPE MACHINE_TYPE CC CXX
 
 case $SYSTEM_TYPE in
-	*linux*) SYS_DEFS="-DGCC -DLINUX -DI386"
+	*linux*) SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
 		 SYS_LIBS="" ;;
 	*)       SYS_DEFS=""
 		 SYS_LIBS="" ;;
@@ -125,7 +125,7 @@ AC_CHECK_TYPES([byte_t, int8_t, int16_t, int32_t, int64_t, intmax_t, intptr_t,
 		uint8_t, uint16_t, uint32_t, uint64_t, uintmax_t, uintptr_t])
 remember_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
-AC_CHECK_TYPES([off64_t], [SYS_DEFS="$SYS_DEFS -D_LARGEFILE64_SOURCE"])
+AC_CHECK_TYPES([off64_t], [SYS_DEFS="$SYS_DEFS -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"])
 CFLAGS="$remember_CFLAGS"
 
 AC_STRUCT_TM
@@ -223,6 +223,11 @@ then
 	CFLAGS="$CFLAGS -g -pg"
 	CXXFLAGS="$CXXFLAGS -g -pg"
 fi
+
+WARN="-Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wlong-long"
+NOWARN="-Wno-unused"
+CFLAGS="$CFLAGS $WARN $NOWARN"
+CXXFLAGS="$CCCFLAGS $WARN $NOWARN"
 
 AC_ARG_ENABLE([hoard],
 	[AS_HELP_STRING([--enable-hoard],
@@ -461,9 +466,6 @@ AC_CONFIG_FILES([Makefile
 	broker/Makefile
 	cmserver/Makefile
 	cmserver/conf/Makefile
-	pccts/Makefile
-	pccts/antlrd/Makefile
-	pccts/dlg/Makefile
 	include/Makefile
 	sa/Makefile
 	cubrid/Makefile

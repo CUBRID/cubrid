@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -65,7 +65,8 @@ typedef enum c_pype
   C_TYPE_VARNCHAR = 21,
   C_TYPE_STRING_CONST = 22,	/* for string constant, not variable */
   C_TYPE_SQLDA = 23,
-  NUM_C_TYPES = 24		/* for # of elements in C_TYPE */
+  C_TYPE_BIGINT = 24,
+  NUM_C_TYPES = 25		/* for # of elements in C_TYPE */
 } C_TYPE;
 
 typedef enum specifier_noun
@@ -112,7 +113,7 @@ typedef struct symbol SYMBOL;
 typedef struct specifier specifier;
 typedef struct declarator declarator;
 typedef struct structdef STRUCTDEF;
-typedef union yystype YYSTYPE;
+//typedef union yystype YYSTYPE;
 typedef HASH_TAB SYMTAB;
 typedef struct cursor CURSOR;
 typedef struct stmt STMT;
@@ -121,7 +122,7 @@ typedef enum link_class LINK_CLASS;
 
 struct host_lod			/* list or descriptor */
 {
-  YY_CHAR *desc;
+  unsigned char *desc;
   int n_refs;
   HOST_REF *refs;
 
@@ -132,6 +133,7 @@ struct host_lod			/* list or descriptor */
   HOST_LOD *next;		/* Link to previous descriptor  */
 };
 
+/*
 union yystype
 {
   char *p_char;
@@ -147,11 +149,13 @@ union yystype
   int num;
   int ascii;
 };
+*/
+
 
 struct structdef
 {
-  YY_CHAR *tag;			/* Tag part of struct def               */
-  const YY_CHAR *type_string;	/* "struct" or "union"                  */
+  unsigned char *tag;		/* Tag part of struct def               */
+  const unsigned char *type_string;	/* "struct" or "union"                  */
   unsigned char type;		/* 1 if a struct, 0 if a union          */
   unsigned char level;		/* Nesting level of struct decl         */
   SYMBOL *fields;		/* Linked list of field decls           */
@@ -159,7 +163,7 @@ struct structdef
   int by_name;			/* See note below                       */
   STRUCTDEF *next;		/* Link to next structdef at this level */
 
-  
+
 };
 
 struct ptr_vec
@@ -176,7 +180,7 @@ struct ptr_vec
 struct declarator
 {
   DCL_TYPE dcl_type;		/* POINTER, ARRAY, or FUNCTION          */
-  const char *num_ele;		/* # of elements for ARRAY              */
+  char *num_ele;		/* # of elements for ARRAY              */
   SYMBOL *args;			/* arg decls for a FUNCTION             */
 };
 
@@ -272,7 +276,7 @@ typedef enum when_action
 
 struct symbol
 {
-  YY_CHAR *name;		/* Input variable name.                 */
+  unsigned char *name;		/* Input variable name.                 */
   int level;			/* Decl level, field offset             */
   LINK *type;			/* First link in declarator chain       */
   LINK *etype;			/* Last link in declarator chain        */
@@ -284,13 +288,13 @@ struct symbol
 
 struct cursor
 {
-  YY_CHAR *name;		/* The name of the cursor               */
+  unsigned char *name;		/* The name of the cursor               */
   int cid;			/* A unique cursor id                   */
   int level;			/* The nesting level of the declaration */
   CURSOR *next;			/* A pointer to the next cursor at the  */
   /* same nesting level                   */
-  
-  YY_CHAR *static_stmt;		/* The prepared SELECT statement */
+
+  unsigned char *static_stmt;	/* The prepared SELECT statement */
   int stmtLength;
   HOST_LOD *host_refs;		/* The host variables           */
   STMT *dynamic_stmt;		/* The dynamic statement        */
@@ -298,7 +302,7 @@ struct cursor
 
 struct stmt
 {
-  YY_CHAR *name;
+  unsigned char *name;
   int sid;
 };
 

@@ -63,6 +63,8 @@ import cubridmanager.TextFocusAdapter;
 import cubridmanager.VerifyDigitListener;
 import cubridmanager.WaitingMsgBox;
 import cubridmanager.cas.CASItem;
+import cubridmanager.cubrid.AuthItem;
+import cubridmanager.cubrid.view.CubridView;
 import cubridmanager.diag.DiagSiteDiagData;
 import cubridmanager.ProtegoReadCert;
 
@@ -766,7 +768,46 @@ public class ConnectDialog extends Dialog {
 		 * Messages.getString("ERROR.ERRORSERVERDIAGINFO") + "(" + cs.ErrorMsg +
 		 * ")"); }
 		 */
+		
+		if (MainRegistry.IsConnected) {
+			// if multibyte support(intl_mbs_support=yes)
+			MainRegistry.isMultibyteSupport = isMultibyteSupport();
+		}
+		
 		return true;
+	}
+	
+	private boolean isMultibyteSupport() {
+		ClientSocket cs = new ClientSocket();
+		if (!cs.SendBackGround(sShell, "confname:cubridconf", "getallsysparam",
+				Messages.getString("WAITING.GETTINGSERVERINFO"))) {
+			CommonTool.ErrorBox(sShell, cs.ErrorMsg);
+			return false;
+		}
+
+		//CommonTool.debugPrint("MainRegistry.CubridConf="+MainRegistry.CubridConf);
+		
+		if (MainRegistry.CubridConf == null || MainRegistry.CubridConf.length() == 0) {
+			return false;
+		}
+		
+		String[] arr = MainRegistry.CubridConf.toLowerCase().split("[\\r|\\n]");
+		for (int i = 0, len = arr.length; i < len; i++) {
+			if (arr[i].indexOf("intl_mbs_support") == 0) {
+				int sp = arr[i].indexOf('=');
+				if (sp == -1) {
+					return false;
+				}
+				
+				//CommonTool.debugPrint("["+arr[i].substring(sp + 1).trim()+"]");
+				
+				if (arr[i].substring(sp + 1).trim().equals("yes")) {
+					return true;
+				}
+			}
+		}
+		
+		return false;
 	}
 
 	private void goconnect() {

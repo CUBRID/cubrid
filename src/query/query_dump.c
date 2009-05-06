@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -47,7 +47,7 @@ typedef struct qdump_xasl_check_node QDUMP_XASL_CHECK_NODE;
 struct qdump_xasl_check_node
 {
   QDUMP_XASL_CHECK_NODE *next;
-  long xasl_addr;
+  UINTPTR xasl_addr;
   PROC_TYPE xasl_type;
   int referenced;
   int reachable;
@@ -167,7 +167,7 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
       return false;
     }
 
-  fprintf (foutput, "[%s:%x]\n", type_string_p, (int) xasl_p);
+  fprintf (foutput, "[%s:%p]\n", type_string_p, xasl_p);
   return true;
 }
 
@@ -258,7 +258,7 @@ qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * merge_info_p)
 static bool
 qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
 {
-  fprintf (foutput, "[outer xasl:%x]\n", (int) node_p->outer_xasl);
+  fprintf (foutput, "[outer xasl:%p]\n", node_p->outer_xasl);
   if (node_p->outer_spec_list)
     {
       fprintf (foutput, "-->outer access spec:");
@@ -273,7 +273,7 @@ qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
       fprintf (foutput, "\n");
     }
 
-  fprintf (foutput, "[inner xasl:%x]\n", (int) node_p->inner_xasl);
+  fprintf (foutput, "[inner xasl:%p]\n", node_p->inner_xasl);
 
   if (node_p->inner_spec_list)
     {
@@ -517,7 +517,7 @@ qdump_print_start_proc (START_PROC * start_proc_p)
       return true;
     }
 
-  fprintf (foutput, "%x\n", (int) start_proc_p);
+  fprintf (foutput, "%p\n", start_proc_p);
 
   if (start_proc_p->sql_command && start_proc_p->stmtLength > 0)
     {
@@ -542,12 +542,12 @@ qdump_print_start_proc (START_PROC * start_proc_p)
 
   if (start_proc_p->read_proc)
     {
-      fprintf (foutput, "-->read proc:%x\n", (int) start_proc_p->read_proc);
+      fprintf (foutput, "-->read proc:%p\n", start_proc_p->read_proc);
     }
 
   if (start_proc_p->next)
     {
-      fprintf (foutput, "-->next start proc:%x\n", (int) start_proc_p->next);
+      fprintf (foutput, "-->next start proc:%p\n", start_proc_p->next);
     }
 
   return true;
@@ -764,7 +764,7 @@ static bool
 qdump_print_list (LIST_SPEC_TYPE * list_p)
 {
   fprintf (foutput, "list=");
-  fprintf (foutput, "xasl:%x", (int) list_p->xasl_node);
+  fprintf (foutput, "xasl:%p", list_p->xasl_node);
   fprintf (foutput, "\n	regu_list_pred:");
   qdump_print_regu_variable_list (list_p->list_regu_list_pred);
   fprintf (foutput, "\n	regu_list_rest:");
@@ -793,7 +793,7 @@ qdump_print_outlist (const char *title_p, OUTPTR_LIST * outlist_p)
 
   while (nextptr)
     {
-      fprintf (foutput, "[addr:%x]", (int) &nextptr->value);
+      fprintf (foutput, "[addr:%p]", &nextptr->value);
       if (!qdump_print_value (&nextptr->value))
 	{
 	  return false;
@@ -820,7 +820,7 @@ qdump_print_listi_d (QFILE_LIST_ID * list_id_p)
       return true;
     }
 
-  fprintf (foutput, "(address:%x)", (int) list_id_p);
+  fprintf (foutput, "(address:%p)", list_id_p);
   fprintf (foutput, "(type_list:");
 
   if (!qdump_print_type_list (&list_id_p->type_list))
@@ -959,7 +959,7 @@ qdump_print_value_list (VAL_LIST * value_list_p)
 
   while (dbval_list != NULL)
     {
-      fprintf (foutput, "addr:%x|", (int) dbval_list->val);
+      fprintf (foutput, "addr:%p|", dbval_list->val);
       fprintf (foutput, "type:%s",
 	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
 				       (dbval_list->val)));
@@ -1114,6 +1114,8 @@ qdump_data_type_string (DB_TYPE type)
       return "NULL";
     case DB_TYPE_INTEGER:
       return "INTEGER";
+    case DB_TYPE_BIGINT:
+      return "BIGINT";
     case DB_TYPE_FLOAT:
       return "FLOAT";
     case DB_TYPE_DOUBLE:
@@ -1134,6 +1136,8 @@ qdump_data_type_string (DB_TYPE type)
       return "TIME";
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";
+    case DB_TYPE_DATETIME:
+      return "DATETIME";
     case DB_TYPE_DATE:
       return "DATE";
     case DB_TYPE_MONETARY:
@@ -1865,15 +1869,15 @@ static QDUMP_XASL_CHECK_NODE *
 qdump_find_check_node_for (XASL_NODE * xasl_p,
 			   QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 {
-  unsigned long access_node_hash;
+  UINTPTR access_node_hash;
   QDUMP_XASL_CHECK_NODE *check_node_p;
 
-  access_node_hash = (unsigned long) xasl_p % HASH_NUMBER;
+  access_node_hash = (UINTPTR) xasl_p % HASH_NUMBER;
 
   for (check_node_p = chk_nodes[access_node_hash]; check_node_p;
        check_node_p = check_node_p->next)
     {
-      if (check_node_p->xasl_addr == (long) xasl_p)
+      if (check_node_p->xasl_addr == (UINTPTR) xasl_p)
 	{
 	  break;
 	}
@@ -1890,7 +1894,7 @@ qdump_find_check_node_for (XASL_NODE * xasl_p,
 	}
       check_node_p->next = chk_nodes[access_node_hash];
       chk_nodes[access_node_hash] = check_node_p;
-      check_node_p->xasl_addr = (long) xasl_p;
+      check_node_p->xasl_addr = (UINTPTR) xasl_p;
       check_node_p->xasl_type = xasl_p->type;
       check_node_p->referenced = 0;
       check_node_p->reachable = 0;
@@ -1909,7 +1913,7 @@ static void
 qdump_check_node (XASL_NODE * xasl_p,
 		  QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 {
-  unsigned long addr_hash;
+  UINTPTR addr_hash;
   QDUMP_XASL_CHECK_NODE *check_node_p, *check_node1_p;
   ACCESS_SPEC_TYPE *spec_p;
 
@@ -1919,7 +1923,7 @@ qdump_check_node (XASL_NODE * xasl_p,
     }
 
   /* get hash number */
-  addr_hash = (unsigned long) xasl_p % HASH_NUMBER;
+  addr_hash = (UINTPTR) xasl_p % HASH_NUMBER;
 
   check_node_p = qdump_find_check_node_for (xasl_p, chk_nodes);
   if (check_node_p == NULL)
@@ -2033,8 +2037,8 @@ qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 		}
 
 	      fprintf (stdout,
-		       "Referenced node [%x] is not reachable in the tree\n",
-		       (int) check_node_p->xasl_addr);
+		       "Referenced node [%lld] is not reachable in the tree\n",
+		       (long long) check_node_p->xasl_addr);
 	      error = 1;
 	    }
 	}
@@ -2064,7 +2068,7 @@ qdump_print_fetch_node (XASL_NODE * xasl_p)
 {
   FETCH_PROC_NODE *node_p = &xasl_p->proc.fetch;
 
-  fprintf (foutput, "-->fetch  <addr:%x><type:", (int) node_p->arg);
+  fprintf (foutput, "-->fetch  <addr:%p><type:", node_p->arg);
   fprintf (foutput, "%s",
 	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->arg)));
   fprintf (foutput, ">\n fetch_res (%d)\n", (int) node_p->fetch_res);
@@ -2134,7 +2138,7 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
   if (node_p->g_grbynum_val)
     {
       fprintf (foutput, "-->grbynum val:");
-      fprintf (foutput, "<addr:%x|", (int) node_p->g_grbynum_val);
+      fprintf (foutput, "<addr:%p|", node_p->g_grbynum_val);
       fprintf (foutput, "type:%s",
 	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
 				       (node_p->g_grbynum_val)));
@@ -2171,7 +2175,7 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
 
   if (node_p->eptr_list)
     {
-      fprintf (foutput, "-->EPTR LIST:%x\n", (int) node_p->eptr_list);
+      fprintf (foutput, "-->EPTR LIST:%p\n", node_p->eptr_list);
     }
 
   return true;
@@ -2191,7 +2195,7 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
   if (node_p->grbynum_val)
     {
       fprintf (foutput, "-->grbynum val:");
-      fprintf (foutput, "<addr:%x|", (int) node_p->grbynum_val);
+      fprintf (foutput, "<addr:%p|", node_p->grbynum_val);
       fprintf (foutput, "type:%s",
 	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
 				       (node_p->grbynum_val)));
@@ -2233,7 +2237,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       return true;
     }
 
-  fprintf (foutput, "\n<start of xasl structure %x>\n", (int) xasl_p);
+  fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)
@@ -2287,7 +2291,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 
   if (xasl_p->next)
     {
-      fprintf (foutput, "-->next:%x\n", (int) xasl_p->next);
+      fprintf (foutput, "-->next:%p\n", xasl_p->next);
     }
 
   if (xasl_p->list_id)
@@ -2307,7 +2311,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   if (xasl_p->ordbynum_val)
     {
       fprintf (foutput, "-->ordbynum val:");
-      fprintf (foutput, "<addr:%x|", (int) xasl_p->ordbynum_val);
+      fprintf (foutput, "<addr:%p|", xasl_p->ordbynum_val);
       fprintf (foutput, "type:%s",
 	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
 				       (xasl_p->ordbynum_val)));
@@ -2356,7 +2360,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 
   if (xasl_p->start_list)
     {
-      fprintf (foutput, "-->start list:%x\n", (int) xasl_p->start_list);
+      fprintf (foutput, "-->start list:%p\n", xasl_p->start_list);
     }
 
   if (xasl_p->spec_list)
@@ -2382,27 +2386,27 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 
   if (xasl_p->aptr_list)
     {
-      fprintf (foutput, "-->aptr list:%x\n", (int) xasl_p->aptr_list);
+      fprintf (foutput, "-->aptr list:%p\n", xasl_p->aptr_list);
     }
 
   if (xasl_p->bptr_list)
     {
-      fprintf (foutput, "-->bptr list:%x\n", (int) xasl_p->bptr_list);
+      fprintf (foutput, "-->bptr list:%p\n", xasl_p->bptr_list);
     }
 
   if (xasl_p->scan_ptr)
     {
-      fprintf (foutput, "-->scan ptr:%x\n", (int) xasl_p->scan_ptr);
+      fprintf (foutput, "-->scan ptr:%p\n", xasl_p->scan_ptr);
     }
 
   if (xasl_p->dptr_list)
     {
-      fprintf (foutput, "-->dptr list:%x\n", (int) xasl_p->dptr_list);
+      fprintf (foutput, "-->dptr list:%p\n", xasl_p->dptr_list);
     }
 
   if (xasl_p->fptr_list)
     {
-      fprintf (foutput, "-->fptr list:%x\n", (int) xasl_p->fptr_list);
+      fprintf (foutput, "-->fptr list:%p\n", xasl_p->fptr_list);
     }
 
   if (xasl_p->after_join_pred)
@@ -2422,7 +2426,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   if (xasl_p->instnum_val)
     {
       fprintf (foutput, "-->instnum val:");
-      fprintf (foutput, "<addr:%x|", (int) xasl_p->instnum_val);
+      fprintf (foutput, "<addr:%p|", xasl_p->instnum_val);
       fprintf (foutput, "type:%s",
 	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
 				       (xasl_p->instnum_val)));
@@ -2468,15 +2472,13 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      fprintf (foutput, "left xasl:%lx\n", (long) xasl_p->proc.union_.left);
-      fprintf (foutput, "right xasl:%lx\n", (long) xasl_p->proc.union_.right);
+      fprintf (foutput, "left xasl:%p\n", xasl_p->proc.union_.left);
+      fprintf (foutput, "right xasl:%p\n", xasl_p->proc.union_.right);
       break;
 
     case MERGELIST_PROC:
-      fprintf (foutput, "inner xasl:%lx\n",
-	       (long) xasl_p->proc.mergelist.inner_xasl);
-      fprintf (foutput, "outer xasl:%lx\n",
-	       (long) xasl_p->proc.mergelist.outer_xasl);
+      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.mergelist.inner_xasl);
+      fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.mergelist.outer_xasl);
       qdump_print_merge_list_proc_node (&xasl_p->proc.mergelist);
       break;
 
@@ -2541,7 +2543,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
   fprintf (foutput, "\nqstmt:%s\n", xasl_p->qstmt ? xasl_p->qstmt : "(NULL)");
-  fprintf (foutput, "<end of xasl structure %x>\n", (int) xasl_p);
+  fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
   fflush (foutput);
 
   return true;

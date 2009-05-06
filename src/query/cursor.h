@@ -52,20 +52,18 @@ typedef enum
 typedef struct cursor_id CURSOR_ID;	/* Cursor Identifier */
 struct cursor_id
 {
-  int query_id;			/* Query id for this cursor */
+  QUERY_ID query_id;		/* Query id for this cursor */
   QFILE_LIST_ID list_id;	/* List file identifier */
-  bool is_updatable;		/* Cursor updatable ?   */
-  bool is_oid_included;		/* Cursor has first hidden oid col. */
-  int oid_ent_count;		/* Number of OIDs in the oid set */
   OID *oid_set;			/* Cursor current page oid set */
   MOP *mop_set;			/* Cursor current page MOP set */
+  int oid_ent_count;		/* Number of OIDs in the oid set */
   CURSOR_POSITION position;	/* Cursor position */
   VPID current_vpid;		/* Current real page identifier */
   VPID next_vpid;		/* Next page identifier */
   VPID header_vpid;		/* Header page identifier in buffer area */
+  int on_overflow;		/* cursor buffer has an overflow page */
   int tuple_no;			/* Tuple position number */
   QFILE_TUPLE_RECORD tuple_record;	/* Tuple descriptor */
-  int on_overflow;		/* cursor buffer has an overflow page */
   char *buffer;			/* Current page */
   char *buffer_area;
   int buffer_filled_size;
@@ -73,14 +71,16 @@ struct cursor_id
   int current_tuple_no;		/* Tuple position in current page */
   int current_tuple_offset;	/* Tuple offset in current page */
   char *current_tuple_p;	/* Current tuple */
-  int current_tuple_length;	/* Current tuple length */
   int *oid_col_no;		/* Column numbers of OID's */
+  int current_tuple_length;	/* Current tuple length */
   int oid_col_no_cnt;		/* Number of values in oid_col_no */
   DB_FETCH_MODE prefetch_lock_mode;
-  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
-				 *               false = peek */
   int current_tuple_value_index;	/* Current tplvalue index within current_tuple_p */
   char *current_tuple_value_p;	/* Current tplvalue pointer within current_tuple_p */
+  bool is_updatable;		/* Cursor updatable ?   */
+  bool is_oid_included;		/* Cursor has first hidden oid col. */
+  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
+				 *               false = peek */
 };
 
 extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id,
@@ -90,7 +90,7 @@ extern int cursor_copy_vobj_to_dbvalue (OR_BUF * buf, DB_VALUE * db_value);
 extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id,
 					   VPID * vpid,
 					   int position, int offset);
-extern void cursor_print_list (int query_id, QFILE_LIST_ID * list_id);
+extern void cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id);
 extern bool cursor_open (CURSOR_ID * cursor_id, QFILE_LIST_ID * list_id,
 			 bool updatable, bool oid_included);
 extern int cursor_next_tuple (CURSOR_ID * cursor_id);

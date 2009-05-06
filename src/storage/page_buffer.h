@@ -85,25 +85,93 @@ extern void pgbuf_finalize (void);
 extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p,
 				      const VPID * vpid, int newpg, int mode,
 				      int retry);
+#if !defined(NDEBUG)
+#define pgbuf_flush(thread_p, pgptr, free_page) \
+	pgbuf_flush_debug(thread_p, pgptr, free_page, __FILE__, __LINE__)
+extern PAGE_PTR pgbuf_flush_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				   int free_page, 
+				   const char *caller_file, int caller_line);
+
+#define pgbuf_fix(thread_p, vpid, newpg, requestmode, condition) \
+        pgbuf_fix_debug(thread_p, vpid, newpg, requestmode, condition, \
+                        __FILE__, __LINE__)
+extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
+				 int newpg, int requestmode,
+				 PGBUF_LATCH_CONDITION condition,
+				 const char *caller_file, int caller_line);
+#define pgbuf_unfix(thread_p, pgptr) \
+	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
+extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+			       const char *caller_file, int caller_line);
+#define pgbuf_invalidate_all(thread_p, volid) \
+	pgbuf_invalidate_all_debug(thread_p, volid, __FILE__, __LINE__)
+extern int pgbuf_invalidate_all_debug (THREAD_ENTRY * thread_p, VOLID volid,
+				       const char *caller_file, 
+				       int caller_line);
+
+#define pgbuf_invalidate(thread_p, pgptr) \
+	pgbuf_invalidate_debug(thread_p, pgptr, __FILE__, __LINE__)
+extern int pgbuf_invalidate_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, 
+				   const char *caller_file, int caller_line);
+#else /* NDEBUG */
 extern PAGE_PTR pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			     int free_page);
 extern PAGE_PTR pgbuf_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
 			   int newpg, int requestmode,
 			   PGBUF_LATCH_CONDITION condition);
 extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
+extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+#endif /* NDEBUG */
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p,
 				      PAGE_PTR pgptr);
+#if !defined(NDEBUG)
+#define pgbuf_flush_all(thread_p, volid) \
+	pgbuf_flush_all_debug(thread_p, volid, __FILE__, __LINE__)
+extern int pgbuf_flush_all_debug (THREAD_ENTRY * thread_p, VOLID volid,
+				  const char *caller_file, int caller_line);
+
+#define pgbuf_flush_all_unfixed(thread_p, volid) \
+	pgbuf_flush_all_unfixed_debug(thread_p, volid, __FILE__, __LINE__)
+extern int pgbuf_flush_all_unfixed_debug (THREAD_ENTRY * thread_p, VOLID volid,
+					  const char *caller_file, 
+					  int caller_line);
+
+#define pgbuf_flush_all_unfixed_and_set_lsa_as_null(thread_p, volid) \
+	pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug(thread_p, volid, \
+							  __FILE__, \
+							  __LINE__)
+extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug (THREAD_ENTRY *
+							      thread_p,
+							      VOLID volid,
+							      const char *caller_file,
+							      int caller_line);
+
+#define pgbuf_flush_victim_candidate(thread_p) \
+	pgbuf_flush_victim_candidate_debug(thread_p, __FILE__, __LINE__)
+extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p,
+					       const char *caller_file, 
+					       int caller_line);
+
+#define pgbuf_flush_check_point(thread_p, last_chkpt_lsa, smallest_lsa) \
+	pgbuf_flush_check_point_debug(thread_p, last_chkpt_lsa, smallest_lsa, \
+				      __FILE__, __LINE__)
+extern void pgbuf_flush_check_point_debug (THREAD_ENTRY * thread_p,
+					   const LOG_LSA * last_chkpt_lsa,
+					   LOG_LSA * smallest_lsa,
+					   const char *caller_file, 
+					   int caller_line);
+#else /* NDEBUG */
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
-extern int pgbuf_flush_all_unfixed_and_set_las_as_null (THREAD_ENTRY *
+extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY *
 							thread_p,
 							VOLID volid);
 extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p);
 extern void pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * last_chkpt_lsa,
 				     LOG_LSA * smallest_lsa);
+#endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 int start_offset, int length, void *area,
 				 bool do_fetch);

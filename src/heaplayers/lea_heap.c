@@ -1,13 +1,16 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+#include "customheaps.h"
+
 /* -------------------------------------------------------------------------- */
 /* DL MALLOC ADAPTATION AND MODIFICATION LAYER */
 /* -------------------------------------------------------------------------- */
 /* 
  * use malloc/free instead of mmap/munmap 
  */
-#define USE_MALLOC_INSTEAD 1
+
+ #define USE_MALLOC_INSTEAD 1
 #define system_malloc my_malloc
 #define system_free my_free
 
@@ -130,8 +133,8 @@ munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h)
 /* EXPORTED FUNCTIONS */
 #define LEA_HEAP_BASE_SIZE (64U*1024U)
 
-unsigned int
-hl_register_lea_heap ()
+UINTPTR
+hl_register_lea_heap (void)
 {
   HL_MSPACE *hms;
 
@@ -153,8 +156,7 @@ hl_register_lea_heap ()
       return 0;
     }
 
-  /* This has LP64 porting issue... but go along with heap layer anyway */
-  return (unsigned int) hms;
+  return ((UINTPTR) hms);
 }
 
 static void
@@ -173,7 +175,7 @@ destroy_mspace_internal (HL_MSPACE * hms)
 
 
 void
-hl_clear_lea_heap (unsigned int heap_id)
+hl_clear_lea_heap (UINTPTR heap_id)
 {
   HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -186,7 +188,7 @@ hl_clear_lea_heap (unsigned int heap_id)
 }
 
 void
-hl_unregister_lea_heap (unsigned int heap_id)
+hl_unregister_lea_heap (UINTPTR heap_id)
 {
   HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -198,7 +200,7 @@ hl_unregister_lea_heap (unsigned int heap_id)
 }
 
 void *
-hl_lea_alloc (unsigned int heap_id, size_t sz)
+hl_lea_alloc (UINTPTR heap_id, size_t sz)
 {
   HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -210,7 +212,7 @@ hl_lea_alloc (unsigned int heap_id, size_t sz)
 }
 
 void *
-hl_lea_realloc (unsigned int heap_id, void *ptr, size_t sz)
+hl_lea_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
   HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 
@@ -222,7 +224,7 @@ hl_lea_realloc (unsigned int heap_id, void *ptr, size_t sz)
 }
 
 void
-hl_lea_free (unsigned int heap_id, void *ptr)
+hl_lea_free (UINTPTR heap_id, void *ptr)
 {
   HL_MSPACE *hms = (HL_MSPACE *) heap_id;
 

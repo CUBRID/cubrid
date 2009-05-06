@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -25,10 +25,11 @@
 
 #include "config.h"
 #include "customheaps.h"
+#include "memory_alloc.h"
 #include "quick_fit.h"
 #include "memory_alloc.h"
 
-unsigned int ws_heap_id = 0;
+HL_HEAPID ws_heap_id = 0;
 
 /*
  * db_create_workspace_heap () - create a lea heap
@@ -36,7 +37,7 @@ unsigned int ws_heap_id = 0;
  *   req_size(in): a paramter to get chunk size
  *   recs_per_chunk(in): a parameter to get chunk size
  */
-unsigned int
+HL_HEAPID
 db_create_workspace_heap (void)
 {
   ws_heap_id = hl_register_lea_heap ();

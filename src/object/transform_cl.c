@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -104,9 +104,7 @@ typedef struct or_tempoid
  */
 typedef struct or_fixup
 {
-
   LC_OIDSET *oidset;
-
 } OR_FIXUP;
 
 /*
@@ -1136,8 +1134,8 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		}
 	    }
 
-	  padded_size = fixed_size = (int) (buf->ptr - start);
-	  DB_ATT_ALIGN (padded_size);
+	  fixed_size = (int) (buf->ptr - start);
+	  padded_size = DB_ATT_ALIGN (fixed_size);
 	  or_advance (buf, (padded_size - fixed_size));
 
 
@@ -1233,8 +1231,8 @@ MOBJ
 tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 {
   OR_BUF orep, *buf;
-  SM_CLASS *class_;
-  char *obj;
+  SM_CLASS *class_ = NULL;
+  char *obj = NULL;
   unsigned int repid_bits;
   int repid, convert, chn, bound_bit_flag;
   int rc = NO_ERROR;
@@ -4197,7 +4195,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 	  class_to_disk (buf, (SM_CLASS *) class_);
 	}
 
-      record->length = buf->ptr - buf->buffer;
+      record->length = CAST_BUFLEN (buf->ptr - buf->buffer);
 
       /* sanity test, this sets an error only so we can see it if it happens */
       if (record->length != expected_size)

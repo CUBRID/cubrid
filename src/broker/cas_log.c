@@ -30,7 +30,7 @@
 #include <time.h>
 #include <string.h>
 #include <errno.h>
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <sys/timeb.h>
 #include <process.h>
 #include <io.h>
@@ -47,6 +47,7 @@
 
 #include "broker_env_def.h"
 #include "broker_filename.h"
+#include "dbi.h"
 
 #include "cas_db_inc.h"
 
@@ -413,9 +414,9 @@ cas_access_log (T_TIMEVAL * start_time, int as_index, int client_ip_addr)
     }
 
   if (script == NULL)
-    script = "-";
+    script = (char *) "-";
   if (clt_appl == NULL || clt_appl[0] == '\0')
-    clt_appl = "-";
+    clt_appl = (char *) "-";
   clt_ip = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
 
   for (p = clt_appl; *p; p++)
@@ -463,7 +464,7 @@ cas_log_query_info_init (int id)
 
   unlink (log_file_query_plan);
   unlink (log_file_query_histo);
-#ifdef WIN32
+#if defined(WINDOWS)
   db_query_plan_dump_file (log_file_query_plan);
 #else
   log_fp_qp = fopen (log_file_query_plan, "a");
@@ -572,7 +573,6 @@ sql_log_open (char *log_file_name)
 {
   FILE *fp;
   int log_file_len = 0;
-  int i;
   int ret;
   int tmp_dirlen = 0;
   char *tmp_dirname;

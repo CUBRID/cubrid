@@ -161,7 +161,7 @@
     		(void *)arg_ptr, 0, id_ptr))  <= 0 ? -1 : 0)
 #endif /* not WIN32_GENERAL_DEBUG */
 
-#define THREAD_EXIT(ret_val)	_endthreadex(ret_val)
+#define THREAD_EXIT(ret_val)	_endthreadex((unsigned int) ret_val)
 #define THREAD_ID()		GetCurrentThreadId()
 
 #define THREAD_JOIN(handle, ret_val) \

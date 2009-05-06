@@ -39,38 +39,30 @@ BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 
-ANTLR = $(top_builddir)/pccts/antlrd/antlr
-DLG = $(top_builddir)/pccts/dlg/dlg
+BISON = bison
+FLEX = flex
 
-INCLUDES = @SRC_INC@ -I$(top_srcdir)/pccts/h @EXT_INC@
-DEFS += @SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ -DZZCOL -DLL_K=1 -DYY_CHAR=char -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
+INCLUDES = @SRC_INC@ @EXT_INC@
+DEFS += @SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
 LIBS += @SYS_LIBS@
 
-BUILT_SOURCES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
-		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c \
-		loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg loader_old_grammar_tokens.h loader_old_grammar_mode.h loader_old_grammar_scan.c
-CLEANFILES = esql_grammar.c esql_grammar_err.c esql_grammar.dlg esql_grammar_tokens.h esql_grammar_mode.h esql_grammar_scan.c \
-		loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c \
-		loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg loader_old_grammar_tokens.h loader_old_grammar_mode.h loader_old_grammar_scan.c
 
-loader_grammar.c loader_grammar_err.c loader_grammar.dlg: $(EXECUTABLE_DIR)/loader_grammar.g
-	$(ANTLR) -ga -k 1 -fe loader_grammar_err.c -fl loader_grammar.dlg -ft loader_grammar_tokens.h -fm loader_grammar_mode.h $<
-loader_grammar_scan.c loader_grammar_mode.h: loader_grammar.dlg
-	$(DLG) -C2 -ga -m loader_grammar_mode.h $< loader_grammar_scan.c
+$(EXECUTABLE_DIR)/esql_grammar.c : $(EXECUTABLE_DIR)/esql_grammar.y
+	$(BISON) --name-prefix=esql_yy -d -r all -o $@ $< 
 
-loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar.dlg: $(EXECUTABLE_DIR)/loader_old_grammar.g
-	$(ANTLR) -ga -k 1 -fe loader_old_grammar_err.c -fl loader_old_grammar.dlg -ft loader_old_grammar_tokens.h -fm loader_old_grammar_mode.h $<
-loader_old_grammar_scan.c loader_old_grammar_mode.h: loader_old_grammar.dlg
-	$(DLG) -C2 -ga -m loader_old_grammar_mode.h $< loader_old_grammar_scan.c
+$(EXECUTABLE_DIR)/esql_lexer.c : $(EXECUTABLE_DIR)/esql_lexer.l
+	$(FLEX) --prefix=esql_yy -o $@ $<
 
-esql_grammar.c esql_grammar_err.c esql_grammar.dlg: $(EXECUTABLE_DIR)/esql_grammar.g
-	$(ANTLR) -ga -k 1 -fe esql_grammar_err.c -fl esql_grammar.dlg -ft esql_grammar_tokens.h -fm esql_grammar_mode.h $<
-esql_grammar_scan.c esql_grammar_mode.h: esql_grammar.dlg
-	$(DLG) -C2 -ga -m esql_grammar_mode.h $< esql_grammar_scan.c
+$(EXECUTABLE_DIR)/loader_old_grammar.c : $(EXECUTABLE_DIR)/loader_old_grammar.y
+	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
+
+$(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
+	$(FLEX) --prefix=loader_yy -o $@ $<
+
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
-	cubrid_esql cubrid_rel loadjava repl_agent repl_server
+	cubrid_esql cubrid_rel loadjava repl_agent repl_server migrate_r20
 
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
@@ -100,8 +92,11 @@ get_disk_compat_SOURCES = $(EXECUTABLE_DIR)/get_disk_compat.c
 get_disk_compat_LDFLAGS = @SA_LIB@
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDFLAGS = @SA_LIB@
+migrate_r20_SOURCES = $(EXECUTABLE_DIR)/migrate_r20.c
+migrate_r20_LDFLAGS = @SA_LIB@
 
-load_noopt_SOURCES = loader_old_grammar.c loader_old_grammar_err.c loader_old_grammar_scan.c \
+load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
+		$(EXECUTABLE_DIR)/loader_old_lexer.c \
 		$(EXECUTABLE_DIR)/loader_old.c \
 		$(EXECUTABLE_DIR)/loader_object_table.c \
 		$(EXECUTABLE_DIR)/loader_action.c \
@@ -110,7 +105,6 @@ load_noopt_SOURCES = loader_old_grammar.c loader_old_grammar_err.c loader_old_gr
 		$(EXECUTABLE_DIR)/loaddb.c \
 		$(EXECUTABLE_DIR)/util_support.c \
 		$(EXECUTABLE_DIR)/loader_noopt.c
-dist_load_noopt_SOURCES=$(EXECUTABLE_DIR)/loader_old_grammar.g
 load_noopt_CFLAGS = $(AM_CFLAGS) -DLDR_OLD_LOADDB
 load_noopt_LDFLAGS = @SA_LIB@
 
@@ -145,7 +139,7 @@ install-exec-hook:
 
 lib_LTLIBRARIES = libcubridesql.la
 libcubridesql_la_SOURCES = $(EXECUTABLE_DIR)/esql_gadget.c $(EXECUTABLE_DIR)/esql_cli.c
-libcubridesql_la_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY -DYY_CHAR=char
+libcubridesql_la_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY 
 libcubridesql_la_LDFLAGS = -version-number @LT_VERSION@
 
 cub_server_SOURCES = $(EXECUTABLE_DIR)/server.c
@@ -160,7 +154,6 @@ cub_commdb_LDFLAGS = @CS_LIB@
 cub_master_SOURCES = \
 	$(EXECUTABLE_DIR)/master.c \
 	$(EXECUTABLE_DIR)/master_request.c \
-	$(EXECUTABLE_DIR)/daemon.c \
 	$(EXECUTABLE_DIR)/master_util.c
 cub_master_LDFLAGS = @CS_LIB@
 
@@ -206,9 +199,10 @@ cubrid_esql_SOURCES = \
 	$(EXECUTABLE_DIR)/esql_hash.c \
 	$(EXECUTABLE_DIR)/esql_translate.c \
 	$(EXECUTABLE_DIR)/esql_host_variable.c \
-	esql_grammar.c esql_grammar_scan.c esql_grammar_err.c
-dist_cubrid_esql_SOURCES = $(EXECUTABLE_DIR)/esql_grammar.g
-cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY -DYY_CHAR=char
+	$(EXECUTABLE_DIR)/esql_grammar.c \
+	$(EXECUTABLE_DIR)/esql_lexer.c 
+
+cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY 
 cubrid_esql_LDFLAGS = @CS_LIB@
 
 noinst_PROGRAMS = gencat

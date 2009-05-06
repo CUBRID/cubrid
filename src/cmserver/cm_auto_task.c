@@ -152,7 +152,8 @@ ts_check_already_connected (nvplist * cli_response, int max_index,
   int index = 0;
   for (index = 0; index <= max_index; index++)
     {
-      if ((client_info[index].sock_fd == -1) || (index == current_index))
+      if (IS_INVALID_SOCKET (client_info[index].sock_fd)
+	  || (index == current_index))
 	continue;
 
       if (!strcmp

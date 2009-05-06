@@ -30,11 +30,6 @@
 
 #include "log_compress.h"
 
-/* plus lzo overhead to log_zip data size */
-#define LOG_ZIP_BUF_SIZE(length) \
-        ((length) + ((length) / 16) + 64 + 3 + sizeof(size_t))
-
-
 /*
  * log_zip - compress(zip) log data into LOG_ZIP
  *   return: true on success, false on failure
@@ -43,10 +38,10 @@
  *   data(in): log data to be compressed
  */
 bool
-log_zip (LOG_ZIP * log_zip, size_t length, const void *data)
+log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
 {
   lzo_uint zip_len = 0;
-  size_t buf_size;
+  LOG_ZIP_SIZE_T buf_size;
   int rc;
 
   assert (length > 0 && data != NULL);
@@ -72,15 +67,15 @@ log_zip (LOG_ZIP * log_zip, size_t length, const void *data)
     }
 
   /* save original data length */
-  memcpy (log_zip->log_data, &length, sizeof (size_t));
+  memcpy (log_zip->log_data, &length, sizeof (LOG_ZIP_SIZE_T));
 
   rc = lzo1x_1_compress ((lzo_bytep) data,
-			 length,
-			 log_zip->log_data + sizeof (size_t),
+			 (lzo_uint) length,
+			 log_zip->log_data + sizeof (LOG_ZIP_SIZE_T),
 			 &zip_len, log_zip->wrkmem);
   if (rc == LZO_E_OK)
     {
-      log_zip->data_length = zip_len + sizeof (size_t);
+      log_zip->data_length = zip_len + sizeof (LOG_ZIP_SIZE_T);
       /* if the compressed data length >= orginal length,
        * then it means that compression is failed */
       if (log_zip->data_length < length)
@@ -97,24 +92,24 @@ log_zip (LOG_ZIP * log_zip, size_t length, const void *data)
  *   data(out): compressed log data
  */
 bool
-log_unzip (LOG_ZIP * log_unzip, size_t length, void *data)
+log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
 {
   lzo_uint unzip_len;
-  size_t org_len;
-  size_t buf_size;
+  LOG_ZIP_SIZE_T org_len;
+  LOG_ZIP_SIZE_T buf_size;
   int rc;
 
   assert (length > 0 && data != NULL);
   assert (log_unzip != NULL);
 
   /* get original legnth from the compressed data */
-  memcpy (&org_len, data, sizeof (size_t));
+  memcpy (&org_len, data, sizeof (LOG_ZIP_SIZE_T));
 
   if (org_len <= 0)
     return false;
-  unzip_len = org_len;
+  unzip_len = (lzo_uint) org_len;
   buf_size = LOG_ZIP_BUF_SIZE (org_len);
-  length -= sizeof (size_t);
+  length -= sizeof (LOG_ZIP_SIZE_T);
 
   if (buf_size > log_unzip->buf_size)
     {
@@ -131,15 +126,16 @@ log_unzip (LOG_ZIP * log_unzip, size_t length, void *data)
       return false;
     }
 
-  rc = lzo1x_decompress_safe ((lzo_bytep) data + sizeof (size_t),
-			      length, log_unzip->log_data, &unzip_len, NULL);
+  rc = lzo1x_decompress_safe ((lzo_bytep) data + sizeof (LOG_ZIP_SIZE_T),
+			      (lzo_uint) length, log_unzip->log_data,
+			      &unzip_len, NULL);
 
   if (rc == LZO_E_OK)
     {
       log_unzip->data_length = unzip_len;
       /* if the uncompressed data length != original length,
        * then it means that uncompression is failed */
-      if (unzip_len == org_len)
+      if (unzip_len == (lzo_uint) org_len)
 	return true;
     }
   return false;
@@ -154,10 +150,10 @@ log_unzip (LOG_ZIP * log_unzip, size_t length, void *data)
  *   redo_data(in/out) redo log data; set as side effect
  */
 bool
-log_diff (size_t undo_length, const void *undo_data,
-	  size_t redo_length, void *redo_data)
+log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data,
+	  LOG_ZIP_SIZE_T redo_length, void *redo_data)
 {
-  size_t i, size;
+  LOG_ZIP_SIZE_T i, size;
   unsigned char *p, *q;
 
   assert (undo_length > 0 && undo_data != NULL);
@@ -185,10 +181,10 @@ log_diff (size_t undo_length, const void *undo_data,
  * Note:
  */
 LOG_ZIP *
-log_zip_alloc (size_t size, bool is_zip)
+log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
 {
   LOG_ZIP *log_zip = NULL;
-  size_t buf_size = 0;
+  LOG_ZIP_SIZE_T buf_size = 0;
 
   buf_size = LOG_ZIP_BUF_SIZE (size);
 
@@ -198,7 +194,7 @@ log_zip_alloc (size_t size, bool is_zip)
     }
   log_zip->data_length = 0;
 
-  if ((log_zip->log_data = (lzo_bytep) malloc (buf_size)) == NULL)
+  if ((log_zip->log_data = (lzo_bytep) malloc ((size_t) buf_size)) == NULL)
     {
       free_and_init (log_zip);
       return NULL;

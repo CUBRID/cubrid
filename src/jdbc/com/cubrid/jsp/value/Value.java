@@ -249,6 +249,21 @@ public abstract class Value
     throw new TypeMismatchException();
   }
 
+  public Timestamp toDatetime() throws TypeMismatchException
+  {
+    throw new TypeMismatchException();
+  }
+
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    throw new TypeMismatchException();
+  }
+
+  public Timestamp[][] toDatetimeArrayArray() throws TypeMismatchException
+  {
+    throw new TypeMismatchException();
+  }
+
   public BigDecimal toBigDecimal() throws TypeMismatchException
   {
     throw new TypeMismatchException();

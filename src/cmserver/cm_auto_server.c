@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -26,8 +26,6 @@
 
 #include "config.h"
 
-#define _REENTRANT		/* for thread library */
-
 #include <stdio.h>
 #include <stdlib.h>		/* atoi()       */
 #include <signal.h>		/* SIG_TTOU ... */
@@ -38,7 +36,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock.h>
 #include <direct.h>
 #include <io.h>
@@ -67,7 +65,7 @@
 #include "cm_command_execute.h"
 #include "cm_text_encryption.h"
 #include "cm_broker_admin.h"
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
 
@@ -96,9 +94,9 @@ static int _GetFreeIndex (userdata * ud);
 #endif
 static char *ut_token_generate (char *client_ip, char *client_port,
 				char *dbmt_id, int proc_id);
-static int net_init ();
+static int net_init (void);
 static void prepare_response (userdata * ud, nvplist * res);
-static void auto_start_UniCAS ();
+static void auto_start_UniCAS (void);
 static void client_info_reset (T_CLIENT_INFO * client);
 
 #if 0				/* ACTIVITY_PROFILE */
@@ -152,13 +150,13 @@ static void diag_config_reset (T_CLIENT_INFO * client_info);
     } while(0)
 #endif
 
-static int pserver_sockfd;
+static SOCKET pserver_sockfd;
 static FILE *start_log_fp;
 static int pid_lock_fd;
 static char cubrid_err_log_env[256];
 static char cubrid_err_file[256];
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 CtrlHandler (DWORD fdwCtrlType)
 {
@@ -195,7 +193,7 @@ main (int argc, char **argv)
   char pid_file_name[512];
   char err_msg[1024];
 
-#ifdef WIN32
+#if defined(WINDOWS)
   start_log_fp = fopen ("cub_autostart.log", "w");
   if (start_log_fp == NULL)
     start_log_fp = stdout;
@@ -382,7 +380,7 @@ service_start (void *ud)
   for (;;)
     {
       rset = allset;
-      nready = select (maxfd + 1, &rset, NULL, NULL, NULL);
+      nready = select ((int) maxfd + 1, &rset, NULL, NULL, NULL);
       if (FD_ISSET (pserver_sockfd, &rset))
 	{
 	  clilen = sizeof (cli_addr);
@@ -393,9 +391,9 @@ service_start (void *ud)
 
 	  for (i = 0; i < MAX_CLIENT_NUM; ++i)
 	    {
-	      if (client_info[i].sock_fd < 0)
+	      if (IS_INVALID_SOCKET (client_info[i].sock_fd))
 		{
-#ifdef WIN32
+#if defined(WINDOWS)
 		  u_long one = 1;
 		  ioctlsocket (newsockfd, FIONBIO, (u_long FAR *) & one);
 #else
@@ -424,7 +422,8 @@ service_start (void *ud)
       /* handling new requests */
       for (i = 0; i <= maxi; i++)
 	{
-	  if ((sockfd = client_info[i].sock_fd) < 0)
+	  sockfd = client_info[i].sock_fd;
+	  if (IS_INVALID_SOCKET (sockfd))
 	    continue;
 
 	  if (FD_ISSET (sockfd, &rset))
@@ -474,21 +473,22 @@ service_start (void *ud)
 			  else
 			    {	/* accept connection */
 			      /* generate token and record new connection to file */
-			      pstrbuf =
-				ut_token_generate (nv_get_val
-						   (cli_request, "_CLIENTIP"),
-						   nv_get_val (cli_request,
-							       "_CLIENTPORT"),
-						   nv_get_val (cli_request,
-							       "id"),
-						   getpid ());
+			      pstrbuf = ut_token_generate (nv_get_val
+							   (cli_request,
+							    "_CLIENTIP"),
+							   nv_get_val
+							   (cli_request,
+							    "_CLIENTPORT"),
+							   nv_get_val
+							   (cli_request,
+							    "id"), getpid ());
 			      nv_add_nvp (cli_response, "token", pstrbuf);
 			      nv_add_nvp (cli_request, "_ID",
 					  client_info[i].user_id);
 			      free (pstrbuf);
 
-			      uRecordConnection (nv_get_val
-						 (cli_request, "_CLIENTIP"),
+			      uRecordConnection (nv_get_val (cli_request,
+							     "_CLIENTIP"),
 						 nv_get_val (cli_request,
 							     "_CLIENTPORT"),
 						 nv_get_val (cli_request,
@@ -677,7 +677,7 @@ service_start (void *ud)
 			    }
 			  client_info[i].mon_server_num = 0;
 
-			  /* 3. modify shered memory's value by every cilent_info's 
+			  /* 3. modify shered memory's value by every cilent_info's
 			   * diag_cas_config and diag_server_config's value. */
 			  skip_cas = 0;
 			  for (db_index1 = 0; db_index1 < db_num; db_index1++)
@@ -737,7 +737,7 @@ service_start (void *ud)
 				  skip_cas = 1;
 				}
 
-			      /* open shared memory by 
+			      /* open shared memory by
 			       * client_info[i].diag_server_config[db_index1].servername
 			       * and memory's value set to new_server_config */
 			      ret_val =
@@ -811,7 +811,7 @@ service_start (void *ud)
   nv_destroy (cli_request);
   nv_destroy (cli_response);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   return NULL;
@@ -863,7 +863,7 @@ automation_start (void *ud)
       prev_check_time = cur_time;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   return NULL;
@@ -923,7 +923,7 @@ start_pserver (void)
   for (i = 0; i < MAX_INSTALLED_DB; ++i)
     ud.dbvect[i] = 0;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   SetConsoleCtrlHandler ((PHANDLER_ROUTINE) CtrlHandler, TRUE);
 #else
   signal (SIGINT, term_handler);
@@ -1248,12 +1248,12 @@ ut_token_generate (char *client_ip, char *client_port, char *dbmt_id,
 }
 
 static int
-net_init ()
+net_init (void)
 {
   int optval = 1;
   struct sockaddr_in serv_addr;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     {
       return -1;
@@ -1261,7 +1261,8 @@ net_init ()
 #endif
 
   /* set up network */
-  if ((pserver_sockfd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  pserver_sockfd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (pserver_sockfd))
     {
       perror ("socket");
       return -1;
@@ -1362,7 +1363,7 @@ prepare_response (userdata * ud, nvplist * res)
 }
 
 static void
-auto_start_UniCAS ()
+auto_start_UniCAS (void)
 {
   char uc_start_error_msg[1024];
   if (sco.iAutoStart_UniCAS)
@@ -1387,7 +1388,7 @@ auto_start_UniCAS ()
 static void
 client_info_reset (T_CLIENT_INFO * client_info)
 {
-  client_info->sock_fd = -1;
+  client_info->sock_fd = INVALID_SOCKET;
   client_info->state = NO_USER;
   FREE_MEM (client_info->user_id);
   FREE_MEM (client_info->ip_address);

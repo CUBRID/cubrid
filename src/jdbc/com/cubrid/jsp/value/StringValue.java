@@ -234,6 +234,18 @@ public class StringValue extends Value
     }
   }
 
+  public Timestamp toDatetime() throws TypeMismatchException
+  {
+    try
+    {
+      return Timestamp.valueOf(value);
+    }
+    catch (IllegalArgumentException e)
+    {
+      throw new TypeMismatchException(e.getMessage());
+    }
+  }
+
   public BigDecimal toBigDecimal() throws TypeMismatchException
   {
     try
@@ -304,6 +316,11 @@ public class StringValue extends Value
   public Timestamp[] toTimestampArray() throws TypeMismatchException
   {
     return new Timestamp[] { toTimestamp() };
+  }
+
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    return new Timestamp[] { toDatetime() };
   }
 
   public Object[] toObjectArray() throws TypeMismatchException

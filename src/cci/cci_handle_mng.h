@@ -151,7 +151,7 @@ typedef struct
 typedef struct
 {
   T_REQ_HANDLE *req_handle;
-  int sock_fd;
+  SOCKET sock_fd;
   char flag;
   int max_col_size;
   T_CCI_ERROR err_buf;
@@ -170,7 +170,7 @@ typedef struct
   char *db_name;
   char *db_user;
   char *db_passwd;
-  int sock_fd;
+  SOCKET sock_fd;
   int ref_count;
   int default_isolation_level;
   int max_req_handle;

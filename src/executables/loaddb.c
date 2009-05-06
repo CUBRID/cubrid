@@ -66,6 +66,9 @@ extern void do_loader_parse (FILE * fp);
 #define LOADDB_INIT_DEBUG()
 #define LOADDB_DEBUG_PRINTF(x)
 
+#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
+#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
+
 static const char *Volume = "";
 static const char *Input_file = "";
 static const char *Schema_file = "";
@@ -92,12 +95,13 @@ static int Periodic_commit = 0;
 /* Don't ignore logging */
 static int Ignore_logging = 0;
 static int Interrupt_type = LDR_NO_INTERRUPT;
-static bool No_oid_hint = false;
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
 
 #define LOADDB_LOG_FILENAME "loaddb.log"
 static FILE *loaddb_log_file;
+
+bool No_oid_hint = false;
 
 /* The number of objects inserted if an interrupted occurred. */
 int Total_objects_loaded = 0;
@@ -110,7 +114,7 @@ jmp_buf ldr_exec_query_status;
 
 static int ldr_validate_object_file (FILE * outfp, const char *argv0);
 static int ldr_check_file_name_and_line_no (void);
-static void signal_handler ();
+static void signal_handler (void);
 static void loaddb_report_num_of_commits (int num_committed);
 static void loaddb_get_num_of_inserted_objects (int num_objects);
 #if defined (WINDOWS)
@@ -122,8 +126,9 @@ static int ldr_exec_query_from_file (const char *file_name, FILE * file,
 				     int *start_line, int commit_period);
 #if !defined (LDR_OLD_LOADDB)
 static int get_ignore_class_list (const char *filename);
-static void free_ignoreclasslist ();
+static void free_ignoreclasslist (void);
 #endif
+
 /*
  * print_log_msg - print log message
  *    return: void
@@ -265,7 +270,7 @@ ldr_check_file_name_and_line_no (void)
  *    return: void
  */
 static void
-signal_handler ()
+signal_handler (void)
 {
   LOADDB_DEBUG_PRINTF (("Signal caught : interrupt flag : %d\n",
 			Interrupt_type));
@@ -394,34 +399,35 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   obt_Enable_autoincrement = false;
 
   Volume = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  Input_file =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  Input_file = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
+						1);
   User_name = utility_get_option_string_value (arg_map, LOAD_USER_S, 0);
   Password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
   Syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
   Load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);
-  Estimated_size =
-    utility_get_option_int_value (arg_map, LOAD_ESTIMATED_SIZE_S);
+  Estimated_size = utility_get_option_int_value (arg_map,
+						 LOAD_ESTIMATED_SIZE_S);
   Verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
   obsolete_Disable_statistics =
     utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
-  Periodic_commit =
-    utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
+  Periodic_commit = utility_get_option_int_value (arg_map,
+						  LOAD_PERIODIC_COMMIT_S);
   Verbose_commit = Periodic_commit > 0 ? true : false;
   No_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
-  Schema_file =
-    utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
-  Index_file =
-    utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
-  Object_file =
-    utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
-  Error_file =
-    utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
-  Ignore_logging =
-    utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
+  Schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S,
+						 0);
+  Index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S,
+						0);
+  Object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S,
+						 0);
+  Error_file = utility_get_option_string_value (arg_map,
+						LOAD_ERROR_CONTROL_FILE_S, 0);
+  Ignore_logging = utility_get_option_bool_value (arg_map,
+						  LOAD_IGNORE_LOGGING_S);
 #if !defined (LDR_OLD_LOADDB)
-  Ignore_class_file =
-    utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
+  Ignore_class_file = utility_get_option_string_value (arg_map,
+						       LOAD_IGNORE_CLASS_S,
+						       0);
 #endif
 
   Input_file = Input_file ? Input_file : "";
@@ -433,6 +439,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (ldr_validate_object_file (stderr, arg->argv0))
     {
       goto error_return;
+    }
+
+  if (Index_file[0] != '\0'
+      && PRM_SR_NBUFFERS < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
+    {
+      sysprm_set_force ("sort_buffer_pages",
+			LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
 
   /* error message log file */
@@ -1191,7 +1204,7 @@ get_ignore_class_list (const char *inputfile_name)
 }
 
 static void
-free_ignoreclasslist ()
+free_ignoreclasslist (void)
 {
   int i = 0;
 

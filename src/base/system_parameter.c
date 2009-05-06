@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -64,10 +64,15 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
-#ifdef LINUX
+#if defined (LINUX)
 #include "stack_dump.h"
 #endif
 #include "ini_parser.h"
+#if defined(WINDOWS)
+#include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
+#endif /* WINDOWS */
 
 
 #if defined (WINDOWS)
@@ -104,7 +109,7 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_ALLOCATED       0x00000200	/* storage has been malloc'd */
 #define PRM_LOWER_LIMIT     0x00000400	/* has lower limit */
 #define PRM_UPPER_LIMIT     0x00000800	/* has upper limit */
-#define PRM_DEFAULT_USED    0x00001000	/* Default value has been used */
+#define PRM_DEFAULT_USE     0x00001000	/* Default value has been used */
 #define PRM_FOR_CLIENT      0x00002000	/* is for client parameter */
 #define PRM_FOR_SERVER      0x00004000	/* is for server parameter */
 #define PRM_STACK_DUMP_ENABLE  0x00010000	/* call stack dump enabled */
@@ -126,7 +131,7 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_IS_ALLOCATED(x)       (x & PRM_ALLOCATED)
 #define PRM_HAS_LOWER_LIMIT(x)    (x & PRM_LOWER_LIMIT)
 #define PRM_HAS_UPPER_LIMIT(x)    (x & PRM_UPPER_LIMIT)
-#define PRM_DEFAULT_VAL_USED(x)   (x & PRM_DEFAULT_USED)
+#define PRM_DEFAULT_VAL_USE(x)    (x & PRM_DEFAULT_USE)
 #define PRM_IS_FOR_CLIENT(x)      (x & PRM_FOR_CLIENT)
 #define PRM_IS_FOR_SERVER(x)      (x & PRM_FOR_SERVER)
 #define PRM_IS_STACK_DUMP_ENABLE(x)  (x & PRM_STACK_DUMP_ENABLE)
@@ -179,14 +184,14 @@ static int prm_pb_nbuffers_default = 25000;
 static int prm_pb_nbuffers_lower = 1;
 
 float PRM_HF_UNFILL_FACTOR = FLT_MIN;
-static float prm_hf_unfill_factor_default = 0.10;
-static float prm_hf_unfill_factor_lower = 0.0;
-static float prm_hf_unfill_factor_upper = 0.3;
+static float prm_hf_unfill_factor_default = 0.10f;
+static float prm_hf_unfill_factor_lower = 0.0f;
+static float prm_hf_unfill_factor_upper = 0.3f;
 
 float PRM_BT_UNFILL_FACTOR = FLT_MIN;
-static float prm_bt_unfill_factor_default = 0.20;
-static float prm_bt_unfill_factor_lower = 0.0;
-static float prm_bt_unfill_factor_upper = 0.35;
+static float prm_bt_unfill_factor_default = 0.20f;
+static float prm_bt_unfill_factor_lower = 0.0f;
+static float prm_bt_unfill_factor_upper = 0.35f;
 
 int PRM_BT_OID_NBUFFERS = INT_MIN;
 static int prm_bt_oid_nbuffers_default = 4;
@@ -253,7 +258,7 @@ static int prm_ws_hashtable_size_lower = 1024;
 bool PRM_WS_MEMORY_REPORT = false;
 static bool prm_ws_memory_report_default = false;
 
-bool PRM_GC_ENABLE = INT_MIN;
+bool PRM_GC_ENABLE = false;
 static bool prm_gc_enable_default = false;
 
 int PRM_TCP_PORT_ID = INT_MIN;
@@ -266,12 +271,13 @@ static int prm_tcp_connection_timeout_lower = -1;
 int PRM_OPTIMIZATION_LEVEL = INT_MIN;
 static int prm_optimization_level_default = 1;
 
-bool PRM_QO_DUMP = INT_MIN;
+bool PRM_QO_DUMP = false;
 static bool prm_qo_dump_default = false;
 
 int PRM_CSS_MAX_CLIENTS = INT_MIN;
 static int prm_css_max_clients_default = 50;
 static int prm_css_max_clients_lower = 10;
+static int prm_css_max_clients_upper = 1024;
 
 int PRM_MAX_THREADS = INT_MIN;
 static int prm_max_threads_default = 100;
@@ -303,7 +309,7 @@ int PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE = INT_MIN;
 static int prm_max_entries_in_temp_file_cache_default = 512;
 static int prm_max_entries_in_temp_file_cache_lower = 10;
 
-bool PRM_PTHREAD_SCOPE_PROCESS = INT_MIN;
+bool PRM_PTHREAD_SCOPE_PROCESS = false;
 static bool prm_pthread_scope_process_default = true;
 
 int PRM_TEMP_MEM_BUFFER_PAGES = INT_MIN;
@@ -348,9 +354,9 @@ int PRM_COMPACTDB_PAGE_RECLAIM_ONLY = INT_MIN;
 static int prm_compactdb_page_reclaim_only_default = 0;
 
 float PRM_LIKE_TERM_SELECTIVITY = 0;
-static float prm_like_term_selectivity_default = 0.1;
-static float prm_like_term_selectivity_upper = 1.0;
-static float prm_like_term_selectivity_lower = 0.0;
+static float prm_like_term_selectivity_default = 0.1f;
+static float prm_like_term_selectivity_upper = 1.0f;
+static float prm_like_term_selectivity_lower = 0.0f;
 
 int PRM_MAX_OUTER_CARD_OF_IDXJOIN = INT_MIN;
 static int prm_max_outer_card_of_idxjoin_default = 0;
@@ -1343,7 +1349,7 @@ static int prm_set_default (SYSPRM_PARAM * prm);
 static SYSPRM_PARAM *prm_find (const char *pname, const char *section);
 static const KEYVAL *prm_keyword (int val, const char *name,
 				  const KEYVAL * tbl, int dim);
-static void prm_tune_parameters ();
+static void prm_tune_parameters (void);
 
 /*
  * sysprm_dump_system_parameters - Print out current system parameters
@@ -1457,8 +1463,8 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
   struct tm log_tm, *log_tm_p = &log_tm;
   const char *base_db_name = NULL;
   const char *slash;
-#endif /* !CS_MODE */
   char error_log_name[PATH_MAX];
+#endif /* !CS_MODE */
   char file_being_dealt_with[PATH_MAX];
   const char *root_path;
   unsigned int i;
@@ -1598,7 +1604,8 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
    */
   for (i = 0; i < NUM_PRM; i++)
     {
-      if (!PRM_IS_SET (prm_Def[i].flag))
+      if (!PRM_IS_SET (prm_Def[i].flag)
+          || PRM_DEFAULT_VAL_USE (prm_Def[i].flag))
 	{
 	  if (PRM_HAS_DEFAULT (prm_Def[i].flag))
 	    {
@@ -2304,7 +2311,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
     {
       float val, *valp;
 
-      val = strtod (value, &end);
+      val = (float) strtod (value, &end);
       if (end == value)
 	{
 	  return PRM_ERR_BAD_VALUE;
@@ -2350,7 +2357,6 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
   else if (PRM_IS_STRING (prm->flag))
     {
       char *val, **valp;
-      const KEYVAL *keyvalp;
 
       if (PRM_IS_ALLOCATED (prm->flag))
 	{
@@ -2445,8 +2451,6 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
     }
 
   PRM_SET_BIT (PRM_SET, prm->flag);
-  /* Indicate that the default value was not used */
-  PRM_CLEAR_BIT (PRM_DEFAULT_USED, prm->flag);
   return warning_status;
 }
 
@@ -2518,8 +2522,6 @@ prm_set_default (SYSPRM_PARAM * prm)
     }
 
   PRM_SET_BIT (PRM_SET, prm->flag);
-  /* Indicate that the default value was used */
-  PRM_SET_BIT (PRM_DEFAULT_USED, prm->flag);
   return NO_ERROR;
 }
 
@@ -2609,10 +2611,9 @@ sysprm_set_to_default (const char *pname)
     {
       return ER_PRM_BAD_VALUE;
     }
-  if (prm_set_default (prm) != NO_ERROR)
-    {
-      return ER_PRM_CANNOT_CHANGE;
-    }
+
+  /* Indicate that the default value is used */
+  PRM_SET_BIT (PRM_DEFAULT_USE, prm->flag);
   return NO_ERROR;
 }
 
@@ -2780,7 +2781,7 @@ sysprm_final (void)
  */
 #if defined (SA_MODE) || defined (SERVER_MODE)
 static void
-prm_tune_parameters ()
+prm_tune_parameters (void)
 {
   SYSPRM_PARAM *num_data_buffers_prm;
   SYSPRM_PARAM *num_log_buffers_prm;
@@ -2798,6 +2799,7 @@ prm_tune_parameters ()
   SYSPRM_PARAM *replication_prm;
 
   char newval[LINE_MAX];
+  int max_clients;
 
   /* Find the parameters that require tuning */
   num_data_buffers_prm = prm_find ("data_buffer_pages", NULL);
@@ -2841,6 +2843,16 @@ prm_tune_parameters ()
 		   max_clients_prm->name);
 	  return;
 	}
+    }
+  else
+    {
+      max_clients = MIN (prm_css_max_clients_upper, css_get_max_socket_fds());
+
+      if (PRM_GET_INT (max_clients_prm->value) > max_clients)
+        {
+          sprintf (newval, "%d", max_clients);
+          (void) prm_set (max_clients_prm, (char *) newval);
+        }
     }
 
   /* Set max thread parameter */
@@ -2940,7 +2952,7 @@ prm_tune_parameters ()
 }
 #else /* SA_MODE || SERVER_MODE */
 static void
-prm_tune_parameters ()
+prm_tune_parameters (void)
 {
   SYSPRM_PARAM *max_plan_cache_entries_prm;
 
@@ -2954,7 +2966,7 @@ prm_tune_parameters ()
       (void) prm_set (max_plan_cache_entries_prm, "-1");
     }
 }
-#endif /* CS_MODE */
+#endif /* SA_MODE || SERVER_MODE */
 
 #if defined (CS_MODE)
 /*
@@ -2989,3 +3001,9 @@ sysprm_tune_client_parameters (void)
   return;
 }
 #endif /* CS_MODE */
+
+int
+prm_get_master_port_id (void)
+{
+  return PRM_TCP_PORT_ID;
+}

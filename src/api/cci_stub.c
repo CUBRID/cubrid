@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -729,6 +729,8 @@ cci_u_type_to_type (T_CCI_U_TYPE utype)
       return CI_TYPE_VARBIT;
     case CCI_U_TYPE_NUMERIC:
       return CI_TYPE_NUMERIC;
+    case CCI_U_TYPE_BIGINT:
+      return CI_TYPE_BIGINT;
     case CCI_U_TYPE_INT:
       return CI_TYPE_INT;
     case CCI_U_TYPE_SHORT:
@@ -745,6 +747,8 @@ cci_u_type_to_type (T_CCI_U_TYPE utype)
       return CI_TYPE_TIME;
     case CCI_U_TYPE_TIMESTAMP:
       return CI_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_DATETIME:
+      return CI_TYPE_DATETIME;
     case CCI_U_TYPE_SET:
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
@@ -771,6 +775,8 @@ type_to_cci_u_type (CI_TYPE type)
     {
     case CI_TYPE_NULL:
       return CCI_U_TYPE_NULL;
+    case CI_TYPE_BIGINT:
+      return CCI_U_TYPE_BIGINT;
     case CI_TYPE_INT:
       return CCI_U_TYPE_INT;
     case CI_TYPE_SHORT:
@@ -797,6 +803,8 @@ type_to_cci_u_type (CI_TYPE type)
       return CCI_U_TYPE_DATE;
     case CI_TYPE_TIMESTAMP:
       return CCI_U_TYPE_TIMESTAMP;
+    case CI_TYPE_DATETIME:
+      return CCI_U_TYPE_DATETIME;
     case CI_TYPE_MONETARY:
       return CCI_U_TYPE_MONETARY;
     case CI_TYPE_NUMERIC:
@@ -921,6 +929,10 @@ get_type_value_size (CI_TYPE type, int *len)
 
   switch (type)
     {
+    case CI_TYPE_BIGINT:
+      *len = sizeof (INT64);
+      break;
+
     case CI_TYPE_INT:
       *len = sizeof (int);
       break;
@@ -951,6 +963,7 @@ get_type_value_size (CI_TYPE type, int *len)
     case CI_TYPE_TIME:
     case CI_TYPE_DATE:
     case CI_TYPE_TIMESTAMP:
+    case CI_TYPE_DATETIME:
       *len = sizeof (CI_TIME);
       break;
 
@@ -1001,7 +1014,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_INT:
-      if (len < sizeof (int))
+      if (len < SSIZEOF (int))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1011,7 +1024,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_SHORT:
-      if (len < sizeof (short))
+      if (len < SSIZEOF (short))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1027,7 +1040,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_FLOAT:
-      if (len < sizeof (float))
+      if (len < SSIZEOF (float))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1037,7 +1050,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_DOUBLE:
-      if (len < sizeof (float))
+      if (len < SSIZEOF (float))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1088,7 +1101,8 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
     case CI_TYPE_TIME:
     case CI_TYPE_DATE:
     case CI_TYPE_TIMESTAMP:
-      if (len < sizeof (CI_TIME))
+    case CI_TYPE_DATETIME:
+      if (len < SSIZEOF (CI_TIME))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1099,7 +1113,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_MONETARY:
-      if (len < sizeof (double))
+      if (len < SSIZEOF (double))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1147,7 +1161,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       return NO_ERROR;
 
     case CI_TYPE_COLLECTION:
-      if (len < sizeof (CI_COLLECTION *))
+      if (len < SSIZEOF (CI_COLLECTION *))
 	{
 	  return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	}
@@ -1155,7 +1169,7 @@ api_val_cci_bind_bind (CI_TYPE type, void *ptr, int len,
       if (bind->flag & API_VAL_CCI_BIND_FLAG_SET)
 	{
 	  int res;
-	  T_CCI_SET tset;
+	  T_CCI_SET tset = NULL;
 
 	  res = xcol_to_cci_set (*(CI_COLLECTION *) ptr, &tset);
 	  if (res != NO_ERROR)
@@ -1326,7 +1340,7 @@ get_value_from_req_handle (CI_CONNECTION conn, int req_handle,
 	}
       else if (bind.atype == CCI_A_TYPE_STR)
 	{
-	  if (indicator + 1 > len)
+	  if (indicator + 1 > (ssize_t) len)
 	    {
 	      return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	    }
@@ -2155,7 +2169,7 @@ api_qrmeta_get_info (API_RESULTSET_META * rm,
 		     CI_RMETA_INFO_TYPE type, void *arg, size_t size)
 {
   RESULTSET_META_IMPL *prmeta = (RESULTSET_META_IMPL *) rm;
-  int len;
+  size_t len = 0;
   char *p;
 
   assert (prmeta != NULL);
@@ -2170,7 +2184,7 @@ api_qrmeta_get_info (API_RESULTSET_META * rm,
     case CI_RMETA_INFO_COL_LABEL:
       {
 	p = prmeta->bp->col_info[index - 1].real_attr;
-	p = p ? p : "";
+	p = p ? p : (char *) "";
 	len = strlen (p);
 	if (size < len + 1)
 	  {
@@ -2183,7 +2197,7 @@ api_qrmeta_get_info (API_RESULTSET_META * rm,
     case CI_RMETA_INFO_COL_NAME:
       {
 	p = prmeta->bp->col_info[index - 1].col_name;
-	p = p ? p : "";
+	p = p ? p : (char *) "";
 	len = strlen (p);
 	if (size < len + 1)
 	  {
@@ -2228,7 +2242,7 @@ api_qrmeta_get_info (API_RESULTSET_META * rm,
     case CI_RMETA_INFO_TABLE_NAME:
       {
 	p = prmeta->bp->col_info[index - 1].class_name;
-	p = p ? p : "";
+	p = p ? p : (char *) "";
 	if (size < len + 1)
 	  {
 	    return ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
@@ -3469,7 +3483,6 @@ opool_glo_insert (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   assert (pool != NULL);
   assert (glo != NULL);
   assert (buf != NULL);
-  assert (bufsz >= 0);
 
   res = opool_lazy_get_glo_offset (pool, glo, &off);
   if (res != NO_ERROR)
@@ -3511,7 +3524,6 @@ opool_glo_delete (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
 
   assert (pool != NULL);
   assert (glo != NULL);
-  assert (sz >= 0);
 
   res = opool_lazy_get_glo_offset (pool, glo, &off);
   if (res != NO_ERROR)
@@ -3554,7 +3566,6 @@ opool_glo_read (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   assert (pool != NULL);
   assert (glo != NULL);
   assert (buf != NULL);
-  assert (bufsz >= 0);
   assert (nread != NULL);
 
   res = opool_lazy_get_glo_offset (pool, glo, &off);
@@ -3600,7 +3611,6 @@ opool_glo_write (API_OBJECT_RESULTSET_POOL * poo, CI_OID * glo,
   assert (pool != NULL);
   assert (glo != NULL);
   assert (buf != NULL);
-  assert (sz >= 0);
 
   res = opool_lazy_get_glo_offset (pool, glo, &off);
   if (res != NO_ERROR)
@@ -4810,7 +4820,7 @@ cci_set_to_xcol (CI_CONNECTION conn, T_CCI_SET tset, CI_COLLECTION * rcol)
   CI_COLLECTION col;
   CCI_COLLECTION *co;
   API_VAL *pv;
-  int i, size;
+  int i, size = 0;
   int res;
 
   assert (tset != NULL);
@@ -4942,7 +4952,7 @@ ci_create_connection_impl (CI_CONNECTION * conn)
   int rid;
   CONNECTION_IMPL *pconn;
   BH_INTERFACE *bh;
-  CCI_OBJECT_POOL *pool;
+  CCI_OBJECT_POOL *pool = NULL;
 
   pconn = (CONNECTION_IMPL *) API_CALLOC (1, sizeof (*pconn));
   if (pconn == NULL)
@@ -5091,7 +5101,7 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * conn,
 			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
-  int res;
+  int res = 0;
 
   switch (option)
     {
@@ -5156,7 +5166,7 @@ ci_conn_get_option_impl (COMMON_API_STRUCTURE * conn,
 			 CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   CONNECTION_IMPL *pconn = (CONNECTION_IMPL *) conn;
-  int res;
+  int res = 0;
 
   switch (option)
     {
@@ -5527,7 +5537,6 @@ ci_stmt_execute_impl (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * rs, int *r)
     {
       VALUE_AREA *va;
       API_VALUE *v;
-      int val_tag;
 
       res = pstmt->params->ifs->check (pstmt->params, i, CHECK_FOR_GET);
       if (res != NO_ERROR)
@@ -5541,7 +5550,6 @@ ci_stmt_execute_impl (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * rs, int *r)
 	  return res;
 	}
 
-      val_tag = (int) va;
       if (v == NULL)
 	{
 	  return ER_INTERFACE_PARAM_IS_NOT_SET;
@@ -5884,7 +5892,6 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * stmt,
   int res;
   VALUE_AREA *va;
   API_VAL *pv;
-  int val_tag;
 
   if (!(pstmt->status & CI_STMT_STATUS_PREPARED))
     {
@@ -5909,7 +5916,6 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * stmt,
       return res;
     }
 
-  val_tag = (int) va;
   if (pv != NULL)
     {
       res = get_value_from_api_val (pv, type, addr, len, outlen, isnull);
@@ -6220,7 +6226,7 @@ ci_batch_res_get_error_impl (COMMON_API_STRUCTURE * br, int index,
 {
   BATCH_RESULT_IMPL *pbr = (BATCH_RESULT_IMPL *) br;
   int r;
-  char *msg;
+  const char *msg;
 
   if (index > pbr->bptr->num_query)
     {

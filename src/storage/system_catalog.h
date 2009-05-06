@@ -104,14 +104,6 @@ struct cls_info
 
 extern CTID catalog_Id;		/* global catalog identifier */
 
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern int xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
-						      OID * class_id,
-						      HFID * hfid,
-						      int *can_accept);
-#endif /* SERVER_MODE */
-
 extern void catalog_free_disk_attribute (DISK_ATTR * atr);
 extern void catalog_free_representation (DISK_REPR * dr);
 extern void catalog_free_class_info (CLS_INFO * Cls_Info);

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -151,15 +151,20 @@
 
 #define PT_IS_NUMERIC_TYPE(t) \
         ( (((t) == PT_TYPE_INTEGER)  || \
+	   ((t) == PT_TYPE_BIGINT)   || \
 	   ((t) == PT_TYPE_FLOAT)    || \
 	   ((t) == PT_TYPE_DOUBLE)   || \
 	   ((t) == PT_TYPE_SMALLINT) || \
 	   ((t) == PT_TYPE_MONETARY) || \
 	   ((t) == PT_TYPE_NUMERIC)) ? true : false )
 
-#define PT_IS_COUNTER_TYPE(t) \
+#define PT_IS_DISCRETE_NUMBER_TYPE(t) \
         ( (((t) == PT_TYPE_INTEGER)  || \
+           ((t) == PT_TYPE_BIGINT)   || \
 	   ((t) == PT_TYPE_SMALLINT)) ? true : false )
+
+#define PT_IS_COUNTER_TYPE(t) \
+		PT_IS_DISCRETE_NUMBER_TYPE(t)
 
 #define PT_IS_COLLECTION_TYPE(t) \
         ( (((t) == PT_TYPE_SET)       || \
@@ -197,7 +202,8 @@
 #define PT_IS_DATE_TIME_TYPE(t) \
         ( (((t) == PT_TYPE_DATE)       || \
 	   ((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)) ? true : false )
+	   ((t) == PT_TYPE_TIMESTAMP)  || \
+	   ((t) == PT_TYPE_DATETIME)) ? true : false )
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
@@ -644,6 +650,7 @@ enum pt_type_enum
   PT_TYPE_DATE,
   PT_TYPE_TIME,
   PT_TYPE_TIMESTAMP,
+  PT_TYPE_DATETIME,
   PT_TYPE_MONETARY,
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
@@ -670,6 +677,8 @@ enum pt_type_enum
 
   PT_TYPE_EXPR_SET,		/* type of parentheses expr set, avail for parser only */
   PT_TYPE_RESULTSET,
+
+  PT_TYPE_BIGINT,
 
   PT_TYPE_MAX
 };
@@ -815,6 +824,7 @@ typedef enum
   PT_HOUR,
   PT_MINUTE,
   PT_SECOND,
+  PT_MILLISECOND,
 
   PT_LDB_MAX_ACTIVE,
   PT_LDB_MIN_ACTIVE,
@@ -981,8 +991,8 @@ typedef enum
   PT_LTRIM, PT_RTRIM, PT_LPAD, PT_RPAD, PT_REPLACE, PT_TRANSLATE,
   PT_ADD_MONTHS, PT_LAST_DAY, PT_MONTHS_BETWEEN, PT_SYS_DATE,
   PT_TO_CHAR, PT_TO_DATE, PT_TO_NUMBER,
-  PT_SYS_TIME, PT_SYS_TIMESTAMP,
-  PT_TO_TIME, PT_TO_TIMESTAMP,
+  PT_SYS_TIME, PT_SYS_TIMESTAMP, PT_SYS_DATETIME,
+  PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
   PT_CURRENT_VALUE, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_EXTRACT,
@@ -1166,19 +1176,18 @@ struct semantic_chk_info
 {
   PT_NODE *top_node;		/* top_node_arg  */
   PT_NODE *attrdefs;		/* NULL or a vclass attribute defs list */
-  bool donot_fold;		/* false - off, true - on */
-  bool unbound_hostvar;		/* found a hostvar
-				   whose data type is unbound */
-  bool system_class;		/* system class(es) is(are) referenced */
   PT_NODE *Oracle_outerjoin_spec;	/* Oracle style outer join check */
   int Oracle_outerjoin_attr_num;	/* Oracle style outer join check */
   int Oracle_outerjoin_subq_num;	/* Oracle style outer join check */
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
+  bool donot_fold;		/* false - off, true - on */
+  bool unbound_hostvar;		/* found a hostvar
+				   whose data type is unbound */
+  bool system_class;		/* system class(es) is(are) referenced */
 };
 
 struct view_cache_info
 {
-  int number_of_attrs;
   PT_NODE *attrs;
   PT_NODE *vquery_for_query;
   PT_NODE *vquery_for_query_in_gdb;
@@ -1186,16 +1195,17 @@ struct view_cache_info
   PT_NODE *vquery_for_update_in_gdb;
   PT_NODE *inverted_vquery_for_update;
   PT_NODE *inverted_vquery_for_update_in_gdb;
-  DB_AUTH authorization;
   char **expressions;
+  int number_of_attrs;
+  DB_AUTH authorization;
   char sent;			/* has proxy info been sent to driver? */
 };
 
 struct parser_hint
 {
   const char *tokens;
-  PT_HINT_ENUM hint;
   PT_NODE *arg_list;
+  PT_HINT_ENUM hint;
 };
 
 
@@ -1238,8 +1248,8 @@ struct pt_alter_info
       PT_MISC_TYPE meta;	/* PT_META, PT_NORMAL */
       PT_NODE *old_name;
       PT_NODE *new_name;
-      PT_MISC_TYPE mthd_type;	/* PT_META, PT_NORMAL */
       PT_NODE *mthd_name;
+      PT_MISC_TYPE mthd_type;	/* PT_META, PT_NORMAL */
     } rename;
     struct
     {
@@ -1264,8 +1274,8 @@ struct pt_alter_user_info
 struct pt_alter_trigger_info
 {
   PT_NODE *trigger_spec_list;	/* PT_TRIGGER_SPEC_LIST */
-  PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
   PT_NODE *trigger_priority;	/* PT_VALUE */
+  PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
 };
 
 /* Info for ATTACH & PREPARE TO COMMIT statements */
@@ -1288,8 +1298,8 @@ struct pt_attr_def_info
 /* Info for AUTH_CMD */
 struct pt_auth_cmd_info
 {
-  PT_PRIV_TYPE auth_cmd;	/* enum PT_SELECT_PRIV, PT_ALL_PRIV,... */
   PT_NODE *attr_mthd_list;	/* PT_NAME (list of attr names)  */
+  PT_PRIV_TYPE auth_cmd;	/* enum PT_SELECT_PRIV, PT_ALL_PRIV,... */
 };
 
 /* Info COMMIT WORK  */
@@ -1324,8 +1334,8 @@ struct pt_index_info
   PT_NODE *indexed_class;	/* PT_NAME */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
-  char unique;			/* UNIQUE specified? */
   int reverse;			/* REVERSE */
+  char unique;			/* UNIQUE specified? */
 };
 
 /* CREATE USER INFO */
@@ -1341,14 +1351,14 @@ struct pt_create_user_info
 struct pt_create_trigger_info
 {
   PT_NODE *trigger_name;	/* PT_NAME */
-  PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
   PT_NODE *trigger_priority;	/* PT_VALUE */
+  PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
   PT_MISC_TYPE condition_time;	/* BEFORE, AFTER, DEFERRED */
   PT_NODE *trigger_event;	/* PT_EVENT_SPEC */
   PT_NODE *trigger_reference;	/* PT_EVENT_OBJECT (list) */
   PT_NODE *trigger_condition;	/* PT_EXPR or PT_METHOD_CALL */
-  PT_MISC_TYPE action_time;	/* BEFORE, AFTER, DEFERRED */
   PT_NODE *trigger_action;	/* PT_TRIGGER_ACTION */
+  PT_MISC_TYPE action_time;	/* BEFORE, AFTER, DEFERRED */
 };
 
 /* CREATE SERIAL INFO */
@@ -1382,18 +1392,18 @@ struct pt_auto_increment_info
 /* Info for the PARTITION node */
 struct pt_partition_info
 {
-  PT_PARTITION_TYPE type;
   PT_NODE *expr;
   PT_NODE *keycol;
   PT_NODE *hashsize;
   PT_NODE *parts;		/* PT_PARTS_INFO list */
+  PT_PARTITION_TYPE type;
 };
 
 struct pt_parts_info
 {
-  PT_PARTITION_TYPE type;
   PT_NODE *name;		/* PT_NAME */
   PT_NODE *values;		/* PT_VALUE (or list) */
+  PT_PARTITION_TYPE type;
 };
 #define PARTITIONED_SUB_CLASS_TAG "__p__"
 
@@ -1402,8 +1412,8 @@ struct pt_data_type_info
 {
   PT_NODE *entity;		/* class PT_NAME list for PT_TYPE_OBJECT */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
-  PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   PT_NODE *virt_data_type;	/* for non-primitive types- sets, etc. */
+  PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
   int units;			/* for money */
@@ -1420,21 +1430,21 @@ struct pt_delete_info
   PT_NODE *search_cond;		/* PT_EXPR */
   PT_NODE *using_index;		/* PT_NAME (list) */
   PT_NODE *cursor_name;		/* PT_NAME */
+  PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_HINT_ENUM hint;		/* hint flag */
   bool has_trigger;		/* whether it has triggers */
   bool server_delete;		/* whether it can be server-side deletion */
-  PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
-  PT_HINT_ENUM hint;		/* hint flag */
-  PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
 };
 
 /* DOT_INFO*/
 struct pt_dot_info
 {
-  PT_OP_TYPE op;		/* binary or unary op code */
   PT_NODE *arg1;		/* PT_EXPR etc.  first argument */
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
-  int dummy;			/* was int paren_type; in expr_info, now unused  */
   PT_NODE *selector;		/* only set if selector used A[SELECTOR].B  */
+  PT_OP_TYPE op;		/* binary or unary op code */
+  short tag_click_counter;	/* 0: normal name, 1: click counter name */
 };
 
 /* DROP ENTITY
@@ -1443,8 +1453,8 @@ struct pt_dot_info
 struct pt_drop_info
 {
   PT_NODE *spec_list;		/* PT_SPEC (list) */
-  PT_MISC_TYPE entity_type;	/* PT_VCLASS, PT_CLASS   */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_MISC_TYPE entity_type;	/* PT_VCLASS, PT_CLASS   */
 };
 
 /* DROP USER INFO */
@@ -1484,12 +1494,12 @@ struct pt_spec_info
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META  */
   PT_MISC_TYPE derived_table_type;	/* PT_IS_SUBQUERY, PT_IS_SET_EXPR, or PT_IS_CSELECT */
   PT_MISC_TYPE flavor;		/* enum 0 or PT_METHOD_ENTITY */
-  short location;		/* n-th position in FROM (start from 0); init val = -1 */
-  bool natural;			/* -- dose not support natural join */
-  PT_JOIN_TYPE join_type;
   PT_NODE *on_cond;
   PT_NODE *using_cond;		/* -- dose not support named columns join */
+  PT_JOIN_TYPE join_type;
   int lock_hint;
+  short location;		/* n-th position in FROM (start from 0); init val = -1 */
+  bool natural;			/* -- dose not support natural join */
 };
 
 /* Info for an EVALUATE object */
@@ -1509,8 +1519,8 @@ struct pt_event_object_info
 /* Info for an EVENT spec */
 struct pt_event_spec_info
 {
-  PT_EVENT_TYPE event_type;
   PT_NODE *event_target;	/* PT_EVENT_TARGET */
+  PT_EVENT_TYPE event_type;
 };
 
 /* Info for an EVENT target */
@@ -1531,19 +1541,19 @@ struct pt_execute_trigger_info
  */
 struct pt_expr_info
 {
-  PT_OP_TYPE op;		/* binary or unary op code */
   PT_NODE *arg1;		/* PT_EXPR etc.  first argument */
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
   PT_NODE *value;		/* only set if we evaluate it */
+  PT_OP_TYPE op;		/* binary or unary op code */
   int paren_type;		/* 0 - none, else - ()  */
   PT_NODE *arg3;		/* possible third argument (like, between, or case) */
   PT_NODE *cast_type;		/* PT_DATA_TYPE, resultant cast domain */
-  short continued_case;		/* 0 - false, 1 - true */
   PT_MISC_TYPE qualifier;	/* trim qualifier (LEADING, TRAILING, BOTH),
 				 * datetime extract field specifier (YEAR,
 				 * ..., SECOND), or case expr type specifier
 				 * (NULLIF, COALESCE, SIMPLE_CASE, SEARCHED_CASE)
 				 */
+  short continued_case;		/* 0 - false, 1 - true */
 
 #define PT_EXPR_INFO_CNF_DONE       1	/* CNF conversion has done? */
 #define PT_EXPR_INFO_EMPTY_RANGE    2	/* empty RANGE spec? */
@@ -1582,8 +1592,8 @@ struct pt_file_path_info
 /* FUNCTIONS ( COUNT, AVG, ....)  */
 struct pt_function_info
 {
-  FUNC_TYPE function_type;	/* PT_COUNT, PT_AVG, ... */
   PT_NODE *arg_list;		/* PT_EXPR(list) */
+  FUNC_TYPE function_type;	/* PT_COUNT, PT_AVG, ... */
   PT_MISC_TYPE all_or_distinct;	/* will be PT_ALL or PT_DISTINCT */
   const char *generic_name;	/* only for type PT_GENERIC */
   char hidden_column;		/* used for updates and deletes for
@@ -1594,23 +1604,23 @@ struct pt_function_info
 /* Info for Get Optimization Level statement */
 struct pt_get_opt_lvl_info
 {
-  PT_MISC_TYPE option;		/* PT_OPT_LVL, PT_OPT_COST */
   PT_NODE *args;
   PT_NODE *into_var;		/* PT_VALUE */
+  PT_MISC_TYPE option;		/* PT_OPT_LVL, PT_OPT_COST */
 };
 
 /* Info for Get Trigger statement */
 struct pt_get_trigger_info
 {
-  PT_MISC_TYPE option;		/* PT_TRIGGER_DEPTH, PT_TRIGGER_TRACE */
   PT_NODE *into_var;		/* PT_VALUE */
+  PT_MISC_TYPE option;		/* PT_TRIGGER_DEPTH, PT_TRIGGER_TRACE */
 };
 
 /* Info for Get Transaction statement */
 struct pt_get_xaction_info
 {
-  PT_MISC_TYPE option;		/* PT_ISOLATION_LEVEL or PT_LOCK_TIMEOUT */
   PT_NODE *into_var;		/* PT_VALUE */
+  PT_MISC_TYPE option;		/* PT_ISOLATION_LEVEL or PT_LOCK_TIMEOUT */
 };
 
 /* GRANT INFO */
@@ -1625,8 +1635,8 @@ struct pt_grant_info
 /* Info for Host_Var */
 struct pt_host_var_info
 {
-  PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   const char *str;		/* ??? */
+  PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
 };
 
@@ -1644,8 +1654,8 @@ struct pt_insert_info
   PT_NODE *where;		/* for view with check option checking */
   PT_NODE *ldb_insert;		/* PT_INSERT in ldb terms */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
-  PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_HINT_ENUM hint;		/* hint flag */
 };
 
 /* Info for Transaction Isolation Level */
@@ -1704,8 +1714,8 @@ struct pt_name_info
   PT_NODE *path_correlation;	/* as in a.b.c [path_correlation].d.e.f */
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
   PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER */
-  unsigned short correlation_level;	/* for correlated attributes */
   unsigned int custom_print;
+  unsigned short correlation_level;	/* for correlated attributes */
 
 #define PT_NAME_INFO_DOT_SPEC   1	/* x, y of x.y.z */
 #define PT_NAME_INFO_DOT_NAME   2	/* z of x.y.z */
@@ -1719,6 +1729,7 @@ struct pt_name_info
 #define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
 #define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
+  short tag_click_counter;	/* 0: normal name, 1: click counter name */
 };
 
 
@@ -1801,7 +1812,6 @@ struct pt_select_info
   PT_NODE *having;		/* PT_EXPR        */
   PT_NODE *using_index;		/* PT_NAME (list) */
   PT_NODE *with_increment;	/* PT_NAME (list) */
-  PT_HINT_ENUM hint;
   PT_NODE *ordered;		/* PT_NAME (list) */
   PT_NODE *use_nl;		/* PT_NAME (list) */
   PT_NODE *use_idx;		/* PT_NAME (list) */
@@ -1809,8 +1819,9 @@ struct pt_select_info
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
-  int flavor;
   PT_NODE *check_where;		/* with check option predicate */
+  PT_HINT_ENUM hint;
+  int flavor;
   short flag;			/* flags */
 };
 
@@ -1845,10 +1856,10 @@ struct pt_query_info
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
   PT_NODE *for_update;		/* PT_EXPR (list) */
-  PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *qcache_hint;		/* enable/disable query cache */
   void *xasl;			/* xasl proc pointer */
   UINTPTR id;			/* query unique id # */
+  PT_HINT_ENUM hint;		/* hint flag */
   union
   {
     PT_SELECT_INFO select;
@@ -1860,8 +1871,8 @@ struct pt_query_info
 /* Info for Set Optimization Level statement */
 struct pt_set_opt_lvl_info
 {
-  PT_MISC_TYPE option;		/* PT_OPT_LVL, PT_OPT_COST */
   PT_NODE *val;			/* PT_VALUE */
+  PT_MISC_TYPE option;		/* PT_OPT_LVL, PT_OPT_COST */
 };
 
 /* Info for Set Parameters statement */
@@ -1879,8 +1890,8 @@ struct pt_set_xaction_info
 /* Info for Set Trigger statement */
 struct pt_set_trigger_info
 {
-  PT_MISC_TYPE option;		/* PT_TRIGGER_DEPTH, PT_TRIGGER_TRACE */
   PT_NODE *val;			/* PT_VALUE */
+  PT_MISC_TYPE option;		/* PT_TRIGGER_DEPTH, PT_TRIGGER_TRACE */
 };
 
 
@@ -1901,9 +1912,9 @@ struct pt_timeout_info
 /* Info for Trigger Action */
 struct pt_trigger_action_info
 {
-  PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
+  PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
 };
 
 /* Info for Trigger Spec List */
@@ -1926,13 +1937,13 @@ struct pt_update_info
   PT_NODE *object_parameter;	/* parameter node */
   PT_NODE *cursor_name;		/*  PT_NAME      */
   PT_NODE *check_where;		/* with check option predicate */
+  PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_HINT_ENUM hint;		/* hint flag */
   bool has_trigger;		/* whether it has triggers */
   bool has_unique;		/* whether there's unique constraint */
   bool server_update;		/* whether it can be server-side update */
   bool do_class_attrs;		/* whether it is on class attributes */
-  PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
-  PT_HINT_ENUM hint;		/* hint flag */
-  PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
 };
 
 /* UPDATE STATISTICS INFO */
@@ -1979,6 +1990,7 @@ typedef enum pt_time_zones
 typedef long PT_TIME;
 typedef long PT_UTIME;
 typedef long PT_DATE;
+typedef DB_DATETIME PT_DATETIME;
 
 /* enum currencty types */
 typedef enum pt_currency_types
@@ -2001,6 +2013,7 @@ struct pt_monetary_value
 union pt_data_value
 {
   long i;
+  DB_BIGINT bigint;
   float f;
   double d;
   PARSER_VARCHAR *str;
@@ -2009,6 +2022,7 @@ union pt_data_value
   PT_TIME time;
   PT_DATE date;
   PT_UTIME utime;
+  PT_DATETIME datetime;
   PT_MONETARY money;
   PT_NODE *set;			/* constant sets */
   void *elo;			/* ??? */
@@ -2019,13 +2033,13 @@ union pt_data_value
 /* Info for the VALUE node */
 struct pt_value_info
 {
-  PT_DATA_VALUE data_value;	/* see above UNION defs */
   const char *text;		/* original text of numbers */
+  PT_DATA_VALUE data_value;	/* see above UNION defs */
   DB_VALUE db_value;
   short db_value_is_initialized;
   short db_value_is_in_workspace;
-  char string_type;		/* ' ', 'N', 'B', or 'X' */
   short location;		/* 0 : WHERE; n : join condition of n-th FROM */
+  char string_type;		/* ' ', 'N', 'B', or 'X' */
 };
 
 
@@ -2042,17 +2056,17 @@ struct pt_foreign_key_info
   PT_NODE *attrs;		/* List of attribute names */
   PT_NODE *referenced_class;	/* Class name              */
   PT_NODE *referenced_attrs;	/* List of attribute names */
+  PT_NODE *cache_attr;
   PT_MISC_TYPE match_type;	/* full or partial         */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-  PT_NODE *cache_attr;
 };
 
 /* Info for the CONSTRAINT node */
 struct pt_constraint_info
 {
-  PT_CONSTRAINT_TYPE type;
   PT_NODE *name;
+  PT_CONSTRAINT_TYPE type;
   short deferrable;
   short initially_deferred;
   union
@@ -2088,10 +2102,10 @@ struct pt_pointer_info
 struct pt_stored_proc_info
 {
   PT_NODE *name;
-  PT_MISC_TYPE type;
   PT_NODE *param_list;
-  PT_TYPE_ENUM ret_type;
   PT_NODE *java_method;
+  PT_MISC_TYPE type;
+  PT_TYPE_ENUM ret_type;
 };
 
 struct pt_stored_proc_param_info
@@ -2184,12 +2198,12 @@ union pt_statement_info
 struct pt_agg_info
 {
   PT_NODE *from;		/* for all          */
-  bool agg_found;		/* for all          */
-  int arg_list_spec_num;	/* for all       */
-  int depth;			/* for all          */
   PT_NODE *group_by;		/* for check_single */
   PT_NODE *new_from;		/* for rewrite_agg  */
   PT_NODE *derived_select;	/* for rewrite_agg  */
+  int arg_list_spec_num;	/* for all       */
+  int depth;			/* for all          */
+  bool agg_found;		/* for all          */
 };
 
 /*
@@ -2214,22 +2228,22 @@ struct parser_node
   PT_NODE *or_next;		/* forward link for DNF list */
   void *etc;			/* application specific info hook */
   UINTPTR spec_ident;		/* entity spec equivilance class */
-  PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   TP_DOMAIN *expected_domain;	/* expected domain for input marker */
   PT_NODE *data_type;		/* for non-primitive types, Sets, objects stec. */
   XASL_ID *xasl_id;		/* XASL_ID for this SQL statement */
   const char *alias_print;	/* the column alias */
+  PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
+  CACHE_TIME cache_time;	/* client or server cache time */
   unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
   unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
   unsigned do_not_keep:1;	/* the statement will not be kept after execution - used for plan cache */
   unsigned partition_pruned:1;	/* partition pruning takes place */
-  unsigned si_timestamp:1;	/* get server info; SYS_TIMESTAMP */
+  unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
   unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
   unsigned clt_cache_check:1;	/* check client cache validity */
   unsigned clt_cache_reusable:1;	/* client cache is reusable */
   unsigned use_plan_cache:1;	/* used for plan cache */
   unsigned use_query_cache:1;
-  CACHE_TIME cache_time;	/* client or server cache time */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -2256,6 +2270,8 @@ struct parser_context
   PT_CASECMP_FUN casecmp;	/* for case insensitive comparisons */
 
   int id;			/* internal parser id */
+  int statement_number;		/* user-initialized, incremented by parser */
+
   const char *buffer;		/* for parse buffer */
   FILE *file;			/* for parse file */
   int stack_top;		/* parser stack top */
@@ -2265,22 +2281,18 @@ struct parser_context
 
   char *error_buffer;		/* for parse error messages            */
 
-  int statement_number;		/* user-initialized,
-				 * incremented by parser */
   PT_NODE **statements;		/* array of statement pointers */
   PT_NODE *error_msgs;		/* list of parsing error messages */
   PT_NODE *warnings;		/* list of warning messages */
 
-  unsigned int custom_print;
   PT_PRINT_VALUE_FUNC print_db_value;
 
   jmp_buf jmp_env;		/* environment for longjumping on
 				   out of memory errors. */
+  unsigned int custom_print;
   int jmp_env_active;		/* flag to indicate jmp_env status */
-  int au_save;			/* authorization to restore if longjmp while
-				   authorization turned off */
 
-  int query_id;			/* id assigned to current query */
+  QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder;
 				   DB_VALUE array */
   PT_NODE *input_values;	/* temporary place-holder for ldb
@@ -2300,12 +2312,19 @@ struct parser_context
 				 * (xasl) procedures. */
   struct start_proc *start_list;	/* to keep sqlm start procs reentrantly */
   struct xasl_node *read_list;	/* to keep sqlm read procs reentrantly */
-
-  QUERY_EXEC_MODE exec_mode;	/* flag used to specify query exec mode */
-  DB_VALUE sys_timestamp;
-  DB_VALUE local_transaction_id;
-  int num_lcks_classes;
   char **lcks_classes;
+
+  size_t input_buffer_length;
+  size_t input_buffer_position;
+
+  int au_save;			/* authorization to restore if longjmp while
+				   authorization turned off */
+  QUERY_EXEC_MODE exec_mode;	/* flag used to specify query exec mode */
+
+  DB_VALUE sys_datetime;
+  DB_VALUE local_transaction_id;
+
+  int num_lcks_classes;
   PT_INCLUDE_OID_TYPE oid_included;	/* for update cursors */
 
   unsigned dont_prt:1;		/* asserted to avoid expensive pt_append_str calls
@@ -2328,9 +2347,14 @@ struct parser_context
 					   if the string is too long to print */
   unsigned long_string_skipped:1;	/* pt_print_value set to 1
 					   when it skipped to print long string */
-  long input_buffer_length;
-  long input_buffer_position;
 };
+
+
+
+void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
+				     const int length, const int align);
+
+
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

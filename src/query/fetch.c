@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -16,6 +16,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+
 
 /*
  * fetch.c - Object/Tuple value fetch routines
@@ -89,6 +90,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_TO_DATE:
     case T_TO_TIME:
     case T_TO_TIMESTAMP:
+    case T_TO_DATETIME:
     case T_TO_NUMBER:
     case T_INSTR:
       /* fetch lhs, rhs, and third value */
@@ -232,6 +234,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_DATE:
     case T_SYS_TIME:
     case T_SYS_TIMESTAMP:
+    case T_SYS_DATETIME:
     case T_LOCAL_TRANSACTION_ID:
       /* nothing to fetch */
       break;
@@ -506,7 +509,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       else if (PRIM_TYPE (peek_right) == DB_TYPE_BIT
 	       || PRIM_TYPE (peek_right) == DB_TYPE_VARBIT)
 	{
-	  int len;
+	  int len = 0;
 
 	  db_get_bit (peek_right, &len);
 	  db_make_int (arithptr->value, len);
@@ -675,25 +678,31 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_SYS_DATE:
-      {
-	DB_DATE db_date;
-
-	db_timestamp_decode (&vd->sys_timestamp, &db_date, NULL);
-	DB_MAKE_ENCODED_DATE (arithptr->value, &db_date);
-      }
+      DB_MAKE_ENCODED_DATE (arithptr->value, &vd->sys_datetime.date);
       break;
 
     case T_SYS_TIME:
       {
-	DB_DATE db_time;
-
-	db_timestamp_decode (&vd->sys_timestamp, NULL, &db_time);
+	DB_TIME db_time;
+	db_time = vd->sys_datetime.time / 1000;
 	DB_MAKE_ENCODED_TIME (arithptr->value, &db_time);
+	break;
+      }
+
+    case T_SYS_TIMESTAMP:
+      {
+	DB_TIMESTAMP db_timestamp;
+	DB_TIME db_time;
+
+	db_time = vd->sys_datetime.time / 1000;
+
+	db_timestamp_encode (&db_timestamp, &vd->sys_datetime.date, &db_time);
+	db_make_timestamp (arithptr->value, db_timestamp);
       }
       break;
 
-    case T_SYS_TIMESTAMP:
-      db_make_timestamp (arithptr->value, vd->sys_timestamp);
+    case T_SYS_DATETIME:
+      DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
       break;
 
     case T_LOCAL_TRANSACTION_ID:
@@ -744,6 +753,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else if (db_to_timestamp (peek_left, peek_right, peek_third,
 				arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TO_DATETIME:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_to_datetime (peek_left, peek_right, peek_third,
+			       arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

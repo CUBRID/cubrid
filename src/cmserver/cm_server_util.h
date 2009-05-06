@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_server_util.h - 
+ * cm_server_util.h -
  */
 
 #ifndef _CM_SERVER_UTIL_H_
@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock.h>
 #endif
 
@@ -39,7 +39,7 @@
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define PSERVER_MODULE_NAME "cub_auto.exe"
 #define FSERVER_MODULE_NAME "cub_js.exe"
 #else
@@ -116,19 +116,19 @@ typedef enum
   TIME_STR_FMT_DATE_TIME = NV_ADD_DATE_TIME
 } T_TIME_STR_FMT_TYPE;
 
-int ut_error_log (nvplist * req, char *errmsg);
-int ut_access_log (nvplist * req, char *msg);
+int ut_error_log (nvplist * req, const char *errmsg);
+int ut_access_log (nvplist * req, const char *msg);
 void uRemoveCRLF (char *str);
 int uStringEqual (const char *str1, const char *str2);
 int uStringEqualIgnoreCase (const char *str1, const char *str2);
 int ut_gettaskcode (char *task);
-int ut_send_response (int fd, nvplist * res);
-int ut_receive_request (int fd, nvplist * req);
-void ut_daemon_start ();
+int ut_send_response (SOCKET fd, nvplist * res);
+int ut_receive_request (SOCKET fd, nvplist * req);
+void ut_daemon_start (void);
 int uIsDatabaseActive (char *dbname);
 int uIsDatabaseActive2 (T_COMMDB_RESULT * cmd_res, char *dbn);
 void ut_dump_file_to_string (char *string, char *fname);
-int uRetrieveDBDirectory (char *dbname, char *target);
+int uRetrieveDBDirectory (const char *dbname, char *target);
 int uRetrieveDBLogDirectory (char *dbname, char *target);
 T_DB_SERVICE_MODE uDatabaseMode (char *dbname);
 int _isRegisteredDB (char *);
@@ -139,8 +139,8 @@ int uCreateLockFile (char *filename);
 void uRemoveLockFile (int fd);
 int uCreateDir (char *path);
 int uRemoveDir (char *dir, int remove_file_in_dir);
-void send_msg_with_file (int sock_fd, char *filename);
-int send_file_to_client (int sock_fd, char *file_name, FILE * log_file);
+void send_msg_with_file (SOCKET sock_fd, char *filename);
+int send_file_to_client (SOCKET sock_fd, char *file_name, FILE * log_file);
 int string_tokenize_accept_laststring_space (char *str, char *tok[],
 					     int num_tok);
 int make_version_info (char *cli_ver, int *major_ver, int *minor_ver);
@@ -149,7 +149,7 @@ int move_file (char *src_file, char *dest_file);
 
 void close_all_fds (int init_fd);
 char *ut_trim (char *str);
-void server_fd_clear (int srv_fd);
+void server_fd_clear (SOCKET srv_fd);
 int ut_write_pid (char *pid_file);
 int ut_disk_free_space (char *path);
 char *ip2str (unsigned char *ip, char *ip_str);
@@ -158,19 +158,20 @@ int string_tokenize2 (char *str, char *tok[], int num_tok, int c);
 int get_db_server_pid (char *dbname);
 int ut_get_task_info (char *task, char *access_log_flag,
 		      T_TASK_FUNC * task_func);
-char *time_to_str (time_t t, char *fmt, char *buf, int type);
+char *time_to_str (time_t t, const char *fmt, char *buf, int type);
 int read_from_socket (SOCKET fd, char *buf, int size);
-int write_to_socket (SOCKET fd, char *buf, int size);
-int run_child (char *argv[], int wait_flag, char *stdin_file,
-	       char *stdout_file, char *stderr_file, int *exit_status);
+int write_to_socket (SOCKET fd, const char *buf, int size);
+int run_child (const char *const argv[], int wait_flag,
+	       const char *stdin_file, char *stdout_file, char *stderr_file,
+	       int *exit_status);
 void wait_proc (int pid);
-int is_cmserver_process (int pid, char *module_name);
-int make_default_env ();
-#ifdef WIN32
+int is_cmserver_process (int pid, const char *module_name);
+int make_default_env (void);
+#if defined(WINDOWS)
 void remove_end_of_dir_ch (char *path);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int kill (int pid, int signo);
 void unix_style_path (char *path);
 char *nt_style_path (char *path, char *new_path_buf);

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -104,79 +104,7 @@
   ((apageid_ptr) = (INT32 *)((char *)(pgptr) + (offset)))
 
 #define FILE_SIZEOF_FHDR_WITH_DES_COMMENTS(fhdr_ptr) \
-  (sizeof(*fhdr_ptr) - 1 + fhdr_ptr->des.first_length)
-
-/*
- * Description of allocated sectors and pages for a volume. Note that the same
- * volume can be repeated in different sets of allocation. This is needed since
- * we need to record the pages in the order they were allocated
- */
-typedef struct file_allocset FILE_ALLOCSET;
-struct file_allocset
-{
-  INT16 volid;			/* Volume identifier */
-  int num_sects;		/* Number of sectors */
-  int num_pages;		/* Number of pages */
-  INT32 curr_sectid;		/* Sector on which last page was allocated.
-				   It is used as a guess for next page
-				   allocation */
-  int num_holes;		/* Indicate the number of identifiers (pages
-				   or slots) that can be compacted */
-  VPID start_sects_vpid;	/* Starting vpid address for sector table for
-				   this allocation set. See below for offset. */
-  INT16 start_sects_offset;	/* Offset where the sector table starts at the
-				   starting vpid. */
-  VPID end_sects_vpid;		/* Ending vpid address for sector table for
-				   this allocation set. See below for offset. */
-  INT16 end_sects_offset;	/* Offset where the sector table ends at
-				   ending vpid. */
-  VPID start_pages_vpid;	/* Starting vpid address for page table for
-				   this allocation set. See below for offset. */
-  INT16 start_pages_offset;	/* Offset where the page table starts at the
-				   starting vpid. */
-  VPID end_pages_vpid;		/* Ending vpid address for page table for this
-				   allocation set. See below for offset. */
-  INT16 end_pages_offset;	/* Offset where the page table ends at ending
-				   vpid. */
-  VPID next_allocset_vpid;	/* Address of next allocation set */
-  INT16 next_allocset_offset;	/* Offset of next allocation set at vpid */
-};
-
-/* File header */
-typedef struct file_header FILE_HEADER;
-struct file_header
-{
-  VFID vfid;			/* The File identifier itself, this is used for
-				   debugging purposes. */
-  FILE_TYPE type;		/* Type of the file such as Heap, B+tree,
-				   Extendible hashing, etc */
-  time_t creation;		/* Time of the creation of the file */
-  int ismark_as_deleted;	/* Is the file marked as deleted ? */
-  int num_table_vpids;		/* Number of total pages for file table. The
-				   file header and the arrays describing the
-				   allocated pages reside in these pages */
-  VPID next_table_vpid;		/* Next file table page */
-  VPID last_table_vpid;		/* Last file table page */
-  int num_user_pages;		/* Number of user allocated pages. It does not
-				   include the file table pages */
-  int num_user_pages_mrkdelete;	/* Num marked deleted pages */
-  int num_allocsets;		/* Number of volume arrays. Each volume array
-				   contains information of the volume
-				   identifier and the allocated sectors and
-				   pages */
-  FILE_ALLOCSET allocset;	/* The first allocation set */
-  VPID last_allocset_vpid;	/* Address of last allocation set */
-  INT16 last_allocset_offset;	/* Offset of last allocation set at vpid */
-
-  struct
-  {
-    int total_length;		/* Total length of description of file */
-    int first_length;		/* Length of the first part */
-    VPID next_part_vpid;	/* Location of the rest of file description
-				   comments */
-    char piece[1];		/* Really more than one */
-  } des;
-};
+  (SSIZEOF(*fhdr_ptr) - 1 + fhdr_ptr->des.first_length)
 
 typedef struct file_rest_des FILE_REST_DES;
 struct file_rest_des
@@ -404,7 +332,7 @@ static VFID *file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid,
 			   INT32 exp_numpages, FILE_TYPE * file_type,
 			   const void *file_des, VPID * first_prealloc_vpid,
 			   INT32 prealloc_npages);
-static int file_calculate_offset (INT16 start_offset, size_t size,
+static int file_calculate_offset (INT16 start_offset, int size,
 				  int nelements, INT16 * address_offset,
 				  VPID * address_vpid, VPID * ftb_vpids,
 				  int *current_ftb_page_index);
@@ -1924,7 +1852,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  /* Log before image */
 	  if (old_length > 0)
 	    {
-	      if ((old_length + sizeof (*rest) - 1) > DB_PAGESIZE)
+	      if ((old_length + SSIZEOF (*rest) - 1) > DB_PAGESIZE)
 		{
 		  log_append_undo_data (thread_p, RVFL_FILEDESC, &addr,
 					DB_PAGESIZE, (char *) addr.pgptr);
@@ -2445,7 +2373,7 @@ exit_on_error:
  * Note: Used only during file_create
  */
 static int
-file_calculate_offset (INT16 start_offset, size_t size, int nelements,
+file_calculate_offset (INT16 start_offset, int size, int nelements,
 		       INT16 * address_offset, VPID * address_vpid,
 		       VPID * ftb_vpids, int *current_ftb_page_index)
 {
@@ -2733,10 +2661,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 
   i = file_guess_numpages_overhead (thread_p, NULL, exp_numpages);
   exp_numpages += i;
-#if !defined(LP64)
-  /* under ILP32, max(off_t) is 2G. */
-  exp_numpages = MIN (exp_numpages, (INT_MAX / IO_PAGESIZE));
-#endif /* !LP64 */
+  exp_numpages = MIN (exp_numpages, VOL_MAX_NPAGES);
 
   vpid.volid =
     file_find_goodvol (thread_p, vfid->volid, NULL_VOLID, exp_numpages,
@@ -2958,7 +2883,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   VFID_COPY (&fhdr->vfid, vfid);
-  fhdr->type = *file_type;
+  fhdr->type = (INT16) *file_type;
   fhdr->creation = time (NULL);
   fhdr->ismark_as_deleted = false;
 
@@ -3004,8 +2929,9 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
     {
       ftb_page_index = 0;	/* In header page */
       allocset->start_sects_offset =
-	FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr);
-      DB_ALIGN (allocset->start_sects_offset, INT_ALIGNMENT);
+	(INT16) FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr);
+      allocset->start_sects_offset = DB_ALIGN (allocset->start_sects_offset,
+					       DOUBLE_ALIGNMENT);
     }
   else
     {
@@ -3018,7 +2944,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 
   /* find out end_sects_offset */
   ret = file_calculate_offset (allocset->start_sects_offset,
-			       sizeof (sectid), allocset->num_sects,
+			       (int) sizeof (sectid), allocset->num_sects,
 			       &allocset->end_sects_offset,
 			       &allocset->end_sects_vpid, table_vpids,
 			       &ftb_page_index);
@@ -3032,7 +2958,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   allocset->start_pages_vpid = table_vpids[ftb_page_index];
 
   /* find out start_pages_offset */
-  ret = file_calculate_offset (allocset->end_sects_offset, sizeof (sectid),
+  ret = file_calculate_offset (allocset->end_sects_offset,
+			       (int) sizeof (sectid),
 			       FILE_NUM_EMPTY_SECTS,
 			       &allocset->start_pages_offset,
 			       &allocset->start_pages_vpid,
@@ -3094,7 +3021,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	      /* DON'T NEED to log before image (undo) since file and pages of file
 	         would be deallocated during undo(abort). */
 	      log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
-				    (char *) aid_ptr - logdata, logdata);
+				    CAST_BUFLEN ((char *) aid_ptr - logdata),
+				    logdata);
 
 	      ret = file_ftabvpid_next (fhdr, addr.pgptr, &vpid);
 	      if (ret != NO_ERROR)
@@ -3127,7 +3055,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
       /* Don't need to log before image (undo) since file and pages of file
          would be deallocated during undo(abort). */
       log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
-			    (char *) aid_ptr - logdata, logdata);
+			    CAST_BUFLEN ((char *) aid_ptr - logdata),
+			    logdata);
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
     }
@@ -3259,7 +3188,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 #endif /* SERVER_MODE */
   bool pb_invalid_temp_called = false;
   bool out_of_range = false;
-  int cached_volid_bound;
+  int cached_volid_bound = -1;
   int ret = NO_ERROR;
 
   addr.vfid = vfid;
@@ -4624,7 +4553,7 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
   nsects = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
   /* Don't use more than 10% of the page in sectors.... This is just a guess
      we don't quite know if the special sector will be assigned to us. */
-  if ((nsects * sizeof (nsects)) > (DB_PAGESIZE / 10))
+  if ((nsects * SSIZEOF (nsects)) > (DB_PAGESIZE / 10))
     {
       nsects = (DB_PAGESIZE / 10) / sizeof (nsects);
     }
@@ -4751,7 +4680,7 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	       * Advance the pointers with the number of elements in this pointer
 	       * array
 	       */
-	      ahead = outptr - aid_ptr;
+	      ahead = CAST_BUFLEN (outptr - aid_ptr);
 	      count += ahead;
 	      aid_ptr += ahead;
 	    }
@@ -5472,8 +5401,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
 
-  if ((((FILE_NUM_EMPTY_SECTS * sizeof (to_vpid.pageid)) -
-	(allocset->num_holes * sizeof (to_vpid.pageid)) +
+  if ((((FILE_NUM_EMPTY_SECTS * SSIZEOF (to_vpid.pageid)) -
+	(allocset->num_holes * SSIZEOF (to_vpid.pageid)) +
 	allocset->end_pages_offset) >= DB_PAGESIZE)
       && VPID_EQ (&allocset->end_pages_vpid, &fhdr->last_table_vpid))
     {
@@ -5524,8 +5453,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     }
 
   /* Find the page where data will moved to */
-  if (((FILE_NUM_EMPTY_SECTS * sizeof (to_vpid.pageid)) -
-       (allocset->num_holes * sizeof (to_vpid.pageid)) +
+  if (((FILE_NUM_EMPTY_SECTS * SSIZEOF (to_vpid.pageid)) -
+       (allocset->num_holes * SSIZEOF (to_vpid.pageid)) +
        allocset->end_pages_offset) < DB_PAGESIZE)
     {
       /* Same page as from-page. Fetch the page anyhow, to avoid complicated
@@ -5546,7 +5475,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
 
       /* Fix the offset which indicate the end of the pageids */
-      allocset->end_pages_offset += nsects * sizeof (to_vpid.pageid);
+      allocset->end_pages_offset +=
+	(INT16) (nsects * sizeof (to_vpid.pageid));
     }
   else
     {
@@ -5575,8 +5505,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
       /* Fix the offset of the end of the pageid array */
       allocset->end_pages_vpid = to_vpid;
-      allocset->end_pages_offset = ((nsects * sizeof (to_vpid.pageid))
-				    + sizeof (*chain));
+      allocset->end_pages_offset = (INT16) ((nsects * sizeof (to_vpid.pageid))
+					    + sizeof (*chain));
     }
 
   /*
@@ -5598,9 +5528,10 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
      just in case of a crash.. we will need to recover the shift... */
 
   addr.pgptr = to_pgptr;
-  addr.offset = (char *) to_outptr - (char *) to_pgptr;
+  addr.offset = CAST_BUFLEN ((char *) to_outptr - (char *) to_pgptr);
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-			(char *) to_aid_ptr - (char *) to_outptr, to_outptr);
+			CAST_BUFLEN ((char *) to_aid_ptr -
+				     (char *) to_outptr), to_outptr);
 
   while (!(VPID_EQ (&from_vpid, &allocset->end_sects_vpid)
 	   && from_outptr >= from_aid_ptr))
@@ -5658,7 +5589,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  if (length != 0)
 	    {
 	      addr.pgptr = to_pgptr;
-	      addr.offset = (char *) to_aid_ptr - (char *) to_pgptr;
+	      addr.offset =
+		CAST_BUFLEN ((char *) to_aid_ptr - (char *) to_pgptr);
 	      log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length,
 				    to_aid_ptr);
 	      length = 0;
@@ -5696,10 +5628,10 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	   */
 
 	  addr.pgptr = to_pgptr;
-	  addr.offset = (char *) to_outptr - (char *) to_pgptr;
+	  addr.offset = CAST_BUFLEN ((char *) to_outptr - (char *) to_pgptr);
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-				(char *) to_aid_ptr - (char *) to_outptr,
-				to_outptr);
+				CAST_BUFLEN ((char *) to_aid_ptr -
+					     (char *) to_outptr), to_outptr);
 	}
 
       /* Move as much as possible until a boundary condition is reached */
@@ -5722,7 +5654,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   if (length != 0)
     {
       addr.pgptr = to_pgptr;
-      addr.offset = (char *) to_aid_ptr - (char *) to_pgptr;
+      addr.offset = CAST_BUFLEN ((char *) to_aid_ptr - (char *) to_pgptr);
       log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length,
 			    to_aid_ptr);
     }
@@ -5751,7 +5683,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
 
   allocset->start_pages_vpid = to_vpid;
-  allocset->start_pages_offset = (char *) to_aid_ptr - (char *) to_pgptr;
+  allocset->start_pages_offset =
+    CAST_BUFLEN ((char *) to_aid_ptr - (char *) to_pgptr);
   allocset->num_holes = 0;
   pgbuf_set_dirty (thread_p, to_pgptr, FREE);
   to_pgptr = NULL;
@@ -6077,7 +6010,7 @@ file_allocset_add_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
     }
 
-  if ((allocset->end_pages_offset + sizeof (*allocset)) < DB_PAGESIZE)
+  if ((allocset->end_pages_offset + SSIZEOF (*allocset)) < DB_PAGESIZE)
     {
       new_allocset_vpid = allocset->end_pages_vpid;
       new_allocset_offset = allocset->end_pages_offset;
@@ -6112,7 +6045,7 @@ file_allocset_add_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   /* Calculate positions for the sector table. The sector table is located
      immediately after the allocation set */
 
-  if ((new_allocset_offset + sizeof (*new_allocset)) < DB_PAGESIZE)
+  if ((new_allocset_offset + SSIZEOF (*new_allocset)) < DB_PAGESIZE)
     {
       new_allocset->start_sects_vpid = new_allocset_vpid;
       new_allocset->start_sects_offset = (new_allocset_offset +
@@ -6269,7 +6202,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   char *logdata;
   FILE_RECV_ALLOCSET_PAGES recv_undo;
   FILE_RECV_ALLOCSET_PAGES recv_redo;
-  int i;
+  int i, length;
 
   if (npages <= 0)
     {
@@ -6315,11 +6248,9 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   if (outptr > aid_ptr)
     {
-      log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-			    sizeof (npages) *
-			    ((npages >
-			      ((outptr - aid_ptr) + 1)) ? (outptr - aid_ptr) +
-			     1 : npages), logdata);
+      length = CAST_BUFLEN (outptr - aid_ptr) + 1;
+      length = (int) (sizeof (npages) * MIN (npages, length));
+      log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, length, logdata);
     }
 
   for (i = 0; i < npages; i++)
@@ -6329,7 +6260,8 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  if ((char *) aid_ptr != logdata)
 	    {
 	      log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
-				    (char *) aid_ptr - logdata, logdata);
+				    CAST_BUFLEN ((char *) aid_ptr - logdata),
+				    logdata);
 	      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 	    }
 	  if (file_ftabvpid_next (fhdr, pgptr, &vpid) != NO_ERROR)
@@ -6382,12 +6314,10 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
 	  if (outptr > aid_ptr)
 	    {
+	      length = (int) ((npages > (outptr - aid_ptr) + 1) ?
+			      ((outptr - aid_ptr) + 1) : (npages - i));
 	      log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-				    sizeof (npages) *
-				    ((npages >
-				      ((outptr - aid_ptr) + 1)) ? (outptr -
-								   aid_ptr) +
-				     1 : npages - i), logdata);
+				    sizeof (npages) * length, logdata);
 	    }
 	}
       /* Store the identifier */
@@ -6395,7 +6325,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     }
   /* Log the pageids stored on this page */
   log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
-			(char *) aid_ptr - logdata, logdata);
+			CAST_BUFLEN ((char *) aid_ptr - logdata), logdata);
 
   /* Update the allocation set for end of page table and number of pages.
    * Similarly, the file header must be updated. Need to log the info... */
@@ -6409,7 +6339,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   /* Now CHANGE IT */
   allocset->end_pages_vpid = vpid;
-  allocset->end_pages_offset = (char *) aid_ptr - (char *) pgptr;
+  allocset->end_pages_offset = (INT16) ((char *) aid_ptr - (char *) pgptr);
   allocset->num_pages += npages;
 
   /* Free the page table */
@@ -6734,7 +6664,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_TYPE file_type;
   DISK_ISVALID isfile_new;
 #if defined(SERVER_MODE)
-  bool old_val;
+  bool old_val = false;
   bool restore_check_interrupt = false;
 #endif /* SERVER_MODE */
 
@@ -6962,7 +6892,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_TYPE file_type;
   DISK_ISVALID isfile_new;
 #if defined(SERVER_MODE)
-  bool old_val;
+  bool old_val = false;
   bool restore_check_interrupt = false;
 #endif /* SERVER_MODE */
 
@@ -7265,7 +7195,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
   DISK_ISVALID isfile_new;
   int allocstate;
 #if defined(SERVER_MODE)
-  bool old_val;
+  bool old_val = false;
   bool restore_check_interrupt = false;
 #endif /* SERVER_MODE */
 
@@ -7814,7 +7744,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   /* FROM now, set the identifier to NULL_PAGEID_MARKED_DELETED */
   addr.vfid = &fhdr->vfid;
   addr.pgptr = pgptr;
-  addr.offset = (char *) aid_ptr - (char *) pgptr;
+  addr.offset = CAST_BUFLEN ((char *) aid_ptr - (char *) pgptr);
   log_append_undoredo_data (thread_p, RVFL_IDSTABLE, &addr,
 			    sizeof (*aid_ptr) * num_contpages,
 			    sizeof (*aid_ptr) * num_contpages, aid_ptr, mem);
@@ -7993,7 +7923,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   int ret;
   FILE_TYPE file_type;
 #if defined(SERVER_MODE)
-  bool old_val;
+  bool old_val = false;
   bool restore_check_interrupt = false;
 #endif /* SERVER_MODE */
 
@@ -8995,7 +8925,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   INT32 *to_aid_ptr;		/* Pageid pointer array for to-page   */
   INT32 *to_outptr;		/* Out of pointer array for to-page   */
   PAGE_PTR to_pgptr = NULL;
-  INT16 to_start_offset;
+  PGLENGTH to_start_offset;
   INT32 *from_aid_ptr;		/* Pageid pointer array for from-page */
   INT32 *from_outptr;		/* Out of pointer array for from-page */
   PAGE_PTR from_pgptr = NULL;
@@ -9181,12 +9111,13 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   /* Before we move anything to the to_page, we need to log whatever is there
      just in case of a crash.. we will need to recover the shift... */
 
-  to_start_offset = (char *) to_aid_ptr - (char *) to_pgptr;
+  to_start_offset = (PGLENGTH) ((char *) to_aid_ptr - (char *) to_pgptr);
 
   addr.pgptr = to_pgptr;
   addr.offset = to_start_offset;
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-			(char *) to_outptr - (char *) to_aid_ptr, to_aid_ptr);
+			CAST_BUFLEN ((char *) to_outptr -
+				     (char *) to_aid_ptr), to_aid_ptr);
   length = 0;
 
   while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid) ||
@@ -9293,11 +9224,13 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	   * shift...
 	   */
 
-	  to_start_offset = (char *) to_aid_ptr - (char *) to_pgptr;
+	  to_start_offset =
+	    (PGLENGTH) ((char *) to_aid_ptr - (char *) to_pgptr);
 	  addr.pgptr = to_pgptr;
 	  addr.offset = to_start_offset;
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
-				(char *) to_outptr - (char *) to_aid_ptr,
+				CAST_BUFLEN ((char *) to_outptr -
+					     (char *) to_aid_ptr),
 				to_aid_ptr);
 	  length = 0;
 	}
@@ -9321,8 +9254,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
       else
 	{
 	  /* Don't need to check for holes. We can copy directly */
-	  from_length = (char *) from_outptr - (char *) from_aid_ptr;
-	  to_length = (char *) to_outptr - (char *) to_aid_ptr;
+	  from_length =
+	    CAST_BUFLEN ((char *) from_outptr - (char *) from_aid_ptr);
+	  to_length = CAST_BUFLEN ((char *) to_outptr - (char *) to_aid_ptr);
 	  if (to_length >= from_length)
 	    {
 	      /* The whole from length can be copied */
@@ -9447,7 +9381,8 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
      and redo information */
 
   allocset->end_pages_vpid = to_vpid;
-  allocset->end_pages_offset = (char *) to_aid_ptr - (char *) to_pgptr;
+  allocset->end_pages_offset =
+    (INT16) ((char *) to_aid_ptr - (char *) to_pgptr);
   allocset->num_holes = 0;
 
   /* save changes for redo purposes */
@@ -9537,7 +9472,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   PAGE_PTR to_pgptr = NULL;
   PAGE_PTR from_pgptr = NULL;
   int length;
-  INT16 to_length, from_length;
+  int to_length, from_length;
   LOG_DATA_ADDR addr;
   FILE_RECV_SHIFT_SECTOR_TABLE recv_undo;
   FILE_RECV_SHIFT_SECTOR_TABLE recv_redo;
@@ -9590,8 +9525,9 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   while (!VPID_EQ (&from_vpid, &allocset->end_sects_vpid) ||
 	 from_aid_ptr <= from_outptr)
     {
-      from_length = (char *) from_outptr - (char *) from_aid_ptr;
-      to_length = (char *) to_outptr - (char *) to_aid_ptr;
+      from_length =
+	CAST_BUFLEN ((char *) from_outptr - (char *) from_aid_ptr);
+      to_length = CAST_BUFLEN ((char *) to_outptr - (char *) to_aid_ptr);
 
       if (to_length >= from_length)
 	{
@@ -9599,7 +9535,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 
 	  /* Log whatever is going to be copied */
 	  addr.pgptr = to_pgptr;
-	  addr.offset = (char *) to_aid_ptr - (char *) to_pgptr;
+	  addr.offset = (PGLENGTH) ((char *) to_aid_ptr - (char *) to_pgptr);
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, from_length,
 				to_aid_ptr);
 
@@ -9648,7 +9584,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 
 	  /* Log whatever is going to be copied */
 	  addr.pgptr = to_pgptr;
-	  addr.offset = (char *) to_aid_ptr - (char *) to_pgptr;
+	  addr.offset = (PGLENGTH) ((char *) to_aid_ptr - (char *) to_pgptr);
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, to_length,
 				to_aid_ptr);
 
@@ -9665,7 +9601,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 	  addr.pgptr = to_pgptr;
 	  addr.offset = (VPID_EQ (&to_vpid, &allocset->start_sects_vpid)
 			 ? allocset->start_sects_offset
-			 : sizeof (FILE_FTAB_CHAIN));
+			 : SSIZEOF (FILE_FTAB_CHAIN));
 	  CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, addr.offset);
 	  log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length,
 				to_aid_ptr);
@@ -9722,7 +9658,8 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   allocset->start_sects_vpid = *ftb_vpid;
   allocset->start_sects_offset = ftb_offset;
   allocset->end_sects_vpid = to_vpid;
-  allocset->end_sects_offset = (char *) to_aid_ptr - (char *) to_pgptr;
+  allocset->end_sects_offset =
+    (INT16) ((char *) to_aid_ptr - (char *) to_pgptr);
 
   /* Save the values for redo purposes */
   recv_redo.start_sects_vpid = allocset->start_sects_vpid;
@@ -9743,7 +9680,7 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 
   addr.pgptr = to_pgptr;
   addr.offset = (VPID_EQ (&to_vpid, &allocset->start_sects_vpid)
-		 ? allocset->start_sects_offset : sizeof (FILE_FTAB_CHAIN));
+		 ? allocset->start_sects_offset : SSIZEOF (FILE_FTAB_CHAIN));
   CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, addr.offset);
   log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr, length, to_aid_ptr);
 
@@ -9851,7 +9788,7 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      goto exit_on_error;
 	    }
-	  if ((*ftb_offset + sizeof (*allocset)) >= DB_PAGESIZE)
+	  if ((*ftb_offset + SSIZEOF (*allocset)) >= DB_PAGESIZE)
 	    {
 	      /* Cannot copy the allocation set at this location.
 	         Get next copy page */
@@ -10487,23 +10424,26 @@ exit_on_error:
 static int
 file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 {
-#if defined(SERVER_MODE)
+#if defined(SERVER_MODE) && !defined(WINDOWS)
   char time_val[64];
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
+  time_t tmp_time;
 
   (void) fprintf (fp,
 		  "*** FILE HEADER TABLE DUMP FOR FILE IDENTIFIER = %d"
 		  " ON VOLUME = %d ***\n", fhdr->vfid.fileid,
 		  fhdr->vfid.volid);
+
+  tmp_time = (time_t) fhdr->creation;
   (void) fprintf (fp,
 		  "File_type = %s, Ismark_as_deleted = %s,\n"
 		  "Creation_time = %s", file_type_to_string (fhdr->type),
 		  (fhdr->ismark_as_deleted == true) ? "true" : "false",
 #if defined(SERVER_MODE) && !defined(WINDOWS)
-		  ctime_r (&fhdr->creation, time_val)
+		  ctime_r (&tmp_time, time_val)
 #else /* SERVER_MODE && !WINDOWS */
-		  ctime (&fhdr->creation)
+		  ctime (&tmp_time)
 #endif /* SERVER_MODE && !WINDOWS */
     );
   (void) fprintf (fp, "File Descriptor comments = ");
@@ -11085,6 +11025,12 @@ file_tracker_cache_vfid (VFID * vfid)
   file_Tracker->vfid = &file_Tracker_vfid;
 
   return ret;
+}
+
+VFID *
+file_get_tracker_vfid (void)
+{
+  return file_Tracker->vfid;
 }
 
 /*
@@ -11993,7 +11939,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
 
 	      if (fhdr->ismark_as_deleted == true)
 		{
-		  if (fhdr->type == file_type)
+		  if (((FILE_TYPE) fhdr->type) == file_type)
 		    {
 		      if (file_mark_deleted_file_list_add (&fhdr->vfid) !=
 			  NO_ERROR)
@@ -12572,13 +12518,13 @@ int
 file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhdr;
-  int isdeleted;
+  INT16 isdeleted;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  isdeleted = *(int *) rcv->data;
+  isdeleted = *(INT16 *) rcv->data;
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
@@ -12622,7 +12568,7 @@ exit_on_error:
 void
 file_rv_dump_marked_as_deleted (FILE * fp, int length_ignore, void *data)
 {
-  (void) fprintf (fp, "Marked_deleted = %d\n", *(int *) data);
+  (void) fprintf (fp, "Marked_deleted = %d\n", *(INT16 *) data);
 }
 
 /*

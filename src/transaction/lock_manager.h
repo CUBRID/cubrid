@@ -76,17 +76,17 @@ struct lk_entry
 {
 #if defined(SERVER_MODE)
   struct lk_res *res_head;	/* back to resource entry           */
-  int tran_index;		/* transaction table index          */
   THREAD_ENTRY *thrd_entry;	/* thread entry pointer             */
+  int tran_index;		/* transaction table index          */
   LOCK granted_mode;		/* granted lock mode                */
   LOCK blocked_mode;		/* blocked lock mode                */
   int count;			/* number of lock requests          */
-  int ngranules;		/* number of finer granules         */
   struct lk_entry *next;	/* next entry                       */
   struct lk_entry *tran_next;	/* list of locks that trans. holds  */
   struct lk_entry *class_entry;	/* ptr. to class lk_entry           */
   LK_ACQUISITION_HISTORY *history;	/* lock acquisition history         */
   LK_ACQUISITION_HISTORY *recent;	/* last node of history list        */
+  int ngranules;		/* number of finer granules         */
   int mlk_count;		/* number of instant lock requests  */
   unsigned char scanid_bitset[1];	/* PRM_LK_MAX_SCANID_BIT/8];       */
 #else				/* not SERVER_MODE */
@@ -105,8 +105,8 @@ struct lk_acqobj_lock
 typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
 struct lk_acquired_locks
 {
-  unsigned int nobj_locks;	/* Number of actual object locks     */
   LK_ACQOBJ_LOCK *obj;		/* The list of acquired object locks */
+  unsigned int nobj_locks;	/* Number of actual object locks     */
 };
 
 /* During delete and update operation,
@@ -119,11 +119,6 @@ struct lk_composite_lock
 {
   void *lockcomp;
 };
-
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
-#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 extern void lock_remove_all_inst_locks (THREAD_ENTRY * thread_p,

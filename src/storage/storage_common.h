@@ -49,6 +49,7 @@
 #define VOLID_MAX       SHRT_MAX
 #define PAGEID_MAX      INT_MAX
 #define PGLENGTH_MAX    SHRT_MAX
+#define VOL_MAX_NPAGES  ((sizeof(off_t) == 4) ? (INT_MAX / IO_PAGESIZE) : INT_MAX)
 
 /* NULL_CHN is a special value for an unspecified cache coherency number.
  * It should only be used in error conditions.  This should never be
@@ -367,14 +368,13 @@ struct bo_restart_arg
 };
 
 /* Magic default values */
-#define CUBRID_MAGIC_MAX_LENGTH        25
-#define CUBRID_MAGIC_DATABASE_VOLUME   "CUBRID/Volume"
-#define CUBRID_MAGIC_LOG_ACTIVE        "CUBRID/LogActive"
-#define CUBRID_MAGIC_LOG_ARCHIVE       "CUBRID/LogArchive"
-#define CUBRID_MAGIC_LOG_INFO          "CUBRID/LogInfo"
-#define CUBRID_MAGIC_DATABASE_BACKUP   "CUBRID/Backup"
-/* Release string length in the log header */
-#define CUBRID_REL_STRING_MAX_LENGTH    15
+#define CUBRID_MAGIC_MAX_LENGTH                 25
+#define CUBRID_MAGIC_DATABASE_VOLUME            "CUBRID/Volume"
+#define CUBRID_MAGIC_LOG_ACTIVE                 "CUBRID/LogActive"
+#define CUBRID_MAGIC_LOG_ARCHIVE                "CUBRID/LogArchive"
+#define CUBRID_MAGIC_LOG_INFO                   "CUBRID/LogInfo"
+#define CUBRID_MAGIC_DATABASE_BACKUP            "CUBRID/Backup_v2"
+#define CUBRID_MAGIC_DATABASE_BACKUP_OLD        "CUBRID/Backup"
 
 /* B+tree local statististical information for Uniqueness enforcement */
 typedef struct btree_unique_stats BTREE_UNIQUE_STATS;

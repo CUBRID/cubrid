@@ -1448,7 +1448,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   if ((template_ptr == NULL) || (att == NULL) || (value == NULL))
     {
-      WARN (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_exit;
     }
 
@@ -1673,7 +1673,7 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
 
   if ((template_ptr == NULL) || (attname == NULL) || (value == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -1743,7 +1743,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 
   if ((template_ptr == NULL) || (desc == NULL) || (value == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -2693,9 +2693,9 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	      if ((template_ptr->check_uniques && has_uniques)
 		  || template_ptr->is_fkeys_were_modified)
 		{
-		  sprintf (savepoint_name, "%s-%ld",
+		  sprintf (savepoint_name, "%s-%d",
 			   OBJ_INTERNAL_SAVEPOINT_NAME,
-			   (long) template_savepoint_count++);
+			   template_savepoint_count++);
 		  if (tran_savepoint (savepoint_name, false) != NO_ERROR)
 		    {
 		      return er_errid ();

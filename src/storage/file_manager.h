@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -118,6 +118,78 @@ struct file_lo_des
   OID oid;
 };
 
+/*
+ * Description of allocated sectors and pages for a volume. Note that the same
+ * volume can be repeated in different sets of allocation. This is needed since
+ * we need to record the pages in the order they were allocated
+ */
+typedef struct file_allocset FILE_ALLOCSET;
+struct file_allocset
+{
+  INT16 volid;			/* Volume identifier */
+  int num_sects;		/* Number of sectors */
+  int num_pages;		/* Number of pages */
+  INT32 curr_sectid;		/* Sector on which last page was allocated.
+				   It is used as a guess for next page
+				   allocation */
+  int num_holes;		/* Indicate the number of identifiers (pages
+				   or slots) that can be compacted */
+  VPID start_sects_vpid;	/* Starting vpid address for sector table for
+				   this allocation set. See below for offset. */
+  INT16 start_sects_offset;	/* Offset where the sector table starts at the
+				   starting vpid. */
+  VPID end_sects_vpid;		/* Ending vpid address for sector table for
+				   this allocation set. See below for offset. */
+  INT16 end_sects_offset;	/* Offset where the sector table ends at
+				   ending vpid. */
+  VPID start_pages_vpid;	/* Starting vpid address for page table for
+				   this allocation set. See below for offset. */
+  INT16 start_pages_offset;	/* Offset where the page table starts at the
+				   starting vpid. */
+  VPID end_pages_vpid;		/* Ending vpid address for page table for this
+				   allocation set. See below for offset. */
+  INT16 end_pages_offset;	/* Offset where the page table ends at ending
+				   vpid. */
+  VPID next_allocset_vpid;	/* Address of next allocation set */
+  INT16 next_allocset_offset;	/* Offset of next allocation set at vpid */
+};
+
+/* File header */
+typedef struct file_header FILE_HEADER;
+struct file_header
+{
+  VFID vfid;			/* The File identifier itself, this is used for
+				   debugging purposes. */
+  INT64 creation;		/* Time of the creation of the file */
+  INT16 type;		        /* Type of the file such as Heap, B+tree,
+				   Extendible hashing, etc */
+  INT16 ismark_as_deleted;	/* Is the file marked as deleted ? */
+  int num_table_vpids;		/* Number of total pages for file table. The
+				   file header and the arrays describing the
+				   allocated pages reside in these pages */
+  VPID next_table_vpid;		/* Next file table page */
+  VPID last_table_vpid;		/* Last file table page */
+  int num_user_pages;		/* Number of user allocated pages. It does not
+				   include the file table pages */
+  int num_user_pages_mrkdelete;	/* Num marked deleted pages */
+  int num_allocsets;		/* Number of volume arrays. Each volume array
+				   contains information of the volume
+				   identifier and the allocated sectors and
+				   pages */
+  FILE_ALLOCSET allocset;	/* The first allocation set */
+  VPID last_allocset_vpid;	/* Address of last allocation set */
+  INT16 last_allocset_offset;	/* Offset of last allocation set at vpid */
+
+  struct
+  {
+    int total_length;		/* Total length of description of file */
+    int first_length;		/* Length of the first part */
+    VPID next_part_vpid;	/* Location of the rest of file description
+				   comments */
+    char piece[1];		/* Really more than one */
+  } des;
+};
+
 extern int file_manager_initialize (THREAD_ENTRY * thread_p);
 extern int file_manager_finalize (THREAD_ENTRY * thread_p);
 
@@ -222,6 +294,7 @@ extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p,
 				      INT32 keep_first_npages);
 
 extern int file_tracker_cache_vfid (VFID * vfid);
+extern VFID *file_get_tracker_vfid (void);
 extern VFID *file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid);
 extern int file_tracker_compress (THREAD_ENTRY * thread_p);
 

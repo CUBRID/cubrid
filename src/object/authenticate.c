@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -200,7 +200,7 @@ struct au_class_cache
   struct au_class_cache *next;
 
   SM_CLASS *class_;
-  unsigned long data[1];
+  unsigned int data[1];
 };
 
 /*
@@ -480,14 +480,14 @@ static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
 static void au_free_class_cache (AU_CLASS_CACHE * cache);
-static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS * class_);
+static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS * sm_class);
 
 static int au_extend_class_caches (int *index);
 static int au_find_user_cache_index (DB_OBJECT * user, int *index,
 				     int check_it);
 static void free_user_cache (AU_USER_CACHE * u);
 static void reset_cache (AU_CLASS_CACHE * cache);
-static void reset_cache_for_user_and_class (SM_CLASS * class_);
+static void reset_cache_for_user_and_class (SM_CLASS * sm_class);
 
 static void remove_user_cache_references (MOP user);
 static void init_caches (void);
@@ -524,11 +524,12 @@ static int find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
 static int add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET * grants, int index);
 static int get_grants (MOP auth, DB_SET ** grant_ptr, int filter);
-static int apply_grants (MOP auth, MOP class_mop, unsigned long *bits);
-static int update_cache (MOP classop, SM_CLASS * class_,
+static int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
+static int update_cache (MOP classop, SM_CLASS * sm_class,
 			 AU_CLASS_CACHE * cache);
-static int appropriate_error (long bits, long requested);
-static int check_grant_option (MOP classop, SM_CLASS * class_, DB_AUTH type);
+static int appropriate_error (unsigned int bits, unsigned int requested);
+static int check_grant_option (MOP classop, SM_CLASS * sm_class,
+			       DB_AUTH type);
 
 static void free_grant_list (AU_GRANT * grants);
 static int collect_class_grants (MOP class_mop, DB_AUTH type,
@@ -537,8 +538,9 @@ static int collect_class_grants (MOP class_mop, DB_AUTH type,
 static void map_grant_list (AU_GRANT * grants, MOP grantor);
 static int propogate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 
-static int is_protected_class (MOP classmop, SM_CLASS * class_, DB_AUTH auth);
-static int check_authorization (MOP classobj, SM_CLASS * class_,
+static int is_protected_class (MOP classmop, SM_CLASS * sm_class,
+			       DB_AUTH auth);
+static int check_authorization (MOP classobj, SM_CLASS * sm_class,
 				DB_AUTH type);
 static int fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 			AU_FETCHMODE fetchmode);
@@ -719,7 +721,7 @@ au_make_class_cache (int depth)
     }
   else
     {
-      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned long));
+      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
       new_class_cache = (AU_CLASS_CACHE *) malloc (size);
       if (new_class_cache != NULL)
 	{
@@ -759,7 +761,7 @@ au_free_class_cache (AU_CLASS_CACHE * cache)
  *       cache on the global cache list so we can maintain it consistently.
  */
 static AU_CLASS_CACHE *
-au_install_class_cache (SM_CLASS * class_)
+au_install_class_cache (SM_CLASS * sm_class)
 {
   AU_CLASS_CACHE *new_class_cache;
 
@@ -768,8 +770,8 @@ au_install_class_cache (SM_CLASS * class_)
     {
       new_class_cache->next = Au_class_caches;
       Au_class_caches = new_class_cache;
-      new_class_cache->class_ = class_;
-      class_->auth_cache = new_class_cache;
+      new_class_cache->class_ = sm_class;
+      sm_class->auth_cache = new_class_cache;
     }
 
   return new_class_cache;
@@ -1005,12 +1007,12 @@ reset_cache (AU_CLASS_CACHE * cache)
  *       matter that much.  grant/revoke don't happen very often.
  */
 static void
-reset_cache_for_user_and_class (SM_CLASS * class_)
+reset_cache_for_user_and_class (SM_CLASS * sm_class)
 {
   AU_USER_CACHE *u;
   AU_CLASS_CACHE *c;
 
-  for (c = Au_class_caches; c != NULL && c->class_ != class_; c = c->next);
+  for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
   if (c != NULL)
     {
       /*
@@ -1482,6 +1484,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
     "ALTER", "INDEX", "EXECUTE"
   };
+  char *tmp;
 
   au_class = sm_find_class (CT_CLASSAUTH_NAME);
   if (au_class == NULL)
@@ -1502,27 +1505,43 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       au_obj = mop->op;
       if ((obj_get (au_obj, "grantor", &value) != NO_ERROR)
 	  || (db_get_object (&value) != grantor))
-	continue;
+	{
+	  continue;
+	}
 
       if ((obj_get (au_obj, "grantee", &value) != NO_ERROR)
 	  || (db_get_object (&value) != user))
-	continue;
+	{
+	  continue;
+	}
 
       if ((obj_get (au_obj, "class_of", &inst_value) != NO_ERROR)
 	  || ((db_class_inst = db_get_object (&inst_value)) == NULL)
 	  || (obj_get (db_class_inst, "class_of", &value) != NO_ERROR)
 	  || (db_get_object (&value) != class_mop))
-	continue;
+	{
+	  continue;
+	}
 
       for (type = DB_AUTH_SELECT, i = 0; type != auth_type;
-	   type = (DB_AUTH) (type << 1), i++);
-      if ((obj_get (au_obj, "auth_type", &value) != NO_ERROR)
-	  || (strcmp (db_get_string (&value), type_set[i]) == 0))
+	   type = (DB_AUTH) (type << 1), i++)
+	{
+	  ;
+	}
+
+      if (obj_get (au_obj, "auth_type", &value) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      tmp = db_get_string (&value);
+      if (strcmp (tmp, type_set[i]) == 0)
 	{
 	  ret_obj = au_obj;
 	  break;
 	}
     }
+
   ml_ext_free (list);
   return (ret_obj);
 }
@@ -1924,6 +1943,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval,
   int error;
   int exists;
   MOP user;
+  char *tmp;
 
   if (name != NULL && IS_STRING (name)
       && !DB_IS_NULL (name) && db_get_string (name) != NULL)
@@ -1934,7 +1954,8 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval,
        * we bother creating the user object
        */
       if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password)
-	  && strlen (db_get_string (password)) > AU_MAX_PASSWORD_CHARS)
+	  && (tmp = db_get_string (password))
+	  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
 	{
 	  error = ER_AU_PASSWORD_OVERFLOW;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -2064,7 +2085,7 @@ encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
  *                     user. The string must be freed after use.
  *   return: user name (strdup)
  */
-const char *
+char *
 au_user_name_dup (void)
 {
   return strdup (Au_user_name);
@@ -2199,10 +2220,10 @@ match_password (const char *user, const char *database)
  *   user(in):  user object
  *   password(in): new password
  *   encode(in): flag to enable encryption of the string in the database
- *   encrypt_prefix(in): If encode flag is 0, then we assume that the 
+ *   encrypt_prefix(in): If encode flag is 0, then we assume that the
  *                      given password have been encrypted. So, All I have
  *                      to do is add prefix(DES or SHA1) to given password.
- *                       If encode flag is 1, then we should encrypt 
+ *                       If encode flag is 1, then we should encrypt
  *                      password with sha1 and add prefix (SHA1) to it.
  *                      So, I don't care what encrypt_prefix value is.
  */
@@ -2671,6 +2692,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	  && ((error = au_get_set (group, "groups", &group_groups)) !=
 	      NO_ERROR))
 	{
+	  ;
 	}
       else
 	{
@@ -2681,31 +2703,28 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	    }
 	  else
 	    {
-	      if ((error = au_get_set (member, "groups", &member_groups))
-		  == NO_ERROR)
+	      error = au_get_set (member, "groups", &member_groups);
+	      if (error == NO_ERROR)
 		{
-		  if ((error = au_get_set (member, "direct_groups",
-					   &member_direct_groups))
-		      == NO_ERROR)
+		  error = au_get_set (member, "direct_groups",
+				      &member_direct_groups);
+		  if (error == NO_ERROR)
 		    {
 		      if (new_user)
 			{
-			  if ((error =
-			       db_set_add (member_groups, &groupvalue))
-			      == NO_ERROR)
+			  error = db_set_add (member_groups, &groupvalue);
+			  if (error == NO_ERROR)
 			    {
-			      error =
-				db_set_add (member_direct_groups,
-					    &groupvalue);
+			      error = db_set_add (member_direct_groups,
+						  &groupvalue);
 			    }
 			}
 		      else
 			if (!set_ismember (member_direct_groups,
 					   &membervalue))
 			{
-			  if ((error =
-			       db_get (member, "name", &member_name_val))
-			      == NO_ERROR)
+			  error = db_get (member, "name", &member_name_val);
+			  if (error == NO_ERROR)
 			    {
 			      if (DB_IS_NULL (&member_name_val))
 				{
@@ -2716,12 +2735,13 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 				  member_name =
 				    (char *) db_get_string (&member_name_val);
 				}
-			      if ((error =
-				   db_set_add (member_direct_groups,
-					       &groupvalue)) == NO_ERROR)
+
+			      error = db_set_add (member_direct_groups,
+						  &groupvalue);
+			      if (error == NO_ERROR)
 				{
-				  error =
-				    au_compute_groups (member, member_name);
+				  error = au_compute_groups (member,
+							     member_name);
 				}
 			      db_value_clear (&member_name_val);
 			    }
@@ -2730,6 +2750,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 		    }
 		  set_free (member_groups);
 		}
+
 	      if (!new_user)
 		{
 		  set_free (group_groups);
@@ -3487,8 +3508,8 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		  gsize -= GRANT_ENTRY_LENGTH;
 		}
 	    }
-	}			/* if */
-    }				/* for */
+	}
+    }
 
   if (error != NO_ERROR && grants != NULL)
     {
@@ -3510,14 +3531,15 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
  *       the cache for any grants that apply to the class.
  */
 static int
-apply_grants (MOP auth, MOP class_mop, unsigned long *bits)
+apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
 {
   int error = NO_ERROR;
   DB_SET *grants;
   DB_VALUE grvalue;
   int i, gsize;
 
-  if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
+  error = get_grants (auth, &grants, 1);
+  if (error == NO_ERROR)
     {
       gsize = set_size (grants);
       for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
@@ -3543,18 +3565,18 @@ apply_grants (MOP auth, MOP class_mop, unsigned long *bits)
  *                 read/write lock. It needs to be fast.
  *   return: error code
  *   classop(in):  class MOP to authorize
- *   class(in): direct pointer to class structure
+ *   sm_class(in): direct pointer to class structure
  *   cache(in):
  */
 static int
-update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
+update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 {
   int error = NO_ERROR;
   DB_SET *groups;
   int i, save, card;
   DB_VALUE value;
   MOP group, auth;
-  unsigned long *bits;
+  unsigned int *bits;
 
   /*
    * must disable here because we may be updating the cache of the system
@@ -3567,7 +3589,7 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
 
-  if (class_->owner == NULL)
+  if (sm_class->owner == NULL)
     {
       /* This shouldn't happen - assign it to the dba */
       error = ER_AU_CLASS_WITH_NO_OWNER;
@@ -3577,7 +3599,7 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
     {
       *bits = AU_FULL_AUTHORIZATION;
     }
-  else if (Au_user == class_->owner)
+  else if (Au_user == sm_class->owner)
     {
       /* might want to allow grant/revoke on self */
       *bits = AU_FULL_AUTHORIZATION;
@@ -3590,7 +3612,7 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
     }
   else
     {
-      db_make_object (&value, class_->owner);
+      db_make_object (&value, sm_class->owner);
       if (set_ismember (groups, &value))
 	{
 	  /* we're a member of the owning group */
@@ -3605,16 +3627,16 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
       else
 	{
 	  /* apply local grants */
-	  if ((error = apply_grants (auth, classop, bits)) == NO_ERROR)
+	  error = apply_grants (auth, classop, bits);
+	  if (error == NO_ERROR)
 	    {
-
 	      /* apply grants from all groups */
 	      card = set_cardinality (groups);
 	      for (i = 0; i < card; i++)
 		{
 		  /* will have to handle deleted groups here ! */
-		  if ((error =
-		       au_set_get_obj (groups, i, &group)) == NO_ERROR)
+		  error = au_set_get_obj (groups, i, &group);
+		  if (error == NO_ERROR)
 		    {
 		      if (group == Au_dba_user)
 			{
@@ -3623,9 +3645,9 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
 			}
 		      else
 			{
-			  if ((error =
-			       au_get_object (group, "authorization",
-					      &auth)) == NO_ERROR)
+			  error = au_get_object (group, "authorization",
+						 &auth);
+			  if (error == NO_ERROR)
 			    {
 			      /* abort on errors ?? */
 			      (void) apply_grants (auth, classop, bits);
@@ -3637,7 +3659,9 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
 	}
       set_free (groups);
     }
+
   AU_ENABLE (save);
+
   return (error);
 }
 
@@ -3650,17 +3674,17 @@ update_cache (MOP classop, SM_CLASS * class_, AU_CLASS_CACHE * cache)
  * TODO : LP64
  */
 static int
-appropriate_error (long bits, long requested)
+appropriate_error (unsigned int bits, unsigned int requested)
 {
   int error;
-  long mask, atype;
+  unsigned int mask, atype;
   int i;
 
   /*
    * Since we don't currently have a way of indicating multiple
    * authorization failures, select the first one in the
    * bit vector that causes problems.
-   * Order the switch statement so that its roughly in depencency order
+   * Order the switch statement so that its roughly in dependency order
    * to result in better error message.  The main thing is that
    * SELECT should be first.
    */
@@ -3706,6 +3730,7 @@ appropriate_error (long bits, long requested)
 	}
       mask = mask << 1;
     }
+
   if (!error)
     {
       /* we seemed to have all the basic authorizations, check grant options */
@@ -3763,7 +3788,7 @@ appropriate_error (long bits, long requested)
 
 /*
  * check_grant_option - Checks to see if a class has the grant option for
- *                      a particular authorizaiton type.
+ *                      a particular authorization type.
  *                      Called by au_grant and au_revoke
  *   return: error code
  *   classop(in):  MOP of class being examined
@@ -3773,24 +3798,24 @@ appropriate_error (long bits, long requested)
  * TODO: LP64
  */
 static int
-check_grant_option (MOP classop, SM_CLASS * class_, DB_AUTH type)
+check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
   AU_CLASS_CACHE *cache;
-  unsigned long cache_bits;
-  unsigned long mask;
+  unsigned int cache_bits;
+  unsigned int mask;
 
   /*
-   * this potentially can be called durint initialization when we don't
+   * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
   if (Au_cache_index < 0)
     return NO_ERROR;
 
-  cache = (AU_CLASS_CACHE *) class_->auth_cache;
-  if (class_->auth_cache == NULL)
+  cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
+  if (sm_class->auth_cache == NULL)
     {
-      cache = au_install_class_cache (class_);
+      cache = au_install_class_cache (sm_class);
       if (cache == NULL)
 	return er_errid ();
     }
@@ -3798,7 +3823,7 @@ check_grant_option (MOP classop, SM_CLASS * class_, DB_AUTH type)
 
   if (cache_bits == AU_CACHE_INVALID)
     {
-      if (update_cache (classop, class_, cache))
+      if (update_cache (classop, sm_class, cache))
 	return er_errid ();
       cache_bits = cache->data[Au_cache_index];
     }
@@ -3838,7 +3863,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   MOP auth;
   DB_SET *grants;
   DB_VALUE value;
-  int current, save, gindex;
+  int current, save = 0, gindex;
   SM_CLASS *classobj;
   int is_partition = 0, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
@@ -4341,7 +4366,7 @@ propogate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
  * Note: The authorization of the given type on the given class is removed
  *       from the authorization info stored with the given user.  If this
  *       user has the grant option for this type and has granted authorization
- *       to other users, the revoke will be recursively propogated to all
+ *       to other users, the revoke will be recursively propagated to all
  *       affected users.
  *
  * TODO : LP64
@@ -4353,7 +4378,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
   MOP auth;
   DB_SET *grants;
   DB_VALUE cache_element;
-  int current, mask, save, gindex;
+  int current, mask, save = 0, gindex;
   AU_GRANT *grant_list;
   SM_CLASS *classobj;
   int is_partition = 0, i = 0, savepoint_revoke = 0;
@@ -5162,7 +5187,7 @@ au_user_password (char *buffer)
  *       This should be handled by another "system" level of authorization.
  */
 static int
-is_protected_class (MOP classmop, SM_CLASS * class_, DB_AUTH auth)
+is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth)
 {
   int illegal = 0;
 
@@ -5171,12 +5196,12 @@ is_protected_class (MOP classmop, SM_CLASS * class_, DB_AUTH auth)
       /* can't alter, insert, delete, or index */
       illegal = auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_INDEX);
     }
-  else if (IS_CATALOG_CLASS (class_->header.name))
+  else if (IS_CATALOG_CLASS (sm_class->header.name))
     {
       illegal =
 	auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_UPDATE | AU_INDEX);
     }
-  else if (sm_issystem (class_))
+  else if (sm_issystem (sm_class))
     {
       /* if the class is a system class_, can't alter */
       illegal = auth & (AU_ALTER);
@@ -5195,11 +5220,11 @@ is_protected_class (MOP classmop, SM_CLASS * class_, DB_AUTH auth)
  * TODO : LP64
  */
 static int
-check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
+check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
   AU_CLASS_CACHE *cache;
-  unsigned long bits;
+  unsigned int bits;
 
   /*
    * Callers generally check Au_disable already to avoid the function call.
@@ -5209,18 +5234,18 @@ check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
     return NO_ERROR;
 
   /* try to catch attempts by even the dba to update a protected class */
-  if ((class_->flags & SM_CLASSFLAG_SYSTEM)
-      && is_protected_class (classobj, class_, type))
+  if ((sm_class->flags & SM_CLASSFLAG_SYSTEM)
+      && is_protected_class (classobj, sm_class, type))
     {
       error = appropriate_error (0, type);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
     }
   else
     {
-      cache = (AU_CLASS_CACHE *) class_->auth_cache;
+      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
       if (cache == NULL)
 	{
-	  cache = au_install_class_cache (class_);
+	  cache = au_install_class_cache (sm_class);
 	  if (cache == NULL)
 	    return er_errid ();
 	}
@@ -5231,7 +5256,7 @@ check_authorization (MOP classobj, SM_CLASS * class_, DB_AUTH type)
 	  if (bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = update_cache (classobj, class_, cache);
+	      error = update_cache (classobj, sm_class, cache);
 	      if (error == NO_ERROR)
 		{
 		  bits = cache->data[Au_cache_index];
@@ -5864,7 +5889,7 @@ au_login (const char *name, const char *password)
 	}
       else
 	{
-	  /* store the password encrypted(DES and SHA1 both) so we don't 
+	  /* store the password encrypted(DES and SHA1 both) so we don't
 	   * have buffers lying around with the obvious passwords in it.
 	   */
 	  encrypt_password (password, 1, Au_user_password_des_oldstyle);
@@ -6690,7 +6715,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
  * that there are illegal grants in the hierarchy that were not rooted
  * in the class owner object.
  *
- * It would likely be more effecient if rather than making a full pass
+ * It would likely be more efficient if rather than making a full pass
  * on the list we evaluate the first node in the list and then recursively
  * evaluate every mode affected by the first evaluation.  If the first
  * node results in no evaluations, we move to the next node in the list.

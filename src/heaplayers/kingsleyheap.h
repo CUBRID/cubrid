@@ -62,7 +62,7 @@ namespace Kingsley {
    */
   const int cl[16] = { 0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4 };
 
-  inline int size2Class (const size_t sz) {
+  inline size_t size2Class (const size_t sz) {
 #if defined(__sparc) && defined(__GNUC__)
     // Adapted from _Hacker's Delight_, by Henry Warren (p.80)
     size_t x = sz;

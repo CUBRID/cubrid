@@ -42,14 +42,14 @@
 
 typedef struct
 {
-  int oid_cnt;
   OID *oidp;
+  int oid_cnt;
 } OID_LIST;			/* list of OIDs */
 
 typedef struct
 {
-  int ptr_cnt;
   OID_LIST **oidptr;		/* list of OID_LIST pointers */
+  int ptr_cnt;
 } OID_PTRLIST;
 
 #define OID_BLOCK_ARRAY_SIZE    10
@@ -114,17 +114,17 @@ struct regu_variable_node;
 
 typedef struct key_range
 {
+  struct regu_variable_node *key1;	/* pointer to first key value */
+  struct regu_variable_node *key2;	/* pointer to second key value */
   RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT,
 				   GT_LT, GE_INF, GT_INF, INF_LT,
 				   INF_LE, INF_INF */
-  struct regu_variable_node *key1;	/* pointer to first key value */
-  struct regu_variable_node *key2;	/* pointer to second key value */
 } KEY_RANGE;			/* key range structure */
 
 typedef struct key_info
 {
-  int key_cnt;			/* key count */
   KEY_RANGE *key_ranges;	/* a list of key ranges */
+  int key_cnt;			/* key count */
   int is_constant;		/* every key value is a constant */
 } KEY_INFO;			/* key information structure */
 
@@ -142,9 +142,9 @@ typedef struct indx_info
 
 typedef struct val_descr
 {
-  int dbval_cnt;		/* Value Count */
   DB_VALUE *dbval_ptr;		/* Array of values */
-  DB_TIMESTAMP sys_timestamp;
+  int dbval_cnt;		/* Value Count */
+  DB_DATETIME sys_datetime;
   long lrand;
   double drand;
   struct xasl_state *xasl_state;	/* XASL_STATE pointer */
@@ -162,9 +162,9 @@ typedef struct val_descr
 struct qp_domain
 {
   struct qp_domain *next;
+  struct qp_domain *setdomain;
   OID classid;
   DB_TYPE type;
-  struct qp_domain *setdomain;
 };
 
 /*

@@ -477,8 +477,8 @@ struct sm_class_header
 {
   WS_OBJECT_HEADER obj_header;	/* always have the object header (chn ) */
 
-  const char *name;
   SM_METATYPE type;		/* doesn't need to be a full word */
+  const char *name;
 
   HFID heap;
 };
@@ -523,13 +523,12 @@ struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
 
-  int id;			/* unique id number */
-
   PR_TYPE *type;		/* basic type */
   TP_DOMAIN *domain;		/* allowable types */
 
   MOP class_mop;		/* origin class */
 
+  int id;			/* unique id number */
   int offset;			/* memory offset */
 
   DB_VALUE original_value;	/* initial or shared */
@@ -537,19 +536,17 @@ struct sm_attribute
 
   SM_CONSTRAINT *constraints;	/* cached constraint list */
 
-  unsigned int flags;		/* bit flags */
-
   /* see tfcl and the discussion on attribute extensions */
   DB_SEQ *properties;		/* property list */
 
+  unsigned int flags;		/* bit flags */
   int order;			/* definition order number */
   struct sm_attribute *order_link;	/* list in definition order */
-
-  int storage_order;		/* storage order number */
 
   void *triggers;		/* trigger cache */
 
   MOP auto_increment;		/* instance of db_serial */
+  int storage_order;		/* storage order number */
   bool is_fk_cache_attr;
 };
 
@@ -559,16 +556,16 @@ struct sm_foreign_key_info
 {
   struct sm_foreign_key_info *next;
   const char *ref_class;
+  const char **ref_attrs;
   OID ref_class_oid;
   BTID ref_class_pk_btid;
-  const char **ref_attrs;
   OID self_oid;
   BTID self_btid;
   SM_FOREIGN_KEY_ACTION delete_action;
   SM_FOREIGN_KEY_ACTION update_action;
   const char *cache_attr;
-  int cache_attr_id;
   char *name;
+  int cache_attr_id;
   bool is_dropped;
 };
 
@@ -579,12 +576,12 @@ struct sm_class_constraint
   struct sm_class_constraint *next;
 
   const char *name;
-  SM_CONSTRAINT_TYPE type;
   SM_ATTRIBUTE **attributes;
-  const int *asc_desc;		/* asc/desc info list */
-  BTID index;
+  int *asc_desc;		/* asc/desc info list */
   SM_FOREIGN_KEY_INFO *fk_info;
   char *shared_cons_name;
+  BTID index;
+  SM_CONSTRAINT_TYPE type;
 };
 
 /*
@@ -598,10 +595,9 @@ struct sm_method_argument
 {
   struct sm_method_argument *next;
 
-  int index;			/* argument index (one based) */
   PR_TYPE *type;		/* basic type */
   TP_DOMAIN *domain;		/* full domain */
-
+  int index;			/* argument index (one based) */
 };
 
 
@@ -618,9 +614,8 @@ struct sm_method_signature
 
   SM_METHOD_ARGUMENT *value;	/* definition of return value */
 
-  int num_args;			/* number of arguments */
   SM_METHOD_ARGUMENT *args;	/* list of argument descriptions */
-
+  int num_args;			/* number of arguments */
 };
 
 /*
@@ -635,15 +630,13 @@ struct sm_method
 {
   SM_COMPONENT header;		/* next, name, group */
 
-  int id;			/* method id */
   SM_METHOD_SIGNATURE *signatures;	/* signature list (currently only one) */
   METHOD_FUNCTION function;	/* cached function pointer */
   MOP class_mop;		/* source class */
-  unsigned unused:1;		/* formerly static_link flag, delete */
-
+  int id;			/* method id */
   int order;			/* during modification only, not saved */
-
   DB_SEQ *properties;		/* property list */
+  unsigned unused:1;		/* formerly static_link flag, delete */
 };
 
 
@@ -678,7 +671,6 @@ struct sm_resolution
   const char *name;		/* component name */
   const char *alias;		/* optional alias */
   SM_NAME_SPACE name_space;	/* component name_space */
-
 };
 
 typedef struct sm_resolution SM_RESOLUTION;
@@ -714,11 +706,10 @@ struct sm_representation
 {
   struct sm_representation *next;
 
+  SM_REPR_ATTRIBUTE *attributes;	/* list of attribute descriptions */
   int id;			/* unique identifier for this rep */
   int fixed_count;		/* number of fixed attributes */
   int variable_count;		/* number of variable attributes */
-
-  SM_REPR_ATTRIBUTE *attributes;	/* list of attribute descriptions */
 };
 
 /*
@@ -745,8 +736,8 @@ struct sm_class
 {
   SM_CLASS_HEADER header;
 
-  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   DB_OBJLIST *users;		/* immediate sub classes */
+  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   int repid;			/* current representation id */
 
   SM_REPRESENTATION *representations;	/* list of old representations */
@@ -755,16 +746,16 @@ struct sm_class
   int object_size;		/* memory size in bytes */
   int att_count;		/* number of instance attributes */
   SM_ATTRIBUTE *attributes;	/* list of attribute definitions */
-  int shared_count;		/* number of shared attributes */
   SM_ATTRIBUTE *shared;		/* list of shared attribute definitions */
+  int shared_count;		/* number of shared attributes */
   int class_attribute_count;	/* number of class attributes */
   SM_ATTRIBUTE *class_attributes;	/* list of class attribute definitions */
 
   SM_METHOD_FILE *method_files;	/* list of method files */
   const char *loader_commands;	/* command string to the dynamic loader */
 
-  int method_count;		/* number of instance methods */
   SM_METHOD *methods;		/* list of method definitions */
+  int method_count;		/* number of instance methods */
   int class_method_count;	/* number of class methods */
   SM_METHOD *class_methods;	/* list of class method definitions */
 
@@ -778,7 +769,23 @@ struct sm_class
   int method_ids;		/* method id counter */
   int unused;			/* formerly repid counter, delete */
 
+  SM_QUERY_SPEC *query_spec;	/* virtual class query_spec information */
+  SM_TEMPLATE *new_;		/* temporary structure */
+  CLASS_STATS *stats;		/* server statistics, loaded on demand */
+
+  MOP owner;			/* authorization object */
+  void *auth_cache;		/* compiled cache */
+
+  SM_ATTRIBUTE *ordered_attributes;
+  DB_SEQ *properties;		/* property list */
+  struct parser_context *virtual_query_cache;
+  void *triggers;		/* Trigger cache */
+  SM_CLASS_CONSTRAINT *constraints;	/* Constraint cache */
+  MOP partition_of;		/* Partition information */
+  SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
+
   unsigned int flags;
+  unsigned int virtual_cache_schema_id;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occured */
@@ -786,31 +793,6 @@ struct sm_class
 
   unsigned triggers_validated:1;	/* set when trigger cache is validated */
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
-
-  SM_QUERY_SPEC *query_spec;	/* virtual class query_spec information */
-
-  SM_TEMPLATE *new_;		/* temporary structure */
-
-  CLASS_STATS *stats;		/* server statistics, loaded on demand */
-
-
-  MOP owner;			/* authorization object */
-  void *auth_cache;		/* compiled cache */
-
-  SM_ATTRIBUTE *ordered_attributes;
-
-  DB_SEQ *properties;		/* property list */
-
-  unsigned int virtual_cache_schema_id;
-  struct parser_context *virtual_query_cache;
-
-  void *triggers;		/* Trigger cache */
-
-  SM_CLASS_CONSTRAINT *constraints;	/* Constraint cache */
-
-  MOP partition_of;		/* Partition information */
-
-  SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
 };
 
 
@@ -818,8 +800,8 @@ struct sm_class
 struct sm_template
 {
   MOP op;			/* class MOP (if editing existing class) */
-  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   SM_CLASS *current;		/* current class structure (if editing existing) */
+  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   int tran_index;		/* transaction index when template was created */
 
   const char *name;		/* class name */
@@ -836,7 +818,6 @@ struct sm_template
   SM_METHOD_FILE *method_files;	/* method files */
   const char *loader_commands;	/* loader commands */
   SM_QUERY_SPEC *query_spec;	/* query_spec list */
-  SM_PROXY_CACHE flag;		/* add, drop, or update cache entry */
 
   SM_ATTRIBUTE *instance_attributes;
   SM_ATTRIBUTE *shared_attributes;
@@ -852,6 +833,7 @@ struct sm_template
   MOP partition_of;
   DB_ATTRIBUTE *partition_parent_atts;	/* partition parent class attributes
 					   (if creating partition child class) */
+  SM_PROXY_CACHE flag;		/* add, drop, or update cache entry */
 };
 
 
@@ -868,19 +850,19 @@ typedef struct sm_class_info SM_CLASS_INFO;
 struct sm_class_info
 {
   const char *name;
-  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   DB_OBJECT *owner;		/* owner's user object */
   DB_OBJLIST *superclasses;	/* external OBJLIST of super classes */
   DB_OBJLIST *subclasses;	/* external OBJLIST of subclasses */
 
+  SM_CLASS_TYPE class_type;	/* what kind of class variant is this? */
   int att_count;		/* number of instance attributes */
   SM_ATTRIBUTE *attributes;	/* list of attribute definitions */
-  int shared_count;		/* number of shared attributes */
   SM_ATTRIBUTE *shared;		/* list of shared attribute definitions */
+  int shared_count;		/* number of shared attributes */
   int class_attribute_count;	/* number of class attributes */
   SM_ATTRIBUTE *class_attributes;	/* list of class attribute definitions */
-  int method_count;		/* number of instance methods */
   SM_METHOD *methods;		/* list of method definitions */
+  int method_count;		/* number of instance methods */
   int class_method_count;	/* number of class methods */
   SM_METHOD *class_methods;	/* list of class method definitions */
 
@@ -936,12 +918,12 @@ struct sm_descriptor
   struct sm_descriptor *next;
 
   char *name;			/* component name */
-  SM_NAME_SPACE name_space;	/* component type */
 
   SM_DESCRIPTOR_LIST *map;	/* class/component map */
   SM_VALIDATION *valid;		/* validation cache */
 
   DB_OBJECT *class_mop;		/* root class */
+  SM_NAME_SPACE name_space;	/* component type */
 };
 
 

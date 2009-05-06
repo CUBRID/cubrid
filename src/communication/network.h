@@ -54,7 +54,6 @@ enum net_server_request
 {
   NET_SERVER_REQUEST_START = 0,
 
-  NET_SERVER_PING_WITH_HANDSHAKE,
   NET_SERVER_PING,
 
   NET_SERVER_BO_INIT_SERVER,
@@ -201,10 +200,14 @@ enum net_server_request
 
   NET_SERVER_SHUTDOWN,
   /*
-   * this is the last entry. It is also used for the end of an
+   * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
    */
-  NET_SERVER_REQUEST_END
+  NET_SERVER_REQUEST_END,
+  /*
+   * This request number must be preserved.
+   */
+  NET_SERVER_PING_WITH_HANDSHAKE = 999,
 };
 
 /* Server capabilities */

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -42,7 +42,7 @@
               &(hvars)->refs[(n)] : NULL)
 #define MEMBER(set, val)        ((set) & (1 << (val)))
 #define NEWSET(val)             (1 << (val))
-#define ECHO            (*echo_fn)(zzlextext, zzendexpr-zzbegexpr+1)
+#define ECHO            (*echo_fn)(esql_yytext, strlen(esql_yytext))
 #define ECHO_STR(str,length)    (*echo_fn)((str), length)
 #define ECHO_SP         ECHO_STR(" ",strlen(" "))
 #define ECHO_NL         ECHO_STR("\n",strlen("\n"))
@@ -100,7 +100,7 @@ typedef struct whenever_scope WHENEVER_SCOPE;
 struct whenever_action
 {
   WHEN_ACTION action;
-  YY_CHAR *name;
+  char *name;
 };
 
 struct whenever_scope
@@ -141,16 +141,6 @@ enum scanner_mode
 extern int pp_recognizing_typedef_names;
 extern int pp_nesting_level;
 
-#if defined(WANT_YACC)
-extern int yydebug;
-extern int yychar;
-extern int yyerrflag;
-extern int yyparse (void);
-extern void yyrestart (FILE *);
-extern YY_CHAR *yytext;
-extern int yylex (void);
-extern void yysync (void);
-#endif
 
 extern char *pt_buffer;
 extern unsigned int pp_uci_opt;
@@ -170,11 +160,7 @@ extern varstring pt_statement_buf;
 extern varstring pp_subscript_buf;
 extern varstring pp_host_var_buf;
 
-extern YYSTYPE yylval;
-extern FILE *yyin;
-extern FILE *yyout;
-extern YY_CHAR *yyfilename;
-extern int yylineno;
+extern char *esql_yyfilename;
 extern int errors;
 extern ECHO_FN echo_fn;
 
@@ -184,18 +170,18 @@ extern const char *VARCHAR_LENGTH_NAME;
 extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.         */
 extern SYMTAB *pp_Struct_table;	/* The table for struct definitions     */
 
-extern CURSOR *pp_new_cursor (YY_CHAR * name,
-			      YY_CHAR * static_stmt,
+extern CURSOR *pp_new_cursor (char *name,
+			      char *static_stmt,
 			      int stmtLength,
 			      STMT * dynamic_stmt, HOST_LOD * host_refs);
 extern void pp_free_cursor (CURSOR * cursor);
-extern CURSOR *pp_lookup_cursor (YY_CHAR * name);
+extern CURSOR *pp_lookup_cursor (char *name);
 extern void pp_cursor_init (void);
 extern void pp_cursor_finish (void);
 extern void pp_print_cursors (FILE * fp);
 extern void pp_remove_cursors_from_table (CURSOR * chain);
 extern void pp_discard_cursor_chain (CURSOR * chain);
-extern STMT *pp_new_stmt (YY_CHAR * name);
+extern STMT *pp_new_stmt (char *name);
 extern void pp_free_stmt (STMT * stmt);
 extern void pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain);
 extern void pp_add_symbols_to_table (SYMBOL * sym);
@@ -219,7 +205,7 @@ extern void pp_pop_spec_scope (void);
 extern void pp_disallow_storage_classes (void);
 extern void pp_add_cursor_to_scope (CURSOR * cursor);
 extern void pp_add_whenever_to_scope (WHEN_CONDITION cond,
-				      WHEN_ACTION action, YY_CHAR * name);
+				      WHEN_ACTION action, char *name);
 extern void pp_print_decls (SYMBOL * sym_chain, int preechoed);
 extern void pp_print_specs (LINK * link);
 extern void pp_suppress_echo (int);
@@ -235,15 +221,14 @@ extern void pp_free_host_ref (HOST_REF * ref);
 extern HOST_LOD *pp_copy_host_refs (void);
 extern HOST_LOD *pp_detach_host_refs (void);
 extern HOST_REF *pp_check_type (HOST_REF * ref, BITSET typeset,
-				const YY_CHAR * msg);
+				const char *msg);
 extern void pp_check_host_var_list (void);
 extern HOST_VAR *pp_ptr_deref (HOST_VAR * var, int style);
-extern HOST_VAR *pp_struct_deref (HOST_VAR * var,
-				  YY_CHAR * field, int indirect);
+extern HOST_VAR *pp_struct_deref (HOST_VAR * var, char *field, int indirect);
 extern HOST_VAR *pp_addr_of (HOST_VAR * var);
 extern void pp_hv_init (void);
 extern void pp_hv_finish (void);
-extern HOST_REF *pp_add_host_str (YY_CHAR * str);
+extern HOST_REF *pp_add_host_str (char *str);
 extern HOST_LOD *pp_new_host_lod (void);
 extern void pp_free_host_lod (HOST_LOD * lod);
 extern void pp_clear_host_lod (HOST_LOD * lod);
@@ -265,20 +250,18 @@ extern int pp_ptr_vec_n_elems (PTR_VEC * vec);
 extern void **pp_ptr_vec_elems (PTR_VEC * vec);
 extern const char *pp_get_msg (int msg_set, int msg_num);
 extern void emit_line_directive (void);
-extern void yyinit (void);
-extern void yyerror (const YY_CHAR *);
-extern void yyverror (const char *, ...);
-extern void yyvwarn (const YY_CHAR *, ...);
-extern void yyredef (YY_CHAR *);
-extern void yy_enter (enum scanner_mode);
-extern void yy_push_mode (enum scanner_mode);
-extern void yy_pop_mode (void);
-extern void yy_check_mode (void);
-extern void yy_sync_lineno (void);
-extern void yy_set_buf (varstring * vstr);
-extern void yy_echo (const YY_CHAR * str);
-extern void yy_erase_last_token (void);
-extern enum scanner_mode yy_mode ();
+extern void esql_yyinit (void);
+extern void esql_yyerror (const char *);
+extern void esql_yyverror (const char *, ...);
+extern void esql_yyvwarn (const char *, ...);
+extern void esql_yyredef (char *);
+extern void esql_yy_enter (enum scanner_mode);
+extern void esql_yy_push_mode (enum scanner_mode);
+extern void esql_yy_pop_mode (void);
+extern void esql_yy_check_mode (void);
+extern void esql_yy_sync_lineno (void);
+extern void esql_yy_echo (const char *str);
+extern void esql_yy_erase_last_token (void);
 extern varstring *yy_get_buf ();
 extern void echo_stream (const char *, int);
 extern void echo_vstr (const char *, int);
@@ -286,13 +269,13 @@ extern void echo_devnull (const char *, int);
 extern ECHO_FN pp_set_echo (ECHO_FN);
 extern SYMTAB *pp_new_symtab (void);
 extern void pp_free_symtab (SYMTAB *, HT_FREE_FN);
-extern SYMBOL *pp_new_symbol (const YY_CHAR * name, int scope);
+extern SYMBOL *pp_new_symbol (const char *name, int scope);
 extern void pp_discard_symbol (SYMBOL * sym);
 extern void pp_discard_symbol_chain (SYMBOL * sym);
 extern LINK *pp_new_link (void);
 extern void pp_discard_link_chain (LINK * p);
 extern void pp_discard_link (LINK * p);
-extern STRUCTDEF *pp_new_structdef (const YY_CHAR * tag);
+extern STRUCTDEF *pp_new_structdef (const char *tag);
 extern void pp_discard_structdef (STRUCTDEF * sdef);
 extern void pp_discard_structdef_chain (STRUCTDEF * sdef);
 extern STRUCTDEF *pp_new_pseudo_def (SPECIFIER_NOUN type,
@@ -301,11 +284,11 @@ extern void pp_add_declarator (SYMBOL * sym, int type);
 extern LINK *pp_clone_type (LINK * tchain, LINK ** endp);
 extern SYMBOL *pp_clone_symbol (SYMBOL * sym);
 extern int pp_the_same_type (LINK * p1, LINK * p2, int relax);
-extern YY_CHAR *pp_sclass_str (int class_);
-extern YY_CHAR *pp_attr_str (LINK * type);
-extern const YY_CHAR *pp_type_str (LINK * link);
+extern char *pp_sclass_str (int class_);
+extern char *pp_attr_str (LINK * type);
+extern const char *pp_type_str (LINK * link);
 extern void pp_print_syms (FILE * fp);
-extern SYMBOL *pp_findsym (SYMTAB * symtab, YY_CHAR * name);
+extern SYMBOL *pp_findsym (SYMTAB * symtab, unsigned char *name);
 extern void pp_symbol_init (void);
 extern void pp_symbol_finish (void);
 extern void pp_symbol_stats (FILE * fp);

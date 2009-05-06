@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -37,107 +37,162 @@
 #define MIN(X, Y)	((X) < (Y) ? (X) : (Y))
 #endif
 
-#define NET_WRITE_ERROR_CODE(SOCK_FD, ERROR_CODE)	\
-	do {						\
-	  net_write_int(SOCK_FD, 4);			\
-	  net_write_int(SOCK_FD, ERROR_CODE);		\
+#define SIZE_SHORT      sizeof(short)
+#define SIZE_INT        sizeof(int)
+#define SIZE_FLOAT      sizeof(float)
+#define SIZE_DOUBLE     sizeof(double)
+#define SIZE_BIGINT     sizeof(INT64)
+#define SIZE_DATE       6
+#define SIZE_TIME       6
+#define SIZE_OBJECT     8
+
+#define NET_WRITE_ERROR_CODE(SOCK_FD, ERROR_CODE)       \
+	do {                                            \
+	  net_write_int(SOCK_FD, SIZE_INT);             \
+	  net_write_int(SOCK_FD, ERROR_CODE);           \
 	} while (0)
 
-#define NET_ARG_GET_SIZE(SIZE, ARG)		\
-	do {					\
-	  int	tmp_i;				\
-	  memcpy(&tmp_i, (char*) (ARG), 4);	\
-	  SIZE = ntohl(tmp_i);			\
+#define NET_ARG_GET_SIZE(SIZE, ARG)                     \
+	do {                                            \
+	  int	tmp_i;                                  \
+	  memcpy(&tmp_i, (char*) (ARG), SIZE_INT);      \
+	  SIZE = ntohl(tmp_i);                          \
 	} while (0)
 
-#define NET_ARG_GET_INT(VALUE, ARG)	\
-	do {				\
-	  int	tmp_i;			\
-	  memcpy(&tmp_i, (char*) (ARG) + 4, 4);	\
-	  VALUE = ntohl(tmp_i);		\
+#define NET_ARG_GET_BIGINT(VALUE, ARG)                                     \
+        do {                                                               \
+          DB_BIGINT   tmp_i;                                               \
+          memcpy(&tmp_i, (char*) (ARG) + SIZE_INT, SIZE_BIGINT);           \
+          VALUE = ntohi64(tmp_i);                                          \
+        } while (0)
+
+#define NET_ARG_GET_INT(VALUE, ARG)                                        \
+	do {                                                               \
+	  int	tmp_i;                                                     \
+	  memcpy(&tmp_i, (char*) (ARG) + SIZE_INT, SIZE_INT);              \
+	  VALUE = ntohl(tmp_i);                                            \
 	} while (0)
 
-#define NET_ARG_GET_SHORT(VALUE, ARG)		\
-	do {					\
-	  short	tmp_s;				\
-	  memcpy(&tmp_s, (char*) (ARG) + 4, 2);	\
-	  VALUE = ntohs(tmp_s);			\
+#define NET_ARG_GET_SHORT(VALUE, ARG)                                      \
+	do {                                                               \
+	  short	tmp_s;				                           \
+	  memcpy(&tmp_s, (char*) (ARG) + SIZE_INT, SIZE_SHORT);            \
+	  VALUE = ntohs(tmp_s);                                            \
 	} while (0)
 
-#define NET_ARG_GET_FLOAT(VALUE, ARG)		\
-	do {					\
-	  float	tmp_f;				\
-	  memcpy(&tmp_f, (char*) (ARG) + 4, 4);	\
-	  VALUE = net_ntohf(tmp_f);			\
+#define NET_ARG_GET_FLOAT(VALUE, ARG)                                      \
+	do {                                                               \
+	  float	tmp_f;                                                     \
+	  memcpy(&tmp_f, (char*) (ARG) + SIZE_INT, SIZE_FLOAT);            \
+	  VALUE = net_ntohf(tmp_f);                                        \
 	} while (0)
 
-#define NET_ARG_GET_DOUBLE(VALUE, ARG)		\
-	do {					\
-	  double	tmp_d;				\
-	  memcpy(&tmp_d, (char*) (ARG) + 4, 8);	\
-	  VALUE = net_ntohd(tmp_d);			\
+#define NET_ARG_GET_DOUBLE(VALUE, ARG)                                     \
+	do {                                                               \
+	  double	tmp_d;                                             \
+	  memcpy(&tmp_d, (char*) (ARG) + SIZE_INT, SIZE_DOUBLE);           \
+	  VALUE = net_ntohd(tmp_d);                                        \
 	} while (0)
 
-#define NET_ARG_GET_CHAR(VALUE, ARG) 	\
-	do {				\
-	  VALUE = (*((char*) (ARG) + 4));	\
+#define NET_ARG_GET_CHAR(VALUE, ARG)                                       \
+	do {                                                               \
+	  VALUE = (*((char*) (ARG) + SIZE_INT));                           \
 	} while (0)
 
-#define NET_ARG_GET_STR(VALUE, SIZE, ARG)	\
-	do {					\
-	  int	_size;				\
-	  char	*cur_p = (char*) ARG;		\
-	  memcpy(&_size, cur_p, 4);		\
-	  _size = ntohl(_size);			\
-	  cur_p += 4;				\
-	  if (_size <= 0)			\
-	    VALUE = NULL;			\
-	  else					\
-	    VALUE = ((char*) cur_p);		\
-	  SIZE = _size;				\
+#define NET_ARG_GET_STR(VALUE, SIZE, ARG)               \
+	do {                                            \
+	  int	_size;                                  \
+	  char	*cur_p = (char*) ARG;                   \
+	  memcpy(&_size, cur_p, SIZE_INT);              \
+	  _size = ntohl(_size);                         \
+	  cur_p += SIZE_INT;                            \
+	  if (_size <= 0)                               \
+	    VALUE = NULL;                               \
+	  else                                          \
+	    VALUE = ((char*) cur_p);                    \
+	  SIZE = _size;                                 \
 	} while (0)
 
-#define NET_ARG_GET_DATE(YEAR, MON, DAY, ARG)		\
-	do {					\
-	  char		*cur_p = (char*) ARG;	\
-	  short		tmp_s;			\
-	  memcpy(&tmp_s, cur_p + 4, 2);		\
-	  YEAR = ntohs(tmp_s);		\
-	  memcpy(&tmp_s, cur_p + 6, 2);		\
-	  MON = ntohs(tmp_s);		\
-	  memcpy(&tmp_s, cur_p + 8, 2);		\
-	  DAY = ntohs(tmp_s);		\
+#define NET_ARG_GET_DATE(YEAR, MON, DAY, ARG)   		\
+	do {		                                        \
+	  char		*cur_p = (char*) ARG;	                \
+	  short		tmp_s;			                \
+	  int           pos = SIZE_INT;                         \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);		\
+	  YEAR = ntohs(tmp_s);		                        \
+	  pos += SIZE_SHORT;                                    \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);		\
+	  MON = ntohs(tmp_s);		                        \
+          pos += SIZE_SHORT;                                    \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);		\
+	  DAY = ntohs(tmp_s);		                        \
 	} while (0)
 
-#define NET_ARG_GET_TIME(HH, MM, SS, ARG)		\
-	do {					\
-	  char		*cur_p = (char*) ARG;	\
-	  short		tmp_s;			\
-	  memcpy(&tmp_s, cur_p + 10, 2);		\
-	  HH = ntohs(tmp_s);		\
-	  memcpy(&tmp_s, cur_p + 12, 2);		\
-	  MM = ntohs(tmp_s);		\
-	  memcpy(&tmp_s, cur_p + 14, 2);		\
-	  SS = ntohs(tmp_s);		\
+#define NET_ARG_GET_TIME(HH, MM, SS, ARG)                            \
+	do {                                                         \
+	  char		*cur_p = (char*) ARG;	                     \
+	  short		tmp_s;			                     \
+          int           pos = SIZE_INT + SIZE_SHORT * 3;             \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+	  HH = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+	  MM = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+	  memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+	  SS = ntohs(tmp_s);                                         \
 	} while (0)
 
-#define NET_ARG_GET_TIMESTAMP(YR, MON, DAY, HH, MM, SS, ARG)	\
-	do {					\
-	  char		*cur_p = (char*) ARG;	\
-	  short		tmp_s;			\
-	  memcpy(&tmp_s, cur_p + 4, 2);		\
-	  YR = ntohs(tmp_s);			\
-	  memcpy(&tmp_s, cur_p + 6, 2);		\
-	  MON = ntohs(tmp_s);			\
-	  memcpy(&tmp_s, cur_p + 8, 2);		\
-	  DAY = ntohs(tmp_s);			\
-	  memcpy(&tmp_s, cur_p + 10, 2);	\
-	  HH = ntohs(tmp_s);			\
-	  memcpy(&tmp_s, cur_p + 12, 2);	\
-	  MM = ntohs(tmp_s);			\
-	  memcpy(&tmp_s, cur_p + 14, 2);	\
-	  SS = ntohs(tmp_s);			\
-	} while (0)
+#define NET_ARG_GET_TIMESTAMP(YR, MON, DAY, HH, MM, SS, ARG)         \
+        do {                                                         \
+          char          *cur_p = (char*) ARG;                        \
+          short         tmp_s;                                       \
+          int           pos = SIZE_INT;                              \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          YR = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          MON = ntohs(tmp_s);                                        \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          DAY = ntohs(tmp_s);                                        \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          HH = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          MM = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          SS = ntohs(tmp_s);                                         \
+        } while (0)
+
+#define NET_ARG_GET_DATETIME(YR, MON, DAY, HH, MM, SS, MS, ARG)      \
+        do {                                                         \
+          char          *cur_p = (char*) ARG;                        \
+          short         tmp_s;                                       \
+          int           pos = SIZE_INT;                              \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          YR = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          MON = ntohs(tmp_s);                                        \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          DAY = ntohs(tmp_s);                                        \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          HH = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          MM = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          SS = ntohs(tmp_s);                                         \
+          pos += SIZE_SHORT;                                         \
+          memcpy(&tmp_s, cur_p + pos, SIZE_SHORT);                   \
+          MS = ntohs(tmp_s);                                         \
+        } while (0)
 
 #define NET_ARG_GET_OBJECT(VALUE, ARG)		\
 	do {					\
@@ -146,13 +201,17 @@
 	  short		slotid, volid;		\
 	  DB_IDENTIFIER	tmp_oid;		\
 	  DB_OBJECT	*tmp_obj;		\
-	  memcpy(&pageid, cur_p + 4, 4);	\
+	  int           pos = SIZE_INT;         \
+	  memcpy(&pageid, cur_p + pos, SIZE_INT);\
 	  pageid = ntohl(pageid);		\
-	  memcpy(&slotid, cur_p + 8, 2);	\
+	  pos += SIZE_INT;                      \
+	  memcpy(&slotid, cur_p + pos, SIZE_SHORT);\
 	  slotid = ntohs(slotid);		\
-	  memcpy(&volid, cur_p + 10, 2);	\
-	  volid = ntohs(volid);		\
-	  tmp_oid.pageid = pageid;		\
+	  pos += SIZE_SHORT;                    \
+          memcpy(&volid, cur_p + pos, SIZE_SHORT);\
+	  volid = ntohs(volid);		        \
+	  pos += SIZE_SHORT;                    \
+          tmp_oid.pageid = pageid;		\
 	  tmp_oid.slotid = slotid;		\
 	  tmp_oid.volid = volid;		\
 	  tmp_obj = db_object(&tmp_oid);	\
@@ -164,40 +223,48 @@
 	  char	*_macro_tmp_p = (char*) ARG;			\
 	  int	_tmp_pageid;					\
 	  short	_tmp_slotid, _tmp_volid;			\
-	  memcpy(&_tmp_pageid, _macro_tmp_p + 4, 4);		\
+	  int           pos = SIZE_INT;                         \
+          memcpy(&_tmp_pageid, _macro_tmp_p + pos, SIZE_INT);   \
 	  PAGEID = ntohl(_tmp_pageid);				\
-	  memcpy(&_tmp_slotid, _macro_tmp_p + 8, 2);		\
+	  pos += SIZE_INT;                                      \
+	  memcpy(&_tmp_slotid, _macro_tmp_p + pos, SIZE_SHORT); \
 	  SLOTID = ntohs(_tmp_slotid);				\
-	  memcpy(&_tmp_volid, _macro_tmp_p + 10, 2);		\
+	  pos += SIZE_SHORT;                                    \
+          memcpy(&_tmp_volid, _macro_tmp_p + pos, SIZE_SHORT);  \
 	  VOLID = ntohs(_tmp_volid);				\
 	} while (0)
 
 #define CAS_TIMESTAMP_SIZE	12
+#define CAS_DATETIME_SIZE       14
 
-#define NET_ARG_GET_CACHE_TIME(CT, ARG) \
-        do {                            \
-          char *cur_p = (char*) ARG;    \
-          int sec, usec;                \
-          memcpy(&sec, cur_p + 4, 4);   \
-          memcpy(&usec, cur_p + 8, 4);  \
-          (CT)->sec = ntohl(sec);              \
-          (CT)->usec = ntohl(usec);            \
+#define NET_ARG_GET_CACHE_TIME(CT, ARG)             \
+        do {                                        \
+          char *cur_p = (char*) ARG;                \
+          int sec, usec;                            \
+          int pos = SIZE_INT;                       \
+          memcpy(&sec, cur_p + pos, SIZE_INT);      \
+          pos += SIZE_INT;                          \
+          memcpy(&usec, cur_p + pos, SIZE_INT);     \
+          (CT)->sec = ntohl(sec);                   \
+          (CT)->usec = ntohl(usec);                 \
         } while (0)
 
-#ifdef WIN32
-extern int net_init_env (int *new_port);
+extern SOCKET
+#if defined(WINDOWS)
+  net_init_env (int *new_port);
 #else
-extern int net_init_env (void);
+  net_init_env (void);
 #endif
-extern int net_connect_client (int srv_sock_fd);
-extern int net_read_stream (int sock_fd, char *buf, int size);
-extern int net_write_stream (int sock_fd, char *buf, int size);
-extern int net_write_int (int sock_fd, int value);
-extern int net_read_int (int sock_fd, int *value);
+extern SOCKET net_connect_client (SOCKET srv_sock_fd);
+extern int net_read_stream (SOCKET sock_fd, char *buf, int size);
+extern int net_write_stream (SOCKET sock_fd, const char *buf, int size);
+extern int net_write_int (SOCKET sock_fd, int value);
+extern int net_read_int (SOCKET sock_fd, int *value);
 extern int net_decode_str (char *msg, int msg_size, char *func_code,
 			   void ***ret_argv);
-extern int net_read_to_file (int sock_fd, int file_size, char *filename);
-extern int net_write_from_file (int sock_fd, int file_size, char *filename);
+extern int net_read_to_file (SOCKET sock_fd, int file_size, char *filename);
+extern int net_write_from_file (SOCKET sock_fd, int file_size,
+				char *filename);
 extern void net_timeout_set (int timeout_sec);
 
 extern int net_timeout_flag;

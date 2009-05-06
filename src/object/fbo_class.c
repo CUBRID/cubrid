@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -31,33 +31,33 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if !defined(WINDOWS)
+#if defined(WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #include <sys/param.h>
 #include <sys/file.h>
 #endif
 
+#include "porting.h"
 #include "util_func.h"
 #include "memory_alloc.h"
 #include "fbo_class.h"
 #include "elo_recovery.h"
 
-#if defined(WINDOWS)
-#include "porting.h"
-#endif
-
 #define MAX_INSERT_BUFFER_SIZE 4096
 
 static char *esm_open (char *name);
-static int esm_insert_helper (const int fd, const off_t loc, char *string,
-			      const int len);
-static int esm_delete_helper (const int fd, const int len, const int loc);
+static FSIZE_T esm_insert_helper (const int fd, const FSIZE_T loc,
+				  char *string, const FSIZE_T len);
+static FSIZE_T esm_delete_helper (const int fd, const FSIZE_T len,
+				  const FSIZE_T loc);
 
 /*
- * esm_open() - 
- *      return: char * 
- *  name(in) : 
- * 
+ * esm_open() -
+ *      return: char *
+ *  name(in) :
+ *
  */
 
 static char *
@@ -66,7 +66,7 @@ esm_open (char *name)
   static char pathname[PATH_MAX];
   char *return_path;
 
-  /* avoid using realpath if we have an embedded environment varialbe, it gets 
+  /* avoid using realpath if we have an embedded environment varialbe, it gets
    * confused.
    */
   if (name != NULL && name[0] == '$')
@@ -97,9 +97,9 @@ esm_open (char *name)
 
 /*
  * esm_create() - does nothing at this point
- *      return: always returns 0 
- *  pathname(in) : fbo name 
- * 
+ *      return: always returns 0
+ *  pathname(in) : fbo name
+ *
  */
 
 int
@@ -109,10 +109,10 @@ esm_create (char *pathname)
 }
 
 /*
- * esm_destroy() - this will delete the file associated with the fbo 
+ * esm_destroy() - this will delete the file associated with the fbo
  *      return: none
  *  pathname(in) : fbo name
- * 
+ *
  */
 
 void
@@ -125,17 +125,17 @@ esm_destroy (char *pathname)
 }
 
 /*
- * esm_get_size() - opens the fbo, seeks to the end of the file, 
- *                  and returns the length 
- *      return: returns the amount of data in the fbo 
- *  pathname(in) : fbo name 
- * 
+ * esm_get_size() - opens the fbo, seeks to the end of the file,
+ *                  and returns the length
+ *      return: returns the amount of data in the fbo
+ *  pathname(in) : fbo name
+ *
  */
 
-int
+FSIZE_T
 esm_get_size (char *pathname)
 {
-  int offset;
+  FSIZE_T offset;
   int fd;
 
   if (pathname == NULL)
@@ -153,20 +153,21 @@ esm_get_size (char *pathname)
 }
 
 /*
- * esm_read() - Opens the file, seeks to offset, and reads size bytes 
- *              into buffer 
- *      return: returns the number of bytes read from the fbo 
- *  pathname(in) : fbo name 
- *  offset(in) : position within file to start reading  
+ * esm_read() - Opens the file, seeks to offset, and reads size bytes
+ *              into buffer
+ *      return: returns the number of bytes read from the fbo
+ *  pathname(in) : fbo name
+ *  offset(in) : position within file to start reading
  *  size(in) : amount of data to read
  *  buffer(out) : destination data buffer for the read
- * 
+ *
  */
 
-int
-esm_read (char *pathname, const off_t offset, const int size, char *buffer)
+FSIZE_T
+esm_read (char *pathname, const FSIZE_T offset, const FSIZE_T size,
+	  char *buffer)
 {
-  int rc;
+  FSIZE_T rc;
   int fd;
 
   if (pathname == NULL)
@@ -189,21 +190,22 @@ esm_read (char *pathname, const off_t offset, const int size, char *buffer)
 }
 
 /*
- * esm_write() - Opens file, seeks to offset, writes size bytes 
+ * esm_write() - Opens file, seeks to offset, writes size bytes
  *               from buffer to file
  *      return: The return value is the number of bytes written or -1 on error
- *  pathname(in) : pathname of object 
- *  offset(in) : the starting offset to start writing into the object  
+ *  pathname(in) : pathname of object
+ *  offset(in) : the starting offset to start writing into the object
  *  size(in) : the size of the buffer
  *  buffer(out) : the source data buffer containing the data to write (or
  *               overwrite) to the esm object.
- * 
+ *
  */
 
-int
-esm_write (char *pathname, const off_t offset, const int size, char *buffer)
+FSIZE_T
+esm_write (char *pathname, const FSIZE_T offset, const FSIZE_T size,
+	   char *buffer)
 {
-  int rc;
+  FSIZE_T rc;
   int fd;
 
   if (pathname == NULL)
@@ -228,17 +230,18 @@ esm_write (char *pathname, const off_t offset, const int size, char *buffer)
 }
 
 /*
- * esm_insert_helper() - seeks to loc, moves any existing data "down" by len, 
+ * esm_insert_helper() - seeks to loc, moves any existing data "down" by len,
  *                       and writes the string to the file
  *      return: returns the length of data inserted, or < 0 on error
  *  fd(in) : file descriptor of the file
- *  loc(in) : location in the file to start inserting data  
+ *  loc(in) : location in the file to start inserting data
  *  string(out) : the data to insert into the file
  *  len(in) : length of data to insert into the file
  */
 
-static int
-esm_insert_helper (const int fd, const off_t loc, char *string, const int len)
+static FSIZE_T
+esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
+		   const FSIZE_T len)
 {
   char *temp_buffer;
   off_t file_size, delta, seek_loc;
@@ -278,7 +281,7 @@ esm_insert_helper (const int fd, const off_t loc, char *string, const int len)
 
 	  if (delta < buf_size)
 	    {
-	      buf_size = delta;
+	      buf_size = (int) delta;
 	    }
 
 	  lseek (fd, seek_loc, SEEK_SET);
@@ -312,18 +315,19 @@ esm_insert_helper (const int fd, const off_t loc, char *string, const int len)
 }
 
 /*
- * esm_insert() - checks pathname and open operation, and returns value from 
+ * esm_insert() - checks pathname and open operation, and returns value from
  *                the insert_helper routine
- *      return: returns the length of data inserted 
+ *      return: returns the length of data inserted
  *  pathname(in) : fbo name
- *  offset(in) : starting point to insert data  
+ *  offset(in) : starting point to insert data
  *  size(in) : amount of data to insert into the file
  *  buffer(out) : data to be inserted into the file
- * 
+ *
  */
 
-int
-esm_insert (char *pathname, const off_t offset, const int size, char *buffer)
+FSIZE_T
+esm_insert (char *pathname, const FSIZE_T offset, const FSIZE_T size,
+	    char *buffer)
 {
   int fd;
 
@@ -341,17 +345,17 @@ esm_insert (char *pathname, const off_t offset, const int size, char *buffer)
 }
 
 /*
- * esm_delete_helper() - seeks to loc and moves all data "down" to loc 
- *                       (over len). If the file is shorter than len, 
+ * esm_delete_helper() - seeks to loc and moves all data "down" to loc
+ *                       (over len). If the file is shorter than len,
  *                       we will simply truncate the file
- *      return: returns the size of data deleted 
+ *      return: returns the size of data deleted
  *  fd(in) : file descriptor of the file
  *  len(in) : the data to delete from the file
  *  loc(in) : length of data to delete from the file
  */
 
-static int
-esm_delete_helper (const int fd, const int len, const int loc)
+static FSIZE_T
+esm_delete_helper (const int fd, const FSIZE_T len, const FSIZE_T loc)
 {
   char *temp_buffer;
   off_t file_size, read_loc, write_loc;
@@ -384,21 +388,21 @@ esm_delete_helper (const int fd, const int len, const int loc)
       return (len);
     }				/* Truncate file here */
   ftruncate (fd, loc);
-  return ((int) (file_size - loc));
+  return ((FSIZE_T) (file_size - loc));
 }
 
 /*
- * esm_delete() - verifies pathname and open, and returns value 
+ * esm_delete() - verifies pathname and open, and returns value
  *                from esm_delete_helper
  *      return: returns the size of data deleted if no errors, -1 otherwise
- *  pathname(in) : fbo name 
- *  offset(in) : starting point to delete data  
+ *  pathname(in) : fbo name
+ *  offset(in) : starting point to delete data
  *  size(in) : amount of data to delete from the file
- * 
+ *
  */
 
-int
-esm_delete (char *pathname, off_t offset, const int size)
+FSIZE_T
+esm_delete (char *pathname, FSIZE_T offset, const FSIZE_T size)
 {
   int fd;
 
@@ -417,19 +421,19 @@ esm_delete (char *pathname, off_t offset, const int size)
 }
 
 /*
- * esm_truncate() - This will truncate the data to the requested size                                             
- *      return: returns size of data truncated, or -1 on error 
+ * esm_truncate() - This will truncate the data to the requested size
+ *      return: returns size of data truncated, or -1 on error
  *  pathname(in) : fbo name
- *  offset(in) :   
- * 
+ *  offset(in) :
+ *
  */
 
-int
-esm_truncate (char *pathname, const int offset)
+FSIZE_T
+esm_truncate (char *pathname, const FSIZE_T offset)
 {
   int rc;
   int fd;
-  int lsize;
+  FSIZE_T lsize;
 
   if (pathname == NULL)
     {
@@ -458,18 +462,18 @@ esm_truncate (char *pathname, const int offset)
 }
 
 /*
- * esm_append() - verifies pathname and open operation, seeks to 
+ * esm_append() - verifies pathname and open operation, seeks to
  *                the end of the file and then writes the new data
- *  
- *      return: returns the amount of data append tot he end of the file 
+ *
+ *      return: returns the amount of data append tot he end of the file
  *  pathname(in) : fbo name
- *  size(in) : amount of data to append to the end of the file    
+ *  size(in) : amount of data to append to the end of the file
  *  buffer(out) : data to be appended to the end of the file
- * 
+ *
  */
 
-int
-esm_append (char *pathname, const int size, char *buffer)
+FSIZE_T
+esm_append (char *pathname, const FSIZE_T size, char *buffer)
 {
   int rc;
   int fd;

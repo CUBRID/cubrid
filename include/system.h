@@ -90,10 +90,9 @@
 #  ifdef __cplusplus
 typedef bool _Bool;
 #  else
-#   define _Bool signed char
+#   define bool char
 #  endif
 # endif
-# define bool _Bool
 # define false 0
 # define true 1
 # define __bool_true_false_are_defined 1
@@ -123,7 +122,9 @@ typedef unsigned char BYTE;
 typedef int8_t INT8;
 #else
 # if SIZEOF_CHAR == 1
-typedef char INT8;
+#if !defined(WINDOWS)
+typedef char INT8;		/* TODO: check to exist redefined macro INT8 */
+#endif
 # else
 #  error "Error: INT8"
 # endif
@@ -216,6 +217,11 @@ typedef unsigned long UINTPTR;
 # endif
 #endif
 
+#if defined(WINDOWS)
+#define off_t __int64
+#endif
+
+typedef off_t FSIZE_T;
 
 /* standard constants for use with variables of type bool */
 #ifndef TRUE
@@ -244,5 +250,26 @@ typedef unsigned long UINTPTR;
 
 #define NAME2(X, Y)     X##Y
 #define NAME3(X, Y, Z)  X##Y##Z
+
+typedef UINTPTR HL_HEAPID;
+#define HL_NULL_HEAPID 0
+
+typedef UINTPTR QUERY_ID;
+#define NULL_QUERY_ID (~0)
+
+#if defined(WINDOWS)
+#define SSIZEOF(val) ((SSIZE_T) sizeof(val))
+#else
+#define SSIZEOF(val) ((ssize_t) sizeof(val))
+#endif
+
+/* TODO: rethink to use __WORDSIZE */
+#if defined(WINDOWS)
+#if defined(_WIN64)
+#define __WORDSIZE 64
+#else
+#define __WORDSIZE 32
+#endif
+#endif
 
 #endif /* _SYSTEM_H_ */

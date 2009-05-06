@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -64,11 +64,9 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-
-
-
-
-
+#if !defined(SERVER_MODE)
+extern unsigned int db_on_server;
+#endif
 
 #define MR_CMP(d1, d2, rev, dom)                                        \
     ((rev || ((dom) && (dom)->is_desc))                                 \
@@ -363,6 +361,26 @@ static int mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2,
 			    TP_DOMAIN * domain, int do_reverse,
 			    int do_coercion, int total_order,
 			    int *start_colp);
+static void mr_initmem_bigint (void *mem);
+static int mr_setmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+			     bool copy);
+static void mr_writemem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
+static void mr_readmem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain,
+			       int size);
+static void mr_initval_bigint (DB_VALUE * value, int precision, int scale);
+static int mr_setval_bigint (DB_VALUE * dest, DB_VALUE * src, bool copy);
+static int mr_writeval_bigint (OR_BUF * buf, DB_VALUE * value);
+static int mr_readval_bigint (OR_BUF * buf, DB_VALUE * value,
+			      TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len);
+static int mr_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain,
+			      int do_reverse, int do_coercion,
+			      int total_order, int *start_colp);
+static int mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2,
+			     TP_DOMAIN * domain, int do_reverse,
+			     int do_coercion, int total_order,
+			     int *start_colp);
 static void mr_initmem_float (void *mem);
 static int mr_setmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_float (void *mem, TP_DOMAIN * domain,
@@ -442,6 +460,31 @@ static int mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2,
 			    TP_DOMAIN * domain, int do_reverse,
 			    int do_coercion, int total_order,
 			    int *start_colp);
+
+static void mr_initmem_datetime (void *memptr);
+static void mr_initval_datetime (DB_VALUE * value, int precision, int scale);
+static int mr_setmem_datetime (void *mem, TP_DOMAIN * domain,
+			       DB_VALUE * value);
+static int mr_getmem_datetime (void *mem, TP_DOMAIN * domain,
+			       DB_VALUE * value, bool copy);
+static int mr_setval_datetime (DB_VALUE * dest, DB_VALUE * src, bool copy);
+static void mr_writemem_datetime (OR_BUF * buf, void *mem,
+				  TP_DOMAIN * domain);
+static void mr_readmem_datetime (OR_BUF * buf, void *mem,
+				 TP_DOMAIN * domain, int size);
+static int mr_writeval_datetime (OR_BUF * buf, DB_VALUE * value);
+static int mr_readval_datetime (OR_BUF * buf, DB_VALUE * value,
+				TP_DOMAIN * domain, int size, bool copy,
+				char *copy_buf, int copy_buf_len);
+static int mr_cmpdisk_datetime (void *mem1, void *mem2,
+				TP_DOMAIN * domain, int do_reverse,
+				int do_coercion, int total_order,
+				int *start_colp);
+static int mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2,
+			       TP_DOMAIN * domain, int do_reverse,
+			       int do_coercion, int total_order,
+			       int *start_colp);
+
 static void mr_initmem_money (void *memptr);
 static int mr_setmem_money (void *memptr, TP_DOMAIN * domain,
 			    DB_VALUE * value);
@@ -821,6 +864,27 @@ PR_TYPE tp_Short = {
 
 PR_TYPE *tp_Type_short = &tp_Short;
 
+PR_TYPE tp_Bigint = {
+  "bigint", DB_TYPE_BIGINT, 0, sizeof (DB_BIGINT), sizeof (DB_BIGINT), 8,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_bigint,
+  mr_initval_bigint,
+  mr_setmem_bigint,
+  mr_getmem_bigint,
+  mr_setval_bigint,
+  NULL, NULL,
+  mr_writemem_bigint,
+  mr_readmem_bigint,
+  mr_writeval_bigint,
+  mr_readval_bigint,
+  NULL,
+  mr_cmpdisk_bigint,
+  mr_cmpval_bigint
+};
+
+PR_TYPE *tp_Type_bigint = &tp_Bigint;
+
 PR_TYPE tp_Float = {
   "float", DB_TYPE_FLOAT, 0, sizeof (float), sizeof (float), 4,
   help_fprint_value,
@@ -905,6 +969,27 @@ PR_TYPE tp_Utime = {
 
 PR_TYPE *tp_Type_utime = &tp_Utime;
 
+PR_TYPE tp_Datetime = {
+  "datetime", DB_TYPE_DATETIME, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 8,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_datetime,
+  mr_initval_datetime,
+  mr_setmem_datetime,
+  mr_getmem_datetime,
+  mr_setval_datetime,
+  NULL, NULL,
+  mr_writemem_datetime,
+  mr_readmem_datetime,
+  mr_writeval_datetime,
+  mr_readval_datetime,
+  NULL,
+  mr_cmpdisk_datetime,
+  mr_cmpval_datetime
+};
+
+PR_TYPE *tp_Type_datetime = &tp_Datetime;
+
 PR_TYPE tp_Monetary = {
   "monetary", DB_TYPE_MONETARY, 0, sizeof (DB_MONETARY), OR_MONETARY_SIZE, 8,
   help_fprint_value,
@@ -978,7 +1063,7 @@ PR_TYPE tp_Object = {
 PR_TYPE *tp_Type_object = &tp_Object;
 
 PR_TYPE tp_Elo = {
-  "*elo*", DB_TYPE_ELO, 1, sizeof (ELO *), 0, 4,
+  "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 4,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_elo,
@@ -1285,7 +1370,9 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_VarNChar,
   &tp_ResultSet,
   &tp_Midxkey,
-  &tp_Null
+  &tp_Null,
+  &tp_Bigint,
+  &tp_Datetime
 };
 
 PR_TYPE tp_ResultSet = {
@@ -2094,6 +2181,127 @@ mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2,
 }
 
 /*
+ * TYPE BIGINT
+ *
+ * Your basic 64 bit signed integral value.
+ * At the storage level, we don't really care whether it is signed or unsigned.
+ */
+
+static void
+mr_initmem_bigint (void *mem)
+{
+  *(DB_BIGINT *) mem = 0;
+}
+
+static int
+mr_setmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value != NULL)
+    *(DB_BIGINT *) mem = db_get_bigint (value);
+  else
+    mr_initmem_bigint (mem);
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  return db_make_bigint (value, *(DB_BIGINT *) mem);
+}
+
+static void
+mr_writemem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+{
+  or_put_bigint (buf, *(DB_BIGINT *) mem);
+}
+
+static void
+mr_readmem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+{
+  int rc = NO_ERROR;
+
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Bigint.disksize);
+    }
+  else
+    {
+      *(DB_BIGINT *) mem = or_get_bigint (buf, &rc);
+    }
+}
+
+static void
+mr_initval_bigint (DB_VALUE * value, int precision, int scale)
+{
+  db_value_domain_init (value, DB_TYPE_BIGINT, precision, scale);
+  db_make_bigint (value, 0);
+}
+
+static int
+mr_setval_bigint (DB_VALUE * dest, DB_VALUE * src, bool copy)
+{
+  if (src && !DB_IS_NULL (src))
+    return db_make_bigint (dest, db_get_bigint (src));
+  else
+    return db_value_domain_init (dest, DB_TYPE_BIGINT,
+				 DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+}
+
+static int
+mr_writeval_bigint (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_bigint (buf, db_get_bigint (value));
+}
+
+static int
+mr_readval_bigint (OR_BUF * buf, DB_VALUE * value,
+		   TP_DOMAIN * domain, int size, bool copy,
+		   char *copy_buf, int copy_buf_len)
+{
+  int rc = NO_ERROR;
+  DB_BIGINT temp_int;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Bigint.disksize);
+    }
+  else
+    {
+      temp_int = or_get_bigint (buf, &rc);
+      db_make_bigint (value, temp_int);
+      value->need_clear = false;
+    }
+  return rc;
+}
+
+static int
+mr_cmpdisk_bigint (void *mem1, void *mem2,
+		   TP_DOMAIN * domain, int do_reverse,
+		   int do_coercion, int total_order, int *start_colp)
+{
+  DB_BIGINT i1, i2;
+
+  i1 = OR_GET_BIGINT (mem1);
+  i2 = OR_GET_BIGINT (mem2);
+
+  return MR_CMP (i1, i2, do_reverse, domain);
+}
+
+static int
+mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2,
+		  TP_DOMAIN * domain, int do_reverse,
+		  int do_coercion, int total_order, int *start_colp)
+{
+  DB_BIGINT i1, i2;
+
+  i1 = DB_GET_BIGINT (value1);
+  i2 = DB_GET_BIGINT (value2);
+
+  return MR_CMP (i1, i2, do_reverse, domain);
+}
+
+/*
  * TYPE FLOAT
  *
  * IEEE single precision floating point values.
@@ -2614,6 +2822,201 @@ mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2,
 }
 
 /*
+ * TYPE DATETIME
+ *
+ */
+
+static void
+mr_initmem_datetime (void *memptr)
+{
+  DB_DATETIME *mem = (DB_DATETIME *) memptr;
+
+  mem->date = 0;
+  mem->time = 0;
+}
+
+static void
+mr_initval_datetime (DB_VALUE * value, int precision, int scale)
+{
+  DB_DATETIME dt;
+
+  mr_initmem_datetime (&dt);
+  db_make_datetime (value, &dt);
+  value->need_clear = false;
+}
+
+static int
+mr_setmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value == NULL)
+    mr_initmem_datetime (mem);
+  else
+    *(DB_DATETIME *) mem = *db_get_datetime (value);
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+		    bool copy)
+{
+  return db_make_datetime (value, (DB_DATETIME *) mem);
+}
+
+static int
+mr_setval_datetime (DB_VALUE * dest, DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (src == NULL || DB_IS_NULL (src))
+    error = db_value_domain_init (dest, DB_TYPE_DATETIME,
+				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  else
+    {
+      error = db_make_datetime (dest, db_get_datetime (src));
+    }
+  return error;
+}
+
+static void
+mr_writemem_datetime (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+{
+  or_put_datetime (buf, (DB_DATETIME *) mem);
+}
+
+static void
+mr_readmem_datetime (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+{
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Datetime.disksize);
+    }
+  else
+    {
+      or_get_datetime (buf, (DB_DATETIME *) mem);
+    }
+}
+
+static int
+mr_writeval_datetime (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_datetime (buf, db_get_datetime (value));
+}
+
+static int
+mr_readval_datetime (OR_BUF * buf, DB_VALUE * value,
+		     TP_DOMAIN * domain, int size, bool copy,
+		     char *copy_buf, int copy_buf_len)
+{
+  DB_DATETIME datetime;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Datetime.disksize);
+    }
+  else
+    {
+      rc = or_get_datetime (buf, &datetime);
+      db_make_datetime (value, &datetime);
+    }
+  return rc;
+}
+
+static int
+mr_cmpdisk_datetime (void *mem1, void *mem2,
+		     TP_DOMAIN * domain, int do_reverse,
+		     int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  DB_DATETIME dt1, dt2;
+
+  if (mem1 == mem2)
+    {
+      return DB_EQ;
+    }
+
+  OR_GET_DATETIME (mem1, &dt1);
+  OR_GET_DATETIME (mem2, &dt2);
+
+  if (dt1.date < dt2.date)
+    {
+      c = DB_LT;
+    }
+  else if (dt1.date > dt2.date)
+    {
+      c = DB_GT;
+    }
+  else
+    {
+      if (dt1.time < dt2.time)
+	{
+	  c = DB_LT;
+	}
+      else if (dt1.time > dt2.time)
+	{
+	  c = DB_GT;
+	}
+      else
+	{
+	  c = DB_EQ;
+	}
+    }
+
+  if (do_reverse || (domain && domain->is_desc))
+    {
+      c = -c;
+    }
+
+  return c;
+}
+
+static int
+mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2,
+		    TP_DOMAIN * domain, int do_reverse,
+		    int do_coercion, int total_order, int *start_colp)
+{
+  const DB_DATETIME *dt1, *dt2;
+  int c;
+
+  dt1 = DB_GET_DATETIME (value1);
+  dt2 = DB_GET_DATETIME (value2);
+
+  if (dt1->date < dt2->date)
+    {
+      c = DB_LT;
+    }
+  else if (dt1->date > dt2->date)
+    {
+      c = DB_GT;
+    }
+  else
+    {
+      if (dt1->time < dt2->time)
+	{
+	  c = DB_LT;
+	}
+      else if (dt1->time > dt2->time)
+	{
+	  c = DB_GT;
+	}
+      else
+	{
+	  c = DB_EQ;
+	}
+    }
+
+  if (do_reverse || (domain && domain->is_desc))
+    {
+      c = -c;
+    }
+
+  return c;
+}
+
+
+
+/*
  * TYPE MONETARY
  *
  * Practically useless combination of an IEEE double with a currency tag.
@@ -3096,8 +3499,8 @@ mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
 
 /*
  * mr_lengthval_object - checks if the object is virtual or not. and returns
- * propery type size.
- *    return: If it is virtual object returns caclulated the DB_TYPE_VOBJ
+ * property type size.
+ *    return: If it is virtual object returns calculated the DB_TYPE_VOBJ
  *    packed size. returns DB_TYPE_OID otherwise
  *    value(in): value to get length
  *    disk(in): indicator that it is disk object
@@ -3108,7 +3511,8 @@ mr_lengthval_object (DB_VALUE * value, int disk)
 #if !defined (SERVER_MODE)
   MOP mop;
 #endif
-  long size;
+  int size;
+
   if (disk)
     {
       size = OR_OID_SIZE;
@@ -3680,7 +4084,7 @@ mr_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
   else
     {
       DB_ELO **mem = (DB_ELO **) memptr;
-      ELO *elo = *mem;
+      DB_ELO *elo = *mem;
 
       len = OR_ELO_HEADER_SIZE;	/* size without pathname string */
       if (elo != NULL && elo->original_pathname != NULL)
@@ -3720,7 +4124,7 @@ static void
 mr_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_ELO **mem = (DB_ELO **) memptr;
-  ELO *elo;
+  DB_ELO *elo;
 
   elo = *mem;
   if (elo == NULL)
@@ -3742,7 +4146,7 @@ mr_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
 #if !defined (SERVER_MODE)
   DB_ELO **mem = (DB_ELO **) memptr;
-  ELO *elo;
+  DB_ELO *elo;
   char *str;
   int len;
 
@@ -3901,15 +4305,14 @@ mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2,
   elo2 = DB_GET_ELO (value2);
 
   /* use address for collating sequence */
-  return MR_CMP ((unsigned long) elo1, (unsigned long) elo2, do_reverse,
-		 domain);
+  return MR_CMP ((UINTPTR) elo1, (UINTPTR) elo2, do_reverse, domain);
 }
 
 /*
  * TYPE VARIABLE
  *
- * Currently this can only be used internaly for class objects.  I think
- * this is usefull enough to make a general purpose thing.
+ * Currently this can only be used internally for class objects.  I think
+ * this is useful enough to make a general purpose thing.
  * Implemented with the DB_VALUE (like set elements) which means that we
  * will always create MOPs for variable values that are object references.
  * If this gets to be a big deal, will need to define another union
@@ -4200,7 +4603,7 @@ mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2,
   p2 = DB_GET_POINTER (value2);
 
   /* use address for collating sequence */
-  return MR_CMP ((unsigned long) p1, (unsigned long) p2, do_reverse, domain);
+  return MR_CMP ((UINTPTR) p1, (UINTPTR) p2, do_reverse, domain);
 }
 
 /*
@@ -4795,6 +5198,7 @@ mr_writeval_set (OR_BUF * buf, DB_VALUE * value)
   int pin;
 #endif
   int rc = NO_ERROR;
+
   ref = db_get_set (value);
   if (ref != NULL)
     {
@@ -4805,10 +5209,9 @@ mr_writeval_set (OR_BUF * buf, DB_VALUE * value)
        */
       if (ref->disk_set)
 	{
-	  /* TODO: LLP64 problem */
 	  /* check for overflow */
-	  if (((unsigned long) buf->endptr - (unsigned long) buf->ptr)
-	      < (unsigned long) ref->disk_size)
+	  if ((((ptrdiff_t) (buf->endptr - buf->ptr)) <
+	       (ptrdiff_t) ref->disk_size))
 	    {
 	      return or_overflow (buf);
 	    }
@@ -4833,8 +5236,8 @@ mr_writeval_set (OR_BUF * buf, DB_VALUE * value)
 #endif
 		  size = or_packed_set_length (set, 1);
 		  /* remember the Windows pointer problem ! */
-		  if (((unsigned long) buf->endptr -
-		       (unsigned long) buf->ptr) < (unsigned long) size)
+		  if (((ptrdiff_t) (buf->endptr -
+				    buf->ptr)) < (ptrdiff_t) size)
 		    {
 		      /* unpin the owner before we abort ! */
 #if !defined (SERVER_MODE)
@@ -5432,7 +5835,7 @@ mr_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
 	  if (rc == NO_ERROR)
 	    {
 	      /* round up to a word boundary */
-	      rc = or_get_align32 (buf);
+	      /*rc = or_get_align32 (buf); *//* need ?? */
 	    }
 	  if (rc != NO_ERROR)
 	    {
@@ -5527,6 +5930,7 @@ compare_midxkey (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
     }
 
   adv_size1 = OR_MULTI_BOUND_BIT_BYTES (mul1->ncolumns);
+
   mem1 += adv_size1;
   mem2 += adv_size1;
 
@@ -5535,6 +5939,31 @@ compare_midxkey (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 
   for (i = 0; i < mul1->ncolumns; i++)
     {
+
+      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	{
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (dom1->type->id))
+	    {
+	      mem1 = PTR_ALIGN (mem1, MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      mem1 = PTR_ALIGN (mem1, INT_ALIGNMENT);
+	    }
+	}
+
+      if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	{
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (dom2->type->id))
+	    {
+	      mem2 = PTR_ALIGN (mem2, MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      mem2 = PTR_ALIGN (mem2, INT_ALIGNMENT);
+	    }
+	}
+
       need_reverse = true;	/* guess as true */
 
       c = DB_EQ;		/* init */
@@ -5619,8 +6048,8 @@ compare_midxkey (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
       adv_size1 = pr_writemem_disk_size (mem1, dom1);
       adv_size2 = pr_writemem_disk_size (mem2, dom2);
 
-      mem1 += (DB_ALIGN (adv_size1, OR_INT_SIZE));
-      mem2 += (DB_ALIGN (adv_size2, OR_INT_SIZE));
+      mem1 += adv_size1;
+      mem2 += adv_size2;
 
     check_done:
 
@@ -5630,6 +6059,8 @@ compare_midxkey (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 	{			/* is full-key range cmp */
 	  domain = domain->next;
 	}
+
+
       dom1 = dom1->next;
       dom2 = dom2->next;
     }				/* for */
@@ -5829,7 +6260,6 @@ mr_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
   int len;
 
   /* There is no difference between the disk & memory sizes. */
-
   buf = (char *) memptr;
 
   ncolumns = 0;			/* init */
@@ -5842,6 +6272,7 @@ mr_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
     {
       goto exit_on_error;	/* give up */
     }
+
   adv_size = OR_MULTI_BOUND_BIT_BYTES (ncolumns);
 
   bitptr = buf;
@@ -5857,14 +6288,21 @@ mr_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
 
       /* at here, val is non-NULL */
 
-      adv_size = pr_writemem_disk_size (buf, dom);
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
+	{
+	  buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  buf = PTR_ALIGN (buf, INT_ALIGNMENT);
+	}
 
-      DB_ALIGN (adv_size, OR_INT_SIZE);
+      adv_size = pr_writemem_disk_size (buf, dom);
       buf += adv_size;
-    }				/* for (i = 0, dom = domain->setdomain; ...) */
+    }
 
   /* set buf size */
-  len = buf - bitptr;
+  len = CAST_BUFLEN (buf - bitptr);
 
 exit_on_end:
 
@@ -6352,11 +6790,7 @@ pr_type_from_id (DB_TYPE id)
 {
   PR_TYPE *type = NULL;
 
-  /* Start ignoring DB_TYPE_LAST until we can build the whole system
-   * to accomodate removing the last marker.
-   */
-/*  if (id >= DB_TYPE_FIRST && id < DB_TYPE_LAST) */
-  if (id <= DB_TYPE_MIDXKEY)
+  if (id <= DB_TYPE_LAST && id != DB_TYPE_TABLE)
     {
       type = tp_Type_id_map[(int) id];
     }
@@ -9892,7 +10326,7 @@ static int
 mr_setval_bit (DB_VALUE * dest, DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
-  int src_precision, src_length, src_number_of_bits;
+  int src_precision, src_length, src_number_of_bits = 0;
   char *src_string, *new_;
 
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))

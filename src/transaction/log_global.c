@@ -47,7 +47,7 @@ LOG_GLOBAL log_Gl = {
   {NULL_VOLDES, {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}, NULL, NULL},
   /* hdr */
-  {{'0'}, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0,
+  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0,
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
    0, 0, 0, 0, 0, false,
@@ -56,9 +56,10 @@ LOG_GLOBAL log_Gl = {
    {NULL_PAGEID, NULL_OFFSET},
    {'0'}, 0, 0, 0,
    {{0, 0, 0, 0, 0}},
-   0, 0},
+   0, 0,
+   {NULL_PAGEID, NULL_OFFSET}},
   /* archive */
-  {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0},
+  {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0, 0},
    0, 0, NULL},
   /* run_nxchkpt_atpageid */
   NULL_PAGEID,
@@ -86,7 +87,7 @@ LOG_GLOBAL log_Gl = {
   NULL,
 
   /* flush info */
-  {0, 0, LOG_FLUSH_NORMAL, NULL
+  {0, 0, NULL, LOG_FLUSH_NORMAL
 #if defined(SERVER_MODE)
    , MUTEX_INITIALIZER
 #if defined(LOG_DEBUG)

@@ -63,4 +63,3 @@ log_time_diff (T_LOG_TIME * t1, T_LOG_TIME * t2)
   diff += (t2->msec - t1->msec);
   return diff;
 }
-

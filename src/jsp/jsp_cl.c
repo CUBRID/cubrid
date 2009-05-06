@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -90,14 +90,14 @@ typedef struct
 {
   char *name;
   DB_VALUE *returnval;
+  DB_ARG_LIST *args;
   int arg_count;
   int arg_mode[MAX_ARG_COUNT];
   int arg_type[MAX_ARG_COUNT];
-  DB_ARG_LIST *args;
   int return_type;
 } SP_ARGS;
 
-static int sock_fds[MAX_CALL_COUNT];
+static SOCKET sock_fds[MAX_CALL_COUNT];
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
@@ -122,13 +122,14 @@ static int jsp_add_stored_procedure (const char *name,
 				     const char *java_method);
 static int drop_stored_procedure (const char *name,
 				  PT_MISC_TYPE expected_type);
-static int jsp_writen (int fd, const void *vptr, size_t n);
-static int jsp_readn (int fd, void *vptr, size_t n);
+static int jsp_writen (SOCKET fd, const void *vptr, int n);
+static int jsp_readn (SOCKET fd, void *vptr, int n);
 static int jsp_get_value_size (DB_VALUE * value);
 static int jsp_get_argument_size (DB_ARG_LIST * args);
 
 static char *jsp_pack_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_int_argument (char *buffer, DB_VALUE * value);
+static char *jsp_pack_bigint_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_short_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_float_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_double_argument (char *buffer, DB_VALUE * value);
@@ -137,6 +138,7 @@ static char *jsp_pack_string_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_date_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_time_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_timestamp_argument (char *buffer, DB_VALUE * value);
+static char *jsp_pack_datetime_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_set_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_object_argument (char *buffer, DB_VALUE * value);
 static char *jsp_pack_monetary_argument (char *buffer, DB_VALUE * value);
@@ -144,6 +146,7 @@ static char *jsp_pack_null_argument (char *buffer);
 
 static char *jsp_unpack_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_int_value (char *buffer, DB_VALUE * retval);
+static char *jsp_unpack_bigint_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_short_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_float_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_double_value (char *buffer, DB_VALUE * retval);
@@ -158,16 +161,18 @@ static char *jsp_unpack_monetary_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_resultset (char *buffer, DB_VALUE * retval);
 
 #if !defined(DISABLE_JSP)	/* from CUBRID_CAS */
-extern int libcas_main (int fd);
+extern int libcas_main (SOCKET fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
 #endif /* not DISABLE_JSP */
 
-static int jsp_send_call_request (const int sockfd, const SP_ARGS * sp_args);
-static int jsp_receive_response (const int sockfd, const SP_ARGS * sp_args);
+static int jsp_send_call_request (const SOCKET sockfd,
+				  const SP_ARGS * sp_args);
+static int jsp_receive_response (const SOCKET sockfd,
+				 const SP_ARGS * sp_args);
 
-static int jsp_connect_server (void);
-static void jsp_close_internal_connection (const int sockfd);
+static SOCKET jsp_connect_server (void);
+static void jsp_close_internal_connection (const SOCKET sockfd);
 static int jsp_execute_stored_procedure (const SP_ARGS * args);
 static int jsp_do_call_stored_procedure (DB_VALUE * returnval,
 					 DB_ARG_LIST * args,
@@ -183,7 +188,7 @@ static int jsp_do_call_stored_procedure (DB_VALUE * returnval,
 void
 jsp_init (void)
 {
-  sock_fds[0] = 0;
+  sock_fds[0] = INVALID_SOCKET;
   call_cnt = 0;
   memset (is_prepare_call, 0, sizeof (bool) * MAX_CALL_COUNT);
 
@@ -202,10 +207,10 @@ jsp_init (void)
 void
 jsp_close_connection (void)
 {
-  if (sock_fds[0] > 0)
+  if (!IS_INVALID_SOCKET (sock_fds[0]))
     {
       jsp_close_internal_connection (sock_fds[0]);
-      sock_fds[0] = 0;
+      sock_fds[0] = INVALID_SOCKET;
     }
 }
 
@@ -382,7 +387,6 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* to maintain the list to free all the allocated */
 	      to_break = true;
 	    }
-
 	}
 
       (*next_value_list)->val = db_value;
@@ -840,7 +844,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 
   for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
     {
-      MOP mop;
+      MOP mop = NULL;
 
       if (node_p->type_enum == PT_TYPE_RESULTSET
 	  && node_p->info.sp_param.mode != PT_OUTPUT)
@@ -1056,7 +1060,7 @@ error:
  * windows_blocking_hook() -
  *   return: false
  *
- * Note: WIN32 Code
+ * Note: WINDOWS Code
  */
 
 BOOL
@@ -1138,9 +1142,9 @@ windows_socket_shutdown ()
  */
 
 static int
-jsp_writen (int fd, const void *vptr, size_t n)
+jsp_writen (SOCKET fd, const void *vptr, int n)
 {
-  size_t nleft;
+  int nleft;
   int nwritten;
   const char *ptr;
 
@@ -1149,7 +1153,12 @@ jsp_writen (int fd, const void *vptr, size_t n)
 
   while (nleft > 0)
     {
+#if defined(WINDOWS)
       nwritten = send (fd, ptr, nleft, 0);
+#else
+      nwritten = send (fd, ptr, (size_t) nleft, 0);
+#endif
+
       if (nwritten <= 0)
 	{
 #if defined(WINDOWS)
@@ -1170,7 +1179,7 @@ jsp_writen (int fd, const void *vptr, size_t n)
       ptr += nwritten;
     }
 
-  return (n);
+  return (n - nleft);
 }
 
 /*
@@ -1185,9 +1194,9 @@ jsp_writen (int fd, const void *vptr, size_t n)
  */
 
 static int
-jsp_readn (int fd, void *vptr, size_t n)
+jsp_readn (SOCKET fd, void *vptr, int n)
 {
-  size_t nleft;
+  int nleft;
   int nread;
   char *ptr;
 
@@ -1196,7 +1205,12 @@ jsp_readn (int fd, void *vptr, size_t n)
 
   while (nleft > 0)
     {
+#if defined(WINDOWS)
       nread = recv (fd, ptr, nleft, 0);
+#else
+      nread = recv (fd, ptr, (size_t) nleft, 0);
+#endif
+
       if (nread < 0)
 	{
 
@@ -1246,6 +1260,10 @@ jsp_get_value_size (DB_VALUE * value)
       size = sizeof (int);
       break;
 
+    case DB_TYPE_BIGINT:
+      size = sizeof (DB_BIGINT);
+      break;
+
     case DB_TYPE_FLOAT:
       size = sizeof (float);	/* need machine independent code */
       break;
@@ -1278,6 +1296,10 @@ jsp_get_value_size (DB_VALUE * value)
 
     case DB_TYPE_TIMESTAMP:
       size = sizeof (int) * 6;
+      break;
+
+    case DB_TYPE_DATETIME:
+      size = sizeof (int) * 7;
       break;
 
     case DB_TYPE_SET:
@@ -1360,6 +1382,27 @@ jsp_pack_int_argument (char *buffer, DB_VALUE * value)
 }
 
 /*
+ * jsp_pack_bigint_argument -
+ *   return: return packing value
+ *   buffer(in/out): buffer
+ *   value(in): value of bigint type
+ *
+ * Note:
+ */
+static char *
+jsp_pack_bigint_argument (char *buffer, DB_VALUE * value)
+{
+  DB_BIGINT pack_value;
+  char *ptr;
+
+  ptr = or_pack_int (buffer, sizeof (DB_BIGINT));
+  OR_PUT_BIGINT (&pack_value, DB_GET_BIGINT (value));
+  memcpy (ptr, (char *) (&pack_value), OR_BIGINT_SIZE);
+
+  return ptr + OR_BIGINT_SIZE;
+}
+
+/*
  * jsp_pack_short_argument -
  *   return: return packing value
  *   buffer(in): buffer
@@ -1417,15 +1460,15 @@ jsp_pack_float_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 {
-  double v;
+  double v, pack_value;
   char *ptr;
 
-  ptr = buffer;
-  ptr = or_pack_int (ptr, sizeof (double));
+  ptr = or_pack_int (buffer, sizeof (double));
   v = DB_GET_DOUBLE (value);
-  ptr = or_pack_double (ptr, v);
+  OR_PUT_DOUBLE (&pack_value, &v);
+  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
 
-  return ptr;
+  return ptr + OR_DOUBLE_SIZE;
 }
 
 /*
@@ -1564,6 +1607,38 @@ jsp_pack_timestamp_argument (char *buffer, DB_VALUE * value)
 }
 
 /*
+ * jsp_pack_datetime_argument -
+ *   return: return packing value
+ *   buffer(in): buffer
+ *   value(in): value of datetime type
+ *
+ * Note:
+ */
+
+static char *
+jsp_pack_datetime_argument (char *buffer, DB_VALUE * value)
+{
+  DB_DATETIME *datetime;
+  int year, mon, day, hour, min, sec, msec;
+  char *ptr;
+
+  ptr = buffer;
+  datetime = DB_GET_DATETIME (value);
+  db_datetime_decode (datetime, &mon, &day, &year, &hour, &min, &sec, &msec);
+
+  ptr = or_pack_int (ptr, sizeof (int) * 7);
+  ptr = or_pack_int (ptr, year);
+  ptr = or_pack_int (ptr, mon - 1);
+  ptr = or_pack_int (ptr, day);
+  ptr = or_pack_int (ptr, hour);
+  ptr = or_pack_int (ptr, min);
+  ptr = or_pack_int (ptr, sec);
+  ptr = or_pack_int (ptr, msec);
+
+  return ptr;
+}
+
+/*
  * jsp_pack_set_argument -
  *   return: return packing value
  *   buffer(in): buffer
@@ -1642,14 +1717,15 @@ static char *
 jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
 {
   DB_MONETARY *v;
+  double pack_value;
   char *ptr;
 
-  ptr = buffer;
-  ptr = or_pack_int (ptr, sizeof (double));
+  ptr = or_pack_int (buffer, sizeof (double));
   v = DB_GET_MONETARY (value);
-  ptr = or_pack_double (ptr, v->amount);
+  OR_PUT_DOUBLE (&pack_value, &v->amount);
+  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
 
-  return ptr;
+  return ptr + OR_DOUBLE_SIZE;
 }
 
 /*
@@ -1696,6 +1772,10 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
       ptr = jsp_pack_int_argument (ptr, value);
       break;
 
+    case DB_TYPE_BIGINT:
+      ptr = jsp_pack_bigint_argument (ptr, value);
+      break;
+
     case DB_TYPE_SHORT:
       ptr = jsp_pack_short_argument (ptr, value);
       break;
@@ -1736,6 +1816,10 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
       ptr = jsp_pack_timestamp_argument (ptr, value);
       break;
 
+    case DB_TYPE_DATETIME:
+      ptr = jsp_pack_datetime_argument (ptr, value);
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -1770,14 +1854,14 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
  */
 
 static int
-jsp_send_call_request (const int sockfd, const SP_ARGS * sp_args)
+jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
   int req_code, arg_count, i;
-  size_t req_size, nbytes;
+  int req_size, nbytes;
   DB_ARG_LIST *p;
   char *buffer, *ptr;
 
-  req_size = sizeof (int) * 4
+  req_size = (int) sizeof (int) * 4
     + or_packed_string_length (sp_args->name) +
     jsp_get_argument_size (sp_args->args);
 
@@ -1843,6 +1927,27 @@ jsp_unpack_int_value (char *buffer, DB_VALUE * retval)
 }
 
 /*
+ * jsp_unpack_bigint_value -
+ *   return: return unpacking value
+ *   buffer(in/out): buffer
+ *   retval(in): value of bigint type
+ *
+ * Note:
+ */
+
+static char *
+jsp_unpack_bigint_value (char *buffer, DB_VALUE * retval)
+{
+  DB_BIGINT val;
+
+  memcpy ((char *) (&val), buffer, OR_BIGINT_SIZE);
+  val = OR_GET_BIGINT (&val);
+  db_make_bigint (retval, val);
+
+  return buffer + OR_BIGINT_SIZE;
+}
+
+/*
  * jsp_unpack_short_value -
  *   return: return unpacking value
  *   buffer(in/out): buffer
@@ -1898,14 +2003,13 @@ jsp_unpack_float_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_double_value (char *buffer, DB_VALUE * retval)
 {
-  double val;
-  char *ptr;
+  double val, result;
 
-  ptr = buffer;
-  ptr = or_unpack_double (ptr, &val);
-  db_make_double (retval, val);
+  memcpy ((char *) (&val), buffer, OR_DOUBLE_SIZE);
+  OR_GET_DOUBLE (&val, &result);
+  db_make_double (retval, result);
 
-  return ptr;
+  return buffer + OR_DOUBLE_SIZE;
 }
 
 /*
@@ -1923,10 +2027,11 @@ jsp_unpack_numeric_value (char *buffer, DB_VALUE * retval)
   char *val;
   char *ptr;
 
-  ptr = buffer;
-
-  ptr = or_unpack_string_nocopy (ptr, &val);
-  (void) numeric_coerce_string_to_num (val, retval);
+  ptr = or_unpack_string_nocopy (buffer, &val);
+  if (numeric_coerce_string_to_num (val, retval) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
 
   return ptr;
 }
@@ -1973,8 +2078,14 @@ jsp_unpack_date_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  db_string_to_date (val, &date);
-  db_value_put_encoded_date (retval, &date);
+  if (db_string_to_date (val, &date) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
+  else
+    {
+      db_value_put_encoded_date (retval, &date);
+    }
 
   return ptr;
 }
@@ -1998,8 +2109,14 @@ jsp_unpack_time_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  db_string_to_time (val, &time);
-  db_value_put_encoded_time (retval, &time);
+  if (db_string_to_time (val, &time) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
+  else
+    {
+      db_value_put_encoded_time (retval, &time);
+    }
 
   return ptr;
 }
@@ -2023,8 +2140,45 @@ jsp_unpack_timestamp_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  db_string_to_timestamp (val, &timestamp);
-  db_make_timestamp (retval, timestamp);
+  if (db_string_to_timestamp (val, &timestamp) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
+  else
+    {
+      db_make_timestamp (retval, timestamp);
+    }
+
+  return ptr;
+}
+
+/*
+ * jsp_unpack_datetime_value -
+ *   return: return unpacking value
+ *   buffer(in/out): buffer
+ *   retval(in): value of datetime type
+ *
+ * Note:
+ */
+
+static char *
+jsp_unpack_datetime_value (char *buffer, DB_VALUE * retval)
+{
+  DB_DATETIME datetime;
+  char *val;
+  char *ptr;
+
+  ptr = buffer;
+  ptr = or_unpack_string_nocopy (ptr, &val);
+
+  if (db_string_to_datetime (val, &datetime) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
+  else
+    {
+      DB_MAKE_DATETIME (retval, &datetime);
+    }
 
   return ptr;
 }
@@ -2053,7 +2207,7 @@ jsp_unpack_set_value (char *buffer, int type, DB_VALUE * retval)
   for (i = 0; i < ncol; i++)
     {
       ptr = jsp_unpack_value (ptr, &v);
-      if (set_add_element (set, &v) != NO_ERROR)
+      if (ptr == NULL || set_add_element (set, &v) != NO_ERROR)
 	{
 	  set_free (set);
 	  break;
@@ -2117,12 +2271,21 @@ jsp_unpack_object_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_monetary_value (char *buffer, DB_VALUE * retval)
 {
-  double val;
+  double val, result;
   char *ptr;
 
   ptr = buffer;
-  ptr = or_unpack_double (ptr, &val);
-  db_make_monetary (retval, DB_CURRENCY_DEFAULT, val);
+  memcpy ((char *) (&val), buffer, OR_DOUBLE_SIZE);
+  OR_GET_DOUBLE (&val, &result);
+
+  if (db_make_monetary (retval, DB_CURRENCY_DEFAULT, result) != NO_ERROR)
+    {
+      ptr = NULL;
+    }
+  else
+    {
+      ptr += OR_DOUBLE_SIZE;
+    }
 
   return ptr;
 }
@@ -2173,6 +2336,10 @@ jsp_unpack_value (char *buffer, DB_VALUE * retval)
       ptr = jsp_unpack_int_value (ptr, retval);
       break;
 
+    case DB_TYPE_BIGINT:
+      ptr = jsp_unpack_bigint_value (ptr, retval);
+      break;
+
     case DB_TYPE_SHORT:
       ptr = jsp_unpack_short_value (ptr, retval);
       break;
@@ -2213,6 +2380,10 @@ jsp_unpack_value (char *buffer, DB_VALUE * retval)
       ptr = jsp_unpack_timestamp_value (ptr, retval);
       break;
 
+    case DB_TYPE_DATETIME:
+      ptr = jsp_unpack_datetime_value (ptr, retval);
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -2250,20 +2421,20 @@ jsp_unpack_value (char *buffer, DB_VALUE * retval)
  */
 
 static int
-jsp_receive_response (const int sockfd, const SP_ARGS * sp_args)
+jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
   int start_code = -1, end_code = -1;
-  size_t res_size;
+  int res_size;
   char *buffer, *ptr = NULL;
   int nbytes;
   DB_ARG_LIST *arg_list_p;
   int i;
   DB_VALUE temp;
-  int error = NO_ERROR;
+  int error_code = NO_ERROR;
 
 redo:
-  nbytes = jsp_readn (sockfd, (char *) &start_code, sizeof (int));
-  if (nbytes != sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &start_code, (int) sizeof (int));
+  if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
 	      nbytes);
@@ -2280,8 +2451,8 @@ redo:
       goto redo;
     }
 
-  nbytes = jsp_readn (sockfd, (char *) &res_size, sizeof (int));
-  if (nbytes != sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &res_size, (int) sizeof (int));
+  if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
 	      nbytes);
@@ -2310,6 +2481,11 @@ redo:
   if (start_code == 0x02)
     {				/* result */
       ptr = jsp_unpack_value (buffer, sp_args->returnval);
+      if (ptr == NULL)
+	{
+	  error_code = er_errid ();
+	  goto error;
+	}
 
       for (arg_list_p = sp_args->args, i = 0; arg_list_p != NULL;
 	   arg_list_p = arg_list_p->next, i++)
@@ -2320,6 +2496,13 @@ redo:
 	    }
 
 	  ptr = jsp_unpack_value (ptr, &temp);
+	  if (ptr == NULL)
+	    {
+	      db_value_clear (&temp);
+	      error_code = er_errid ();
+	      goto error;
+	    }
+
 	  db_value_clear (arg_list_p->val);
 	  db_value_clone (&temp, arg_list_p->val);
 	  db_value_clear (&temp);
@@ -2327,15 +2510,26 @@ redo:
     }
   else if (start_code == 0x04)
     {				/* error */
-      DB_VALUE error_code, error_msg;
+      DB_VALUE error_value, error_msg;
 
       db_make_null (sp_args->returnval);
-      ptr = jsp_unpack_value (buffer, &error_code);
+      ptr = jsp_unpack_value (buffer, &error_value);
+      if (ptr == NULL)
+	{
+	  error_code = er_errid ();
+	  goto error;
+	}
+
       ptr = jsp_unpack_value (ptr, &error_msg);
+      if (ptr == NULL)
+	{
+	  error_code = er_errid ();
+	  goto error;
+	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
 	      DB_GET_STRING (&error_msg));
-      error = er_errid ();
+      error_code = er_errid ();
       db_value_clear (&error_msg);
     }
   else
@@ -2358,8 +2552,9 @@ redo:
 	}
     }
 
+error:
   free_and_init (buffer);
-  return error;
+  return error_code;
 }
 
 /*
@@ -2370,22 +2565,22 @@ redo:
  * Note:
  */
 
-static int
+static SOCKET
 jsp_connect_server (void)
 {
   struct sockaddr_in tcp_srv_addr;
-  int sockfd = -1;
+  SOCKET sockfd = INVALID_SOCKET;
   int success = -1;
   int server_port = -1;
   unsigned int inaddr;
   int b;
-  char *server_host = "127.0.0.1";	/* assume as local host */
+  char *server_host = (char *) "127.0.0.1";	/* assume as local host */
 
   server_port = jsp_get_server_port ();
   if (server_port < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
-      return er_errid ();
+      return INVALID_SOCKET;
     }
 
 #if defined(CS_MODE)
@@ -2411,7 +2606,7 @@ jsp_connect_server (void)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
-	  return er_errid ();
+	  return INVALID_SOCKET;
 
 	}
       memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr,
@@ -2421,11 +2616,11 @@ jsp_connect_server (void)
   tcp_srv_addr.sin_port = htons (server_port);
 
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0)
+  if (IS_INVALID_SOCKET (sockfd))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1,
 	      "socket()");
-      return er_errid ();
+      return INVALID_SOCKET;
     }
 
   success = connect (sockfd, (struct sockaddr *) &tcp_srv_addr,
@@ -2434,7 +2629,7 @@ jsp_connect_server (void)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1,
 	      "connect()");
-      return er_errid ();
+      return INVALID_SOCKET;
     }
 
   b = 1;
@@ -2452,7 +2647,7 @@ jsp_connect_server (void)
  */
 
 static void
-jsp_close_internal_connection (const int sockfd)
+jsp_close_internal_connection (const SOCKET sockfd)
 {
   struct linger linger_buffer;
 
@@ -2479,14 +2674,14 @@ static int
 jsp_execute_stored_procedure (const SP_ARGS * args)
 {
   int error = NO_ERROR;
-  int sock_fd;
+  SOCKET sock_fd;
   int retry_count = 0;
 
 retry:
-  if (sock_fds[0] <= 0 || call_cnt > 0)
+  if (IS_INVALID_SOCKET (sock_fds[0]) || call_cnt > 0)
     {
       sock_fds[call_cnt] = jsp_connect_server ();
-      if (sock_fds[call_cnt] < 0)
+      if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
 	{
 	  return er_errid ();
 	}
@@ -2547,7 +2742,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
 			      DB_ARG_LIST * args, const char *name)
 {
   DB_OBJECT *mop_p, *arg_mop_p;
-  SP_ARGS sp_args;
+  SP_ARGS sp_args = { NULL, NULL, NULL, 0, {0}, {0}, 0 };
   DB_VALUE method, param, param_cnt_val, return_type, temp, mode, arg_type;
   int arg_cnt, param_cnt, i;
   DB_SET *param_set;

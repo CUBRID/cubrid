@@ -50,7 +50,6 @@
 #include "db.h"
 #include "loader_object_table.h"
 #include "load_object.h"
-#include "zzpref.h"
 #include "loader.h"
 #include "work_space.h"
 #include "message_catalog.h"
@@ -68,12 +67,8 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-/*
- * Defined somewhere in the antlr internals.   May need to
- * recognize the antlr prefix if we can ever be used in multiple-antlr
- * situations.
- */
-extern int zzline;
+extern bool No_oid_hint;
+extern int loader_yylineno;
 
 #define LDR_MAX_ARGS 32
 
@@ -136,6 +131,11 @@ extern int zzline;
     if (!context->valid) return;                                        \
   } while (0)
 
+#define RETURN_IF_NOT_VALID_WITH(context, ret)                          \
+  do {                                                                  \
+    if (!context->valid) return (ret);                                  \
+  } while (0)
+
 #define CHECK_VALIDATION_ONLY(context)                                  \
   do {                                                                  \
     if (context->validation_only) goto error_exit;                      \
@@ -153,6 +153,13 @@ extern int zzline;
          do {                              \
            if (skipCurrentclass == true) { \
              return;                       \
+           }                               \
+         } while (0)
+
+#define  CHECK_SKIP_WITH(ret)                      \
+         do {                              \
+           if (skipCurrentclass == true) { \
+             return (ret);                       \
            }                               \
          } while (0)
 
@@ -345,7 +352,7 @@ static LDR_ELEM elem_converter[NUM_LDR_TYPES];
  *    Global total object count.
  */
 static int Total_objects = 0;
-static int Last_committed_zzline = 0;
+static int Last_committed_line = 0;
 
 /*
  * ldr_post_commit_handler
@@ -409,6 +416,7 @@ static DB_OBJLIST *internal_classes = NULL;
  */
 
 static DB_VALUE ldr_int_tmpl;
+static DB_VALUE ldr_bigint_tmpl;
 static DB_VALUE ldr_char_tmpl;
 static DB_VALUE ldr_varchar_tmpl;
 static DB_VALUE ldr_float_tmpl;
@@ -416,11 +424,14 @@ static DB_VALUE ldr_double_tmpl;
 static DB_VALUE ldr_date_tmpl;
 static DB_VALUE ldr_time_tmpl;
 static DB_VALUE ldr_timestamp_tmpl;
+static DB_VALUE ldr_datetime_tmpl;
 static DB_VALUE ldr_elo_tmpl;
 static DB_VALUE ldr_bit_tmpl;
 
+/* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
+#define MAX_DIGITS_FOR_BIGINT   19
 /* default for 32 bit signed integers, i.e., 2147483647 (0x7FFFFFFF) */
-#define MAX_DIGITS_FOR_INT      9
+#define MAX_DIGITS_FOR_INT      10
 #define MAX_DIGITS_FOR_SHORT    5
 
 #define ROUND(x) (int)((x) > 0 ? ((x) + .5) : ((x) - .5))
@@ -497,6 +508,8 @@ static int ldr_int_elem (LDR_CONTEXT * context, const char *str, int len,
 			 DB_VALUE * val);
 static int ldr_int_db_generic (LDR_CONTEXT * context, const char *str,
 			       int len, SM_ATTRIBUTE * att);
+static int ldr_int_db_bigint (LDR_CONTEXT * context, const char *str, int len,
+			      SM_ATTRIBUTE * att);
 static int ldr_int_db_int (LDR_CONTEXT * context, const char *str, int len,
 			   SM_ATTRIBUTE * att);
 static int ldr_int_db_short (LDR_CONTEXT * context, const char *str, int len,
@@ -547,6 +560,10 @@ static int ldr_timestamp_elem (LDR_CONTEXT * context, const char *str,
 			       int len, DB_VALUE * val);
 static int ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str,
 				       int len, SM_ATTRIBUTE * att);
+static int ldr_datetime_elem (LDR_CONTEXT * context, const char *str,
+			      int len, DB_VALUE * val);
+static int ldr_datetime_db_datetime (LDR_CONTEXT * context, const char *str,
+				     int len, SM_ATTRIBUTE * att);
 static void ldr_date_time_conversion_error (const char *token, DB_TYPE type);
 static int ldr_check_date_time_conversion (const char *str, LDR_TYPE type);
 static int ldr_elo_int_elem (LDR_CONTEXT * context, const char *str, int len,
@@ -1229,7 +1246,7 @@ display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   zzline + adjust);
+	   loader_yylineno + adjust);
 }
 
 
@@ -1434,6 +1451,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	case LDR_TIME:
 	case LDR_DATE:
 	case LDR_TIMESTAMP:
+	case LDR_DATETIME:
 	  CHECK_ERR (err, ldr_check_date_time_conversion (str, type));
 	  break;
 	default:
@@ -1527,6 +1545,7 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	case LDR_TIME:
 	case LDR_DATE:
 	case LDR_TIMESTAMP:
+	case LDR_DATETIME:
 	  CHECK_ERR (err, ldr_check_date_time_conversion (str, type));
 	  break;
 	default:
@@ -1928,6 +1947,8 @@ static int
 ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
+  char *str_ptr;
+
   /*
    * Watch out for really long digit strings that really are being
    * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
@@ -1935,20 +1956,57 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
    * data.
    * Is there some better way to test for this condition?
    */
-  if (len > MAX_DIGITS_FOR_INT)
+  if (len < MAX_DIGITS_FOR_INT
+      || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
     {
-      CHECK_PARSE_ERR (err,
-		       db_value_domain_init (val, DB_TYPE_NUMERIC, len, 0),
-		       context, DB_TYPE_INTEGER, str);
-      CHECK_PARSE_ERR (err,
-		       db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len),
-		       context, DB_TYPE_INTEGER, str);
+      val->domain = ldr_int_tmpl.domain;
+      val->data.i = strtol (str, &str_ptr, 10);
+      if (str == str_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_INTEGER));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER,
+			   str);
+	}
+    }
+  else if (len < MAX_DIGITS_FOR_BIGINT
+	   || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    {
+      val->domain = ldr_bigint_tmpl.domain;
+      val->data.bigint = strtoll (str, &str_ptr, 10);
+      if (str == str_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
+			   str);
+	}
     }
   else
     {
-      val->domain = ldr_int_tmpl.domain;
-      val->data.i = atol (str);
+      DB_NUMERIC num;
+      DB_BIGINT tmp_bigint;
+
+      numeric_coerce_dec_str_to_num (str, num.d.buf);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint)
+	  != NO_ERROR)
+	{
+
+	  CHECK_PARSE_ERR (err,
+			   db_value_domain_init (val, DB_TYPE_NUMERIC, len,
+						 0), context, DB_TYPE_BIGINT,
+			   str);
+	  CHECK_PARSE_ERR (err,
+			   db_value_put (val, DB_TYPE_C_CHAR, (char *) str,
+					 len), context, DB_TYPE_BIGINT, str);
+	}
+      else
+	{
+	  val->domain = ldr_bigint_tmpl.domain;
+	  val->data.bigint = tmp_bigint;
+	}
     }
+
 error_exit:
   return err;
 }
@@ -1976,6 +2034,70 @@ error_exit:
   return err;
 }
 
+/*
+ * ldr_int_db_bigint -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    att():
+ */
+static int
+ldr_int_db_bigint (LDR_CONTEXT * context,
+		   const char *str, int len, SM_ATTRIBUTE * att)
+{
+  char *mem;
+  int err;
+  DB_VALUE val;
+  char *str_ptr;
+
+  val.domain = ldr_int_tmpl.domain;
+
+  /* Let try take the fastest path here, if we know that number we are
+   * getting fits into a long, use strtol, else we need to convert it
+   * to a double and coerce it, checking for overflow.
+   * Note if integers with leading zeros are entered this can take the
+   * slower route.
+   */
+  if (len < MAX_DIGITS_FOR_BIGINT
+      || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    {
+      val.data.bigint = strtoll (str, &str_ptr, 10);
+      if (str == str_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
+			   str);
+	}
+    }
+  else
+    {
+      DB_NUMERIC num;
+      DB_BIGINT tmp_bigint;
+
+      numeric_coerce_dec_str_to_num (str, num.d.buf);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) !=
+	  NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
+			   str);
+	}
+      else
+	{
+	  val.data.bigint = tmp_bigint;
+	}
+    }
+
+  mem = context->mobj + att->offset;
+  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+
+error_exit:
+  return err;
+}
 
 /*
  * ldr_int_db_int -
@@ -2002,7 +2124,19 @@ ldr_int_db_int (LDR_CONTEXT * context,
    * Note if integers with leading zeros are entered this can take the
    * slower route.
    */
-  if (len > MAX_DIGITS_FOR_INT)
+  if (len < MAX_DIGITS_FOR_INT
+      || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+    {
+      val.data.i = strtol (str, &str_ptr, 10);
+      if (str == str_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_INTEGER));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER,
+			   str);
+	}
+    }
+  else
     {
       double d;
       d = strtod (str, &str_ptr);
@@ -2015,11 +2149,9 @@ ldr_int_db_int (LDR_CONTEXT * context,
 			   str);
 	}
       else
-	val.data.i = ROUND (d);
-    }
-  else
-    {
-      val.data.i = atol (str);
+	{
+	  val.data.i = ROUND (d);
+	}
     }
 
   mem = context->mobj + att->offset;
@@ -2072,7 +2204,14 @@ ldr_int_db_short (LDR_CONTEXT * context,
     }
   else
     {
-      val.data.sh = atoi (str);
+      val.data.sh = (short) strtol (str, &str_ptr, 10);
+      if (str == str_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  db_get_type_name (DB_TYPE_SHORT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT,
+			   str);
+	}
     }
 
   mem = context->mobj + att->offset;
@@ -2507,7 +2646,7 @@ ldr_numeric_elem (LDR_CONTEXT * context,
   int err = NO_ERROR;
 
   precision = len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
-  scale = len - strcspn (str, ".") - 1;
+  scale = len - (int) strcspn (str, ".") - 1;
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision,
 					      scale),
@@ -2738,11 +2877,11 @@ error_exit:
 
 
 /*
- *  DATE/TIME/TIMESTAMP SETTERS
+ *  DATE/TIME/TIMESTAMP/DATETIME SETTERS
  *
- *  Any of the "date", "time" or "timestamp" strings have already had the tag
- *  and surrounding quotes stripped off.  We know which one we have by virtue
- *  knowing which function has been called.
+ *  Any of the "date", "time" , "timestamp" or "datetime" strings have already
+ *  had the tag and surrounding quotes stripped off.  We know which one we
+ *  have by virtue knowing which function has been called.
  */
 
 
@@ -2864,7 +3003,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_timestamp_db_timestamp -
  *    return:
@@ -2882,6 +3020,53 @@ ldr_timestamp_db_timestamp (LDR_CONTEXT * context,
   DB_VALUE val;
 
   CHECK_ERR (err, ldr_timestamp_elem (context, str, len, &val));
+  mem = context->mobj + att->offset;
+  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+
+error_exit:
+  return err;
+}
+
+/*
+ * ldr_datetime_elem -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    val():
+ */
+static int
+ldr_datetime_elem (LDR_CONTEXT * context,
+		   const char *str, int len, DB_VALUE * val)
+{
+  int err = NO_ERROR;
+
+  val->domain = ldr_datetime_tmpl.domain;
+  CHECK_PARSE_ERR (err, db_string_to_datetime (str, &val->data.datetime),
+		   context, DB_TYPE_DATETIME, str);
+
+error_exit:
+  return err;
+}
+
+/*
+ * ldr_datetime_db_datetime -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    att():
+ */
+static int
+ldr_datetime_db_datetime (LDR_CONTEXT * context,
+			  const char *str, int len, SM_ATTRIBUTE * att)
+{
+  int err;
+  char *mem;
+  DB_VALUE val;
+
+  CHECK_ERR (err, ldr_datetime_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
   CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
@@ -2921,6 +3106,7 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
   DB_TIME dummy_time;
   DB_DATE dummy_date;
   DB_TIMESTAMP dummy_timestamp;
+  DB_DATETIME dummy_datetime;
   DB_TYPE current_type = DB_TYPE_NULL;
 
   /*
@@ -2943,6 +3129,9 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
       current_type = DB_TYPE_TIMESTAMP;
       err = db_string_to_timestamp (str, &dummy_timestamp);
       break;
+    case LDR_DATETIME:
+      current_type = DB_TYPE_DATETIME;
+      err = db_string_to_datetime (str, &dummy_datetime);
     default:
       break;
     }
@@ -3361,18 +3550,23 @@ ldr_assign_all_perm_oids (void)
        * complete. Update the otable oids via the oid pointer obtained from
        * the CLASS_TABLE and id.
        */
-      i = 0;
-      while (i < ldr_Mop_tempoid_maps->count)
+
+      if (!No_oid_hint)
 	{
-	  mop_tempoid_map = &(ldr_Mop_tempoid_maps->mop_tempoid_maps[i]);
-	  CHECK_PTR (err, inst = otable_find (mop_tempoid_map->table,
-					      mop_tempoid_map->id));
-	  COPY_OID (&(inst->oid), WS_REAL_OID (mop_tempoid_map->mop));
-	  mop_tempoid_map->mop = NULL;
-	  mop_tempoid_map->table = NULL;
-	  mop_tempoid_map->id = 0;
-	  i += 1;
+	  i = 0;
+	  while (i < ldr_Mop_tempoid_maps->count)
+	    {
+	      mop_tempoid_map = &(ldr_Mop_tempoid_maps->mop_tempoid_maps[i]);
+	      CHECK_PTR (err, inst = otable_find (mop_tempoid_map->table,
+						  mop_tempoid_map->id));
+	      COPY_OID (&(inst->oid), WS_REAL_OID (mop_tempoid_map->mop));
+	      mop_tempoid_map->mop = NULL;
+	      mop_tempoid_map->table = NULL;
+	      mop_tempoid_map->id = 0;
+	      i += 1;
+	    }
 	}
+
       ldr_Mop_tempoid_maps->index = 0;
       ldr_Mop_tempoid_maps->count = 0;
     }
@@ -3923,7 +4117,7 @@ check_commit (LDR_CONTEXT * context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_zzline = zzline - 1;
+	      Last_committed_line = loader_yylineno - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -3955,7 +4149,7 @@ check_commit (LDR_CONTEXT * context)
 					     LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_zzline = zzline - 1;
+	      Last_committed_line = loader_yylineno - 1;
 	      context->commit_counter = context->periodic_commit;
 
 	      /* Invoke post commit callback function */
@@ -4351,8 +4545,8 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
 
-  CHECK_SKIP ();
-  RETURN_IF_NOT_VALID (context);
+  CHECK_SKIP_WITH (err);
+  RETURN_IF_NOT_VALID_WITH (context, err);
 
   if (context->validation_only)
     {
@@ -4582,6 +4776,10 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
       attdesc->setter[LDR_STR] = &ldr_str_db_varchar;
       break;
 
+    case DB_TYPE_BIGINT:
+      attdesc->setter[LDR_INT] = &ldr_int_db_bigint;
+      break;
+
     case DB_TYPE_INTEGER:
       attdesc->setter[LDR_INT] = &ldr_int_db_int;
       break;
@@ -4624,6 +4822,11 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     case DB_TYPE_TIMESTAMP:
       attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIMESTAMP] = &ldr_timestamp_db_timestamp;
+      break;
+
+    case DB_TYPE_DATETIME:
+      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
+      attdesc->setter[LDR_DATETIME] = &ldr_datetime_db_datetime;
       break;
 
     case DB_TYPE_SET:
@@ -4865,22 +5068,36 @@ insert_instance (LDR_CONTEXT * context)
 	   */
 	  if (context->inst_num >= 0)
 	    {
-	      inst = otable_find (context->table, context->inst_num);
-	      if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
+	      if (No_oid_hint)
 		{
-		  CHECK_ERR (err, otable_insert (context->table,
-						 WS_REAL_OID (context->obj),
-						 context->inst_num));
-		  CHECK_PTR (err, inst = otable_find (context->table,
+		  CHECK_ERR (err,
+			     ldr_add_mop_tempoid_map (context->obj,
+						      context->table,
 						      context->inst_num));
-		  CHECK_ERR (err, ldr_add_mop_tempoid_map (context->obj,
-							   context->table,
-							   context->
-							   inst_num));
 		}
 	      else
 		{
-		  err = otable_update (context->table, context->inst_num);
+		  inst = otable_find (context->table, context->inst_num);
+
+		  if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
+		    {
+		      CHECK_ERR (err, otable_insert (context->table,
+						     WS_REAL_OID (context->
+								  obj),
+						     context->inst_num));
+		      CHECK_PTR (err, inst =
+				 otable_find (context->table,
+					      context->inst_num));
+		      CHECK_ERR (err,
+				 ldr_add_mop_tempoid_map (context->obj,
+							  context->table,
+							  context->inst_num));
+		    }
+		  else
+		    {
+		      err = otable_update (context->table, context->inst_num);
+		    }
+
 		}
 	    }
 	  if (!err)
@@ -5125,7 +5342,7 @@ ldr_act_set_constructor (LDR_CONTEXT * context, const char *name)
   int err = NO_ERROR;
   SM_METHOD *meth;
 
-  CHECK_SKIP ();
+  CHECK_SKIP_WITH (err);
   if (context->validation_only)
     {
       context->arg_index = context->num_attrs;
@@ -5251,7 +5468,7 @@ ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
   SM_METHOD_ARGUMENT *arg;
   int index;
 
-  CHECK_SKIP ();
+  CHECK_SKIP_WITH (err);
   if (context->validation_only)
     {
       context->arg_count += 1;
@@ -5415,7 +5632,7 @@ ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id)
 DB_OBJECT *
 ldr_act_get_ref_class (LDR_CONTEXT * context)
 {
-  RETURN_IF_NOT_VALID (context);
+  RETURN_IF_NOT_VALID_WITH (context, NULL);
 
   if (!context->validation_only)
     {
@@ -5437,6 +5654,7 @@ ldr_init_loader (LDR_CONTEXT * context)
 {
   int i;
   int err = NO_ERROR;
+  DB_DATETIME datetime;
 
   /*
    * Definitely *don't* want to use oid preflushing in this app; it just
@@ -5459,6 +5677,7 @@ ldr_init_loader (LDR_CONTEXT * context)
    * during loading; we can simply copy these templates much more cheaply.
    */
   db_make_int (&ldr_int_tmpl, 0);
+  db_make_bigint (&ldr_bigint_tmpl, 0);
   db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1);
   db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1);
   db_make_float (&ldr_float_tmpl, (float) 0.0);
@@ -5466,6 +5685,8 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_date (&ldr_date_tmpl, 1, 1, 1996);
   db_make_time (&ldr_time_tmpl, 0, 0, 0);
   db_make_timestamp (&ldr_timestamp_tmpl, 0);
+  db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
+  db_make_datetime (&ldr_datetime_tmpl, &datetime);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
 
   /*
@@ -5489,6 +5710,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   elem_converter[LDR_DATE] = &ldr_date_elem;
   elem_converter[LDR_TIME] = &ldr_time_elem;
   elem_converter[LDR_TIMESTAMP] = &ldr_timestamp_elem;
+  elem_converter[LDR_DATETIME] = &ldr_datetime_elem;
   elem_converter[LDR_COLLECTION] = &ldr_collection_elem;
   elem_converter[LDR_BSTR] = &ldr_bstr_elem;
   elem_converter[LDR_XSTR] = &ldr_xstr_elem;
@@ -5701,7 +5923,7 @@ ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit)
     *defaults = ldr_Current_context->default_count;
 
   if (lastcommit != NULL)
-    *lastcommit = Last_committed_zzline;
+    *lastcommit = Last_committed_line;
 }
 
 
@@ -5760,9 +5982,9 @@ void
 print_parser_lineno (FILE * fp)
 {
   if (fp)
-    fprintf (fp, "%d\n", zzline);
+    fprintf (fp, "%d\n", loader_yylineno);
   else
-    printf ("%d\n", zzline);
+    printf ("%d\n", loader_yylineno);
 }
 
 

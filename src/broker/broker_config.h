@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -111,7 +111,7 @@ struct t_broker_info
   int appl_server_num;
   int appl_server_min_num;
   int appl_server_max_num;
-#if defined (WIN32)
+#if defined (WINDOWS)
   int appl_server_port;
 #endif
   int appl_server_shm_id;
@@ -123,7 +123,7 @@ struct t_broker_info
   int err_code;
   int os_err_code;
   int sql_log_max_size;
-#if defined (WIN32)
+#if defined (WINDOWS)
   int pdh_workset;
   float pdh_pct_cpu;
   int cpu_time;
@@ -149,8 +149,8 @@ extern int broker_config_read (T_BROKER_INFO *, int *, int *, char *, char,
 #else
 extern int broker_config_read (T_BROKER_INFO *, int *, int *, char *);
 #endif
-int conf_get_value_table_on_off (char *value);
-int conf_get_value_keep_con (char *value);
+int conf_get_value_table_on_off (const char *value);
+int conf_get_value_keep_con (const char *value);
 
 
 #endif /* _BROKER_CONFIG_H_ */

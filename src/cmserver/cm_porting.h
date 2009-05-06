@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_porting.h - 
+ * cm_porting.h -
  */
 
 #ifndef	_CM_PORTING_H_
@@ -33,7 +33,7 @@
 
 #include <errno.h>
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/socket.h>
 #endif
@@ -45,7 +45,7 @@
 /*
  * EXPORTED DEFINITIONS
  */
-#ifdef WIN32
+#if defined(WINDOWS)
 #define PATH_MAX	256
 #define NAME_MAX	256
 #endif
@@ -53,13 +53,13 @@
 #define MOVE_FILE(SRC_FILE, DEST_FILE)	\
 	(unlink(DEST_FILE) || 1 ? rename(SRC_FILE, DEST_FILE) : -1)
 
-#ifdef WIN32
-#define CLOSE_SOCKET(X)		if (X >= 0) closesocket(X)
+#if defined(WINDOWS)
+#define CLOSE_SOCKET(X)		if (!IS_INVALID_SOCKET(X)) closesocket(X)
 #else
-#define CLOSE_SOCKET(X)		if (X >= 0) close(X)
+#define CLOSE_SOCKET(X)		if (!IS_INVALID_SOCKET(X)) close(X)
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define	mkdir(dir, mode)	_mkdir(dir)
 #define getpid()		_getpid()
 #define O_RDONLY		_O_RDONLY
@@ -72,7 +72,7 @@
 #define X_OK			F_OK
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define SLEEP_SEC(X)			Sleep((X) * 1000)
 #define SLEEP_MILISEC(sec, msec)	Sleep((sec) * 1000 + (msec))
 #else
@@ -86,7 +86,7 @@
 			} while(0)
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define TIMEVAL_MAKE(X)		_ftime(X)
 #define TIMEVAL_GET_SEC(X)	((int) ((X)->time))
 #define TIMEVAL_GET_MSEC(X)	((int) ((X)->millitm))
@@ -96,7 +96,7 @@
 #define TIMEVAL_GET_MSEC(X)	((int) (((X)->tv_usec) / 1000))
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define MUTEX_INIT(MUTEX)				\
 	do {						\
 	  MUTEX = CreateMutex(NULL, FALSE, NULL);	\
@@ -108,7 +108,7 @@
 #define MUTEX_INIT(MUTEX) 	pthread_mutex_init(MUTEX, NULL)
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)				\
 	do {							\
 	  THR_ID = _beginthread(FUNC, 0, (void*) (ARG));	\
@@ -159,13 +159,13 @@
  * EXPORTED TYPE DEFINITIONS
  */
 
-#ifdef WIN32
+#if defined(WINDOWS)
 typedef struct _timeb T_TIMEVAL;
 #else
 typedef struct timeval T_TIMEVAL;
 #endif
 
-#if defined(WIN32) || defined(SOLARIS) || defined(HPUX)
+#if defined(WINDOWS) || defined(SOLARIS) || defined(HPUX)
 typedef int T_SOCKLEN;
 #elif defined(UNIXWARE7)
 typedef size_t T_SOCKLEN;
@@ -173,23 +173,29 @@ typedef size_t T_SOCKLEN;
 typedef socklen_t T_SOCKLEN;
 #endif
 
-#ifndef WIN32
+#if defined(WINDOWS)
+#define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
+#else
 typedef int SOCKET;
+#define INVALID_SOCKET (-1)
+#define IS_INVALID_SOCKET(socket) ((socket) < 0)
 #endif
 
 /*
  * EXPORTED DEFINITIONS
  */
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define THREAD_FUNC	void
-#define T_THREAD	int
+#define T_THREAD	uintptr_t
 #else
 #define THREAD_FUNC	void*
 #define T_THREAD	pthread_t
 #endif
 
-#ifdef WIN32
+#define strlen(s1)  ((int) strlen(s1))
+
+#if defined(WINDOWS)
 #define DEL_FILE	"del"
 #define DEL_FILE_OPT	"/F /Q"
 #define DEL_DIR		"rmdir"

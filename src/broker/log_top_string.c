@@ -102,4 +102,3 @@ t_string_len (T_STRING * t_str)
 {
   return t_str->data_len;
 }
-

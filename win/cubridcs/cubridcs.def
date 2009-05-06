@@ -83,6 +83,8 @@ EXPORTS
     db_date_decode
     db_date_encode
     db_date_to_string
+    db_datetime_decode
+    db_datetime_encode
     db_disable_first_user
     db_domain_class
     db_domain_next
@@ -118,6 +120,7 @@ EXPORTS
     db_get_all_objects
     db_get_attribute
     db_get_attributes
+    db_get_bigint
     db_get_bit
     db_get_cacheinfo
     db_get_char
@@ -134,6 +137,7 @@ EXPORTS
     db_get_currency_default
     db_get_database_name
     db_get_date
+    db_get_datetime
     db_get_double
     db_get_float
     db_get_foreign_key_action
@@ -178,8 +182,10 @@ EXPORTS
     db_lock_read
     db_lock_write
     db_login
+    db_make_bigint
     db_make_bit
     db_make_date
+    db_make_datetime
     db_make_double
     db_make_float
     db_make_int
@@ -326,8 +332,10 @@ EXPORTS
     msgcat_final
     msgcat_message
     net_client_ping_server
+    ntohi64
     numeric_db_value_print
     os_set_signal_handler
+    prm_get_master_port_id
     rel_build_number
     rel_release_string
     set_get_element

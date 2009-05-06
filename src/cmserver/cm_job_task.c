@@ -37,7 +37,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -99,11 +99,7 @@ extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 #ifdef DIAG_DEVEL
 #define MAX_BROKER_NAMELENGTH 128
 #define MAX_AS_COUNT          200
-#ifdef WIN32
-#define SET_LONGLONG_STR(STR, LL_VALUE) sprintf(STR, "%I64d", LL_VALUE);
-#else
-#define SET_LONGLONG_STR(STR, LL_VALUE) sprintf(STR, "%lld", LL_VALUE);
-#endif
+#define SET_LONGLONG_STR(STR, LL_VALUE) sprintf(STR, "%lld", (long long) LL_VALUE);
 #endif
 
 #if 0				/* ACTIVITY PROFILE */
@@ -166,17 +162,20 @@ static void _tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
 static int _tsAppendDBList (nvplist * res, char dbdir_flag);
 static int _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
 			    char *_dbmt_error, T_SPACEDB_RESULT * cmd_res);
-static void _ts_gen_spaceinfo (nvplist * res, char *filename,
-			       char *dbinstalldir, char *type, int pagesize);
+static void _ts_gen_spaceinfo (nvplist * res, const char *filename,
+			       const char *dbinstalldir, const char *type,
+			       int pagesize);
 static char *_ts_get_error_log_param (char *dbname);
 static int _ts_lockdb_parse_us (nvplist * res, FILE * infile);
 static int _ts_lockdb_parse_kr (nvplist * res, FILE * infile);
 static char *get_user_name (int uid, char *name_buf);
-static int class_info_sa (char *dbname, char *uid, char *passwd,
-			  nvplist * out, char *_dbmt_error);
-static int trigger_info_sa (char *dbname, char *uid, char *password,
-			    nvplist * res, char *_dbmt_error);
-#ifdef WIN32
+static int class_info_sa (const char *dbname, const char *uid,
+			  const char *passwd, nvplist * out,
+			  char *_dbmt_error);
+static int trigger_info_sa (const char *dbname, const char *uid,
+			    const char *password, nvplist * res,
+			    char *_dbmt_error);
+#if defined(WINDOWS)
 static void replace_colon (char *path);
 #endif
 static int revoke_all_from_user (DB_OBJECT * user);
@@ -197,7 +196,7 @@ static int op_make_password_check_file (char *input_file);
 static void op_auto_exec_query_get_newplan_id (char *id_buf, char *filename);
 static char *op_get_cubrid_ver (char *buffer);
 
-static int get_filename_from_path (char *path, char *filename);
+static int get_filename_from_path (const char *path, char *filename);
 #ifdef DIAG_DEVEL
 static int get_dbvoldir (char *vol_dir, char *dbname, char *err_buf);
 static int getservershmid (char *dir, char *dbname, char *err_buf);
@@ -216,7 +215,7 @@ static int add_activity_list (T_ACTIVITY_DATA ** header,
 #endif
 static int get_client_monitoring_config (nvplist * cli_request,
 					 T_CLIENT_MONITOR_CONFIG * c_config);
-#ifdef WIN32
+#if defined(WINDOWS)
 #define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
         op_server_shm_open(SHM_KEY, HANDLE_PTR)
 #define OP_SERVER_SHM_DETACH(PTR, HMAP)		\
@@ -241,9 +240,6 @@ void *debug_malloc (size_t size);
 static int read_file (char *filename, char **outbuf);
 static int user_login_sa (nvplist * out, char *_dbmt_error, char *dbname,
 			  char *dbuser, char *dbpasswd);
-
-static int get_dbvoldir (char *vol_dir, char *dbname, char *err_buf);
-static int getservershmid (char *dir, char *dbname, char *err_buf);
 
 int
 _tsReadUserCapability (nvplist * ud, char *id, char *_dbmt_error)
@@ -481,8 +477,8 @@ ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   DB_OBJECT *obj;
   int exists, aset;
 
-  char *newdbusername;
-  char *newdbuserpass;
+  const char *new_db_user_name;
+  const char *new_db_user_pass;
 
   int i, sect, sect_len;
   char *tval, *sval;
@@ -491,18 +487,18 @@ ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   if (_op_db_login (res, req, _dbmt_error) < 0)
     return ERR_WITH_MSG;
 
-  newdbusername = nv_get_val (req, "username");
-  newdbuserpass = nv_get_val (req, "userpass");
+  new_db_user_name = nv_get_val (req, "username");
+  new_db_user_pass = nv_get_val (req, "userpass");
 
-  dbuser = db_add_user (newdbusername, &exists);
+  dbuser = db_add_user (new_db_user_name, &exists);
   if ((dbuser == NULL) || exists)
     {
       goto create_user_error;
     }
 
-  if (uStringEqual (newdbuserpass, "__NULL__"))
-    newdbuserpass = "";
-  if (db_set_password (dbuser, NULL, newdbuserpass) < 0)
+  if (uStringEqual (new_db_user_pass, "__NULL__"))
+    new_db_user_pass = "";
+  if (db_set_password (dbuser, NULL, new_db_user_pass) < 0)
     {
       goto create_user_error;
     }
@@ -611,44 +607,44 @@ ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   DB_COLLECTION *gset;
   DB_VALUE val;
 
-  char *dbpasswd;
-  char *dbname;
-  char *newdbusername;
-  char *newdbuserpass;
+  const char *db_passwd;
+  const char *db_name;
+  const char *new_db_user_name;
+  const char *new_db_user_pass;
 
   int i, sect, sect_len;
   char *tval, *sval;
   int anum;
 
-  dbpasswd = nv_get_val (req, "_DBPASSWD");
-  dbname = nv_get_val (req, "_DBNAME");
-  newdbusername = nv_get_val (req, "username");
-  newdbuserpass = nv_get_val (req, "userpass");
+  db_passwd = nv_get_val (req, "_DBPASSWD");
+  db_name = nv_get_val (req, "_DBNAME");
+  new_db_user_name = nv_get_val (req, "username");
+  new_db_user_pass = nv_get_val (req, "userpass");
 
   if (_op_db_login (res, req, _dbmt_error) < 0)
     return ERR_WITH_MSG;
 
-  if ((dbuser = db_find_user (newdbusername)) == NULL)
+  if ((dbuser = db_find_user (new_db_user_name)) == NULL)
     goto update_user_error;
 
-  if (newdbuserpass)
+  if (new_db_user_pass)
     {				/* if password need to be changed ... */
-      char *dbmt_db_id;
-      char *old_db_passwd;
+      const char *dbmt_db_id;
+      const char *old_db_passwd;
 
       dbmt_db_id = nv_get_val (req, "_DBID");
       if (dbmt_db_id == NULL)
 	dbmt_db_id = "";
 
-      if (strcasecmp (newdbusername, dbmt_db_id) == 0)
-	old_db_passwd = dbpasswd;
+      if (strcasecmp (new_db_user_name, dbmt_db_id) == 0)
+	old_db_passwd = db_passwd;
       else
 	old_db_passwd = NULL;
 
       /* set new password */
-      if (uStringEqual (newdbuserpass, "__NULL__"))
-	newdbuserpass = "";
-      errcode = db_set_password (dbuser, old_db_passwd, newdbuserpass);
+      if (uStringEqual (new_db_user_pass, "__NULL__"))
+	new_db_user_pass = "";
+      errcode = db_set_password (dbuser, old_db_passwd, new_db_user_pass);
       if (errcode < 0)
 	{
 	  goto update_user_error;
@@ -742,23 +738,23 @@ ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   db_shutdown ();
 
 #ifndef	PK_AUTHENTICAITON
-  if (newdbuserpass)
+  if (new_db_user_pass)
     {
       if (dbmt_user_read (&dbmt_user, _dbmt_error) == ERR_NO_ERROR)
 	{
 	  char hexacoded[PASSWD_ENC_LENGTH];
 	  int src_dbinfo;
 
-	  uEncrypt (PASSWD_LENGTH, newdbuserpass, hexacoded);
+	  uEncrypt (PASSWD_LENGTH, new_db_user_pass, hexacoded);
 	  for (i = 0; i < dbmt_user.num_dbmt_user; i++)
 	    {
-	      src_dbinfo =
-		dbmt_user_search (&(dbmt_user.user_info[i]), dbname);
+	      src_dbinfo = dbmt_user_search (&(dbmt_user.user_info[i]),
+					     db_name);
 	      if (src_dbinfo < 0)
 		continue;
 	      if (strcmp
 		  (dbmt_user.user_info[i].dbinfo[src_dbinfo].uid,
-		   newdbusername) != 0)
+		   new_db_user_name) != 0)
 		{
 		  continue;
 		}
@@ -2260,7 +2256,7 @@ ts2_get_admin_log_info (nvplist * in, nvplist * out, char *_dbmt_error)
 int
 ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE handle;
   WIN32_FIND_DATA data;
   char find_file[512];
@@ -2271,7 +2267,8 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 #endif
   struct stat statbuf;
   T_DM_UC_CONF uc_conf;
-  char logdir[512], err_logdir[512], access_logdir[512], *v;
+  char logdir[512], err_logdir[512], access_logdir[512];
+  const char *v;
   char *bname, *from, buf[1024], scriptdir[512];
   char *cur_file;
 
@@ -2299,7 +2296,7 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
   uca_unicas_conf_free (&uc_conf);
 
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", access_logdir);
   handle = FindFirstFile (find_file, &data);
   if (handle == INVALID_HANDLE_VALUE)
@@ -2318,13 +2315,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dirp = readdir (dp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dirp->d_name;
@@ -2344,13 +2341,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  nv_add_nvp (out, "close", "logfile");
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dp);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", err_logdir);
   handle = FindFirstFile (find_file, &data);
   if (handle == INVALID_HANDLE_VALUE)
@@ -2369,13 +2366,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dirp = readdir (dp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dirp->d_name;
@@ -2397,13 +2394,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  nv_add_nvp (out, "close", "logfile");
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dp);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", logdir);
   handle = FindFirstFile (find_file, &data);
   if (handle == INVALID_HANDLE_VALUE)
@@ -2418,13 +2415,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dirp = readdir (dp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dirp->d_name;
@@ -2444,14 +2441,14 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  nv_add_nvp (out, "close", "logfile");
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dp);
 #endif
 
   sprintf (scriptdir, "%s", logdir);
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", scriptdir);
   handle = FindFirstFile (find_file, &data);
   if (handle == INVALID_HANDLE_VALUE)
@@ -2463,13 +2460,13 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 #endif
 
   sprintf (bname, "%s_", bname);
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dirp = readdir (dp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dirp->d_name;
@@ -2489,7 +2486,7 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  nv_add_nvp (out, "close", "logfile");
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dp);
@@ -3476,7 +3473,7 @@ tsCreateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
   char *z_name, *z_value;
   char *dbname, *dbid;
   char dbpasswd[PASSWD_ENC_LENGTH], dbmt_passwd[PASSWD_ENC_LENGTH];
-  char *casauth, *dbcreate;
+  const char *casauth, *dbcreate;
   T_DBMT_USER dbmt_user;
   T_DBMT_USER_DBINFO *dbinfo = NULL;
 
@@ -3668,7 +3665,7 @@ int
 tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   int i, j, usr_index, retval;
-  int cas_idx, dbcreate_idx;
+  int cas_idx = -1, dbcreate_idx = -1;
   char *dbmt_id;
   char strbuf[1024];
   T_DBMT_USER dbmt_user;
@@ -3737,9 +3734,9 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
   if (usr_dbinfo == NULL)
     return ERR_MEM_ALLOC;
 
-  if (casauth != NULL)
+  if (casauth != NULL && cas_idx >= 0)
     dbmt_user_set_dbinfo (&(usr_dbinfo[cas_idx]), "unicas", casauth, "", "");
-  if (dbcreate != NULL)
+  if (dbcreate != NULL && dbcreate_idx >= 0)
     dbmt_user_set_dbinfo (&(usr_dbinfo[dbcreate_idx]),
 			  "dbcreate", dbcreate, "", "");
 
@@ -3937,7 +3934,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
   char outofspace_val[512];
   T_DBMT_USER dbmt_user;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[20];
+  const char *argv[20];
   int argc = 0;
 
   int gen_dir_created, log_dir_created, ext_dir_created;
@@ -4023,23 +4020,29 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 
       while (fgets (strbuf, sizeof (strbuf), infile))
 	{
-	  char *p;
-	  p = "data_buffer_pages";
-	  if (!strncmp (strbuf, p, strlen (p)) && nv_get_val (req, p))
+	  const char *param;
+
+	  param = "data_buffer_pages";
+	  if (!strncmp (strbuf, param, strlen (param))
+	      && nv_get_val (req, param))
 	    {
-	      fprintf (outfile, "%s=%s\n", p, nv_get_val (req, p));
+	      fprintf (outfile, "%s=%s\n", param, nv_get_val (req, param));
 	      continue;
 	    }
-	  p = "media_failure_support";
-	  if (!strncmp (strbuf, p, strlen (p)) && nv_get_val (req, p))
+
+	  param = "media_failure_support";
+	  if (!strncmp (strbuf, param, strlen (param))
+	      && nv_get_val (req, param))
 	    {
-	      fprintf (outfile, "%s=%s\n", p, nv_get_val (req, p));
+	      fprintf (outfile, "%s=%s\n", param, nv_get_val (req, param));
 	      continue;
 	    }
-	  p = "max_clients";
-	  if (!strncmp (strbuf, p, strlen (p)) && nv_get_val (req, p))
+
+	  param = "max_clients";
+	  if (!strncmp (strbuf, param, strlen (param))
+	      && nv_get_val (req, param))
 	    {
-	      fprintf (outfile, "%s=%s\n", p, nv_get_val (req, p));
+	      fprintf (outfile, "%s=%s\n", param, nv_get_val (req, param));
 	      continue;
 	    }
 
@@ -4055,7 +4058,6 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
    */
   if (0)
     {
-      char strbuf[1024];
       FILE *infile = NULL;
       FILE *outfile = NULL;
       char oldfilename[512];
@@ -4080,21 +4082,6 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 	  return ERR_FILE_OPEN_FAIL;
 	}
 
-      while (fgets (strbuf, sizeof (strbuf), infile))
-	{
-	  char *p;
-	  p = "warn_outofspace_factor";
-	  if (!strncmp (strbuf, p, strlen (p)))
-	    {
-	      memset (outofspace_val, '\0', sizeof (outofspace_val));
-	      strncpy (outofspace_val, strbuf, strlen (strbuf));
-
-	      fprintf (outfile, "warn_outofspace_factor=0.0");
-	      continue;
-	    }
-
-	  fputs (strbuf, outfile);
-	}
       fclose (infile);
       fclose (outfile);
 
@@ -4126,7 +4113,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 	      continue;
 	    }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 	  val[2] = nt_style_path (val[2], val2_buf);
 #endif
 	  fprintf (outfile, "NAME %s PATH %s PURPOSE %s NPAGES %s\n\n",
@@ -4146,7 +4133,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 
   /* construct command */
   cubrid_cmd_name (cmd_name);
-#ifdef WIN32
+#if defined(WINDOWS)
   nt_style_path (targetdir, targetdir);
 #endif
   argv[argc++] = cmd_name;
@@ -4171,7 +4158,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
     }
   if (logvolpath)
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       logvolpath = nt_style_path (logvolpath, logvolpath_buf);
       /*
          remove_end_of_dir_ch(logvolpath);
@@ -4306,7 +4293,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 
       while (fgets (strbuf, sizeof (strbuf), infile))
 	{
-	  char *p;
+	  const char *p;
 	  p = "warn_outofspace_factor";
 	  if (!strncmp (strbuf, p, strlen (p)))
 	    {
@@ -4323,10 +4310,10 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
       rename (newfilename, oldfilename);
     }
 
-  if ((overwrite_config_file == NULL)	/* for backword compatibility */
+  if ((overwrite_config_file == NULL)	/* for backward compatibility */
       || (strcasecmp (overwrite_config_file, "NO") != 0))
     {
-      char strbuf[1024];
+      char strbuf[PATH_MAX];
 
       sprintf (strbuf, "%s/%s", targetdir, CUBRID_CUBRID_CONF);
       unlink (strbuf);
@@ -4346,7 +4333,7 @@ tsDeleteDB (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname = NULL, *delbackup;
   char *cubrid_err_file;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[6];
+  const char *argv[6];
   int argc = 0;
 
   if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
@@ -4401,7 +4388,7 @@ tsRenameDB (nvplist * req, nvplist * res, char *_dbmt_error)
   char tmpfile[256];
   char *cubrid_err_file;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[10];
+  const char *argv[10];
   int argc = 0;
   T_DB_SERVICE_MODE db_mode;
 
@@ -4457,7 +4444,7 @@ tsRenameDB (nvplist * req, nvplist * res, char *_dbmt_error)
 	    flag = 0;
 	  else if (flag == 1)
 	    {
-#ifdef WIN32
+#if defined(WINDOWS)
 	      replace_colon (n);
 	      replace_colon (v);
 #endif
@@ -4472,7 +4459,7 @@ tsRenameDB (nvplist * req, nvplist * res, char *_dbmt_error)
 		}
 	      if (p)
 		*p = '/';
-#ifdef WIN32
+#if defined(WINDOWS)
 	      n = nt_style_path (n, n_buf);
 	      v = nt_style_path (v, v_buf);
 #endif
@@ -4661,7 +4648,7 @@ tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error)
   char *err_file;
   int ret;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[15];
+  const char *argv[15];
   int argc = 0;
   int free_space_mb;
 
@@ -4732,7 +4719,7 @@ tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error)
   if (db_mode == DB_SERVICE_MODE_NONE)
     argv[argc++] = "--" ADDVOL_SA_MODE_L;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   volpath = nt_style_path (volpath, volpath_buf);
 #endif
   argv[argc++] = "--" ADDVOL_FILE_PATH_L;
@@ -4779,9 +4766,8 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
   T_DBMT_USER dbmt_user;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   T_DB_SERVICE_MODE db_mode;
-  char *argv[15];
+  const char *argv[15];
   int argc = 0;
-
 
   if ((srcdbname = nv_get_val (req, "srcdbname")) == NULL)
     {
@@ -4826,7 +4812,6 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_DB_ACTIVE;
     }
 
-
   /* create command */
   cubrid_cmd_name (cmd_name);
   argv[argc++] = cmd_name;
@@ -4854,7 +4839,7 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
 	    flag = 0;
 	  else if (flag == 1)
 	    {
-#ifdef WIN32
+#if defined(WINDOWS)
 	      replace_colon (n);
 	      replace_colon (v);
 #endif
@@ -4869,7 +4854,7 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
 		}
 	      if (p)
 		*p = '/';
-#ifdef WIN32
+#if defined(WINDOWS)
 	      n = nt_style_path (n, n_buf);
 	      v = nt_style_path (v, v_buf);
 #endif
@@ -4945,7 +4930,7 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
   if (move_flag)
     {
       char cmd_name[CUBRID_CMD_NAME_LEN];
-      char *argv[5];
+      const char *argv[5];
 
       cubrid_cmd_name (cmd_name);
       argv[0] = cmd_name;
@@ -5019,7 +5004,7 @@ ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
   if (db_mode == DB_SERVICE_MODE_NONE)
     {
       char cmd_name[CUBRID_CMD_NAME_LEN];
-      char *argv[6];
+      const char *argv[6];
       int argc = 0;
 
       cubrid_cmd_name (cmd_name);
@@ -5073,7 +5058,7 @@ ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   T_DB_SERVICE_MODE db_mode;
-  char *argv[6];
+  const char *argv[6];
   int argc = 0;
   char *cubrid_err_file;
 
@@ -5119,7 +5104,7 @@ ts_compactdb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[5];
+  const char *argv[5];
   T_DB_SERVICE_MODE db_mode;
   char *cubrid_err_file;
 
@@ -5164,7 +5149,7 @@ ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error)
   char backupfilepath[256];
   char inputfilepath[256];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[15];
+  const char *argv[15];
   int argc = 0;
   FILE *inputfile;
   T_DB_SERVICE_MODE db_mode;
@@ -5272,7 +5257,7 @@ ts_unloaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   FILE *infile, *outfile;
   int i, flag = 0, no_class = 0, index_exist = 0, trigger_exist = 0;
   struct stat statbuf;
-  char *argv[30];
+  const char *argv[30];
   int argc = 0;
   T_DB_SERVICE_MODE db_mode;
 
@@ -5615,7 +5600,7 @@ ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   char *cubrid_err_file;
   int retval;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[25];
+  const char *argv[25];
   int argc = 0;
   int status;
 
@@ -5656,9 +5641,11 @@ ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   sprintf (tmpfile, "%s/DBMT_task_%d.%d", sco.dbmt_tmp_dir, TS_LOADDB,
 	   (int) getpid ());
   cubrid_cmd_name (cmd_name);
+
   argc = 0;
   argv[argc++] = cmd_name;
   argv[argc++] = UTIL_OPTION_LOADDB;
+
   if (!strcmp (checkoption, "syntax"))
     argv[argc++] = "--" LOAD_CHECK_ONLY_L;
   else if (!strcmp (checkoption, "load"))
@@ -5756,7 +5743,7 @@ ts_restoredb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *date, *lv, *pathname, *partial;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[15];
+  const char *argv[15];
   int argc = 0;
   T_DB_SERVICE_MODE db_mode;
   char *cubrid_err_file;
@@ -5802,7 +5789,7 @@ ts_restoredb (nvplist * req, nvplist * res, char *_dbmt_error)
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (run_child (argv, 1, NULL, NULL, cubrid_err_file, &status) < 0)
 #else
   if (run_child (argv, 1, "/dev/null", NULL, cubrid_err_file, &status) < 0)
@@ -5827,7 +5814,7 @@ ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error)
   int ret;
   FILE *infile;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[10];
+  const char *argv[10];
   int argc = 0;
 
   dbname = nv_get_val (req, "dbname");
@@ -5868,7 +5855,7 @@ ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error)
   argv[argc++] = dbname;
   argv[argc++] = NULL;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   ret = run_child (argv, 1, NULL, tmpfile, NULL, NULL);	/* restoredb -t */
 #else
   ret = run_child (argv, 1, "/dev/null", tmpfile, NULL, NULL);	/* restoredb -t */
@@ -5901,7 +5888,7 @@ ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
   T_SPACEDB_RESULT *cmd_res;
   T_CUBRID_MODE cubrid_mode;
   int i;
-#ifdef WIN32
+#if defined(WINDOWS)
   char find_file[512];
   WIN32_FIND_DATA data;
   HANDLE handle;
@@ -5949,7 +5936,7 @@ ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
   cmd_spacedb_result_free (cmd_res);
 
   /* get log volume info */
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", dbdir);
   if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
 #else
@@ -5961,13 +5948,13 @@ ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   baselen = strlen (dbname);
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dp = readdir (dirp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dp->d_name;
@@ -6200,7 +6187,7 @@ tsSetHistory (nvplist * req, nvplist * res, char *_dbmt_error)
 int
 tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   WIN32_FIND_DATA data;
   char find_file[512];
   HANDLE handle;
@@ -6215,7 +6202,7 @@ tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
 
   sprintf (dirbuf, "%s/logs", sco.szCubrid);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", dirbuf);
   if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
     return ERR_OPENDIR;
@@ -6226,13 +6213,13 @@ tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
 #endif
 
   nv_add_nvp (res, "open", "filelist");
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dp = readdir (dirp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       cur_file = data.cFileName;
 #else
       cur_file = dp->d_name;
@@ -6248,7 +6235,7 @@ tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
 	  nv_add_nvp (res, "path", dirbuf);
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dirp);
@@ -6298,7 +6285,7 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
   char strbuf[1024];
   FILE *infile;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[5];
+  const char *argv[5];
 
   nv_add_nvp (res, "CUBRID", sco.szCubrid);
   nv_add_nvp (res, "CUBRID_DATABASES", sco.szCubrid_databases);
@@ -6324,7 +6311,9 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
       nv_add_nvp (res, "CUBRIDVER", strbuf);
     }
   else
-    nv_add_nvp (res, "CUBRIDVER", "version information not available");
+    {
+      nv_add_nvp (res, "CUBRIDVER", "version information not available");
+    }
 
   sprintf (tmpfile, "%s/DBMT_task_015.%d", sco.dbmt_tmp_dir, (int) getpid ());
   sprintf (cmd_name, "%s/bin/cubrid_broker%s", sco.szCubrid, DBMT_EXE_EXT);
@@ -6363,7 +6352,7 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
   else
     nv_add_nvp (res, "HOSTMONTAB3", "OFF");
 
-#if defined(WIN32)
+#if defined(WINDOWS)
   nv_add_nvp (res, "osinfo", "NT");
 #else
   nv_add_nvp (res, "osinfo", "unknown");
@@ -6740,7 +6729,7 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname, log_dir[512], buf[1024];
   char *error_log_param;
   struct stat statbuf;
-#ifdef WIN32
+#if defined(WINDOWS)
   WIN32_FIND_DATA data;
   HANDLE handle;
   int found;
@@ -6766,7 +6755,7 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
     sprintf (buf, "%s/%s.err", log_dir, dbname);
   else if (error_log_param[0] == '/')
     sprintf (buf, "%s", error_log_param);
-#ifdef WIN32
+#if defined(WINDOWS)
   else if (error_log_param[2] == '/')
     sprintf (buf, "%s", error_log_param);
 #endif
@@ -6797,7 +6786,7 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   sprintf (find_file, "%s/%s", sco.szCubrid, CUBRID_ERROR_LOG_DIR);
-#ifdef WIN32
+#if defined(WINDOWS)
   strcat (find_file, "/*");
   if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
 #else
@@ -6807,13 +6796,13 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
       nv_add_nvp (res, "close", "loginfo");
       return ERR_NO_ERROR;
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dp = readdir (dirp)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       fname = data.cFileName;
 #else
       fname = dp->d_name;
@@ -6836,7 +6825,7 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
 	  nv_add_nvp (res, "close", "log");
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dirp);
@@ -6970,7 +6959,7 @@ ts_get_db_error (nvplist * req, nvplist * res, char *_dbmt_error)
 		}
 	      else if (!strncmp (buf, "Time:", 5))
 		{
-#ifdef	WIN32
+#ifdef	WINDOWS
 		  int imon, iday, iyear;
 		  sscanf (buf, "%*s %d/%d/%d %s %*s %*s %*s %*s %*s %*s %s",
 			  &imon, &iday, &iyear, time, error_code);
@@ -7271,7 +7260,7 @@ ts_get_tran_info (nvplist * req, nvplist * res, char *_dbmt_error)
   FILE *infile;
   char *tok[5];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[10];
+  const char *argv[10];
   int argc = 0;
   int retval;
 
@@ -7340,7 +7329,7 @@ ts_killtran (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname, *dbpasswd, *type, *val;
   char param[256];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[10];
+  const char *argv[10];
   int argc = 0;
 
   if ((dbname = nv_get_val (req, "dbname")) == NULL)
@@ -7407,7 +7396,7 @@ ts_lockdb (nvplist * req, nvplist * res, char *_dbmt_error)
   FILE *infile, *outfile;
   int kr = 0;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[6];
+  const char *argv[6];
 
   dbname = nv_get_val (req, "dbname");
   sprintf (tmpfile, "%s/DBMT_task_%d_1.%d", sco.dbmt_tmp_dir, TS_LOCKDB,
@@ -7751,7 +7740,7 @@ op_db_user_pass_check (char *dbname, char *dbuser, char *dbpass)
 {
   char decrypted[PASSWD_LENGTH + 1];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[11];
+  const char *argv[11];
   char input_file[200];
   char *cubrid_err_file;
   int retval, argc;
@@ -8037,6 +8026,7 @@ _op_get_value_string (DB_VALUE * value)
   double dv;
   float fv;
   int iv;
+  DB_BIGINT bigint;
   short sv;
   extern char *numeric_db_value_print (DB_VALUE *);
 
@@ -8102,6 +8092,10 @@ _op_get_value_string (DB_VALUE * value)
     case DB_TYPE_INTEGER:
       iv = db_get_int (value);
       sprintf (result, "%d", iv);
+      break;
+    case DB_TYPE_BIGINT:
+      bigint = db_get_bigint (value);
+      sprintf (result, "%lld", (long long) bigint);
       break;
     case DB_TYPE_SHORT:
       sv = db_get_short (value);
@@ -8709,7 +8703,7 @@ _tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
 		       char *_dbmt_error)
 {
   char decrypted[PASSWD_LENGTH + 1];
-  char *unicas_auth, *dbcreate = NULL;
+  const char *unicas_auth, *dbcreate = NULL;
   int i, j;
 
   nv_add_nvp (res, "open", "userlist");
@@ -8798,7 +8792,7 @@ _tsAppendDBList (nvplist * res, char dbdir_flag)
       if ((hp = gethostbyname (dbinfo[2])) == NULL)
 	continue;
       /*if the ip equals 127.0.0.1 */
-      if (*(int *) (hp->h_addr_list[0]) == htonl (0x7f000001) ||
+      if (*(unsigned int *) (hp->h_addr_list[0]) == htonl (0x7f000001) ||
 	  memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
 	{
 	  nv_add_nvp (res, "dbname", dbinfo[0]);
@@ -8819,7 +8813,7 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
   int pagesize, i;
   T_SPACEDB_INFO *vol_info;
   char dbdir[512];
-#ifdef WIN32
+#if defined(WINDOWS)
   WIN32_FIND_DATA data;
   char find_file[512];
   HANDLE handle;
@@ -8867,7 +8861,7 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
     }
 
   /* read entries in the directory and generate result */
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/*", dbdir);
   if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
 #else
@@ -8878,7 +8872,7 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
       return ERR_DIROPENFAIL;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dp = readdir (dirp)) != NULL)
@@ -8887,7 +8881,7 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
       int baselen;
       char *fname;
 
-#ifdef WIN32
+#if defined(WINDOWS)
       fname = data.cFileName;
 #else
       fname = dp->d_name;
@@ -8909,7 +8903,7 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
 #endif
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dirp);
@@ -8934,10 +8928,10 @@ _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
 }
 
 static void
-_ts_gen_spaceinfo (nvplist * res, char *filename, char *dbinstalldir,
-		   char *type, int pagesize)
+_ts_gen_spaceinfo (nvplist * res, const char *filename,
+		   const char *dbinstalldir, const char *type, int pagesize)
 {
-  char volfile[512];
+  char volfile[PATH_MAX];
   struct stat statbuf;
 
   nv_add_nvp (res, "open", "spaceinfo");
@@ -8984,7 +8978,7 @@ _ts_get_error_log_param (char *dbname)
 	      fclose (infile);
 	      if (tok[1][0] == '\0')
 		return NULL;
-#ifdef WIN32
+#if defined(WINDOWS)
 	      unix_style_path (tok[1]);
 #endif
 	      return (strdup (tok[1]));
@@ -8999,7 +8993,7 @@ ts_localdb_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *task, *dbname, *dbuser, *dbpasswd;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[11];
+  const char *argv[11];
   char input_file[200];
   char *cubrid_err_file;
   int retval, argc;
@@ -9117,7 +9111,7 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *task, *dbname, *dbuser, *dbpasswd;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[11];
+  const char *argv[11];
   char input_file[200];
   char *cubrid_err_file;
   int retval, argc;
@@ -9211,7 +9205,6 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 	  return ERR_TMPFILE_OPEN_FAIL;
 	}
     }
-
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
   SET_TRANSACTION_NO_WAIT_MODE_ENV ();
@@ -9308,7 +9301,7 @@ ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 static char *
 get_user_name (int uid, char *name_buf)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   strcpy (name_buf, "");
 #else
   struct passwd *pwd;
@@ -9324,15 +9317,15 @@ get_user_name (int uid, char *name_buf)
 }
 
 static int
-class_info_sa (char *dbname, char *uid, char *passwd, nvplist * out,
-	       char *_dbmt_error)
+class_info_sa (const char *dbname, const char *uid, const char *passwd,
+	       nvplist * out, char *_dbmt_error)
 {
   char strbuf[1024];
   char outfile[512], errfile[512];
   FILE *fp;
   int ret_val = ERR_NO_ERROR;
   char cmd_name[128];
-  char *argv[10];
+  const char *argv[10];
   char cli_ver[10];
   char opcode[10];
 
@@ -9401,7 +9394,7 @@ class_info_sa_finale:
   return ret_val;
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static void
 replace_colon (char *path)
 {
@@ -10595,15 +10588,15 @@ op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
 }
 
 static int
-trigger_info_sa (char *dbname, char *uid, char *passwd, nvplist * out,
-		 char *_dbmt_error)
+trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
+		 nvplist * out, char *_dbmt_error)
 {
   char strbuf[1024];
   char outfile[512], errfile[512];
   FILE *fp;
   int ret_val = ERR_NO_ERROR;
   char cmd_name[128];
-  char *argv[10];
+  const char *argv[10];
 
   sprintf (outfile, "%s/tmp/DBMT_trigger_info.%d", sco.szCubrid,
 	   (int) getpid ());
@@ -10657,7 +10650,7 @@ ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *filename, *compress, *file_num;
   int b_compress, index, b_compress_failed;
-  char *argv[7];
+  const char *argv[7];
   char cmd_string[512];
   char com_filename[512];
   struct stat statbuf;
@@ -10733,10 +10726,14 @@ ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error)
 		  filename = com_filename;
 		}
 	      else
-		b_compress_failed = 1;
+		{
+		  b_compress_failed = 1;
+		}
 	    }
 	  else
-	    b_compress_failed = 1;
+	    {
+	      b_compress_failed = 1;
+	    }
 	}
 
       nv_add_nvp (res, "filename", filename);
@@ -10784,7 +10781,7 @@ op_get_cubrid_ver (char *buffer)
   char strbuf[1024];
   FILE *infile;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[5];
+  const char *argv[5];
 
   if (!buffer)
     return NULL;
@@ -11141,7 +11138,7 @@ ts_get_diagdata (nvplist * cli_request, nvplist * cli_response,
   T_DIAG_ACTIVITY_DB_SERVER server_act_data;
   T_DIAG_ACTIVITY_CAS cas_act_data;
 #endif
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE shm_handle = NULL;
 #endif
 
@@ -12744,18 +12741,19 @@ ts_getcaslogfilelist (nvplist * cli_request, nvplist * cli_response,
 		      char *diag_error)
 {
   int i;
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE handle;
   WIN32_FIND_DATA data;
   char find_file[512];
   int found;
 #else
-  DIR *dp;
+  DIR *dp = NULL;
   struct dirent *dirp;
 #endif
   T_DM_UC_CONF uc_conf;
-  char logdir[512], *v;
-  char *bname, buf[1024];
+  char logdir[PATH_MAX];
+  const char *v;
+  char *bname, buf[PATH_MAX];
   char *cur_file;
 
   /* get cas info num */
@@ -12775,7 +12773,7 @@ ts_getcaslogfilelist (nvplist * cli_request, nvplist * cli_response,
       uca_get_conf_path (v, logdir);
 
       nv_add_nvp (cli_response, "brokername", bname);
-#ifdef WIN32
+#if defined(WINDOWS)
       sprintf (find_file, "%s/%s/%s*.log", bname, UNICAS_SQL_LOG_DIR, logdir);
       handle = FindFirstFile (find_file, &data);
       if (handle == INVALID_HANDLE_VALUE)
@@ -12787,13 +12785,13 @@ ts_getcaslogfilelist (nvplist * cli_request, nvplist * cli_response,
 	continue;
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
       for (found = 1; found; found = FindNextFile (handle, &data))
 #else
       while ((dirp = readdir (dp)) != NULL)
 #endif
 	{
-#ifdef WIN32
+#if defined(WINDOWS)
 	  cur_file = data.cFileName;
 #else
 	  cur_file = dirp->d_name;
@@ -12807,10 +12805,13 @@ ts_getcaslogfilelist (nvplist * cli_request, nvplist * cli_response,
     }
   nv_add_nvp (cli_response, "logfilelist", "end");
   uca_unicas_conf_free (&uc_conf);
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
-  closedir (dp);
+  if (dp)
+    {
+      closedir (dp);
+    }
 #endif
 
 #ifdef DIAG_DEBUG
@@ -12832,11 +12833,11 @@ ts_analyzecaslog (nvplist * cli_request, nvplist * cli_response,
   char *logfile, *option_t;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char *diag_err_file;
-  char *argv[256];
+  const char *argv[256];
   char buf[1024], logbuf[2048];
   char qnum[16], max[32], min[32], avg[32], cnt[16], err[16];
   FILE *fdRes, *fdQ, *fdT, *fdAnalyzeResult;
-#ifdef WIN32
+#if defined(WINDOWS)
   DWORD th_id;
 #else
   T_THREAD th_id;
@@ -12944,13 +12945,13 @@ ts_analyzecaslog (nvplist * cli_request, nvplist * cli_response,
     }
   else
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       th_id = GetCurrentThreadId ();
 #else
       th_id = getpid ();
 #endif
-      sprintf (tmpfileQ, "%s/log_top_%u.q", sco.dbmt_tmp_dir, th_id);
-      sprintf (tmpfileRes, "%s/log_top_%u.res", sco.dbmt_tmp_dir, th_id);
+      sprintf (tmpfileQ, "%s/log_top_%lu.q", sco.dbmt_tmp_dir, th_id);
+      sprintf (tmpfileRes, "%s/log_top_%lu.res", sco.dbmt_tmp_dir, th_id);
 
       rename ("./log_top.q", tmpfileQ);
       rename ("./log_top.res", tmpfileRes);
@@ -13050,10 +13051,10 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
   char tmplogfilename[512], resfile[512], resfile2[512];
   char log_converter_res[512];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[25];
+  const char *argv[25];
   T_DM_UC_CONF uc_conf;
   char out_msg_file_env[1024];
-#ifdef WIN32
+#if defined(WINDOWS)
   DWORD th_id;
 #else
   T_THREAD th_id;
@@ -13075,14 +13076,14 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
       return ERR_PARAM_MISSING;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   th_id = GetCurrentThreadId ();
 #else
   th_id = getpid ();
 #endif
 
-  sprintf (resfile, "%s/log_run_%u.res", sco.dbmt_tmp_dir, th_id);
-  sprintf (resfile2, "%s/log_run_%u.res2", sco.dbmt_tmp_dir, th_id);
+  sprintf (resfile, "%s/log_run_%lu.res", sco.dbmt_tmp_dir, th_id);
+  sprintf (resfile2, "%s/log_run_%lu.res2", sco.dbmt_tmp_dir, th_id);
 
   /* get right port number with broker name */
   if (uca_unicas_conf (&uc_conf, NULL, diag_error) < 0)
@@ -13109,7 +13110,7 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
   else
     {
       /* create logfile */
-      sprintf (tmplogfilename, "%s/cas_log_tmp_%u.q", sco.dbmt_tmp_dir,
+      sprintf (tmplogfilename, "%s/cas_log_tmp_%lu.q", sco.dbmt_tmp_dir,
 	       th_id);
 
       flogfile = fopen (tmplogfilename, "w+");
@@ -13132,7 +13133,7 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
     }
 
   /* execute broker_log_converter why logfile is created */
-  sprintf (log_converter_res, "%s/log_converted_%u.q_res", sco.dbmt_tmp_dir,
+  sprintf (log_converter_res, "%s/log_converted_%lu.q_res", sco.dbmt_tmp_dir,
 	   th_id);
   sprintf (cmd_name, "%s/bin/broker_log_converter%s", sco.szCubrid,
 	   DBMT_EXE_EXT);
@@ -13255,7 +13256,7 @@ ts_removecasrunnertmpfile (nvplist * cli_request, nvplist * cli_response,
       sprintf (command, "%s %s %s*", DEL_DIR, DEL_DIR_OPT, filename);
       if (system (command) == -1)
 	{
-#ifdef WIN32
+#if defined(WINDOWS)
 	  sprintf (command, "%s %s %s*", DEL_FILE, DEL_FILE_OPT, filename);
 	  if (system (command) == -1)
 #endif
@@ -13839,7 +13840,7 @@ get_client_monitoring_config (nvplist * cli_request,
   return ERR_NO_ERROR;
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static void
 shm_key_to_name (int shm_key, char *name_str)
 {
@@ -13847,7 +13848,7 @@ shm_key_to_name (int shm_key, char *name_str)
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static void *
 op_server_shm_open (int shm_key, HANDLE * hOut)
 {
@@ -13913,29 +13914,35 @@ op_server_shm_open (int shm_key)
 #endif
 
 static int
-get_filename_from_path (char *path, char *filename)
+get_filename_from_path (const char *path, char *filename)
 {
-  unsigned int i, filename_index;
+  size_t i, len;
+  const char *p;
 
   if (!path || !filename)
     {
       return 0;
     }
 
-  filename_index = -1;
-  for (i = 0; i < strlen (path); i++)
+  len = strlen (path);
+  p = NULL;
+  for (i = 0; i < len; i++)
     {
       if (path[i] == '/')
-	filename_index = i;
+	p = path + i;
     }
 
-  if (filename_index == -1)
-    return -1;
-  else if (filename_index == strlen (path))
-    return -1;
+  if (p == NULL)
+    {
+      return -1;
+    }
+  else if (p == path + len - 1)
+    {
+      return -1;
+    }
   else
     {
-      strcpy (filename, (path + filename_index + 1));
+      strcpy (filename, (p + 1));
     }
 
   return 1;
@@ -14069,7 +14076,7 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser,
 {
   char opcode[10];
   char outfile[512], errfile[512];
-  char *argv[10];
+  const char *argv[10];
   char cmd_name[512];
   char *outmsg = NULL, *errmsg = NULL;
 
@@ -14165,7 +14172,7 @@ read_file (char *filename, char **outbuf)
   fd = open (filename, O_RDONLY);
   if (fd < 0)
     return -1;
-#ifdef WIN32
+#if defined(WINDOWS)
   if (setmode (fd, O_BINARY) == -1)
     {
       close (fd);
@@ -14184,7 +14191,7 @@ read_file (char *filename, char **outbuf)
 static int
 get_broker_info_from_filename (char *path, char *br_name, int *as_id)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   const char *sql_log_ext = ".sql.log";
   int sql_log_ext_len = strlen (sql_log_ext);
   int path_len;

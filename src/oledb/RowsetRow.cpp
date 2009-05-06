@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -102,10 +102,10 @@ HRESULT CCUBRIDRowsetRowColumn::TransferData(CComPtr<IDataConvert> &spConvert, i
 	DBSTATUS dbStat = DBSTATUS_S_OK;
 	DBLENGTH cbDst = m_cbDataLen;
 	HRESULT hr;
-	
+
 	hr = spConvert->DataConvert(DBTYPE_STR, wType, m_cbDataLen, &cbDst,
 			m_strData, pData, cbMaxLen, dbStat, &dbStat, bPrecision, bScale, 0);
-	
+
 	//modified by swseo
 	if (hr == DB_E_UNSUPPORTEDCONVERSION)
 	{
@@ -188,8 +188,8 @@ HRESULT CCUBRIDRowsetRowColumn::ReadData(CComPtr<IDataConvert> &spConvert, DBTYP
 		{
 			strDataNew = (char *)malloc(20);
 			DBTIMESTAMP ts = *(DBTIMESTAMP *)pData;
-			sprintf(strDataNew, "%04d-%02d-%02d %02d:%02d:%02d",
-					ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second);
+			sprintf(strDataNew, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+					ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.fraction/1000000);
 		}
 		break;
 	case DBTYPE_R4:
@@ -281,9 +281,9 @@ HRESULT CCUBRIDRowsetRowColumn::ReadData(int hReq, int iOrdinal, DBTYPE wType)
 		else // DBTYPE_DBTIMESTAMP
 		{
 			m_strData = (char *)malloc(20);
-			sprintf(m_strData, "%04d-%02d-%02d %02d:%02d:%02d",
-					date.yr, date.mon, date.day, date.hh, date.mm, date.ss);
-			m_cbDataLen = 19;
+			sprintf(m_strData, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+					date.yr, date.mon, date.day, date.hh, date.mm, date.ss, date.ms);
+			m_cbDataLen = 23;
 		}
 		m_dwStatus = DBSTATUS_S_OK;
 		return S_OK;
@@ -308,7 +308,7 @@ HRESULT CCUBRIDRowsetRowColumn::ReadData(int hReq, int iOrdinal, DBTYPE wType)
 	// 어짜피 OLE DB는 고정 크기 문자열 타입이 없기 때문에
 	// 제거하는 쪽을 택했다.
 	// TODO: 다음과 같이 제거하면 될까?
-	
+
 	// while(value[ind-1]==' ' || (unsigned char)value[ind-1]==0xA1)
 	// 두번째 조건을 포함할 경우 한글이 잘릴수 있다. -- cgkang
 	while(value[ind-1]==' ')
@@ -333,7 +333,7 @@ HRESULT CCUBRIDRowsetRowColumn::WriteData(int hReq, int iRowset, ATLCOLUMNINFO *
 	int rc;
 
 	if(m_dwStatus==DBSTATUS_S_ISNULL)
-		rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_STR, NULL, &err_buf);
+		rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_STR, NULL, &err_buf);
 	//else if(m_dwStatus==DBSTATUS_S_DEFAULT) //Do nothing
 	//	rc = 0;
 	else
@@ -343,7 +343,7 @@ HRESULT CCUBRIDRowsetRowColumn::WriteData(int hReq, int iRowset, ATLCOLUMNINFO *
 		case DBTYPE_R8:
 			{
 				double val = atof(m_strData);
-				rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_DOUBLE, &val, &err_buf);
+				rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_DOUBLE, &val, &err_buf);
 			}
 			break;
 		case DBTYPE_BYTES:
@@ -357,7 +357,7 @@ HRESULT CCUBRIDRowsetRowColumn::WriteData(int hReq, int iRowset, ATLCOLUMNINFO *
 					sscanf(m_strData+i*2, "%02X", &t);
 					val.buf[i] = t;
 				}
-				rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_BIT, &val, &err_buf);
+				rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_BIT, &val, &err_buf);
 				free(val.buf);
 			}
 			break;
@@ -367,21 +367,22 @@ HRESULT CCUBRIDRowsetRowColumn::WriteData(int hReq, int iRowset, ATLCOLUMNINFO *
 				int y,m,d;
 				sscanf(m_strData, "%d-%d-%d", &y, &m, &d);
 				val.yr = y; val.mon = m; val.day = d;
-				rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_DATE, &val, &err_buf);
+				rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_DATE, &val, &err_buf);
 			}
 			break;
 		case DBTYPE_DBTIMESTAMP:
 			{
 				T_CCI_DATE val;
-				int y,m,d,H,M,S;
-				sscanf(m_strData, "%d-%d-%d %d:%d:%d", &y, &m, &d, &H, &M, &S);
+				int y,m,d,H,M,S,MS;
+				sscanf(m_strData, "%d-%d-%d %d:%d:%d.%03d", &y, &m, &d, &H, &M, &S, &MS);
 				val.yr = y; val.mon = m; val.day = d;
 				val.hh = H; val.mm = M; val.ss = S;
-				rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_DATE, &val, &err_buf);
+				val.ms = MS;
+				rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_DATE, &val, &err_buf);
 			}
 			break;
 		default:
-			rc = cci_cursor_update(hReq, iRowset+1, pInfo->iOrdinal, CCI_A_TYPE_STR, m_strData, &err_buf);
+			rc = cci_cursor_update(hReq, iRowset+1, (int) pInfo->iOrdinal, CCI_A_TYPE_STR, m_strData, &err_buf);
 			break;
 		}
 	}
@@ -424,7 +425,7 @@ HRESULT CCUBRIDRowsetRow::ReadData(int hReq, bool bOIDOnly, bool bSensitive)
 		// deferred delete는 메모리에 남아 있으므로
 		// iRowset이 storage상의 위치와 같다.
 		T_CCI_ERROR err_buf;
-		int res = cci_cursor(hReq, m_iRowset+1, CCI_CURSOR_FIRST, &err_buf);
+		int res = cci_cursor(hReq, (int) m_iRowset+1, CCI_CURSOR_FIRST, &err_buf);
 		if(res==CCI_ER_NO_MORE_DATA) return DB_S_ENDOFROWSET;
 		if(res<0) return E_FAIL;
 		if(bSensitive)
@@ -442,7 +443,7 @@ HRESULT CCUBRIDRowsetRow::ReadData(int hReq, bool bOIDOnly, bool bSensitive)
 	for(DBORDINAL i=0;i<m_cColumns;i++)
 	{
 		CCUBRIDRowsetRowColumn *pColCur = &pColumns[i];
-		pColCur->ReadData(hReq, m_pInfo[i].iOrdinal, m_pInfo[i].wType);
+		pColCur->ReadData(hReq, (int) m_pInfo[i].iOrdinal, m_pInfo[i].wType);
 	}
 
 	return S_OK;
@@ -503,7 +504,7 @@ HRESULT CCUBRIDRowsetRow::ReadData(ATLBINDINGS *pBinding, void *pData)
 
 		if(pBindCur->dwPart & DBPART_STATUS)
 			dwSrcStatus = *(DBSTATUS *)((BYTE *)pData + pBindCur->obStatus);
-	
+
 		if(pBindCur->dwPart & DBPART_VALUE)
 		{
 			BYTE *pSrcData = (BYTE *)pData+pBindCur->obValue;
@@ -674,12 +675,12 @@ HRESULT CCUBRIDRowsetRow::ReadData(int hReq, char* szOID)
 
 	res = cci_get_data(hReq, 1, CCI_A_TYPE_SET, &set, &ind);
 	if(res<0) return RaiseError(E_FAIL, 0, __uuidof(IRow), "CCUBRIDRowsetRow::ReadData(3) cci_get_data failed");
-	
+
 	CCUBRIDRowsetRowColumn *pColCur = &pColumns[0];
 
 	if (cci_set_get(set, 1, CCI_A_TYPE_STR, &strVal, &ind) < 0)
 		return RaiseError(E_FAIL, 0, __uuidof(IRow), "CCUBRIDRowsetRow::ReadData(3) cci_set_data failed");
-	
+
 	pColCur->m_strData = _strdup(strVal);
 	pColCur->m_dwStatus = DBSTATUS_S_OK;
 	pColCur->m_cbDataLen = ind;
@@ -707,7 +708,7 @@ static CComBSTR BuildColumnValue(ATLCOLUMNINFO *m_pInfoCur, CCUBRIDRowsetRowColu
 		break;
 	case DBTYPE_WSTR: // NCHAR?
 		str.Append("N'");
-		
+
 		temp.Replace("'", "''");
 		str.Append(temp);
 
@@ -720,12 +721,12 @@ static CComBSTR BuildColumnValue(ATLCOLUMNINFO *m_pInfoCur, CCUBRIDRowsetRowColu
 		break;
 	default:
 		str.Append("'");
-		
+
 		temp.Replace("'", "''");
 		str.Append(temp);
-		
+
 		str.Append("'");
-		
+
 		break;
 	}
 	return str;
@@ -795,7 +796,7 @@ HRESULT CCUBRIDRowsetRow::WriteData(int hConn, int hReq, CComBSTR &strTableName)
 					if(pInfoCur->iOrdinal==0) continue; // skip bookmark column
 
 					CCUBRIDRowsetRowColumn *pCol = m_rgColumns+i;
-					HRESULT hr = pCol->WriteData(hReq, m_iRowset, pInfoCur);
+					HRESULT hr = pCol->WriteData(hReq, (int) m_iRowset, pInfoCur);
 					if(FAILED(hr))
 						return hr;
 				}
@@ -937,7 +938,7 @@ HRESULT CCUBRIDRowsetRow::WriteData(ATLBINDINGS *pBinding, void *pData, DBROWCOU
 		}
 
 		// Non-Bookmark Columns
-		
+
 		//ISequentialStream 처리
 		//by risensh1ne
 		if (pBindCur->pObject)
@@ -947,7 +948,7 @@ HRESULT CCUBRIDRowsetRow::WriteData(ATLBINDINGS *pBinding, void *pData, DBROWCOU
 				return E_NOINTERFACE;
 
 			CComPolyObject<CCUBRIDStream>* pObjStream;
-		
+
 			HRESULT hr = CComPolyObject<CCUBRIDStream>::CreateInstance(NULL, &pObjStream);
 			if (FAILED(hr))
 				return hr;
@@ -968,14 +969,14 @@ HRESULT CCUBRIDRowsetRow::WriteData(ATLBINDINGS *pBinding, void *pData, DBROWCOU
 
 			DBORDINAL cCols;
 			ATLCOLUMNINFO *pInfo = pRowset->GetColumnInfo(pRowset, &cCols);
-			
+
 			pObjStream->m_contained.Initialize(hConn, this->m_szOID, &pInfo[pBindCur->iOrdinal - 1]);
-			
+
 			BYTE* temp = (BYTE *)pData + pBindCur->obValue;
 			hr = pObjStream->QueryInterface(IID_ISequentialStream, (void **)temp);
 			if (FAILED(hr))
 				return E_NOINTERFACE;
-			
+
 			continue;
 		}
 
@@ -1007,7 +1008,7 @@ HRESULT CCUBRIDRowsetRow::WriteData(ATLBINDINGS *pBinding, void *pData, DBROWCOU
 			DBSTATUS dbStatus;
 			DBLENGTH cbDataLen;
 
-			HRESULT hr = pColCur->TransferData(m_spConvert, m_pInfoCur->iOrdinal, pBindCur->wType,
+			HRESULT hr = pColCur->TransferData(m_spConvert, (int) m_pInfoCur->iOrdinal, pBindCur->wType,
 								pBindCur->bPrecision, pBindCur->bScale, pDstTemp,
 								pBindCur->cbMaxLen, &dbStatus, &cbDataLen);
 			if (FAILED(hr)) return hr;
@@ -1094,7 +1095,7 @@ HRESULT CCUBRIDRowsetRow::WriteData(DBORDINAL cColumns, DBCOLUMNACCESS rgColumns
 		//memset(pAccessCur->pData, 0, pAccessCur->cbMaxLen);
 #endif
 
-		HRESULT hr = pColCur->TransferData(m_spConvert, m_pInfoCur->iOrdinal, pAccessCur->wType,
+		HRESULT hr = pColCur->TransferData(m_spConvert, (int) m_pInfoCur->iOrdinal, pAccessCur->wType,
 							pAccessCur->bPrecision, pAccessCur->bScale, pAccessCur->pData,
 							pAccessCur->cbMaxLen, &pAccessCur->dwStatus, &pAccessCur->cbDataLen);
 		// 고정길이 문자열(SQL의 CHAR, NCHAR)이면 뒤에 공백을 추가한다.

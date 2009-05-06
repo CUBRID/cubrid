@@ -45,16 +45,16 @@
 #include		"odbc_resource.h"
 //#include              "setup.h"
 
-PUBLIC BOOL CALLBACK
+PUBLIC INT_PTR CALLBACK
 ConfigDSNDlgProc (HWND hwndParent, UINT message, WPARAM wParam,
 		  LPARAM lParam);
 
-#define ODBC_RETURN(rc, handle)								\
-	do {													\
-	    if ( handle != NULL )								\
-				((ODBC_ENV*)handle)->diag->retcode = rc;		\
-	    return rc;											\
-	} while (0 )
+#define ODBC_RETURN(rc, handle)					\
+  do {								\
+    if ( handle != NULL )					\
+	((ODBC_ENV*)handle)->diag->retcode = rc;		\
+    return rc;							\
+  } while (0 )
 
 typedef struct __st_DriverConnectInfo
 {
@@ -65,7 +65,7 @@ typedef struct __st_DriverConnectInfo
   char pwd[ITEMBUFLEN];
 } DriverConnectInfo;
 
-PRIVATE BOOL CALLBACK
+PRIVATE INT_PTR CALLBACK
 ConnectDlgProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 PRIVATE BOOL FAR PASCAL ConnectDatabase (HWND hWnd);
 
@@ -166,7 +166,7 @@ SQLBindCol (SQLHSTMT StatementHandle,
 	    SQLUSMALLINT ColumnNumber,
 	    SQLSMALLINT TargetType,
 	    SQLPOINTER TargetValue,
-	    SQLINTEGER BufferLength, SQLINTEGER * StrLen_or_Ind)
+	    SQLLEN BufferLength, SQLLEN * StrLen_or_Ind)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -195,10 +195,10 @@ SQLBindParameter (SQLHSTMT StatementHandle,
 		  SQLSMALLINT InputOutputType,
 		  SQLSMALLINT ValueType,
 		  SQLSMALLINT ParameterType,
-		  SQLUINTEGER ColumnSize,
+		  SQLULEN ColumnSize,
 		  SQLSMALLINT DecimalDigits,
 		  SQLPOINTER ParameterValuePtr,
-		  SQLINTEGER BufferLength, SQLINTEGER * StrLen_or_IndPtr)
+		  SQLLEN BufferLength, SQLLEN * StrLen_or_IndPtr)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -273,7 +273,12 @@ SQLColAttribute (SQLHSTMT StatementHandle,
 		 SQLUSMALLINT FieldIdentifier,
 		 SQLPOINTER CharacterAttribute,
 		 SQLSMALLINT BufferLength,
-		 SQLSMALLINT * StringLength, SQLPOINTER NumericAttribute)
+		 SQLSMALLINT * StringLength,
+#ifdef _WIN64
+                 SQLLEN *NumericAttribute)
+#else
+                 SQLPOINTER NumericAttribute)
+#endif
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -415,7 +420,7 @@ SQLDescribeCol (SQLHSTMT StatementHandle,
 		SQLSMALLINT BufferLength,
 		SQLSMALLINT * NameLength,
 		SQLSMALLINT * DataType,
-		SQLUINTEGER * ColumnSize,
+		SQLULEN * ColumnSize,
 		SQLSMALLINT * DecimalDigits, SQLSMALLINT * Nullable)
 {
   RETCODE rc = SQL_SUCCESS;
@@ -468,11 +473,11 @@ SQLDriverConnect (HDBC hdbc,
 		  SWORD cbConnStrIn,
 		  UCHAR * szConnStrOut,
 		  SWORD cbConnStrOut,
-		  UNALIGNED SWORD * pcbConnStrOut, UWORD uwMode)
+		  SQLSMALLINT * pcbConnStrOut, UWORD uwMode)
 {
   RETCODE rc = ODBC_SUCCESS;
 
-  int dlgrc;
+  INT_PTR dlgrc;
   char *pt;
 
   DriverConnectInfo dci;
@@ -1044,7 +1049,7 @@ SQLFetch (SQLHSTMT StatementHandle)
 #if (ODBCVER >= 0x0300)
 ODBC_INTERFACE RETCODE SQL_API
 SQLFetchScroll (SQLHSTMT StatementHandle,
-		SQLSMALLINT FetchOrientation, SQLINTEGER FetchOffset)
+		SQLSMALLINT FetchOrientation, SQLLEN FetchOffset)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1081,8 +1086,8 @@ SQLFetchScroll (SQLHSTMT StatementHandle,
 ODBC_INTERFACE RETCODE SQL_API
 SQLExtendedFetch (SQLHSTMT StatementHandle,
 		  SQLUSMALLINT FetchOrientation,
-		  SQLINTEGER FetchOffset,
-		  SQLUINTEGER * RowCountPtr, SQLUSMALLINT * RowStatusArray)
+		  SQLLEN FetchOffset,
+		  SQLULEN * RowCountPtr, SQLUSMALLINT * RowStatusArray)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1187,7 +1192,7 @@ SQLGetCursorName (SQLHSTMT StatementHandle,
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
-  SQLINTEGER tmp_NameLength;
+  SQLLEN tmp_NameLength;
 
   OutputDebugString ("SQLGetCursorName called\n");
 
@@ -1212,7 +1217,7 @@ SQLGetData (SQLHSTMT StatementHandle,
 	    SQLUSMALLINT ColumnNumber,
 	    SQLSMALLINT TargetType,
 	    SQLPOINTER TargetValue,
-	    SQLINTEGER BufferLength, SQLINTEGER * StrLen_or_Ind)
+	    SQLLEN BufferLength, SQLLEN * StrLen_or_Ind)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1243,6 +1248,7 @@ SQLGetDescField (SQLHDESC DescriptorHandle,
 		 SQLINTEGER BufferLength, SQLINTEGER * StringLength)
 {
   RETCODE rc = SQL_SUCCESS;
+  SQLLEN tmp_StringLength;
 
   OutputDebugString ("SQLGetDescField called\n");
 
@@ -1252,7 +1258,8 @@ SQLGetDescField (SQLHDESC DescriptorHandle,
 
   rc = odbc_get_desc_field ((ODBC_DESC *) DescriptorHandle, RecNumber,
 			    FieldIdentifier, Value,
-			    BufferLength, StringLength);
+			    BufferLength, &tmp_StringLength);
+  *StringLength = (SQLINTEGER) tmp_StringLength;
 
   DEBUG_TIMESTAMP (END_SQLGetDescField);
 
@@ -1267,7 +1274,7 @@ SQLGetDescRec (SQLHDESC DescriptorHandle,
 	       SQLSMALLINT * StringLength,
 	       SQLSMALLINT * Type,
 	       SQLSMALLINT * SubType,
-	       SQLINTEGER * Length,
+	       SQLLEN * Length,
 	       SQLSMALLINT * Precision,
 	       SQLSMALLINT * Scale, SQLSMALLINT * Nullable)
 {
@@ -1298,7 +1305,7 @@ SQLGetDiagField (SQLSMALLINT HandleType,
 		 SQLSMALLINT BufferLength, SQLSMALLINT * StringLength)
 {
   RETCODE rc = SQL_SUCCESS;
-  SQLINTEGER tmp_StringLength;	// for type compatibility between short*, int*
+  SQLLEN tmp_StringLength;	// for type compatibility between short*, int*
 
   OutputDebugString ("SQLGetDiagField called\n");
 
@@ -1327,7 +1334,7 @@ SQLGetDiagRec (SQLSMALLINT HandleType,
 	       SQLSMALLINT BufferLength, SQLSMALLINT * TextLength)
 {
   RETCODE rc = SQL_SUCCESS;
-  SQLINTEGER tmp_StringLength;
+  SQLLEN tmp_StringLength;
 
   OutputDebugString ("SQLGetDiagRec called\n");
 
@@ -1408,7 +1415,7 @@ SQLGetInfo (SQLHDBC ConnectionHandle,
 	    SQLSMALLINT BufferLength, SQLSMALLINT * StringLength)
 {
   RETCODE rc = SQL_SUCCESS;
-  SQLINTEGER tmp_StringLength;
+  SQLLEN tmp_StringLength;
 
   OutputDebugString ("SQLGetInfo called\n");
 
@@ -1600,7 +1607,7 @@ SQLPrepare (SQLHSTMT StatementHandle,
 
 ODBC_INTERFACE RETCODE SQL_API
 SQLPutData (SQLHSTMT StatementHandle,
-	    SQLPOINTER Data, SQLINTEGER StrLen_or_Ind)
+	    SQLPOINTER Data, SQLLEN StrLen_or_Ind)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1621,7 +1628,7 @@ SQLPutData (SQLHSTMT StatementHandle,
 
 
 ODBC_INTERFACE RETCODE SQL_API
-SQLRowCount (SQLHSTMT StatementHandle, SQLINTEGER * RowCount)
+SQLRowCount (SQLHSTMT StatementHandle, SQLLEN * RowCount)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1727,11 +1734,11 @@ SQLSetDescRec (SQLHDESC DescriptorHandle,
 	       SQLSMALLINT RecNumber,
 	       SQLSMALLINT Type,
 	       SQLSMALLINT SubType,
-	       SQLINTEGER Length,
+	       SQLLEN Length,
 	       SQLSMALLINT Precision,
 	       SQLSMALLINT Scale,
 	       SQLPOINTER Data,
-	       SQLINTEGER * StringLength, SQLINTEGER * Indicator)
+	       SQLLEN * StringLength, SQLLEN * Indicator)
 {
   RETCODE rc = SQL_SUCCESS;
 
@@ -1984,7 +1991,7 @@ SQLBulkOperations (SQLHSTMT StatementHandle, SQLSMALLINT Operation)
 
 ODBC_INTERFACE RETCODE SQL_API
 SQLSetPos (SQLHSTMT StatementHandle,
-	   SQLUSMALLINT RowNumber,
+	   SQLSETPOSIROW RowNumber,
 	   SQLUSMALLINT Operation, SQLUSMALLINT LockType)
 {
   RETCODE rc = SQL_SUCCESS;
@@ -2495,7 +2502,7 @@ SQLSetScrollOptions (SQLHSTMT StatementHandle,
  *  SQLDriverConnect시 사용되는 dialog box를 띄운다.
  * NOTE:
  ************************************************************************/
-PRIVATE BOOL CALLBACK
+PRIVATE INT_PTR CALLBACK
 ConnectDlgProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
   DriverConnectInfo *dci = NULL;

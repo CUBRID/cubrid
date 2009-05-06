@@ -362,7 +362,7 @@ DBNAMEPtr_t CCUBRIDManage::pGetDBListFile()
 	if( cOrdbList && cOrdbList->ReadDBInfo() )
 	{
 		CDBInfo	*db;
-		int count = cOrdbList->m_List.GetCount();
+		int count = (int) cOrdbList->m_List.GetCount();
 
 		for (int i = 0; i < count; i++)
 		{
@@ -579,7 +579,7 @@ char* CCUBRIDManage::sGetName( char* sStr )
 	char* sEnd = strchr( sTmp, ',' );
 	if( !sEnd ) return NULL;
 
-	int dSize = sEnd - sTmp;
+	int dSize = (int) (sEnd - sTmp);
 
 	char* sResult = new char[ dSize + 1 ];
 	memset( sResult, 0x00, dSize + 1 );

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -2108,7 +2108,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       {
 	int arg1_corr, arg2_corr, corr;
 	PT_NODE *arg1, *arg2;
-	PT_NODE *select_node, *order_by_link = NULL;
+	PT_NODE *select_node = NULL, *order_by_link = NULL;
 	int index_of_order_by_link = -1;
 
 	/* treat this just like a select with no from, so that
@@ -5684,8 +5684,8 @@ pt_streq (const char *p, const char *q)
 static const char *
 pt_unique_id (PARSER_CONTEXT * parser, UINTPTR t)
 {
-  char c[20];
-  sprintf (c, "a%ld", t);
+  char c[40];
+  sprintf (c, "a%lld", (long long) t);
   return pt_append_string (parser, 0, c);
 }
 
@@ -5930,7 +5930,7 @@ pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot,
       conj_name = arg1->info.dot.arg2;
       /* comput conj_res to get exposed name from class data type of arg1 */
       arg1 = arg1->info.dot.arg1;
-      if (arg1->node_type == PT_NAME)
+      if ((arg1->node_type == PT_NAME) || (arg1->node_type == PT_METHOD_CALL))
 	{
 	  conj_res = arg1->data_type;
 	}
@@ -6370,7 +6370,7 @@ pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser,
 				UINTPTR spec_id, short *scope_location)
 {
   PT_NODE *spec, *temp;
-  int location;
+  int location = 0;
   for (spec = scopes->specs; spec; spec = spec->next)
     {
       if (spec->node_type != PT_SPEC)

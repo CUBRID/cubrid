@@ -19,7 +19,7 @@
 
 
 /*
- * class_info_sa.c -
+ * cm_class_info_sa.c -
  */
 
 #ident "$Id$"
@@ -28,7 +28,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <io.h>
@@ -46,17 +46,10 @@
 
 #define MSGFMT	"%s %s\n"
 
-#define ARG_GET(VAR, ARG)                                       \
-        do {                                                    \
-          char *_macro_tmp_ptr;                                 \
-          _macro_tmp_ptr = ARG;                                 \
-          VAR = (_macro_tmp_ptr ? _macro_tmp_ptr : "");         \
-        } while (0)
-
 static int dbmt_user_login (int argc, char *argv[], int opt_begin);
 static int class_info (int argc, char *argv[], int opt_begin);
 
-static void write_err_msg (char *errfile, char *msg);
+static void write_err_msg (const char *errfile, char *msg);
 static void write_class_info (FILE * fp, DB_OBJECT * classobj);
 T_EMGR_VERSION CLI_VERSION;
 
@@ -90,29 +83,39 @@ main (int argc, char *argv[])
 static int
 class_info (int argc, char *argv[], int opt_begin)
 {
-  char *dbname, *uid, *passwd, *outfile, *errfile;
+  const char *dbname, *uid, *passwd, *outfile, *errfile;
   FILE *fp;
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *classobj;
-  char *ver_str;
-
+  const char *ver_str;
 
   if (argc < 8)
     {
       return 1;
     }
 
-  putenv ("CUBRID_ERROR_LOG=NULL");
+  putenv ((char *) "CUBRID_ERROR_LOG=NULL");
   close (2);
 
-  ARG_GET (dbname, argv[opt_begin++]);
-  ARG_GET (uid, argv[opt_begin++]);
-  ARG_GET (passwd, argv[opt_begin++]);
-  ARG_GET (outfile, argv[opt_begin++]);
-  ARG_GET (errfile, argv[opt_begin++]);
-  ARG_GET (ver_str, argv[opt_begin++]);
-  CLI_VERSION = (T_EMGR_VERSION) atoi (ver_str);
+  dbname = argv[opt_begin++];
+  dbname = (dbname) ? dbname : "";
 
+  uid = argv[opt_begin++];
+  uid = (uid) ? uid : "";
+
+  passwd = argv[opt_begin++];
+  passwd = (passwd) ? passwd : "";
+
+  outfile = argv[opt_begin++];
+  outfile = (outfile) ? outfile : "";
+
+  errfile = argv[opt_begin++];
+  errfile = (errfile) ? errfile : "";
+
+  ver_str = argv[opt_begin++];
+  ver_str = (ver_str) ? ver_str : "";
+
+  CLI_VERSION = (T_EMGR_VERSION) atoi (ver_str);
 
   db_login (uid, passwd);
   if (db_restart (argv[0], 0, dbname) < 0)
@@ -156,9 +159,10 @@ class_info (int argc, char *argv[], int opt_begin)
 }
 
 static void
-write_err_msg (char *errfile, char *msg)
+write_err_msg (const char *errfile, char *msg)
 {
   FILE *fp;
+
   fp = fopen (errfile, "w");
   if (fp)
     {
@@ -190,20 +194,10 @@ write_class_info (FILE * fp, DB_OBJECT * classobj)
   if (objlist)
     db_objlist_free (objlist);
 
-  if (CLI_VERSION <= EMGR_MAKE_VER (1, 1))
-    {
-      if (db_is_vclass (classobj))
-	fprintf (fp, MSGFMT, "virtual", "y");
-      else
-	fprintf (fp, MSGFMT, "virtual", "n");
-    }
+  if (db_is_vclass (classobj))
+    fprintf (fp, MSGFMT, "virtual", "view");
   else
-    {
-      if (db_is_vclass (classobj))
-	fprintf (fp, MSGFMT, "virtual", "view");
-      else
-	fprintf (fp, MSGFMT, "virtual", "normal");
-    }
+    fprintf (fp, MSGFMT, "virtual", "normal");
 
   fprintf (fp, MSGFMT, "close", "class");
 }
@@ -211,18 +205,27 @@ write_class_info (FILE * fp, DB_OBJECT * classobj)
 static int
 dbmt_user_login (int argc, char *argv[], int opt_begin)
 {
-  char *outfile, *errfile, *dbname, *dbuser, *dbpasswd;
+  const char *outfile, *errfile, *dbname, *dbuser, *dbpasswd;
   FILE *outfp = NULL, *errfp = NULL;
   bool isdba = false;
 
   if (argc - opt_begin < 5)
     return -1;
 
-  ARG_GET (outfile, argv[opt_begin++]);
-  ARG_GET (errfile, argv[opt_begin++]);
-  ARG_GET (dbname, argv[opt_begin++]);
-  ARG_GET (dbuser, argv[opt_begin++]);
-  ARG_GET (dbpasswd, argv[opt_begin++]);
+  outfile = argv[opt_begin++];
+  outfile = (outfile) ? outfile : "";
+
+  errfile = argv[opt_begin++];
+  errfile = (errfile) ? errfile : "";
+
+  dbname = argv[opt_begin++];
+  dbname = (dbname) ? dbname : "";
+
+  dbuser = argv[opt_begin++];
+  dbuser = (dbuser) ? dbuser : "";
+
+  dbpasswd = argv[opt_begin++];
+  dbpasswd = (dbpasswd) ? dbpasswd : "";
 
   outfp = fopen (outfile, "w");
   errfp = fopen (errfile, "w");

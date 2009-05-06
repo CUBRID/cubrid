@@ -92,8 +92,9 @@ static int csect_finalize_entry (int cs_index);
 int
 csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 {
-  int error_code = NO_ERROR, r1;
+  int error_code = NO_ERROR;
 #if !defined(WINDOWS)
+  int r1;
   MUTEXATTR_T mattr;
 
   error_code = MUTEXATTR_INIT (mattr);

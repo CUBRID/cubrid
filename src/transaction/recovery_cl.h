@@ -42,8 +42,8 @@ struct rvcl_fun
   LOG_RCVCLIENT_INDEX rcvclient_index;	/* For verification   */
   int (*undofun) (int length, char *data);	/* Undo function      */
   int (*redofun) (int length, char *data);	/* Undo function      */
-  void (*dump_undofun) (int length, void *data);	/* Dump undo function */
-  void (*dump_redofun) (int length, void *data);	/* Dump redo function */
+  void (*dump_undofun) (FILE *fp, int length, void *data);	/* Dump undo function */
+  void (*dump_redofun) (FILE *fp, int length, void *data);	/* Dump redo function */
 };
 
 extern struct rvcl_fun RVCL_fun[];

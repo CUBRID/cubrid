@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "broker_getopt.h"
+
 int optind = 0;
 char *optarg;
 

@@ -31,6 +31,7 @@
 #include <pthread.h>
 #endif /* not WINDOWS */
 
+#include "porting.h"
 #include "thread.h"
 #include "connection_defs.h"
 #include "error_manager.h"
@@ -46,12 +47,12 @@ extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
 extern CSS_THREAD_FN css_Request_handler;
 extern CSS_THREAD_FN css_Connection_error_handler;
 
-extern int css_initialize_conn (CSS_CONN_ENTRY * conn, int fd);
+extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);
 
-extern CSS_CONN_ENTRY *css_make_conn (int fd);
+extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn);
 extern void css_dealloc_conn_csect (CSS_CONN_ENTRY * conn);
 
@@ -69,16 +70,16 @@ extern void css_register_handler_routines (int (*connect_handler)
 					   connection_error_handler);
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
-extern CSS_CONN_ENTRY *css_find_conn_from_fd (int fd);
+extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern void css_shutdown_conn_by_tran_index (int tran_index);
 
-extern int css_net_send_no_block (int fd, const char *buffer, int size);
-extern int css_readn (int fd, char *ptr, int nbytes, int timeout);
-extern void css_read_remaining_bytes (int fd, int len);
-extern int css_net_recv (int fd, char *buffer, int *maxlen, int timeout);
+extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
+extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
+extern void css_read_remaining_bytes (SOCKET fd, int len);
+extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
 extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
 			 int timeout);
-extern int css_net_read_header (int fd, char *buffer, int *maxlen);
+extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
 
 extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn,
 					      int request,
@@ -104,6 +105,9 @@ extern int css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 			       const char *buffer2, int buffer2_size,
 			       const char *buffer3, int buffer3_size,
 			       const char *buffer4, int buffer4_size);
+extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
+				const char **buffers, int *buffers_size,
+				int num_buffers);
 
 extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
 			   const char *buffer, int buffer_size);

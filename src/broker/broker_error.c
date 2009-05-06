@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,8 +19,8 @@
 
 
 /*
- * broker_error.c - Error code and messages. 
- *                  This implements functions to manipulate error codes and 
+ * broker_error.c - Error code and messages.
+ *                  This implements functions to manipulate error codes and
  *                  messages.
  */
 
@@ -33,7 +33,7 @@
 #include "broker_error.h"
 #include "broker_filename.h"
 
-#if defined(WIN32) && defined(DISPATCHER)
+#if defined(WINDOWS) && defined(DISPATCHER)
 #include "reg_get.h"
 #endif
 
@@ -180,7 +180,7 @@ get_error_msg (int err_code, char *msg_buf)
   get_cubrid_file (FID_UV_ERR_MSG, default_err_msg_file);
 #endif
 
-#if defined(WIN32) && defined(DISPATCHER)
+#if defined(WINDOWS) && defined(DISPATCHER)
   if (reg_get (REG_ERR_MSG, buf, sizeof (buf)) < 0)
     return -1;
   fp = fopen (buf, "r");

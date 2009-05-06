@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,7 +35,7 @@
 #include "object_accessor.h"
 #endif
 #include "authenticate.h"
-#include "jsp_sr.h"
+#include "jsp_cl.h"
 #include "scan_manager.h"
 #include "method_scan.h"
 #include "xserver_interface.h"
@@ -44,13 +44,17 @@
 #include "dbval.h"
 #include "db.h"
 
-#define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_, save_ins_heap_id_) \
+#if !defined(SERVER_MODE)
+extern unsigned int db_on_server;
+#endif
+
+#define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
   do { \
     db_on_server = 1; \
     private_heap_id = save_pri_heap_id_; \
   } while (0)
 
-#define EXIT_SERVER_IN_METHOD_CALL(save_pri_heap_id_, save_ins_heap_id_) \
+#define EXIT_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
   do { \
      save_pri_heap_id_ = private_heap_id; \
      private_heap_id = 0; \
@@ -349,7 +353,8 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
 
   /* tfile_vfid pointer as query id for method scan */
-  scan_buffer_p->crs_id.query_id = (int) method_ctl_p->list_id->tfile_vfid;
+  scan_buffer_p->crs_id.query_id =
+    (QUERY_ID) method_ctl_p->list_id->tfile_vfid;
 
   cursor_set_oid_columns (&scan_buffer_p->crs_id,
 			  scan_buffer_p->oid_cols,
@@ -447,12 +452,12 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   int turn_on_auth = 1;
   DB_VALUE val;
   int error;
-  unsigned int save_pri_heap_id, save_ins_heap_id;
+  HL_HEAPID save_pri_heap_id;
   METHOD_SIG_LIST *method_sig_list;
 
   method_sig_list = scan_buffer_p->s.method_ctl.method_sig_list;
 
-  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
+  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 
   crs_result = cursor_next_tuple (&scan_buffer_p->crs_id);
   if (crs_result == DB_CURSOR_SUCCESS)
@@ -475,7 +480,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 				       scan_buffer_p->vallist) != NO_ERROR)
 	{
 	  method_clear_scan_buffer (scan_buffer_p);
-	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	  return S_ERROR;
 	}
 
@@ -538,7 +543,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_DISABLE (turn_on_auth);
 	    }
 
-	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
+	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 
 	  if (error != NO_ERROR)
 	    {
@@ -586,13 +591,13 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
   else if (crs_result == DB_CURSOR_END)
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return S_END;
     }
   else
     {
-      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id, save_ins_heap_id);
+      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
       method_clear_scan_buffer (scan_buffer_p);
       return crs_result;
     }
@@ -777,7 +782,7 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,
     {
       p = or_unpack_db_value (vacomm_buffer_p->buffer +
 			      vacomm_buffer_p->cur_pos, dbval_p);
-      vacomm_buffer_p->cur_pos = p - vacomm_buffer_p->buffer;
+      vacomm_buffer_p->cur_pos += OR_VALUE_ALIGNED_SIZE (dbval_p);
       vacomm_buffer_p->no_vals--;
     }
   else

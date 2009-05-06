@@ -1805,9 +1805,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       if (csql_Is_time_on)
 	{
 	  (void) gettimeofday (&end_time, NULL);
-	  elapsed_time =
-	    (end_time.tv_sec + (float) end_time.tv_usec / 1000000.0) -
-	    (start_time.tv_sec + (float) start_time.tv_usec / 1000000.0);
+	  elapsed_time = (float)
+	    ((end_time.tv_sec + end_time.tv_usec / 1000000.0f) -
+	     (start_time.tv_sec + start_time.tv_usec / 1000000.0f));
 	  fprintf (csql_Output_fp,
 		   "SQL statement execution time: %10.6f sec\n",
 		   elapsed_time);
@@ -1999,7 +1999,11 @@ signal_intr (int sig_no)
 
 #if defined(WINDOWS)
   if (sig_no == CTRL_C_EVENT)
-    return TRUE;
+    {
+      return TRUE;
+    }
+
+  return FALSE;
 #endif /* WINDOWS */
 }
 
@@ -2316,7 +2320,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (er_init ("./csql.err", ER_NEVER_EXIT) != NO_ERROR)
     {
       printf ("Failed to initialize error manager.\n");
-      csql_Error_code = CSQL_ERR_OS_ERROR;;
+      csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
 

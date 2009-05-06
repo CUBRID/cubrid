@@ -17,7 +17,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
  * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -66,6 +66,10 @@ up-to-date.  Many thanks.
 
 ******************************************************************/
 
+#if defined(__USE_GNU)
+#undef __USE_GNU
+#endif
+
 #if HAVE_NBTOOL_CONFIG_H
 #include "nbtool_config.h"
 #endif
@@ -81,10 +85,10 @@ up-to-date.  Many thanks.
 
 #if !defined(WINDOWS)
 #include <arpa/inet.h>		/* Needed for htonl() on POSIX systems */
+#include <err.h>
 #endif
 
 #include <ctype.h>
-//#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -96,6 +100,7 @@ up-to-date.  Many thanks.
 #endif
 
 #if defined(WINDOWS)
+#include <io.h>
 #include <winsock2.h>
 #include "getopt.h"
 #include "porting.h"
@@ -452,8 +457,8 @@ static char *
 getmsg (int fd, char *cptr, char quote)
 {
   static char *msg = NULL;
-  static long msglen = 0;
-  long clen, i;
+  static int msglen = 0;
+  int clen, i;
   char *tptr;
 
   if (quote && *cptr == quote)
@@ -500,7 +505,7 @@ getmsg (int fd, char *cptr, char quote)
 		  if (!cptr)
 		    error ("premature end of file");
 		  msglen += strlen (cptr);
-		  i = tptr - msg;
+		  i = (int) (tptr - msg);
 		  msg = xrealloc (msg, msglen);
 		  tptr = msg + i;
 		  break;
@@ -701,7 +706,7 @@ MCReadCat (int fd)
   /* XXX init sethead? */
 
   n = read (fd, &cat_hdr, sizeof (cat_hdr));
-  if (n < sizeof (cat_hdr))
+  if (n < (int) sizeof (cat_hdr))
     {
       if (n == 0)
 	return;			/* empty file */
@@ -731,12 +736,13 @@ MCReadCat (int fd)
   cat_hdr.__nsets = ntohl (cat_hdr.__nsets);
   cat_hdr.__msg_hdr_offset = ntohl (cat_hdr.__msg_hdr_offset);
   cat_hdr.__msg_txt_offset = ntohl (cat_hdr.__msg_txt_offset);
-  if ((cat_hdr.__mem < 0) ||
-      (cat_hdr.__msg_hdr_offset < 0) ||
-      (cat_hdr.__msg_txt_offset < 0) ||
-      (cat_hdr.__mem < (cat_hdr.__nsets * sizeof (struct _nls_set_hdr))) ||
-      (cat_hdr.__mem < cat_hdr.__msg_hdr_offset) ||
-      (cat_hdr.__mem < cat_hdr.__msg_txt_offset))
+  if ((cat_hdr.__mem < 0)
+      || (cat_hdr.__msg_hdr_offset < 0)
+      || (cat_hdr.__msg_txt_offset < 0)
+      || (cat_hdr.__mem <
+	  (cat_hdr.__nsets * (int) sizeof (struct _nls_set_hdr)))
+      || (cat_hdr.__mem < cat_hdr.__msg_hdr_offset)
+      || (cat_hdr.__mem < cat_hdr.__msg_txt_offset))
     {
 #if defined(WINDOWS)
       error (CORRUPT);

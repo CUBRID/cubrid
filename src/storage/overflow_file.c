@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -108,7 +108,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   OVERFLOW_RECV_LINKS undo_recv;
   char *copyto;
   int length, copy_length;
-  INT32 npages;
+  INT32 npages = 0;
   char *data;
   VPID alloc_vpids[OVERFLOW_ALLOCVPID_ARRAY_SIZE];
   int alloc_vpids_index;
@@ -303,7 +303,8 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	}
 
       log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
-			    copy_length + (copyto - (char *) addr.pgptr),
+			    copy_length +
+			    CAST_BUFLEN (copyto - (char *) addr.pgptr),
 			    (char *) addr.pgptr);
 
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -966,8 +967,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
 	{
 	  /* Advance .. seek as much as you can */
 	  copy_length =
-	    ((copyfrom + start_offset) > ((char *) pgptr + DB_PAGESIZE)
-	     ? DB_PAGESIZE - (copyfrom - (char *) pgptr) : start_offset);
+	    (int) ((copyfrom + start_offset) > ((char *) pgptr + DB_PAGESIZE)
+		   ? DB_PAGESIZE - (copyfrom -
+				    (char *) pgptr) : start_offset);
 	  start_offset -= copy_length;
 	  copyfrom += copy_length;
 	}
@@ -979,10 +981,15 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
        */
       if (start_offset == 0)
 	{
-	  copy_length =
-	    (((copyfrom + max_nbytes) >
-	      ((char *) pgptr + DB_PAGESIZE)) ?
-	     DB_PAGESIZE - (copyfrom - (char *) pgptr) : max_nbytes);
+	  if (copyfrom + max_nbytes > (char *) pgptr + DB_PAGESIZE)
+	    {
+	      copy_length =
+		DB_PAGESIZE - CAST_BUFLEN (copyfrom - (char *) pgptr);
+	    }
+	  else
+	    {
+	      copy_length = max_nbytes;
+	    }
 
 	  /* If we were not at the end of the page, perform the copy */
 	  if (copy_length > 0)
@@ -1205,9 +1212,9 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
 
   while (remain_length > 0)
     {
-      dump_length = ((dumpfrom + remain_length > (char *) pgptr + DB_PAGESIZE)
-		     ? DB_PAGESIZE - (dumpfrom -
-				      (char *) pgptr) : remain_length);
+      dump_length =
+	(int) ((dumpfrom + remain_length > (char *) pgptr + DB_PAGESIZE)
+	       ? DB_PAGESIZE - (dumpfrom - (char *) pgptr) : remain_length);
       for (i = 0; i < dump_length; i++)
 	{
 	  (void) fputc (*dumpfrom++, fp);

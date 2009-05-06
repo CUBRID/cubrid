@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -42,28 +42,28 @@ PRIVATE void get_bind_info (ODBC_STATEMENT * stmt,
 			    short col_index,
 			    short *type,
 			    void **bound_ptr,
-			    long *buffer_length, long **strlen_ind_ptr);
+			    long *buffer_length, SQLLEN **strlen_ind_ptr);
 PRIVATE RETCODE move_catalog_rs (ODBC_STATEMENT * stmt,
 				 unsigned long *current_tpl_pos);
 PRIVATE RETCODE get_catalog_data (ODBC_STATEMENT * stmt,
 				  short row_index, short col_index);
 PRIVATE RETCODE c_value_to_bound_ptr (void *bound_ptr,
-				      long buffer_length,
+				      SQLLEN buffer_length,
 				      VALUE_CONTAINER * c_value);
 
 /************************************************************************
 * name: odbc_bind_col
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_bind_col (ODBC_STATEMENT * stmt,
-	       unsigned short column_num,
-	       short target_type,
-	       void *target_value_ptr,
-	       long buffer_len, long *strlen_indicator)
+	       SQLUSMALLINT column_num,
+	       SQLSMALLINT target_type,
+	       SQLPOINTER target_value_ptr,
+	       SQLLEN buffer_len, SQLLEN *strlen_indicator)
 {
 
   ODBC_DESC *ard;
@@ -134,25 +134,25 @@ error:
 
 /************************************************************************
 * name: odbc_describe_col
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_describe_col (ODBC_STATEMENT * stmt,
-		   short column_number,
-		   char *column_name,
-		   short buffer_length,
-		   short *name_length_ptr,
-		   short *data_type_ptr,
-		   unsigned long *column_size_ptr,
-		   short *decimal_digits_ptr, short *nullable_ptr)
+		   SQLUSMALLINT column_number,
+		   SQLCHAR *column_name,
+		   SQLSMALLINT buffer_length,
+		   SQLSMALLINT *name_length_ptr,
+		   SQLSMALLINT *data_type_ptr,
+		   SQLULEN *column_size_ptr,
+		   SQLSMALLINT *decimal_digits_ptr, SQLSMALLINT *nullable_ptr)
 {
   ODBC_DESC *ird = NULL;
   ODBC_RECORD *record = NULL;
   short scale;
-  long int_name_length;
+  SQLLEN int_name_length;
   RETCODE rc;
 
   ird = stmt->ird;
@@ -209,10 +209,10 @@ error:
 
 /************************************************************************
 * name: odbc_col_attribute
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_col_attribute (ODBC_STATEMENT * stmt,
@@ -222,7 +222,7 @@ odbc_col_attribute (ODBC_STATEMENT * stmt,
 		    short buffer_length,
 		    short *string_length_ptr, void *num_value_ptr)
 {
-  long int_length;
+  SQLLEN int_length;
   ODBC_DESC *ird;
   RETCODE rc;
   long temp_value = 0;
@@ -298,13 +298,13 @@ error:
 
 /************************************************************************
 * name: odbc_row_count
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
-odbc_row_count (ODBC_STATEMENT * stmt, long *row_count)
+odbc_row_count (ODBC_STATEMENT * stmt, SQLLEN *row_count)
 {
   ODBC_DESC *ipd = NULL;
 
@@ -316,10 +316,10 @@ odbc_row_count (ODBC_STATEMENT * stmt, long *row_count)
 
 /************************************************************************
 * name: odbc_num_result_cols
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_num_result_cols (ODBC_STATEMENT * stmt, short *column_count)
@@ -346,29 +346,29 @@ odbc_num_result_cols (ODBC_STATEMENT * stmt, short *column_count)
 
 /************************************************************************
 * name: odbc_fetch
-* arguments: 
+* arguments:
 *	bind_offset - SQLBulkOperation with SQL_FETCH_BY_BOOKMARK를
 *	위해서 고안된 것으로, 설정된 값만큼 ard array index를 이동한다.
 *	flag_cursor_move - 0 - move, 1 - just value fetch
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* returns/side-effects:
+* description:
+* NOTE:
 *	SQLExtendedFetch는 SQLFetchScroll 등과 다른 error handling 방식을
 *	갖는다.  이 때 모든 exceptions가 고려된 건 아니고, SQLSTATE 01S01만
 *	적용되었다.  그러나 이 경우에도 fetch시 status record 구성 방식이
 *	spec과 다르므로 정확한 적용방식이라고 말하기 힘들다.
-*	참조 : Error handling in SQLFetchScroll 
+*	참조 : Error handling in SQLFetchScroll
 ************************************************************************/
 PUBLIC RETCODE
 odbc_fetch (ODBC_STATEMENT * stmt,
-	    short fetch_orientation,
-	    long fetch_offset, long bind_offset, short flag_cursor_move)
+	    SQLSMALLINT fetch_orientation,
+	    SQLLEN fetch_offset, long bind_offset, short flag_cursor_move)
 {
   unsigned long i;
   short j;
   long fetched_rows = 0;	/* all fetched rows number, except
 				 * SQL_ROW_NO_ROWS */
-  long *strlen_ind_ptr = NULL;
+  SQLLEN *strlen_ind_ptr = NULL;
   void *bound_ptr;
   long buffer_length;
   short type;
@@ -393,7 +393,7 @@ odbc_fetch (ODBC_STATEMENT * stmt,
     {
       rc =
 	move_advanced_cursor (stmt, &stmt->current_tpl_pos, fetch_orientation,
-			      fetch_offset);
+			      (long) fetch_offset);
     }
   else
     {
@@ -518,7 +518,7 @@ odbc_fetch (ODBC_STATEMENT * stmt,
 
   return ODBC_SUCCESS;
 
-// CHECK : error, get_date, move_cursor, fetch_tuple에서 cci_error가 
+// CHECK : error, get_date, move_cursor, fetch_tuple에서 cci_error가
 // 발생한다. SQL_ROW_ERROR 보다 심각한 error의 경우 ODBC_ERROR를
 // 뿌려야 한다.
 
@@ -543,15 +543,15 @@ error:
  ************************************************************************/
 PUBLIC RETCODE
 odbc_get_data (ODBC_STATEMENT * stmt,
-	       short col_number,
-	       short target_type,
-	       void *bound_ptr, long buffer_length, long *str_ind_ptr)
+	       SQLUSMALLINT col_number,
+	       SQLSMALLINT target_type,
+	       SQLPOINTER bound_ptr, SQLLEN buffer_length, SQLLEN *str_ind_ptr)
 {
   RETCODE status = ODBC_SUCCESS, rc;
   short precision, scale;
   T_CCI_A_TYPE a_type;
   UNI_CCI_A_TYPE cci_value;
-  long length;
+  SQLLEN length;
   long offset;
   short sql_type;
 
@@ -619,13 +619,13 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		  || target_type == SQL_C_UNI_OBJECT)
 		{
 		  rc =
-		    str_value_assign (cci_value.str, bound_ptr, buffer_length,
+		    str_value_assign (cci_value.str, bound_ptr, (int) buffer_length,
 				      str_ind_ptr);
 		  if (rc == ODBC_SUCCESS_WITH_INFO)
 		    {
 		      if (buffer_length > 0)
 			{
-			  offset = buffer_length - 1;
+			  offset = (long) buffer_length - 1;
 			}
 		      else
 			{
@@ -653,7 +653,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		    {
 		      if (buffer_length > 0)
 			{
-			  offset = buffer_length;
+			  offset = (long) buffer_length;
 			}
 		      else
 			{
@@ -727,7 +727,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		    {
 		      if (buffer_length > 0)
 			{
-			  offset = buffer_length - 1;
+			  offset = (long) buffer_length - 1;
 			}
 		      else
 			{
@@ -755,7 +755,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		    {
 		      if (buffer_length > 0)
 			{
-			  offset = buffer_length;
+			  offset = (long) buffer_length;
 			}
 		      else
 			{
@@ -764,7 +764,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		      stmt->column_data.current_pt =
 			target_value.value.bin + offset;
 		      stmt->column_data.remain_length =
-			target_value.length - offset;
+			(int) target_value.length - offset;
 
 		      odbc_set_diag (stmt->diag, "01004", 0, NULL);
 		      status = rc;
@@ -803,7 +803,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 	      //stmt->column_data.remain_length = strlen(stmt->column_data.current_pt) - (buffer_length-1);
 	      if (buffer_length > 0)
 		{
-		  offset = buffer_length - 1;
+		  offset = (long) buffer_length - 1;
 		}
 	      else
 		{
@@ -832,7 +832,7 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 	    {
 	      if (buffer_length > 0)
 		{
-		  offset = buffer_length;
+		  offset = (long) buffer_length;
 		}
 	      else
 		{
@@ -878,7 +878,7 @@ get_bind_info (ODBC_STATEMENT * stmt,
 	       short row_index,
 	       short col_index,
 	       short *type,
-	       void **bound_ptr, long *buffer_length, long **strlen_ind_ptr)
+	       void **bound_ptr, long *buffer_length, SQLLEN **strlen_ind_ptr)
 {
   long element_size;
   long offset_size;
@@ -1326,7 +1326,7 @@ error:
 
 PRIVATE RETCODE
 c_value_to_bound_ptr (void *bound_ptr,
-		      long buffer_length, VALUE_CONTAINER * c_value)
+		      SQLLEN buffer_length, VALUE_CONTAINER * c_value)
 {
   switch (c_value->type)
     {
@@ -1340,6 +1340,9 @@ c_value_to_bound_ptr (void *bound_ptr,
     case SQL_C_SLONG:
       *((long *) bound_ptr) = c_value->value.l;
       break;
+    case SQL_C_UBIGINT:
+	case SQL_C_SBIGINT:
+      *((__int64 *)bound_ptr) = c_value->value.bi;
     case SQL_C_FLOAT:
       *((float *) bound_ptr) = c_value->value.f;
       break;

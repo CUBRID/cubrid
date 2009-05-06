@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -41,11 +41,13 @@
 #include "thread_impl.h"
 #endif /* SERVER_MODE */
 
-#define LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT \
-((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER)) / sizeof(LARGEOBJMGR_DIRMAP_ENTRY))
+#define LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT                              \
+        ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER))    \
+                    / sizeof(LARGEOBJMGR_DIRMAP_ENTRY)))
 
 #define LARGEOBJMGR_MAX_DIRENTRY_CNT \
-((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER)) / sizeof(LARGEOBJMGR_DIRENTRY))
+        ((ssize_t) ((DB_PAGESIZE - sizeof (LARGEOBJMGR_DIRHEADER))   \
+                    / sizeof (LARGEOBJMGR_DIRENTRY)))
 
 /* Set dir. index entry to be empty */
 #define LARGEOBJMGR_SET_EMPTY_DIRMAP_ENTRY(ent) \
@@ -151,8 +153,8 @@ static int largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p,
 static int largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p,
 				  LARGEOBJMGR_DIRSTATE * ds);
 static PAGE_PTR largeobjmgr_dir_search (THREAD_ENTRY * thread_p,
-					PAGE_PTR first_dir_pg, int offset,
-					int *curdir_idx, int *lo_offset);
+					PAGE_PTR first_dir_pg, FSIZE_T offset,
+					int *curdir_idx, FSIZE_T * lo_offset);
 static void largeobjmgr_firstdir_update (THREAD_ENTRY * thread_p,
 					 LARGEOBJMGR_DIRSTATE * ds,
 					 int delta_len, int delta_slot_cnt);
@@ -747,8 +749,9 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
 		{
 		  /* put an UNDO log for the old tot_slot_cnt field */
 		  addr.pgptr = ds->firstdir.pgptr;
-		  addr.offset = ((char *) &ds->firstdir.hdr->tot_slot_cnt -
-				 ((char *) ds->firstdir.pgptr));
+		  addr.offset =
+		    (PGLENGTH) ((char *) &ds->firstdir.hdr->tot_slot_cnt -
+				(char *) ds->firstdir.pgptr);
 
 		  log_append_undo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 					sizeof (int),
@@ -928,7 +931,7 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   int split_cnt;
   int split_size;
   char *spilt_ptr;
-  int delta;
+  FSIZE_T delta;
   LARGEOBJMGR_DIRENTRY *temp_entry_p;
   int mv_ent_cnt;
   int k;
@@ -998,7 +1001,8 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       /* log the affected region of the ORIGINAL directory page
          for UNDO purposes */
       addr.pgptr = ds->curdir.pgptr;
-      addr.offset = (char *) spilt_ptr - (char *) ds->curdir.pgptr;
+      addr.offset =
+	(PGLENGTH) ((char *) spilt_ptr - (char *) ds->curdir.pgptr);
 
       log_append_undo_data (thread_p, RVLOM_DIR_PG_REGION, &addr, split_size,
 			    spilt_ptr);
@@ -1094,8 +1098,8 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 
 	  /* log the affected region of the index page for UNDO purposes. */
 	  addr.pgptr = ds->firstdir.pgptr;
-	  addr.offset = ((char *) ds->firstdir.idxptr
-			 - (char *) ds->firstdir.pgptr);
+	  addr.offset = (PGLENGTH) ((char *) ds->firstdir.idxptr -
+				    (char *) ds->firstdir.pgptr);
 
 	  log_append_undo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				(mv_ent_cnt +
@@ -1273,8 +1277,8 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
     {
       /* put an UNDO log for the old next_vpid field */
       addr.pgptr = prev_pgptr;
-      addr.offset =
-	(char *) (&prevdir_hdr->next_vpid) - ((char *) prev_pgptr);
+      addr.offset = (PGLENGTH) ((char *) (&prevdir_hdr->next_vpid) -
+				(char *) prev_pgptr);
 
       log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				sizeof (VPID), sizeof (VPID),
@@ -1346,8 +1350,8 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 
 	  /* log the affected region of the index page for UNDO purposes. */
 	  addr.pgptr = ds->firstdir.pgptr;
-	  addr.offset = ((char *) ds->firstdir.idxptr
-			 - (char *) ds->firstdir.pgptr);
+	  addr.offset = (PGLENGTH) ((char *) ds->firstdir.idxptr -
+				    (char *) ds->firstdir.pgptr);
 
 	  log_append_undo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				((mv_ent_cnt + 1)
@@ -1394,8 +1398,8 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  /* update current index entry
 	     log the affected region of the index page for UNDO purposes. */
 	  addr.pgptr = ds->firstdir.pgptr;
-	  addr.offset =
-	    (char *) ds->firstdir.idxptr - (char *) ds->firstdir.pgptr;
+	  addr.offset = (PGLENGTH) ((char *) ds->firstdir.idxptr -
+				    (char *) ds->firstdir.pgptr);
 
 	  log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				    sizeof (LARGEOBJMGR_DIRMAP_ENTRY),
@@ -1467,8 +1471,8 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
       /* link current directory page to the last page
          put an UNDO log for the old next_vpid field */
       addr.pgptr = ds->curdir.pgptr;
-      addr.offset = ((char *) &ds->curdir.hdr->next_vpid -
-		     ((char *) ds->curdir.pgptr));
+      addr.offset = (PGLENGTH) ((char *) &ds->curdir.hdr->next_vpid -
+				(char *) ds->curdir.pgptr);
 
       log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				sizeof (VPID), sizeof (VPID),
@@ -1602,7 +1606,8 @@ exit_on_error:
 static void
 largeobjmgr_dirheader_dump (FILE * fp, LARGEOBJMGR_DIRHEADER * dir_hdr)
 {
-  fprintf (fp, "Page Total Length: %d\n", dir_hdr->pg_tot_length);
+  fprintf (fp, "Page Total Length: %lld\n",
+	   (long long) dir_hdr->pg_tot_length);
   fprintf (fp, "Active Entry Count: %d, Last Active Entry Index; %d\n",
 	   dir_hdr->pg_act_idxcnt, dir_hdr->pg_lastact_idx);
   fprintf (fp, "Next_VPID = %d|%d\n",
@@ -1644,8 +1649,9 @@ static void
 largeobjmgr_dirmap_dump (FILE * fp, LARGEOBJMGR_DIRMAP_ENTRY * map_ptr,
 			 int idx)
 {
-  fprintf (fp, "[%3d: {%2d, %4d} , %4d] ",
-	   idx, map_ptr->vpid.volid, map_ptr->vpid.pageid, map_ptr->length);
+  fprintf (fp, "[%3d: {%2d, %4d} , %4lld] ",
+	   idx, map_ptr->vpid.volid, map_ptr->vpid.pageid,
+	   (long long) map_ptr->length);
 }
 
 /*
@@ -1726,7 +1732,7 @@ largeobjmgr_dir_pgdump (FILE * fp, PAGE_PTR curdir_pgptr)
  */
 static PAGE_PTR
 largeobjmgr_dir_search (THREAD_ENTRY * thread_p, PAGE_PTR first_dir_pg,
-			int offset, int *curdir_idx, int *lo_offset)
+			FSIZE_T offset, int *curdir_idx, FSIZE_T * lo_offset)
 {
   LARGEOBJMGR_DIRHEADER *dir_hdr;
   PAGE_PTR page_ptr = NULL;
@@ -1889,9 +1895,15 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 		    {
 		      /* Continue beyond the LO, change to Append Mode */
 		      ds->opr_mode = LARGEOBJMGR_APPEND_MODE;
-		      ds->pos =
-			((LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr) ==
-			  0) ? S_AFTER : S_ON);
+		      if (LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr)
+			  == 0)
+			{
+			  ds->pos = S_AFTER;
+			}
+		      else
+			{
+			  ds->pos = S_ON;
+			}
 		    }
 		  else
 		    {
@@ -1908,11 +1920,11 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 	      ds->curdir.idxptr++;
 
 	      /* skip empty entries */
-	      if (ds->curdir.idx >= ds->curdir.hdr->pg_act_idxcnt ||
-		  LARGEOBJMGR_ISEMPTY_DIRENTRY (ds->curdir.idxptr))
+	      if (ds->curdir.idx >= ds->curdir.hdr->pg_act_idxcnt
+		  || LARGEOBJMGR_ISEMPTY_DIRENTRY (ds->curdir.idxptr))
 		{
-		  if (largeobjmgr_skip_empty_entries (thread_p, ds) !=
-		      S_SUCCESS)
+		  if (largeobjmgr_skip_empty_entries (thread_p, ds)
+		      != S_SUCCESS)
 		    {
 		      goto exit_on_error;
 		    }
@@ -2272,7 +2284,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   int empty_ind;
   int empty_cnt;
   bool found;
-  int delta;
+  FSIZE_T delta;
   int last_ind;
   int pg_reg_len;
   LOG_DATA_ADDR addr;
@@ -2398,13 +2410,14 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 			sizeof (LARGEOBJMGR_DIRENTRY));
 
 	  addr.pgptr = ds->curdir.pgptr;
-	  addr.offset = (char *) empty_shift_ptr - (char *) ds->curdir.pgptr;
+	  addr.offset = (PGLENGTH) ((char *) empty_shift_ptr -
+				    (char *) ds->curdir.pgptr);
 
 	  log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				    pg_reg_len,
-				    pg_reg_len -
-				    (empty_shift_cnt *
-				     sizeof (LARGEOBJMGR_DIRENTRY)),
+				    (pg_reg_len - (empty_shift_cnt *
+						   sizeof
+						   (LARGEOBJMGR_DIRENTRY))),
 				    empty_shift_ptr,
 				    empty_shift_ptr + empty_shift_cnt);
 
@@ -2422,26 +2435,27 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  pg_reg_len = ((empty_shift_cnt + (empty_shift_ind - ds->curdir.idx))
 			* sizeof (LARGEOBJMGR_DIRENTRY));
 	  addr.pgptr = ds->curdir.pgptr;
-	  addr.offset =
-	    (char *) ds->curdir.idxptr - (char *) ds->curdir.pgptr;
+	  addr.offset = (PGLENGTH) ((char *) ds->curdir.idxptr -
+				    (char *) ds->curdir.pgptr);
 
 	  log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				    pg_reg_len,
-				    pg_reg_len -
-				    empty_shift_cnt *
-				    sizeof (LARGEOBJMGR_DIRENTRY),
+				    pg_reg_len - (empty_shift_cnt *
+						  sizeof
+						  (LARGEOBJMGR_DIRENTRY)),
 				    ds->curdir.idxptr + empty_shift_cnt,
 				    ds->curdir.idxptr);
 
 	  memmove (ds->curdir.idxptr + empty_shift_cnt, ds->curdir.idxptr,
-		   (empty_shift_ind -
-		    ds->curdir.idx) * sizeof (LARGEOBJMGR_DIRENTRY));
+		   (empty_shift_ind - ds->curdir.idx)
+		   * sizeof (LARGEOBJMGR_DIRENTRY));
 	}
 
       /* put an UNDO log for the old content of affected region */
       pg_reg_len = empty_shift_cnt * sizeof (LARGEOBJMGR_DIRENTRY);
       addr.pgptr = ds->curdir.pgptr;
-      addr.offset = (char *) ds->curdir.idxptr - (char *) ds->curdir.pgptr;
+      addr.offset = (PGLENGTH) ((char *) ds->curdir.idxptr -
+				(char *) ds->curdir.pgptr);
 
       log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				pg_reg_len, pg_reg_len,
@@ -2492,8 +2506,8 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       /* set directory state to point to after all inserted entries */
       ds->curdir.idxptr--;	/* first backup the last inserted entry position */
       ds->curdir.idx--;
-      ds->lo_offset +=
-	(delta - LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr));
+      ds->lo_offset += (delta -
+			LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr));
       ds->tot_length += delta;
 
       /* Note: When this routine is called in a dircompression mode, it
@@ -2554,9 +2568,8 @@ largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   pg_lastact_idx = -1;
   if (X != NULL)
     {
-      delta =
-	LARGEOBJMGR_DIRENTRY_LENGTH (X) -
-	LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr);
+      delta = (LARGEOBJMGR_DIRENTRY_LENGTH (X) -
+	       LARGEOBJMGR_DIRENTRY_LENGTH (ds->curdir.idxptr));
     }
   else
     {
@@ -2567,8 +2580,8 @@ largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  && ((pg_lastact_idx = ds->curdir.hdr->pg_lastact_idx) ==
 	      ds->curdir.idx))
 	{
-	  last_act_ent_ptr =
-	    largeobjmgr_direntry (ds->curdir.pgptr, pg_lastact_idx);
+	  last_act_ent_ptr = largeobjmgr_direntry (ds->curdir.pgptr,
+						   pg_lastact_idx);
 	  do
 	    {
 	      pg_lastact_idx--;
@@ -2606,8 +2619,14 @@ largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       /* entry deletion */
       ds->curdir.hdr->tot_slot_cnt--;
       ds->curdir.hdr->pg_act_idxcnt--;
-      ds->curdir.hdr->pg_lastact_idx = ((ds->curdir.hdr->pg_act_idxcnt == 0)
-					? -1 : pg_lastact_idx);
+      if (ds->curdir.hdr->pg_act_idxcnt == 0)
+	{
+	  ds->curdir.hdr->pg_lastact_idx = -1;
+	}
+      else
+	{
+	  ds->curdir.hdr->pg_lastact_idx = pg_lastact_idx;
+	}
     }
 
   /* put a REDO log to save new directory page state */
@@ -2682,8 +2701,8 @@ largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid)
 	   dir_hdr->loid.vfid.volid, dir_hdr->loid.vfid.fileid,
 	   dir_hdr->loid.vpid.volid, dir_hdr->loid.vpid.pageid);
   fprintf (fp, "Index Level: %d\n", dir_hdr->index_level);
-  fprintf (fp, "Total Length: %d, Total Slot Count: %d\n",
-	   dir_hdr->tot_length, dir_hdr->tot_slot_cnt);
+  fprintf (fp, "Total Length: %lld, Total Slot Count: %d\n",
+	   (long long) dir_hdr->tot_length, dir_hdr->tot_slot_cnt);
   fprintf (fp, "Good VPID Data (Last Allocated VPID data): {%d, %d}\n\n",
 	   dir_hdr->goodvpid_fordata.volid, dir_hdr->goodvpid_fordata.pageid);
 
@@ -2800,9 +2819,10 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
 	  if (firstdir_idxptr->length < 0)
 	    {
 	      fprintf (stderr, "Error: Negative length on Map index entry\n");
-	      fprintf (stderr, "[%d: {%d|%d}, %d] ",
+	      fprintf (stderr, "[%d: {%d|%d}, %lld] ",
 		       k, firstdir_idxptr->vpid.volid,
-		       firstdir_idxptr->vpid.pageid, firstdir_idxptr->length);
+		       firstdir_idxptr->vpid.pageid,
+		       (long long) firstdir_idxptr->length);
 	      correct = false;
 	    }
 
@@ -2847,11 +2867,12 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
 	    {
 	      fprintf (stderr,
 		       "Error: Different length for map index entry\n");
-	      fprintf (stderr, "[%d: {%d|%d}, %d] ", k,
+	      fprintf (stderr, "[%d: {%d|%d}, %lld] ", k,
 		       firstdir_idxptr->vpid.volid,
-		       firstdir_idxptr->vpid.pageid, firstdir_idxptr->length);
-	      fprintf (stderr, "Actual Page Length for Entry: %d\n",
-		       temp_dir_head.pg_tot_length);
+		       firstdir_idxptr->vpid.pageid,
+		       (long long) firstdir_idxptr->length);
+	      fprintf (stderr, "Actual Page Length for Entry: %lld\n",
+		       (long long) temp_dir_head.pg_tot_length);
 	      correct = false;
 	    }
 
@@ -2865,8 +2886,9 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
 	  temp_dir_head.pg_lastact_idx != firstdir_hdr->pg_lastact_idx)
 	{
 	  fprintf (stderr, "Invalid Map index Information...\n");
-	  fprintf (stderr, "Page Total Length: Map %d, Found %d\n",
-		   firstdir_hdr->pg_tot_length, temp_dir_head.tot_length);
+	  fprintf (stderr, "Page Total Length: Map %lld, Found %lld\n",
+		   (long long) firstdir_hdr->pg_tot_length,
+		   (long long) temp_dir_head.tot_length);
 	  fprintf (stderr, "Active Entry Count: Map %d, Found %d\n",
 		   firstdir_hdr->pg_act_idxcnt, temp_dir_head.pg_act_idxcnt);
 	  fprintf (stderr, "Last Active Entry Index: Map %d, Found %d\n",
@@ -2951,8 +2973,9 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
 	  || temp_dir_head.pg_lastact_idx != curdir_hdr->pg_lastact_idx)
 	{
 	  fprintf (stderr, "Invalid Directory  Information...\n");
-	  fprintf (stderr, "Page Total Length: Hdr %d, Found %d\n",
-		   curdir_hdr->pg_tot_length, temp_dir_head.pg_tot_length);
+	  fprintf (stderr, "Page Total Length: Hdr %lld, Found %lld\n",
+		   (long long) curdir_hdr->pg_tot_length,
+		   (long long) temp_dir_head.pg_tot_length);
 	  fprintf (stderr, "Active Entry Count: Hdr %d, Found %d\n",
 		   curdir_hdr->pg_act_idxcnt, temp_dir_head.pg_act_idxcnt);
 	  fprintf (stderr, "Last Active Entry Index: Hdr %d, Found %d\n",
@@ -2985,8 +3008,9 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
       temp_dir_head.tot_slot_cnt != root_head.tot_slot_cnt)
     {
       fprintf (stderr, "Invalid LO Root Page Header Information...\n");
-      fprintf (stderr, "LO Total Length: Hdr %d, Found %d\n",
-	       root_head.tot_length, temp_dir_head.tot_length);
+      fprintf (stderr, "LO Total Length: Hdr %lld, Found %lld\n",
+	       (long long) root_head.tot_length,
+	       (long long) temp_dir_head.tot_length);
       fprintf (stderr, "LO Total Slot Count: Hdr %d, Found %d\n",
 	       root_head.tot_slot_cnt, temp_dir_head.tot_slot_cnt);
       correct = false;
@@ -3013,11 +3037,11 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
  *       if no enties, with S_BEFORE position.
  */
 SCAN_CODE
-largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, int offset,
+largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
 		      int opr_mode, LARGEOBJMGR_DIRSTATE * ds)
 {
   PAGE_PTR page_ptr = NULL;
-  int dlo_offset;
+  FSIZE_T dlo_offset;
   int act_ind_ent_cnt;
   SCAN_CODE lo_scan = S_SUCCESS;
 
@@ -3298,11 +3322,11 @@ largeobjmgr_dir_close (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
  *   return: the length of the large object, or -1 on error
  *   loid(in): Large Object Identifier
  */
-int
+FSIZE_T
 largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p, LOID * loid)
 {
   PAGE_PTR pgptr = NULL;
-  int length;
+  FSIZE_T length;
 
   /* fetch the root page of LO */
   pgptr = pgbuf_fix (thread_p, &loid->vpid, OLD_PAGE, PGBUF_LATCH_READ,
@@ -3526,7 +3550,7 @@ largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p, LOID * loid,
   /* log the affected region of the index page for UNDO purposes. */
   addr.vfid = &loid->vfid;
   addr.pgptr = page_ptr;
-  addr.offset = (char *) reg_ptr - (char *) page_ptr;
+  addr.offset = (PGLENGTH) ((char *) reg_ptr - (char *) page_ptr);
 
   log_append_undo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 			(mv_ent_cnt + 2) * sizeof (LARGEOBJMGR_DIRMAP_ENTRY),

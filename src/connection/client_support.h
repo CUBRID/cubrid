@@ -53,6 +53,13 @@ extern unsigned int css_send_req_to_server (char *host,
 					    int data_buffer_size,
 					    char *reply_buffer,
 					    int reply_size);
+extern unsigned int
+css_send_req_to_server_with_large_data (char *host, int request,
+					char *arg_buffer, int arg_buffer_size,
+					char *data_buffer,
+					FSIZE_T data_buffer_size,
+					char *reply_buffer, int reply_size);
+
 extern unsigned int css_send_req_to_server_2_data (char *host,
 						   int request,
 						   char *arg_buffer,

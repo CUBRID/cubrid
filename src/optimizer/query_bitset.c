@@ -62,7 +62,7 @@ static const char nbits[] = {
 };
 
 static BITSET_CARRIER empty_set_words[NWORDS] = { 0 };
-BITSET EMPTY_SET = { NULL, NWORDS, empty_set_words, {{0}}
+BITSET EMPTY_SET = { NULL, empty_set_words, NWORDS, {{0}}
 };
 
 /*
@@ -509,11 +509,11 @@ bitset_first_member (const BITSET * s)
  *   data(in):
  */
 void
-bitset_print (const BITSET * s, int (*fn) (void *, const char *, int), void *data)
+bitset_print (const BITSET * s, FILE * fp)
 {
   if (bitset_is_empty (s))
     {
-      (void) (*fn) (data, "empty", -2);
+      (void) fprintf (fp, "empty");
     }
   else
     {
@@ -522,10 +522,10 @@ bitset_print (const BITSET * s, int (*fn) (void *, const char *, int), void *dat
 
       if ((i = bitset_iterate (s, &si)) != -1)
 	{
-	  (void) (*fn) (data, "%d", i);
+	  (void) fprintf (fp, "%d", i);
 	  while ((i = bitset_next_member (&si)) != -1)
 	    {
-	      (void) (*fn) (data, " %d", i);
+	      (void) fprintf (fp, " %d", i);
 	    }
 	}
     }

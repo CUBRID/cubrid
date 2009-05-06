@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1758,7 +1758,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 {
   int i, j;
   WFG_CYCLE **last_cycle_p;	/* ptr to addr of the last cycle */
-  WFG_STACK *bottom_p;		/* bottom of WFG stack */
+  WFG_STACK *bottom_p = NULL;	/* bottom of WFG stack */
   WFG_STACK *top_p;		/* top of WFG stack */
   WFG_STACK *stack_elem_p;	/* pointer for stack scan */
   WFG_CYCLE *cycle_p;		/* pointer to the current cycle */
@@ -1886,7 +1886,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		      goto error;
 		    }
 
-		  cycle_p->num_trans = (top_p - stack_elem_p) + 1;
+		  cycle_p->num_trans = (int) ((top_p - stack_elem_p) + 1);
 		  cycle_p->next = NULL;
 		  cycle_p->waiters =
 		    (WFG_WAITER *) malloc (DB_SIZEOF (WFG_WAITER) *

@@ -107,7 +107,7 @@ int		count;
 	unicasconf.WriteString(LPCSTR(element));
 	unicasconf.WriteString("\n\n");
 
-	count = m_List.GetCount();
+	count = (int) m_List.GetCount();
 	for (int i = 0; i < count; i++) {
 		ucinfo = (CUCInfo *)m_List.GetAt(m_List.FindIndex(i));
 		ucinfo->Compose(unicasconf);

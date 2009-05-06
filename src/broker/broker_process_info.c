@@ -29,7 +29,7 @@
 #include <errno.h>
 #include <string.h>
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <unistd.h>
 #endif
 

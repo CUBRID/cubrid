@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -39,6 +39,7 @@
 #undef DB_VALUE_SCALE
 #undef DB_VALUE_PRECISION
 #undef DB_GET_INTEGER
+#undef DB_GET_BIGINT
 #undef DB_GET_FLOAT
 #undef DB_GET_DOUBLE
 #undef DB_GET_STRING
@@ -55,6 +56,7 @@
 #undef DB_GET_TIME
 #undef DB_GET_DATE
 #undef DB_GET_TIMESTAMP
+#undef DB_GET_DATETIME
 #undef DB_GET_MONETARY
 #undef DB_GET_POINTER
 #undef DB_GET_ERROR
@@ -93,6 +95,9 @@
 
 #define DB_GET_INTEGER(v) \
     ((v)->data.i)
+
+#define DB_GET_BIGINT(v) \
+    ((v)->data.bigint)
 
 #define DB_GET_FLOAT(v) \
     ((v)->data.f)
@@ -170,6 +175,9 @@
 #define DB_GET_TIMESTAMP(v) \
     ((DB_TIMESTAMP *)(&(v)->data.utime))
 
+#define DB_GET_DATETIME(v) \
+    ((DB_DATETIME *)(&(v)->data.datetime))
+
 #define DB_GET_MONETARY(v) \
     ((DB_MONETARY *)(&(v)->data.money))
 
@@ -227,6 +235,7 @@
 #define db_get_time(v) DB_GET_TIME(v)
 #define db_get_date(v) DB_GET_DATE(v)
 #define db_get_timestamp(v) DB_GET_TIMESTAMP(v)
+#define db_get_datetime(v) DB_GET_DATETIME(v)
 #define db_get_monetary(v) DB_GET_MONETARY(v)
 #define db_get_pointer(v) DB_GET_POINTER(v)
 #define db_get_error(v) DB_GET_ERROR(v)
@@ -246,6 +255,13 @@
 #define db_make_int(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_INTEGER, \
      (v)->data.i = (n), \
+     (v)->domain.general_info.is_null = 0, \
+     (v)->need_clear = false, \
+     NO_ERROR)
+
+#define db_make_bigint(v, n) \
+    ((v)->domain.general_info.type = DB_TYPE_BIGINT, \
+     (v)->data.bigint = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
@@ -330,7 +346,7 @@
      NO_ERROR)
 
 /* The following char- & string-related macros include functionality from
-   db_value_domain_init as well as a call to db_make_db_char, redefined as a 
+   db_value_domain_init as well as a call to db_make_db_char, redefined as a
    macro above */
 #define db_make_bit(v, l, p, s) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
@@ -417,7 +433,7 @@
 #define DB_GET_NUMERIC_SCALE(val) \
     ((val)->domain.numeric_info.scale)
 
-typedef enum 
+typedef enum
 {
   SMALL_STRING,
   MEDIUM_STRING,

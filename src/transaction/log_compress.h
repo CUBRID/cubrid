@@ -42,6 +42,12 @@
 #define ZIP_CHECK(length)                                                     \
          (((length) & 0x80000000) ? true : false)
 
+/* plus lzo overhead to log_zip data size */
+#define LOG_ZIP_BUF_SIZE(length) \
+        ((length) + ((length) / 16) + 64 + 3 + sizeof(LOG_ZIP_SIZE_T))
+
+#define LOG_ZIP_SIZE_T int
+
 /*
  * Compressed(zipped) log structure
  */
@@ -49,20 +55,22 @@ typedef struct log_zip LOG_ZIP;
 
 struct log_zip
 {
-  size_t data_length;		/* length of stored
+  LOG_ZIP_SIZE_T data_length;	/* length of stored
 				   (compressed/uncompressed)log_zip data */
-  size_t buf_size;		/* size of log_zip data buffer */
+  LOG_ZIP_SIZE_T buf_size;	/* size of log_zip data buffer */
   lzo_bytep log_data;		/* compressed/uncompressed log_zip data
 				   (used as data buffer) */
   lzo_bytep wrkmem;		/* wokring memory for lzo function */
 };
 
-extern LOG_ZIP *log_zip_alloc (size_t size, bool is_zip);
+extern LOG_ZIP *log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip);
 extern void log_zip_free (LOG_ZIP * log_zip);
 
-extern bool log_zip (LOG_ZIP * log_zip, size_t length, const void *data);
-extern bool log_unzip (LOG_ZIP * log_unzip, size_t length, void *data);
-extern bool log_diff (size_t undo_length, const void *undo_data,
-		      size_t redo_length, void *redo_data);
+extern bool log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length,
+		     const void *data);
+extern bool log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length,
+		       void *data);
+extern bool log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data,
+		      LOG_ZIP_SIZE_T redo_length, void *redo_data);
 
 #endif /* _LOG_COMPRESS_H_ */

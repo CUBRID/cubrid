@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -68,8 +68,8 @@
 /* Expansion Ratio of the dynamic array that keeps the file contents list */
 #define SORT_EXPAND_DYN_ARRAY_RATIO 1.5
 
-#define SORT_MAXREC_LENGTH (DB_PAGESIZE - sizeof(SLOTTED_PAGE_HEADER) - \
-                       sizeof(SLOT))
+#define SORT_MAXREC_LENGTH             \
+        ((ssize_t)(DB_PAGESIZE - sizeof(SLOTTED_PAGE_HEADER) - sizeof(SLOT)))
 
 #define SORT_SWAP_PTR(a,b) { char **temp; temp = a; a = b; b = temp; }
 
@@ -264,8 +264,8 @@ static int sort_get_num_file_contents (FILE_CONTENTS * file_contents);
 static void sort_print_file_contents (const FILE_CONTENTS * file_contents);
 #endif /* CUBRID_DEBUG */
 
-static void sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type,
-				   INT16 alignment);
+static void sort_spage_initialize
+  (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment);
 
 static INT16 sort_spage_get_numrecs (PAGE_PTR pgptr);
 static INT16 sort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
@@ -335,7 +335,7 @@ sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
   sphdr->cfree = sphdr->tfree;
   sphdr->foffset = sizeof (SLOTTED_PAGE_HEADER);
   sphdr->alignment = alignment;
-  DB_WASTED_ALIGN (sphdr->foffset, alignment, sphdr->waste_align);
+  sphdr->waste_align = DB_WASTED_ALIGN (sphdr->foffset, alignment);
 
   if (sphdr->waste_align != 0)
     {
@@ -425,7 +425,7 @@ sort_spage_compact (PAGE_PTR pgptr)
   for (i = 0; i < sphdr->nrecs; i++)
     {
       /* Make sure that the offset is aligned */
-      DB_ALIGN (to_offset, sphdr->alignment);
+      to_offset = DB_ALIGN (to_offset, sphdr->alignment);
       if (to_offset == sortptr[i]->roffset)
 	{
 	  /* Record slot is already in place */
@@ -442,7 +442,7 @@ sort_spage_compact (PAGE_PTR pgptr)
     }
 
   /* Make sure that the next inserted record will be aligned */
-  DB_ALIGN (to_offset, sphdr->alignment);
+  to_offset = DB_ALIGN (to_offset, sphdr->alignment);
 
   sphdr->cfree = sphdr->tfree = (DB_PAGESIZE - to_offset -
 				 sphdr->nslots * sizeof (SLOT));
@@ -479,7 +479,7 @@ sort_spage_find_free (PAGE_PTR pgptr, SLOT ** sptr, INT16 length, INT16 type,
 
   /* Calculate the wasting space that this record will introduce. We need to
      take in consideration the wasting space when there is space saved */
-  DB_WASTED_ALIGN (length, sphdr->alignment, waste);
+  waste = DB_WASTED_ALIGN (length, sphdr->alignment);
   *space = length + waste;
 
   /* Quickly check for available space. We may need to check again if a slot
@@ -717,7 +717,7 @@ sort_spage_dump_sptr (SLOT * sptr, INT16 nslots, INT16 alignment)
       if (sptr->roffset != NULL_OFFSET)
 	{
 	  total_length_records += sptr->rlength;
-	  DB_WASTED_ALIGN (sptr->rlength, alignment, waste);
+	  waste = DB_WASTED_ALIGN (sptr->rlength, alignment);
 	  (void) fprintf (stdout, ", length = %4d, waste = %d",
 			  sptr->rlength, waste);
 	}
@@ -1021,7 +1021,7 @@ sort_run_find (char **source, long *top, SORT_STACK * st_p, long limit,
       sort_run_flip (start + dup_num, stop);
     }
 
-  *top += stop - start;		/* advance to last visited */
+  *top += CAST_BUFLEN (stop - start);	/* advance to last visited */
   srun_p->start += dup_num;
   srun_p->stop = *top;
 
@@ -1573,7 +1573,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   int error = NO_ERROR;
   SORT_CMP_FUNC *compare;
   void *comp_arg;
-  int item_len;
 
   compare = sort_param->cmp_fn;
   comp_arg = sort_param->cmp_arg;
@@ -1594,7 +1593,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   sort_numrecs = 0;
   saved_numrecs = 0;
   saved_index_area = NULL;
-  item_ptr = sort_param->internal_memory + sizeof (INT32);
+  item_ptr = sort_param->internal_memory + SORT_RECORD_LENGTH_SIZE;
   index_area = (char **) (output_buffer - sizeof (char *));
   index_buff = index_area - 1;
   temp_recdes.area_size = SORT_MAXREC_LENGTH;
@@ -1620,7 +1619,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		(4 * sizeof (char *));
 	    }
 
-	  if (temp_recdes.area_size <= sizeof (SORT_REC))
+	  if (temp_recdes.area_size <= SSIZEOF (SORT_REC))
 	    {
 	      /* internal memory is not enough */
 	      status = SORT_REC_DOESNT_FIT;
@@ -1648,9 +1647,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	      /* Perform internal sorting and flush the run */
 
 	      index_area++;
-	      error =
-		sort_run_sort (&index_area, numrecs, sort_numrecs, index_buff,
-			       compare, comp_arg, option, &numrecs);
+	      error = sort_run_sort (&index_area, numrecs, sort_numrecs,
+				     index_buff, compare, comp_arg, option,
+				     &numrecs);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -1668,15 +1667,14 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 			}
 		    }
 
-		  item_len = *((INT32 *) (item_ptr - sizeof (INT32)));
-		  DB_ALIGN (item_len, sizeof (int));
-
-		  item_ptr += item_len + sizeof (INT32);
+		  item_ptr +=
+		    DB_ALIGN (SORT_RECORD_LENGTH (item_ptr),
+			      MAX_ALIGNMENT) + SORT_RECORD_LENGTH_SIZE;
 		}
 
 	      if (option == SORT_ELIM_DUP
 		  && ((item_ptr - sort_param->internal_memory) +
-		      numrecs * sizeof (SLOT) < DB_PAGESIZE)
+		      numrecs * SSIZEOF (SLOT) < DB_PAGESIZE)
 		  && temp_recdes.length <= SORT_MAXREC_LENGTH)
 		{
 		  /* still, remaining key area enough; do not flush,
@@ -1710,7 +1708,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    }
 
 		  numrecs = 0;
-		  item_ptr = sort_param->internal_memory + sizeof (INT32);
+		  item_ptr =
+		    sort_param->internal_memory + SORT_RECORD_LENGTH_SIZE;
 		  index_area = (char **) (output_buffer - sizeof (char *));
 		  index_buff = index_area - 1;
 		  temp_recdes.area_size = SORT_MAXREC_LENGTH;
@@ -1782,9 +1781,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		  sort_param->multipage_file.volid =
 		    sort_param->temp[0].volid;
 
-		  if (file_create_tmp
-		      (thread_p, &sort_param->multipage_file,
-		       SORT_MULTIPAGE_FILE_SIZE_ESTIMATE, NULL) == NULL)
+		  if (file_create_tmp (thread_p, &sort_param->multipage_file,
+				       SORT_MULTIPAGE_FILE_SIZE_ESTIMATE,
+				       NULL) == NULL)
 		    {
 		      /* Disk full; so return */
 		      error = er_errid ();
@@ -1796,23 +1795,21 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	       * multipage_file and put the pointer as the first record in
 	       * this run
 	       */
-	      if (overflow_insert
-		  (thread_p, &sort_param->multipage_file, (VPID *) item_ptr,
-		   &long_recdes) == NULL)
+	      if (overflow_insert (thread_p, &sort_param->multipage_file,
+				   (VPID *) item_ptr, &long_recdes) == NULL)
 		{
 		  error = er_errid ();
 		  goto exit_on_error;
 		}
 
 	      /* Update the pointers */
-	      *((INT32 *) (item_ptr - sizeof (INT32))) = sizeof (VPID);
+	      SORT_RECORD_LENGTH (item_ptr) = sizeof (VPID);
 	      *index_area = item_ptr;
 	      numrecs++;
 
-	      error =
-		sort_run_flush (thread_p, sort_param, out_curfile, cur_page,
-				output_buffer, index_area, numrecs,
-				REC_BIGONE);
+	      error = sort_run_flush (thread_p, sort_param, out_curfile,
+				      cur_page, output_buffer, index_area,
+				      numrecs, REC_BIGONE);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -1820,7 +1817,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 	      /* Prepare for the next internal sorting run */
 	      numrecs = 0;
-	      item_ptr = sort_param->internal_memory + sizeof (INT32);
+	      item_ptr =
+		sort_param->internal_memory + SORT_RECORD_LENGTH_SIZE;
 	      index_area = (char **) (output_buffer - sizeof (char *));
 	      index_buff = index_area - 1;
 	      temp_recdes.area_size = SORT_MAXREC_LENGTH;
@@ -1838,7 +1836,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 	case SORT_SUCCESS:
 	  /* Proceed the pointers */
-	  *((INT32 *) (item_ptr - sizeof (INT32))) = temp_recdes.length;
+	  SORT_RECORD_LENGTH (item_ptr) = temp_recdes.length;
 	  *index_area = item_ptr;
 	  numrecs++;
 
@@ -1847,8 +1845,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	  index_buff--;		/* must keep track because index_buff is used to
 				   detect when sort buffer is full */
 
-	  item_ptr += DB_ALIGN (temp_recdes.length, sizeof (int)) +
-	    sizeof (INT32);
+	  item_ptr += DB_ALIGN (temp_recdes.length, MAX_ALIGNMENT)
+	    + SORT_RECORD_LENGTH_SIZE;
 	  break;
 
 	default:
@@ -1895,12 +1893,10 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	    {
 	      /* Obtain the output record for this temporary record */
 	      temp_recdes.data = index_area[i];
-	      temp_recdes.length =
-		*((INT32 *) (index_area[i] - sizeof (INT32)));
+	      temp_recdes.length = SORT_RECORD_LENGTH (index_area[i]);
 
-	      error =
-		(*sort_param->put_fn) (thread_p, &temp_recdes,
-				       sort_param->put_arg);
+	      error = (*sort_param->put_fn) (thread_p, &temp_recdes,
+					     sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
 		  if (error == SORT_PUT_STOP)
@@ -1920,12 +1916,10 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	    {
 	      /* Obtain the output record for this temporary record */
 	      temp_recdes.data = saved_index_area[i];
-	      temp_recdes.length =
-		*((INT32 *) (saved_index_area[i] - sizeof (INT32)));
+	      temp_recdes.length = SORT_RECORD_LENGTH (saved_index_area[i]);
 
-	      error =
-		(*sort_param->put_fn) (thread_p, &temp_recdes,
-				       sort_param->put_arg);
+	      error = (*sort_param->put_fn) (thread_p, &temp_recdes,
+					     sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
 		  if (error == SORT_PUT_STOP)
@@ -1950,9 +1944,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	  long_recdes.area_size = 0;
 	  long_recdes.data = NULL;
 
-	  if (sort_read_area
-	      (thread_p, &sort_param->temp[0], 0, 1,
-	       output_buffer) != NO_ERROR
+	  if (sort_read_area (thread_p, &sort_param->temp[0], 0, 1,
+			      output_buffer) != NO_ERROR
 	      || sort_spage_get_record (output_buffer, 0, &temp_recdes,
 					PEEK) != S_SUCCESS
 	      || sort_retrieve_longrec (thread_p, &temp_recdes,
@@ -2024,7 +2017,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
   run_size = 0;
   sort_spage_initialize (output_buffer, UNANCHORED_KEEP_SEQUENCE,
-			 sizeof (int));
+			 MAX_ALIGNMENT);
 
   /* Insert each record to the output buffer and flush the buffer
      when it is full */
@@ -2045,7 +2038,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	    }
 
 	  out_recdes.data = (char *) key;
-	  out_recdes.length = *((INT32 *) (((char *) key) - sizeof (INT32)));
+	  out_recdes.length = SORT_RECORD_LENGTH ((char *) key);
 
 	  if (sort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 	    {
@@ -2060,7 +2053,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	      cur_page[out_file]++;
 	      run_size++;
 	      sort_spage_initialize (output_buffer, UNANCHORED_KEEP_SEQUENCE,
-				     sizeof (int));
+				     MAX_ALIGNMENT);
 
 	      if (sort_spage_insert (output_buffer, &out_recdes) ==
 		  NULL_SLOTID)
@@ -2285,8 +2278,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
 
       /* Distribute the internal memory to the input and output sections */
-      in_sectsize =
-	sort_find_inbuf_size (sort_param->tot_buffers, act_infiles);
+      in_sectsize = sort_find_inbuf_size (sort_param->tot_buffers,
+					  act_infiles);
       out_sectsize = sort_param->tot_buffers - in_sectsize * act_infiles;
 
       /* Set the address of each input section */
@@ -2384,10 +2377,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      read_pages = cp_pages;
 			    }
 
-			  error =
-			    sort_read_area (thread_p, &sort_param->temp[act],
-					    cur_page[act], read_pages,
-					    sort_param->internal_memory);
+			  error = sort_read_area (thread_p,
+						  &sort_param->temp[act],
+						  cur_page[act], read_pages,
+						  sort_param->
+						  internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2487,9 +2481,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* If this is a long record retrieve it */
 	      if (smallest_elem_ptr[i].type == REC_BIGONE)
 		{
-		  if (sort_retrieve_longrec
-		      (thread_p, &smallest_elem_ptr[i],
-		       &long_recdes[i]) == NULL)
+		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[i],
+					     &long_recdes[i]) == NULL)
 		    {
 		      error = er_errid ();
 		      goto bailout;
@@ -2577,8 +2570,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* if this is a long record, retrieve it */
 	      if (last_elem_ptr.type == REC_BIGONE)
 		{
-		  if (sort_retrieve_longrec
-		      (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
+		  if (sort_retrieve_longrec (thread_p, &last_elem_ptr,
+					     &last_long_recdes) == NULL)
 		    {
 		      error = er_errid ();
 		      goto bailout;
@@ -2603,7 +2596,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	    {
 	      /* Initialize each buffer to contain a slotted page */
 	      sort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE),
-				     UNANCHORED_KEEP_SEQUENCE, sizeof (int));
+				     UNANCHORED_KEEP_SEQUENCE, MAX_ALIGNMENT);
 	    }
 
 	  /* Initialize the size of next run to zero */
@@ -2636,10 +2629,9 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      /* Obtain the output record for this temporary record */
 		      if (smallest_elem_ptr[min].type == REC_BIGONE)
 			{
-			  error =
-			    (*sort_param->put_fn) (thread_p,
-						   &long_recdes[min],
-						   sort_param->put_arg);
+			  error = (*sort_param->put_fn) (thread_p,
+							 &long_recdes[min],
+							 sort_param->put_arg);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2651,9 +2643,10 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    (SORT_REC *) (smallest_elem_ptr[min].data);
 			  /* cut-off link used in Internal Sort */
 			  sort_rec->next = NULL;
-			  error = (*sort_param->put_fn)
-			    (thread_p, &smallest_elem_ptr[min],
-			     sort_param->put_arg);
+			  error = (*sort_param->put_fn) (thread_p,
+							 &smallest_elem_ptr
+							 [min],
+							 sort_param->put_arg);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2677,9 +2670,9 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			       * so insert the new record there */
 			      out_cur_bufaddr += DB_PAGESIZE;
 
-			      if (sort_spage_insert
-				  (out_cur_bufaddr,
-				   &smallest_elem_ptr[min]) == NULL_SLOTID)
+			      if (sort_spage_insert (out_cur_bufaddr,
+						     &smallest_elem_ptr[min])
+				  == NULL_SLOTID)
 				{
 				  /*
 				   * Slotted page module refuses to insert a
@@ -2722,12 +2715,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 				  sort_spage_initialize (out_sectaddr +
 							 (i * DB_PAGESIZE),
 							 UNANCHORED_KEEP_SEQUENCE,
-							 sizeof (int));
+							 MAX_ALIGNMENT);
 				}
 
-			      if (sort_spage_insert
-				  (out_cur_bufaddr,
-				   &smallest_elem_ptr[min]) == NULL_SLOTID)
+			      if (sort_spage_insert (out_cur_bufaddr,
+						     &smallest_elem_ptr[min])
+				  == NULL_SLOTID)
 				{
 				  /*
 				   * Slotted page module refuses to insert a
@@ -2786,11 +2779,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  in_last_buf[min] = read_pages;
 
-			  error =
-			    sort_read_area (thread_p,
-					    &sort_param->temp[big_index],
-					    cur_page[big_index], read_pages,
-					    in_cur_bufaddr[min]);
+			  error = sort_read_area (thread_p,
+						  &sort_param->
+						  temp[big_index],
+						  cur_page[big_index],
+						  read_pages,
+						  in_cur_bufaddr[min]);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2929,9 +2923,10 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  /* if this is a long record, retrieve it */
 			  if (last_elem_ptr.type == REC_BIGONE)
 			    {
-			      if (sort_retrieve_longrec
-				  (thread_p, &last_elem_ptr,
-				   &last_long_recdes) == NULL)
+			      if (sort_retrieve_longrec (thread_p,
+							 &last_elem_ptr,
+							 &last_long_recdes) ==
+				  NULL)
 				{
 				  error = er_errid ();
 				  goto bailout;
@@ -2959,10 +2954,10 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* Flush whatever is left on the output section */
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
 
-	      error =
-		sort_write_area (thread_p, &sort_param->temp[cur_outfile],
-				 cur_page[cur_outfile], out_act_bufno,
-				 out_sectaddr);
+	      error = sort_write_area (thread_p,
+				       &sort_param->temp[cur_outfile],
+				       cur_page[cur_outfile], out_act_bufno,
+				       out_sectaddr);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
@@ -3161,8 +3156,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
 
       /* Distribute the internal memory to the input and output sections */
-      in_sectsize =
-	sort_find_inbuf_size (sort_param->tot_buffers, act_infiles);
+      in_sectsize = sort_find_inbuf_size (sort_param->tot_buffers,
+					  act_infiles);
       out_sectsize = sort_param->tot_buffers - in_sectsize * act_infiles;
 
       /* Set the address of each input section */
@@ -3262,10 +3257,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      read_pages = cp_pages;
 			    }
 
-			  error =
-			    sort_read_area (thread_p, &sort_param->temp[act],
-					    cur_page[act], read_pages,
-					    sort_param->internal_memory);
+			  error = sort_read_area (thread_p,
+						  &sort_param->temp[act],
+						  cur_page[act], read_pages,
+						  sort_param->
+						  internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3463,7 +3459,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	    {
 	      /* Initialize each buffer to contain a slotted page */
 	      sort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE),
-				     UNANCHORED_KEEP_SEQUENCE, sizeof (int));
+				     UNANCHORED_KEEP_SEQUENCE, MAX_ALIGNMENT);
 	    }
 
 	  /* Initialize the size of next run to zero */
@@ -3490,9 +3486,9 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		  /* Obtain the output record for this temporary record */
 		  if (smallest_elem_ptr[min].type == REC_BIGONE)
 		    {
-		      error =
-			(*sort_param->put_fn) (thread_p, &long_recdes[min],
-					       sort_param->put_arg);
+		      error = (*sort_param->put_fn) (thread_p,
+						     &long_recdes[min],
+						     sort_param->put_arg);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
@@ -3503,10 +3499,9 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      sort_rec = (SORT_REC *) (smallest_elem_ptr[min].data);
 		      /* cut-off link used in Internal Sort */
 		      sort_rec->next = NULL;
-		      error =
-			(*sort_param->put_fn) (thread_p,
-					       &smallest_elem_ptr[min],
-					       sort_param->put_arg);
+		      error = (*sort_param->put_fn) (thread_p,
+						     &smallest_elem_ptr[min],
+						     sort_param->put_arg);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
@@ -3530,9 +3525,9 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			     so insert the new record there */
 			  out_cur_bufaddr += DB_PAGESIZE;
 
-			  if (sort_spage_insert
-			      (out_cur_bufaddr,
-			       &smallest_elem_ptr[min]) == NULL_SLOTID)
+			  if (sort_spage_insert (out_cur_bufaddr,
+						 &smallest_elem_ptr[min]) ==
+			      NULL_SLOTID)
 			    {
 			      /*
 			       * Slotted page module refuses to insert a short
@@ -3572,12 +3567,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      sort_spage_initialize (out_sectaddr +
 						     (i * DB_PAGESIZE),
 						     UNANCHORED_KEEP_SEQUENCE,
-						     sizeof (int));
+						     MAX_ALIGNMENT);
 			    }
 
-			  if (sort_spage_insert
-			      (out_cur_bufaddr,
-			       &smallest_elem_ptr[min]) == NULL_SLOTID)
+			  if (sort_spage_insert (out_cur_bufaddr,
+						 &smallest_elem_ptr[min]) ==
+			      NULL_SLOTID)
 			    {
 			      /*
 			       * Slotted page module refuses to insert a short
@@ -3632,11 +3627,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  in_last_buf[min] = read_pages;
 
-			  error =
-			    sort_read_area (thread_p,
-					    &sort_param->temp[big_index],
-					    cur_page[big_index], read_pages,
-					    in_cur_bufaddr[min]);
+			  error = sort_read_area (thread_p,
+						  &sort_param->
+						  temp[big_index],
+						  cur_page[big_index],
+						  read_pages,
+						  in_cur_bufaddr[min]);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3683,9 +3679,9 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* If this is a long record retrieve it */
 	      if (smallest_elem_ptr[min].type == REC_BIGONE)
 		{
-		  if (sort_retrieve_longrec
-		      (thread_p, &smallest_elem_ptr[min],
-		       &long_recdes[min]) == NULL)
+		  if (sort_retrieve_longrec (thread_p,
+					     &smallest_elem_ptr[min],
+					     &long_recdes[min]) == NULL)
 		    {
 		      error = er_errid ();
 		      goto bailout;
@@ -3795,10 +3791,10 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* Flush whatever is left on the output section */
 
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
-	      error =
-		sort_write_area (thread_p, &sort_param->temp[cur_outfile],
-				 cur_page[cur_outfile], out_act_bufno,
-				 out_sectaddr);
+	      error = sort_write_area (thread_p,
+				       &sort_param->temp[cur_outfile],
+				       cur_page[cur_outfile], out_act_bufno,
+				       out_sectaddr);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;

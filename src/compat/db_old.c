@@ -124,8 +124,7 @@ db_objlist_print (DB_OBJLIST * list)
   for (l = list; l != NULL; l = l->next)
     {
       oid = WS_OID (l->op);
-      fprintf (stdout, "%ld.%ld.%ld  ", (long) oid->volid, (long) oid->pageid,
-	       (long) oid->slotid);
+      fprintf (stdout, "%d.%d.%d  ", oid->volid, oid->pageid, oid->slotid);
     }
   fprintf (stdout, "\n");
 

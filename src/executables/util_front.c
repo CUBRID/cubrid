@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -33,8 +33,8 @@
 
 typedef struct
 {
-  char *old_arg;
-  char *long_arg;
+  const char *old_arg;
+  const char *long_arg;
 } ARG_MAP_TABLE;
 
 static ARG_MAP_TABLE ua_Create_map[] = {
@@ -239,8 +239,8 @@ static ARG_MAP_TABLE us_Commdb_map[] = {
 
 typedef struct
 {
-  char *app_name;
-  char *util_name;
+  const char *app_name;
+  const char *util_name;
   ARG_MAP_TABLE *match_table;
 } UTIL_MAP_TABLE;
 
@@ -279,7 +279,7 @@ get_long_arg_by_old_arg (char *old_arg, ARG_MAP_TABLE * match_table)
     {
       if (strcmp (old_arg, match_table[i].old_arg) == 0)
 	{
-	  return match_table[i].long_arg;
+	  return (char *) match_table[i].long_arg;
 	}
     }
   return NULL;
@@ -325,7 +325,7 @@ convert_argv (int argc, char **argv, ARG_MAP_TABLE * match_table)
 }
 
 /*
- * main() - csql main module. 
+ * main() - csql main module.
  *   return: EXIT_SUCCESS or EXIT_FAILURE
  */
 int
@@ -333,7 +333,7 @@ main (int argc, char **argv)
 {
   char *program_name = basename (argv[0]);
   int i, argc_index = 0;
-  char **admin_argv;
+  char **admin_argv = NULL;
 
   if (strcmp (program_name, UTIL_SQLX_NAME) == 0)
     {
@@ -370,8 +370,8 @@ main (int argc, char **argv)
 	  if (strcmp (ua_Util_table[i].app_name, program_name) == 0)
 	    {
 	      admin_argv = (char **) malloc ((argc + 2) * sizeof (char *));
-	      admin_argv[argc_index++] = UTIL_CUBRID;
-	      admin_argv[argc_index++] = ua_Util_table[i].util_name;
+	      admin_argv[argc_index++] = (char *) UTIL_CUBRID;
+	      admin_argv[argc_index++] = (char *) ua_Util_table[i].util_name;
 	      memcpy (&admin_argv[argc_index], &argv[1],
 		      (argc - 1) * sizeof (char *));
 	      if (convert_argv (argc, &admin_argv[argc_index],
@@ -394,10 +394,17 @@ main (int argc, char **argv)
 	}
     }
 
-  free (admin_argv);
+  if (admin_argv)
+    {
+      free (admin_argv);
+    }
   return EXIT_SUCCESS;
+
 failure:
   fprintf (stderr, "This utility is deprecated. Use 'cubrid' utility.\n");
-  free (admin_argv);
+  if (admin_argv)
+    {
+      free (admin_argv);
+    }
   return EXIT_FAILURE;
 }

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -326,29 +326,29 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
       return error;
     }
 
-  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
+  repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = log_type;
   COPY_OID (&repl_rec->inst_oid, inst_oid);
 
   /* make the common info for the data replication */
   if (log_type == LOG_REPLICATION_DATA)
     {
-      repl_rec->length = or_db_value_size (key_dbvalue);
-
       class_name = heap_get_class_name (thread_p, (const OID *) class_oid);
-      repl_rec->length += or_packed_string_length (class_name);
+      repl_rec->length = or_packed_string_length (class_name);
+      repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
 
-      if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
+      ptr = (char *) malloc (repl_rec->length);
+      if (ptr == NULL)
 	{
 	  REPL_ERROR (error, "can't allocate memory");
 	  return error;
 	}
-      ptr = repl_rec->repl_data;
+      repl_rec->repl_data = ptr;
+
       ptr = or_pack_string (ptr, class_name);
       ptr = or_pack_value (ptr, key_dbvalue);
       db_value_clear (key_dbvalue);
       free_and_init (class_name);
-
     }
   else
     {

@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -52,10 +52,10 @@ PRIVATE short odbc_type_searchable (short type);
 
 /************************************************************************
 * name: odbc_alloc_desc
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *    con이 null이 아니면 con에 연결된 explicit desc로 간주한다.
 ************************************************************************/
 PUBLIC RETCODE
@@ -112,10 +112,10 @@ error:
 
 /************************************************************************
 * name: odbc_free_desc
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *    desc->con이 null이 아니면 con에 연결된 explicit desc로 간주한다.
 ************************************************************************/
 PUBLIC RETCODE
@@ -163,10 +163,10 @@ error:
 
 /************************************************************************
 * name: odbc_alloc_record
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *    record handle은 정의도 안 되었을뿐만 아니라, 외부에서 직접적으로 사용할
 *    일이 없으므로 NULL을 허용한다.
 *	- error messaging
@@ -257,10 +257,10 @@ error:
 
 /************************************************************************
 * name: odbc_free_record
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_free_record (ODBC_RECORD * record)
@@ -312,10 +312,10 @@ error:
 
 /************************************************************************
 * name: odbc_free_all_records
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_free_all_records (ODBC_RECORD * head_record)
@@ -343,18 +343,18 @@ error:
 
 /************************************************************************
 * name: odbc_get_desc_field
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	BASE_COLUMN_NAME, NAME, LABEL are same as SQL_DESC_NAME
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_desc_field (ODBC_DESC * desc,
-		     short rec_number,
-		     short field_id,
-		     void *value_ptr,
-		     long buffer_length, long *string_length_ptr)
+		     SQLSMALLINT rec_number,
+		     SQLSMALLINT field_id,
+		     SQLPOINTER value_ptr,
+		     SQLLEN buffer_length, SQLLEN *string_length_ptr)
 {
   RETCODE status = ODBC_SUCCESS, rc;
   ODBC_RECORD *record;
@@ -833,24 +833,25 @@ error:
 
 /************************************************************************
 * name: odbc_get_desc_rec
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_desc_rec (ODBC_DESC * desc,
-		   short rec_number,
-		   char *name,
-		   short buffer_length,
-		   short *string_length_ptr,
-		   short *type_ptr,
-		   short *subtype_ptr,
-		   long *length_ptr,
-		   short *precision_ptr,
-		   short *scale_ptr, short *nullable_ptr)
+		   SQLSMALLINT rec_number,
+		   SQLCHAR *name,
+		   SQLSMALLINT buffer_length,
+		   SQLSMALLINT *string_length_ptr,
+		   SQLSMALLINT *type_ptr,
+		   SQLSMALLINT *subtype_ptr,
+		   SQLLEN *length_ptr,
+		   SQLSMALLINT *precision_ptr,
+		   SQLSMALLINT *scale_ptr, SQLSMALLINT *nullable_ptr)
 {
   ODBC_RECORD *record = NULL;
+  SQLLEN tmp_length;
 
   record = find_record_from_desc (desc, rec_number);
   if (record == NULL)
@@ -863,7 +864,8 @@ odbc_get_desc_rec (ODBC_DESC * desc,
   /* WARN : type converting  string_length_ptr(short*) -> (long*) */
   odbc_get_desc_field (desc, rec_number, SQL_DESC_NAME,
 		       (void *) name, buffer_length,
-		       (long *) string_length_ptr);
+                       &tmp_length);
+  *string_length_ptr = (SQLSMALLINT) tmp_length;
 
   odbc_get_desc_field (desc, rec_number, SQL_DESC_TYPE,
 		       (void *) type_ptr, 0, NULL);
@@ -889,10 +891,10 @@ odbc_get_desc_rec (ODBC_DESC * desc,
 
 /************************************************************************
 * name: odbc_set_desc_field
-* arguments: 
-* returns/side-effects: 
-* description:  
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	CHECK : consistency
 *	일부 consistency check가 odbc_set_desc_rec에서 이루어진다. 참고..
 ************************************************************************/
@@ -1137,6 +1139,7 @@ odbc_set_desc_field (ODBC_DESC * desc,
 
 
 	    case SQL_C_UBIGINT:
+	    case SQL_C_SBIGINT:
 	    case SQL_C_STINYINT:
 	    case SQL_C_UTINYINT:
 	    case SQL_C_TINYINT:	// for 2.x backward compatibility
@@ -1208,21 +1211,21 @@ error:
 
 /************************************************************************
 * name: odbc_set_desc_rec
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_set_desc_rec (ODBC_DESC * desc,
-		   short rec_number,
-		   short type,
-		   short subtype,
-		   long length,
-		   short precision,
-		   short scale,
-		   void *data_ptr,
-		   long *string_length_ptr, long *indicator_ptr)
+		   SQLSMALLINT rec_number,
+		   SQLSMALLINT type,
+		   SQLSMALLINT subtype,
+		   SQLLEN length,
+		   SQLSMALLINT precision,
+		   SQLSMALLINT scale,
+		   SQLPOINTER data_ptr,
+		   SQLLEN *string_length_ptr, SQLLEN *indicator_ptr)
 {
   /* ODBC_RECORD *record; */
   short concise_type;
@@ -1275,10 +1278,10 @@ odbc_set_desc_rec (ODBC_DESC * desc,
 
 /************************************************************************
 * name: odbc_copy_desc
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_copy_desc (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)
@@ -1299,11 +1302,11 @@ odbc_copy_desc (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)
 }
 
 /************************************************************************
-* name: 
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* name:
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 * if desc->stmt == NULL, desc is explicitly allocated descriptor and
 * yet not assigned to any statement.
 ************************************************************************/
@@ -1315,10 +1318,10 @@ odbc_is_ird (ODBC_DESC * desc)
 
 /************************************************************************
 * name: odbc_set_ird
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC void
 odbc_set_ird (ODBC_STATEMENT * stmt,
@@ -1405,10 +1408,10 @@ odbc_set_ird (ODBC_STATEMENT * stmt,
 
 /************************************************************************
 * name: find_record_from_desc
-* arguments: 
+* arguments:
 * returns/side-effects: record pointer
-* description: 
-* NOTE: 
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC ODBC_RECORD *
 find_record_from_desc (ODBC_DESC * desc, int rec_number)
@@ -1438,11 +1441,11 @@ find_record_from_desc (ODBC_DESC * desc, int rec_number)
 
 /************************************************************************
 * name: reset_descriptor
-* arguments: 
+* arguments:
 * returns/side-effects: record pointer
-* description: 
-* NOTE: 
-*		SQL_DESC_ROWS_PROCESSED_PTR, 
+* description:
+* NOTE:
+*		SQL_DESC_ROWS_PROCESSED_PTR,
 *		SQL_DESC_ARRAY_STATUS_PTR의 경우에는 사용자에 의해서 설정되므로
 *		delete하지 말아야 한다.
 ************************************************************************/
@@ -1465,11 +1468,11 @@ reset_descriptor (ODBC_DESC * desc)
 
 /************************************************************************
 * name: is_header_field
-* arguments: 
-* returns/side-effects: 
+* arguments:
+* returns/side-effects:
 *  1 - header, 0 - record, else(-1) - unknown
-* description: 
-* NOTE: 
+* description:
+* NOTE:
 ************************************************************************/
 PRIVATE int
 is_header_field (short desc_field_id)
@@ -1534,11 +1537,11 @@ is_header_field (short desc_field_id)
 }
 
 /************************************************************************
-* name: 
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: whenever an application sets the SQL_DESC_DATA_PTR record field of an 
+* name:
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE: whenever an application sets the SQL_DESC_DATA_PTR record field of an
 * APD, ARD, or IPD. If there is incosistent information, returns SQLSTATE
 * HY021.
 * Refer to SQLSetDescRec .
@@ -1584,7 +1587,7 @@ odbc_consistency_check (ODBC_RECORD * record)
  * description:
  *	if (field_id == READ ONLY desc field) then
  *		return B_TURE
- *  else 
+ *  else
  *		return _FALSE_
  *	endif
  * NOTE:
@@ -1619,10 +1622,10 @@ is_read_only_field (short field_id)
 
 /************************************************************************
 * name: header_desc_field_copy
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PRIVATE void
 header_desc_field_copy (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)
@@ -1637,10 +1640,10 @@ header_desc_field_copy (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)
 
 /************************************************************************
 * name: record_desc_field_copy
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PRIVATE void
 record_desc_field_copy (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)

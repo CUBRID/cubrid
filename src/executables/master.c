@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -40,6 +40,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <io.h>
 #else /* ! WINDOWS */
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -69,7 +70,6 @@
 #include "dbi.h"
 
 /* TODO: move to header file */
-extern void css_daemon_start (void);
 extern void css_process_info_request (CSS_CONN_ENTRY * conn);
 extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
 				      SOCKET_QUEUE_ENTRY ** anchor_p);
@@ -77,7 +77,7 @@ extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
 static void css_master_cleanup (int sig);
-static int css_master_init (int cport, int *clientfd);
+static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn,
 				       unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
@@ -93,11 +93,12 @@ static void css_register_new_server (CSS_CONN_ENTRY * conn,
 				     unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn,
 				      unsigned short rid);
-static bool css_send_new_request_to_server (int server_fd, int client_fd,
+static bool css_send_new_request_to_server (SOCKET server_fd,
+					    SOCKET client_fd,
 					    unsigned short rid);
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn,
 					 unsigned short rid);
-static void css_process_new_connection (int fd);
+static void css_process_new_connection (SOCKET fd);
 static void css_enroll_master_read_sockets (fd_set * fd_var);
 static void css_enroll_master_write_sockets (fd_set * fd_var);
 static void css_enroll_master_exception_sockets (fd_set * fd_var);
@@ -111,7 +112,7 @@ static SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
 							    conn_p,
 							    int info_p,
 							    char *name_p,
-							    int fd,
+							    SOCKET fd,
 							    int fd_type,
 							    int pid,
 							    SOCKET_QUEUE_ENTRY
@@ -119,6 +120,9 @@ static SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
 static SOCKET_QUEUE_ENTRY *css_return_entry_of_server (char *name_p,
 						       SOCKET_QUEUE_ENTRY *
 						       anchor_p);
+#if !defined(WINDOWS)
+static void css_daemon_start (void);
+#endif
 
 struct timeval *css_Master_timeout = NULL;
 static int css_Master_timeout_value_in_seconds = 4;
@@ -129,7 +133,7 @@ time_t css_Start_time;
 int css_Total_server_count = 0;
 
 /* socket for incomming client requests */
-int css_Master_socket_fd[2] = { 0, 0 };
+SOCKET css_Master_socket_fd[2] = { INVALID_SOCKET, INVALID_SOCKET };
 
 /* This is the queue anchor of sockets used by the Master server. */
 SOCKET_QUEUE_ENTRY *css_Master_socket_anchor = NULL;
@@ -232,7 +236,7 @@ css_master_cleanup (int sig)
  *   clientfd(out)
  */
 static int
-css_master_init (int cport, int *clientfd)
+css_master_init (int cport, SOCKET * clientfd)
 {
 #if defined(WINDOWS)
   if (os_set_signal_handler (SIGABRT, css_master_cleanup) == SIG_ERR ||
@@ -318,7 +322,8 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
 {
   char *datagram;
   int datagram_length;
-  int server_fd, length;
+  SOCKET server_fd = INVALID_SOCKET;
+  int length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
 
@@ -384,7 +389,8 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
 {
   char *datagram;
   int datagram_length;
-  int server_fd, length;
+  SOCKET server_fd = INVALID_SOCKET;
+  int length;
   CSS_CONN_ENTRY *datagram_conn;
 
   datagram = NULL;
@@ -438,7 +444,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 					       css_Master_socket_anchor))
 	  != NULL)
 	{
-	  if (entry->fd == -1)
+	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
 	      css_accept_old_request (conn, rid, entry, server_name,
@@ -502,7 +508,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 					  css_Master_socket_anchor);
       if (entry != NULL)
 	{
-	  if (entry->fd == -1)
+	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server */
 	      css_accept_old_request (conn, rid, entry, server_name,
@@ -588,7 +594,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (int server_fd, int client_fd,
+css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd,
 				unsigned short rid)
 {
   return (css_transfer_fd (server_fd, client_fd, rid));
@@ -628,7 +634,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  if (temp->port_id == -1)
 	    {
 	      /* use old style connection */
-	      if (temp->fd == -1)
+	      if (IS_INVALID_SOCKET (temp->fd))
 		{
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
 		  free_and_init (server_name);
@@ -685,7 +691,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   register itself) and an information client request (master control client).
  */
 static void
-css_process_new_connection (int fd)
+css_process_new_connection (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn;
   int function_code;
@@ -695,8 +701,8 @@ css_process_new_connection (int fd)
   buffer_size = sizeof (NET_HEADER);
   css_Total_server_count++;
   conn = css_make_conn (fd);
-  if (css_receive_request (conn, &rid, &function_code, &buffer_size) ==
-      NO_ERRORS)
+  if (css_receive_request (conn, &rid, &function_code,
+			   &buffer_size) == NO_ERRORS)
     {
       switch (function_code)
 	{
@@ -735,7 +741,7 @@ css_enroll_master_read_sockets (fd_set * fd_var)
   FD_ZERO (fd_var);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if ((temp->fd > 0) && (!(temp->fd_type == WRITE_ONLY)))
+      if (!IS_INVALID_SOCKET (temp->fd) && temp->fd_type != WRITE_ONLY)
 	{
 	  FD_SET (temp->fd, fd_var);
 	}
@@ -768,7 +774,7 @@ css_enroll_master_exception_sockets (fd_set * fd_var)
   FD_ZERO (fd_var);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0)
+      if (!IS_INVALID_SOCKET (temp->fd))
 	{
 	  FD_SET (temp->fd, fd_var);
 	}
@@ -789,7 +795,7 @@ css_master_select_error (void)
 again:
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if ((temp->fd > 0) && (fcntl (temp->fd, F_GETFL, 0) < 0))
+      if (!IS_INVALID_SOCKET (temp->fd) && fcntl (temp->fd, F_GETFL, 0) < 0)
 	{
 	  if (css_Active_server_count > 0)
 	    {
@@ -815,12 +821,12 @@ static void
 css_check_master_socket_input (int *count, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp, *next;
-  int new_fd;
+  SOCKET new_fd;
 
   for (temp = css_Master_socket_anchor; *count && temp; temp = next)
     {
       next = temp->next;
-      if ((temp->fd > 0) && (FD_ISSET (temp->fd, fd_var)))
+      if (!IS_INVALID_SOCKET (temp->fd) && FD_ISSET (temp->fd, fd_var))
 	{
 	  FD_CLR (temp->fd, fd_var);
 	  (*count)--;
@@ -828,12 +834,12 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	      temp->fd == css_Master_socket_fd[1])
 	    {
 	      new_fd = css_master_accept (temp->fd);
-	      if (new_fd > 0)
+	      if (!IS_INVALID_SOCKET (new_fd))
 		{
 		  css_process_new_connection (new_fd);
 		}
 	    }
-	  else if (temp->fd > 0)
+	  else if (!IS_INVALID_SOCKET (temp->fd))
 	    {
 	      if (temp->info_p)
 		{
@@ -880,13 +886,15 @@ css_check_master_socket_exception (fd_set * fd_var)
 again:
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if ((temp->fd > 0) && ((FD_ISSET (temp->fd, fd_var) ||
+      if (!IS_INVALID_SOCKET (temp->fd) && ((FD_ISSET (temp->fd, fd_var) ||
 #if !defined(WINDOWS)
-			      (fcntl (temp->fd, F_GETFL, 0) < 0) ||
+					     (fcntl (temp->fd, F_GETFL, 0) <
+					      0) ||
 #endif /* !WINDOWS */
-			      (temp->error_p == true) ||
-			      (temp->conn_ptr == NULL) ||
-			      (temp->conn_ptr->status == CONN_CLOSED))))
+					     (temp->error_p == true) ||
+					     (temp->conn_ptr == NULL) ||
+					     (temp->conn_ptr->status ==
+					      CONN_CLOSED))))
 	{
 	  if (css_Active_server_count > 0)
 	    {
@@ -1145,7 +1153,7 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
  */
 static SOCKET_QUEUE_ENTRY *
 css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
-				 char *name_p, int fd, int fd_type,
+				 char *name_p, SOCKET fd, int fd_type,
 				 int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
@@ -1218,3 +1226,125 @@ css_return_entry_of_server (char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
 
   return NULL;
 }
+
+#if !defined(WINDOWS)
+/*
+ * css_daemon_start() - detach a process from login session context
+ *   return: none
+ */
+static void
+css_daemon_start (void)
+{
+  int childpid, fd;
+#if defined (sun)
+  struct rlimit rlp;
+#endif /* sun */
+  int fd_max;
+  int ppid = getpid ();
+
+
+  /* If we were started by init (process 1) from the /etc/inittab file
+   * there's no need to detatch.
+   * This test is unreliable due to an unavoidable ambiguity
+   * if the process is started by some other process and orphaned
+   * (i.e., if the parent process terminates before we get here).
+   */
+
+  if (getppid () == 1)
+    {
+      goto out;
+    }
+
+  /*
+   * Ignore the terminal stop signals (BSD).
+   */
+
+#ifdef SIGTTOU
+  if (os_set_signal_handler (SIGTTOU, SIG_IGN) == SIG_ERR)
+    {
+      exit (0);
+    }
+#endif
+#ifdef SIGTTIN
+  if (os_set_signal_handler (SIGTTIN, SIG_IGN) == SIG_ERR)
+    {
+      exit (0);
+    }
+#endif
+#ifdef SIGTSTP
+  if (os_set_signal_handler (SIGTSTP, SIG_IGN) == SIG_ERR)
+    {
+      exit (0);
+    }
+#endif
+
+  /*
+   * Call fork and have the parent exit.
+   * This does several things. First, if we were started as a simple shell
+   * command, having the parent terminate makes the shell think that the
+   * command is done. Second, the child process inherits the process group ID
+   * of the parent but gets a new process ID, so we are guaranteed that the
+   * child is not a process group leader, which is a prerequirement for the
+   * call to setsid
+   */
+
+  childpid = fork ();
+  if (childpid < 0)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
+    }
+  else if (childpid > 0)
+    {
+      exit (0);			/* parent goes bye-bye */
+    }
+  else
+    {
+      /*
+       * Wait until the parent process has finished. Coded with polling since
+       * the parent should finish immediately. SO, it is unlikely that we are
+       * going to loop at all.
+       */
+      while (getppid () == ppid)
+	{
+	  sleep (1);
+	}
+    }
+
+  /*
+   * Create a new session and make the child process the session leader of
+   * the new session, the process group leader of the new process group.
+   * The child process has no controlling terminal.
+   */
+
+  if (os_set_signal_handler (SIGHUP, SIG_IGN) == SIG_ERR)
+    {
+      exit (0);			/* fail to immune from pgrp leader death */
+    }
+
+  setsid ();
+
+out:
+
+  /*
+   * Close unneeded file descriptors which prevent the daemon from holding
+   * open any descriptors that it may have inherited from its parent which
+   * could be a shell. For now, leave in/out/err open
+   */
+
+  fd_max = css_get_max_socket_fds();
+
+  for (fd = 3; fd < fd_max; fd++)
+    {
+      close (fd);
+    }
+
+  errno = 0;			/* Reset errno from last close */
+
+  /*
+   * The file mode creation mask that is inherited could be set to deny
+   * certain permissions. Therfore, clear the file mode creation mask.
+   */
+
+  umask (0);
+}
+#endif

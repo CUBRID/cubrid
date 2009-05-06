@@ -32,25 +32,6 @@
 #include "oid.h"
 #include "recovery.h"
 
-extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid,
-				  int length, char *buffer, int est_lo_len,
-				  OID * oid);
-extern int xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid,
-			      int offset, int length, char *buffer);
-extern int xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid,
-			       int offset, int length, char *buffer);
-extern int xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid,
-				int offset, int length, char *buffer);
-extern int xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid,
-				int offset, int length);
-extern int xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid,
-				int length, char *buffer);
-extern int xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
-				  int offset);
-extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
-
 extern void largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid,
 			      int n);
 extern bool largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid);

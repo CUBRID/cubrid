@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * tea.c - 
+ * tea.c -
  */
 
 #ident "$Id$"
@@ -34,7 +34,7 @@
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX)
 #define BYTE_ORDER_BIG_ENDIAN
-#elif defined(WIN32) || defined(LINUX) || defined(OSF1) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(SOLARIS_X86)
+#elif defined(WINDOWS) || defined(LINUX) || defined(OSF1) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(SOLARIS_X86)
 #ifdef BYTE_ORDER_BIG_ENDIAN
 #error BYTE_ORDER_BIG_ENDIAN defined
 #endif
@@ -42,19 +42,19 @@
 #error PLATFORM NOT DEFINED
 #endif
 
-static void tea_encrypt (unsigned long key[], int len, char *buf);
-static void tea_decrypt (unsigned long key[], int len, char *buf);
-static void _encrypt (unsigned long k[], unsigned long text[]);
-static void _decrypt (unsigned long k[], unsigned long text[]);
+static void tea_encrypt (unsigned int key[], int len, char *buf);
+static void tea_decrypt (unsigned int key[], int len, char *buf);
+static void _encrypt (unsigned int k[], unsigned int text[]);
+static void _decrypt (unsigned int k[], unsigned int text[]);
 static char ut_get_hexval (char c);
 static void array_init_random_value (char *arr, int arrsize);
-static long big_endian_long (long from);
+static int big_endian_int (int from);
 
-static unsigned long key[4] = { 1, 2, 3, 4 };	/* key for tea encryption algorithm */
+static unsigned int key[4] = { 1, 2, 3, 4 };	/* key for tea encryption algorithm */
 
 /*
- *  DESCRIPTION 
- *    The uEncrypt() function encrypts the src string and converts 
+ *  DESCRIPTION
+ *    The uEncrypt() function encrypts the src string and converts
  *    the binary result to the string of hexadecimal representation.
  *    Since one byte is represented as two hexadecimal digit, 'trg' must
  *    have twice the space of 'src'.
@@ -64,7 +64,7 @@ static unsigned long key[4] = { 1, 2, 3, 4 };	/* key for tea encryption algorith
  *    - 'src' must have the length equal to 'len'
  */
 void
-uEncrypt (int len, char *src, char *trg)
+uEncrypt (int len, const char *src, char *trg)
 {
   char encstr[1024];
   char strbuf[10];
@@ -87,15 +87,15 @@ uEncrypt (int len, char *src, char *trg)
 }
 
 /*
- *  DESCRIPTION 
- *    The uDecrypt() function decrypts the src string and converts 
+ *  DESCRIPTION
+ *    The uDecrypt() function decrypts the src string and converts
  *    the string of hexadecimal string into its original values.
  *  NOTE
  *    - size of 'src' must be at least twice the 'trg'
  *    - size of 'trg' must be equal to 'len'
  */
 void
-uDecrypt (int len, char *src, char *trg)
+uDecrypt (int len, const char *src, char *trg)
 {
   int i;
   char v1, v2;
@@ -119,19 +119,19 @@ uDecrypt (int len, char *src, char *trg)
   trg[len] = '\0';
 }
 
-/* This function assumes that unsigned_long is 4 bytes long.
-   En/Decryption processes 8 bytes at a time.               
-   Although this function encrypts any length of text, 
+/* This function assumes that unsigned_int is 4 bytes int.
+   En/Decryption processes 8 bytes at a time.
+   Although this function encrypts any length of text,
    parameter text must have space size in multiple of 8 because this
    function returns encryption in multiple of 8 bytes       */
 static void
-tea_encrypt (unsigned long key[], int len, char *text)
+tea_encrypt (unsigned int key[], int len, char *text)
 {
-  unsigned long ulbuf[2];
+  unsigned int ulbuf[2];
 
   while (len > 0)
     {
-      if (len < sizeof (ulbuf))
+      if ((size_t) len < sizeof (ulbuf))
 	{
 	  memset (ulbuf, ' ', sizeof (ulbuf));
 	  memcpy (ulbuf, text, len);
@@ -153,13 +153,13 @@ tea_encrypt (unsigned long key[], int len, char *text)
 /* text parameter must hold encryption of 8-byte multiple size which was
    returned from previous tea_encrypt() call */
 static void
-tea_decrypt (unsigned long key[], int len, char *text)
+tea_decrypt (unsigned int key[], int len, char *text)
 {
-  unsigned long ulbuf[2];
+  unsigned int ulbuf[2];
 
   while (len > 0)
     {
-      if (len < sizeof (ulbuf))
+      if ((size_t) len < sizeof (ulbuf))
 	{
 	  memset (ulbuf, ' ', sizeof (ulbuf));
 	  /*memcpy(ulbuf,text,len); */
@@ -180,12 +180,12 @@ tea_decrypt (unsigned long key[], int len, char *text)
 }
 
 static void
-_encrypt (unsigned long k[], unsigned long text[])
+_encrypt (unsigned int k[], unsigned int text[])
 {
-  unsigned long y = big_endian_long (text[0]);
-  unsigned long z = big_endian_long (text[1]);
-  unsigned long delta = 0x9e3779b9;
-  unsigned long sum = 0;
+  unsigned int y = big_endian_int (text[0]);
+  unsigned int z = big_endian_int (text[1]);
+  unsigned int delta = 0x9e3779b9;
+  unsigned int sum = 0;
   int n;
 
   for (n = 0; n < 32; n++)
@@ -194,17 +194,17 @@ _encrypt (unsigned long k[], unsigned long text[])
       y += ((z << 4) + k[0]) ^ (z + sum) ^ ((z >> 5) + k[1]);
       z += ((y << 4) + k[2]) ^ (y + sum) ^ ((y >> 5) + k[3]);
     }
-  text[0] = big_endian_long (y);
-  text[1] = big_endian_long (z);
+  text[0] = big_endian_int (y);
+  text[1] = big_endian_int (z);
 }
 
 static void
-_decrypt (unsigned long k[], unsigned long text[])
+_decrypt (unsigned int k[], unsigned int text[])
 {
-  unsigned long y = big_endian_long (text[0]);
-  unsigned long z = big_endian_long (text[1]);
-  unsigned long delta = 0x9e3779b9;
-  unsigned long sum = delta << 5;
+  unsigned int y = big_endian_int (text[0]);
+  unsigned int z = big_endian_int (text[1]);
+  unsigned int delta = 0x9e3779b9;
+  unsigned int sum = delta << 5;
   int n;
 
   for (n = 0; n < 32; n++)
@@ -213,8 +213,8 @@ _decrypt (unsigned long k[], unsigned long text[])
       y -= ((z << 4) + k[0]) ^ (z + sum) ^ ((z >> 5) + k[1]);
       sum -= delta;
     }
-  text[0] = big_endian_long (y);
-  text[1] = big_endian_long (z);
+  text[0] = big_endian_int (y);
+  text[1] = big_endian_int (z);
 }
 
 static char
@@ -245,13 +245,13 @@ array_init_random_value (char *arr, int arrsize)
     arr[i] = rand () % 100;
 }
 
-static long
-big_endian_long (long from)
+static int
+big_endian_int (int from)
 {
 #ifdef BYTE_ORDER_BIG_ENDIAN
   return from;
 #else
-  long to;
+  int to;
   char *p, *q;
 
   p = (char *) &from;

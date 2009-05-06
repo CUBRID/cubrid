@@ -54,6 +54,10 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				   char *reply, int reply_size,
 				   char *buffer, int buffer_size);
 extern unsigned int
+css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
+					 int reply_size, char *buffer,
+					 FSIZE_T buffer_size);
+extern unsigned int
 css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				     char *reply, int reply_size,
 				     char *buffer1, int buffer1_size,
@@ -84,6 +88,7 @@ extern char *css_get_client_version_string (void);
 extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 
+extern void css_set_ha_num_of_hosts (int num);
 extern HA_SERVER_STATE css_ha_server_state (void);
 extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p,
 						 int whence);

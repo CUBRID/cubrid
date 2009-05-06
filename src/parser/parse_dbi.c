@@ -106,6 +106,9 @@ pt_misc_to_qp_misc_operand (PT_MISC_TYPE misc_specifier)
     case PT_SECOND:
       operand = SECOND;
       break;
+    case PT_MILLISECOND:
+      operand = MILLISECOND;
+      break;
     case PT_SUBSTR_ORG:
       operand = SUBSTRING;
       break;
@@ -431,6 +434,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_INTEGER:
       result->info.value.data_value.i = DB_GET_INT (val);
       break;
+    case DB_TYPE_BIGINT:
+      result->info.value.data_value.bigint = DB_GET_BIGINT (val);
+      break;
     case DB_TYPE_FLOAT:
       result->info.value.data_value.f = DB_GET_FLOAT (val);
       break;
@@ -515,6 +521,17 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_UTIME:
       if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (val)) == 0)
+	{
+	  result->type_enum = PT_TYPE_NONE;
+	}
+      else
+	{
+	  result->info.value.text = pt_append_string (parser, NULL, buf);
+	}
+      break;
+    case DB_TYPE_DATETIME:
+      if (db_datetime_to_string (buf, sizeof (buf),
+				 DB_GET_DATETIME (val)) == 0)
 	{
 	  result->type_enum = PT_TYPE_NONE;
 	}
@@ -1043,6 +1060,9 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_INTEGER:
       name = "integer";
       break;
+    case PT_TYPE_BIGINT:
+      name = "bigint";
+      break;
     case PT_TYPE_SMALLINT:
       name = "short";
       break;
@@ -1063,6 +1083,9 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       return "time";
     case PT_TYPE_TIMESTAMP:
       name = "timestamp";
+      break;
+    case PT_TYPE_DATETIME:
+      name = "datetime";
       break;
     case PT_TYPE_MONETARY:
       name = "monetary";
@@ -1130,6 +1153,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
+    case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
@@ -1143,6 +1167,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
+    case DB_TYPE_BIGINT:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0,
 				    (TP_DOMAIN *) 0);
       break;
@@ -1259,6 +1284,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
+    case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
@@ -1267,6 +1293,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
+    case DB_TYPE_BIGINT:
       return pt_type_enum_to_db_domain (dt->type_enum);
 
     case DB_TYPE_OBJECT:
@@ -1409,6 +1436,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
+    case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
@@ -1418,6 +1446,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
     case DB_TYPE_MIDXKEY:
+    case DB_TYPE_BIGINT:
       return pt_type_enum_to_db_domain (type);
 
     case DB_TYPE_OBJECT:
@@ -1607,6 +1636,11 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_INTEGER:
       db_type = DB_TYPE_INTEGER;
       break;
+
+    case PT_TYPE_BIGINT:
+      db_type = DB_TYPE_BIGINT;
+      break;
+
     case PT_TYPE_LOGICAL:
     case PT_TYPE_SMALLINT:
       db_type = DB_TYPE_SHORT;
@@ -1626,6 +1660,9 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       break;
     case PT_TYPE_TIMESTAMP:
       db_type = DB_TYPE_UTIME;
+      break;
+    case PT_TYPE_DATETIME:
+      db_type = DB_TYPE_DATETIME;
       break;
     case PT_TYPE_MONETARY:
       db_type = DB_TYPE_MONETARY;
@@ -1854,7 +1891,7 @@ pt_auth_to_db_auth (const PT_NODE * auth)
 
 /*
  * pt_db_to_type_enum() - Convert type_enum from DB_TYPE... to PT_...
- *   return: Returns one of the PT_TYPE_ENUMs defined 
+ *   return: Returns one of the PT_TYPE_ENUMs defined
  *	     PT_TYPE_NONE for internal or unknown types
  *   t(in): a data type as defined in dbi.h
  */
@@ -1877,6 +1914,9 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_INTEGER:
       pt_type = PT_TYPE_INTEGER;
       break;
+    case DB_TYPE_BIGINT:
+      pt_type = PT_TYPE_BIGINT;
+      break;
     case DB_TYPE_NUMERIC:
       pt_type = PT_TYPE_NUMERIC;
       break;
@@ -1898,6 +1938,9 @@ pt_db_to_type_enum (const DB_TYPE t)
       break;
     case DB_TYPE_UTIME:
       pt_type = PT_TYPE_TIMESTAMP;
+      break;
+    case DB_TYPE_DATETIME:
+      pt_type = PT_TYPE_DATETIME;
       break;
     case DB_TYPE_MONETARY:
       pt_type = PT_TYPE_MONETARY;
@@ -2055,6 +2098,15 @@ pt_bind_helper (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case DB_TYPE_BIGINT:
+      if (node->node_type == PT_DATA_TYPE)
+	{
+	  node->info.data_type.precision = 19;
+	  node->info.data_type.dec_precision = 0;
+	  node->info.data_type.units = 0;
+	}
+      break;
+
     case DB_TYPE_SHORT:
       if (node->node_type == PT_DATA_TYPE)
 	{
@@ -2069,6 +2121,7 @@ pt_bind_helper (PARSER_CONTEXT * parser,
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
     case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
       /*
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
@@ -2427,9 +2480,10 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
   DB_DATE date;
   DB_TIME time;
   DB_UTIME utime;
-  size_t src_length;
-  size_t dst_length;
-  unsigned int bits_converted;
+  DB_DATETIME datetime;
+  int src_length;
+  int dst_length;
+  int bits_converted;
   char *bstring;
 
   switch (value->type_enum)
@@ -2495,8 +2549,12 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       db_make_int (db_value, value->info.value.data_value.i);
       break;
 
+    case PT_TYPE_BIGINT:
+      db_make_bigint (db_value, value->info.value.data_value.bigint);
+      break;
+
     case PT_TYPE_SMALLINT:
-      db_make_short (db_value, value->info.value.data_value.i);
+      db_make_short (db_value, (short) value->info.value.data_value.i);
       break;
 
     case PT_TYPE_FLOAT:
@@ -2548,6 +2606,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	  return (DB_VALUE *) NULL;
 	}
       db_make_timestamp (db_value, utime);
+      break;
+
+    case PT_TYPE_DATETIME:
+      if (db_string_to_datetime (value->info.value.text, &datetime) !=
+	  NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_UTIME, value->info.value.text);
+	  return (DB_VALUE *) NULL;
+	}
+      db_make_datetime (db_value, &datetime);
       break;
 
     case PT_TYPE_MONETARY:

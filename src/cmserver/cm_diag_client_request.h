@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_diag_client_request.h - 
+ * cm_diag_client_request.h -
  */
 
 #ifndef _CM_DIAG_CLIENT_REQUEST_H_
@@ -224,9 +224,5 @@
 #define NEED_ACT_LOCK_DEADLOCK(X)     ((X).body[4]&TCL_ACT_CUB_LOCK_DEADLOCK)
 #define NEED_ACT_BUFFER_PAGE_READ(X)  ((X).body[4]&TCL_ACT_CUB_BUFFER_PAGE_READ)
 #define NEED_ACT_BUFFER_PAGE_WRITE(X) ((X).body[4]&TCL_ACT_CUB_BUFFER_PAGE_WRITE)
-
-int init_monitor_config (T_CLIENT_MONITOR_CONFIG * c_config);
-int init_cas_monitor_config (MONITOR_CAS_CONFIG * c_cas);
-int init_server_monitor_config (MONITOR_SERVER_CONFIG * c_server);
 
 #endif /* _CM_DIAG_CLIENT_REQUEST_H_ */

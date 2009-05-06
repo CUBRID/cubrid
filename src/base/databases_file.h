@@ -32,16 +32,8 @@
 #define DATABASES_ENVNAME "DATABASES"
 
 #if defined(WINDOWS)
-#define ODBC_ROOT_ENV "windir"
-#define ODBC_FILE "odbc.ini"
-
-#define COMMENT_CHAR       ';'
 #define SECTION_START_CHAR '['
 #define SECTION_END_CHAR   ']'
-#define DATA_SOURCES_STR   "[" ODBC_DATA_SOURCES "]"
-#define DRIVER_STR         "=" DRIVER_NAME
-
-#define FAKE_PATHNAME ".\\"
 #endif /* WINDOWS */
 
 /* name of the database file */
@@ -59,10 +51,10 @@ struct database_info
 {
   char *name;
   char *pathname;
-  int num_hosts;
   char **hosts;
   char *logpath;
   DB_INFO *next;
+  int num_hosts;
 };
 
 extern char *cfg_os_working_directory (void);

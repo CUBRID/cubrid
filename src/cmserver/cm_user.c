@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * dbmt_user.c - 
+ * dbmt_user.c -
  */
 
 #ident "$Id$"
@@ -30,7 +30,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <process.h>
 #else
 #include <unistd.h>
@@ -52,9 +52,9 @@ int
 dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 {
   T_DBMT_USER_INFO *user_info = NULL;
-  T_DBMT_USER_DBINFO *dbinfo;
+  T_DBMT_USER_DBINFO *dbinfo = NULL;
   int num_dbmt_user = 0;
-  int num_dbinfo;
+  int num_dbinfo = 0;
   FILE *fp = NULL;
   char strbuf[1024];
   char cur_user[DBMT_USER_NAME_LEN];
@@ -250,8 +250,8 @@ dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 }
 
 void
-dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, char *dbname, char *auth,
-		      char *uid, char *passwd)
+dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, const char *dbname,
+		      const char *auth, const char *uid, const char *passwd)
 {
   strncpy (dbinfo->dbname, dbname, sizeof (dbinfo->dbname) - 1);
   strncpy (dbinfo->auth, auth, sizeof (dbinfo->auth) - 1);
@@ -286,7 +286,7 @@ dbmt_user_db_auth_str (T_DBMT_USER_DBINFO * dbinfo, char *buf)
 }
 
 int
-dbmt_user_search (T_DBMT_USER_INFO * user_info, char *dbname)
+dbmt_user_search (T_DBMT_USER_INFO * user_info, const char *dbname)
 {
   int i;
 
@@ -378,7 +378,7 @@ get_dbmt_user_dbinfo (char *strbuf, T_DBMT_USER_DBINFO * usr_dbinfo)
       (strcmp (dbinfo[0], "dbcreate") == 0))
     {
       user_info[0] = dbinfo[1];
-      user_info[1] = user_info[2] = "";
+      user_info[1] = user_info[2] = (char *) "";
     }
   else
     {

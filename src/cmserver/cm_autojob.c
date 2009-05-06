@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,7 +35,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <io.h>
 #include <direct.h>
 #include <process.h>
@@ -100,7 +100,6 @@ typedef struct unicasm_node_t
   struct unicasm_node_t *next;
 } unicasm_node;
 
-/* This structure is written by bctak */
 /* This struct is for auto addvolume */
 typedef struct autoaddvoldb_t
 {
@@ -166,8 +165,8 @@ static void aj_execquery_get_exec_time (autoexecquery_node * node,
 					struct tm *exec_tm);
 
 static void aj_execquery (autoexecquery_node * c);
-static void _aj_autoexecquery_error_log (autoexecquery_node * node, int err_code,
-					 char *errmsg);
+static void _aj_autoexecquery_error_log (autoexecquery_node * node,
+					 int err_code, const char *errmsg);
 static void aj_load_autobackupdb_conf (ajob * ajp);
 static void aj_load_autoaddvoldb_config (ajob * ajp);
 static void aj_load_unicasm_conf (ajob * ajp);
@@ -185,8 +184,9 @@ static void aj_autohistory_handler (void *ajp, time_t prev_check_time,
 static void aj_backupdb (autobackupdb_node * n);
 static void _aj_autobackupdb_error_log (autobackupdb_node * n, char *errmsg);
 static int aj_restart_broker_as (char *bname, int id);
-static double ajFreeSpace (T_SPACEDB_RESULT * cmd_res, char *type);
-static void aj_add_volume (char *dbname, char *type, int increase);
+static double ajFreeSpace (T_SPACEDB_RESULT * cmd_res, const char *type);
+static void aj_add_volume (const char *dbname, const char *type,
+			   int increase);
 static void auto_unicas_log_write (char *br_name, T_DM_UC_AS_INFO * as_info,
 				   int restart_flag, char cpu_flag,
 				   time_t busy_time);
@@ -247,10 +247,9 @@ aj_initialize (ajob * ajlist, void *ud)
   ajlist[4].mondata = ud;
 }
 
-/* This function is written by bctak */
 /* This function calculates the free space fraction of given type */
 static double
-ajFreeSpace (T_SPACEDB_RESULT * cmd_res, char *type)
+ajFreeSpace (T_SPACEDB_RESULT * cmd_res, const char *type)
 {
   double total_page, free_page;
   int i;
@@ -275,10 +274,9 @@ ajFreeSpace (T_SPACEDB_RESULT * cmd_res, char *type)
   return 1.0;
 }
 
-/* This function is written by bctak */
 /* This function adds volume and write to file for fserver */
 static void
-aj_add_volume (char *dbname, char *type, int increase)
+aj_add_volume (const char *dbname, const char *type, int increase)
 {
   char dbloca[512];
   char strbuf[1024];
@@ -290,7 +288,7 @@ aj_add_volume (char *dbname, char *type, int increase)
   char log_file_name[512];
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char inc_str[32];
-  char *argv[10];
+  const char *argv[10];
   T_SPACEDB_RESULT *all_volumes;
   T_SPACEDB_INFO *vol_info;
   int i;
@@ -301,7 +299,7 @@ aj_add_volume (char *dbname, char *type, int increase)
   if (access (dbloca, W_OK | X_OK | R_OK) < 0)
     return;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   nt_style_path (dbloca, dbloca);
 #endif
   cubrid_cmd_name (cmd_name);
@@ -473,7 +471,6 @@ aj_autohistory_handler (void *ajp, time_t prev_check_time, time_t cur_time)
 #endif
 }
 
-/* This function is written by bctak */
 static void
 aj_autoaddvoldb_handler (void *hd, time_t prev_check_time, time_t cur_time)
 {
@@ -536,7 +533,6 @@ aj_autoaddvoldb_handler (void *hd, time_t prev_check_time, time_t cur_time)
   cmd_commdb_result_free (commdb_res);
 }
 
-/* This function is written by bctak */
 static void
 aj_load_autoaddvoldb_config (ajob * ajp)
 {
@@ -738,7 +734,7 @@ aj_load_autobackupdb_conf (ajob * p_aj)
   if ((infile = fopen (p_aj->config_file, "r")) == NULL)
     return;
 
-  while (fgets (buf, sizeof(buf), infile))
+  while (fgets (buf, sizeof (buf), infile))
     {
       is_old_version_entry = 0;
       ut_trim (buf);
@@ -873,7 +869,7 @@ aj_load_execquery_conf (ajob * p_aj)
   if ((infile = fopen (p_aj->config_file, "r")) == NULL)
     return;
 
-  while (fgets (buf, sizeof(buf), infile))
+  while (fgets (buf, sizeof (buf), infile))
     {
       ut_trim (buf);
       if (buf[0] == '#' || buf[0] == '\0')
@@ -1001,8 +997,8 @@ aj_execquery (autoexecquery_node * c)
   /* run query */
   char cmd_name[CUBRID_CMD_NAME_LEN + 1];
   char error_buffer[1024];
-  char *dbuser, dbpasswd[PASSWD_LENGTH + 1];
-  char *argv[11];
+  char *dbuser = NULL, dbpasswd[PASSWD_LENGTH + 1];
+  const char *argv[11];
   char input_filename[256];
   char *cubrid_err_file;
   int retval, argc, i, j, error_code;
@@ -1055,7 +1051,8 @@ aj_execquery (autoexecquery_node * c)
 	      sprintf (error_buffer,
 		       "Database(%s) not found or User(%s) has no authority for this Database",
 		       c->dbname, c->dbmt_uid);
-	      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
+	      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR,
+					   error_buffer);
 	      return;
 	    }
 
@@ -1150,12 +1147,12 @@ aj_execquery (autoexecquery_node * c)
   /* free dbmt_user */
   dbmt_user_free (&dbmt_user);
 
-  if (read_error_file2 (cubrid_err_file, error_buffer, DBMT_ERROR_MSG_SIZE, &error_code) <
-      0)
+  if (read_error_file2
+      (cubrid_err_file, error_buffer, DBMT_ERROR_MSG_SIZE, &error_code) < 0)
     {
       /* error occurred when exec query */
-	  if (error_code == 0)
-		  error_code = ERR_GENERAL_ERROR;
+      if (error_code == 0)
+	error_code = ERR_GENERAL_ERROR;
 
       _aj_autoexecquery_error_log (c, error_code, error_buffer);
       return;
@@ -1168,14 +1165,15 @@ aj_execquery (autoexecquery_node * c)
       _aj_autoexecquery_error_log (c, ERR_SYSTEM_CALL, error_buffer);
       return;
     }
-  else 
+  else
     {
-	  _aj_autoexecquery_error_log (c, 0, "success");
+      _aj_autoexecquery_error_log (c, 0, "success");
     }
 }
 
 static void
-_aj_autoexecquery_error_log (autoexecquery_node * node, int error_code, char *errmsg)
+_aj_autoexecquery_error_log (autoexecquery_node * node, int error_code,
+			     const char *errmsg)
 {
   /* open error file and write errmsg */
   time_t tt;
@@ -1193,8 +1191,8 @@ _aj_autoexecquery_error_log (autoexecquery_node * node, int error_code, char *er
   time_to_str (tt, "DATE:%04d/%02d/%02d TIME:%02d:%02d:%02d", strbuf,
 	       TIME_STR_FMT_DATE_TIME);
   fprintf (outfile, "%s\n", strbuf);
-  fprintf (outfile, "DBNAME:%s EMGR-USERNAME:%s QUERY-ID:%s ERROR-CODE:%d\n", node->dbname,
-	  node->dbmt_uid, node->query_id, error_code);
+  fprintf (outfile, "DBNAME:%s EMGR-USERNAME:%s QUERY-ID:%s ERROR-CODE:%d\n",
+	   node->dbname, node->dbmt_uid, node->query_id, error_code);
   fprintf (outfile, "=> %s\n", errmsg);
   fclose (outfile);
 }
@@ -1269,14 +1267,14 @@ aj_backupdb (autobackupdb_node * n)
   char inputfilepath[512];
   char buf[1024], dbdir[512];
   char backup_vol_name[128];
-  char *opt_mode;
+  const char *opt_mode;
   char db_start_flag = 0;
   char *cubrid_err_file;
   int retval;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char level_str[32];
   char thread_num_str[8];
-  char *argv[16];
+  const char *argv[16];
   int argc = 0;
   FILE *inputfile;
   T_DB_SERVICE_MODE db_mode;
@@ -1615,7 +1613,7 @@ auto_unicas_log_write (char *br_name, T_DM_UC_AS_INFO * as_info,
 
   if (busy_time > 0)
     {
-      fprintf (outfile, "%d ", busy_time);
+      fprintf (outfile, "%ld ", busy_time);
     }
   else
     {

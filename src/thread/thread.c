@@ -89,8 +89,8 @@ struct css_deferred_request
 typedef struct css_thread_manager CSS_THREAD_MANAGER;
 struct css_thread_manager
 {
-  int nthreads;
   THREAD_ENTRY *thread_array;	/* thread entry array */
+  int nthreads;
   bool initialized;
 };
 
@@ -1262,7 +1262,9 @@ thread_sleep (int seconds, int microseconds)
 void
 thread_exit (int exit_id)
 {
-  THREAD_EXIT (exit_id);
+  UINTPTR thread_exit_id = exit_id;
+
+  THREAD_EXIT (thread_exit_id);
 }
 
 /*
@@ -1435,7 +1437,7 @@ thread_dump_threads (void)
  *   return:
  *   thread_p(in):
  */
-unsigned int
+HL_HEAPID
 css_get_private_heap (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
@@ -1454,10 +1456,10 @@ css_get_private_heap (THREAD_ENTRY * thread_p)
  *   thread_p(in):
  *   heap_id(in):
  */
-unsigned int
-css_set_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+HL_HEAPID
+css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 {
-  unsigned int old_heap_id = 0;
+  HL_HEAPID old_heap_id = 0;
 
   if (thread_p == NULL)
     {
@@ -2042,7 +2044,9 @@ thread_log_flush_thread (void *arg_p)
   int ret;
   bool have_wake_up_thread;
   int flushed;
+#if !defined(WINDOWS)
   int temp_wait_usec;
+#endif
   bool is_background_flush = true;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
@@ -2071,7 +2075,7 @@ thread_log_flush_thread (void *arg_p)
       gettimeofday (&work_time, NULL);
       work_elapsed = LOG_GET_ELAPSED_TIME (work_time, start_time);
 
-      diff_wait_time = (double) min_wait_time - work_elapsed * 1000;
+      diff_wait_time = (int) (min_wait_time - work_elapsed * 1000);
       if (diff_wait_time < 0)
 	{
 	  diff_wait_time = 0;
@@ -2190,13 +2194,13 @@ thread_log_flush_thread (void *arg_p)
 	{
 	  LOG_CS_ENTER (tsd_ptr);
 	  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
-	  flushed = logpb_flush_all_append_pages_low (tsd_ptr);
+	  flushed = logpb_flush_all_append_pages_helper (tsd_ptr);
 	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 
 	  if (flushed > 0)
 	    {
-	      ++log_Stat.gc_flush_count;
+	      log_Stat.gc_flush_count++;
 	      gc_elapsed = 0;
 	    }
 	  have_wake_up_thread = true;

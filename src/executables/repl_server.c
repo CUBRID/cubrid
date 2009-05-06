@@ -30,6 +30,8 @@
 
 #ident "$Id$"
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_GETOPT_H
@@ -39,6 +41,7 @@
 #endif
 
 #include "porting.h"
+
 #include "repl_support.h"
 #include "system_parameter.h"
 #include "utility.h"

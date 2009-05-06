@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -31,7 +31,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#if defined (WIN32)
+#if defined (WINDOWS)
 #include <direct.h>
 #else
 #include <sys/types.h>
@@ -63,13 +63,14 @@
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
-  char *conf_str;
+  const char *conf_str;
   int conf_value;
 };
 
 static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static void dir_repath (char *path);
-static int get_conf_value_table (char *value, T_CONF_TABLE * conf_table);
+static int get_conf_value_table (const char *value,
+				 T_CONF_TABLE * conf_table);
 
 
 static T_CONF_TABLE tbl_appl_server[] = {
@@ -79,11 +80,13 @@ static T_CONF_TABLE tbl_appl_server[] = {
   {NULL, 0}
 };
 
+
 static T_CONF_TABLE tbl_on_off[] = {
   {"ON", ON},
   {"OFF", OFF},
   {NULL, 0}
 };
+
 static T_CONF_TABLE tbl_keep_connection[] = {
   {"ON", KEEP_CON_ON},
   {"OFF", KEEP_CON_OFF},
@@ -111,7 +114,7 @@ check_port_number (T_BROKER_INFO * br_info, int num_brs)
 	{
 	  if (br_info[i].port == br_info[j].port)
 	    {
-#if !defined (WIN32)
+#if !defined (WINDOWS)
 	      printf ("duplicated port number %d\n", br_info[i].port);
 #endif
 	      error_flag = TRUE;
@@ -141,7 +144,7 @@ dir_repath (char *path)
   if (path[0] == '/')
     return;
 
-#if defined (WIN32)
+#if defined (WINDOWS)
   if (isalpha (path[0]) && path[1] == ':')
     {
       return;
@@ -159,7 +162,7 @@ dir_repath (char *path)
  *   conf_table(in):
  */
 static int
-get_conf_value_table (char *value, T_CONF_TABLE * conf_table)
+get_conf_value_table (const char *value, T_CONF_TABLE * conf_table)
 {
   int i;
 
@@ -190,7 +193,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 		    char *admin_log_file, char admin_flag,
 		    char *admin_err_msg)
 #else
-#if !defined (WIN32)
+#if !defined (WINDOWS)
 #define PRINTERROR(...)	printf(__VA_ARGS__)
 #else
 #define PRINTERROR(...)
@@ -215,7 +218,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 #if !defined (_UC_ADMIN_SO_)
   char admin_flag = 1;
 #endif
-#if defined (WIN32)
+#if defined (WINDOWS)
   char appl_server_port_assigned[MAX_BROKER_NUM];
 #endif
 
@@ -231,7 +234,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
     }
 
   memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
-#if defined (WIN32)
+#if defined (WINDOWS)
   memset (appl_server_port_assigned, 0, sizeof (appl_server_port_assigned));
 #endif
 
@@ -273,17 +276,17 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
       br_info[num_brs].port = ini_getint (ini, sec_name, "BROKER_PORT", 0);
 
       br_info[num_brs].service_flag =
-	conf_get_value_table_on_off (ini_getstr
-				     (ini, sec_name, "SERVICE", "ON"));
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+						 "SERVICE", "ON"));
       if (br_info[num_brs].service_flag < 0)
 	{
 	  goto conf_error;
 	}
 
       br_info[num_brs].appl_server =
-	get_conf_value_table (ini_getstr
-			      (ini, sec_name, "APPL_SERVER",
-			       DEFAULT_APPL_SERVER), tbl_appl_server);
+	get_conf_value_table (ini_getstr (ini, sec_name, "APPL_SERVER",
+					  DEFAULT_APPL_SERVER),
+			      tbl_appl_server);
       if (br_info[num_brs].appl_server < 0)
 	{
 	  goto conf_error;
@@ -298,7 +301,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 	ini_getuint (ini, sec_name, "MAX_NUM_APPL_SERVER",
 		     DEFAULT_AS_MAX_NUM);
 
-#if defined (WIN32)
+#if defined (WINDOWS)
       tmp_int = ini_getint (ini, sec_name, "APPL_SERVER_PORT", -1);
       if (tmp_int < 0)
 	{
@@ -395,7 +398,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
       br_info[num_brs].sql_log_time =
 	ini_getuint (ini, sec_name, "SQL_LOG_TIME", SQL_LOG_TIME_MAX);
 
-#if !defined (WIN32)
+#if !defined (WINDOWS)
       br_info[num_brs].sql_log2 =
 	ini_getuint_max (ini, sec_name, "SQL_LOG2", SQL_LOG2_NONE,
 			 SQL_LOG2_MAX);
@@ -597,7 +600,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
       dir_repath (admin_log_file);
     }
 
-#if defined (WIN32)
+#if defined (WINDOWS)
   for (i = 0; i < num_brs; i++)
     {
       if (appl_server_port_assigned[i] == FALSE)
@@ -612,7 +615,7 @@ broker_config_read (T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
   return 0;
 
 conf_error:
-#if !defined (WIN32)
+#if !defined (WINDOWS)
 #if !defined (_UC_ADMIN_SO_)
   printf ("config error, %s\n", conf_file);
 #endif
@@ -631,7 +634,7 @@ conf_error:
  *   value(in):
  */
 int
-conf_get_value_table_on_off (char *value)
+conf_get_value_table_on_off (const char *value)
 {
   return (get_conf_value_table (value, tbl_on_off));
 }
@@ -642,7 +645,7 @@ conf_get_value_table_on_off (char *value)
  *   value(in):
  */
 int
-conf_get_value_keep_con (char *value)
+conf_get_value_keep_con (const char *value)
 {
   return (get_conf_value_table (value, tbl_keep_connection));
 }

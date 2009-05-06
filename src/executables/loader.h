@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * loader.h: Loader definitions. Updated using design from fast loaddb 
+ * loader.h: Loader definitions. Updated using design from fast loaddb
  *             prototype
  */
 
@@ -28,15 +28,18 @@
 
 #ident "$Id$"
 
+#include "porting.h"
+#include "dbdef.h"
+
 typedef struct LDR_CONTEXT LDR_CONTEXT;
 
 /*
  * These are the "types" of strings that the lexer recognizes.  The
  * loader can specialize on each type.
  * These values are used to set up a vector of type setting functions, based
- * on information about each attribute parsed in the %CLASS line. 
- * The setter functions are invoked using the enumerated type as an index into 
- * the function vector. This gives us a significant saving when processing 
+ * on information about each attribute parsed in the %CLASS line.
+ * The setter functions are invoked using the enumerated type as an index into
+ * the function vector. This gives us a significant saving when processing
  * values in the instance line, over the previous loader.
  */
 
@@ -62,6 +65,8 @@ typedef enum
   LDR_MONETARY,
   LDR_BSTR,			/* Binary bit strings     */
   LDR_XSTR,			/* Hexidecimal bit strings */
+  LDR_BIGINT,
+  LDR_DATETIME,
 
   NUM_LDR_TYPES
 } LDR_TYPE;
@@ -93,6 +98,44 @@ typedef enum ldr_interrupt_types
   LDR_STOP_AND_ABORT_INTERRUPT,
   LDR_STOP_AND_COMMIT_INTERRUPT
 } LDR_INTERRUPT_TYPE;
+
+typedef struct string_list
+{
+  struct string_list *next;
+  char *val;
+} STRING_LIST;
+
+typedef struct
+{
+  char *idname;
+  STRING_LIST *arg_list;
+} CONSTRUCTOR_SPEC;
+
+typedef struct
+{
+  int qualifier;
+  STRING_LIST *attr_list;
+  CONSTRUCTOR_SPEC *ctor_spec;
+} CLASS_COMMAND_SPEC;
+
+typedef struct
+{
+  int type;
+  void *val;
+} CONSTANT;
+
+typedef struct constant_list
+{
+  struct constant_list *next;
+  CONSTANT *val;
+} CONSTANT_LIST;
+
+typedef struct
+{
+  char *class_id;
+  char *class_name;
+  char *instance_number;
+} OBJECT_REF;
 
 extern char **ignoreClasslist;
 extern int ignoreClassnum;
@@ -149,6 +192,7 @@ extern void ldr_act_set_id (LDR_CONTEXT * context, int id);
 extern void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
 extern void ldr_act_set_ref_class (LDR_CONTEXT * context, char *name);
 extern void ldr_act_set_instance_id (LDR_CONTEXT * context, int id);
+extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 
 /* Special action for class, shared, default attributes */
 
@@ -191,5 +235,4 @@ extern void ldr_act_set_skipCurrentclass (char *classname, size_t size);
 extern bool ldr_is_ignore_class (char *classname, size_t size);
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
-
 #endif /* _LOADER_H_ */

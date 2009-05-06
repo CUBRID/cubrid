@@ -1193,6 +1193,8 @@
 #define ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG           -967
 #define ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG         -968
 
-#define ER_LAST_ERROR                               -969
+#define ER_NET_DIFFERENT_BIT_PLATFORM               -969
+
+#define ER_LAST_ERROR                               -970
 
 #endif /* _ERROR_CODE_H_ */

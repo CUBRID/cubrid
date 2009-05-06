@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -43,8 +43,6 @@
 #include "file_io.h"
 #include "thread_impl.h"
 #include "replication.h"
-
-extern unsigned int db_on_server;
 
 extern int
 xboot_initialize_server (THREAD_ENTRY * thread_p,
@@ -164,6 +162,7 @@ extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid,
 			 const OID * class_oid);
+extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p,
 					const HFID * hfid);
 
@@ -201,23 +200,26 @@ extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);
 
 
 extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid,
-				  int length, char *buffer, int est_lo_len,
-				  OID * oid);
+				  FSIZE_T length, char *buffer,
+				  FSIZE_T est_lo_len, OID * oid);
 extern int xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid,
-			      int offset, int length, char *buffer);
-extern int xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid,
-			       int offset, int length, char *buffer);
-extern int xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid,
-				int offset, int length, char *buffer);
-extern int xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid,
-				int offset, int length);
-extern int xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid,
-				int length, char *buffer);
-extern int xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
-				  int offset);
+extern FSIZE_T xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid,
+				  FSIZE_T offset, FSIZE_T length,
+				  char *buffer);
+extern FSIZE_T xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid,
+				   FSIZE_T offset, FSIZE_T length,
+				   char *buffer);
+extern FSIZE_T xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid,
+				    FSIZE_T offset, FSIZE_T length,
+				    char *buffer);
+extern FSIZE_T xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid,
+				    FSIZE_T offset, FSIZE_T length);
+extern FSIZE_T xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid,
+				    FSIZE_T length, char *buffer);
+extern FSIZE_T xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
+				      FSIZE_T offset);
 extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
+extern FSIZE_T xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
 
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlog_append_client_undo (THREAD_ENTRY * thread_p,
@@ -302,9 +304,10 @@ extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY *
 							DKNPAGES *
 							vol_nfree_pages);
 
-extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
-				      VOLID volid, PAGEID pageid,
-				      char *page_bufp, int *page_sizep);
+extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p,
+				      QUERY_ID query_id, VOLID volid,
+				      PAGEID pageid, char *page_bufp,
+				      int *page_sizep);
 
 /* new query interface */
 extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd,
@@ -314,7 +317,8 @@ extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd,
 				     int xasl_size, XASL_ID * xasl_id);
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   const XASL_ID * xasl_id,
-					   int *query_idp, int dbval_cnt,
+					   QUERY_ID * query_idp,
+					   int dbval_cnt,
 					   const DB_VALUE * dbvals,
 					   QUERY_FLAG * flagp,
 					   CACHE_TIME * clt_cache_time,
@@ -322,11 +326,11 @@ extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 						       char *xasl_ptr,
 						       int size,
-						       int *query_id,
+						       QUERY_ID * query_id,
 						       int dbval_cnt,
 						       DB_VALUE * dbval_ptr,
 						       QUERY_FLAG * flag);
-extern int xqmgr_end_query (THREAD_ENTRY * thrd, int query_id);
+extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_query_plan (THREAD_ENTRY * thread_p,
 				  const char *query_str, const OID * user_oid,
 				  const XASL_ID * xasl_id, bool drop);
@@ -334,10 +338,11 @@ extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
-extern int xqmgr_get_query_info (THREAD_ENTRY * thread_p, int query_id);
+extern int xqmgr_get_query_info (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 #if defined (SERVER_MODE)
-extern int xqmgr_sync_query (THREAD_ENTRY * thread_p, int query_id, int wait,
-			     QFILE_LIST_ID * list_id, int call_from_server);
+extern int xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id,
+			     int wait, QFILE_LIST_ID * list_id,
+			     int call_from_server);
 #endif
 
 /* server execution statistics */

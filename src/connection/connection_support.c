@@ -66,17 +66,18 @@
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#if defined(WINDOWS)
+#include "log_impl.h"
+#endif
 #else
 #include "connection_list_cl.h"
 #include "connection_cl.h"
 #endif
-#include "porting.h"
 
 #if !defined (SERVER_MODE)
 #define MUTEX_LOCK(a, b)
 #define MUTEX_UNLOCK(a)
 #endif /* !SERVER_MODE */
-
 
 #if defined(WINDOWS)
 typedef char *caddr_t;
@@ -109,15 +110,16 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 #endif /* SERVER_MODE */
 #endif /* WINDOWS */
 
-static int css_sprintf_conn_infoids (int fd, const char **client_user_name,
+static int css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name,
 				     const char **client_host_name,
 				     int *client_pid);
-static int css_vector_send (int fd, struct iovec *vec[], int *len,
+static int css_vector_send (SOCKET fd, struct iovec *vec[], int *len,
 			    int bytes_written, int timeout);
 static void css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
 			       const char *buff, int len, int *templen);
 static int css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p,
-			       int total_len, int vector_length, int timeout);
+			       ssize_t total_len, int vector_length, 
+			       int timeout);
 
 static int css_net_send2 (CSS_CONN_ENTRY * conn,
 			  const char *buff1, int len1,
@@ -165,6 +167,11 @@ static int css_net_send8 (CSS_CONN_ENTRY * conn,
 			  const char *buff6, int len6,
 			  const char *buff7, int len7,
 			  const char *buff8, int len8);
+static int
+css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
+				  const char *header_buffer, int header_len,
+				  NET_HEADER * header_array,
+				  const char **data_array, int num_array);
 static void css_set_net_header (NET_HEADER * header_p, int type,
 				short function_code, int request_id,
 				int buffer_size, int transaction_id,
@@ -172,7 +179,7 @@ static void css_set_net_header (NET_HEADER * header_p, int type,
 
 #if !defined(SERVER_MODE)
 static int
-css_sprintf_conn_infoids (int fd, const char **client_user_name,
+css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name,
 			  const char **client_host_name, int *client_pid)
 {
   CSS_CONN_ENTRY *conn;
@@ -207,7 +214,6 @@ css_sprintf_conn_infoids (int fd, const char **client_user_name,
 }
 
 #elif defined(WINDOWS)
-
 /*
  * css_sprintf_conn_infoids() - find client information of given connection
  *   return: transaction id
@@ -218,7 +224,7 @@ css_sprintf_conn_infoids (int fd, const char **client_user_name,
  *   client_pid(in): client process of socket fd
  */
 static int
-css_sprintf_conn_infoids (int fd, const char **client_user_name,
+css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name,
 			  const char **client_host_name, int *client_pid)
 {
   char client_prog_name[PATH_MAX];
@@ -246,7 +252,7 @@ css_sprintf_conn_infoids (int fd, const char **client_user_name,
 
 #if defined(WINDOWS) || !defined(SERVER_MODE)
 static void
-css_set_networking_error (int fd)
+css_set_networking_error (SOCKET fd)
 {
   const char *client_user_name;
   const char *client_host_name;
@@ -282,7 +288,7 @@ css_set_networking_error (int fd)
  *       case when a client is waiting for a lock or query result).
  */
 int
-css_net_send_no_block (int fd, const char *buffer, int size)
+css_net_send_no_block (SOCKET fd, const char *buffer, int size)
 {
 #if defined(WINDOWS)
   int rc, total = 0;
@@ -367,7 +373,7 @@ css_net_send_no_block (int fd, const char *buffer, int size)
  *   timeout(in): timeout in mili-second
  */
 int
-css_readn (int fd, char *ptr, int nbytes, int timeout)
+css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
   int nleft, n;
 #if !defined (WINDOWS)
@@ -480,20 +486,20 @@ css_readn (int fd, char *ptr, int nbytes, int timeout)
  *       that is too small for the data sent by the server.
  */
 void
-css_read_remaining_bytes (int fd, int len)
+css_read_remaining_bytes (SOCKET fd, int len)
 {
   char temp_buffer[CSS_TRUNCATE_BUFFER_SIZE];
   int nbytes, buf_size;
 
   while (len > 0)
     {
-      if (len <= sizeof (temp_buffer))
+      if (len <= SSIZEOF (temp_buffer))
 	{
 	  buf_size = len;
 	}
       else
 	{
-	  buf_size = sizeof (temp_buffer);
+	  buf_size = SSIZEOF (temp_buffer);
 	}
 
       nbytes = css_readn (fd, temp_buffer, buf_size, -1);
@@ -523,7 +529,7 @@ css_read_remaining_bytes (int fd, int len)
  *   timeout(in): timeout value in mili-second
  */
 int
-css_net_recv (int fd, char *buffer, int *maxlen, int timeout)
+css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 {
   int nbytes;
   int templen;
@@ -618,7 +624,7 @@ css_net_recv (int fd, char *buffer, int *maxlen, int timeout)
  *       functions.
  */
 static int
-css_writen (int fd, char *ptr, int nbytes)
+css_writen (SOCKET fd, char *ptr, int nbytes)
 {
   int num_retries = 0, sleep_nsecs = 1;
   int nleft, nwritten;
@@ -752,7 +758,7 @@ free_vector_buffer (int index)
  *       That's what all the callers do anyway.
  */
 static int
-css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written,
+css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 		 int timeout)
 {
   int i, total_size, available, amount, rc;
@@ -869,7 +875,7 @@ error:
  *   timeout(in): timeout value in mili-seconds
  */
 static int
-css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written,
+css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 		 int timeout)
 {
   int i, n;
@@ -891,8 +897,7 @@ css_vector_send (int fd, struct iovec *vec[], int *len, int bytes_written,
 #endif
       for (i = 0; i < *len; i++)
 	{
-	  /* TODO: fix warning here */
-	  if ((*vec)[i].iov_len <= bytes_written)
+	  if ((*vec)[i].iov_len <= (size_t) bytes_written)
 	    {
 	      bytes_written -= (*vec)[i].iov_len;
 	    }
@@ -998,8 +1003,8 @@ css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
  *   timeout(in): timeout value in mili-seconds
  */
 static int
-css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, int total_len,
-		    int vector_length, int timeout)
+css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p,
+		    ssize_t total_len, int vector_length, int timeout)
 {
   int rc;
 
@@ -1305,6 +1310,123 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 }
 
 /*
+ * css_net_send_large_data() -
+ *   return: 0 if success, or error code
+ *   conn(in): connection entry
+ *   header_array(in):
+ *   data_array(in):
+ *   num_array(in):
+ *
+ * Note: Used by client and server.
+ */
+static int
+css_net_send_large_data (CSS_CONN_ENTRY * conn,
+			 NET_HEADER * header_array,
+			 const char **data_array, int num_array)
+{
+  int *templen;
+  struct iovec *iov;
+  ssize_t total_len;
+  int rc, i, buffer_size;
+
+  iov = (struct iovec *) malloc (sizeof (struct iovec) * (num_array * 4));
+  if (iov == NULL)
+    {
+      return CANT_ALLOC_BUFFER;
+    }
+  templen = (int *) malloc (sizeof (int) * (num_array * 2));
+  if (templen == NULL)
+    {
+      free (iov);
+      return CANT_ALLOC_BUFFER;
+    }
+
+  total_len = 0;
+
+  for (i = 0; i < num_array; i++)
+    {
+      css_set_io_vector (&(iov[i * 4]), &(iov[i * 4 + 1]),
+			 (char *) (&header_array[i]),
+			 sizeof (NET_HEADER), &templen[i * 2]);
+      total_len += sizeof (NET_HEADER) + sizeof (int);
+
+      buffer_size = ntohl (header_array[i].buffer_size);
+      css_set_io_vector (&(iov[i * 4 + 2]), &(iov[i * 4 + 3]), data_array[i],
+			 buffer_size, &templen[i * 2 + 1]);
+      total_len += buffer_size + sizeof (int);
+    }
+
+  rc = css_send_io_vector (conn, iov, total_len, num_array * 4, -1);
+
+  free (iov);
+  free (templen);
+
+  return rc;
+}
+
+/*
+ * css_net_send_large_data_with_arg() -
+ *   return: 0 if success, or error code
+ *   conn(in): connection entry
+ *   header_buffer(in):
+ *   header_len(in):
+ *   header_array(in):
+ *   data_array(in):
+ *   num_array(in):
+ *
+ * Note: Used by client and server.
+ */
+static int
+css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
+				  const char *header_buffer, int header_len,
+				  NET_HEADER * header_array,
+				  const char **data_array, int num_array)
+{
+  int *templen;
+  struct iovec *iov;
+  ssize_t total_len;
+  int rc, i, buffer_size;
+
+  iov = (struct iovec *) malloc (sizeof (struct iovec) * (num_array * 4 + 2));
+  if (iov == NULL)
+    {
+      return CANT_ALLOC_BUFFER;
+    }
+  templen = (int *) malloc (sizeof (int) * (num_array * 2 + 1));
+  if (templen == NULL)
+    {
+      free (iov);
+      return CANT_ALLOC_BUFFER;
+    }
+
+  total_len = 0;
+
+  css_set_io_vector (&(iov[0]), &(iov[1]), header_buffer, header_len,
+		     &templen[0]);
+  total_len += header_len + sizeof (int);
+
+  for (i = 0; i < num_array; i++)
+    {
+      css_set_io_vector (&(iov[i * 4 + 2]), &(iov[i * 4 + 3]),
+			 (char *) (&header_array[i]),
+			 sizeof (NET_HEADER), &templen[i * 2 + 1]);
+
+      buffer_size = ntohl (header_array[i].buffer_size);
+      css_set_io_vector (&(iov[i * 4 + 4]), &(iov[i * 4 + 5]),
+			 data_array[i], buffer_size, &templen[i * 2 + 2]);
+
+      total_len += (sizeof (NET_HEADER) + buffer_size + sizeof (int) * 2);
+    }
+
+  rc = css_send_io_vector (conn, iov, total_len, num_array * 4 + 2, -1);
+
+  free (iov);
+  free (templen);
+
+  return rc;
+}
+
+/*
  * css_net_read_header() -
  *   return: 0 if success, or error code
  *   fd(in): socket descripter
@@ -1312,7 +1434,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
  *   maxlen(out): count of bytes was read
  */
 int
-css_net_read_header (int fd, char *buffer, int *maxlen)
+css_net_read_header (SOCKET fd, char *buffer, int *maxlen)
 {
   /* timeout in mili-seconds in css_net_recv() */
   return css_net_recv (fd, buffer, maxlen, PRM_TCP_CONNECTION_TIMEOUT * 1000);
@@ -1584,6 +1706,105 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request,
 			 (char *) &data2_header, sizeof (NET_HEADER),
 			 data2_buffer, data2_size));
 }
+
+/*
+ * css_send_req_with_large_buffer () - transfer a request to the server
+ *   return:
+ *   conn(in):
+ *   request(in):
+ *   request_id(out):
+ *   arg_buffer(in):
+ *   arg_size(in):
+ *   data_buffer(in):
+ *   data_size(in):
+ *   reply_buffer(in):
+ *   reply_size(in):
+ *
+ * Note: It is used by css_send_request (with NULL as the data buffer).
+ */
+int
+css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
+				unsigned short *request_id, char *arg_buffer,
+				int arg_size, char *data_buffer,
+				FSIZE_T data_size, char *reply_buffer,
+				int reply_size)
+{
+  NET_HEADER local_header = DEFAULT_HEADER_DATA;
+  NET_HEADER *headers;
+  char **buffer_array;
+  int num_array, send_data_size;
+  int rc, i;
+
+  if (data_buffer == NULL || data_size <= 0)
+    {
+      return (css_send_request_with_data_buffer (conn, request, request_id,
+						 arg_buffer, arg_size,
+						 reply_buffer, reply_size));
+    }
+  if (!conn || conn->status != CONN_OPEN)
+    {
+      return CONNECTION_CLOSED;
+    }
+
+  *request_id = css_get_request_id (conn);
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id,
+		      arg_size, conn->transaction_id, conn->db_error);
+
+  if (reply_buffer && reply_size > 0)
+    {
+      css_queue_user_data_buffer (conn, *request_id, reply_size,
+				  reply_buffer);
+    }
+
+  num_array = (int) (data_size / INT_MAX) + 2;
+  headers = (NET_HEADER *) malloc (sizeof (NET_HEADER) * num_array);
+  if (headers == NULL)
+    {
+      return CANT_ALLOC_BUFFER;
+    }
+  memset (headers, 0, sizeof (NET_HEADER) * num_array);
+
+  buffer_array = (char **) malloc (sizeof (char *) * num_array);
+  if (buffer_array == NULL)
+    {
+      free_and_init (headers);
+      return CANT_ALLOC_BUFFER;
+    }
+
+  css_set_net_header (&headers[0], DATA_TYPE, 0, *request_id,
+		      arg_size, conn->transaction_id, conn->db_error);
+  buffer_array[0] = arg_buffer;
+
+  for (i = 1; i < num_array; i++)
+    {
+      if (data_size > INT_MAX)
+	{
+	  send_data_size = INT_MAX;
+	}
+      else
+	{
+	  send_data_size = data_size;
+	}
+
+      css_set_net_header (&headers[i], DATA_TYPE, 0, *request_id,
+			  send_data_size, conn->transaction_id,
+			  conn->db_error);
+      buffer_array[i] = data_buffer;
+
+      data_buffer += send_data_size;
+      data_size -= send_data_size;
+    }
+
+  rc = css_net_send_large_data_with_arg (conn, (char *) &local_header,
+					 sizeof (NET_HEADER), headers,
+					 (const char **) buffer_array,
+					 num_array);
+
+  free_and_init (buffer_array);
+  free_and_init (headers);
+
+  return rc;
+}
 #endif /* !SERVER_MODE */
 
 /*
@@ -1772,6 +1993,43 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 			 buffer3, buffer3_size,
 			 (char *) &header4, sizeof (NET_HEADER),
 			 buffer4, buffer4_size));
+}
+
+/*
+* css_send_large_data() - transfer a data packet to the client.
+*   return:  0 if success, or error code
+*   conn(in): connection entry
+*   rid(in): request id
+*   buffers(in):
+*   buffers_size(in):
+*   num_buffers(in):
+*
+*/
+int
+css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
+		     const char **buffers, int *buffers_size, int num_buffers)
+{
+  NET_HEADER *headers;
+  int i;
+
+  if (!conn || conn->status != CONN_OPEN)
+    {
+      return (CONNECTION_CLOSED);
+    }
+  headers = (NET_HEADER *) malloc (sizeof (NET_HEADER) * num_buffers);
+  if (headers == NULL)
+    {
+      return CANT_ALLOC_BUFFER;
+    }
+
+  for (i = 0; i < num_buffers; i++)
+    {
+      css_set_net_header (&headers[i], DATA_TYPE, 0, rid,
+			  buffers_size[i], conn->transaction_id,
+			  conn->db_error);
+    }
+
+  return css_net_send_large_data (conn, headers, buffers, num_buffers);
 }
 #endif /* SERVER_MODE */
 

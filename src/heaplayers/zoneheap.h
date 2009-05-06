@@ -44,7 +44,7 @@ namespace HL {
 	Super::free (currentArena);
     }
 
-    inline void reset(const int chkSize_) 
+    inline void reset(const int chkSize_)
     { chkSize = chkSize_; }
 
     inline void * malloc (size_t sz) {
@@ -63,7 +63,7 @@ namespace HL {
 
     int chkSize; // make it configurable
 
-    inline static size_t align (int sz) {
+    inline static size_t align (size_t sz) {
       return (sz + (sizeof(double) - 1)) & ~(sizeof(double) - 1);
     }
 
@@ -72,7 +72,7 @@ namespace HL {
       // Round up size to an aligned value.
       sz = align (sz);
       // Get more space in our arena if there's not enough room in this one.
-      if ((currentArena == NULL) || (sizeRemaining < (int) sz)) {
+      if ((currentArena == NULL) || (sizeRemaining < sz)) {
 	// First, add this arena to our past arena list.
 	if (currentArena != NULL) {
 	  currentArena->nextArena = pastArenas;
@@ -99,16 +99,16 @@ namespace HL {
       assert (ptr != NULL);
       return ptr;
     }
-  
+
     class Arena {
     public:
       Arena * nextArena;
       char * arenaSpace;
       double _dummy; // For alignment.
     };
-    
+
     /// Space left in the current arena.
-    long sizeRemaining;
+    size_t sizeRemaining;
 
     /// The current arena.
     Arena * currentArena;

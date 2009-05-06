@@ -27,27 +27,15 @@
 
 #ident "$Id$"
 
+
+
+
 #define CHECK_LINENO \
     do {             \
       if (need_line_directive) \
         emit_line_directive(); \
     } while (0)
 
-#if defined(YYDEBUG)
-#define YY_FLUSH_ON_DEBUG \
-    do {                  \
-      if (yydebug)        \
-        fflush(yyout);    \
-    } while (0)
-#else
-#define YY_FLUSH_ON_DEBUG
-#endif
-
-#define PP_STR_ECHO      \
-    do {                 \
-      if (current_buf)   \
-        pp_translate_string(current_buf, zzlextext, true); \
-    } while (0)
 
 typedef struct scanner_mode_record SCANNER_MODE_RECORD;
 typedef struct keyword_rec KEYWORD_REC;
@@ -79,17 +67,9 @@ typedef struct keyword_table
   int size;
 } KEYWORD_TABLE;
 
-YYSTYPE yylval;			/* the semantic value of the lookahead symbol  */
-FILE *yyin, *yyout;
-char *yyfilename;
-int yylineno = 1;
-int errors = 0;
-varstring *current_buf;		/* remain PUBLIC for debugging ease */
-ECHO_FN echo_fn = &echo_stream;
 
 static SCANNER_MODE_RECORD *mode_stack;
 static enum scanner_mode mode;
-static bool need_line_directive;
 static bool recognize_keywords;
 static bool suppress_echo = false;
 
@@ -146,7 +126,7 @@ static KEYWORD_REC csql_keywords[] = {
   {"ATTACH", ATTACH, 0},
   {"ATTRIBUTE", ATTRIBUTE, 0},
   {"AVG", AVG, 0},
-  {"BEGIN", BEGIN, 1},
+  {"BEGIN", BEGIN_, 1},
   {"BETWEEN", BETWEEN, 0},
   {"BY", BY, 0},
   {"CALL", CALL_, 0},
@@ -163,16 +143,16 @@ static KEYWORD_REC csql_keywords[] = {
   {"CREATE", CREATE, 0},
   {"CURRENT", CURRENT, 1},
   {"CURSOR", CURSOR_, 1},
-  {"DATE", DATE, 0},
+  {"DATE", DATE_, 0},
   {"DEC", NUMERIC, 0},
   {"DECIMAL", NUMERIC, 0},
   {"DECLARE", DECLARE, 1},
   {"DEFAULT", DEFAULT, 0},
-  {"DELETE", DELETE, 0},
+  {"DELETE", DELETE_, 0},
   {"DESC", DESC, 0},
   {"DESCRIBE", DESCRIBE, 1},
   {"DESCRIPTOR", DESCRIPTOR, 1},
-  {"DIFFERENCE", DIFFERENCE, 0},
+  {"DIFFERENCE", DIFFERENCE_, 0},
   {"DISCONNECT", DISCONNECT, 1},
   {"DISTINCT", DISTINCT, 0},
   {"DOUBLE", DOUBLE_, 0},
@@ -195,11 +175,11 @@ static KEYWORD_REC csql_keywords[] = {
   {"GO", GO, 1},
   {"GOTO", GOTO_, 1},
   {"GRANT", GRANT, 0},
-  {"GROUP", GROUP, 0},
+  {"GROUP", GROUP_, 0},
   {"HAVING", HAVING, 0},
   {"IDENTIFIED", IDENTIFIED, 1},
   {"IMMEDIATE", IMMEDIATE, 1},
-  {"IN", IN, 0},
+  {"IN", IN_, 0},
   {"INCLUDE", INCLUDE, 1},
   {"INDEX", INDEX, 0},
   {"INDICATOR", INDICATOR, 1},
@@ -221,7 +201,7 @@ static KEYWORD_REC csql_keywords[] = {
   {"NUMERIC", NUMERIC, 0},
   {"OBJECT", OBJECT, 0},
   {"OF", OF, 0},
-  {"OID", OID, 0},
+  {"OID", OID_, 0},
   {"ON", ON_, 0},
   {"ONLY", ONLY, 0},
   {"OPEN", OPEN, 0},
@@ -249,10 +229,10 @@ static KEYWORD_REC csql_keywords[] = {
   {"SHARED", SHARED, 0},
   {"SMALLINT", SMALLINT, 0},
   {"SOME", SOME, 0},
-  {"SQLM", SQLX, 1},
   {"SQLCA", SQLCA, 1},
   {"SQLDA", SQLDA, 1},
   {"SQLERROR", SQLERROR_, 1},
+  {"SQLM", SQLX, 1},
   {"SQLWARNING", SQLWARNING_, 1},
   {"STATISTICS", STATISTICS, 0},
   {"STOP", STOP_, 1},
@@ -302,595 +282,12 @@ static KEYWORD_TABLE preprocessor_table = { preprocessor_keywords,
   DIM (preprocessor_keywords)
 };
 
-#if YYDEBUG != 0
-static int yydebug = 1;
-#endif
 
-static int check_c_identifier (void);
 static void ignore_token (void);
 static void count_embedded_newlines (void);
 static void echo_string_constant (const char *, int);
 
-/*
- * pp_suppress_echo() -
- * return : void
- * suppress(in) :
- */
-void
-pp_suppress_echo (int suppress)
-{
-  suppress_echo = suppress;
-}
-
-/*
- * echo_stream() -
- * return: void
- * str(in) :
- * length(in) :
- */
-void
-echo_stream (const char *str, int length)
-{
-  if (!suppress_echo)
-    {
-      if (exec_echo[0])
-	{
-	  fputs (exec_echo, yyout);
-	  exec_echo[0] = 0;
-	}
-      fwrite ((char *) str, length, 1, yyout);
-      YY_FLUSH_ON_DEBUG;
-    }
-}
-
-/*
- * echo_vstr() -
- * return : void
- * str(in) :
- * length(in) :
- */
-void
-echo_vstr (const char *str, int length)
-{
-  if (!suppress_echo)
-    {
-      if (current_buf)
-	{
-	  vs_strcatn (current_buf, str, length);
-	}
-    }
-}
-
-/*
- * echo_devnull() -
- * return : void
- * str(in) :
- * length(in) :
- */
-void
-echo_devnull (const char *str, int length)
-{
-  /* Do nothing */
-}
-
-/*
- * pp_set_echo() -
- * return :
- * new_echo(in) :
- */
-ECHO_FN
-pp_set_echo (ECHO_FN new_echo)
-{
-  ECHO_FN old_echo;
-
-  old_echo = echo_fn;
-  echo_fn = new_echo;
-
-  return old_echo;
-}
-
-/*
- * yyvmsg() -
- * return : void
- * fmt(in) :
- * args(in) :
- */
-static void
-yyvmsg (const char *fmt, va_list args)
-{
-  /* Flush yyout just in case stderr and yyout are the same. */
-  fflush (yyout);
-
-  if (yyfilename)
-    {
-      fprintf (stderr, "%s:", yyfilename);
-    }
-
-  fprintf (stderr, "%ld: ", zzline);
-  vfprintf (stderr, fmt, args);
-  fputs ("\n", stderr);
-  fflush (stderr);
-}
-
-/*
- * yyerror() -
- * return : void
- * s(in) :
- */
-void
-yyerror (const char *s)
-{
-  yyverror ("%s before \"%s\"", s, zzlextext);
-}
-
-/*
- * yyverror() -
- * return : void
- * fmt(in) :
- */
-void
-yyverror (const char *fmt, ...)
-{
-  va_list args;
-
-  errors++;
-
-  va_start (args, fmt);
-  yyvmsg (fmt, args);
-  va_end (args);
-}
-
-/*
- * yyvwarn() -
- * return : void
- * fmt(in) :
- */
-void
-yyvwarn (const char *fmt, ...)
-{
-  va_list args;
-
-  va_start (args, fmt);
-  yyvmsg (fmt, args);
-  va_end (args);
-}
-
-/*
- * yyredef() -
- * return : void
- * name(in) :
- */
-void
-yyredef (char *name)
-{
-  /* Eventually we will probably want to turn this off, but it's
-     interesting to find out about perceived redefinitions right now. */
-  yyverror ("redefinition of symbol \"%s\"", name);
-}
-
-/*
- * keyword_cmp() -
- * return :
- * a(in) :
- * b(in) :
- */
-static int
-keyword_cmp (const void *a, const void *b)
-{
-  return strcmp (((const KEYWORD_REC *) a)->keyword,
-		 ((const KEYWORD_REC *) b)->keyword);
-}
-
-/*
- * keyword_case_cmp() -
- * return :
- * a(in) :
- * b(in) :
- */
-static int
-keyword_case_cmp (const void *a, const void *b)
-{
-  return intl_mbs_casecmp (((const KEYWORD_REC *) a)->keyword,
-			   ((const KEYWORD_REC *) b)->keyword);
-}
-
-/*
- * check_c_identifier() -
- * return :
- */
-static int
-check_c_identifier (void)
-{
-  KEYWORD_REC *p;
-  KEYWORD_REC dummy;
-  SYMBOL *sym;
-
-  /*
-   * Check first to see if we have a keyword.
-   */
-  dummy.keyword = zzlextext;
-  p = (KEYWORD_REC *) bsearch (&dummy,
-			       c_keywords,
-			       sizeof (c_keywords) / sizeof (c_keywords[0]),
-			       sizeof (KEYWORD_REC), &keyword_cmp);
-
-  if (p)
-    {
-      /*
-       * Notic that this is "sticky", unlike in check_identifier().
-       * Once we've seen a keyword that initiates suppression, we don't
-       * want anything echoed until the upper level grammar productions
-       * say so.  In particular, we don't want echoing to be re-enabled
-       * the very next time we see an ordinary C keyword.
-       */
-      suppress_echo = suppress_echo || p->suppress_echo;
-      return p->value;
-    }
-
-  /*
-   * If not, see if this is an already-encountered identifier.
-   */
-  sym = yylval.p_sym = pp_findsym (pp_Symbol_table, zzlextext);
-  if (sym)
-    {
-      /*
-       * Something by this name lives in the symbol table.
-       *
-       * This needs to be made sensitive to whether typedef names are
-       * being recognized or not.
-       */
-      return sym->type->tdef && pp_recognizing_typedef_names ? TYPEDEF_NAME :
-	IS_INT_CONSTANT (sym->type) ? ENUMERATION_CONSTANT : IDENTIFIER;
-    }
-  else
-    {
-      /*
-       * Symbol wasn't recognized in the symbol table, so this must be
-       * a new identifier.
-       */
-      return IDENTIFIER;
-    }
-}
-
-
-/*
- * check_identifier() -
- * return :
- * keywords(in) :
- */
-static int
-check_identifier (KEYWORD_TABLE * keywords)
-{
-  KEYWORD_REC *p;
-  KEYWORD_REC dummy;
-
-  /*
-   * Check first to see if we have a keyword.
-   */
-  dummy.keyword = zzlextext;
-  p = (KEYWORD_REC *) bsearch (&dummy,
-			       keywords->keyword_array,
-			       keywords->size,
-			       sizeof (KEYWORD_REC), &keyword_case_cmp);
-
-  if (p)
-    {
-      suppress_echo = p->suppress_echo;
-      return p->value;
-    }
-  else
-    {
-      suppress_echo = false;
-      return IDENTIFIER;
-    }
-}
-
-/*
- * yy_push_mode() -
- * return : void
- * new_mode(in) :
- */
-void
-yy_push_mode (enum scanner_mode new_mode)
-{
-  SCANNER_MODE_RECORD *next = malloc (sizeof (SCANNER_MODE_RECORD));
-
-  next->previous_mode = mode;
-  next->recognize_keywords = recognize_keywords;
-  next->previous_record = mode_stack;
-  next->suppress_echo = suppress_echo;
-  mode_stack = next;
-
-  /*
-   * Set up so that the first id-like token that we see in VAR_MODE
-   * will be reported as an IDENTIFIER, regardless of whether it
-   * strcasecmps the same as some SQL/X keyword.
-   */
-  recognize_keywords = (new_mode != VAR_MODE);
-
-  yy_enter (new_mode);
-}
-
-/*
- * yy_check_mode() -
- * return : void
- */
-void
-yy_check_mode (void)
-{
-  if (mode_stack != NULL)
-    {
-      yyverror ("(yy_check_mode) internal error: mode stack still full");
-      exit (1);
-    }
-}
-
-/*
- * yy_pop_mode() -
- * return : void
- */
-void
-yy_pop_mode (void)
-{
-  SCANNER_MODE_RECORD *prev;
-  enum scanner_mode new_mode;
-
-  if (mode_stack == NULL)
-    {
-      yyverror (pp_get_msg (EX_ESQLMSCANSUPPORT_SET, MSG_EMPTY_STACK));
-      exit (1);
-    }
-
-  prev = mode_stack->previous_record;
-  new_mode = mode_stack->previous_mode;
-  recognize_keywords = mode_stack->recognize_keywords;
-  suppress_echo = mode_stack->suppress_echo;
-
-  free_and_init (mode_stack);
-  mode_stack = prev;
-
-  yy_enter (new_mode);
-}
-
-/*
- * yy_mode() -
- * return :
- */
-enum scanner_mode
-yy_mode (void)
-{
-  return mode;
-}
-
-/*
- * yy_enter() -
- * return : void
- * new_mode(in) :
- */
-void
-yy_enter (enum scanner_mode new_mode)
-{
-  static struct
-  {
-    const char *name;
-    int mode;
-    void (*echo_fn) (const char *, int);
-  }
-  mode_info[] =
-  {
-    {
-    "echo", START, &echo_stream},	/* ECHO_MODE 0  */
-    {
-    "sqlx", SQLX_mode, &echo_vstr},	/* SQLX_MODE 1  */
-    {
-    "C", C_mode, &echo_stream},	/* C_MODE    2  */
-    {
-    "expr", EXPR_mode, &echo_stream},	/* EXPR_MODE 3  */
-    {
-    "var", VAR_mode, &echo_vstr},	/* VAR_MODE  4  */
-    {
-    "hostvar", HV_mode, &echo_vstr},	/* HV_MODE   5  */
-    {
-    "buffer", BUFFER_mode, &echo_vstr},	/* BUFFER_MODE  */
-    {
-    "comment", COMMENT_mode, NULL}	/* COMMENT      */
-  };
-
-#if defined(YYDEBUG)
-  if (yydebug)
-    {
-      fprintf (stdout, "Entering %s mode\n", mode_info[new_mode].name);
-      fflush (stdout);
-    }
-#endif
-
-  mode = new_mode;
-  zzmode (mode_info[new_mode].mode);
-  if (mode_info[new_mode].echo_fn)
-    echo_fn = mode_info[new_mode].echo_fn;
-}
-
-/*
- * emit_line_directive() -
- * return : void
- */
-void
-emit_line_directive (void)
-{
-  if (pp_emit_line_directives)
-    {
-      if (yyfilename)
-	fprintf (yyout, "#line %ld \"%s\"\n", zzline, yyfilename);
-      else
-	fprintf (yyout, "#line %ld\n", zzline);
-    }
-
-  need_line_directive = false;
-}
-
-/*
- * ignore_token() -
- * return : void
- */
-static void
-ignore_token (void)
-{
-  yyverror (pp_get_msg (EX_ESQLMSCANSUPPORT_SET, MSG_NOT_PERMITTED),
-	    zzlextext);
-}
-
-/*
- * count_embedded_newlines() -
- * return : void
- */
-static void
-count_embedded_newlines (void)
-{
-  const char *p = zzlextext;
-  for (; *p; ++p)
-    {
-      if (*p == '\n')
-	{
-	  ++zzline;
-	  zzendcol = 0;
-	}
-      ++zzendcol;
-    }
-}
-
-
-/*
- *  */
-
-/*
- * echo_string_constant() -
- * return : void
- * str(in) :
- * length(in) :
- *
- * TODO(M2) : This may be incorrect now!
- * according to ansi, there is no escape syntax for newlines!
- */
-static void
-echo_string_constant (const char *str, int length)
-{
-  const char *p;
-  char *q, *result;
-  int charsLeft = length;
-
-  p = memchr (str, '\n', length);
-
-  if (p == NULL)
-    {
-      ECHO_STR (str, length);
-      return;
-    }
-
-  /*
-   * Bad luck; there's at least one embedded newline, so we have to do
-   * something to get rid of it (if it's escaped).  If it's unescaped
-   * then this is a pretty weird string, but we have to let it go.
-   *
-   * Because we come in here with the opening quote mark still intact,
-   * we're always guaranteed that there is a valid character in front
-   * of the result of strchr().
-   */
-
-  result = q = malloc (length + 1);
-
-  /*
-   * Copy the spans between escaped newlines to the new buffer.  If we
-   * encounter an unescaped newline we just include it.
-   */
-  while (p)
-    {
-
-      if (*(p - 1) == '\\')
-	{
-	  int span;
-
-	  span = p - str - 1;	/* exclude size of escape char */
-	  memcpy (q, str, span);
-	  q += span;
-	  str = p + 1;
-	  length -= 2;
-	  /* Exclude size of skipped escape and newline chars from string */
-	  charsLeft -= (span + 2);
-	}
-
-      p = memchr (p + 1, '\n', charsLeft);
-    }
-
-  memcpy (q, str, charsLeft);
-
-  ECHO_STR (result, length);
-  free_and_init (result);
-}
-
-/*
- * yy_sync_lineno() -
- * return : void
- */
-void
-yy_sync_lineno (void)
-{
-  need_line_directive = true;
-}
-
-/*
- * yy_set_buf() -
- * return : void
- * vstr(in) :
- */
-void
-yy_set_buf (varstring * vstr)
-{
-  current_buf = vstr;
-}
-
-/*
- * yy_get_buf() -
- * return : void
- */
-varstring *
-yy_get_buf (void)
-{
-  return current_buf;
-}
-
-/*
- * yy_erase_last_token() -
- * return : void
- */
-void
-yy_erase_last_token (void)
-{
-  if (current_buf && zzlextext)
-    current_buf->end -= strlen (zzlextext);
-}
-
-/*
- * yyinit() -
- * return : void
- */
-void
-yyinit (void)
-{
-  /*
-   * We've been burned too many times by people who can't alphabetize;
-   * just sort the bloody thing once to protect ourselves from bozos.
-   */
-  qsort (c_keywords,
-	 sizeof (c_keywords) / sizeof (c_keywords[0]),
-	 sizeof (c_keywords[0]), &keyword_cmp);
-  qsort (csql_keywords,
-	 sizeof (csql_keywords) / sizeof (csql_keywords[0]),
-	 sizeof (csql_keywords[0]), &keyword_case_cmp);
-
-  zzline = 1;
-  mode_stack = NULL;
-  recognize_keywords = true;
-  yy_enter (START);
-}
+int check_c_identifier (char *name);
+int check_identifier (KEYWORD_TABLE * keywords, char *name);
 
 #endif /* _ESQL_SCANNER_SUPPORT_H_ */

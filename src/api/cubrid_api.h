@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -135,6 +135,7 @@ struct ci_time_s
   short hour;
   short minute;
   short second;
+  short millisecond;
 };
 
 typedef enum ci_conn_option CI_CONNECTION_OPTION;
@@ -177,7 +178,9 @@ enum ci_type
   CI_TYPE_MONETARY,
   CI_TYPE_NUMERIC,
   CI_TYPE_OID,
-  CI_TYPE_COLLECTION
+  CI_TYPE_COLLECTION,
+  CI_TYPE_BIGINT,
+  CI_TYPE_DATETIME
 };
 
 enum ci_conn_option

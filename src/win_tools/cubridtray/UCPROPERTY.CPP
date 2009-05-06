@@ -130,7 +130,7 @@ CUCInfo	*ucinfo;
 	m_ucp_list.InsertColumn(6, theLang.GetMessage(TITLE_UCP_MAX_NUM_APPL_SERVER), LVCFMT_CENTER, 4*10);
 
 	if (m_unicasconf) {
-		int count = m_unicasconf->m_List.GetCount();
+		int count = (int) m_unicasconf->m_List.GetCount();
 		for (int i = 0; i < count; i++) {
 			ucinfo = (CUCInfo *)m_unicasconf->m_List.GetAt(m_unicasconf->m_List.FindIndex(i));
 			DisplayItem(ucinfo, i);
@@ -150,7 +150,7 @@ CUCInfo	*ucinfo;
 void CUCProperty::OnUcpNew() 
 {
 CUCInfo	*ucinfo;
-int		index = m_unicasconf->m_List.GetCount();
+int		index = (int) m_unicasconf->m_List.GetCount();
 
 	if (!m_detail) {
 		m_detail = new CUCPDetail();

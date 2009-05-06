@@ -389,6 +389,57 @@ css_send_req_to_server (char *host, int request,
 }
 
 /*
+ * css_send_req_to_server_with_large_data() - send a request to server with
+ *    large data
+ *   return:
+ *   host(in): name of the remote host
+ *   request(in): the request to send to the server.
+ *   arg_buffer(in): a packed buffer containing all the arguments to be
+ *               sent to the server.
+ *   arg_buffer_size(in): The size of arg_buffer.
+ *   data_buffer(in): additional data to send to the server
+ *   data_buffer_size(in): The size of the data buffer.
+ *   reply_buffer(in): enroll a data buffer to hold the resulting data.
+ *   reply_buffer_size(in): The size of the reply buffer.
+ *
+ * Note: This routine will allow the client to send a request to a host and
+ *       also enroll a data buffer to be filled with returned data.
+ */
+unsigned int
+css_send_req_to_server_with_large_data (char *host, int request,
+					char *arg_buffer, int arg_buffer_size,
+					char *data_buffer,
+					FSIZE_T data_buffer_size,
+					char *reply_buffer, int reply_size)
+{
+  CSS_MAP_ENTRY *entry;
+  unsigned short rid;
+
+  entry = css_return_open_entry (host, &css_Client_anchor);
+  if (entry != NULL)
+    {
+      entry->conn->transaction_id = tm_Tran_index;
+      css_Errno = css_send_req_with_large_buffer (entry->conn, request, &rid,
+						  arg_buffer, arg_buffer_size,
+						  data_buffer,
+						  data_buffer_size,
+						  reply_buffer, reply_size);
+      if (css_Errno == NO_ERRORS)
+	{
+	  return (css_make_eid (entry->id, rid));
+	}
+      else
+	{
+	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+	  return 0;
+	}
+    }
+
+  css_Errno = SERVER_WAS_NOT_FOUND;
+  return 0;
+}
+
+/*
  * css_send_req_to_server_2_data() - send a request to server
  *   return:
  *   host(in): name of the remote host

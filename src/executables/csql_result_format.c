@@ -97,6 +97,7 @@ static DB_TYPE_NUMERIC_PROFILE default_numeric_profile = {
 /*
  * integer, short type conversion profile
  */
+typedef struct db_type_integer_profile DB_TYPE_BIGINT_PROFILE;
 typedef struct db_type_integer_profile DB_TYPE_INTEGER_PROFILE;
 typedef struct db_type_integer_profile DB_TYPE_SHORT_PROFILE;
 
@@ -115,6 +116,10 @@ struct db_type_integer_profile
 #define INT_FORMAT_OCTAL                'o'
 #define INT_FORMAT_HEXADECIMAL          'x'
 #define INT_FORMAT_CHARACTER            'c'
+
+static DB_TYPE_BIGINT_PROFILE default_bigint_profile = {
+  INT_FORMAT_SIGNED_DECIMAL, 0, false, false, false
+};
 
 static DB_TYPE_INTEGER_PROFILE default_int_profile = {
   INT_FORMAT_SIGNED_DECIMAL, 0, false, false, false
@@ -298,9 +303,9 @@ static char *double_to_string (double double_value, int field_width,
 			       bool commas, char conversion);
 static char *time_as_string (DB_TIME * time_value, const char *conversion);
 static char *date_as_string (DB_DATE * date_value, int format);
-static char *int_to_string (int int_value, int field_width,
-			    bool leading_zeros, bool leading_symbol,
-			    bool commas, char conversion);
+static char *bigint_to_string (DB_BIGINT int_value, int field_width,
+			       bool leading_zeros, bool leading_symbol,
+			       bool commas, char conversion);
 static UX_CHAR money_symbol (DB_MONETARY * money);
 static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
@@ -546,7 +551,7 @@ double_to_string (double double_value, int field_width,
     {
       if (leading_symbol > 1)
 	{			/* a kludge for now, to accommodate MediaMaster */
-	  format_string[i++] = leading_symbol;
+	  format_string[i++] = (char) leading_symbol;
 	  if (overall_fieldwidth)
 	    overall_fieldwidth++;
 	}
@@ -792,11 +797,12 @@ date_as_string (DB_DATE * date_value, int format)
  *   conversion(in): conversion format charactern
  */
 static char *
-int_to_string (int int_value, int field_width, bool leading_zeros,
-	       bool leading_symbol, bool commas, char conversion)
+bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros,
+		  bool leading_symbol, bool commas, char conversion)
 {
   char numeric_conversion_string[1024];
   char format_string[10];
+  char long_decimal = 'l';
   int i = 0;
   int overall_fieldwidth;
 
@@ -846,7 +852,11 @@ int_to_string (int int_value, int field_width, bool leading_zeros,
     {
       format_string[i++] = '+';
     }
+
   format_string[i++] = '*';
+
+  format_string[i++] = long_decimal;
+  format_string[i++] = long_decimal;
   format_string[i++] = conversion;
   format_string[i++] = (char) 0;
 
@@ -1253,7 +1263,7 @@ string_to_string (const char *string_value,
 
   if (result_length)
     {
-      *result_length = ptr - return_string;
+      *result_length = CAST_STRLEN (ptr - return_string);
     }
   return return_string;
 }
@@ -1277,25 +1287,37 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 
   switch (DB_VALUE_TYPE (value))
     {
+    case DB_TYPE_BIGINT:
+      result = bigint_to_string (DB_GET_BIGINT (value),
+				 default_bigint_profile.fieldwidth,
+				 default_bigint_profile.leadingzeros,
+				 default_bigint_profile.leadingsymbol,
+				 default_bigint_profile.commas,
+				 default_bigint_profile.format);
+      if (result)
+	{
+	  len = strlen (result);
+	}
+      break;
     case DB_TYPE_INTEGER:
-      result = int_to_string (DB_GET_INTEGER (value),
-			      default_int_profile.fieldwidth,
-			      default_int_profile.leadingzeros,
-			      default_int_profile.leadingsymbol,
-			      default_int_profile.commas,
-			      default_int_profile.format);
+      result = bigint_to_string (DB_GET_INTEGER (value),
+				 default_int_profile.fieldwidth,
+				 default_int_profile.leadingzeros,
+				 default_int_profile.leadingsymbol,
+				 default_int_profile.commas,
+				 default_int_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_SHORT:
-      result = int_to_string (SHORT_TO_INT (DB_GET_SHORT (value)),
-			      default_short_profile.fieldwidth,
-			      default_short_profile.leadingzeros,
-			      default_short_profile.leadingsymbol,
-			      default_short_profile.commas,
-			      default_short_profile.format);
+      result = bigint_to_string (SHORT_TO_INT (DB_GET_SHORT (value)),
+				 default_short_profile.fieldwidth,
+				 default_short_profile.leadingzeros,
+				 default_short_profile.leadingsymbol,
+				 default_short_profile.commas,
+				 default_short_profile.format);
       if (result)
 	{
 	  len = strlen (result);
@@ -1433,8 +1455,23 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       break;
     case DB_TYPE_UTIME:
       {
-	char buf[32];
+	char buf[TIMESTAMP_BUF_SIZE];
 	if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (value)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+    case DB_TYPE_DATETIME:
+      {
+	char buf[DATETIME_BUF_SIZE];
+	if (db_datetime_to_string (buf, sizeof (buf),
+				   DB_GET_DATETIME (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }

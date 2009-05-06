@@ -194,11 +194,6 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
-extern void slargeobjmgr_create (THREAD_ENTRY * thread_p,
-				 unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p,
-				  unsigned int rid, char *request,
-				  int reqlen);
 extern void slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
 extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -276,7 +271,8 @@ extern void sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
-extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid);
+extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
 extern void sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
 extern void sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -327,6 +323,12 @@ extern int xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
 					   int range_low, int range_high,
 					   const char *secondary_prompt,
 					   int reprompt_value);
+extern int xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
+					  char *logpb_area, int area_size,
+					  LOGWR_MODE mode);
+extern int xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p, 
+					     PAGEID * fpageid_ptr, 
+					     LOGWR_MODE * mode_ptr);
 extern void shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
 					      int reqlen);

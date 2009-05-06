@@ -31,7 +31,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#if !defined(WINDOWS)
+#if defined(WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #endif /* !WINDOWS */
 
@@ -58,9 +60,9 @@ struct holder_ref
 {
   char *pathname;
   DB_OBJECT *holder;
-  int savepoint_detected;
   struct holder_ref *savepoint;
   struct holder_ref *next;
+  int savepoint_detected;
 };
 
 /*different types of savepoints */
@@ -423,7 +425,7 @@ esm_undo (const int buffer_size, char *buffer)
  */
 
 void
-esm_dump (const int buffer_size, void *data)
+esm_dump (FILE *fp, const int buffer_size, void *data)
 {
   char *shadow_file, *source_file;
   char *buffer;
@@ -435,12 +437,12 @@ esm_dump (const int buffer_size, void *data)
   if (length < buffer_size)
     {
       source_file = buffer + length + 1;
-      fprintf (stdout, "esm_dump: shadow_file = %s,\n original file = %s\n",
+      fprintf (fp, "esm_dump: shadow_file = %s,\n original file = %s\n",
 	       shadow_file, source_file);
     }
   else
     {
-      fprintf (stdout,
+      fprintf (fp,
 	       "esm_dump error, shadow file length longer than buffer size\n");
     }
 }

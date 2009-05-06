@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -17,10 +17,8 @@
  *
  */
 
-
 /*
- *      object_template.h - Definitions for the object manager
- *
+ * object_template.h - Definitions for the object manager
  */
 
 #ifndef _OBJECT_TEMPLATE_H_
@@ -33,8 +31,6 @@
 #include "area_alloc.h"
 #include "object_representation.h"
 #include "class_object.h"
-
-
 
 #define OBT_BASE_OBJECT(template_ptr) \
   (((template_ptr)->base_object != NULL) ? \
@@ -49,46 +45,11 @@
    (template_ptr)->base_classobj : (template_ptr)->classobj)
 
 /*
- * ERROR MACROS
- *
- * Note :
- *    Shorthand macros for common calls to the error message system.
- *
- */
-
-#define WARN(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#if defined(WINDOWS) && defined(ERROR)
-#undef ERROR
-#endif /* WINDOWS && ERROR */
-
-#define ERROR(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR1(error, code, arg1) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
-
-#define ERROR2(error, code, arg1, arg2) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); } while (0)
-
-#define ERROR3(error, code, arg1, arg2, arg3) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); } while (0)
-
-
-/*
  * ATT_IS_UNIQUE
  *
  * Note :
  *    Checks to see if an attribute has the UNIQUE integrity constraint.
- *
  */
-
 #define ATT_IS_UNIQUE(att) \
   (classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_PRIMARY_KEY, NULL) || \
    classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_UNIQUE, NULL) || \
@@ -100,9 +61,7 @@
  * Note :
  *    Substructure of OBJ_TEMPLATE.  Used to store information about
  *    a pending attribute assignment.
- *
  */
-
 typedef struct obj_tempassign
 {
 
@@ -130,9 +89,7 @@ typedef struct obj_tempassign
  *    Used to define a set of attribute assignments that are to be
  *    considered as a single operation.  Either all of the assignments
  *    will be applied or none.
- *
  */
-
 typedef struct obj_template
 {
 
@@ -160,11 +117,11 @@ typedef struct obj_template
   /* template assignment vector */
   OBJ_TEMPASSIGN **assignments;
 
-  /* Number of assignments allocated for the vector */
-  int nassigns;
-
   /* optional address to store new object pointer when created */
   DB_VALUE *label;
+
+  /* Number of assignments allocated for the vector */
+  int nassigns;
 
   /* Used to detect cycles in the template hierarchy */
   unsigned int traversal;
@@ -226,13 +183,7 @@ extern bool obt_Check_uniques;
 extern bool obt_Enable_autoincrement;
 
 
-/*
- *
- *       		   OBJECT TEMPLATE FUNCTIONS
- *
- *
- */
-
+/* OBJECT TEMPLATE FUNCTIONS */
 
 extern OBJ_TEMPLATE *obt_def_object (MOP class_);
 extern OBJ_TEMPLATE *obt_edit_object (MOP object);
@@ -251,12 +202,8 @@ extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 		       int base_assignment, DB_VALUE * value,
 		       SM_VALIDATION * valid);
 
-/*
- *
- *                             UTILITY FUNCTIONS
- *
- *
- */
+/* UTILITY FUNCTIONS */
+
 extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att,
 				       DB_VALUE * proposed_value,
 				       SM_VALIDATION * valid);

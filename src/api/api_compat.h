@@ -34,7 +34,7 @@ struct db_session
      next call to db_compile_statement.       */
   int line_offset;		/* amount to add to parsers line number */
   int column_offset;		/* amount to add to parsers column number   */
-  PARSER_CONTEXT *parser;		/* handle to parser context structure */
+  PARSER_CONTEXT *parser;	/* handle to parser context structure */
   DB_QUERY_TYPE **type_list;	/* for storing "nice" column headings */
   /* type_list[stmt_ndx] is itself an array.  */
   PT_NODE **statements;		/* statements to be processed in this session */

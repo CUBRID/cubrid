@@ -497,12 +497,12 @@ odbc_set_diag_by_cci (ODBC_DIAG * diag, int cci_err_code, char *message)
 *	현재 지원하지 않는다.
 ************************************************************************/
 PUBLIC RETCODE
-odbc_get_diag_field (short handle_type,
-		     void *handle,
-		     short rec_number,
-		     short diag_identifier,
-		     void *diag_info_ptr,
-		     short buffer_length, long *string_length_ptr)
+odbc_get_diag_field (SQLSMALLINT handle_type,
+		     SQLHANDLE handle,
+		     SQLSMALLINT rec_number,
+		     SQLSMALLINT diag_identifier,
+		     SQLPOINTER diag_info_ptr,
+		     SQLSMALLINT buffer_length, SQLLEN *string_length_ptr)
 {
   ODBC_ENV *env;
   ODBC_DIAG_RECORD *record;
@@ -730,13 +730,13 @@ odbc_get_diag_field (short handle_type,
 * NOTE:
 ************************************************************************/
 PUBLIC RETCODE
-odbc_get_diag_rec (short handle_type,
-		   void *handle,
-		   short rec_number,
-		   char *sqlstate,
-		   long *native_error_ptr,
-		   char *message_text,
-		   short buffer_length, long *text_length_ptr)
+odbc_get_diag_rec (SQLSMALLINT handle_type,
+		   SQLHANDLE *handle,
+		   SQLSMALLINT rec_number,
+		   SQLCHAR *sqlstate,
+		   SQLINTEGER *native_error_ptr,
+		   SQLCHAR *message_text,
+		   SQLSMALLINT buffer_length, SQLLEN *text_length_ptr)
 {
   RETCODE status = ODBC_SUCCESS, rc;
   ODBC_DIAG_RECORD *record;

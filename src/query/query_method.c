@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -29,7 +29,7 @@
 #include "xasl_support.h"
 #include "query_method.h"
 #include "object_accessor.h"
-#include "jsp_sr.h"
+#include "jsp_cl.h"
 
 #include "object_representation.h"
 #include "network.h"
@@ -137,7 +137,7 @@ method_send_value_to_server (DB_VALUE * dbval_p,
   int length;
   int action;
 
-  dbval_length = or_db_value_size (dbval_p);
+  dbval_length = OR_VALUE_ALIGNED_SIZE (dbval_p);
   while ((vacomm_buffer_p->cur_pos + dbval_length) > vacomm_buffer_p->size)
     {
       if (vacomm_buffer_p->cur_pos == 0)
@@ -200,12 +200,8 @@ method_send_value_to_server (DB_VALUE * dbval_p,
     }
 
   ++vacomm_buffer_p->no_vals;
-  p = or_pack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos,
-			dbval_p);
-  if (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos + dbval_length != p)
-    {
-      return ER_FAILED;
-    }
+  p = or_pack_db_value (vacomm_buffer_p->buffer
+			+ vacomm_buffer_p->cur_pos, dbval_p);
 
   vacomm_buffer_p->cur_pos += dbval_length;
   return NO_ERROR;
@@ -386,7 +382,7 @@ method_invoke_for_server (unsigned int rc,
     }
 
   /* tfile_vfid pointer as query id for method scan */
-  cursor_id.query_id = (int) list_id_p->tfile_vfid;
+  cursor_id.query_id = (QUERY_ID) list_id_p->tfile_vfid;
 
   cursor_set_oid_columns (&cursor_id, oid_cols,
 			  method_sig_list_p->no_methods);

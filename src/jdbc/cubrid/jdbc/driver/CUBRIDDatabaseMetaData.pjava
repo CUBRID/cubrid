@@ -276,7 +276,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
       "SYS_USER, TEST, THERE, TO_CHAR, TO_DATE, TO_NUMBER, TO_TIME, TO_TIMESTAMP, "
       +
       "TRIGGER, TYPE, UNDER, USE, UTIME, VARIABLE, VARIANCE, VCLASS, VIRTUAL, "
-      + "VISIBLE, WAIT, WHILE, WITHOUT";
+      + "VISIBLE, WAIT, WHILE, WITHOUT, SYS_DATETIME, TO_DATETIME";
   }
 
   public synchronized String getNumericFunctions () throws SQLException
@@ -292,7 +292,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
       "BIT_LENGTH, CHAR_LENGTH, LOWER, LTRIM, OCTET_LENGTH, POSITION, REPLACE, "
       +
       "RPAD, RTRIM, SUBSTRING, TRANSLATE, TRIM, TO_CHAR, TO_DATE, TO_NUMBER, "
-      + "TO_TIME, TO_TIMESTAMP, UPPER";
+      + "TO_TIME, TO_TIMESTAMP, TO_DATETIME, UPPER";
   }
 
   public synchronized String getSystemFunctions () throws SQLException
@@ -305,7 +305,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
   {
     checkIsOpen ();
     return
-      "ADD_MONTHS, LAST_DAY, MONTH_BETWEEN, SYS_DATE, SYS_TIME, SYS_TIMESTMAP, TO_DATE, TO_TIME, TO_TIMESTAMP";
+      "ADD_MONTHS, LAST_DAY, MONTH_BETWEEN, SYS_DATE, SYS_TIME, SYS_TIMESTMAP, TO_DATE, TO_TIME, TO_TIMESTAMP, TO_DATETIME";
   }
 
   public synchronized String getSearchStringEscape () throws SQLException
@@ -1275,6 +1275,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	    value[4] = new Short ((short) java.sql.Types.SMALLINT);
 	    value[5] = "SMALLINT";
 	  }
+	else if (type == UUType.U_TYPE_BIGINT)
+	  {
+	    value[4] = new Short ((short) java.sql.Types.BIGINT);
+	    value[5] = "BIGINT";
+	  }
 	else if (type == UUType.U_TYPE_INT)
 	  {
 	    value[4] = new Short ((short) java.sql.Types.INTEGER);
@@ -1314,6 +1319,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	  {
 	    value[4] = new Short ((short) java.sql.Types.TIMESTAMP);
 	    value[5] = "TIMESTAMP";
+	  }
+	else if (type == UUType.U_TYPE_DATETIME)
+	  {
+	    value[4] = new Short ((short) java.sql.Types.TIMESTAMP);
+	    value[5] = "DATETIME";
 	  }
 	else if (type == UUType.U_TYPE_OBJECT)
 	  {
@@ -1613,6 +1623,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	    value[3] = "INTEGER";
 	    value[4] = new Integer (us2.getInt (3));
 	    break;
+	  case UUType.U_TYPE_BIGINT:
+	    value[2] = new Integer (java.sql.Types.BIGINT);
+	    value[3] = "BIGINT";
+	    value[4] = new Integer (us2.getInt (3));
+	    break;
 	  case UUType.U_TYPE_DOUBLE:
 	    value[2] = new Integer (java.sql.Types.DOUBLE);
 	    value[3] = "DOUBLE";
@@ -1641,6 +1656,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	  case UUType.U_TYPE_TIMESTAMP:
 	    value[2] = new Integer (java.sql.Types.TIMESTAMP);
 	    value[3] = "TIMESTAMP";
+	    value[4] = new Integer (0);
+	    break;
+	  case UUType.U_TYPE_DATETIME:
+	    value[2] = new Integer (java.sql.Types.TIMESTAMP);
+	    value[3] = "DATETIME";
 	    value[4] = new Integer (0);
 	    break;
 	  case UUType.U_TYPE_NULL:
@@ -1827,13 +1847,14 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
     CUBRIDResultSetWithoutQuery rs =
       new CUBRIDResultSetWithoutQuery (18, types,
 				       names, nullable);
-
-    Object[]column1 =
+    /* Type Name */
+    Object[]column1 =  
     {
     "BIT", "NUMERIC", "NUMERIC", "BIT VARYING",
-	"BIT VARYING", "BIT", "VARCHAR", "CHAR", "NUMERIC", "INTEGER",
+	"BIT VARYING", "BIT", "VARCHAR", "CHAR", "NUMERIC", "INTEGER", "BIGINT",
 	"SMALLINT", "DOUBLE", "FLOAT", "DOUBLE", "VARCHAR", "DATE", "TIME",
-	"TIMESTAMP"};
+	"TIMESTAMP", "DATETIME"};
+    /* Data Type */
     Object[]column2 =
     {
     new Short ((short) java.sql.Types.BIT),
@@ -1846,6 +1867,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	new Short ((short) java.sql.Types.CHAR),
 	new Short ((short) java.sql.Types.NUMERIC),
 	new Short ((short) java.sql.Types.INTEGER),
+	new Short ((short) java.sql.Types.BIGINT),
 	new Short ((short) java.sql.Types.SMALLINT),
 	new Short ((short) java.sql.Types.FLOAT),
 	new Short ((short) java.sql.Types.REAL),
@@ -1853,29 +1875,38 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	new Short ((short) java.sql.Types.VARCHAR),
 	new Short ((short) java.sql.Types.DATE),
 	new Short ((short) java.sql.Types.TIME),
+	new Short ((short) java.sql.Types.TIMESTAMP),
 	new Short ((short) java.sql.Types.TIMESTAMP)};
+    /* Precision */
     Object[]column3 =
     {
     new Integer (8), new Integer (3), new Integer (38),
 	new Integer (1073741823), new Integer (1073741823),
 	new Integer (1073741823), new Integer (1073741823),
-	new Integer (1073741823), new Integer (38), new Integer (10),
+	new Integer (1073741823), new Integer (38), new Integer (10), 
+	new Integer (19),
 	new Integer (5), new Integer (38), new Integer (38),
 	new Integer (38), new Integer (1073741823), new Integer (10),
-	new Integer (11), new Integer (22)};
+	new Integer (11), new Integer (22), new Integer (26)};
+    /* Literal prefix */
     Object[]column4 =
     {
     "B'", null, null, "X'", "X'", "X'", "'", "'", null,
-	null, null, null, null, null, "'", "DATE'", "TIME'", "TIMESTAMP'"};
+	null, null, null, null, null, null, "'", "DATE'", "TIME'", "TIMESTAMP'",
+	"DATETIME'"};
+    /* Literal Suffix */
     Object[]column5 =
     {
     "'", null, null, "'", "'", "'", "'", "'", null, null,
-	null, null, null, null, "'", "'", "'", "'"};
+	null, null, null, null, null, "'", "'", "'", "'", "'"};
+    /* Create Params */
     Object[]column6 =
     {
-    "(8)", "(3)", null, null, null, null, null, null,
+    "(8)", "(3)", null, null, null, null, null, null, null, null,
 	null, null, null, null, null, null, null, null, null, null};
+    /* Nullable */ 
     Object column7 = new Short ((short) typeNullable);
+    /* case sensitive */
     Object[]column8 =
     {
     new Boolean (false), new Boolean (false),
@@ -1884,7 +1915,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	new Boolean (false), new Boolean (false), new Boolean (false),
 	new Boolean (false), new Boolean (false), new Boolean (false),
 	new Boolean (true), new Boolean (false), new Boolean (false),
-	new Boolean (false)};
+	new Boolean (false), new Boolean (false), new Boolean (false)};
+    /* Searchable */
     Object[]column9 =
     {
     new Short ((short) typePredBasic),
@@ -1893,53 +1925,70 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	new Short ((short) typePredBasic),
 	new Short ((short) typePredBasic),
 	new Short ((short) typePredBasic),
-	new Short ((short) typeSearchable),
-	new Short ((short) typeSearchable),
-	new Short ((short) typePredBasic),
-	new Short ((short) typePredBasic),
-	new Short ((short) typePredBasic),
-	new Short ((short) typePredBasic),
-	new Short ((short) typePredBasic),
 	new Short ((short) typePredBasic),
 	new Short ((short) typeSearchable),
+	new Short ((short) typeSearchable),
 	new Short ((short) typePredBasic),
-	new Short ((short) typePredBasic), new Short ((short) typePredBasic)};
+	new Short ((short) typePredBasic),
+	new Short ((short) typePredBasic),
+	new Short ((short) typePredBasic),
+	new Short ((short) typePredBasic),
+	new Short ((short) typePredBasic),
+	new Short ((short) typeSearchable),
+	new Short ((short) typePredBasic),
+	new Short ((short) typePredBasic), 
+	new Short ((short) typePredBasic), 
+	new Short ((short) typePredBasic)};
+    /* Unsigned attribute */
     Object[]column10 =
     {
     new Boolean (true), new Boolean (false),
 	new Boolean (false), new Boolean (true), new Boolean (true),
 	new Boolean (true), new Boolean (true), new Boolean (true),
 	new Boolean (false), new Boolean (false), new Boolean (false),
+	new Boolean (false),
 	new Boolean (false), new Boolean (false), new Boolean (false),
 	new Boolean (true), new Boolean (true), new Boolean (true),
-	new Boolean (true)};
+	new Boolean (true), new Boolean (true)};
+    /* FIXED_PREC_SCALE */
     Object[]column11 =
     {
     new Boolean (false), new Boolean (true),
 	new Boolean (true), new Boolean (false), new Boolean (false),
 	new Boolean (false), new Boolean (false), new Boolean (false),
 	new Boolean (true), new Boolean (false), new Boolean (false),
+	new Boolean (false),
 	new Boolean (true), new Boolean (true), new Boolean (true),
 	new Boolean (false), new Boolean (false), new Boolean (false),
-	new Boolean (false)};
+	new Boolean (false), new Boolean (false)};
+    /* AUTO_INCREMENT */
     Object column12 = new Boolean (false);
+    /* LOCAL_TYPE_NAME */
     Object[]column13 = column1;
+    /* MINIMUM_SCALE */
     Object[]column14 =
     {
     new Integer (0), new Integer (0), new Integer (0),
 	new Integer (0), new Integer (0), new Integer (0), new Integer (0),
 	new Integer (0), new Integer (0), new Integer (0), new Integer (0),
+	new Integer (0), 
 	new Integer (0), new Integer (0), new Integer (0), new Integer (0),
-	new Integer (0), new Integer (0), new Integer (0)};
+	new Integer (0), new Integer (0), new Integer (0), new Integer (0)};
+    /* MAXIMUM_SCALE */
     Object[]column15 =
     {
     new Integer (0), new Integer (0), new Integer (38),
 	new Integer (0), new Integer (0), new Integer (0), new Integer (0),
 	new Integer (0), new Integer (38), new Integer (0), new Integer (0),
+	new Integer (0),
 	new Integer (38), new Integer (38), new Integer (38),
-	new Integer (0), new Integer (0), new Integer (0), new Integer (0)};
+	new Integer (0), new Integer (0), new Integer (0), new Integer (0),
+	new Integer (0)};
+    /* SQL_DATA_TYPE */
     Object column16 = null;
+    /* SQL_DATETIME_SUB */
     Object column17 = column16;
+    /* NUM_PREC_RADIX */
     Object column18 = new Integer (10);
 
     Object[]value = new Object[18];

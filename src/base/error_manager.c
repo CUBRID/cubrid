@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,25 +35,31 @@
 #include <time.h>
 #include <signal.h>
 #include <assert.h>
+
 #if defined (SERVER_MODE) && !defined (WINDOWS)
 #include <pthread.h>
 #endif /* SERVER_MODE && !WINDOWS */
+
 #if defined (WINDOWS)
 #include <process.h>
+#include <io.h>
 #else /* WINDOWS */
+#include <sys/time.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <syslog.h>
 #endif /* WINDOWS */
+
 #if !defined(CS_MODE)
 #include <sys/types.h>
 #include <sys/stat.h>
 #endif /* !CS_MODE */
-#if !defined (WINDOWS)
-#include <syslog.h>
-#endif /* !WINDOWS */
+
 #if defined (SOLARIS)
 #include <netdb.h>
 #endif /* SOLARIS */
 
+#include "porting.h"
 #include "chartype.h"
 #include "language_support.h"
 #include "memory_alloc.h"
@@ -75,7 +81,7 @@
 #include "error_code.h"
 #endif /* !CS_MODE */
 #include "stack_dump.h"
-#include "porting.h"
+#include "log_impl.h"
 
 #if defined (WINDOWS)
 #include "wintcp.h"
@@ -301,7 +307,7 @@ static void er_stop_on_error (void);
 static int er_study_spec (const char *conversion_spec, char *simple_spec,
 			  int *position, int *width, int *va_class);
 static void er_study_fmt (ER_FMT * fmt);
-static size_t er_estimate_size (ER_FMT * fmt, va_list * ap);
+static int er_estimate_size (ER_FMT * fmt, va_list * ap);
 static ER_FMT *er_find_fmt (int err_id);
 static void er_init_fmt (ER_FMT * fmt);
 static void er_clear_fmt (ER_FMT * fmt);
@@ -513,9 +519,9 @@ static bool
 er_file_isa_null_device (const char *path)
 {
 #if defined(WINDOWS)
-  char *null_dev = "NUL";
+  const char *null_dev = "NUL";
 #else /* UNIX family */
-  char *null_dev = "/dev/null";
+  const char *null_dev = "/dev/null";
 #endif
 
   if (path != NULL && strcmp (path, null_dev) == 0)
@@ -606,7 +612,7 @@ er_start (THREAD_ENTRY * th_entry)
 	       * because this may be getting set at some naive customer site.*/
 	      char path[PATH_MAX];
 	      sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	      er_Msglog = er_file_open (path);;
+	      er_Msglog = er_file_open (path);
 	    }
 	  if (er_Msglog == NULL)
 	    {
@@ -1058,8 +1064,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 {
   va_list ap;
   const char *os_error;
-  size_t new_size;
-  int r;
+  int new_size;
   ER_FMT *er_fmt = NULL;
 #if defined (SERVER_MODE)
   ER_MSG *er_Msg;
@@ -1192,8 +1197,15 @@ er_stop_on_error (void)
   int exit_requested;
 
 #if !defined (WINDOWS)
+  char user_name[L_cuserid];
+
+  if (getuserid (user_name, L_cuserid) == NULL)
+    {
+      strcpy (user_name, "???");
+    }
+
   syslog (LOG_ALERT, er_cached_msg[ER_STOP_SYSLOG],
-	  rel_name (), er_errid (), cuserid (NULL), getpid ());
+	  rel_name (), er_errid (), user_name, getpid ());
 #endif /* !WINDOWS */
   (void) fprintf (stderr, "%s", er_cached_msg[ER_ER_ASK]);
   if (scanf ("%d", &exit_requested) != 1)
@@ -1308,9 +1320,9 @@ er_log (void)
   time_array[255] = '\0';
   snprintf (time_array +
 	    strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
-	    ".%d", tv.tv_usec / 1000);
+	    ".%03ld", tv.tv_usec / 1000);
 
-  more_info_p = "";
+  more_info_p = (char *) "";
 
   if (++er_Eid == 0)
     {
@@ -1324,7 +1336,7 @@ er_log (void)
       char *prog_name = NULL;
       char *user_name = NULL;
       char *host_name = NULL;
-      int *pid = 0;
+      int pid = 0;
 
       if (logtb_find_client_name_host_pid (tran_index, &prog_name,
 					   &user_name, &host_name,
@@ -1765,7 +1777,7 @@ er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
       time_array[255] = '\0';
       snprintf (time_array +
 		strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
-		".%d", tv.tv_usec / 1000);
+		".%03ld", tv.tv_usec / 1000);
 
       (void) fprintf (out, er_cached_msg[ER_LOG_DEBUG_NOTIFY], time_array,
 		      file_name, line_no);
@@ -2237,7 +2249,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
     }
   *va_class = class_;
 
-  return q - conversion_spec;
+  return CAST_STRLEN (q - conversion_spec);
 }
 
 /*
@@ -2349,11 +2361,11 @@ er_study_fmt (ER_FMT * fmt)
  *
  * DOESN'T AFFECT THE CALLER'S VIEW OF THE VA_LIST.
  */
-static size_t
+static int
 er_estimate_size (ER_FMT * fmt, va_list * ap)
 {
   int i, n, width;
-  size_t len;
+  int len;
   va_list args;
   const char *str;
 
@@ -2776,7 +2788,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
       /*
        * Copy the text between the last conversion spec and the next.
        */
-      span = q - p;
+      span = CAST_STRLEN (q - p);
       span = MIN (limit, span);
       strncat (er_Msg->msg_area, p, span);
       p = q + 2;

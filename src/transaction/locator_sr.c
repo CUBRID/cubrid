@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1963,8 +1963,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       assign->obj->operation = LC_FETCH;
       assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
 
-      /* Round the length of the object to an alignment of sizeof (int) */
-      DB_ALIGN (assign->recdes.length, INT_ALIGNMENT);
+      assign->recdes.length = DB_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
       assign->area_offset += assign->recdes.length;
       assign->recdes.data += assign->recdes.length;
       assign->recdes.area_size -= (assign->recdes.length +
@@ -2543,8 +2542,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	  obj->offset = offset;
 	  obj->operation = LC_FETCH;
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
-	  round_length = recdes.length;
-	  DB_ALIGN (round_length, INT_ALIGNMENT);
+	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
 	  offset += round_length;
 	  recdes.data += round_length;
 	  recdes.area_size -= round_length + sizeof (*obj);
@@ -3041,7 +3039,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid,
   void *new_ptr;
   int i, tmp_ref_num, number;
   MHT_TABLE *lc_ht_permoids = NULL;	/* Hash table of already found oids */
-  unsigned int heap_id;		/* Id of Heap allocator */
+  HL_HEAPID heap_id;		/* Id of Heap allocator */
 
   struct ht_obj_info
   {
@@ -3091,7 +3089,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid,
   /* Use a chunky memory manager, for fewer mallocs of small stuff */
   heap_id = db_create_fixed_heap (sizeof (struct ht_obj_info),
 				  LOCATOR_GUESS_HT_SIZE);
-  if (heap_id == 0)
+  if (heap_id == HL_NULL_HEAPID)
     {
       goto error;
     }
@@ -3816,11 +3814,13 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
   BTID btid;
   DB_VALUE *key_dbvalue;
   DB_VALUE dbvalue;
-  char buf[DBVAL_BUFSIZE];
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
   OID unique_oid;
   bool is_null;
   int error_code = NO_ERROR;
+
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL,
 					      &index_attrinfo, &idx_info);
@@ -3848,7 +3848,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 	}
 
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, &index_attrinfo,
-					    recdes, &btid, &dbvalue, buf);
+					    recdes, &btid, &dbvalue,
+					    aligned_buf);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -5841,14 +5842,16 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   int i, num_btids;
   HEAP_CACHE_ATTRINFO index_attrinfo;
   BTID btid;
-  DB_VALUE *key_dbvalue, *key_ins_del;
+  DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique;
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  char buf[DBVAL_BUFSIZE];
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
   int error_code = NO_ERROR;
+
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   /*
    *  Populate the index_attrinfo structure.
@@ -5890,7 +5893,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
        *  pointer to it.
        */
       key_dbvalue = heap_attrvalue_get_key (thread_p, i, &index_attrinfo,
-					    recdes, &btid, &dbvalue, buf);
+					    recdes, &btid, &dbvalue,
+					    aligned_buf);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -6096,7 +6100,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   HEAP_CACHE_ATTRINFO *old_attrinfo = NULL;
   int new_num_found, old_num_found;
   BTID new_btid, old_btid;
+#if !defined(WINDOWS)
   BTID *tmp_btid;
+#endif
   int pk_btid_index = -1;
   DB_VALUE *new_key = NULL, *old_key = NULL;
   DB_VALUE *repl_old_key = NULL;
@@ -6109,10 +6115,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
-  char newbuf[DBVAL_BUFSIZE];
-  char oldbuf[DBVAL_BUFSIZE];
+  char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
+  char oldbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_oldbuf;
   DB_TYPE dbval_type;
   int error_code;
+
+  aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
+  aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
   new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL,
 						  &space_attrinfo[0],
@@ -6228,9 +6237,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	}
 
       new_key = heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes,
-					&new_btid, &new_dbvalue, newbuf);
-      old_key = heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes,
-					&old_btid, &old_dbvalue, oldbuf);
+					&new_btid, &new_dbvalue,
+					aligned_newbuf);
+      old_key =
+	heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes,
+				&old_btid, &old_dbvalue, aligned_oldbuf);
 
       if ((new_key == NULL) || (old_key == NULL))
 	{
@@ -6338,7 +6349,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	  repl_old_key = heap_attrvalue_get_key (thread_p, pk_btid_index,
 						 old_attrinfo, old_recdes,
 						 &old_btid, &old_dbvalue,
-						 oldbuf);
+						 aligned_oldbuf);
 	  if (repl_old_key == NULL)
 	    {
 	      error_code = ER_FAILED;
@@ -6433,8 +6444,10 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   char *new_area;
   BTREE_UNIQUE_STATS unique_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  char buf[DBVAL_BUFSIZE];
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   int error_code = NO_ERROR;
+
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   /* allocate memory space for copying an instance image. */
   copy_rec.area_size = DB_PAGESIZE;
@@ -6514,7 +6527,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	      dbvalue_ptr = heap_attrvalue_get_key (thread_p, i,
 						    &index_attrinfo,
 						    &copy_rec, &inst_btid,
-						    &dbvalue, buf);
+						    &dbvalue, aligned_buf);
 	      if (dbvalue_ptr == NULL)
 		{
 		  continue;
@@ -6536,7 +6549,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	{
 	  dbvalue_ptr = heap_attrvalue_get_key (thread_p, key_index,
 						&index_attrinfo, &copy_rec,
-						&inst_btid, &dbvalue, buf);
+						&inst_btid, &dbvalue,
+						aligned_buf);
 	}
 
       /* Delete the instance from the B-tree */
@@ -6617,7 +6631,7 @@ locator_notify_decache (const OID * oid, void *notify_area)
   int i;
 
   notify = (LC_COPYAREA_DESC *) notify_area;
-  if (notify->recdes->area_size <= sizeof (**notify->obj))
+  if (notify->recdes->area_size <= SSIZEOF (**notify->obj))
     {
       return false;
     }
@@ -6707,7 +6721,7 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
       locator_free_copy_area (*synch_area);
       *synch_area = NULL;
     }
-  else if (recdes.area_size >= sizeof (*obj))
+  else if (recdes.area_size >= SSIZEOF (*obj))
     {
       more_synch = true;
     }
@@ -6729,7 +6743,7 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
  *   class_oid(in): The class identifer
  *   n_attr_ids(in):  Number of attribute ids (size of the array).
  *   attr_ids(in): Attribute ID array.
- *   btname(in) : 
+ *   btname(in) :
  *   repair(in):
  *
  * Note: Check the consistency of the btree entries against the
@@ -6758,12 +6772,14 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   int i;
   DB_VALUE dbvalue;
   DB_VALUE *dbvalue_ptr = NULL;
-  char buf[DBVAL_BUFSIZE];
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   char *class_name_p = NULL;
 
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
 #if defined(SERVER_MODE)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -6810,7 +6826,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	  || (dbvalue_ptr = heap_attrinfo_generate_key (thread_p, n_attr_ids,
 							attr_ids, &attr_info,
 							&peek, &dbvalue,
-							buf)) == NULL)
+							aligned_buf)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -7145,11 +7161,13 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   HFID *hfids = NULL, *hfid = NULL;
   OID *class_oids = NULL, *class_oid = NULL;
   INDX_SCAN_ID isid;
-  char buf[DBVAL_BUFSIZE];
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   char *class_name_p = NULL;
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
 #if defined(SERVER_MODE)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -7225,7 +7243,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 							     &attr_info,
 							     &peek, btid,
 							     &dbvalue,
-							     buf)) == NULL))
+							     aligned_buf)) ==
+		      NULL))
 		{
 		  if (isallvalid != DISK_INVALID)
 		    {
@@ -9049,8 +9068,10 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
   OID oid;
   RECDES peek_recdes;
   DB_VALUE *key_val, tmpval;
-  char midxkey_buf[DBVAL_BUFSIZE];
+  char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   int error_code;
+
+  aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
   error_code = heap_scancache_start (thread_p, &scan_cache, hfid, cls_oid,
 				     true, false, LOCKHINT_NONE);
@@ -9085,7 +9106,7 @@ xlocator_build_fk_object_cache (THREAD_ENTRY * thread_p, OID * cls_oid,
 
       key_val = heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids,
 					    &attr_info, &peek_recdes, &tmpval,
-					    midxkey_buf);
+					    aligned_midxkey_buf);
       if (key_val == NULL)
 	{
 	  error_code = ER_FAILED;

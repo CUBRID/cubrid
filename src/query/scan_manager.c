@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -183,7 +183,9 @@ static OID *
 alloc_iscan_oid_buf_list ()
 {
   OID *oid_buf_p;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   oid_buf_p = NULL;
 
@@ -216,7 +218,9 @@ alloc_iscan_oid_buf_list ()
 static void
 free_iscan_oid_buf_list (OID * oid_buf_p)
 {
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, scan_Iscan_oid_buf_list_mutex);
   if (scan_Iscan_oid_buf_list_count < PRM_MAX_THREADS)
@@ -536,7 +540,7 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   DB_MIDXKEY midxkey;
 
   int n_atts, nwords, i;
-  int buf_size, disk_size;
+  int buf_size, disk_size, nullmap_size;
   unsigned int *bits;
 
   REGU_VARIABLE_LIST operand;
@@ -664,12 +668,33 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	}
 
-      DB_ALIGN (disk_size, OR_INT_SIZE);
+      if (dom->next)
+	{
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (dom->next->type->id))
+	    {
+	      disk_size = DB_ALIGN (disk_size, MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+	    }
+	}
+
       buf_size += disk_size;
     }
 
   nwords = OR_BOUND_BIT_WORDS (n_atts);
-  buf_size += (nwords * 4);
+  nullmap_size = (nwords * 4);
+  if (TP_IS_DOUBLE_ALIGN_TYPE (setdomain->type->id))
+    {
+      nullmap_size = DB_ALIGN (nullmap_size, MAX_ALIGNMENT);
+    }
+  else
+    {
+      nullmap_size = DB_ALIGN (nullmap_size, INT_ALIGNMENT);
+    }
+
+  buf_size += nullmap_size;
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
     {
@@ -764,9 +789,16 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	}
 
-      (*((dom->type)->writeval)) (&buf, val);
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
+	{
+	  or_get_align64 (&buf);
+	}
+      else
+	{
+	  or_get_align32 (&buf);
+	}
 
-      or_get_align32 (&buf);
+      (*((dom->type)->writeval)) (&buf, val);
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }				/* for (operand = ...) */
 

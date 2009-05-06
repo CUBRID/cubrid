@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -62,7 +62,7 @@ extern int get_error_line ();
 extern const char *Unique_violation_dump;
 extern FILE *uvd_fp;
 #endif
-static bool No_oid_hint = false;
+extern bool No_oid_hint;
 
 #define LDR_MAX_ARGS 32
 #define LDR_ATT_GROW_SIZE 128
@@ -589,7 +589,6 @@ static int
 check_commit (void)
 {
   int error = NO_ERROR;
-  extern void print_log_msg (int verbose, const char *fmt, ...);
 
   /* Check interrupt flag */
   if (ldr_Load_interrupted)
@@ -761,7 +760,6 @@ insert_instance ()
   OID oid;
   DESC_OBJ obj;
   INST_INFO *inst;
-  int v;
   MOP real_obj;
 #if 0
   LOG_LSA savept_lsa;
@@ -769,36 +767,28 @@ insert_instance ()
 
   if (Loader.validation_only)
     {
-      if (error)
-	{
-	  /* increment the error count so we don't perform the load phase */
-	  Loader.errors += v;
-	}
-      else
-	{
-	  if (Loader.inum != -1)
-	    otable_set_presize (Loader.table, Loader.inum);
+      if (Loader.inum != -1)
+	otable_set_presize (Loader.table, Loader.inum);
 #if 0
 /* OLD WAY: This makes actual dummy entries into the class tables, keep around
    until we're sure it isn't needed.
 */
-	  if (Loader.inum != -1)
-	    {
-	      /* if we're performing a validation pass, don't bother
-	         to call the constructor if one was specified, just
-	         make an entry into the otable like we do normally */
-	      oid.volid = 0;
-	      oid.slotid = 0;
-	      oid.pageid = Loader.inum;
+      if (Loader.inum != -1)
+	{
+	  /* if we're performing a validation pass, don't bother
+	     to call the constructor if one was specified, just
+	     make an entry into the otable like we do normally */
+	  oid.volid = 0;
+	  oid.slotid = 0;
+	  oid.pageid = Loader.inum;
 
-	      inst = otable_find (Loader.table, Loader.inum);
-	      if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
-		error = otable_insert (Loader.table, &oid, Loader.inum);
-	      else
-		error = otable_update (Loader.table, Loader.inum);
-	    }
-#endif
+	  inst = otable_find (Loader.table, Loader.inum);
+	  if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
+	    error = otable_insert (Loader.table, &oid, Loader.inum);
+	  else
+	    error = otable_update (Loader.table, Loader.inum);
 	}
+#endif
     }
   else
     {
@@ -2323,7 +2313,7 @@ select_set_domain (TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
 int
 ldr_start_set (void)
 {
-  TP_DOMAIN *domain, *actual;
+  TP_DOMAIN *domain, *actual = NULL;
   int error = 0;
 
   /*

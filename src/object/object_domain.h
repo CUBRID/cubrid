@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -46,7 +46,6 @@
 
 typedef struct tp_domain
 {
-
   struct tp_domain *next;	/* next in the same domain list */
   struct tp_domain *next_list;	/* next domain list */
   struct pr_type *type;
@@ -55,19 +54,21 @@ typedef struct tp_domain
   int scale;
 
   struct db_object *class_mop;	/* swizzled class oid if on client */
-  unsigned self_ref:1;		/* object self reference */
   struct tp_domain *setdomain;	/* hierarchical domain for sets */
+
   OID class_oid;		/* Class OID if type is tp_Object */
+
+  /* built-in reference number */
+  int built_in_index;
+
   unsigned char codeset;	/* codeset if national char */
 
+  unsigned self_ref:1;		/* object self reference */
   /*
    * merge this with self_ref when we get a chance to rebuild the whole
    * system
    */
   unsigned is_cached:1;		/* set when the domain has been cached */
-
-  /* built-in reference number */
-  int built_in_index;
 
   /* non-zero if this type can be parameterized */
   unsigned is_parameterized:1;
@@ -199,7 +200,7 @@ typedef enum tp_match
  * is now the behavior of pr_is_set_type() which we should try to
  * phase out in favor of the faster inlin macro.  Unfortunately, there
  * are a number of usages of both TP_IS_SET_TYPE that may break if
- * we change the semantics.  Will have to think carefully about this 
+ * we change the semantics.  Will have to think carefully about this
  */
 
 #define TP_IS_SET_TYPE(typenum) \
@@ -228,16 +229,19 @@ typedef enum tp_match
  *    Tests to see if a type is one of the character or bit types.
  */
 
-#define TP_IS_CHAR_BIT_TYPE(typeid) \
-  (TP_IS_CHAR_TYPE(typeid) || TP_IS_BIT_TYPE(typeid))
+#define TP_IS_CHAR_BIT_TYPE(typeid) (TP_IS_CHAR_TYPE(typeid) \
+                                     || TP_IS_BIT_TYPE(typeid))
 
-#define TP_IS_STRING_TYPE(typeid) \
-  TP_IS_CHAR_BIT_TYPE((typeid))
+#define TP_IS_STRING_TYPE(typeid) TP_IS_CHAR_BIT_TYPE((typeid))
 
 #define TP_IS_NUMERIC_TYPE(typeid) \
-  (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_FLOAT) || \
-   ((typeid) == DB_TYPE_DOUBLE)  || ((typeid) == DB_TYPE_SMALLINT) || \
-   ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
+  (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_FLOAT) \
+   || ((typeid) == DB_TYPE_DOUBLE)  || ((typeid) == DB_TYPE_SMALLINT) \
+   || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY) \
+   || ((typeid) == DB_TYPE_BIGINT))
+
+#define TP_IS_DOUBLE_ALIGN_TYPE(typeid) \
+  ((typeid) == DB_TYPE_DOUBLE || (typeid) == DB_TYPE_BIGINT)
 
 /*
  * FUNCTIONS

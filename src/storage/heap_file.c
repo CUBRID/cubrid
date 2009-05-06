@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1828,9 +1828,8 @@ search_begin:
 	      HEAP_SCANCACHE scan_cache;
 
 	      heap_scancache_quick_start (&scan_cache);
-	      if (heap_get
-		  (thread_p, class_oid, &peek_recdes, &scan_cache, PEEK,
-		   NULL_CHN) == S_SUCCESS)
+	      if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache,
+			    PEEK, NULL_CHN) == S_SUCCESS)
 		{
 		  repr = or_get_classrep (&peek_recdes, reprid);
 		}
@@ -2009,10 +2008,10 @@ search_begin:
 	    {
 	      RECDES peek_recdes;
 	      HEAP_SCANCACHE scan_cache;
+
 	      heap_scancache_quick_start (&scan_cache);
-	      if (heap_get
-		  (thread_p, class_oid, &peek_recdes, &scan_cache, PEEK,
-		   NULL_CHN) == S_SUCCESS)
+	      if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache,
+			    PEEK, NULL_CHN) == S_SUCCESS)
 		{
 		  repr = or_get_classrep (&peek_recdes, reprid);
 		}
@@ -3408,9 +3407,10 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
 				sizeof (*heap_hdr), heap_hdr);
 	}
-      pgptr =
-	heap_vpid_alloc (thread_p, hfid, addr_hdr.pgptr, heap_hdr, totalspace,
-			 scan_cache);
+
+      pgptr = heap_vpid_alloc (thread_p, hfid, addr_hdr.pgptr, heap_hdr,
+			       totalspace, scan_cache);
+      assert (pgptr != NULL);
     }
 
   if (scan_cache != NULL)
@@ -5700,9 +5700,9 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
    * of an OID as the length.
    */
 
-  recdes.length = ((expected_length > sizeof (OID)
+  recdes.length = ((expected_length > SSIZEOF (OID)
 		    && !heap_is_big_length (expected_length))
-		   ? expected_length : sizeof (OID));
+		   ? expected_length : SSIZEOF (OID));
 
   recdes.data = NULL;
   recdes.type = REC_ASSIGN_ADDRESS;
@@ -5748,9 +5748,9 @@ heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
    * of an OID as the length.
    */
 
-  recdes.length = ((expected_length > sizeof (OID)
+  recdes.length = ((expected_length > SSIZEOF (OID)
 		    && !heap_is_big_length (expected_length))
-		   ? expected_length : sizeof (OID));
+		   ? expected_length : SSIZEOF (OID));
 
   recdes.data = NULL;
   recdes.type = REC_ASSIGN_ADDRESS;
@@ -9353,7 +9353,7 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
   /*
    * Add any type of alignmnet that may be needed
    */
-  DB_ALIGN (avg_objsize, MAX_ALIGNMENT);
+  avg_objsize = DB_ALIGN (avg_objsize, MAX_ALIGNMENT);
 
   /*
    * How many objects can fit in current best space
@@ -14198,7 +14198,7 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 	      buf->ptr = (char *) (OR_VAR_ELEMENT (buf->buffer,
 						   value->last_attrepr->
 						   location));
-	      or_put_int (buf, (ptr_varvals - buf->buffer));
+	      or_put_int (buf, CAST_BUFLEN (ptr_varvals - buf->buffer));
 
 	      if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 		{
@@ -14226,11 +14226,11 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 		      (OR_VAR_ELEMENT (buf->buffer,
 				       attr_info->last_classrepr->
 				       n_variable)));
-	  or_put_int (buf, (ptr_varvals - buf->buffer));
+	  or_put_int (buf, CAST_BUFLEN (ptr_varvals - buf->buffer));
 	}
 
       /* Record the length of the object */
-      new_recdes->length = ptr_varvals - buf->buffer;
+      new_recdes->length = CAST_BUFLEN (ptr_varvals - buf->buffer);
       break;
 
       /*
@@ -14863,6 +14863,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
   num_atts = index->n_atts;
   atts = index->atts;
 
+  assert (((UINTPTR) midxkey->buf) % 8 == 0);
+
   nullmap_ptr = midxkey->buf;
   key_ptr = nullmap_ptr + heap_init_boundbits (nullmap_ptr, num_atts);
 
@@ -14873,13 +14875,22 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey,
 
       if (rec_valpos)
 	{
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (atts[i]->domain->type->id))
+	    {
+	      key_ptr = PTR_ALIGN (key_ptr, MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      key_ptr = PTR_ALIGN (key_ptr, INT_ALIGNMENT);
+	    }
+
 	  memcpy (key_ptr, rec_valpos, val_len);
-	  key_ptr += (DB_ALIGN (val_len, OR_INT_SIZE));
+	  key_ptr += val_len;
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
 	}
     }
 
-  midxkey->size = key_ptr - nullmap_ptr;
+  midxkey->size = CAST_BUFLEN (key_ptr - nullmap_ptr);
   midxkey->ncolumns = num_atts;
   midxkey->domain = NULL;
 
@@ -14930,6 +14941,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
 	}
     }
 
+  assert (((UINTPTR) midxkey->buf) % 8 == 0);
   nullmap_ptr = midxkey->buf;
 
   /* On constructing index */
@@ -14943,13 +14955,22 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
 
       if (rec_valpos)
 	{
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (att->domain->type->id))
+	    {
+	      key_ptr = PTR_ALIGN (key_ptr, MAX_ALIGNMENT);
+	    }
+	  else
+	    {
+	      key_ptr = PTR_ALIGN (key_ptr, INT_ALIGNMENT);
+	    }
+
 	  memcpy (key_ptr, rec_valpos, val_len);
-	  key_ptr += DB_ALIGN (val_len, OR_INT_SIZE);
+	  key_ptr += val_len;
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
 	}
     }
 
-  midxkey->size = key_ptr - nullmap_ptr;
+  midxkey->size = CAST_BUFLEN (key_ptr - nullmap_ptr);
   midxkey->ncolumns = num_vals;
   midxkey->domain = NULL;
 
@@ -15243,7 +15264,7 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
 {
   OR_CLASSREP *classrepp;
   OR_INDEX *indexp;
-  int idx_in_cache, i, n;
+  int idx_in_cache, i, n = 0;
   int idx;
   int ret = NO_ERROR;
 
@@ -15681,8 +15702,8 @@ heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 	      (*prefetch->obj)->operation = LC_FETCH;
 	      (*prefetch->obj) =
 		LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (*prefetch->obj);
-	      round_length = prefetch->recdes->length;
-	      DB_ALIGN (round_length, INT_ALIGNMENT);
+	      round_length =
+		DB_ALIGN (prefetch->recdes->length, MAX_ALIGNMENT);
 	      *prefetch->offset += round_length;
 	      prefetch->recdes->data += round_length;
 	      prefetch->recdes->area_size -= (round_length +
@@ -15716,8 +15737,8 @@ heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 	      (*prefetch->obj)->operation = LC_FETCH;
 	      (*prefetch->obj) =
 		LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (*prefetch->obj);
-	      round_length = prefetch->recdes->length;
-	      DB_ALIGN (round_length, INT_ALIGNMENT);
+	      round_length =
+		DB_ALIGN (prefetch->recdes->length, MAX_ALIGNMENT);
 	      *prefetch->offset += round_length;
 	      prefetch->recdes->data += round_length;
 	      prefetch->recdes->area_size -= (round_length +
@@ -16271,15 +16292,15 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
   HFID hfid;
   VPID vpid;
   int i;
-  int num_files;
-  int num_recs;
-  int num_recs_relocated;
-  int num_recs_inovf;
-  int num_pages;
-  int avg_freespace;
-  int avg_freespace_nolast;
-  int avg_reclength;
-  int avg_overhead;
+  int num_files = 0;
+  int num_recs = 0;
+  int num_recs_relocated = 0;
+  int num_recs_inovf = 0;
+  int num_pages = 0;
+  int avg_freespace = 0;
+  int avg_freespace_nolast = 0;
+  int avg_reclength = 0;
+  int avg_overhead = 0;
   FILE_HEAP_DES hfdes;
   HEAP_CACHE_ATTRINFO attr_info;
 
@@ -16376,7 +16397,7 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs,
       avg_obj_size += num_var_attrs * (sizeof (int) - 1);
     }
 
-  DB_ALIGN (avg_obj_size, MAX_ALIGNMENT);
+  avg_obj_size = DB_ALIGN (avg_obj_size, MAX_ALIGNMENT);
 
   /*
    * Find size of page available to store objects:
@@ -17978,7 +17999,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		   att->serial_obj.slotid, att->serial_obj.volid);
 	  DB_MAKE_STRING (&oid_str_val, oid_str);
 
-	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER))
+	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER)
+	      || (att->type == DB_TYPE_BIGINT))
 	    {
 	      if (xqp_get_serial_next_value (thread_p, &oid_str_val,
 					     &dbvalue_numeric) != NO_ERROR)

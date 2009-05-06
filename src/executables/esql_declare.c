@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -29,11 +29,9 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "esql_grammar.h"
 #include "esql_misc.h"
-#define   ZZ_PREFIX em_
-#include "zzpref.h"
-#define  INSIDE_SCAN_DOT_C
-#include "esql_grammar_tokens.h"
 #include "memory_alloc.h"
 #include "esql_translate.h"
 #include "variable_string.h"
@@ -43,6 +41,8 @@
 
 typedef struct spec_state SPEC_STATE;
 typedef struct scope SCOPE;
+
+extern FILE *esql_yyout;
 
 struct spec_state
 {
@@ -169,8 +169,8 @@ pp_set_class_bit (int storage_class, LINK * p)
 
     default:
       {
-	yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_STORAGE_CLASS),
-		  storage_class);
+	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_STORAGE_CLASS),
+		       storage_class);
 	exit (1);
       }
       break;
@@ -214,7 +214,7 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
       clone_start = pp_clone_type (p_spec, &clone_end);
       if (clone_start == NULL)
 	{
-	  yyverror (pp_get_msg (EX_DECL_SET, MSG_MALFORMED_CHAIN));
+	  esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_MALFORMED_CHAIN));
 	  exit (1);
 	}
 
@@ -228,8 +228,8 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 	  if (IS_VAR_TYPE (clone_start)
 	      && (old_etype == NULL || IS_ARRAY (old_etype)) == 0)
 	    {
-	      yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_PSEUDO_DECL),
-			pp_type_str (clone_start));
+	      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_PSEUDO_DECL),
+			     pp_type_str (clone_start));
 	      exit (1);
 	    }
 
@@ -348,7 +348,7 @@ pp_add_symbols_to_table (SYMBOL * sym)
 
 	  if (harmless == 0)
 	    {
-	      yyredef (new->name);
+	      esql_yyredef ((char *) new->name);
 	    }
 
 	  pp_discard_symbol (new);
@@ -404,7 +404,7 @@ pp_do_enum (SYMBOL * sym)
 {
   if (sym->type)
     {
-      yyredef (sym->name);
+      esql_yyredef ((char *) sym->name);
     }
   else
     {
@@ -468,10 +468,11 @@ pp_pop_name_scope (void)
 #if !defined(NDEBUG)
   if (pp_dump_scope_info)
     {
-      fprintf (yyout, "\n/*\n * Exiting scope level %d\n", pp_nesting_level);
-      pp_print_syms (yyout);
-      pp_print_cursors (yyout);
-      fputs (" */\n", yyout);
+      fprintf (esql_yyout, "\n/*\n * Exiting scope level %d\n",
+	       pp_nesting_level);
+      pp_print_syms (esql_yyout);
+      pp_print_cursors (esql_yyout);
+      fputs (" */\n", esql_yyout);
     }
 #endif
 
@@ -674,13 +675,13 @@ pp_add_storage_class (int sc)
 
   if (!p->sc_allowed)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_SPECIFIER_NOT_ALLOWED));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_SPECIFIER_NOT_ALLOWED));
       return;
     }
 
   if (p->storage_class_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_CLASS_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_CLASS_COMBO));
       return;
     }
 
@@ -713,14 +714,14 @@ pp_add_struct_spec (STRUCTDEF * sdef)
 
   if (p->noun_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
       pp_discard_structdef (sdef);
       return;
     }
 
   if ((p->longs_seen > 0) || (p->shorts_seen > 0) || p->signed_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
       pp_discard_structdef (sdef);
       return;
     }
@@ -751,7 +752,7 @@ pp_add_type_noun (int type)
 
   if (p->noun_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
       return;
     }
 
@@ -761,7 +762,8 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) || (p->shorts_seen > 0) || p->signed_seen)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->longs_seen = 1;
@@ -775,7 +777,7 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) || (p->shorts_seen > 0))
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
 	    return;
 	  }
 	p->longs_seen = 1;
@@ -803,7 +805,8 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) && !p->spec->decl.s.is_long)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->longs_seen = 1;
@@ -818,7 +821,8 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) || (p->shorts_seen) || (p->signed_seen))
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->spec->decl.s.noun = (type == VARCHAR_) ? N_VARCHAR :
@@ -829,8 +833,9 @@ pp_add_type_noun (int type)
 
     default:
       {
-	yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_SPEC_UNEXPECTED_CASE),
-		  "pp_add_type_spec", type);
+	esql_yyverror (pp_get_msg
+		       (EX_DECL_SET, MSG_TYPE_SPEC_UNEXPECTED_CASE),
+		       "pp_add_type_spec", type);
 	exit (1);
       }
       break;
@@ -866,14 +871,16 @@ pp_add_type_adj (int adj)
 	}
       else
 	{
-	  yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	  esql_yyverror (pp_get_msg
+			 (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	  return;
 	}
     case SHORT_:
       {
 	if ((p->shorts_seen > 1) || (p->longs_seen > 0))
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -885,8 +892,8 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		yyverror (pp_get_msg
-			  (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg
+			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -900,7 +907,8 @@ pp_add_type_adj (int adj)
       {
 	if ((p->longs_seen > MAX_LONGS_ALLOWED) || p->shorts_seen > 0)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -912,8 +920,8 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		yyverror (pp_get_msg
-			  (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg
+			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -928,7 +936,8 @@ pp_add_type_adj (int adj)
       {
 	if (p->signed_seen)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -940,8 +949,8 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		yyverror (pp_get_msg
-			  (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg
+			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -954,7 +963,8 @@ pp_add_type_adj (int adj)
       {
 	if (p->volatile_seen)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->const_seen = true;
@@ -965,7 +975,8 @@ pp_add_type_adj (int adj)
       {
 	if (p->volatile_seen)
 	  {
-	    yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg
+			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->volatile_seen = true;
@@ -974,8 +985,8 @@ pp_add_type_adj (int adj)
 
     default:
       {
-	yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_ADJ_UNEXPECTED_CASE),
-		  "pp_add_type_adj", adj);
+	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_ADJ_UNEXPECTED_CASE),
+		       "pp_add_type_adj", adj);
 	exit (1);
       }
       break;
@@ -1000,12 +1011,12 @@ pp_add_typedefed_spec (LINK * spec)
 
   if (p->noun_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_TYPE_COMBO));
       return;
     }
   if ((p->longs_seen > 0) || (p->shorts_seen > 0) || p->signed_seen)
     {
-      yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
       return;
     }
 
@@ -1136,7 +1147,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
   if (p->from_tdef && p->tdef == NULL)
     {
       vs_prepend (buf, TOK_SPACE);
-      vs_prepend (buf, p->from_tdef->name);
+      vs_prepend (buf, (char *) p->from_tdef->name);
 
       /*
        * Now find the terminal specifier in the link chain and extract
@@ -1245,10 +1256,10 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		&& p->decl.s.val.v_struct->tag[0] != '$')
 	      {
 		vs_prepend (buf, TOK_SPACE);
-		vs_prepend (buf, p->decl.s.val.v_struct->tag);
+		vs_prepend (buf, (char *) p->decl.s.val.v_struct->tag);
 	      }
 	    vs_prepend (buf, TOK_SPACE);
-	    vs_prepend (buf, p->decl.s.val.v_struct->type_string);
+	    vs_prepend (buf, (char *) p->decl.s.val.v_struct->type_string);
 	  }
 	  break;
 	case N_LABEL:
@@ -1364,7 +1375,7 @@ static void
 pp_print_decl (SYMBOL * sym, varstring * buf, int preechoed)
 {
   vs_clear (buf);
-  vs_strcpy (buf, sym->name);
+  vs_strcpy (buf, (char *) sym->name);
   pp_print_link (sym->type, buf, D_ARRAY, preechoed);
   if (preechoed == 0)
     {
@@ -1400,12 +1411,12 @@ pp_print_decls (SYMBOL * decl_chain, int preechoed)
   for (; decl_chain; decl_chain = decl_chain->next)
     {
       pp_print_decl (decl_chain, &buf, preechoed);
-      fputs (vs_str (&buf), yyout);
+      fputs (vs_str (&buf), esql_yyout);
       if (IS_PSEUDO_TYPE (decl_chain->type) && !pp_disable_varchar_length)
 	{
-	  fputs (decl_chain->args->name, yyout);
+	  fputs ((char *) decl_chain->args->name, esql_yyout);
 	}
-      fputs (TOK_SC TOK_SPACE, yyout);
+      fputs (TOK_SC TOK_SPACE, esql_yyout);
     }
   vs_free (&buf);
 }
@@ -1422,6 +1433,6 @@ pp_print_specs (LINK * link)
 
   vs_new (&buf);
   pp_print_link (link, &buf, D_ARRAY, true);
-  fputs (vs_str (&buf), yyout);
+  fputs (vs_str (&buf), esql_yyout);
   vs_free (&buf);
 }

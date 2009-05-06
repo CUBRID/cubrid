@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_admin.c - 
+ * broker_admin.c -
  */
 
 #ident "$Id$"
@@ -31,9 +31,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <direct.h>
-#endif
+#endif /* WINDOWS */
 
 #include "cas_common.h"
 #include "broker_admin_pub.h"
@@ -42,9 +42,9 @@
 #include "broker_error.h"
 
 #include "broker_util.h"
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "broker_wsa_init.h"
-#endif
+#endif /* WINDOWS */
 
 #define	TRUE			1
 #define	FALSE			0
@@ -91,13 +91,13 @@ main (int argc, char **argv)
   if (argc < 2)
     goto usage;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     {
       printf ("WSA init error\n");
       return 0;
     }
-#endif
+#endif /* WINDOWS */
 
 #if 0
   if (admin_get_host_ip ())
@@ -150,7 +150,7 @@ main (int argc, char **argv)
       if (admin_stop_cmd (master_shm_id))
 	{
 	  printf ("%s\n", admin_err_msg);
-          return -1;
+	  return -1;
 	}
       else
 	{
@@ -167,7 +167,7 @@ main (int argc, char **argv)
       if (admin_add_cmd (master_shm_id, argv[2]) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
-          return -1;
+	  return -1;
 	}
       else
 	{
@@ -185,7 +185,7 @@ main (int argc, char **argv)
       if (admin_restart_cmd (master_shm_id, argv[2], atoi (argv[3])) < 0)
 	{
 	  printf ("%s\n", admin_err_msg);
-          return -1;
+	  return -1;
 	}
       else
 	{
@@ -332,5 +332,3 @@ usage:
      argv[0]);
   return -1;
 }
-
-

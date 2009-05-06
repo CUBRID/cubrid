@@ -28,7 +28,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #else
@@ -143,6 +143,36 @@ net_buf_overwrite_int (T_NET_BUF * net_buf, int offset, int value)
 }
 
 int
+net_buf_cp_bigint (T_NET_BUF * net_buf, DB_BIGINT value, int *begin_offset)
+{
+  if (NET_BUF_FREE_SIZE (net_buf) < 8 && net_buf_realloc (net_buf, 8) < 0)
+    {
+      if (begin_offset)
+	*begin_offset = -1;
+      return CAS_ER_NO_MORE_MEMORY;
+    }
+
+  value = net_htoni64 (value);
+  memcpy (NET_BUF_CURR_PTR (net_buf), &value, 8);
+
+  if (begin_offset)
+    *begin_offset = net_buf->data_size;
+
+  net_buf->data_size += 8;
+  return 0;
+}
+
+void
+net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset, DB_BIGINT value)
+{
+  if (net_buf->data == NULL || offset < 0)
+    return;
+
+  value = net_htoni64 (value);
+  memcpy (net_buf->data + NET_BUF_HEADER_SIZE + offset, &value, 8);
+}
+
+int
 net_buf_cp_float (T_NET_BUF * net_buf, float value)
 {
   if (NET_BUF_FREE_SIZE (net_buf) < 4 && net_buf_realloc (net_buf, 4) < 0)
@@ -180,7 +210,7 @@ net_buf_cp_short (T_NET_BUF * net_buf, short value)
 
 void
 net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code, char *err_str,
-		       char *file, int line)
+		       const char *file, int line)
 {
 #ifdef CAS_DEBUG
   char msg_buf[1024];
@@ -201,6 +231,27 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code, char *err_str,
 }
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
+INT64
+net_htoni64 (INT64 from)
+{
+  INT64 to;
+  char *p, *q;
+
+  p = (char *) &from;
+  q = (char *) &to;
+
+  q[0] = p[7];
+  q[1] = p[6];
+  q[2] = p[5];
+  q[3] = p[4];
+  q[4] = p[3];
+  q[5] = p[2];
+  q[6] = p[1];
+  q[7] = p[0];
+
+  return to;
+}
+
 float
 net_htonf (float from)
 {
@@ -242,7 +293,7 @@ net_htond (double from)
 
 void
 net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
-			 char *name)
+			 const char *name)
 {
   net_buf_cp_byte (net_buf, ut);
   net_buf_cp_short (net_buf, scale);

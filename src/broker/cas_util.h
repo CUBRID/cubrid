@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #endif

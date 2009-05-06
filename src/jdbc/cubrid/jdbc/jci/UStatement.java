@@ -429,9 +429,9 @@ public class UStatement
 
   public void bind(int index, long value)
   {
-    BigDecimal data = new BigDecimal(Long.toString(value));
+    Long data = new Long(value);
 
-    bindValue(index, UUType.U_TYPE_NUMERIC, data);
+    bindValue(index, UUType.U_TYPE_BIGINT, data);
   }
 
   public void bind(int index, float value)
@@ -488,7 +488,7 @@ public class UStatement
 
   public void bind(int index, Timestamp value)
   {
-    bindValue(index, UUType.U_TYPE_TIMESTAMP, value);
+    bindValue(index, UUType.U_TYPE_DATETIME, value);
   }
 
   public void bind(int index, Object value)
@@ -2578,6 +2578,8 @@ public class UStatement
     case UUType.U_TYPE_NUMERIC:
       return new BigDecimal(inBuffer.readString(dataSize,
           UJCIManager.sysCharsetName));
+    case UUType.U_TYPE_BIGINT:
+      return new Long(inBuffer.readLong());
     case UUType.U_TYPE_INT:
       return new Integer(inBuffer.readInt());
     case UUType.U_TYPE_SHORT:
@@ -2588,6 +2590,8 @@ public class UStatement
       return inBuffer.readTime();
     case UUType.U_TYPE_TIMESTAMP:
       return inBuffer.readTimestamp();
+    case UUType.U_TYPE_DATETIME:
+      return inBuffer.readDatetime();
     case UUType.U_TYPE_OBJECT:
       return inBuffer.readOID(relatedConnection.cubridcon);
     case UUType.U_TYPE_SET:

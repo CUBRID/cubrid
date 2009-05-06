@@ -4522,7 +4522,8 @@ locator_mflush (MOP mop, void *mf)
     {
       round_length = mflush->recdes.length;
       mflush->obj->length = mflush->recdes.length;
-      mflush->obj->offset = mflush->recdes.data - mflush->copy_area->mem;
+      mflush->obj->offset =
+	CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
     }
 
   mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
@@ -4532,7 +4533,7 @@ locator_mflush (MOP mop, void *mf)
    * start at alignment of sizeof(int)
    */
 
-  DB_ALIGN (round_length, sizeof (int));
+  round_length = DB_ALIGN (round_length, MAX_ALIGNMENT);
   mflush->recdes.data += round_length;
   mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
 
@@ -5484,7 +5485,7 @@ OID *
 locator_assign_permanent_oid (MOP mop)
 {
   MOBJ object;			/* The object */
-  size_t expected_length;	/* Expected length of disk object */
+  int expected_length;		/* Expected length of disk object */
   OID perm_oid;			/* Permanent OID of object. Assigned as a side
 				 * effect */
   MOP class_mop;		/* The class mop */
@@ -5519,14 +5520,14 @@ locator_assign_permanent_oid (MOP mop)
   if (object != NULL && class_obj != NULL)
     {
       expected_length = tf_object_size (class_obj, object);
-      if (expected_length < sizeof (OID))
+      if (expected_length < (int) sizeof (OID))
 	{
-	  expected_length = sizeof (OID);
+	  expected_length = (int) sizeof (OID);
 	}
     }
   else
     {
-      expected_length = sizeof (OID);
+      expected_length = (int) sizeof (OID);
     }
 
   /* Find the heap where the object will be stored */

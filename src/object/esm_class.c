@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -90,11 +90,11 @@ static void grant_authorization (DB_OBJECT * user, DB_OBJECT * class_);
 
 
 /*
- * def_instance_signature() - 
- *      return: 
- *  class_obj(in) : 
- *  method_name(in) :   
- *  return_domain(in) : 
+ * def_instance_signature() -
+ *      return:
+ *  class_obj(in) :
+ *  method_name(in) :
+ *  return_domain(in) :
  *  arg1(in) :
  *  arg2(in) :
  *  arg3(in) :
@@ -159,11 +159,11 @@ def_instance_signature (DB_OBJECT * class_obj, const char *method_name,
 }
 
 /*
- * def_class_signature() - 
- *      return: 
- *  class_obj(in) : 
- *  method_name(in) :   
- *  return_domain(in) : 
+ * def_class_signature() -
+ *      return:
+ *  class_obj(in) :
+ *  method_name(in) :
+ *  return_domain(in) :
  *  arg1(in) :
  *  arg2(in) :
  *  arg3(in) :
@@ -230,10 +230,10 @@ def_class_signature (DB_OBJECT * class_obj, const char *method_name,
 /* This kludge is to prevent warnings for wrong number of arguments passed. */
 
 /*
- * grant_authorization() - 
+ * grant_authorization() -
  *      return: none
- *  user(in) : 
- *  class(in) :   
+ *  user(in) :
+ *  class(in) :
  */
 static void
 grant_authorization (DB_OBJECT * user, DB_OBJECT * class_)
@@ -245,7 +245,7 @@ grant_authorization (DB_OBJECT * user, DB_OBJECT * class_)
 }
 
 /*
- * esm_define_esm_classes() - 
+ * esm_define_esm_classes() -
  *      return: none
  */
 void
@@ -344,8 +344,8 @@ esm_define_esm_classes (void)
 				db_get_type_name (DB_TYPE_STRING),	/*buffer */
 				NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_SEEK, "esm_Glo_seek");
-  (*define_instance_signature) (glo_class, GLO_METHOD_SEEK, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
-				db_get_type_name (DB_TYPE_INTEGER),	/*position */
+  (*define_instance_signature) (glo_class, GLO_METHOD_SEEK, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+				db_get_type_name (DB_TYPE_BIGINT),	/*position */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_INSERT, "esm_Glo_insert");
   (*define_instance_signature) (glo_class, GLO_METHOD_INSERT, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
@@ -365,7 +365,7 @@ esm_define_esm_classes (void)
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_TRUNCATE, "esm_Glo_truncate");
-  (*define_instance_signature) (glo_class, GLO_METHOD_TRUNCATE, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_TRUNCATE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_APPEND, "esm_Glo_append");
@@ -374,7 +374,7 @@ esm_define_esm_classes (void)
 				db_get_type_name (DB_TYPE_STRING),	/*buffer */
 				NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_SIZE, "esm_Glo_size");
-  (*define_instance_signature) (glo_class, GLO_METHOD_SIZE, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_SIZE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_COMPRESS, "esm_Glo_compress");
@@ -396,7 +396,7 @@ esm_define_esm_classes (void)
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_POSITION, "esm_Glo_position");
-  (*define_instance_signature) (glo_class, GLO_METHOD_POSITION, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_POSITION, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_LIKE_SEARCH, "esm_Glo_like_search");
@@ -450,11 +450,11 @@ esm_define_esm_classes (void)
 /* This routine just an aid to testing/adding new methods. */
 
 /*
- * esm_add_method() - 
+ * esm_add_method() -
  *      return: none
- *  class_name(in) : 
- *  method_name(in) :   
- *  implementation_name(in) : 
+ *  class_name(in) :
+ *  method_name(in) :
+ *  implementation_name(in) :
  */
 void
 esm_add_method (char *class_name, char *method_name,

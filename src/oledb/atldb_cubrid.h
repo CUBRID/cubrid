@@ -5130,7 +5130,7 @@ public:
 
 		hrProps = hr;
 		// Get a pointer to the Rowset instance
-		DBROWCOUNT cRowsAffected;
+		LONG cRowsAffected;
 		hr = pSchemaRowset->Execute(&cRowsAffected, cRestrictions, rgRestrictions);
 		if (FAILED(hr))
 			return hr;

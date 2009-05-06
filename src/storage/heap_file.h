@@ -208,15 +208,6 @@ struct heap_idx_elements_info
   int has_multi_col;		/* class has multi-column index  */
 };
 
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid,
-			 const OID * class_oid);
-extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid);
-extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p,
-					const HFID * hfid);
-#endif /* SERVER_MODE */
-
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p,
 				   const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE

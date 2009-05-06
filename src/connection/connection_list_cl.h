@@ -45,9 +45,9 @@ extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn,
 extern CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_QUEUE_ENTRY * header,
 					      unsigned int key);
 extern void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor,
-                                         CSS_QUEUE_ENTRY * entry);
+					       CSS_QUEUE_ENTRY * entry);
 extern void css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor,
-                                     unsigned short request_id);
+					   unsigned short request_id);
 extern void css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor);
 
 #endif /* _CONNECTION_LIST_CL_H_ */

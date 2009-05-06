@@ -2874,12 +2874,12 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn,
       sprintf (port_string, "%d", port);
       sysprm_set_force ("cubrid_port_id", port_string);
     }
-  client_credential.client_type = BOOT_CLIENT_DEFAULT;;
+  client_credential.client_type = BOOT_CLIENT_DEFAULT;
   client_credential.client_info = NULL;
-  client_credential.db_name = volume;
+  client_credential.db_name = (char *) volume;
   client_credential.db_user = db_get_user_name ();
   client_credential.db_password = NULL;
-  client_credential.program_name = program;
+  client_credential.program_name = (char *) program;
   client_credential.login_name = NULL;
   client_credential.host_name = NULL;
   client_credential.process_id = -1;

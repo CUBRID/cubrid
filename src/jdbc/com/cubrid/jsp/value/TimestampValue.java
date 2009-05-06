@@ -55,8 +55,9 @@ public class TimestampValue extends Value
   {
     super(mode);
     Calendar cal = Calendar.getInstance();
+    cal.clear();
     cal.set(year, mon, day, hour, min, sec);
-
+    
     this.timestamp = new Timestamp(cal.getTimeInMillis());
     this.dbType = dbType;
   }
@@ -77,6 +78,11 @@ public class TimestampValue extends Value
   }
 
   public Timestamp toTimestamp() throws TypeMismatchException
+  {
+    return timestamp;
+  }
+
+  public Timestamp toDatetime() throws TypeMismatchException
   {
     return timestamp;
   }
@@ -104,6 +110,11 @@ public class TimestampValue extends Value
   public Timestamp[] toTimestampArray() throws TypeMismatchException
   {
     return new Timestamp[] { toTimestamp() };
+  }
+
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    return new Timestamp[] { toDatetime() };
   }
 
   public Object[] toObjectArray() throws TypeMismatchException

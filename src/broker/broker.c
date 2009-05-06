@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -31,7 +31,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -68,13 +68,13 @@
 #include "cas_intf.h"
 #include "broker_send_fd.h"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif
 
 
 #ifdef WIN_FW
-#if !defined(WIN32)
+#if !defined(WINDOWS)
 #error DEFINE ERROR
 #endif
 #endif
@@ -179,7 +179,7 @@
 
 #define JOB_COUNT_MAX		1000000
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define ALLOC_COUNTER_VALUE()						\
   	do {								\
 	    int _mem_size = sizeof(PDH_FMT_COUNTERVALUE_ITEM) *		\
@@ -196,14 +196,14 @@
 
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define F_OK	0
 #endif
 
 typedef struct t_clt_table T_CLT_TABLE;
 struct t_clt_table
 {
-  int clt_sock_fd;
+  SOCKET clt_sock_fd;
   char ip_addr[IP_ADDR_STR_LEN];
 };
 
@@ -233,40 +233,35 @@ static THREAD_FUNC dispatch_thr_f (void *arg);
 static THREAD_FUNC psize_check_thr_f (void *arg);
 
 static THREAD_FUNC cas_monitor_thr_f (void *arg);
-static int read_nbytes_from_client (int sock_fd, char *buf, int size);
+static int read_nbytes_from_client (SOCKET sock_fd, char *buf, int size);
 
 #if defined(WIN_FW)
 static THREAD_FUNC service_thr_f (void *arg);
-static int process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
-				int srv_sock_fd);
-static int read_from_cas_client (int sock_fd, char *buf, int size,
+static int process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
+				SOCKET srv_sock_fd);
+static int read_from_cas_client (SOCKET sock_fd, char *buf, int size,
 				 int as_index, int cas_pid);
 #endif
 
-static int write_to_client (int sock_fd, char *buf, int size);
-static int read_from_client (int sock_fd, char *buf, int size);
+static int write_to_client (SOCKET sock_fd, char *buf, int size);
+static int read_from_client (SOCKET sock_fd, char *buf, int size);
 static int run_appl_server (int as_index);
 static int stop_appl_server (int as_index);
 static void restart_appl_server (int as_index);
-static int connect_srv (char *br_name, int as_index);
+static SOCKET connect_srv (char *br_name, int as_index);
 static int find_idle_cas (void);
 static int find_drop_as_index (void);
 static int find_add_as_index (void);
 static void check_cas_log (char *br_name, int as_index);
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static int pdh_init ();
 static int pdh_collect ();
 static int pdh_get_value (int pid, int *workset, float *pct_cpu,
 			  int *br_num_thr);
 #endif
 
-
-#ifndef WIN32
-extern char **environ;
-#endif
-
-static int sock_fd;
+static SOCKET sock_fd;
 static struct sockaddr_in sock_addr;
 static int sock_addr_len;
 
@@ -279,7 +274,7 @@ static int br_index = -1;
 static int num_thr;
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static HANDLE clt_table_mutex = NULL;
 static HANDLE num_busy_uts_mutex = NULL;
 static HANDLE session_mutex = NULL;
@@ -310,7 +305,7 @@ static T_MAX_HEAP_NODE *session_request_q;
 
 static int hold_job = 0;
 
-#ifdef WIN32
+#if defined(WINDOWS)
 typedef PDH_STATUS (__stdcall * PDHOpenQuery) (LPCSTR, DWORD_PTR,
 					       PDH_HQUERY *);
 typedef PDH_STATUS (__stdcall * PDHCloseQuery) (PDH_HQUERY);
@@ -341,7 +336,7 @@ unsigned long pdh_num_proc;
 #endif
 
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int WINAPI
 WinMain (HINSTANCE hInstance,	// handle to current instance
 	 HINSTANCE hPrevInstance,	// handle to previous instance
@@ -368,7 +363,7 @@ main (int argc, char *argv[])
 
   signal (SIGTERM, cleanup);
   signal (SIGINT, cleanup);
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGCHLD, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
 #endif
@@ -414,7 +409,7 @@ main (int argc, char *argv[])
       goto error1;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, 0);
@@ -466,7 +461,7 @@ main (int argc, char *argv[])
     }
   for (i = 0; i < num_thr; i++)
     {
-      session_request_q[i].clt_sock_fd = -1;
+      session_request_q[i].clt_sock_fd = INVALID_SOCKET;
     }
 #endif
 
@@ -493,12 +488,6 @@ main (int argc, char *argv[])
 	  shm_appl->as_info[i].service_flag = SERVICE_OFF_ACK;
 	}
     }
-#ifdef UNIXWARE711
-  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
-    {
-      shm_appl->as_info[i].clt_sock_fd = 0;
-    }
-#endif
 #endif
 
   SET_BROKER_OK_CODE ();
@@ -653,7 +642,7 @@ cleanup (int signo)
   exit (0);
 }
 
-static char *cas_client_type_str[] = {
+static const char *cas_client_type_str[] = {
   "UNKNOWN",			/* CAS_CLIENT_NONE */
   "CCI",			/* CAS_CLIENT_CCI */
   "ODBC",			/* CAS_CLIENT_ODBC */
@@ -667,7 +656,7 @@ receiver_thr_f (void *arg)
 {
   T_SOCKLEN clt_sock_addr_len;
   struct sockaddr_in clt_sock_addr;
-  int clt_sock_fd;
+  SOCKET clt_sock_fd;
   int job_queue_size;
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE new_job;
@@ -681,7 +670,7 @@ receiver_thr_f (void *arg)
   job_queue = shm_appl->job_queue;
   job_count = 1;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
 
@@ -691,10 +680,12 @@ receiver_thr_f (void *arg)
       clt_sock_fd =
 	accept (sock_fd, (struct sockaddr *) &clt_sock_addr,
 		&clt_sock_addr_len);
-      if (clt_sock_fd < 0)
-	continue;
+      if (IS_INVALID_SOCKET (clt_sock_fd))
+	{
+	  continue;
+	}
 
-#if !defined(WIN32) && defined(ASYNC_MODE)
+#if !defined(WINDOWS) && defined(ASYNC_MODE)
       if (fcntl (clt_sock_fd, F_SETFL, FNDELAY) < 0)
 	{
 	  CLOSE_SOCKET (clt_sock_fd);
@@ -718,11 +709,11 @@ receiver_thr_f (void *arg)
       if (strncmp (cas_req_header, "CANCEL", 6) == 0)
 	{
 	  int ret_code = 0;
-#ifndef WIN32
+#if !defined(WINDOWS)
 	  int pid, i;
 #endif
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 	  memcpy ((char *) &pid, cas_req_header + 6, 4);
 	  pid = ntohl (pid);
 	  ret_code = CAS_ER_QUERY_CANCEL;
@@ -800,7 +791,7 @@ receiver_thr_f (void *arg)
       new_job.clt_patch_version = cas_req_header[SRV_CON_MSG_IDX_PATCH_VER];
       new_job.cas_client_type = cas_client_type;
       memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
-      strcpy (new_job.prg_name, cas_client_type_str[cas_client_type]);
+      strcpy (new_job.prg_name, cas_client_type_str[(int) cas_client_type]);
 
       while (1)
 	{
@@ -818,7 +809,7 @@ receiver_thr_f (void *arg)
 	}
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   return NULL;
@@ -832,8 +823,8 @@ dispatch_thr_f (void *arg)
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
   int as_index, i;
-#ifndef WIN32
-  int srv_sock_fd;
+#if !defined(WINDOWS)
+  SOCKET srv_sock_fd;
 #endif
 
   job_queue = shm_appl->job_queue;
@@ -899,7 +890,7 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].clt_patch_version =
 	cur_job.clt_patch_version;
       shm_appl->as_info[as_index].cas_client_type = cur_job.cas_client_type;
-#ifdef WIN32
+#if defined(WINDOWS)
       memcpy (shm_appl->as_info[as_index].cas_clt_ip, cur_job.ip_addr, 4);
       shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY_WAIT;
       CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
@@ -908,15 +899,8 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].num_request++;
       shm_appl->as_info[as_index].last_access_time = time (NULL);
 #else
-#ifdef UNIXWARE711
-      if (shm_appl->as_info[as_index].clt_sock_fd > 0)
-	{
-	  CLOSE_SOCKET (shm_appl->as_info[as_index].clt_sock_fd);
-	  shm_appl->as_info[as_index].clt_sock_fd = 0;
-	}
-#endif
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, as_index);
-      if (srv_sock_fd >= 0)
+      if (!IS_INVALID_SOCKET (srv_sock_fd))
 	{
 	  int ip_addr;
 
@@ -940,12 +924,8 @@ dispatch_thr_f (void *arg)
 	  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
 	  shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
 	}
-#ifdef UNIXWARE711
-      shm_appl->as_info[as_index].clt_sock_fd = cur_job.clt_sock_fd;
-#else
       CLOSE_SOCKET (cur_job.clt_sock_fd);
-#endif
-#endif /* ifdef !WIN32 */
+#endif /* ifdef !WINDOWS */
 #else
       session_request_q[as_index] = cur_job;
 #endif
@@ -953,7 +933,7 @@ dispatch_thr_f (void *arg)
       MUTEX_UNLOCK (suspend_mutex);
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   return NULL;
@@ -965,17 +945,17 @@ static THREAD_FUNC
 service_thr_f (void *arg)
 {
   int self_index = *((int *) arg);
-  int clt_sock_fd, srv_sock_fd;
+  SOCKET clt_sock_fd, srv_sock_fd;
   int ip_addr;
   int cas_pid;
   T_MAX_HEAP_NODE cur_job;
 
   while (process_flag)
     {
-      if (session_request_q[self_index].clt_sock_fd > 0)
+      if (!IS_INVALID_SOCKET (session_request_q[self_index].clt_sock_fd))
 	{
 	  cur_job = session_request_q[self_index];
-	  session_request_q[self_index].clt_sock_fd = -1;
+	  session_request_q[self_index].clt_sock_fd = INVALID_SOCKET;
 	}
       else
 	{
@@ -997,7 +977,7 @@ service_thr_f (void *arg)
       cas_pid = shm_appl->as_info[self_index].pid;
 
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, self_index);
-      if (srv_sock_fd < 0)
+      if (IS_INVALID_SOCKET (srv_sock_fd))
 	{
 	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
 	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
@@ -1023,14 +1003,15 @@ service_thr_f (void *arg)
 #endif
 
 static int
-init_env ()
+init_env (void)
 {
   char *port;
   int n;
   int one = 1;
 
   /* get a Unix stream socket */
-  if ((sock_fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  sock_fd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (sock_fd))
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, errno);
       return (-1);
@@ -1052,7 +1033,7 @@ init_env ()
   sock_addr_len = sizeof (struct sockaddr_in);
 
   n = INADDR_ANY;
-  memcpy (&sock_addr.sin_addr, &n, sizeof (long));
+  memcpy (&sock_addr.sin_addr, &n, sizeof (int));
 
   if (bind (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
     {
@@ -1070,7 +1051,7 @@ init_env ()
 }
 
 static int
-read_from_client (int sock_fd, char *buf, int size)
+read_from_client (SOCKET sock_fd, char *buf, int size)
 {
   int read_len;
 #ifdef ASYNC_MODE
@@ -1083,7 +1064,7 @@ read_from_client (int sock_fd, char *buf, int size)
 #ifdef ASYNC_MODE
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
-  maxfd = sock_fd + 1;
+  maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
 	    &timeout);
@@ -1110,7 +1091,7 @@ read_from_client (int sock_fd, char *buf, int size)
 }
 
 static int
-write_to_client (int sock_fd, char *buf, int size)
+write_to_client (SOCKET sock_fd, char *buf, int size)
 {
   int write_len;
 #ifdef ASYNC_MODE
@@ -1120,13 +1101,13 @@ write_to_client (int sock_fd, char *buf, int size)
   struct timeval timeout = { 60, 0 };
 #endif
 
-  if (sock_fd < 0)
+  if (IS_INVALID_SOCKET (sock_fd))
     return -1;
 
 #ifdef ASYNC_MODE
   FD_ZERO (&write_mask);
   FD_SET (sock_fd, (fd_set *) & write_mask);
-  maxfd = sock_fd + 1;
+  maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0,
 	    &timeout);
@@ -1161,7 +1142,7 @@ run_appl_server (int as_index)
   int pid;
   char argv0[64];
   char buf[PATH_MAX];
-#ifndef WIN32
+#if !defined(WINDOWS)
   int i;
 #endif
 
@@ -1184,16 +1165,12 @@ run_appl_server (int as_index)
 
   shm_appl->as_info[as_index].service_ready_flag = FALSE;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGCHLD, SIG_IGN);
 #endif
 
-#ifndef WIN32
-#ifdef UNIXWARE7
-  pid = fork1 ();
-#else
+#if !defined(WINDOWS)
   pid = fork ();
-#endif
   if (pid == 0)
     {
       signal (SIGCHLD, SIG_DFL);
@@ -1222,13 +1199,13 @@ run_appl_server (int as_index)
       sprintf (argv0, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name,
 	       as_index + 1);
 
-#ifdef WIN32
+#if defined(WINDOWS)
       pid = run_child (appl_name);
 #else
       execle (appl_name, argv0, NULL, environ);
 #endif
 
-#ifndef WIN32
+#if !defined(WINDOWS)
       exit (0);
     }
 #endif
@@ -1254,7 +1231,7 @@ restart_appl_server (int as_index)
 {
   int new_pid;
 
-#if defined(WIN32)
+#if defined(WINDOWS)
   ut_kill_process (shm_appl->as_info[as_index].pid,
 		   shm_br->br_info[br_index].name, as_index);
   new_pid = run_appl_server (as_index);
@@ -1311,7 +1288,7 @@ restart_appl_server (int as_index)
 }
 
 static int
-read_nbytes_from_client (int sock_fd, char *buf, int size)
+read_nbytes_from_client (SOCKET sock_fd, char *buf, int size)
 {
   int total_read_size = 0, read_len;
 
@@ -1330,28 +1307,28 @@ read_nbytes_from_client (int sock_fd, char *buf, int size)
   return total_read_size;
 }
 
-static int
+static SOCKET
 connect_srv (char *br_name, int as_index)
 {
   int sock_addr_len;
-#ifdef WIN32
+#if defined(WINDOWS)
   struct sockaddr_in sock_addr;
 #else
   struct sockaddr_un sock_addr;
 #endif
-  int srv_sock_fd;
+  SOCKET srv_sock_fd;
   int one = 1;
   char retry_count = 0;
-#ifndef WIN32
+#if !defined(WINDOWS)
   char buf[PATH_MAX];
 #endif
 
 retry:
 
-#ifdef WIN32
+#if defined(WINDOWS)
   srv_sock_fd = socket (AF_INET, SOCK_STREAM, 0);
-  if (srv_sock_fd < 0)
-    return UW_ER_CANT_CREATE_SOCKET;
+  if (IS_INVALID_SOCKET (srv_sock_fd))
+    return INVALID_SOCKET;
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_in));
   sock_addr.sin_family = AF_INET;
@@ -1361,8 +1338,8 @@ retry:
   sock_addr_len = sizeof (struct sockaddr_in);
 #else
   srv_sock_fd = socket (AF_UNIX, SOCK_STREAM, 0);
-  if (srv_sock_fd < 0)
-    return UW_ER_CANT_CREATE_SOCKET;
+  if (IS_INVALID_SOCKET (srv_sock_fd))
+    return INVALID_SOCKET;
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
@@ -1388,7 +1365,7 @@ retry:
 	  goto retry;
 	}
       CLOSE_SOCKET (srv_sock_fd);
-      return UW_ER_CANT_CONNECT;
+      return INVALID_SOCKET;
     }
 
   setsockopt (srv_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
@@ -1411,7 +1388,7 @@ cas_monitor_thr_f (void *ar)
 	    continue;
 	  if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	    tmp_num_busy_uts++;
-#ifdef WIN32
+#if defined(WINDOWS)
 	  else if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY_WAIT)
 	    {
 	      if (time (NULL) - shm_appl->as_info[i].last_access_time > 10)
@@ -1425,7 +1402,7 @@ cas_monitor_thr_f (void *ar)
         continue;  */
 	  if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	    {
-#ifdef WIN32
+#if defined(WINDOWS)
 	      HANDLE phandle;
 	      phandle = OpenProcess (SYNCHRONIZE, FALSE,
 				     shm_appl->as_info[i].pid);
@@ -1463,12 +1440,12 @@ cas_monitor_thr_f (void *ar)
       SLEEP_MILISEC (0, 100);
     }
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   return NULL;
 #endif
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static int
 get_cputime_sec (int pid)
 {
@@ -1795,7 +1772,7 @@ pdh_get_value (int pid, int *workset, float *pct_cpu, int *br_num_thr)
 
   return -1;
 }
-#else /* ifndef WIN32 */
+#else /* ifndef WINDOWS */
 static THREAD_FUNC
 psize_check_thr_f (void *ar)
 {
@@ -1854,19 +1831,19 @@ check_cas_log (char *br_name, int as_index)
 
 #ifdef WIN_FW
 static int
-process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
-		     int srv_sock_fd)
+process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
+		     SOCKET srv_sock_fd)
 {
   char read_buf[1024];
   int msg_size;
   int read_len;
   int tmp_int;
   char *tmp_p;
-#ifdef WIN32
+#if defined(WINDOWS)
   int glo_size;
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_appl->as_info[as_index].glo_flag = 0;
 #endif
 
@@ -1907,7 +1884,7 @@ process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
 
   while (1)
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       while (shm_appl->as_info[as_index].glo_flag)
 	{
 	  SLEEP_MILISEC (0, 10);
@@ -1948,7 +1925,7 @@ process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
 	  msg_size -= read_len;
 	}
 
-#ifdef WIN32
+#if defined(WINDOWS)
       while (shm_appl->as_info[as_index].glo_read_size < 0)
 	{
 	  SLEEP_MILISEC (0, 10);
@@ -1992,7 +1969,7 @@ process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
 	  msg_size -= read_len;
 	}
 
-#ifdef WIN32
+#if defined(WINDOWS)
       while (shm_appl->as_info[as_index].glo_write_size < 0)
 	{
 	  SLEEP_MILISEC (0, 10);
@@ -2025,7 +2002,7 @@ process_cas_request (int cas_pid, int as_index, int clt_sock_fd,
 }
 
 static int
-read_from_cas_client (int sock_fd, char *buf, int size, int as_index,
+read_from_cas_client (SOCKET sock_fd, char *buf, int size, int as_index,
 		      int cas_pid)
 {
   int read_len;
@@ -2133,7 +2110,7 @@ find_idle_cas (void)
       MUTEX_UNLOCK (con_status_mutex);
     }
 
-#if defined(WIN32)
+#if defined(WINDOWS)
   if (idle_cas_id >= 0)
     {
       HANDLE h_proc;

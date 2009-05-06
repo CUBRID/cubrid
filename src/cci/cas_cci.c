@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -38,6 +38,7 @@
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +48,7 @@
 #include <stdarg.h>
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -59,7 +60,7 @@
 #include <signal.h>
 #endif
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <sys/socket.h>
 #endif
 
@@ -67,7 +68,7 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "version.h"
 #endif
 #include "cci_common.h"
@@ -80,7 +81,7 @@
 #include "cci_net_buf.h"
 #include "cci_util.h"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
 
@@ -100,15 +101,16 @@
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define snprintf	_snprintf
 #endif
 
 #define IS_OUT_TRAN_STATUS(CON_HANDLE) \
-        (((CON_HANDLE)->sock_fd < 0) || ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
+        (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
+         ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
 
 #define NEED_TO_CONNECT(CON_HANDLE) \
-        (((CON_HANDLE)->sock_fd < 0) &&     \
+        (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) &&     \
          ((CON_HANDLE)->tran_status == CCI_TRAN_STATUS_START))
 
 
@@ -121,14 +123,14 @@ static int col_set_add_drop (int con_h_id, char col_cmd, char *oid_str,
 			     char *col_attr, char *value,
 			     T_CCI_ERROR * err_buf);
 static int col_seq_op (int con_h_id, char col_cmd, char *oid_str,
-		       char *col_attr, int index, char *value,
+		       char *col_attr, int index, const char *value,
 		       T_CCI_ERROR * err_buf);
 static int fetch_cmd (int reg_h_id, char flag, T_CCI_ERROR * err_buf);
 static int cas_connect (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf);
 static int cas_connect_with_ret (T_CON_HANDLE * con_handle,
 				 T_CCI_ERROR * err_buf, int *connect);
-static int cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
-			    int *connect);
+static int cas_connect_low (T_CON_HANDLE * con_handle,
+			    T_CCI_ERROR * err_buf, int *connect);
 static int get_query_info (int req_h_id, char log_type, char **out_buf);
 static int next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf);
 
@@ -137,7 +139,7 @@ static int glo_cmd_init (T_NET_BUF * net_buf, char glo_cmd, char *oid_str,
 static int glo_cmd_common (int con_h_id, T_NET_BUF * net_buf,
 			   char **result_msg, int *result_msg_size,
 			   T_CCI_ERROR * err_buf);
-static int glo_cmd_ex (int sock_fd, T_NET_BUF * net_buf, char **result_msg,
+static int glo_cmd_ex (SOCKET sock_fd, T_NET_BUF * net_buf, char **result_msg,
 		       int *result_msg_size, T_CCI_ERROR * err_buf);
 
 
@@ -159,7 +161,7 @@ static int get_thread_result (T_CON_HANDLE * con_handle,
 static int connect_prepare_again (T_CON_HANDLE * con_handle,
 				  T_REQ_HANDLE * req_handle,
 				  T_CCI_ERROR * err_buf);
-static char *cci_get_err_msg_low (int err_code);
+static const char *cci_get_err_msg_low (int err_code);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -173,7 +175,7 @@ static char *cci_get_err_msg_low (int err_code);
  * PRIVATE VARIABLES							*
  ************************************************************************/
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
 #else
 static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -181,7 +183,7 @@ static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static char init_flag = 0;
 static char cci_init_flag = 1;
-#ifndef WIN32
+#if !defined(WINDOWS)
 static int cci_SIGPIPE_ignore = 0;
 #endif
 
@@ -190,7 +192,7 @@ static int cci_SIGPIPE_ignore = 0;
  * IMPLEMENTATION OF INTERFACE FUNCTIONS 				*
  ************************************************************************/
 
-#if defined(WIN32) && defined(CAS_CCI_DL)
+#if defined(WINDOWS) && defined(CAS_CCI_DL)
 BOOL APIENTRY
 DllMain (HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
@@ -212,7 +214,7 @@ cci_init ()
   if (cci_init_flag)
     {
       cci_init_flag = 0;
-#ifdef WIN32
+#if defined(WINDOWS)
       MUTEX_INIT (con_handle_table_mutex);
 #endif
     }
@@ -261,7 +263,7 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 #endif
 
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     return CCI_ER_CONNECT;
 #endif
@@ -279,7 +281,7 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
   MUTEX_UNLOCK (con_handle_table_mutex);
 
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (!cci_SIGPIPE_ignore)
     {
       signal (SIGPIPE, SIG_IGN);
@@ -2479,7 +2481,7 @@ cci_set_isolation_level (int con_id, T_CCI_TRAN_ISOLATION val,
     }
 
   con_handle->default_isolation_level = val;
-  if (con_handle->sock_fd > 0)
+  if (!IS_INVALID_SOCKET (con_handle->sock_fd))
     {
       err_code = qe_set_db_parameter (con_handle,
 				      CCI_PARAM_ISOLATION_LEVEL,
@@ -2705,7 +2707,7 @@ cci_savepoint (int con_h_id, T_CCI_SAVEPOINT_CMD cmd, char *savepoint_name,
 	}
     }
 
-  if (con_handle->sock_fd < 0)
+  if (IS_INVALID_SOCKET (con_handle->sock_fd))
     {
       err_code = 0;
     }
@@ -3292,7 +3294,7 @@ cci_get_dbms_type (int con_h_id)
 }
 
 
-static char *
+static const char *
 cci_get_err_msg_low (int err_code)
 {
   switch (err_code)
@@ -3474,11 +3476,13 @@ cci_get_err_msg_low (int err_code)
 int
 cci_get_error_msg (int err_code, T_CCI_ERROR * error, char *buf, int bufsize)
 {
-  char *err_msg;
+  const char *err_msg;
 
 
   if ((buf == NULL) || (bufsize <= 0))
-    return -1;
+    {
+      return -1;
+    }
 
   err_msg = cci_get_err_msg_low (err_code);
   if (err_msg == NULL)
@@ -3518,10 +3522,12 @@ cci_get_error_msg (int err_code, T_CCI_ERROR * error, char *buf, int bufsize)
 int
 cci_get_err_msg (int err_code, char *buf, int bufsize)
 {
-  char *err_msg;
+  const char *err_msg;
 
   if ((buf == NULL) || (bufsize <= 0))
-    return -1;
+    {
+      return -1;
+    }
 
   err_msg = cci_get_err_msg_low (err_code);
   if (err_msg == NULL)
@@ -3604,7 +3610,7 @@ col_set_add_drop (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
 
 static int
 col_seq_op (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
-	    int index, char *value, T_CCI_ERROR * err_buf)
+	    int index, const char *value, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle = NULL;
@@ -3718,6 +3724,7 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 
       hm_invalidate_all_req_handle (con_handle);
     }
+
   return err_code;
 }
 
@@ -3726,33 +3733,37 @@ static int
 cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		 int *connect)
 {
-  int sock_fd;
+  SOCKET sock_fd;
+  int error;
+
   *connect = 0;
 
   if (net_check_cas_request (con_handle->sock_fd) < 0)
     {
-      if (con_handle->sock_fd >= 0)
+      if (!IS_INVALID_SOCKET (con_handle->sock_fd))
 	{
 	  CLOSE_SOCKET (con_handle->sock_fd);
-	  con_handle->sock_fd = -1;
+	  con_handle->sock_fd = INVALID_SOCKET;
 	}
     }
 
-  if (con_handle->sock_fd >= 0)
-    return con_handle->sock_fd;
+  if (!IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      return CCI_ER_NO_ERROR;
+    }
 
 
-  sock_fd = net_connect_srv (con_handle->ip_addr,
-			     con_handle->port,
-			     con_handle->db_name,
-			     con_handle->db_user,
-			     con_handle->db_passwd,
-			     con_handle->is_first,
-			     err_buf, con_handle->broker_info,
-			     &(con_handle->cas_pid));
+  error = net_connect_srv (con_handle->ip_addr,
+			   con_handle->port,
+			   con_handle->db_name,
+			   con_handle->db_user,
+			   con_handle->db_passwd,
+			   con_handle->is_first,
+			   err_buf, con_handle->broker_info,
+			   &(con_handle->cas_pid), &sock_fd);
 
 
-  if (sock_fd >= 0)
+  if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
     {
       con_handle->is_first = 0;
       con_handle->sock_fd = sock_fd;
@@ -3768,7 +3779,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
     }
 
   *connect = 1;
-  return sock_fd;
+  return error;
 }
 
 static int
@@ -3922,7 +3933,7 @@ glo_cmd_common (int con_h_id, T_NET_BUF * net_buf, char **result_msg,
 }
 
 static int
-glo_cmd_ex (int sock_fd, T_NET_BUF * net_buf, char **result_msg,
+glo_cmd_ex (SOCKET sock_fd, T_NET_BUF * net_buf, char **result_msg,
 	    int *result_msg_size, T_CCI_ERROR * err_buf)
 {
   int err_code;
@@ -3986,6 +3997,8 @@ dbg_a_type_str (T_CCI_A_TYPE atype)
       return "CCI_A_TYPE_STR";
     case CCI_A_TYPE_INT:
       return "CCI_A_TYPE_INT";
+    case CCI_A_TYPE_BIGINT:
+      return "CCI_A_TYPE_BIGINT";
     case CCI_A_TYPE_FLOAT:
       return "CCI_A_TYPE_FLOAT";
     case CCI_A_TYPE_DOUBLE:
@@ -4022,6 +4035,8 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_VARBIT";
     case CCI_U_TYPE_NUMERIC:
       return "CCI_U_TYPE_NUMERIC";
+    case CCI_U_TYPE_BIGINT:
+      return "CCI_U_TYPE_BIGINT";
     case CCI_U_TYPE_INT:
       return "CCI_U_TYPE_INT";
     case CCI_U_TYPE_SHORT:
@@ -4038,6 +4053,8 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_TIME";
     case CCI_U_TYPE_TIMESTAMP:
       return "CCI_U_TYPE_TIMESTAMP";
+    case CCI_U_TYPE_DATETIME:
+      return "CCI_U_TYPE_DATETIME";
     case CCI_U_TYPE_SET:
       return "CCI_U_TYPE_SET";
     case CCI_U_TYPE_MULTISET:

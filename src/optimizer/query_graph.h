@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -84,7 +84,6 @@ struct qo_class_info
 {
   int n;
   QO_CLASS_INFO_ENTRY info[1];
-
 };
 
 
@@ -96,47 +95,51 @@ struct qo_attr_info
 
 struct qo_index_entry
 {
-
-
   /* next compatible index under the class hierarchy */
   struct qo_index_entry *next;
 
-  /* type of index; either SM_CONSTRAINT_INDEX or SM_CONSTRAINT_UNIQUE */
-  SM_CONSTRAINT_TYPE type;
   /* information of the class to which the index belongs */
   QO_CLASS_INFO_ENTRY *class_;
+
+  /* index name */
+  const char *name;
+
+  /* type of index; either SM_CONSTRAINT_INDEX or SM_CONSTRAINT_UNIQUE */
+  SM_CONSTRAINT_TYPE type;
+
   /* B-tree ID of the index */
   BTID btid;
   int force;
-  /* index name */
-  const char *name;
+
   /* number of columns of the index */
   int col_num;
+
   /* statistics of the index; statistcs of the first indexed attribute */
   ATTR_STATS *stats;
+
   /* B-tree statistics of the index; ATTR_STATS.BTREE_STATS[idx] */
   int bt_stats_idx;
 
-
-
-
   /* number of entries of seg_idxs[] and seg_terms[] array */
   int nsegs;
+
   /* array of segment idx's constrained by the index */
   int *seg_idxs;
+
   /* array of equal operator term sets */
   BITSET *seg_equal_terms;
+
   /* array of non-equal operator term sets */
   BITSET *seg_other_terms;
+
   /* terms constrained by the index */
   BITSET terms;
-};				/* struct qo_index_entry */
+};
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)
 
 struct qo_index
 {
-
   int n;
   int max;
   struct qo_index_entry index[1];
@@ -157,18 +160,14 @@ struct qo_index
  */
 struct qo_node_index_entry
 {
-  /*
-   *  Number of classes on the list (depth of the list).
-   */
-  int n;
+  /* Pointer to a linked list of compatible index nodes. */
+  QO_INDEX_ENTRY *head;
 
   /* cumulative stats for all indexes in this list */
   QO_ATTR_CUM_STATS cum_stats;
 
-  /*
-   *  Pointer to a linked list of compatible index nodes.
-   */
-  QO_INDEX_ENTRY *head;
+  /* Number of classes on the list (depth of the list). */
+  int n;
 };
 
 /*
@@ -180,14 +179,10 @@ struct qo_node_index_entry
  */
 struct qo_node_index
 {
-  /*
-   *  Number of usable indexes (size of the array).
-   */
+  /*  Number of usable indexes (size of the array). */
   int n;
 
-  /*
-   *  Array of usable indexes
-   */
+  /*  Array of usable indexes  */
   struct qo_node_index_entry index[1];
 };
 
@@ -196,16 +191,21 @@ struct qo_node_index
 
 
 /* index names for the node specfied in USING INDEX clause */
+
+struct qo_using_index_entry
+{
+  const char *name;
+  int force;
+};
+
 struct qo_using_index
 {
-  int n;			/* number of indexes (size of the array) */
-  /* 0 if USING INDEX NONE in the query */
-  struct
-  {
-    const char *name;
-    int force;
-  } index[1];			/* array of index names */
-};				/* struct QO_USING_INDEX */
+  /* number of indexes (size of the array) */
+  int n;
+
+  /* array of index names */
+  struct qo_using_index_entry index[1];
+};
 
 #define QO_UI_N(ui)         ((ui)->n)
 #define QO_UI_INDEX(ui, n)  ((ui)->index[(n)].name)
@@ -214,8 +214,6 @@ struct qo_using_index
 
 struct qo_node
 {
-
-
   /*
    * The environment in which this Node is embedded, and to which it
    * refers for other important information.
@@ -323,11 +321,8 @@ struct qo_node
   /* NULL if no USING INDEX clause in the query */
 
   BITSET outer_dep_set;		/* outer join dependency; to preseve join sequence */
+  PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
-  /*
-   * hint comment contained in given
-   */
-  PT_HINT_ENUM hint;
 };
 
 #define QO_NODE_ENV(node)		(node)->env
@@ -361,8 +356,6 @@ struct qo_node
 
 struct qo_segment
 {
-
-
   /*
    * The environment in which this Segment is embedded.
    */
@@ -410,6 +403,9 @@ struct qo_segment
   bool class_attr;
   bool shared_attr;
 
+  /* is index term equatity expression? */
+  bool index_term_eq_expr;
+
   /*
    * Statistics information gleaned from the underlying attributes for
    * this segment.  This vector should have the same number of entries
@@ -420,14 +416,11 @@ struct qo_segment
    */
   QO_ATTR_INFO *info;
 
-  /*
-   * The index of this segment in the corresponding Env's seg array.
-   */
-  int idx;
   /* indexable terms to which this segment belings */
   BITSET index_terms;
-  /* is index term equatity expression? */
-  bool index_term_eq_expr;
+
+  /* The index of this segment in the corresponding Env's seg array. */
+  int idx;
 };
 
 #define QO_SEG_ENV(seg)			(seg)->env
@@ -450,11 +443,7 @@ struct qo_segment
 
 struct qo_eqclass
 {
-
-
-  /*
-   * The Env in which this EqClass is embedded.
-   */
+  /* The Env in which this EqClass is embedded. */
   QO_ENV *env;
 
   /*
@@ -513,8 +502,6 @@ typedef enum
 
 struct qo_term
 {
-
-
   /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
@@ -523,16 +510,8 @@ struct qo_term
    * the elements of this struct.
    */
 
-  /*
-   * The env in which this term is embedded.
-   */
+  /* The env in which this term is embedded. */
   QO_ENV *env;
-
-  /*
-   * The "flavor" of this term.  This is determined by analysis of the
-   * segment or where-clause disjunct that gives rise to the term.
-   */
-  QO_TERMCLASS term_class;
 
   /*
    * The nodes referenced by this term (i.e., the heads of all segments
@@ -559,6 +538,12 @@ struct qo_term
   double selectivity;
 
   /*
+   * The "flavor" of this term.  This is determined by analysis of the
+   * segment or where-clause disjunct that gives rise to the term.
+   */
+  QO_TERMCLASS term_class;
+
+  /*
    * The rank of this term. used for the same selectivity
    */
   int rank;
@@ -569,7 +554,6 @@ struct qo_term
    * condition, or a "manufactured" term spawned by a path term.
    */
   PT_NODE *pt_expr;
-  short location;
 
   /*
    * The set of all correlated subqueries appearing in this term.
@@ -624,6 +608,8 @@ struct qo_term
    * node in various bitsets.
    */
   int idx;
+
+  short location;
 
   /*
    * WARNING!!! WARNING!!! WARNING!!!
@@ -726,15 +712,15 @@ struct qo_partition
   BITSET edges;
   BITSET dependencies;
 
-  /* the starting point of this partition's join_info vector that
-   * will be allocated.
-   */
-  int M_offset;
-
   /*
    * The optimized plan created for this partition.
    */
   QO_PLAN *plan;
+
+  /* the starting point of this partition's join_info vector that
+   * will be allocated.
+   */
+  int M_offset;
 
   /*
    * The id of this partition.
@@ -771,18 +757,6 @@ struct qo_env
    */
   PT_NODE *pt_tree;
 
-  /*
-   * Counts and vectors that hold the various collections of nodes,
-   * segments, etc.
-   */
-  int nsegs, Nsegs;
-  int nnodes, Nnodes;
-  int neqclasses, Neqclasses;
-  int nterms, Nterms;
-  int nsubqueries;
-  int npartitions;
-  int nedges;
-
   QO_SEGMENT *segs;
   QO_NODE *nodes;
   QO_EQCLASS *eqclasses;
@@ -807,6 +781,18 @@ struct qo_env
   BITSET final_segs;
 
   /*
+   * Counts and vectors that hold the various collections of nodes,
+   * segments, etc.
+   */
+  int nsegs, Nsegs;
+  int nnodes, Nnodes;
+  int neqclasses, Neqclasses;
+  int nterms, Nterms;
+  int nsubqueries;
+  int npartitions;
+  int nedges;
+
+  /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query
    * that will return no values.
@@ -829,17 +815,17 @@ struct qo_env
   jmp_buf catch_;
 
   /*
-   * Controls the amount of garbage dumped with plans.  Can be
-   * overriden with the environment variable CUBRID_QO_DUMP_LEVEL.
-   */
-  bool dump_enable;
-
-  /*
    * A bitset holding the idx's of all fake terms.  This is convenient
    * for a quick exclusion test necessary during the search for good
    * plans, because fake terms can't be used in certain contexts.
    */
   BITSET fake_terms;
+
+  /*
+   * Controls the amount of garbage dumped with plans.  Can be
+   * overriden with the environment variable CUBRID_QO_DUMP_LEVEL.
+   */
+  bool dump_enable;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])
@@ -858,11 +844,7 @@ struct qo_env
  */
 struct qo_xasl_index_info
 {
-  /*
-   *  Number of term expressions.
-   *  Array of term expressions which are associated with this index.
-   */
-  int nterms;
+  /*  Array of term expressions which are associated with this index. */
   PT_NODE **term_exprs;
 
   /*
@@ -870,6 +852,9 @@ struct qo_xasl_index_info
    *  infomation regarding the index itself.
    */
   struct qo_node_index_entry *ni_entry;
+
+  /* Number of term expressions. */
+  int nterms;
 };
 
 #define QO_INNER_JOIN_TERM(term) \
@@ -909,7 +894,7 @@ extern void qo_term_fprint (QO_TERM *, FILE *);
 extern void qo_print_stats (FILE *);
 extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
-extern size_t qo_seg_width (QO_SEGMENT * seg);
+extern int qo_seg_width (QO_SEGMENT * seg);
 
 extern double QO_INFINITY;
 

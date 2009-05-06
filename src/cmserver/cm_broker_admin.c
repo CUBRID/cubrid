@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_admin.c - 
+ * broker_admin.c -
  */
 
 #ident "$Id$"
@@ -31,7 +31,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if defined(WIN32)
+#if defined(WINDOWS)
 #elif defined(HPUX)
 #include <dl.h>
 #else
@@ -44,7 +44,7 @@
 #include "broker_admin_so.h"
 #include "cm_server_util.h"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define UC_ADMIN_SO		"brokeradmin.dll"
 #else
 #define UC_ADMIN_SO		"libbrokeradmin.so"
@@ -60,7 +60,14 @@
 	  }					\
 	} while (0)
 
-#if defined(WIN32)
+#define CHECK_UCA_INIT_WITHOUT_SET_ERROR()      \
+        do {                                    \
+          if (uca_init_flag == 0) {             \
+            return -1;                          \
+          }                                     \
+        } while (0)
+
+#if defined(WINDOWS)
 #define CP_INIT_ERR_MSG()					\
 	do {							\
 	  LPSTR	lpMsgBuf;				\
@@ -90,7 +97,7 @@
 	} while (0);
 #endif
 
-#if defined(WIN32)
+#if defined(WINDOWS)
 #define SH_LIB_LOAD(PATH)		LoadLibrary(PATH)
 #elif defined(HPUX)
 #define SH_LIB_LOAD(PATH)		shl_load(PATH, BIND_IMMEDIATE, 0)
@@ -98,7 +105,7 @@
 #define SH_LIB_LOAD(PATH)		dlopen(PATH, RTLD_NOW)
 #endif
 
-#if defined(WIN32)
+#if defined(WINDOWS)
 #define SH_LIB_GET_ADDRESS(PTR, MODULE, FUNC_NAME)	\
 	do {						\
 	  PTR = GetProcAddress((HMODULE) MODULE, FUNC_NAME);	\
@@ -162,7 +169,7 @@ typedef enum
 typedef struct
 {
   void *func_p;
-  char *func_name;
+  const char *func_name;
 } T_UC_ADMIN_F;
 
 T_UC_ADMIN_F uc_admin_f[] = {
@@ -262,10 +269,10 @@ uca_init (char *err_msg)
 }
 
 char *
-uca_version ()
+uca_version (void)
 {
   if (!uca_init_flag)
-    return "";
+    return (char *) "";
 
   return (((T_UC_VERSION_F) uc_admin_f[UC_ADM_VERSION].func_p) ());
 }
@@ -564,12 +571,12 @@ uca_conf_broker_add (T_DM_UC_CONF * dm_uc_conf, char *br_name, char *err_msg)
 }
 
 int
-uca_change_config (T_DM_UC_CONF * dm_uc_conf, char *br_name, char *name,
-		   char *value)
+uca_change_config (T_DM_UC_CONF * dm_uc_conf, const char *br_name,
+		   const char *name, const char *value)
 {
   T_UC_CONF uc_conf;
 
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   uc_conf.num_header = dm_uc_conf->num_header;
   uc_conf.header_conf = (T_UC_CONF_ITEM *) dm_uc_conf->header_conf;
   uc_conf.num_broker = dm_uc_conf->num_broker;
@@ -617,13 +624,13 @@ uca_get_file (T_UNICAS_FILE_ID uc_fid, char *buf)
 }
 
 char *
-uca_get_conf_path (char *filename, char *buf)
+uca_get_conf_path (const char *filename, char *buf)
 {
   strcpy (buf, filename);
 
   if (buf[0] == '/')
     return buf;
-#ifdef WIN32
+#if defined(WINDOWS)
   if (buf[2] == '/' || buf[2] == '\\')
     return buf;
 #endif
@@ -646,7 +653,7 @@ uca_cpu_time_str (int t, char *buf)
 int
 uca_get_active_session_with_opened_shm (void *shm_br, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UC_GET_ACTIVE_SESSION_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_ACTIVE_SESSION_WITH_OPENED_SHM].
 	   func_p) (shm_br, err_msg));
@@ -686,7 +693,7 @@ uca_set_br_diagconfig_with_opened_shm (void *shm_br, void *c_config,
 int
 uca_get_br_num_with_opened_shm (void *shm_br, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UCA_GET_BR_NUM_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_BR_NUM_WITH_OPENED_SHM].func_p) (shm_br,
 								  err_msg));
@@ -696,7 +703,7 @@ int
 uca_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name,
 				 int buffer_size, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UCA_GET_BR_NAME_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_BR_NAME_WITH_OPENED_SHM].func_p) (shm_br,
 								   br_index,
@@ -718,7 +725,7 @@ uca_as_shm_open (void *shm_br, int br_index, char *err_msg)
 int
 uca_get_as_num_with_opened_shm (void *shm_br, int br_index, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UCA_GET_AS_NUM_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_AS_NUM_WITH_OPENED_SHM].func_p) (shm_br,
 								  br_index,
@@ -729,7 +736,7 @@ int
 uca_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[],
 					  int array_size, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UCA_GET_AS_REQS_RECEIVED_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_AS_REQS_RECEIVED_WITH_OPENED_SHM].
 	   func_p) (shm_as, array, array_size, err_msg));
@@ -739,7 +746,7 @@ int
 uca_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[],
 					   int array_size, char *err_msg)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   return (((T_UCA_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM)
 	   uc_admin_f[UC_ADM_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM].
 	   func_p) (shm_as, array, array_size, err_msg));
@@ -748,7 +755,7 @@ uca_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[],
 int
 uca_shm_detach (void *p)
 {
-  CHECK_UCA_INIT (NULL);
+  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
   (((T_UCA_SHM_DETACH) uc_admin_f[UC_ADM_SHM_DETACH].func_p) (p));
   return 1;
 }
@@ -774,7 +781,7 @@ uca_conf_find_broker (T_DM_UC_CONF * uc_conf, char *br_name)
 }
 
 char *
-uca_conf_find (T_DM_UC_BR_CONF * br_conf, char *name)
+uca_conf_find (T_DM_UC_BR_CONF * br_conf, const char *name)
 {
   int i;
 

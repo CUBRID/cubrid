@@ -100,6 +100,8 @@
 #define		ODBC_STRLEN_IND(value)		\
 		((value == NULL) ? SQL_NULL_DATA : strlen(value))
 
+#define     strlen(s)           ((int) strlen(s))
+
 extern PUBLIC HINSTANCE hInstance;
 
 #endif /* ! __ODBC_PORTABLE_HEADER */

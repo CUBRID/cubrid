@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -67,13 +67,13 @@ struct qfile_list_cache_entry
   QFILE_LIST_ID list_id;	/* list file(query result) identifier */
 #if defined(SERVER_MODE)
   QFILE_LIST_CACHE_ENTRY *tran_next;	/* next entry in the transaction list */
-  bool uncommitted_marker;	/* the transaction that made this entry is not
-				   committed yet */
   TRAN_ISOLATION tran_isolation;	/* isolation level of the transaction
 					   which made this result */
+  bool uncommitted_marker;	/* the transaction that made this entry is not
+				   committed yet */
   int *tran_index_array;	/* array of TID(tran index)s that are currently
 				   using this list file; size is MAX_NTRANS */
-  int last_ta_idx;		/* index of the last element in TIDs array */
+  size_t last_ta_idx;		/* index of the last element in TIDs array */
 #endif				/* SERVER_MODE */
   const char *query_string;	/* query string; information purpose only */
   struct timeval time_created;	/* when this entry created */
@@ -81,14 +81,6 @@ struct qfile_list_cache_entry
   int ref_count;		/* how many times this query used */
   bool deletion_marker;		/* this entry will be deleted if marker set */
 };
-
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-/* TODO: fix header file */
-extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
-				      VOLID volid, PAGEID pageid,
-				      char *page_bufp, int *page_sizep);
-#endif /* SERVER_MODE */
 
 /* List manipulation routines */
 extern int qfile_initialize (void);
@@ -197,7 +189,7 @@ extern int qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
 extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p,
 				       QFILE_TUPLE_VALUE_TYPE_LIST *
 				       type_list, SORT_LIST * sort_list,
-				       int query_id, int flag);
+				       QUERY_ID query_id, int flag);
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p,
 					   QFILE_LIST_ID * list_id,
 					   QFILE_TUPLE_TYPE tpl_type);
@@ -208,7 +200,7 @@ extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * rhs_file,
 					      int flag);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec,
-				   long tpl_size);
+				   int tpl_size);
 extern void qfile_print_list (THREAD_ENTRY * thread_p,
 			      QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p,

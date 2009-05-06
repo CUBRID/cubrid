@@ -28,7 +28,7 @@
 #include <stdlib.h>
 #include <signal.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -50,7 +50,7 @@
 #include "cas_util.h"
 #include "broker_filename.h"
 #include "cas_execute.h"
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include "broker_recv_fd.h"
 #endif
 #ifdef DIAG_DEVEL
@@ -58,15 +58,13 @@
 #endif
 
 #include "broker_shm.h"
+#include "broker_util.h"
 #include "broker_env_def.h"
 #include "broker_process_size.h"
 #include "cas_sql_log2.h"
 
-
-
-static int process_request (int sock_fd, T_NET_BUF * net_buf,
+static int process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
 			    T_REQ_INFO * req_info);
-
 
 #if defined(WINDOWS)
 #define EXECUTABLE_BIN_DIR "bin"
@@ -77,9 +75,9 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 static void cleanup (int signo);
 static int cas_init (void);
 static void query_cancel (int signo);
-static int net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size);
+static int net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size);
 #else /* !LIBCAS_FOR_JSP */
-extern int libcas_main (int jsp_sock_fd);
+extern int libcas_main (SOCKET jsp_sock_fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
 #endif /* !LIBCAS_FOR_JSP */
@@ -97,7 +95,7 @@ char stripped_column_name;
 char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
-int new_req_sock_fd = 0;
+SOCKET new_req_sock_fd = INVALID_SOCKET;
 #endif
 int cas_default_isolation_level = 0;
 int cas_default_lock_timeout = -1;
@@ -140,7 +138,7 @@ static T_SERVER_FUNC server_fn_table[] = { fn_end_tran,
 };
 
 #ifndef LIBCAS_FOR_JSP
-static char *server_func_name[] = { "end_tran",
+static const char *server_func_name[] = { "end_tran",
   "prepare",
   "execute",
   "get_db_parameter",
@@ -179,12 +177,12 @@ static char *server_func_name[] = { "end_tran",
 
 static T_REQ_INFO req_info;
 #ifndef LIBCAS_FOR_JSP
-static int srv_sock_fd;
+static SOCKET srv_sock_fd;
 static int cas_req_count = 1;
 #endif
 
 #ifndef LIBCAS_FOR_JSP
-#ifdef WIN32
+#if defined(WINDOWS)
 int WINAPI
 WinMain (HINSTANCE hInstance,	// handle to current instance
 	 HINSTANCE hPrevInstance,	// handle to previous instance
@@ -197,21 +195,20 @@ main (int argc, char *argv[])
 #endif
 {
   T_NET_BUF net_buf;
-  int br_sock_fd, client_sock_fd;
+  SOCKET br_sock_fd, client_sock_fd;
   char read_buf[1024];
   int err_code;
   char *db_name;
   int one = 1;
-#ifdef WIN32
+#if defined(WINDOWS)
   int new_port;
 #endif
   char *db_user, *db_passwd;
-  char *tmp_db_user, *tmp_db_passwd;
   char broker_info[BROKER_INFO_SIZE];
   int client_ip_addr;
   char print_cas_pid = TRUE;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGTERM, cleanup);
   signal (SIGINT, cleanup);
   signal (SIGUSR1, SIG_IGN);
@@ -219,7 +216,7 @@ main (int argc, char *argv[])
   signal (SIGXFSZ, SIG_IGN);
 #endif
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
       printf ("%s\n", makestring (BUILD_NUMBER));
@@ -237,7 +234,7 @@ main (int argc, char *argv[])
   if (cas_init () < 0)
     return -1;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (shm_appl->as_port > 0)
     new_port = shm_appl->as_port + shm_as_index;
   else
@@ -246,7 +243,7 @@ main (int argc, char *argv[])
 #else
   srv_sock_fd = net_init_env ();
 #endif
-  if (srv_sock_fd < 0)
+  if (IS_INVALID_SOCKET (srv_sock_fd))
     {
       return -1;
     }
@@ -265,7 +262,7 @@ main (int argc, char *argv[])
       cas_log_end (NULL, broker_name, shm_as_index, 0, NULL, 0, TRUE);
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_appl->as_info[shm_as_index].as_port = new_port;
   shm_appl->as_info[shm_as_index].glo_read_size = 0;
   shm_appl->as_info[shm_as_index].glo_write_size = 0;
@@ -275,7 +272,7 @@ main (int argc, char *argv[])
   shm_appl->as_info[shm_as_index].service_ready_flag = TRUE;
   shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
   shm_appl->as_info[shm_as_index].cur_keep_con = KEEP_CON_OFF;
-#ifndef WIN32
+#if !defined(WINDOWS)
   shm_appl->as_info[shm_as_index].psize = getsize (getpid ());
 #endif
 
@@ -289,12 +286,12 @@ main (int argc, char *argv[])
     for (;;)
       {
 	br_sock_fd = net_connect_client (srv_sock_fd);
-	if (br_sock_fd < 0)
+	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
 	    goto error1;
 	  }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 	shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_BUSY;
 #endif
 	shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
@@ -303,7 +300,7 @@ main (int argc, char *argv[])
 	TIMEVAL_MAKE (&tran_start_time);
 	client_ip_addr = 0;
 
-#ifdef WIN32
+#if defined(WINDOWS)
 	client_sock_fd = br_sock_fd;
 	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
 	  goto error1;
@@ -337,7 +334,7 @@ main (int argc, char *argv[])
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
 
-	if (client_sock_fd < 0)
+	if (IS_INVALID_SOCKET (client_sock_fd))
 	  {
 	    goto error1;
 	  }
@@ -446,16 +443,16 @@ main (int argc, char *argv[])
 	    err_code = 0;
 	    while (err_code >= 0)
 	      {
-#ifndef WIN32
+#if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif
 		err_code =
 		  process_request (client_sock_fd, &net_buf, &req_info);
 		cas_log_error_handler_clear ();
-#ifndef WIN32
+#if !defined(WINDOWS)
 		signal (SIGUSR1, SIG_IGN);
 #endif
-#ifdef WIN32
+#if defined(WINDOWS)
 		if (shm_appl->as_info[shm_as_index].glo_read_size < 0)
 		  {
 		    shm_appl->as_info[shm_as_index].glo_read_size = 0;
@@ -511,7 +508,7 @@ main (int argc, char *argv[])
 	CLOSE_SOCKET (client_sock_fd);
 
       error1:
-#ifdef WIN32
+#if defined(WINDOWS)
 	shm_appl->as_info[shm_as_index].close_flag = 1;
 #endif
 
@@ -550,10 +547,10 @@ main (int argc, char *argv[])
 }
 #else
 int
-libcas_main (int jsp_sock_fd)
+libcas_main (SOCKET jsp_sock_fd)
 {
   T_NET_BUF net_buf;
-  int client_sock_fd;
+  SOCKET client_sock_fd;
   char broker_info[BROKER_INFO_SIZE];
   int err_code;
 
@@ -564,48 +561,22 @@ libcas_main (int jsp_sock_fd)
   BROKER_INFO_DBMS_TYPE (broker_info) = CCI_DBMS_CUBRID;
   client_sock_fd = jsp_sock_fd;
 
-#if 0
-  net_write_int (client_sock_fd, 1);
-
-  req_info.client_version = CAS_CUR_VERSION;
-  if (net_read_stream (client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) < 0)
+  net_buf_init (&net_buf);
+  if ((net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE)) == NULL)
     {
-      NET_WRITE_ERROR_CODE (client_sock_fd, CAS_ER_COMMUNICATION);
+      return 0;
     }
-  else
+  net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
+
+  while (1)
     {
-      BROKER_INFO_KEEP_CONNECTION (broker_info) = CAS_KEEP_CONNECTION_OFF;
-      {
-	char msgbuf[4 + BROKER_INFO_SIZE];
-	int tmpint = htonl (getpid ());
-
-	BROKER_INFO_KEEP_CONNECTION (broker_info) = CAS_KEEP_CONNECTION_ON;
-	net_write_int (client_sock_fd, 4 + BROKER_INFO_SIZE);
-	memcpy (msgbuf, &tmpint, 4);
-	memcpy (msgbuf + 4, broker_info, BROKER_INFO_SIZE);
-	net_write_stream (client_sock_fd, msgbuf, 4 + BROKER_INFO_SIZE);
-      }
-#endif
-
-      net_buf_init (&net_buf);
-      if ((net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE)) == NULL)
-	{
-	  return 0;
-	}
-      net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
-
-      while (1)
-	{
-	  err_code = process_request (client_sock_fd, &net_buf, &req_info);
-	  if (err_code < 0)
-	    break;
-	}
-
-      net_buf_clear (&net_buf);
-      net_buf_destroy (&net_buf);
-#if 0
+      err_code = process_request (client_sock_fd, &net_buf, &req_info);
+      if (err_code < 0)
+	break;
     }
-#endif
+
+  net_buf_clear (&net_buf);
+  net_buf_destroy (&net_buf);
 
   return 0;
 }
@@ -669,7 +640,8 @@ query_cancel (int signo)
 #endif /* end of ifndef LIBCAS_FOR_JSP */
 
 static int
-process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
+		 T_REQ_INFO * req_info)
 {
   int msg_size;
   char *read_msg;
@@ -696,7 +668,7 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (err_code < 0)
     {
-      char *cas_log_msg = NULL;
+      const char *cas_log_msg = NULL;
       NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
 #ifndef LIBCAS_FOR_JSP
       if (shm_appl->as_info[shm_as_index].con_status ==
@@ -760,7 +732,7 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   strcpy (shm_appl->as_info[shm_as_index].log_msg,
 	  server_func_name[func_code - 1]);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (!(func_code == CAS_FC_GLO_NEW || func_code == CAS_FC_GLO_SAVE))
     {
       shm_appl->as_info[shm_as_index].glo_read_size = 0;
@@ -820,7 +792,7 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
 
 #ifndef LIBCAS_FOR_JSP
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_appl->as_info[shm_as_index].glo_read_size = 0;
 #endif
 
@@ -837,7 +809,7 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 
 #ifndef LIBCAS_FOR_JSP
-#ifdef WIN32
+#if defined(WINDOWS)
   if (net_buf->post_send_file == NULL)
     shm_appl->as_info[shm_as_index].glo_write_size = 0;
   else
@@ -849,8 +821,8 @@ process_request (int clt_sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       int data_size;
       data_size = htonl (net_buf->data_size);
       memcpy (net_buf->data, &data_size, NET_BUF_HEADER_SIZE);
-      if (net_write_stream
-	  (clt_sock_fd, net_buf->data, NET_BUF_CURR_SIZE (net_buf)) < 0)
+      if (net_write_stream (clt_sock_fd, net_buf->data,
+			    NET_BUF_CURR_SIZE (net_buf)) < 0)
 	{
 	  cas_log_write (0, TRUE, "CONN_ERR net_write_stream()");
 	}
@@ -906,7 +878,7 @@ cas_init ()
 
 #ifndef LIBCAS_FOR_JSP
 static int
-net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size)
 {
   int ret_value = 0;
 
@@ -954,7 +926,7 @@ net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
     }
   while (1);
 
-  new_req_sock_fd = -1;
+  new_req_sock_fd = INVALID_SOCKET;
 
   CON_STATUS_LOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
 
@@ -985,7 +957,7 @@ net_read_int_keep_con_auto (int clt_sock_fd, int *msg_size)
 int
 restart_is_needed (void)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   if (shm_appl->use_pdh_flag == TRUE)
     {
       if ((shm_appl->as_info[shm_as_index].pid ==
@@ -1020,16 +992,9 @@ restart_is_needed (void)
 LONG WINAPI
 CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 {
-  STARTUPINFO si;
-  PROCESS_INFORMATION pi;
-  BOOL fSuccess;
-  char cmd_line[PATH_MAX];
-  TCHAR DumpPath[MAX_PATH] = {
-    0,
-  };
+  TCHAR DumpPath[MAX_PATH] = { 0, };
   SYSTEMTIME SystemTime;
   HANDLE FileHandle;
-  char *cubid_env;
 
   GetLocalTime (&SystemTime);
 

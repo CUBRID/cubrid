@@ -1,32 +1,32 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
- *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
- *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
- *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
- *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
- *
- */
+* Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+*
+* Redistribution and use in source and binary forms, with or without modification, 
+* are permitted provided that the following conditions are met: 
+*
+* - Redistributions of source code must retain the above copyright notice, 
+*   this list of conditions and the following disclaimer. 
+*
+* - Redistributions in binary form must reproduce the above copyright notice, 
+*   this list of conditions and the following disclaimer in the documentation 
+*   and/or other materials provided with the distribution. 
+*
+* - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+*   may be used to endorse or promote products derived from this software without 
+*   specific prior written permission. 
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+* ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+* IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+* INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+* BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+* OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+* ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+* OF SUCH DAMAGE. 
+*
+*/
 
 #ifndef	__ODBC_DIAG_HEADER	/* to avoid multiple inclusion */
 #define	__ODBC_DIAG_HEADER
@@ -45,23 +45,23 @@
 
 
 /*-----------------------------------------------------------------------
-			CUBRID ODBC specific error code
- *-----------------------------------------------------------------------*/
+CUBRID ODBC specific error code
+*-----------------------------------------------------------------------*/
 
 /* error code
- * -1 error, -2 waring, -3 unknown, ... ~ -99 reserved
- * -1000 ~ -4999 odbc error
- * -5000 ~ -9999  reserved
- * -10000 ~ -11999 CUBRID odbc error
- * -12000 ~ -12999 CAS CCI error
- * available error code is to -20000
- */
+* -1 error, -2 waring, -3 unknown, ... ~ -99 reserved
+* -1000 ~ -4999 odbc error
+* -5000 ~ -9999  reserved
+* -10000 ~ -11999 CUBRID odbc error
+* -12000 ~ -12999 CAS CCI error
+* available error code is to -20000
+*/
 
 /* state
- *	"00"  - general
- *	"UN"  - CUBRID ODBC
- *	"CA"  - CAS CCI
- */
+*	"00"  - general
+*	"UN"  - CUBRID ODBC
+*	"CA"  - CAS CCI
+*/
 
 #define ODBC_OK				0
 #define	ODBC_ERROR_OFFSET			(-10000)
@@ -80,9 +80,9 @@
 #define ODBC_CAS_GET_DATA			(-52 + ODBC_ERROR_OFFSET)
 
 /*--------------------------------------------------------------------
- *						CAS ERROR CODE
- *	item을 추가할 땐, diag.c의 ...에 message를 추가해줘야 한다.
- *-------------------------------------------------------------------*/
+*						CAS ERROR CODE
+*	item을 추가할 땐, diag.c의 ...에 message를 추가해줘야 한다.
+*-------------------------------------------------------------------*/
 
 
 #define	ODBC_CC_ER_NO_ERROR			ODBC_OK
@@ -161,28 +161,27 @@ PUBLIC ODBC_DIAG *odbc_alloc_diag (void);
 PUBLIC void odbc_free_diag (ODBC_DIAG * diag, int option);
 PUBLIC ODBC_DIAG_RECORD *odbc_alloc_diag_record (void);
 PUBLIC void odbc_free_diag_record (ODBC_DIAG_RECORD * diag_record,
-				   int option);
+                                   int option);
 PUBLIC void odbc_free_diag_record_list (ODBC_DIAG_RECORD * diag_record);
 PUBLIC void odbc_set_diag (ODBC_DIAG * diag, char *sql_state, int native_code,
-			   char *message);
-PUBLIC RETCODE odbc_get_diag_field (short handle_type,
-				    void *handle,
-				    short rec_number,
-				    short diag_identifier,
-				    void *diag_info_ptr,
-				    short buffer_length,
-				    long *string_length_ptr);
-PUBLIC RETCODE odbc_get_diag_rec (short handle_type,
-				  void *handle,
-				  short rec_number,
-				  char *sqlstate,
-				  long *native_error_ptr,
-				  char *message_text,
-				  short buffer_length, long *text_length_ptr);
+                           char *message);
+PUBLIC RETCODE odbc_get_diag_field (SQLSMALLINT handle_type,
+                                    SQLHANDLE handle,
+                                    SQLSMALLINT rec_number,
+                                    SQLSMALLINT diag_identifier,
+                                    SQLPOINTER diag_info_ptr,
+                                    SQLSMALLINT buffer_length, SQLLEN *string_length_ptr);
+PUBLIC RETCODE odbc_get_diag_rec (SQLSMALLINT handle_type,
+                                  SQLHANDLE *handle,
+                                  SQLSMALLINT rec_number,
+                                  SQLCHAR *sqlstate,
+                                  SQLINTEGER *native_error_ptr,
+                                  SQLCHAR *message_text,
+                                  SQLSMALLINT buffer_length, SQLLEN *text_length_ptr);
 PUBLIC void odbc_set_diag_by_icode (ODBC_DIAG * diag, int icode,
-				    char *message);
+                                    char *message);
 PUBLIC void odbc_set_diag_by_cci (ODBC_DIAG * diag, int cci_err_code,
-				  char *message);
+                                  char *message);
 PUBLIC void odbc_move_diag (ODBC_DIAG * target_diag, ODBC_DIAG * src_diag);
 
 #endif /* ! __ODBC_DIAG_HEADER */

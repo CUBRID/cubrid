@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,8 +53,8 @@
 #define	OFFSETS_PER_BLOCK	256
 #define	START_PTR_PER_BLOCK	15
 #define MAX_PTR_BLOCKS		256
-/* TODO: LP64 porting */
-#define PTR_BLOCK(ptr)  (((unsigned int) ptr) / 32) % MAX_PTR_BLOCKS
+
+#define PTR_BLOCK(ptr)  (((UINTPTR) ptr) / sizeof(UINTPTR)) % MAX_PTR_BLOCKS
 
 /*
  * the linear byte stream for store the given XASL tree is allocated
@@ -79,13 +79,16 @@ typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 struct xasl_unpack_info
 {
   char *packed_xasl;		/* ptr to packed xasl tree */
-  int packed_size;		/* packed xasl tree size */
 #if defined (SERVER_MODE)
   THREAD_ENTRY *thrd;		/* used for private allocation */
 #endif				/* SERVER_MODE */
 
   /* blocks of visited pointer constants */
   VISITED_PTR *ptr_blocks[MAX_PTR_BLOCKS];
+
+  char *alloc_buf;		/* alloced buf */
+
+  int packed_size;		/* packed xasl tree size */
 
   /* low-water-mark of visited pointers */
   int ptr_lwm[MAX_PTR_BLOCKS];
@@ -94,7 +97,6 @@ struct xasl_unpack_info
   int ptr_max[MAX_PTR_BLOCKS];
 
   int alloc_size;		/* alloced buf size */
-  char *alloc_buf;		/* alloced buf */
 };
 
 #if !defined(SERVER_MODE)
@@ -3933,7 +3935,6 @@ stx_build_indx_id (THREAD_ENTRY * thread_p, char *ptr, INDX_ID * indx_id)
 	{
 	  return NULL;
 	}
-      ptr += OR_SHORT_SIZE;	/* align to word boundary */
       break;
 
     case T_EHID:

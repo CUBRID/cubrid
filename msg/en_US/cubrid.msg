@@ -64,13 +64,13 @@ $set 4 MSGCAT_SET_PARAMETER
 
 $set 5 MSGCAT_SET_ERROR
 2 Internal system failure:  no more specific information is available.
-3 Out of virtual memory:  unable to allocate %1$d memory bytes.
+3 Out of virtual memory:  unable to allocate %1$ld memory bytes.
 4 Interrupt.
 5 Key = "%1$s" was not found in hash table "%2$s".
 6 A NULL memory hash table was supplied to a hash table function.
 7 Trying to format disk volume "%1$s" with an incorrect value %2$d for number of pages.
-8 Unable to format disk volume "%1$s" with %2$d pages (%3$d bytes).
-9 Unable to format disk volume "%1$s" with %2$d pages (%3$d Kbytes) due to insufficient space. Current space available is %4$d pages (%5$d Kbytes).
+8 Unable to format disk volume "%1$s" with %2$d pages (%3$ld bytes).
+9 Unable to format disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
 10 Unable to mount disk volume "%1$s".
 11 Unable to mount disk volume "%1$s". The database "%2$s", to which the disk volume belongs, is in use by user %3$s on process %4$d of host %5$s since %6$s.
 12 Problems dismounting volume "%1$s".
@@ -766,7 +766,7 @@ $ LOADDB
 705 Inconsistent %1$d permanent volumes were found when %2$d were expected.
 706 Cannot expand permanent volumes. Permanent volume "%1$s" with purpose %2$s was given.
 707 Unable to expand temporary volume "%1$s" with %2$d pages
-708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$d Kbytes) due to insufficient space. Current space available is %4$d pages (%5$d Kbytes).
+708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
 709 Constraint "%1$s" not found.
 710 Invalid constraint.
 711 An object with the supplied attribute value could not be located.
@@ -1020,7 +1020,9 @@ $ LOADDB
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 
-969 Last Error
+969 Server bit platform (%1$d) is different from client bit platform (%2$d).
+
+970 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

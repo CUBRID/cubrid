@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -62,7 +62,7 @@
 
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \
-    (sizeof(QO_USING_INDEX) + (((n)-1) * (sizeof(char *) + sizeof(int))))
+    (sizeof(QO_USING_INDEX) + (((n)-1) * sizeof(QO_USING_INDEX_ENTRY)))
 
 #define ALLOC_USING_INDEX(env, n) \
     (QO_USING_INDEX *)malloc(SIZEOF_USING_INDEX(n))
@@ -1013,7 +1013,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
 			QO_BUILD_STATUS status)
 {
   PARSER_CONTEXT *parser;
-  QO_NODE *node, *next_node;
+  QO_NODE *node = NULL, *next_node;
   PT_NODE *name, *next_entity, *attr, *attr_list;
   QO_SEGMENT *seg;
   parser = QO_ENV_PARSER (env);
@@ -1217,10 +1217,10 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 		xasl;
 	      if (xasl)
 		{
-		  QO_NODE_NCARD (node) = xasl->cardinality;
-		  QO_NODE_TCARD (node) = (QO_NODE_NCARD (node) *
-					  (double) xasl->projected_size)
-		    / (double) IO_PAGESIZE;
+		  QO_NODE_NCARD (node) = (unsigned long) xasl->cardinality;
+		  QO_NODE_TCARD (node) = (unsigned long)
+		    ((QO_NODE_NCARD (node) *
+		      (double) xasl->projected_size) / (double) IO_PAGESIZE);
 		  if (QO_NODE_TCARD (node) == 0)
 		    {
 		      QO_NODE_TCARD (node) = 1;
@@ -1726,11 +1726,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
   PARSER_CONTEXT *parser;
   int merge_applies, lhs_indexable, rhs_indexable;
   PT_NODE *pt_expr, *lhs_expr, *rhs_expr;
-  QO_NODE *head_node, *tail_node, *on_node;
+  QO_NODE *head_node = NULL, *tail_node = NULL, *on_node;
   QO_SEGMENT *head_seg, *tail_seg;
   BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
   BITSET_ITERATOR iter;
-  PT_OP_TYPE op_type;
+  PT_OP_TYPE op_type = PT_AND;
   int i, n, location;
   bool is_outer_on_cond;
 
@@ -2788,6 +2788,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SYS_DATE:
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
+    case PT_SYS_DATETIME:
 
     case PT_CURRENT_USER:
     case PT_LOCAL_TRANSACTION_ID:
@@ -2850,6 +2851,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_NUMBER:
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
+    case PT_TO_DATETIME:
 
     case PT_TRUNC:
     case PT_INSTR:
@@ -3215,6 +3217,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_SYS_DATE:
 	case PT_SYS_TIME:
 	case PT_SYS_TIMESTAMP:
+	case PT_SYS_DATETIME:
 	case PT_LOCAL_TRANSACTION_ID:
 	case PT_CURRENT_USER:
 	  return true;
@@ -3222,6 +3225,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_TO_DATE:
 	case PT_TO_TIME:
 	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
 	case PT_TO_NUMBER:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
@@ -3564,7 +3568,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
   int i, j, k;
   QO_NODE *node, *p_node;
   PT_NODE *arg, *p_arg, *spec, *p_spec;
-  int last_ordered_idx;
+  int last_ordered_idx = 0;
 
   hint = tree->info.query.q.select.hint;
 
@@ -4723,8 +4727,12 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = (data1->i < data2->i) ? -1 : ((data1->i > data2->i) ? 1 : 0);
       break;
     case DB_TYPE_SHORT:
-      result = (data1->sh < data2->sh) ?
-	-1 : ((data1->sh > data2->sh) ? 1 : 0);
+      result = ((data1->sh < data2->sh) ?
+		-1 : ((data1->sh > data2->sh) ? 1 : 0));
+      break;
+    case DB_TYPE_BIGINT:
+      result = ((data1->bigint < data2->bigint) ?
+		-1 : ((data1->bigint > data2->bigint) ? 1 : 0));
       break;
     case DB_TYPE_FLOAT:
       result = (data1->f < data2->f) ? -1 : ((data1->f > data2->f) ? 1 : 0);
@@ -4733,20 +4741,42 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = (data1->d < data2->d) ? -1 : ((data1->d > data2->d) ? 1 : 0);
       break;
     case DB_TYPE_DATE:
-      result = (data1->date < data2->date) ?
-	-1 : ((data1->date > data2->date) ? 1 : 0);
+      result = ((data1->date < data2->date) ?
+		-1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
-      result = (data1->time < data2->time) ?
-	-1 : ((data1->time > data2->time) ? 1 : 0);
+      result = ((data1->time < data2->time) ?
+		-1 : ((data1->time > data2->time) ? 1 : 0));
       break;
     case DB_TYPE_UTIME:
-      result = (data1->utime < data2->utime) ?
-	-1 : ((data1->utime > data2->utime) ? 1 : 0);
+      result = ((data1->utime < data2->utime) ?
+		-1 : ((data1->utime > data2->utime) ? 1 : 0));
+      break;
+    case DB_TYPE_DATETIME:
+      if (data1->datetime.date < data2->datetime.date)
+	{
+	  result = -1;
+	}
+      else if (data1->datetime.date > data2->datetime.date)
+	{
+	  result = 1;
+	}
+      else if (data1->datetime.time < data2->datetime.time)
+	{
+	  result = -1;
+	}
+      else if (data1->datetime.time > data2->datetime.time)
+	{
+	  result = 1;
+	}
+      else
+	{
+	  result = 0;
+	}
       break;
     case DB_TYPE_MONETARY:
-      result = (data1->money.amount < data2->money.amount) ?
-	-1 : ((data1->money.amount > data2->money.amount) ? 1 : 0);
+      result = ((data1->money.amount < data2->money.amount) ?
+		-1 : ((data1->money.amount > data2->money.amount) ? 1 : 0));
       break;
     default:
       /* not numeric type */
@@ -5702,6 +5732,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
     (QO_NODE_INDEX *) malloc (SIZEOF_NODE_INDEX (indexp->n));
   memset (node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
 
+  memset(node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
+
   QO_NI_N (node_indexp) = 0;
 
   /* if we don`t have any indexes to process, we're through
@@ -6403,8 +6435,7 @@ qo_node_dump (QO_NODE * node, FILE * f)
   if (!bitset_is_empty (&(QO_NODE_SARGS (node))))
     {
       fputs (" (sargs ", f);
-      bitset_print (&(QO_NODE_SARGS (node)),
-		    (int (*)(void *, const char *, int)) fprintf, f);
+      bitset_print (&(QO_NODE_SARGS (node)), f);
       fputs (")", f);
     }
 }
@@ -6459,7 +6490,7 @@ qo_seg_free (QO_SEGMENT * seg)
  *	size of intermediate results should they need to be
  *	materialized for e.g. sorting.
  */
-size_t
+int
 qo_seg_width (QO_SEGMENT * seg)
 {
   /*
@@ -6482,7 +6513,7 @@ qo_seg_width (QO_SEGMENT * seg)
   else
     {
       /* guessing */
-      return sizeof (long);
+      return sizeof (int);
     }
 
   size = tp_domain_disk_size (domain);
@@ -6497,7 +6528,7 @@ qo_seg_width (QO_SEGMENT * seg)
     default:
       break;
     }
-  return MAX ((int) sizeof (long), size);
+  return MAX ((int) sizeof (int), size);
   /* for backward compatibility, at least sizeof(long) */
 }
 
@@ -6764,8 +6795,7 @@ qo_term_fprint (QO_TERM * term, FILE * f)
 
 	case QO_TC_DEP_LINK:
 	  fprintf (f, "table(");
-	  bitset_print (&(QO_NODE_DEP_SET (QO_TERM_TAIL (term))),
-			(int (*)(void *, const char *, int)) fprintf, f);
+	  bitset_print (&(QO_NODE_DEP_SET (QO_TERM_TAIL (term))), f);
 	  fprintf (f, ") -> ");
 	  qo_node_fprint (QO_TERM_TAIL (term), f);
 	  break;
@@ -6838,8 +6868,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
 
     case QO_TC_DEP_LINK:
       fprintf (f, "table(");
-      bitset_print (&(QO_NODE_DEP_SET (QO_TERM_TAIL (term))),
-		    (int (*)(void *, const char *, int)) fprintf, f);
+      bitset_print (&(QO_NODE_DEP_SET (QO_TERM_TAIL (term))), f);
       fprintf (f, ") -> ");
       qo_node_fprint (QO_TERM_TAIL (term), f);
       break;
@@ -7095,14 +7124,11 @@ static void
 qo_partition_dump (QO_PARTITION * part, FILE * f)
 {
   fputs ("(nodes ", f);
-  bitset_print (&(QO_PARTITION_NODES (part)),
-		(int (*)(void *, const char *, int)) fprintf, f);
+  bitset_print (&(QO_PARTITION_NODES (part)), f);
   fputs (") (edges ", f);
-  bitset_print (&(QO_PARTITION_EDGES (part)),
-		(int (*)(void *, const char *, int)) fprintf, f);
+  bitset_print (&(QO_PARTITION_EDGES (part)), f);
   fputs (") (dependencies ", f);
-  bitset_print (&(QO_PARTITION_DEPENDENCIES (part)),
-		(int (*)(void *, const char *, int)) fprintf, f);
+  bitset_print (&(QO_PARTITION_DEPENDENCIES (part)), f);
   fputs (")", f);
 }
 

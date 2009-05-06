@@ -84,11 +84,13 @@ struct logwr_global
           >= (logwr_Gl.hdr.fpageid + logwr_Gl.hdr.npages))
 
 extern LOGWR_GLOBAL logwr_Gl;
+extern void logwr_flush_header_page (void);
+extern int logwr_write_log_pages (void);
+extern int logwr_set_hdr_and_flush_info (void);
+#endif /* !SERVER_MODE */
+
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
 				int mode);
-extern int logwr_write_log_pages ();
-extern int logwr_set_hdr_and_flush_info ();
-#endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
 int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid,

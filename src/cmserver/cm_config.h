@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_config.h - 
+ * cm_config.h -
  */
 
 #ifndef _CM_CONFIG_H_
@@ -96,7 +96,7 @@ typedef enum
 
 typedef struct
 {
-  int fid;
+  T_DBMT_FILE_ID fid;
   char dir_name[16];
   char file_name[32];
 } T_DBMT_FILE_INFO;
@@ -128,7 +128,7 @@ typedef struct
 #endif
 } sys_config;
 
-void sys_config_init ();
+void sys_config_init (void);
 int uReadEnvVariables (char *, FILE *);
 int uCheckSystemConfig (FILE *);
 int uReadSystemConfig (void);
@@ -137,10 +137,10 @@ char *conf_get_dbmt_file (T_DBMT_FILE_ID dbmt_fid, char *buf);
 char *conf_get_dbmt_file2 (T_DBMT_FILE_ID dbmt_fid, char *buf);
 
 extern sys_config sco;
-extern char *autobackup_conf_entry[AUTOBACKUP_CONF_ENTRY_NUM];
-extern char *autoaddvol_conf_entry[AUTOADDVOL_CONF_ENTRY_NUM];
-extern char *autohistory_conf_entry[AUTOHISTORY_CONF_ENTRY_NUM];
-extern char *autounicas_conf_entry[AUTOUNICAS_CONF_ENTRY_NUM];
+extern const char *autobackup_conf_entry[AUTOBACKUP_CONF_ENTRY_NUM];
+extern const char *autoaddvol_conf_entry[AUTOADDVOL_CONF_ENTRY_NUM];
+extern const char *autohistory_conf_entry[AUTOHISTORY_CONF_ENTRY_NUM];
+extern const char *autounicas_conf_entry[AUTOUNICAS_CONF_ENTRY_NUM];
 
 extern int auto_conf_delete (T_DBMT_FILE_ID fid, char *dbname);
 extern int auto_conf_rename (T_DBMT_FILE_ID fid, char *src_dbname,

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_admin_so.h - 
+ * broker_admin_so.h -
  */
 
 #ifndef _BROKER_ADMIN_SO_H_
@@ -29,11 +29,11 @@
 
 #include <time.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define DLL_EXPORT	__declspec(dllexport)
-#else
+#else /* WINDOWS */
 #define DLL_EXPORT
-#endif
+#endif /* WINDOWS */
 
 #define FLAG_ON		1
 #define FLAG_OFF	0
@@ -112,7 +112,7 @@ struct t_br_info
 typedef struct t_uc_conf_item T_UC_CONF_ITEM;
 struct t_uc_conf_item
 {
-  char *name;
+  const char *name;
   char *value;
 };
 
@@ -151,7 +151,8 @@ typedef void (*T_UC_INFO_FREE_F) (void *);
 typedef int (*T_UC_UNICAS_CONF_F) (T_UC_CONF *, int *, char *);
 typedef void (*T_UC_UNICAS_CONF_FREE_F) (T_UC_CONF *);
 typedef int (*T_UC_CONF_BROKER_ADD_F) (T_UC_CONF *, char *, char *);
-typedef void (*T_UC_CHANGE_CONFIG_F) (T_UC_CONF *, char *, char *, char *);
+typedef void (*T_UC_CHANGE_CONFIG_F) (T_UC_CONF *, const char *, const char *,
+				      const char *);
 typedef int (*T_UC_CHANGER_F) (char *, char *, char *, char *);
 typedef int (*T_UC_DEL_CAS_LOG_F) (char *, int, char *);
 #ifdef DIAG_DEVEL
@@ -176,7 +177,7 @@ typedef int (*T_UCA_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM) (void *shm_as,
 typedef int (*T_UCA_SHM_DETACH) (void *p);
 #endif
 
-DLL_EXPORT char *uc_version (void);
+DLL_EXPORT const char *uc_version (void);
 DLL_EXPORT int uc_start (char *err_msg);
 DLL_EXPORT int uc_stop (char *err_msg);
 DLL_EXPORT int uc_add (char *br_name, char *err_msg);

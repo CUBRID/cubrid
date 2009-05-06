@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_shm.h - 
+ * broker_shm.h -
  */
 
 #ifndef	_BROKER_SHM_H_
@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include <sys/types.h>
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #endif
@@ -44,7 +44,7 @@
 #define		UTS_STATUS_IDLE		0
 #define		UTS_STATUS_RESTART	2
 #define 	UTS_STATUS_START	3
-#ifdef WIN32
+#if defined(WINDOWS)
 #define		UTS_STATUS_BUSY_WAIT	4
 #endif
 
@@ -133,7 +133,7 @@ enum t_con_status
   CON_STATUS_CLOSE_AND_CONNECT = 3
 };
 
-#ifdef WIN32
+#if defined(WINDOWS)
 typedef INT64 int64_t;
 #endif
 
@@ -164,14 +164,14 @@ struct t_appl_server_info
   char cur_keep_con;
   char cur_sql_log2;
   char cur_statement_pooling;
-#ifdef WIN32
+#if defined(WINDOWS)
   char close_flag;
 #endif
   time_t last_access_time;	/* last access time */
 #ifdef UNIXWARE711
   int clt_sock_fd;
 #endif
-#ifdef WIN32
+#if defined(WINDOWS)
   unsigned char cas_clt_ip[4];
   int as_port;
   int pdh_pid;
@@ -192,9 +192,9 @@ struct t_appl_server_info
   char cookie_str[MAX_CRYPT_STR_LENGTH];
   char log_msg[SHM_LOG_MSG_SIZE];
 #ifdef DIAG_DEVEL
-  long long num_requests_received;
-  long long num_transactions_processed;
-  long long num_query_processed;
+  INT64 num_requests_received;
+  INT64 num_transactions_processed;
+  INT64 num_query_processed;
 #endif
   char auto_commit_mode;
 };
@@ -214,7 +214,7 @@ struct t_shm_appl_server
   char jdbc_cache_only_hint;
   int jdbc_cache_life_time;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   int as_port;
   int use_pdh_flag;
 #endif
@@ -234,9 +234,9 @@ struct t_shm_appl_server
   int max_string_length;
   int job_queue_size;
   int sql_log_max_size;
-  int64_t dummy1;
+  INT64 dummy1;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
-  int64_t dummy2;
+  INT64 dummy2;
   T_APPL_SERVER_INFO as_info[1];
 };
 
@@ -248,10 +248,10 @@ struct t_shm_broker
   int lock;			/* shared variable for mutual excl */
 #endif				/* USE_MUTEX */
   int magic;			/* the magic number */
-#ifdef WIN32
+#if defined(WINDOWS)
   unsigned char my_ip_addr[4];
 #else
-  int owner_uid;
+  uid_t owner_uid;
 #endif
   int num_broker;		/* number of broker */
   T_BROKER_INFO br_info[1];
@@ -268,7 +268,7 @@ void *uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode);
 void *uw_shm_create (int shm_key, int size, int which_shm);
 int uw_shm_destroy (int shm_key);
 void uw_shm_detach (void *);
-#ifdef WIN32
+#if defined(WINDOWS)
 int uw_shm_get_magic_number ();
 #endif
 

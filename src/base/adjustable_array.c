@@ -33,6 +33,7 @@
 #include <stddef.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "adjustable_array.h"
 
 /*
@@ -236,7 +237,7 @@ int
 adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
 		int src_length, int start, int end)
 {
-  size_t new_length;
+  int new_length;
 
   assert (adj_array_p != NULL);
 
@@ -255,7 +256,7 @@ adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
     {
       return ADJ_ERR_BAD_START;
     }
-  else if ((size_t) start > adj_array_p->cur_length)
+  else if (start > adj_array_p->cur_length)
     {
       return ADJ_ERR_BAD_START;
     }
@@ -263,7 +264,7 @@ adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
     {
       return ADJ_ERR_BAD_END;
     }
-  else if ((size_t) end > adj_array_p->cur_length)
+  else if (end > adj_array_p->cur_length)
     {
       return ADJ_ERR_BAD_END;
     }
@@ -277,11 +278,10 @@ adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
     {
       /* allocate larger buffer. */
       void *new_buffer;
-      size_t new_max = MAX (adj_array_p->min_length,
-			    MAX ((size_t)
-				 (adj_array_p->max_length *
-				  adj_array_p->rate),
-				 new_length));
+      int new_max = MAX (adj_array_p->min_length,
+			 MAX ((int) (adj_array_p->max_length *
+				     adj_array_p->rate),
+			      new_length));
 
       if (adj_array_p->buffer)
 	{
@@ -385,7 +385,7 @@ adj_ar_get_buffer (const ADJ_ARRAY * adj_array_p)
  *   return: current length of ADJ_ARRAY buffer
  *   adj_array_p(in): the ADJ_ARRAY pointer
  */
-size_t
+int
 adj_ar_length (const ADJ_ARRAY * adj_array_p)
 {
   assert (adj_array_p != NULL);
@@ -405,7 +405,7 @@ adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n)
 {
   assert (adj_array_p != NULL);
 
-  if (n >= 0 && (size_t) n < adj_array_p->cur_length)
+  if (n >= 0 && n < adj_array_p->cur_length)
     {
       return ((char *) adj_array_p->buffer + n * adj_array_p->element_size);
     }

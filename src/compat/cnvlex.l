@@ -598,6 +598,14 @@ TIME_SEPARATOR}
   DB_FMT_LEX_RETURN (FT_SECOND);
 }
 
+<SC_TIME_FORMAT > %[F]
+{
+  int csize = mblen (token->text, token->length);
+  token->text += csize;
+  token->length -= csize;
+  DB_FMT_LEX_RETURN (FT_MILLISECOND);
+}
+
 <SC_TIME_FORMAT > %[p]
 {
   int csize = mblen (token->text, token->length);

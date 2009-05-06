@@ -81,16 +81,16 @@ struct indx_scan_id
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
   ATTR_ID *bt_attr_ids;		/* attr id array of the index key */
-  int num_vstr;			/* num of variable string attrs */
   ATTR_ID *vstr_ids;		/* attr id array of variable string */
+  int num_vstr;			/* num of variable string attrs */
   BTREE_SCAN bt_scan;		/* index scan info. structure */
   int one_range;		/* a single range? */
   int curr_keyno;		/* current key number */
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */
+  char *copy_buf;		/* index key copy_buf pointer info */
   OID_LIST oid_list;		/* list of object identifiers */
   OID cls_oid;			/* class object identifier */
-  char *copy_buf;		/* index key copy_buf pointer info */
   int copy_buf_len;		/* index key copy_buf length info */
   HFID hfid;			/* heap file identifier */
   HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
@@ -100,14 +100,14 @@ struct indx_scan_id
   SCAN_ATTRS pred_attrs;	/* attr info from predicates */
   REGU_VARIABLE_LIST rest_regu_list;	/* regulator variable list */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  KEY_VAL_RANGE *key_vals;	/* for eliminating duplicate ranges */
+  int key_cnt;			/* number of valid ranges */
+  int lock_hint;		/* lock hint */
+  bool iscan_oid_order;		/* index_scan_oid_order flag */
+  bool need_count_only;		/* get count only, no OIDs are copied */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
-  int key_cnt;			/* number of valid ranges */
-  KEY_VAL_RANGE *key_vals;	/* for eliminating duplicate ranges */
-  bool iscan_oid_order;		/* index_scan_oid_order flag */
-  int lock_hint;		/* lock hint */
-  bool need_count_only;		/* get count only, no OIDs are copied */
-};				/* Indexed Heap File Scan Identifier */
+};
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
 struct llist_scan_id

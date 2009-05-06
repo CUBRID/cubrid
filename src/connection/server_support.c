@@ -41,6 +41,7 @@
 #endif /* !WINDOWS */
 #include <assert.h>
 
+#include "porting.h"
 #include "thread.h"
 #include "memory_alloc.h"
 #include "boot_sr.h"
@@ -50,7 +51,6 @@
 #include "release_string.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
-#include "porting.h"
 #include "error_manager.h"
 #include "job_queue.h"
 #include "thread_impl.h"
@@ -108,25 +108,25 @@ struct job_queue
 };
 
 static JOB_QUEUE css_Job_queue[CSS_NUM_JOB_QUEUE] = {
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, 0, NULL, 0},
+  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
    NULL, MUTEX_INITIALIZER, NULL}
 };
 
@@ -152,24 +152,24 @@ static int css_free_job_entry_func (void *data, void *dummy);
 static void css_empty_job_queue (void);
 static int css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
-static int css_get_master_request (int master_fd);
-static int css_process_master_request (int master_fd,
+static int css_get_master_request (SOCKET master_fd);
+static int css_process_master_request (SOCKET master_fd,
 				       fd_set * read_fd_var,
 				       fd_set * exception_fd_var);
 static int css_process_shutdown_immediate (void);
 static void css_process_stop_shutdown (void);
-static void css_process_shutdown_request (int master_fd);
+static void css_process_shutdown_request (SOCKET master_fd);
 static int css_send_oob_msg_to_client (CSS_CONN_ENTRY * conn,
 				       char data, char *buffer, int len);
 static int css_broadcast_oob_msg (char data, char *buffer, int len);
-static void css_process_new_client (int master_fd,
+static void css_process_new_client (SOCKET master_fd,
 				    fd_set * read_fd_var,
 				    fd_set * exception_fd_var);
 static void css_close_connection_to_master (void);
 static int css_process_timeout (void);
 static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
-static int css_server_thread (THREAD_ENTRY * thrd, CSS_THREAD_ARG arg);
+static int css_server_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
 static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY * thrd,
 					 CSS_THREAD_ARG arg);
@@ -187,6 +187,10 @@ static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 static void css_wakeup_ha_active_state (THREAD_ENTRY * thread_p);
 static void css_wait_ha_active_state (THREAD_ENTRY * thread_p);
 static bool css_check_ha_log_applier_done (void);
+
+#if !defined (NDEBUG) || defined (CUBRID_DEBUG)
+static const char *css_ha_server_state_string (HA_SERVER_STATE state);
+#endif
 
 /*
  * css_make_job_entry () -
@@ -488,7 +492,7 @@ css_setup_server_loop (void)
   (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #endif /* LINUX || x86_SOLARIS || HPUX */
 
-  if (css_Pipe_to_master >= 0)
+  if (!IS_INVALID_SOCKET (css_Pipe_to_master))
     {
       /* startup worker/daemon threads */
       if (thread_start_workers () != NO_ERROR)
@@ -572,21 +576,22 @@ css_master_thread (void)
   while (run_code)
     {
       /* check if socket has error or client is down */
-      if (css_Pipe_to_master >= 0 && css_check_conn (css_Master_conn) < 0)
+      if (!IS_INVALID_SOCKET (css_Pipe_to_master)
+	  && css_check_conn (css_Master_conn) < 0)
 	{
 	  css_shutdown_conn (css_Master_conn);
-	  css_Pipe_to_master = -1;
+	  css_Pipe_to_master = INVALID_SOCKET;
 	}
 
       FD_ZERO (&read_fdset);
       FD_ZERO (&exception_fdset);
-      if (css_Pipe_to_master >= 0)
+      if (!IS_INVALID_SOCKET (css_Pipe_to_master))
 	{
 	  FD_SET (css_Pipe_to_master, &read_fdset);
 	  FD_SET (css_Pipe_to_master, &exception_fdset);
 	}
 #if defined(WINDOWS)
-      if (css_Server_connection_socket >= 0)
+      if (!IS_INVALID_SOCKET (css_Server_connection_socket))
 	{
 	  FD_SET (css_Server_connection_socket, &read_fdset);
 	  FD_SET (css_Server_connection_socket, &exception_fdset);
@@ -599,10 +604,10 @@ css_master_thread (void)
 
       r = select (FD_SETSIZE, &read_fdset, NULL, &exception_fdset, &timeout);
       if (r > 0
-	  && (css_Pipe_to_master < 0
+	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
 	      || !FD_ISSET (css_Pipe_to_master, &read_fdset))
 #if defined(WINDOWS)
-	  && (css_Server_connection_socket < 0
+	  && (IS_INVALID_SOCKET (css_Server_connection_socket)
 	      || !FD_ISSET (css_Server_connection_socket, &read_fdset))
 #endif /* WINDOWS */
 	)
@@ -612,7 +617,7 @@ css_master_thread (void)
 
       if (r < 0)
 	{
-	  if (css_Pipe_to_master >= 0
+	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
 #if defined(WINDOWS)
 	      && ioctlsocket (css_Pipe_to_master, FIONREAD,
 			      (u_long *) & status) == SockError
@@ -627,7 +632,7 @@ css_master_thread (void)
 	}
       else if (r > 0)
 	{
-	  if (css_Pipe_to_master >= 0
+	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
 	      && FD_ISSET (css_Pipe_to_master, &read_fdset))
 	    {
 	      run_code = css_process_master_request (css_Pipe_to_master,
@@ -646,7 +651,7 @@ css_master_thread (void)
 	    }
 
 #else /* !WINDOWS */
-	  if (css_Server_connection_socket >= 0
+	  if (!IS_INVALID_SOCKET (css_Server_connection_socket)
 	      && FD_ISSET (css_Server_connection_socket, &read_fdset))
 	    {
 	      css_process_new_connection_request ();
@@ -680,7 +685,7 @@ css_master_thread (void)
  *   master_fd(in):
  */
 static int
-css_get_master_request (int master_fd)
+css_get_master_request (SOCKET master_fd)
 {
   int request, r;
 
@@ -703,7 +708,7 @@ css_get_master_request (int master_fd)
  *   exception_fd_var(in):
  */
 static int
-css_process_master_request (int master_fd, fd_set * read_fd_var,
+css_process_master_request (SOCKET master_fd, fd_set * read_fd_var,
 			    fd_set * exception_fd_var)
 {
   int request, r;
@@ -782,7 +787,7 @@ css_process_stop_shutdown (void)
  *   master_fd(in):
  */
 static void
-css_process_shutdown_request (int master_fd)
+css_process_shutdown_request (SOCKET master_fd)
 {
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   int r, timeout;
@@ -833,7 +838,7 @@ static int
 css_send_oob_msg_to_client (CSS_CONN_ENTRY * conn, char data, char *buffer,
 			    int len)
 {
-  if (conn->fd > 0 && conn->fd != css_Pipe_to_master)
+  if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
     {
       if (css_send_oob (conn, data, buffer, len) != NO_ERRORS)
 	return 1;
@@ -878,10 +883,10 @@ css_broadcast_oob_msg (char data, char *buffer, int len)
  *   exception_fd_var(in/out):
  */
 static void
-css_process_new_client (int master_fd, fd_set * read_fd_var,
+css_process_new_client (SOCKET master_fd, fd_set * read_fd_var,
 			fd_set * exception_fd_var)
 {
-  int new_fd;
+  SOCKET new_fd;
   int reason;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
@@ -892,7 +897,7 @@ css_process_new_client (int master_fd, fd_set * read_fd_var,
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (new_fd < 0)
+  if (IS_INVALID_SOCKET (new_fd))
     {
       return;
     }
@@ -936,11 +941,11 @@ css_process_new_client (int master_fd, fd_set * read_fd_var,
 static void
 css_close_connection_to_master (void)
 {
-  if (css_Pipe_to_master >= 0)
+  if (!IS_INVALID_SOCKET (css_Pipe_to_master))
     {
       css_shutdown_conn (css_Master_conn);
     }
-  css_Pipe_to_master = -1;
+  css_Pipe_to_master = INVALID_SOCKET;
   css_Master_conn = NULL;
 }
 
@@ -970,7 +975,7 @@ css_process_timeout (void)
 	}
     }
 
-  if (css_Pipe_to_master < 0)
+  if (IS_INVALID_SOCKET (css_Pipe_to_master))
     css_reestablish_connection_to_master ();
 
   return 1;
@@ -990,7 +995,7 @@ css_process_timeout (void)
 static int
 css_process_new_connection_request (void)
 {
-  int new_fd;
+  SOCKET new_fd;
   int reason, buffer_size, rc;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
@@ -1001,7 +1006,7 @@ css_process_new_connection_request (void)
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
-  if (new_fd >= 0)
+  if (!IS_INVALID_SOCKET (new_fd))
     {
       conn = css_make_conn (new_fd);
       if (conn == NULL)
@@ -1047,7 +1052,7 @@ css_process_new_connection_request (void)
 	  rc = css_read_header (conn, &header);
 	  if (rc == NO_ERRORS)
 	    {
-	      rid = ntohl (header.request_id);
+	      rid = (unsigned short) ntohl (header.request_id);
 
 	      if (ntohl (header.type) != COMMAND_TYPE)
 		{
@@ -1129,7 +1134,7 @@ css_reestablish_connection_to_master (void)
 	}
     }
 
-  css_Pipe_to_master = -1;
+  css_Pipe_to_master = INVALID_SOCKET;
   return 0;
 }
 
@@ -1151,20 +1156,19 @@ dummy_sigurg_handler (int sig)
  * Note: One server thread per one client
  */
 static int
-css_server_thread (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+css_server_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
   fd_set rfds, efds;
   struct timeval tv;
-  CSS_CONN_ENTRY *conn;
   CSS_JOB_ENTRY *job;
-  int fd, n, type, rv, status;
+  int n, type, rv, status;
+  SOCKET fd;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  conn = (CSS_CONN_ENTRY *) arg;
   fd = conn->fd;
 
   MUTEX_UNLOCK (thread_p->tran_index_lock);
@@ -1261,7 +1265,7 @@ css_server_thread (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 	      if (type == COMMAND_TYPE)
 		{
 		  job = css_make_job_entry (conn, css_Request_handler,
-					    conn, -1);
+					    (CSS_THREAD_ARG) conn, -1);
 		  if (job)
 		    {
 		      css_add_to_job_queue (job);
@@ -1323,8 +1327,9 @@ css_oob_handler_thread (void *arg)
 #endif				/* WINDOWS */
 {
   THREAD_ENTRY *thrd_entry;
-  int sig, r;
+  int r;
 #if !defined(WINDOWS)
+  int sig;
   sigset_t sigurg_mask;
   struct sigaction act;
 #endif /* !WINDOWS */
@@ -1386,7 +1391,7 @@ css_block_all_active_conn (void)
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
       css_end_server_request (conn);
-      if (conn->fd > 0 && conn->fd != css_Pipe_to_master)
+      if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
 	{
 	  conn->stop_talk = true;
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
@@ -1414,8 +1419,9 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 
   css_insert_into_active_conn_list (conn);
 
-  job = css_make_job_entry (conn, css_server_thread, conn,
-			    -1 /* implicit: DEFAULT */ );
+  job =
+    css_make_job_entry (conn, (CSS_THREAD_FN) css_server_thread,
+			(CSS_THREAD_ARG) conn, -1 /* implicit: DEFAULT */ );
   if (job != NULL)
     {
       css_add_to_job_queue (job);
@@ -1482,8 +1488,8 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
       THREAD_SET_INFO (thread_p, conn->client_id, eid, conn->transaction_id);
 
       /* 3. Call server_request() function */
-      status =
-	(*css_Server_request_handler) (thread_p, eid, request, size, buffer);
+      status = (*css_Server_request_handler) (thread_p, eid, request,
+					      size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
       THREAD_SET_INFO (thread_p, -1, 0, local_tran_index);
@@ -1552,7 +1558,7 @@ css_init (char *server_name, int name_length, int port_id)
     }
 #endif /* WINDOWS */
 
-  css_Server_connection_socket = -1;
+  css_Server_connection_socket = INVALID_SOCKET;
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
@@ -1647,6 +1653,81 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
     {
       rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid),
 			      reply, reply_size, buffer, buffer_size);
+    }
+  else
+    {
+      rc = css_send_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size);
+    }
+
+  return (rc == NO_ERRORS) ? NO_ERROR : rc;
+}
+
+/*
+ * css_send_reply_and_large_data_to_client() - send a reply to the server,
+ *                                       and optionaly, an additional l
+ *                                       large data
+ *  buffer
+ *   return:
+ *   eid(in): enquiry id
+ *   reply(in): the reply data (error or no error)
+ *   reply_size(in): the size of the reply data.
+ *   buffer(in): data buffer to queue for expected data.
+ *   buffer_size(in): size of data buffer
+ *
+ * Note: This is to be used only by the server
+ */
+unsigned int
+css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
+					 int reply_size, char *buffer,
+					 FSIZE_T buffer_size)
+{
+  CSS_CONN_ENTRY *conn;
+  int rc = 0;
+  int idx = CSS_ENTRYID_FROM_EID (eid);
+  int num_buffers;
+  char **buffers;
+  int *buffers_size, i;
+  FSIZE_T pos = 0;
+
+  conn = &css_Conn_array[idx];
+  if (buffer_size > 0 && buffer != NULL)
+    {
+      num_buffers = (int) (buffer_size / INT_MAX) + 2;
+      buffers = (char **) malloc (sizeof (char *) * num_buffers);
+      if (buffers == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      buffers_size = (int *) malloc (sizeof (int) * num_buffers);
+      if (buffers_size == NULL)
+	{
+	  free (buffers);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      buffers[0] = reply;
+      buffers_size[0] = reply_size;
+
+      for (i = 1; i < num_buffers; i++)
+	{
+	  buffers[i] = &buffer[pos];
+	  if (buffer_size > INT_MAX)
+	    {
+	      buffers_size[i] = INT_MAX;
+	    }
+	  else
+	    {
+	      buffers_size[i] = buffer_size;
+	    }
+	  pos += buffers_size[i];
+	}
+
+      rc = css_send_large_data (conn, CSS_RID_FROM_EID (eid),
+				(const char **) buffers, buffers_size,
+				num_buffers);
+
+      free (buffers);
+      free (buffers_size);
     }
   else
     {
@@ -2061,7 +2142,7 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
 }
 
 #if !defined (NDEBUG) || defined (CUBRID_DEBUG)
-const char *
+static const char *
 css_ha_server_state_string (HA_SERVER_STATE state)
 {
   switch (state)

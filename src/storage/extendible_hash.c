@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -154,15 +154,15 @@ struct ehash_repetition
 
 /* Directory header size is aligned to size of integer */
 #define EHASH_DIR_HEADER_SIZE \
-  (((sizeof(EHASH_DIR_HEADER) + sizeof(int) - 1 ) / sizeof(int) ) * sizeof(int))
+  ((ssize_t) (((sizeof(EHASH_DIR_HEADER) + sizeof(int) - 1 ) / sizeof(int) ) * sizeof(int)))
 
 /* Maximum size of a string key; 16 is for two slot indices */
 #define EHASH_MAX_STRING_SIZE \
-  (DB_PAGESIZE - (sizeof(EHASH_BUCKET_HEADER) + 16))
+  (DB_PAGESIZE - (SSIZEOF(EHASH_BUCKET_HEADER) + 16))
 
 /* Number of pointers the first page of the directory contains */
 #define EHASH_NUM_FIRST_PAGES \
-  ((DB_PAGESIZE - EHASH_DIR_HEADER_SIZE) / sizeof(EHASH_DIR_RECORD))
+  ((DB_PAGESIZE - EHASH_DIR_HEADER_SIZE) / SSIZEOF (EHASH_DIR_RECORD))
 
 /* Offset of the last pointer in the first directory page */
 #define EHASH_LAST_OFFSET_IN_FIRST_PAGE \
@@ -813,6 +813,10 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
       fprintf (stdout, "key:%d", *(int *) key);
       break;
 
+    case DB_TYPE_BIGINT:
+      fprintf (stdout, "key:%lld", (long long) (*(DB_BIGINT *) key));
+      break;
+
     case DB_TYPE_SHORT:
       fprintf (stdout, "key:%d", *(short *) key);
       break;
@@ -829,6 +833,11 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
 
     case DB_TYPE_UTIME:
       fprintf (stdout, "key:%d", *(DB_UTIME *) key);
+      break;
+
+    case DB_TYPE_DATETIME:
+      fprintf (stdout, "key:%d,%d", ((DB_DATETIME *) key)->date,
+	       ((DB_DATETIME *) key)->time);
       break;
 
     case DB_TYPE_MONETARY:
@@ -923,6 +932,10 @@ ehash_get_key_size (DB_TYPE key_type)
       key_size = sizeof (int);
       break;
 
+    case DB_TYPE_BIGINT:
+      key_size = sizeof (DB_BIGINT);
+      break;
+
     case DB_TYPE_SHORT:
       key_size = sizeof (short);
       break;
@@ -937,6 +950,10 @@ ehash_get_key_size (DB_TYPE key_type)
 
     case DB_TYPE_UTIME:
       key_size = sizeof (DB_UTIME);
+      break;
+
+    case DB_TYPE_DATETIME:
+      key_size = sizeof (DB_DATETIME);
       break;
 
     case DB_TYPE_MONETARY:
@@ -981,7 +998,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
   short key_size;
   char alignment;
   OID value;
-  int i;
+  unsigned int i;
   FILE_EHASH_DES ehdes;
 
   if (ehid_p == NULL)
@@ -1028,18 +1045,18 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
     }
 
   /* Calculate alignment to use on slots of bucket pages */
-  if (sizeof (value.pageid) >= key_size)
+  if (SSIZEOF (value.pageid) >= key_size)
     {
       alignment = sizeof (value.pageid);
     }
   else
     {
-      alignment = key_size;
+      alignment = (char) key_size;
     }
 
   /* TODO: M2 64-bit */
   /* May want to remove later on; not portable to 64-bit machines */
-  if (alignment > sizeof (int))
+  if (alignment > SSIZEOF (int))
     {
       alignment = sizeof (int);
     }
@@ -1466,7 +1483,9 @@ ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid_p,
     }
 
   /* Log the directory header for undo */
-  offset = ((char *) &dir_header_p->overflow_file - (char *) dir_root_page_p);
+  offset =
+    CAST_BUFLEN ((char *) &dir_header_p->overflow_file -
+		 (char *) dir_root_page_p);
   log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid,
 			 dir_root_page_p, offset, sizeof (VFID),
 			 &dir_header_p->overflow_file);
@@ -1826,7 +1845,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p,
   if (dir_header_p->key_type == DB_TYPE_STRING)
     {
       /* Check if string is too long and no overflow file has been created */
-      if ((int) (strlen ((char *) key_p) + 1) > EHASH_MAX_STRING_SIZE
+      if ((strlen ((char *) key_p) + 1) > EHASH_MAX_STRING_SIZE
 	  && VFID_ISNULL (&dir_header_p->overflow_file))
 	{
 	  if (lock_type == S_LOCK)
@@ -2198,6 +2217,10 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p,
       *(int *) record_p = *(int *) key_p;
       break;
 
+    case DB_TYPE_BIGINT:
+      *(DB_BIGINT *) record_p = *(DB_BIGINT *) key_p;
+      break;
+
     case DB_TYPE_SHORT:
       *(short *) record_p = *(short *) key_p;
       break;
@@ -2212,6 +2235,10 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p,
 
     case DB_TYPE_UTIME:
       *(DB_UTIME *) record_p = *(DB_UTIME *) key_p;
+      break;
+
+    case DB_TYPE_DATETIME:
+      *(DB_DATETIME *) record_p = *(DB_DATETIME *) key_p;
       break;
 
     case DB_TYPE_MONETARY:
@@ -2305,6 +2332,9 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p,
   VPID *ovf_vpid_p;
   int compare_result;
   double d1, d2;
+  float f1, f2;
+  DB_DATETIME *dt1, *dt2;
+  DB_BIGINT bi1, bi2;
 
   switch (key_type)
     {
@@ -2364,11 +2394,14 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p,
       break;
 
     case DB_TYPE_FLOAT:
-      if ((*(float *) key_p) == (*(float *) bucket_record_p))
+      f1 = *((float *) key_p);
+      f2 = *((float *) bucket_record_p);
+
+      if (f1 == f2)
 	{
 	  compare_result = 0;
 	}
-      else if ((*(float *) key_p) > (*(float *) bucket_record_p))
+      else if (f1 > f2)
 	{
 	  compare_result = 1;
 	}
@@ -2380,6 +2413,24 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p,
 
     case DB_TYPE_INTEGER:
       compare_result = *(int *) key_p - *(int *) bucket_record_p;
+      break;
+
+    case DB_TYPE_BIGINT:
+      bi1 = *((DB_BIGINT *) key_p);
+      bi2 = *((DB_BIGINT *) bucket_record_p);
+
+      if (bi1 == bi2)
+	{
+	  compare_result = 0;
+	}
+      else if (bi1 > bi2)
+	{
+	  compare_result = 1;
+	}
+      else
+	{
+	  compare_result = -1;
+	}
       break;
 
     case DB_TYPE_SHORT:
@@ -2396,6 +2447,32 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p,
 
     case DB_TYPE_UTIME:
       compare_result = *(DB_UTIME *) key_p - *(DB_UTIME *) bucket_record_p;
+      break;
+
+    case DB_TYPE_DATETIME:
+      dt1 = (DB_DATETIME *) key_p;
+      dt2 = (DB_DATETIME *) bucket_record_p;
+
+      if (dt1->date < dt2->date)
+	{
+	  compare_result = -1;
+	}
+      else if (dt1->date > dt2->date)
+	{
+	  compare_result = 1;
+	}
+      else if (dt1->time < dt2->time)
+	{
+	  compare_result = -1;
+	}
+      else if (dt1->time > dt2->time)
+	{
+	  compare_result = 1;
+	}
+      else
+	{
+	  compare_result = 0;
+	}
       break;
 
     case DB_TYPE_MONETARY:
@@ -2583,7 +2660,8 @@ ehash_find_first_bit_position (THREAD_ENTRY * thread_p,
 			       int *out_old_local_depth_p,
 			       int *out_new_local_depth_p)
 {
-  int bit_position, i;
+  int bit_position;
+  unsigned int i;
   unsigned int difference = 0, check_bit = 0;
   EHASH_HASH_KEY first_hash_key, next_hash_key;
   PGSLOTID slot_id;
@@ -3731,9 +3809,8 @@ ehash_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p,
   pgbuf_set_dirty (thread_p, dir_root_page_p, DONT_FREE);
 
   /* Log this change on the directory header */
-  offset =
-    ((char *) (dir_header_p->local_depth_count + depth) -
-     (char *) dir_root_page_p);
+  offset = CAST_BUFLEN ((char *) (dir_header_p->local_depth_count + depth) -
+			(char *) dir_root_page_p);
   redo_inc = delta;
   undo_inc = -delta;
 
@@ -4159,7 +4236,7 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
       /* Advance the destination pointer to new spot */
       new_dir_offset += sizeof (EHASH_DIR_RECORD);
 
-      if ((DB_PAGESIZE - new_dir_offset) < sizeof (EHASH_DIR_RECORD))
+      if ((DB_PAGESIZE - new_dir_offset) < SSIZEOF (EHASH_DIR_RECORD))
 	{
 	  /* There is no more place in the directory page for new bucket pointers */
 
@@ -4282,7 +4359,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
   /* Go over the chars of the given pseudo key */
   Char = '\0';
   key_p = (char *) &copy_psekey;
-  for (i = 0; i < sizeof (EHASH_HASH_KEY); i++)
+  for (i = 0; (unsigned int) i < sizeof (EHASH_HASH_KEY); i++)
     {
       Char += (char) *key_p++;
     }
@@ -4295,7 +4372,7 @@ static EHASH_HASH_KEY
 ehash_hash_eight_bytes_type (char *key_p)
 {
   EHASH_HASH_KEY hash_key = 0;
-  int i;
+  unsigned int i;
   int Int;
   char Char;
 
@@ -4325,7 +4402,7 @@ static EHASH_HASH_KEY
 ehash_hash_four_bytes_type (char *key_p)
 {
   EHASH_HASH_KEY hash_key = 0;
-  int i;
+  unsigned int i;
   unsigned short Short, *Short2;
   char Char;
 
@@ -4355,7 +4432,7 @@ static EHASH_HASH_KEY
 ehash_hash_two_bytes_type (char *key_p)
 {
   EHASH_HASH_KEY hash_key = 0;
-  int i;
+  unsigned int i;
   unsigned short Short;
   char Char;
 
@@ -4405,6 +4482,7 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
       hash_key = ehash_hash_string_type (key, (char *) original_key_p);
       break;
 
+    case DB_TYPE_BIGINT:
     case DB_TYPE_OBJECT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_MONETARY:
@@ -4420,6 +4498,7 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
     case DB_TYPE_DATE:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
+    case DB_TYPE_DATETIME:
     case DB_TYPE_INTEGER:
       hash_key = ehash_hash_four_bytes_type (key);
       break;
@@ -4735,7 +4814,7 @@ ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys,
   int dir_pages;
 
   avg_key_size += sizeof (OID);
-  DB_ALIGN (avg_key_size, MAX_ALIGNMENT);
+  avg_key_size = DB_ALIGN (avg_key_size, MAX_ALIGNMENT);
 
   user_area = DB_PAGESIZE - spage_header_size () -
     sizeof (EHASH_BUCKET_HEADER) + spage_slot_size ();
@@ -4764,7 +4843,7 @@ ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys,
 						 spage_slot_size ());
     }
 
-  bucket_pages = ceil (1.44 * bucket_pages);
+  bucket_pages = (int) ceil (1.44 * bucket_pages);
   bucket_pages += file_guess_numpages_overhead (thread_p, NULL, bucket_pages);
 
   /* Find directory pages */
@@ -4773,8 +4852,9 @@ ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys,
     sizeof (EHASH_DIR_HEADER) + spage_slot_size ();
 
   record_pages = user_area / sizeof (EHASH_DIR_RECORD);
-  record_pages = (pow ((double) total_keys, (1.0 + 1.0 / record_pages)) /
-		  record_pages);
+  record_pages =
+    (int) (pow ((double) total_keys, (1.0 + 1.0 / record_pages)) /
+	   record_pages);
   dir_pages = CEIL_PTVDIV (record_pages, user_area) + 1;
   dir_pages += file_guess_numpages_overhead (thread_p, NULL, dir_pages);
 
@@ -4790,7 +4870,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 					 void *data, void *args), void *args)
 {
   char *long_str, *str_next_key_p, *temp_p;
-  short key_size;
+  int key_size;
   char next_key[sizeof (DB_MONETARY)];
   int i;
   void *key_p = &next_key;
@@ -4812,7 +4892,8 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
       else
 	{
 	  /* Short String */
-	  key_size = recdes_p->length - (bucket_record_p - recdes_p->data);
+	  key_size =
+	    recdes_p->length - CAST_BUFLEN (bucket_record_p - recdes_p->data);
 
 	  str_next_key_p = (char *) malloc (key_size);
 	  if (str_next_key_p == NULL)
@@ -4847,6 +4928,10 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
       *((int *) &next_key) = *(int *) bucket_record_p;
       break;
 
+    case DB_TYPE_BIGINT:
+      *((DB_BIGINT *) & next_key) = *(DB_BIGINT *) bucket_record_p;
+      break;
+
     case DB_TYPE_SHORT:
       *((short *) &next_key) = *(short *) bucket_record_p;
       break;
@@ -4861,6 +4946,10 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,
 
     case DB_TYPE_UTIME:
       *((DB_UTIME *) & next_key) = *(DB_UTIME *) bucket_record_p;
+      break;
+
+    case DB_TYPE_DATETIME:
+      *((DB_DATETIME *) & next_key) = *(DB_DATETIME *) bucket_record_p;
       break;
 
     case DB_TYPE_MONETARY:
@@ -4951,10 +5040,11 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	  bucket_record_p = ehash_read_oid_from_record (bucket_record_p,
 							&assoc_value);
 
-	  if (ehash_apply_each
-	      (thread_p, ehid_p, &recdes, dir_header_p->key_type,
-	       bucket_record_p, &assoc_value, &apply_error_code,
-	       apply_function, args) != NO_ERROR)
+	  if (ehash_apply_each (thread_p, ehid_p, &recdes,
+				dir_header_p->key_type,
+				bucket_record_p, &assoc_value,
+				&apply_error_code, apply_function,
+				args) != NO_ERROR)
 	    {
 	      pgbuf_unfix (thread_p, bucket_page_p);
 	      pgbuf_unfix (thread_p, dir_page_p);
@@ -5060,6 +5150,10 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
       printf (" int                                    *\n");
       break;
 
+    case DB_TYPE_BIGINT:
+      printf (" BIGINT                                 *\n");
+      break;
+
     case DB_TYPE_SHORT:
       printf (" short                                  *\n");
       break;
@@ -5074,6 +5168,10 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
     case DB_TYPE_UTIME:
       printf (" utime                                  *\n");
+      break;
+
+    case DB_TYPE_DATETIME:
+      printf (" datetime                               *\n");
       break;
 
     case DB_TYPE_MONETARY:
@@ -5092,7 +5190,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 	  ehash_get_key_size (dir_header_p->key_type));
   printf ("*                                                       *\n");
   printf ("*               LOCAL DEPTH COUNTERS                    *\n");
-  for (i = 0; i <= EHASH_HASH_KEY_BITS; i++)
+  for (i = 0; (unsigned int) i <= EHASH_HASH_KEY_BITS; i++)
     {
       if (dir_header_p->local_depth_count[i] != 0)
 	{
@@ -5121,7 +5219,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   for (i = 0; i < num_ptrs; i++)
     {
-      if (DB_PAGESIZE - dir_offset < sizeof (EHASH_DIR_RECORD))
+      if (DB_PAGESIZE - dir_offset < SSIZEOF (EHASH_DIR_RECORD))
 	{
 	  /* We reached the end of the directory page.
 	   * The next bucket pointer is in  the next directory page.
@@ -5257,12 +5355,12 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
   char *bucket_record_p;
   RECDES recdes;
   PGSLOTID slot_id, first_slot_id = -1;
-  short key_size;
+  int key_size;
   OID assoc_value;
   VPID *ovf_vpid_p;
   int num_records;
   int i;
-  int hour, minute, second, month, day, year;
+  int hour, minute, second, millisecond, month, day, year;
   double d;
 
   (void) spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK);
@@ -5308,7 +5406,8 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
 	    }
 	  else
 	    {
-	      key_size = recdes.length - (bucket_record_p - recdes.data);
+	      key_size =
+		recdes.length - CAST_BUFLEN (bucket_record_p - recdes.data);
 	      printf ("    %s", bucket_record_p);
 	      for (i = 0; i < (29 - key_size); i++)
 		{
@@ -5337,25 +5436,46 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
 	  printf ("    %14d              ", *(int *) bucket_record_p);
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  printf ("    %19lld             ",
+		  (long long) (*(DB_BIGINT *) bucket_record_p));
+	  break;
+
 	case DB_TYPE_SHORT:
 	  printf ("    %14d              ", *(short *) bucket_record_p);
 	  break;
 
 	case DB_TYPE_DATE:
 	  db_date_decode ((DB_DATE *) bucket_record_p, &month, &day, &year);
-	  fprintf (stdout, "    %2d / %2d / %4d              ",
-		   month, day, year);
+	  fprintf (stdout, "    %2d/%2d/%4d              ", month, day, year);
 	  break;
 
 	case DB_TYPE_TIME:
 	  db_time_decode ((DB_TIME *) bucket_record_p, &hour, &minute,
 			  &second);
-	  fprintf (stdout, "      %3d:%3d:%3d               ", hour, minute,
+	  fprintf (stdout, "      %2d:%2d:%2d               ", hour, minute,
 		   second);
 	  break;
 
 	case DB_TYPE_UTIME:
-	  printf ("    %14d              ", *(DB_UTIME *) bucket_record_p);
+	  {
+	    DB_DATE tmp_date;
+	    DB_TIME tmp_time;
+
+	    db_timestamp_decode ((DB_UTIME *) bucket_record_p,
+				 &tmp_date, &tmp_time);
+	    db_date_decode (&tmp_date, &month, &day, &year);
+	    db_time_decode (&tmp_time, &hour, &minute, &second);
+	    printf ("    %2d:%2d:%2d %2d/%2d/%4d             ",
+		    hour, minute, second, month, day, year);
+	  }
+	  break;
+
+	case DB_TYPE_DATETIME:
+	  db_datetime_decode ((DB_DATETIME *) bucket_record_p, &month, &day,
+			      &year, &hour, &minute, &second, &millisecond);
+	  printf ("    %2d:%2d:%2d.%03d %2d/%2d/%4d             ",
+		  hour, minute, second, millisecond, month, day, year);
 	  break;
 
 	case DB_TYPE_MONETARY:

@@ -29,6 +29,9 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stddef.h>
+#if defined (WINDOWS)
+#include <io.h>
+#endif
 
 #include "utility.h"
 #include "error_manager.h"

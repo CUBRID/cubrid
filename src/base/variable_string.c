@@ -31,6 +31,7 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "porting.h"
 #include "variable_string.h"
 #include "error_code.h"
 
@@ -74,9 +75,9 @@ vs_grow (varstring * vstr, int n)
 
   if (vstr->base)
     {
-      int size = vstr->limit - vstr->base;
-      int length = vstr->end - vstr->start;
-      int offset = vstr->start - vstr->base;
+      int size = CAST_STRLEN (vstr->limit - vstr->base);
+      int length = CAST_STRLEN (vstr->end - vstr->start);
+      int offset = CAST_STRLEN (vstr->start - vstr->base);
       char *new_buf = (char *) malloc (sizeof (char) * (size + n));
       if (new_buf == NULL)
 	{
@@ -323,7 +324,7 @@ vs_prepend (varstring * vstr, const char *prefix)
       return ER_FAILED;
     }
 
-  available = vstr->start - vstr->base;
+  available = CAST_STRLEN (vstr->start - vstr->base);
   if (available < n)
     {
       /*
@@ -341,7 +342,7 @@ vs_prepend (varstring * vstr, const char *prefix)
 	  return ER_FAILED;
 	}
 
-      length = vstr->end - vstr->start;
+      length = CAST_STRLEN (vstr->end - vstr->start);
       new_start = vstr->base + n + PREFIX_CUSHION;
 
       memmove (new_start, vstr->start, length);
@@ -527,5 +528,5 @@ vs_strlen (const varstring * vstr)
       return 0;
     }
 
-  return (vstr->end - vstr->start);
+  return CAST_STRLEN (vstr->end - vstr->start);
 }

@@ -215,6 +215,9 @@ extern int port_Num;
       }                                                                 \
    } while(0)
 
+#define REPL_GET_FILE_SIZE(pagesize, npages) \
+  (((off_t)(pagesize)) * ((off_t)(npages)))
+
 #define SLEEP_USEC(sec, usec)                           \
         do {                                            \
           struct timeval sleep_time_val;                \
@@ -269,14 +272,14 @@ extern int repl_io_write_copy_log_info (int vdes, void *op_pgptr,
 					PAGEID pageid, int pagesize);
 extern int repl_connect_to_master (bool serveryn, const char *server_name);
 extern int repl_start_daemon (void);
-extern void repl_signal_process (void (*routine) (int));
+extern void repl_signal_process (SIGNAL_HANDLER_FUNCTION routine);
 extern const char *repl_error (int error);
 extern void repl_error_flush (FILE * fp, bool serveryn);
 extern void repl_error_push (int file_id, int line_num, int code, char *arg);
 extern int repl_io_truncate (int vdes, int pagesize, PAGEID pageid);
 extern int repl_io_rename (char *active_copy_log, int *active_vol,
 			   char *archive_copy_log, int *archive_vol);
-extern off64_t repl_io_file_size (int vdes);
+extern off_t repl_io_file_size (int vdes);
 extern int repl_set_socket_tcp_nodelay (int sock_fd);
 
 #endif /* _REPL_SUPPORT_H_ */

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -85,7 +85,7 @@ typedef struct
   PT_NODE **chain_ptr;
   int chain_size;
   int chain_length;
-  long spec_id;
+  UINTPTR spec_id;
 } PT_CHAIN_INFO;
 
 static void pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node);
@@ -190,6 +190,9 @@ static int pt_find_partition_column_count (PT_NODE * expr,
 					   PT_NODE ** name_node);
 static int pt_value_links_add (PARSER_CONTEXT * parser, PT_NODE * val,
 			       PT_VALUE_LINKS * ptl);
+
+static int pt_check_partition_value_coercible (PT_TYPE_ENUM to,
+					       PT_TYPE_ENUM from);
 static int pt_check_partition_values (PARSER_CONTEXT * parser,
 				      PT_TYPE_ENUM * chktype,
 				      PT_VALUE_LINKS * ptl, PT_NODE * parts);
@@ -299,6 +302,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
     case PT_TYPE_FLOAT:
     case PT_TYPE_DOUBLE:
     case PT_TYPE_SMALLINT:
@@ -311,6 +315,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -324,6 +329,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_FLOAT:
 	case PT_TYPE_DOUBLE:
 	case PT_TYPE_SMALLINT:
@@ -345,6 +351,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_FLOAT:
 	case PT_TYPE_DOUBLE:
 	case PT_TYPE_SMALLINT:
@@ -359,6 +366,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -366,6 +374,27 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	}
       break;
     case PT_TYPE_TIMESTAMP:
+      switch (cast_type)
+	{
+	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
+	case PT_TYPE_FLOAT:
+	case PT_TYPE_DOUBLE:
+	case PT_TYPE_SMALLINT:
+	case PT_TYPE_MONETARY:
+	case PT_TYPE_NUMERIC:
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	case PT_TYPE_SET:
+	case PT_TYPE_MULTISET:
+	case PT_TYPE_SEQUENCE:
+	  cast_is_valid = PT_CAST_INVALID;
+	  break;
+	default:
+	  break;
+	}
+      break;
+    case PT_TYPE_DATETIME:
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
@@ -405,6 +434,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_FLOAT:
 	case PT_TYPE_DOUBLE:
 	case PT_TYPE_SMALLINT:
@@ -413,6 +443,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -431,6 +462,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_FLOAT:
 	case PT_TYPE_DOUBLE:
 	case PT_TYPE_SMALLINT:
@@ -441,6 +473,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, const PT_NODE * node)
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CHAR:
@@ -1640,6 +1673,10 @@ pt_get_prec_scale (const PT_NODE * att, int *prec, int *scale)
       *prec = 10;
       *scale = 0;
       break;
+    case PT_TYPE_BIGINT:
+      *prec = 19;
+      *scale = 0;
+      break;
     case PT_TYPE_NUMERIC:
       *prec = (att->data_type) ? att->data_type->info.data_type.precision : 0;
       *scale = (att->data_type)
@@ -2383,9 +2420,9 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   if (parameter && parameter->info.name.original)
     sprintf (param1_name, "%s", parameter->info.name.original);
   else
-    sprintf (param1_name, "%s_%ld", "p1", (long) stmt_node);
-  sprintf (param2_name, "%s_%ld", "p2", (long) stmt_node);
-  sprintf (alias1_name, "%s_%ld", "c1", (long) stmt_node);
+    sprintf (param1_name, "%s_%p", "p1", stmt_node);
+  sprintf (param2_name, "%s_%p", "p2", stmt_node);
+  sprintf (alias1_name, "%s_%p", "c1", stmt_node);
 
   save_custom = parser->custom_print;
   parser->custom_print = parser->custom_print | PT_INTERNAL_PRINT;
@@ -2493,8 +2530,8 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
       return NULL;
     }
 
-  sprintf (param1_name, "%s_%ld", "p1", (long) attr_name);
-  sprintf (alias1_name, "%s_%ld", "c1", (long) attr_name);
+  sprintf (param1_name, "%s_%p", "p1", attr_name);
+  sprintf (alias1_name, "%s_%p", "c1", attr_name);
 
   save_custom = parser->custom_print;
   parser->custom_print = parser->custom_print | PT_INTERNAL_PRINT;
@@ -2653,8 +2690,8 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
       return NULL;
     }
 
-  sprintf (param1_name, "%s_%ld", "p1", (long) attr_name);
-  sprintf (alias1_name, "%s_%ld", "c1", (long) attr_name);
+  sprintf (param1_name, "%s_%p", "p1", attr_name);
+  sprintf (alias1_name, "%s_%p", "c1", attr_name);
 
   save_custom = parser->custom_print;
   parser->custom_print = parser->custom_print | PT_INTERNAL_PRINT;
@@ -2816,7 +2853,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 
 	      if (insert->info.insert.into_var == NULL)
 		{
-		  sprintf (param1_name, "p1_%ld", (long) insert);
+		  sprintf (param1_name, "p1_%p", insert);
 		  insert->info.insert.into_var =
 		    pt_make_parameter (parser, param1_name, 1);
 		}
@@ -2852,7 +2889,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 		{
 		  if (insert->info.insert.into_var == NULL)
 		    {
-		      sprintf (param1_name, "p1_%ld", (long) insert);
+		      sprintf (param1_name, "p1_%p", insert);
 		      insert->info.insert.into_var =
 			pt_make_parameter (parser, param1_name, 1);
 		    }
@@ -3076,6 +3113,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	  switch (def->type_enum)
 	    {
 	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_SMALLINT:
 	      break;
 	    case PT_TYPE_NUMERIC:
@@ -3711,8 +3749,10 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_NUMBER:
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
+    case PT_SYS_DATETIME:
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
+    case PT_TO_DATETIME:
     case PT_EXTRACT:
     case PT_TO_CHAR:
     case PT_CAST:
@@ -3857,6 +3897,33 @@ out_of_mem:
   return -2;
 }
 
+
+
+/*
+ * pt_check_partition_value_coercible () -
+ *   return:
+ *   from(in):
+ *   to(in):
+ */
+
+static int
+pt_check_partition_value_coercible (PT_TYPE_ENUM to, PT_TYPE_ENUM from)
+{
+  if (from == PT_TYPE_NULL)
+    {
+      return 1;
+    }
+
+  if (PT_IS_DISCRETE_NUMBER_TYPE (to) && PT_IS_DISCRETE_NUMBER_TYPE (from))
+    {
+      return 1;
+    }
+
+  return to == from;
+}
+
+
+
 /*
  * pt_check_partition_values () -
  *   return:
@@ -3865,6 +3932,7 @@ out_of_mem:
  *   ptl(in):
  *   parts(in):
  */
+
 static int
 pt_check_partition_values (PARSER_CONTEXT *
 			   parser,
@@ -3888,15 +3956,18 @@ pt_check_partition_values (PARSER_CONTEXT *
 					 PT_TYPE_NULL) ? NULL : val), ptl);
 	  if (addret)
 	    return addret;
+
 	  if (*chktype == PT_TYPE_NONE && val->type_enum != PT_TYPE_NULL)
 	    {
 	      *chktype = val->type_enum;
 	    }
 	  else
 	    {
-	      if (*chktype != val->type_enum &&	/* LIST-NULL */
-		  val->type_enum != PT_TYPE_NULL)
-		return -1;
+	      if (!pt_check_partition_value_coercible (*chktype,
+						       val->type_enum))
+		{
+		  return -1;
+		}
 	    }
 	}
 
@@ -3907,6 +3978,7 @@ pt_check_partition_values (PARSER_CONTEXT *
       return 0;
     }
 }
+
 
 /*
  * pt_check_partitions () - do semantic checks on a partition clause
@@ -3928,7 +4000,7 @@ static void
 pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 {
   PT_NODE *pinfo, *pcol, *attr, *pattr, *parts, *val;
-  int name_count, chkflag, valchk, parts_cnt;
+  int name_count, valchk, parts_cnt;
   PT_TYPE_ENUM contype = PT_TYPE_NONE;
   PT_VALUE_LINKS vlinks = { NULL, NULL };
   PT_VALUE_LINKS *pvl, *delpvl;
@@ -3936,6 +4008,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_NODE *expr_type;
   SM_CLASS *smclass;
   SM_ATTRIBUTE *smatt;
+  bool chkflag = false;
 
   assert (parser != NULL);
 
@@ -4000,7 +4073,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   if (stmt->node_type == PT_CREATE_ENTITY)
     {
       for (attr = stmt->info.create_entity.attr_def_list,
-	   chkflag = 0;
+	   chkflag = false;
 	   attr && attr->node_type == PT_ATTR_DEF; attr = attr->next)
 	{
 	  if ((pattr = attr->info.attr_def.attr_name) == NULL)
@@ -4021,7 +4094,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 					pt_type_enum_to_db_domain
 					(pcol->type_enum));
 	      pinfo->info.partition.keycol = parser_copy_tree (parser, pcol);
-	      chkflag = 1;
+	      chkflag = true;
 	      break;
 	    }
 	}
@@ -4045,7 +4118,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 					    (pcol->type_enum));
 		  pinfo->info.partition.keycol =
 		    parser_copy_tree (parser, pcol);
-		  chkflag = 1;
+		  chkflag = true;
 		  break;
 		}
 	    }
@@ -4057,10 +4130,12 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       switch (pcol->type_enum)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	case PT_TYPE_NCHAR:
@@ -4090,10 +4165,12 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       switch (expr_type->type_enum)
 	{
 	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_DATETIME:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	case PT_TYPE_NCHAR:
@@ -4140,14 +4217,14 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	}
 
       parts_cnt = 0;
-      for (chkflag = 0;
+      for (chkflag = false;
 	   parts && parts->node_type == PT_PARTS; parts = parts->next)
 	{
 	  PT_NODE *fpart;
 
 	  if (parts->info.parts.type != pinfo->info.partition.type)
 	    {
-	      chkflag = 1;
+	      chkflag = true;
 	      break;
 	    }
 	  if (parts->info.parts.values)
@@ -4228,11 +4305,11 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    {
 	      if (expr_type->type_enum == contype)
 		{
-		  chkflag = 0;
+		  chkflag = false;
 		}
 	      else
 		{		/* constant coercing */
-		  chkflag = 0;
+		  chkflag = false;
 		  for (parts = pinfo->info.partition.parts;
 		       parts && parts->node_type == PT_PARTS;
 		       parts = parts->next)
@@ -4254,7 +4331,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 						   expr_type->data_type) !=
 				  NO_ERROR)
 				{
-				  chkflag = 1;
+				  chkflag = true;
 				  break;
 				}
 			    }
@@ -5245,9 +5322,9 @@ pt_is_compatible_type (const PT_TYPE_ENUM
   else
     switch (arg1_type)
       {
-
       case PT_TYPE_SMALLINT:
       case PT_TYPE_INTEGER:
+      case PT_TYPE_BIGINT:
       case PT_TYPE_FLOAT:
       case PT_TYPE_DOUBLE:
       case PT_TYPE_NUMERIC:
@@ -5256,6 +5333,7 @@ pt_is_compatible_type (const PT_TYPE_ENUM
 	  {
 	  case PT_TYPE_SMALLINT:
 	  case PT_TYPE_INTEGER:
+	  case PT_TYPE_BIGINT:
 	  case PT_TYPE_FLOAT:
 	  case PT_TYPE_DOUBLE:
 	  case PT_TYPE_NUMERIC:
@@ -5309,7 +5387,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM
   return is_compatible;
 }
 
-
 /*
  * pt_check_vclass_attr_qspec_compatible () -
  *   return:
@@ -5318,8 +5395,8 @@ pt_is_compatible_type (const PT_TYPE_ENUM
  *   col(in):
  */
 static int
-  pt_check_vclass_attr_qspec_compatible
-  (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col)
+pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
+				       PT_NODE * attr, PT_NODE * col)
 {
   bool is_object_type;
   int c;
@@ -5724,7 +5801,7 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 static void
 pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_NODE *name, *qry_specs, *qry1, *all_attrs, *qspec_attr, *r;
+  PT_NODE *name, *qry_specs, *qry1, *all_attrs = NULL, *qspec_attr, *r;
   PT_NODE **qry_ptr;
   PT_NODE *s_attr, *derived_attr;
   int attr_count, col_count;
@@ -7151,7 +7228,7 @@ pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node,
   switch (node->node_type)
     {
     case PT_SPEC:
-      if (node->info.spec.id == chain->spec_id)
+      if (node->info.spec.id == (UINTPTR) chain->spec_id)
 	{
 	  /* This is the spec to which the final path segment resolves.
 	   * Start gathering the spec chain. */
@@ -7411,7 +7488,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 {
   PT_NODE *next;
   SEMANTIC_CHK_INFO sc_info, *sc_info_ptr = info;
-  bool save_donot_fold;
+  bool save_donot_fold = false;
 
   assert (parser != NULL);
 
@@ -8605,7 +8682,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
   PT_NODE *select_list, *order_by, *col, *r, *temp, *order, *match;
   int n, i, select_list_len;
   bool ordbynum_flag;
-  char *r_str;
+  char *r_str = NULL;
   int error;
   /* check for non-null RANGE term */
   PT_NODE *from, *spec, *entity_name;

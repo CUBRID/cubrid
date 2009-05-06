@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_filename.h - 
+ * broker_filename.h -
  */
 
 #ifndef _BROKER_FILENAME_H_
@@ -35,7 +35,7 @@
 
 #define NAME_BROKER			"Tbroker"
 #define NAME_CAS_BROKER			"cub_broker"
-#ifdef WIN32
+#if defined(WINDOWS)
 #define NAME_CAS_BROKER2		"Cbroker2"
 #define NAME_UC_SHM			"broker_shm"
 #endif
@@ -80,7 +80,7 @@ enum t_cubrid_file_id
 typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;
 struct t_cubrid_file_info
 {
-  int fid;
+  T_CUBRID_FILE_ID fid;
   char dir_name[PATH_MAX];
   char file_name[PATH_MAX];
 };

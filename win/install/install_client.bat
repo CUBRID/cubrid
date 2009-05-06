@@ -22,7 +22,7 @@ copy %SRC_DIR%\CUBRIDProvider.dll         %DEST_DIR%\bin
 copy %SRC_DIR%\CUBRIDProvider.tlb         %DEST_DIR%\bin
 
 REM copy cubridtray msg file
-copy %SRC_DIR%\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\en_US\cubridtray.msg
-copy %SRC_DIR%\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.euckr\cubridtray.msg
-copy %SRC_DIR%\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.utf8\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\en_US\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.euckr\cubridtray.msg
+copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %DEST_DIR%\msg\ko_KR.utf8\cubridtray.msg
 

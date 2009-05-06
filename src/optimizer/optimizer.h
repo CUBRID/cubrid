@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -131,6 +131,7 @@ typedef struct qo_node_index QO_NODE_INDEX;
 typedef struct qo_node_index_entry QO_NODE_INDEX_ENTRY;
 typedef struct qo_index_xasl_info QO_INDEX_XASL_INFO;
 typedef struct qo_using_index QO_USING_INDEX;
+typedef struct qo_using_index_entry QO_USING_INDEX_ENTRY;
 typedef struct bitset BITSET;
 
 struct qo_summary
@@ -143,11 +144,9 @@ struct qo_summary
 
 typedef struct
 {
-  DB_TYPE type;			/* data type of the attribute */
-  bool valid_limits;
   DB_DATA min_value;		/* minimum existing value */
   DB_DATA max_value;		/* maximum existing value */
-  bool is_indexed;
+  DB_TYPE type;			/* data type of the attribute */
   int leafs;			/* number of leaf pages including overflow pages */
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
@@ -156,7 +155,6 @@ typedef struct
   int nulls;			/* number of NULL values */
   int ukeys;			/* number of unique keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
-  int key_size;			/* number of key columns */
   int *pkeys;			/* partial keys info
 				   for example: index (a, b, ..., x)
 				   pkeys[0]          -> # of {a}
@@ -164,6 +162,9 @@ typedef struct
 				   ...
 				   pkeys[key_size-1] -> # of {a, b, ..., x}
 				 */
+  int key_size;			/* number of key columns */
+  bool valid_limits;
+  bool is_indexed;
 } QO_ATTR_CUM_STATS;
 
 typedef struct qo_plan QO_PLAN;

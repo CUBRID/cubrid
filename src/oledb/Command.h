@@ -145,7 +145,7 @@ public:
 	STDMETHOD(MapColumnIDs)(DBORDINAL cColumnIDs, const DBID rgColumnIDs[],
 							DBORDINAL rgColumns[]);
 	STDMETHOD(GetColumnInfo)(DBORDINAL *pcColumns, DBCOLUMNINFO **prgInfo, OLECHAR **ppStringsBuffer);
-	static ATLCOLUMNINFO* GetColumnInfo(CCUBRIDCommand* pv, ULONG* pcInfo);
+	static ATLCOLUMNINFO* GetColumnInfo(CCUBRIDCommand* pv, DBORDINAL* pcInfo);
 	
 
 	//ICommandWithParameters methods

@@ -34,7 +34,7 @@ static void
 free_last_referenced_name (WHENEVER_SCOPE * scope,
 			   WHENEVER_SCOPE * new_scope);
 
-static const WHENEVER_SCOPE default_whenever_scope_initializer =
+static WHENEVER_SCOPE default_whenever_scope_initializer =
   { {{CONTINUE, NULL}, {CONTINUE, NULL}, {CONTINUE, NULL}} };
 
 #define LAST_REF(condition)                                             \
@@ -101,12 +101,12 @@ pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope)
     }
 
   esql_Translate_table.tr_whenever (SQLWARNING,
-	       new_scope->cond[SQLWARNING].action,
-	       new_scope->cond[SQLWARNING].name);
+				    new_scope->cond[SQLWARNING].action,
+				    new_scope->cond[SQLWARNING].name);
   esql_Translate_table.tr_whenever (SQLERROR,
-	       new_scope->cond[SQLERROR].action,
-	       new_scope->cond[SQLERROR].name);
+				    new_scope->cond[SQLERROR].action,
+				    new_scope->cond[SQLERROR].name);
   esql_Translate_table.tr_whenever (NOT_FOUND,
-	       new_scope->cond[NOT_FOUND].action,
-	       new_scope->cond[NOT_FOUND].name);
+				    new_scope->cond[NOT_FOUND].action,
+				    new_scope->cond[NOT_FOUND].name);
 }

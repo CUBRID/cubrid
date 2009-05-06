@@ -44,6 +44,7 @@
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "connection_cl.h"
+#include "log_applier.h"
 
 
 #define LA_DEFAULT_CACHE_BUFFER_SIZE 100;
@@ -75,7 +76,7 @@
 #define LA_PAGE_EXST_IN_ACTIVE_LOG 1
 #define LA_PAGE_EXST_IN_ARCHIVE_LOG 2
 
-#define LA_LOGAREA_SIZE (la_Info.act_log.pgsize - DB_SIZEOF(LOG_HDRPAGE))
+#define LA_LOGAREA_SIZE (la_Info.act_log.pgsize - SSIZEOF(LOG_HDRPAGE))
 #define LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT(result, length, offset, pageid, pgptr, release) \
   do { \
     if ((offset)+(length) >= LA_LOGAREA_SIZE) { \
@@ -83,21 +84,20 @@
       if (((pgptr) = la_get_page(++(pageid))) == NULL) { \
 	result = ER_IO_READ; \
       } else { release = 1; } \
-      (offset) = 0; \
-      DB_ALIGN((offset), INT_ALIGNMENT); \
+      (offset) = DB_ALIGN((offset), MAX_ALIGNMENT); \
     } \
   } while(0)
 
 #define LA_LOG_READ_ALIGN(result, offset, pageid, log_pgptr, release) \
   do { \
-    DB_ALIGN((offset), INT_ALIGNMENT); \
+    (offset) = DB_ALIGN((offset), MAX_ALIGNMENT); \
     while ((offset) >= LA_LOGAREA_SIZE) { \
       if (release == 1) la_release_page_buffer(pageid); \
       if (((log_pgptr) = la_get_page(++(pageid))) == NULL) { \
 	result = ER_IO_READ; \
       } else { release = 1; } \
       (offset) -= LA_LOGAREA_SIZE; \
-      DB_ALIGN((offset), INT_ALIGNMENT); \
+      (offset) = DB_ALIGN((offset), MAX_ALIGNMENT); \
     } \
   } while(0)
 
@@ -338,12 +338,12 @@ static int la_apply_commit_list (LOG_LSA * lsa);
 static void la_clear_repl_item_by_tranid (int tranid);
 static int la_log_record_process (struct log_rec *lrec,
 				  LOG_LSA * final, LOG_PAGE * pg_ptr);
-static int la_change_state ();
-static int la_log_commit ();
+static int la_change_state (void);
+static int la_log_commit (void);
 static int la_check_time_commit (struct timeval *time,
 				 unsigned int threshold);
-static void la_init ();
-static void la_shutdown ();
+static void la_init (void);
+static void la_shutdown (void);
 
 
 /*
@@ -1563,7 +1563,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int length,
 		     PAGEID log_pageid, PGLENGTH log_offset,
 		     LOG_PAGE * log_pgptr)
 {
-  int rec_length = DB_SIZEOF (INT16);
+  int rec_length = (int) sizeof (INT16);
   int copy_length;		/* Length to copy into area */
   int t_length;			/* target length  */
   int area_offset = 0;		/* The area offset */
@@ -1749,7 +1749,7 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	if (error != NO_ERROR)
 	  {
 	    free_and_init (area);
-	    return error;;
+	    return error;
 	  }
 	ptr = or_unpack_int (area, &apply->tail->type);
 	ptr = or_unpack_string (ptr, &apply->tail->class_name);
@@ -1868,7 +1868,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
       return 0;
     }
 
-  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, DB_SIZEOF (*donetime), offset,
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, SSIZEOF (*donetime), offset,
 				       pageid, pg, release_yn);
   if (error != NO_ERROR)
     {
@@ -3782,7 +3782,7 @@ la_log_record_process (struct log_rec *lrec,
 }
 
 static int
-la_change_state ()
+la_change_state (void)
 {
   int error = NO_ERROR;
   int new_state = HA_LOG_APPLIER_STATE_NA;
@@ -3945,7 +3945,7 @@ la_change_state ()
  *
  */
 static int
-la_log_commit ()
+la_log_commit (void)
 {
   int error = NO_ERROR;
 
@@ -4032,7 +4032,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 
 
 static void
-la_init ()
+la_init (void)
 {
   er_log_debug (ARG_FILE_LINE, "log applier will be initialized...");
 
@@ -4044,7 +4044,7 @@ la_init ()
 }
 
 static void
-la_shutdown ()
+la_shutdown (void)
 {
   er_log_debug (ARG_FILE_LINE, "log applier will be shutting down...");
 
@@ -4084,7 +4084,7 @@ la_test_log_page (const char *database_name, const char *log_path,
 
   if (realpath (log_path, la_Info.log_path) == NULL)
     {
-      printf ("Error! cannot find real path of ", log_path);
+      printf ("Error! cannot find real path of %s", log_path);
       return;
     }
 
@@ -4237,7 +4237,7 @@ la_apply_log_file (const char *database_name, const char *log_path)
   LOG_LSA final;
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
-  struct log_rec *lrec = NULL;;
+  struct log_rec *lrec = NULL;
   LOG_LSA old_lsa = { -1, -1 };
   struct timeval time_commit, time_now;
   const char *dbname = NULL;	/* the slave db name */

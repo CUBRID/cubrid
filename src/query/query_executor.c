@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -30,6 +30,7 @@
 #include <string.h>
 #include <math.h>
 #include <search.h>
+#include <sys/timeb.h>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -246,12 +247,9 @@ struct xasl_cache_clo_info
 
 /* XASL cache entry pooling */
 #define FIXED_SIZE_OF_POOLED_XASL_CACHE_ENTRY   4096
-#define ADDITION_FOR_POOLED_XASL_CACHE_ENTRY    sizeof(int)	/* s.next field */
+#define ADDITION_FOR_POOLED_XASL_CACHE_ENTRY    offsetof(POOLED_XASL_CACHE_ENTRY, s.entry)	/* s.next field */
 #define POOLED_XASL_CACHE_ENTRY_FROM_XASL_CACHE_ENTRY(p) \
         ((POOLED_XASL_CACHE_ENTRY *) ((char*) p - ADDITION_FOR_POOLED_XASL_CACHE_ENTRY))
-static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
-  (FIXED_SIZE_OF_POOLED_XASL_CACHE_ENTRY -
-   ADDITION_FOR_POOLED_XASL_CACHE_ENTRY);
 
 typedef union pooled_xasl_cache_entry POOLED_XASL_CACHE_ENTRY;
 union pooled_xasl_cache_entry
@@ -276,6 +274,10 @@ struct xasl_cache_entry_pool
   int n_entries;		/* number of entries in the pool */
   int free_list;		/* the head(first entry) of the free list */
 };
+
+static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
+  (FIXED_SIZE_OF_POOLED_XASL_CACHE_ENTRY -
+   ADDITION_FOR_POOLED_XASL_CACHE_ENTRY);
 
 /* XASL cache related things */
 
@@ -581,6 +583,9 @@ static REGU_VARIABLE *replace_null_dbval (REGU_VARIABLE * regu_var,
 					  DB_VALUE * set_dbval);
 static int qexec_partition_get_parts (XASL_PARTITION_INFO * xpi,
 				      DB_VALUE * sval);
+
+static int *tranid_lsearch (const int *key, int *base, int *nmemb);
+static int *tranid_lfind (const int *key, const int *base, int *nmemb);
 
 /*
  * Utility routines
@@ -2360,6 +2365,7 @@ qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 		       const RECDES * key)
 {
   XASL_STATE *xasl_state = gbstate->xasl_state;
+  int error;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -2392,9 +2398,9 @@ qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
   /*
    * (Re)initialize the various accumulator variables...
    */
-  if (qdata_initialize_aggregate_list
-      (thread_p, gbstate->g_agg_list,
-       gbstate->xasl_state->query_id) != NO_ERROR)
+  error = qdata_initialize_aggregate_list (thread_p, gbstate->g_agg_list,
+					   gbstate->xasl_state->query_id);
+  if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -3232,19 +3238,10 @@ qexec_merge_tuple (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2,
 {
   QFILE_TUPLE tplp;
   char *t_valhp;
-  long t_val_size;
-  long tpl_size, offset;
-  long k;
-
-/* this macro may be used for declaring variables to be passed to OR_PUT/GET
- * macro calls.  The macro makes sure the variable is properly aligned and
- * allocates enough space to avoid overruns.
- */
-#define LONG_VAR(varname, bytesize)	long varname[((bytesize)/sizeof(long))+1]
-
-  /* declares ls_bound suitably aligned */
-  LONG_VAR (ls_unbound,
-	    (QFILE_TUPLE_VALUE_FLAG_SIZE + QFILE_TUPLE_VALUE_LENGTH_SIZE));
+  int t_val_size;
+  int tpl_size, offset;
+  int k;
+  INT32 ls_unbound[2];
 
   /* merge two tuples, and form a new tuple */
   tplp = tplrec->tpl;
@@ -3356,8 +3353,8 @@ qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 	QFILE_TUPLE_VALUE_HEADER_SIZE * (merge_info->ls_pos_cnt);
     }
 
-  tdp->tpl_size = tplrec1_max_size + tplrec2_max_size;
-  DB_ALIGN ((tdp->tpl_size), MAX_ALIGNMENT);
+  tdp->tpl_size =
+    DB_ALIGN (tplrec1_max_size + tplrec2_max_size, MAX_ALIGNMENT);
 
   if (tdp->tpl_size < QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {				/* SMALL QFILE_TUPLE */
@@ -3508,9 +3505,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
   /* pred-efined vars */
   QFILE_LIST_ID *list_idp = NULL;
   int nvals;
-  QFILE_TUPLE_RECORD tplrec = { 0, (char *) NULL };
-  QFILE_TUPLE_RECORD outer_tplrec = { 0, (char *) NULL };
-  QFILE_TUPLE_RECORD inner_tplrec = { 0, (char *) NULL };
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD outer_tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD inner_tplrec = { NULL, 0 };
   int *outer_indp, *inner_indp;
   char **outer_valp = NULL, **inner_valp = NULL;
   SCAN_CODE outer_scan = S_END, inner_scan = S_END;
@@ -3984,9 +3981,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid,
   /* pre-defined vars: */
   QFILE_LIST_ID *list_idp = NULL;
   int nvals;
-  QFILE_TUPLE_RECORD tplrec = { 0, (char *) NULL };
-  QFILE_TUPLE_RECORD outer_tplrec = { 0, (char *) NULL };
-  QFILE_TUPLE_RECORD inner_tplrec = { 0, (char *) NULL };
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD outer_tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD inner_tplrec = { NULL, 0 };
   int *outer_indp, *inner_indp;
   char **outer_valp = NULL, **inner_valp = NULL;
   SCAN_CODE outer_scan = S_END, inner_scan = S_END;
@@ -8186,7 +8183,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   HFID *class_hfid;
   int lock_ret;
   int tran_index;
-  int err = NO_ERROR;;
+  int err = NO_ERROR;
 
   list = xasl->selected_upd_list;
 
@@ -8890,9 +8887,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state)
 {
   XASL_NODE *xptr, *xptr2;
-  QFILE_TUPLE_RECORD tplrec = {
-    0, (QFILE_TUPLE) NULL
-  };
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   START_PROC *s_node;
   SCAN_CODE qp_scan;
   int level;
@@ -8903,7 +8898,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int readonly_scan = true;
   int fixed_scan_flag;
   QFILE_LIST_MERGE_INFO *merge_infop;
-  XASL_NODE *outer_xasl, *inner_xasl;
+  XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   bool iscan_oid_order;
   int old_waitsecs;
   int error;
@@ -9511,7 +9506,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   if (tplrec.tpl)
     {
-      db_private_free_and_init (thread_p, tplrec.tpl); 
+      db_private_free_and_init (thread_p, tplrec.tpl);
     }
 
   xasl->status = XASL_SUCCESS;
@@ -9567,13 +9562,17 @@ exit_on_error:
 
 QFILE_LIST_ID *
 qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
-		     const DB_VALUE * dbval_ptr, int query_id)
+		     const DB_VALUE * dbval_ptr, QUERY_ID query_id)
 {
   int re_execute;
   int stat;
   QFILE_LIST_ID *list_id;
   XASL_STATE xasl_state;
+  struct timeb tloc;
+  struct tm *c_time_struct;
+#if defined(SERVER_MODE)
   int rv;
+#endif
   int tran_index;
 #if defined(CUBRID_DEBUG)
   static int trace = -1;
@@ -9638,7 +9637,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 
 	time (&loc);
 	strftime (str, 19, "%x %X", localtime (&loc));
-	fprintf (fp, "start %s tid %d qid %d query %s\n",
+	fprintf (fp, "start %s tid %d qid %ld query %s\n",
 		 str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
 		 (xasl->qstmt ? xasl->qstmt : "<NULL>"));
 	gettimeofday (&s_tv, NULL);
@@ -9654,7 +9653,12 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
-  xasl_state.vd.sys_timestamp = (DB_TIMESTAMP) time (NULL);
+  ftime (&tloc);
+  c_time_struct = localtime (&tloc.time);
+  db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1,
+		      c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
+		      c_time_struct->tm_hour, c_time_struct->tm_min,
+		      c_time_struct->tm_sec, tloc.millitm);
   xasl_state.vd.lrand = lrand48 ();
   xasl_state.vd.drand = drand48 ();
   xasl_state.vd.xasl_state = &xasl_state;
@@ -9745,8 +9749,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		     * then, set error ER_QM_EXECUTION_INTERRUPTED
 		     */
 #if defined(SERVER_MODE)
-		    if (qmgr_is_async_query_interrupted (thread_p, query_id)
-			== true)
+		    if (qmgr_is_async_query_interrupted (thread_p, query_id))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				ER_QM_EXECUTION_INTERRUPTED, 0);
@@ -9787,8 +9790,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		  qfile_close_list (thread_p, xasl->list_id);
 		}
 
-	      query_entryp =
-		qmgr_get_query_entry (thread_p, query_id, tran_index);
+	      query_entryp = qmgr_get_query_entry (thread_p, query_id,
+						   tran_index);
 	      MUTEX_LOCK (rv, query_entryp->lock);
 	      list_id = qexec_get_xasl_list_id (xasl);
 	      query_entryp->list_id = list_id;
@@ -9993,7 +9996,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
   /* information of candidates to be removed from XASL cache */
   xasl_ent_cv->include_in_use = true;
 
-#define ENT_C_RATIO 0.05	/* candidate ratio such as 5% */
+#define ENT_C_RATIO 0.05f	/* candidate ratio such as 5% */
   xasl_ent_cv->c_ratio = ENT_C_RATIO;
   xasl_ent_cv->c_num =
     (int) ceil (xasl_ent_cache.max_entries * xasl_ent_cv->c_ratio);
@@ -10003,7 +10006,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
   xasl_ent_cv->c_ref = (XASL_CACHE_ENTRY **)
     malloc (sizeof (XASL_CACHE_ENTRY *) * xasl_ent_cv->c_num);
 
-#define ENT_V_RATIO 0.02	/* victim ratio such as 2% */
+#define ENT_V_RATIO 0.02f	/* victim ratio such as 2% */
   xasl_ent_cv->v_ratio = ENT_V_RATIO;
   xasl_ent_cv->v_num =
     (int) ceil (xasl_ent_cache.max_entries * xasl_ent_cv->v_ratio);
@@ -10169,6 +10172,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   int i;
   const OID *o;
   char str[20];
+  time_t tmp_time;
 
   if (!ent)
     {
@@ -10187,12 +10191,12 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 	   ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
 #if defined(SERVER_MODE)
   fprintf (fp, "  tran_index_array = [");
-  for (i = 0; i < ent->last_ta_idx; i++)
+  for (i = 0; (unsigned int) i < ent->last_ta_idx; i++)
     {
       fprintf (fp, " %d", ent->tran_index_array[i]);
     }
   fprintf (fp, " ]\n");
-  fprintf (fp, "  last_ta_idx = %d\n", ent->last_ta_idx);
+  fprintf (fp, "  last_ta_idx = %lld\n", (long long) ent->last_ta_idx);
 #endif
   fprintf (fp, "  creator_oid = { %d %d %d }\n", ent->creator_oid.pageid,
 	   ent->creator_oid.slotid, ent->creator_oid.volid);
@@ -10210,12 +10214,14 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
       fprintf (fp, " %d", ent->repr_id_list[i]);
     }
   fprintf (fp, " ]\n");
-  (void) strftime (str, sizeof (str), "%x %X",
-		   localtime ((const time_t *) &ent->time_created.tv_sec));
+
+  tmp_time = ent->time_created.tv_sec;
+  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
   fprintf (fp, "  time_created = %s.%d\n", str,
 	   (int) ent->time_created.tv_usec);
-  (void) strftime (str, sizeof (str), "%x %X",
-		   localtime ((const time_t *) &ent->time_last_used.tv_sec));
+
+  tmp_time = ent->time_last_used.tv_sec;
+  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
   fprintf (fp, "  time_last_used = %s.%d\n", str,
 	   (int) ent->time_last_used.tv_usec);
   fprintf (fp, "  ref_count = %d\n", ent->ref_count);
@@ -10401,7 +10407,7 @@ qexec_alloc_xasl_cache_ent (int req_size)
 static XASL_CACHE_CLONE *
 qexec_expand_xasl_cache_clo_arr (int n_exp)
 {
-  XASL_CACHE_CLONE **alloc_arr, *clo;
+  XASL_CACHE_CLONE **alloc_arr, *clo = NULL;
   int i, j, s, n, size;
 
   size = xasl_clo_cache.max_clones;
@@ -10712,7 +10718,8 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
       /* return it back to the pool */
       (void) memset (&pent->s.entry, 0, sizeof (XASL_CACHE_ENTRY));
       pent->s.next = xasl_cache_entry_pool.free_list;
-      xasl_cache_entry_pool.free_list = (pent - xasl_cache_entry_pool.pool);
+      xasl_cache_entry_pool.free_list =
+	CAST_BUFLEN (pent - xasl_cache_entry_pool.pool);
     }
 
   return NO_ERROR;
@@ -10735,6 +10742,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   int i;
 #if defined(SERVER_MODE)
   int tran_index;
+  int num_elements;
 #endif
 
   if (xasl_ent_cache.max_entries <= 0)
@@ -10802,11 +10810,12 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	     and adjust timestamp and reference counter */
 #if defined(SERVER_MODE)
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  if (ent->last_ta_idx < MAX_NTRANS)
+	  if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
 	    {
-	      (void) lsearch (&tran_index, ent->tran_index_array,
-			      (unsigned int *) (&ent->last_ta_idx),
-			      sizeof (int), tranid_compare);
+	      num_elements = (int) ent->last_ta_idx;
+	      (void) tranid_lsearch (&tran_index, ent->tran_index_array,
+				     &num_elements);
+	      ent->last_ta_idx = num_elements;
 	    }
 #endif
 	  (void) gettimeofday (&ent->time_last_used, NULL);
@@ -10960,9 +10969,12 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			     const int *repr_ids, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
-  int tran_index;
   const OID *o;
   int len, i, j, k;
+#if defined(SERVER_MODE)
+  int tran_index;
+  int num_elements;
+#endif /* SERVER_MODE */
 
   if (xasl_ent_cache.max_entries <= 0)
     {
@@ -10996,11 +11008,12 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 
 #if defined(SERVER_MODE)
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      if (ent->last_ta_idx < MAX_NTRANS)
+      if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
 	{
-	  (void) lsearch (&tran_index, ent->tran_index_array,
-			  (unsigned int *) (&ent->last_ta_idx), sizeof (int),
-			  tranid_compare);
+	  num_elements = (int) ent->last_ta_idx;
+	  (void) tranid_lsearch (&tran_index, ent->tran_index_array,
+				 &num_elements);
+	  ent->last_ta_idx = num_elements;
 	}
 #endif
 
@@ -11153,7 +11166,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   XASL_ID_COPY (&ent->xasl_id, xasl_id);
   COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
-  (void) gettimeofday (&ent->time_last_used, NULL);;
+  (void) gettimeofday (&ent->time_last_used, NULL);
   ent->ref_count = 0;
   ent->deletion_marker = false;
   ent->dbval_cnt = dbval_cnt;
@@ -11162,11 +11175,12 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   /* record my transaction id into the entry */
 #if defined(SERVER_MODE)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (ent->last_ta_idx < MAX_NTRANS)
+  if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
     {
-      (void) lsearch (&tran_index, ent->tran_index_array,
-		      (unsigned int *) &ent->last_ta_idx,
-		      sizeof (int), tranid_compare);
+      num_elements = (int) ent->last_ta_idx;
+      (void) tranid_lsearch (&tran_index, ent->tran_index_array,
+			     &num_elements);
+      ent->last_ta_idx = num_elements;
     }
 #endif
 
@@ -11227,6 +11241,7 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
 				XASL_CACHE_ENTRY * ent)
 {
   int tran_index, *p, *r;
+  int num_elements;
 
   /* remove my transaction id from the entry and do compaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -11234,10 +11249,9 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
   do
     {
       /* find my tran_id */
-      p =
-	(int *) lfind (&tran_index, ent->tran_index_array,
-		       (unsigned int *) &ent->last_ta_idx, sizeof (int),
-		       tranid_compare);
+      num_elements = (int) ent->last_ta_idx;
+      p = tranid_lfind (&tran_index, ent->tran_index_array, &num_elements);
+      ent->last_ta_idx = num_elements;
       if (p)
 	{
 	  *p = 0;
@@ -12115,4 +12129,34 @@ qexec_partition_get_parts (XASL_PARTITION_INFO * xpi, DB_VALUE * sval)
     }
 
   return -1;			/* abnormal state */
+}
+
+static int *
+tranid_lsearch (const int *key, int *base, int *nmemb)
+{
+  int *result;
+
+  result = tranid_lfind (key, base, nmemb);
+  if (result == NULL)
+    {
+      result = &base[*nmemb++];
+      *result = *key;
+    }
+
+  return result;
+}
+
+static int *
+tranid_lfind (const int *key, const int *base, int *nmemb)
+{
+  const int *result = base;
+  int cnt = 0;
+
+  while (cnt < *nmemb && *key != *result)
+    {
+      result++;
+      cnt++;
+    }
+
+  return ((cnt < *nmemb) ? (int *) result : NULL);
 }

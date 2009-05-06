@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_broker_admin.h - 
+ * cm_broker_admin.h -
  */
 
 #ifndef _CM_BROKER_ADMIN_H_
@@ -70,8 +70,8 @@ typedef struct
   int pid;
   int num_request;
   int as_port;
-  char *status;
-  int last_access_time;
+  const char *status;
+  time_t last_access_time;
   int psize;
   int num_thr;
   int cpu_time;
@@ -87,7 +87,7 @@ typedef struct
   int id;
   int priority;
   unsigned char ip[4];
-  int recv_time;
+  time_t recv_time;
   char script[32];
   char prgname[32];
 } T_DM_UC_JOB_INFO;
@@ -133,7 +133,7 @@ typedef struct
   } info;
 } T_DM_UC_INFO;
 
-char *uca_version ();
+char *uca_version (void);
 int uca_init (char *err_msg);
 int uca_start (char *err_msg);
 int uca_stop (char *err_msg);
@@ -156,14 +156,14 @@ int uca_unicas_conf (T_DM_UC_CONF * dm_uc_conf, int *ret_mst_shmid,
 void uca_unicas_conf_free (T_DM_UC_CONF * dm_uc_conf);
 int uca_conf_broker_add (T_DM_UC_CONF * dm_uc_conf, char *br_name,
 			 char *err_msg);
-int uca_change_config (T_DM_UC_CONF * dm_uc_conf, char *br_name, char *name,
-		       char *value);
+int uca_change_config (T_DM_UC_CONF * dm_uc_conf, const char *br_name,
+		       const char *name, const char *value);
 int uca_changer (char *br_name, char *name, char *value, char *err_msg);
 char *uca_get_file (T_UNICAS_FILE_ID uc_fid, char *buf);
 char *uca_cpu_time_str (int t, char *buf);
-char *uca_conf_find (T_DM_UC_BR_CONF * br_conf, char *name);
+char *uca_conf_find (T_DM_UC_BR_CONF * br_conf, const char *name);
 T_DM_UC_BR_CONF *uca_conf_find_broker (T_DM_UC_CONF * uc_conf, char *br_name);
-char *uca_get_conf_path (char *filename, char *buf);
+char *uca_get_conf_path (const char *filename, char *buf);
 int uca_conf_write (T_DM_UC_CONF * uc_conf, char *del_broekr,
 		    char *_dbmt_error);
 int uca_del_cas_log (char *br_name, int as_id, char *_dbmt_error);

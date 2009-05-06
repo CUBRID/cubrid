@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -23,6 +23,8 @@
  */
 
 #ident "$Id$"
+
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +40,7 @@
 #include <curses.h>
 #endif
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 #include <sys/timeb.h>
 #else
 #include <sys/types.h>
@@ -52,18 +54,16 @@
 #include "broker_util.h"
 #include "broker_process_size.h"
 #include "porting.h"
-#ifndef WINDOWS
+#if !defined(WINDOWS)
 #include "broker_process_info.h"
 #endif
 
-#ifdef WINDOWS
 #include "broker_getopt.h"
-#endif
 
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 #define STR_TO_SCREEN(MSG)	\
 	do {			\
 		DWORD	size;	\
@@ -96,7 +96,7 @@
 	  }				\
 	} while (0)
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 #define GET_CHAR(VAR)					\
 	do {						\
 	  int	i;					\
@@ -126,18 +126,13 @@ static void time_format (int t, char *time_str);
 #endif
 static void print_header (char use_pdh_flag);
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
-#endif
-
-#if defined(LINUX) || defined(ALPHA_LINUX)
-extern char *optarg;
-extern int optind, opterr, optopt;
 #endif
 
 static T_SHM_BROKER *shm_br;
@@ -150,7 +145,7 @@ static int tty_print_header = TRUE;
 
 static int max_col_len = 0;
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 HANDLE h_console;
 CONSOLE_SCREEN_BUFFER_INFO scr_info;
 #endif
@@ -207,7 +202,7 @@ main (int argc, char **argv)
 
   if (refresh_sec > 0 && !tty_mode)
     {
-#if defined(WIN32)
+#if defined(WINDOWS)
       h_console = GetStdHandle (STD_OUTPUT_HANDLE);
       if (h_console == NULL)
 	{
@@ -234,7 +229,7 @@ main (int argc, char **argv)
 	  refresh ();
 	}
 
-#ifndef WINDOWS
+#if !defined(WINDOWS)
       if (shm_br == NULL || shm_br->magic == 0)
 	{
 	  if (shm_br)
@@ -250,7 +245,7 @@ main (int argc, char **argv)
 	    br_monitor (br_vector);
 	  else
 	    appl_monitor (br_vector);
-#ifndef WINDOWS
+#if !defined(WINDOWS)
 	}
 #endif
 
@@ -299,7 +294,7 @@ get_args (int argc, char *argv[], char *br_vector)
   int c, j;
   int status;
   char br_name_opt_flag = FALSE, errflag = FALSE;
-#ifndef WINDOWS
+#if !defined(WINDOWS)
   regex_t re;
 #endif
 
@@ -335,7 +330,7 @@ get_args (int argc, char *argv[], char *br_vector)
   for (; optind < argc; optind++)
     {
       br_name_opt_flag = TRUE;
-#ifndef WINDOWS
+#if !defined(WINDOWS)
       if (regcomp (&re, argv[optind], 0) != 0)
 	{
 	  fprintf (stderr, "%s\r\n", argv[optind]);
@@ -344,7 +339,7 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
       for (j = 0; j < shm_br->num_broker; j++)
 	{
-#ifdef WINDOWS
+#if defined(WINDOWS)
 	  status =
 	    (strstr (shm_br->br_info[j].name, argv[optind]) != NULL) ? 0 : 1;
 #else
@@ -355,7 +350,7 @@ get_args (int argc, char *argv[], char *br_vector)
 	      br_vector[j] = 1;
 	    }
 	}
-#ifndef WINDOWS
+#if !defined(WINDOWS)
       regfree (&re);
 #endif
     }
@@ -427,9 +422,6 @@ appl_monitor (char *br_vector)
 {
   struct tm *cur_tm;
   time_t last_access_time;
-  int num_req_array[MAX_APPL_NUM];
-  time_t sec_array[MAX_APPL_NUM];
-  int msec_array[MAX_APPL_NUM];
   T_TIMEVAL cur_tv;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
@@ -464,7 +456,7 @@ appl_monitor (char *br_vector)
 	    }
 	  else
 	    {
-#ifdef WINDOWS
+#if defined(WINDOWS)
 	      use_pdh_flag = shm_appl->use_pdh_flag;
 #else
 	      use_pdh_flag = 0;
@@ -576,29 +568,25 @@ appl_monitor (char *br_vector)
 		  else
 		    col_len += sprintf (line_buf + col_len, "OFF ");
 #endif
-		  col_len +=
-		    sprintf (line_buf + col_len, "%5d ",
-			     shm_appl->as_info[j].pid);
-		  col_len +=
-		    sprintf (line_buf + col_len, "%5d ",
-			     shm_appl->as_info[j].num_request);
-#ifdef WINDOWS
+		  col_len += sprintf (line_buf + col_len, "%5d ",
+				      shm_appl->as_info[j].pid);
+		  col_len += sprintf (line_buf + col_len, "%5d ",
+				      shm_appl->as_info[j].num_request);
+#if defined(WINDOWS)
 		  col_len +=
 		    sprintf (line_buf + col_len, "%5d ",
 			     shm_appl->as_info[j].as_port);
 #endif
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 		  if (shm_appl->use_pdh_flag == TRUE)
 		    {
-		      col_len +=
-			sprintf (line_buf + col_len, "%5d ",
-				 shm_appl->as_info[j].pdh_workset);
+		      col_len += sprintf (line_buf + col_len, "%5d ",
+					  shm_appl->as_info[j].pdh_workset);
 		    }
 #else
-		  col_len +=
-		    sprintf (line_buf + col_len, "%5d ",
-			     getsize (shm_appl->as_info[j].pid));
+		  col_len += sprintf (line_buf + col_len, "%5d ",
+				      getsize (shm_appl->as_info[j].pid));
 #endif
 		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
 		    {
@@ -610,50 +598,59 @@ appl_monitor (char *br_vector)
 			{
 			  if (shm_appl->as_info[j].con_status ==
 			      CON_STATUS_OUT_TRAN)
-			    col_len +=
-			      sprintf (line_buf + col_len, "%-12s",
-				       "CLOSE WAIT ");
+			    {
+			      col_len += sprintf (line_buf + col_len, "%-12s",
+						  "CLOSE WAIT ");
+			    }
 			  else if (shm_appl->as_info[j].log_msg[0] == '\0')
-			    col_len +=
-			      sprintf (line_buf + col_len, "%-12s",
-				       "CLIENT WAIT ");
+			    {
+			      col_len += sprintf (line_buf + col_len, "%-12s",
+						  "CLIENT WAIT ");
+			    }
 			  else
-			    col_len +=
-			      sprintf (line_buf + col_len, "%-12s",
-				       " BUSY  ");
+			    {
+			      col_len += sprintf (line_buf + col_len, "%-12s",
+						  " BUSY  ");
+			    }
 			}
 		      else
-			col_len +=
-			  sprintf (line_buf + col_len, "%-12s", " BUSY  ");
+			{
+			  col_len += sprintf (line_buf + col_len, "%-12s",
+					      " BUSY  ");
+			}
 		    }
-#ifdef WINDOWS
+#if defined(WINDOWS)
 		  else if (shm_appl->as_info[j].uts_status ==
 			   UTS_STATUS_BUSY_WAIT)
-		    col_len +=
-		      sprintf (line_buf + col_len, "%-12s", " BUSY  ");
+		    {
+		      col_len += sprintf (line_buf + col_len, "%-12s",
+					  " BUSY  ");
+		    }
 #endif
 		  else if (shm_appl->as_info[j].uts_status ==
 			   UTS_STATUS_RESTART)
-		    col_len +=
-		      sprintf (line_buf + col_len, "INITIALIZE APPL_SERVER ");
+		    {
+		      col_len += sprintf (line_buf + col_len,
+					  "INITIALIZE APPL_SERVER ");
+		    }
 		  else
-		    col_len +=
-		      sprintf (line_buf + col_len, "%-12s", " IDLE  ");
+		    {
+		      col_len += sprintf (line_buf + col_len, "%-12s",
+					  " IDLE  ");
+		    }
 #if 0
-		  col_len +=
-		    sprintf (line_buf + col_len, "%s ",
-			     shm_appl->as_info[j].appl_name);
+		  col_len += sprintf (line_buf + col_len, "%s ",
+				      shm_appl->as_info[j].appl_name);
 #endif
 #if 0
-		  col_len +=
-		    sprintf (line_buf + col_len, "%d ",
-			     shm_appl->as_info[j].port);
+		  col_len += sprintf (line_buf + col_len, "%d ",
+				      shm_appl->as_info[j].port);
 #endif
 
 #ifdef GET_PSINFO
 		  get_psinfo (shm_appl->as_info[j].pid, &proc_info);
-		  col_len +=
-		    sprintf (line_buf + col_len, "%5.2f", proc_info.pcpu);
+		  col_len += sprintf (line_buf + col_len, "%5.2f",
+				      proc_info.pcpu);
 		  time_format (proc_info.cpu_time, time_str);
 		  col_len += sprintf (line_buf + col_len, "%7s ", time_str);
 #elif WINDOWS
@@ -662,11 +659,15 @@ appl_monitor (char *br_vector)
 		      float pct_cpu;
 		      pct_cpu = shm_appl->as_info[j].pdh_pct_cpu;
 		      if (pct_cpu >= 0)
-			col_len +=
-			  sprintf (line_buf + col_len, "%5.2f ", pct_cpu);
+			{
+			  col_len += sprintf (line_buf + col_len, "%5.2f ",
+					      pct_cpu);
+			}
 		      else
-			col_len +=
-			  sprintf (line_buf + col_len, "%5s ", " - ");
+			{
+			  col_len += sprintf (line_buf + col_len, "%5s ",
+					      " - ");
+			}
 		    }
 #endif
 
@@ -674,12 +675,11 @@ appl_monitor (char *br_vector)
 		  cur_tm = localtime (&last_access_time);
 		  cur_tm->tm_year += 1900;
 
-		  col_len +=
-		    sprintf (line_buf + col_len,
-			     "%02d/%02d/%02d %02d:%02d:%02d ",
-			     cur_tm->tm_year, cur_tm->tm_mon + 1,
-			     cur_tm->tm_mday, cur_tm->tm_hour, cur_tm->tm_min,
-			     cur_tm->tm_sec);
+		  col_len += sprintf (line_buf + col_len,
+				      "%02d/%02d/%02d %02d:%02d:%02d ",
+				      cur_tm->tm_year, cur_tm->tm_mon + 1,
+				      cur_tm->tm_mday, cur_tm->tm_hour,
+				      cur_tm->tm_min, cur_tm->tm_sec);
 		  if (shm_appl->as_info[j].clt_ip_addr[0] != '\0')
 		    {
 		      col_len += sprintf (line_buf + col_len, "%s ",
@@ -697,15 +697,20 @@ appl_monitor (char *br_vector)
 					  clt_req_path_info);
 		    }
 		  if (shm_appl->as_info[j].session_keep == TRUE)
-		    col_len += sprintf (line_buf + col_len, "T ");
+		    {
+		      col_len += sprintf (line_buf + col_len, "T ");
+		    }
 #if 0
 		  else
-		    col_len += sprintf (line_buf + col_len, "F ");
+		    {
+		      col_len += sprintf (line_buf + col_len, "F ");
+		    }
 #endif
 		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
-		    col_len +=
-		      sprintf (line_buf + col_len, "%s ",
-			       shm_appl->as_info[j].log_msg);
+		    {
+		      col_len += sprintf (line_buf + col_len, "%s ",
+					  shm_appl->as_info[j].log_msg);
+		    }
 		  if (col_len >= max_col_len)
 		    {
 		      max_col_len = col_len;
@@ -748,11 +753,11 @@ br_monitor (char *br_vector)
   T_PSINFO proc_info;
   char time_str[32];
 #endif
-  static unsigned long *num_tx_olds = NULL;
-  static unsigned long *num_qx_olds = NULL;
+  static unsigned int *num_tx_olds = NULL;
+  static unsigned int *num_qx_olds = NULL;
   static time_t time_old;
-  unsigned long num_tx_cur = 0;
-  unsigned long num_qx_cur = 0;
+  unsigned int num_tx_cur = 0;
+  unsigned int num_qx_cur = 0;
   time_t time_cur;
   unsigned long tps = 0;
   unsigned long qps = 0;
@@ -789,13 +794,13 @@ br_monitor (char *br_vector)
   if (num_tx_olds == NULL)
     {
       num_tx_olds =
-	(unsigned long *) calloc (sizeof (unsigned long), shm_br->num_broker);
+	(unsigned int *) calloc (sizeof (unsigned int), shm_br->num_broker);
       (void) time (&time_old);
     }
   if (num_qx_olds == NULL)
     {
       num_qx_olds =
-	(unsigned long *) calloc (sizeof (unsigned long), shm_br->num_broker);
+	(unsigned int *) calloc (sizeof (unsigned int), shm_br->num_broker);
       (void) time (&time_old);
     }
 
@@ -951,10 +956,10 @@ print_header (char use_pdh_flag)
   col_len += sprintf (buf + col_len, "%2s", "ID ");
   col_len += sprintf (buf + col_len, "%6s", "PID ");
   col_len += sprintf (buf + col_len, "%6s", "C ");
-#ifdef WINDOWS
+#if defined(WINDOWS)
   col_len += sprintf (buf + col_len, "%6s", "PORT ");
 #endif
-#ifdef WINDOWS
+#if defined(WINDOWS)
   if (use_pdh_flag == TRUE)
     {
       col_len += sprintf (buf + col_len, "%5s", "PSIZE ");
@@ -989,7 +994,7 @@ print_header (char use_pdh_flag)
   PRINT_NEWLINE ();
 }
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 static void
 refresh ()
 {

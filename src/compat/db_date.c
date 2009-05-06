@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -18,7 +18,7 @@
  */
 
 /*
- * db_date.c - Julian date conversion routines and added functions for 
+ * db_date.c - Julian date conversion routines and added functions for
  *             handling relative time values.
  */
 
@@ -35,6 +35,7 @@
 #include "dbi.h"
 #include "system_parameter.h"
 #include "intl_support.h"
+#include "query_opfunc.h"
 
 /* used in conversion to julian */
 #define IGREG1     (15 + 31L * (10 + 12L * 1582))
@@ -60,11 +61,17 @@ typedef struct ampm_buf
 
 static void decode_time (int timeval, int *hourp, int *minutep, int *secondp);
 static int encode_time (int hour, int minute, int second);
+static void decode_mtime (int mtimeval, int *hourp, int *minutep,
+			  int *secondp, int *millisecondp);
+static unsigned int encode_mtime (int hour, int minute, int second,
+				  int millisecond);
 static int init_tm (struct tm *);
 static int get_current_year (void);
 static const char *parse_date (const char *buf, DB_DATE * date);
-static const char *parse_time (const char *buf, DB_TIME * time);
+static const char *parse_time (const char *buf, DB_TIME * mtime);
+static const char *parse_mtime (const char *buf, unsigned int *mtime);
 static const char *parse_timestamp (const char *buf, DB_TIMESTAMP * utime);
+static const char *parse_datetime (const char *buf, DB_DATETIME * datetime);
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
@@ -128,7 +135,7 @@ julian_encode (int m, int d, int y)
  *                     4                  Thursday
  *                     5                  Friday
  *                     6                  Saturday
- * 
+ *
  * jul_day(in): the julian day to reason over
  */
 int
@@ -139,8 +146,8 @@ day_of_week (int jul_day)
 
 /*
  * julian_decode() - Generic function for decoding a julian date into
- *    interesting pieces. 
- * return : void 
+ *    interesting pieces.
+ * return : void
  * jul(in): encoded julian value
  * monthp(out): pointer to month value
  * dayp(out): pointer to day value
@@ -241,7 +248,7 @@ db_date_encode (DB_DATE * date, int month, int day, int year)
 
 /*
  * db_date_weekday() - Please refer to the day_of_week() function
- * return : weekday 
+ * return : weekday
  * date(in): pointer to DB_DATE
  */
 int
@@ -254,7 +261,7 @@ db_date_weekday (DB_DATE * date)
 }
 
 /*
- * db_date_decode() - Decodes a DB_DATE value into interesting sub fields. 
+ * db_date_decode() - Decodes a DB_DATE value into interesting sub fields.
  * return : void
  * date(in): pointer to DB_DATE
  * monthp(out): pointer to month
@@ -262,7 +269,7 @@ db_date_weekday (DB_DATE * date)
  * yearp(out): pointer to year
  */
 void
-db_date_decode (DB_DATE * date, int *monthp, int *dayp, int *yearp)
+db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp)
 {
   julian_decode (*date, monthp, dayp, yearp, NULL);
 }
@@ -365,7 +372,7 @@ db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp)
  *    Be careful not to pass pointers to the tm_ structure to the decoding
  *    functions.  When these go through the PC int-to-long filter, they
  *    expect long* pointers which isn't what the fields in tm_ are.
- * return : error code 
+ * return : error code
  * c_time_struct(out): c time structure from time.h
  * date(in) : database date structure
  * time(in) : database time structure
@@ -413,9 +420,13 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
   loc = *c_time_struct;
 
   /* mktime() on Sun anomalously returns negative values other than -1. */
-  if (mktime (&loc) < (time_t) 0	/* get correct tm_isdst */
-      || (c_time_struct->tm_isdst =
-	  loc.tm_isdst, mktime (c_time_struct) < (time_t) 0))
+  if (mktime (&loc) < (time_t) 0)	/* get correct tm_isdst */
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+  c_time_struct->tm_isdst = loc.tm_isdst;
+  if (mktime (c_time_struct) < (time_t) 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
@@ -430,7 +441,7 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
  * return : time_t
  * date(in): database date structure
  * time(in): database time structure
- * 
+ *
  * note : This obeys the same convention as mktime(), returning a
  *        value of (time_t)-1 if an error occurred.  Consult errid()
  *        for the db error code.
@@ -465,7 +476,7 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
   time_t tmp_utime;
 
   tmp_utime = db_mktime (date, timeval);
-  if (tmp_utime < 0)
+  if (tmp_utime < 0 || OR_CHECK_INT_OVERFLOW (tmp_utime))
     {
       /* mktime couldn't handle this date & time */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
@@ -488,17 +499,18 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
  * time(out): return relative time
  */
 void
-db_timestamp_decode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
+db_timestamp_decode (const DB_TIMESTAMP * utime, DB_DATE * date,
+		     DB_TIME * timeval)
 {
   struct tm *temp;
-#if defined(SERVER_MODE)
-  struct tm t;
-#endif
+  time_t tmp_time = *utime;
 
 #if defined(SERVER_MODE) && !defined(WINDOWS)
-  temp = localtime_r ((time_t *) utime, &t);
+  struct tm t;
+
+  temp = localtime_r (&tmp_time, &t);
 #else
-  temp = localtime ((time_t *) utime);
+  temp = localtime (&tmp_time);
 #endif
   if (temp)
     {
@@ -515,14 +527,14 @@ db_timestamp_decode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
   else
     {
       /* error condition */
-      if (date) 
-        {
-          *date = 0;
-        }
+      if (date)
+	{
+	  *date = 0;
+	}
       if (timeval)
-        {
-          *timeval = 0;
-        }
+	{
+	  *timeval = 0;
+	}
     }
 }
 
@@ -573,11 +585,10 @@ void
 db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval)
 {
   struct tm *temp;
-#if defined(SERVER_MODE)
-  struct tm t;
-#endif
 
 #if defined(SERVER_MODE) && !defined(WINDOWS)
+  struct tm t;
+
   temp = localtime_r (epoch_time, &t);
 #else
   temp = localtime (epoch_time);
@@ -607,10 +618,10 @@ static int
 init_tm (struct tm *tm)
 {
   time_t tloc;
-#if defined(SERVER_MODE)
+  struct tm *tmp;
+#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
 #endif
-  struct tm *tmp;
 
   if (time (&tloc) == -1)
     {
@@ -633,7 +644,7 @@ init_tm (struct tm *tm)
 }
 
 /*
- * get_current_year() - This function returns current year. 
+ * get_current_year() - This function returns current year.
  * return : current year or -1(on error)
  */
 static int
@@ -647,7 +658,7 @@ get_current_year (void)
  * parse_date() - Parse an ordinary date string (e.g., '10/15/86').
  *    Whitespace is permitted between components.  If the year is omitted, the
  *    current year will be discovered and used.
- * return : NULL on error  
+ * return : NULL on error
  * buf(in): a buffer containing a date to be parsed
  * date(out): a pointer to a DB_DATE to be modified
  */
@@ -767,14 +778,36 @@ parse_date (const char *buf, DB_DATE * date)
 static const char *
 parse_time (const char *buf, DB_TIME * time)
 {
+  unsigned int mtime;
+  const char *p;
+
+  p = parse_mtime (buf, &mtime);
+
+  if (p != NULL)
+    {
+      *time = mtime / 1000;
+    }
+
+  return p;
+}
+
+/*
+ * parse_mtime() -
+ * return : const char or NULL on error
+ * buf(in): pointer to time expression
+ * mtime(out): pointer to unsigned int to be updated with the parsed time
+ */
+static const char *
+parse_mtime (const char *buf, unsigned int *mtime)
+{
   static AMPM_BUF ampm[2];
   static int initialized = 0;
 
-  int part[3] = { 0, 0, 0 };
-  int hours, minutes, seconds;
+  int part[4] = { 0, 0, 0, 0 };
   unsigned int i;
   int c;
   const char *p;
+  double fraction = 100;
 
   if (!initialized)
     {
@@ -805,12 +838,26 @@ parse_time (const char *buf, DB_TIME * time)
       for (c = *p; char_isspace (c); c = *++p)
 	;
       for (c = *p; char_isdigit (c); c = *++p)
-	part[i] = part[i] * 10 + (c - '0');
+	{
+	  if (i != 3)
+	    {
+	      part[i] = part[i] * 10 + (c - '0');
+	    }
+	  else
+	    {
+	      part[i] += (int) ((c - '0') * fraction + 0.5);
+	      fraction /= 10;
+	    }
+	}
       if (i < DIM (part) - 1)
 	{
 	  for (c = *p; char_isspace (c); c = *++p)
 	    ;
 	  if (c == ':')
+	    {
+	      ++p;
+	    }
+	  else if (c == '.' && i == 2)
 	    {
 	      ++p;
 	    }
@@ -821,34 +868,30 @@ parse_time (const char *buf, DB_TIME * time)
 	}
     }
 
-  hours = part[0];
-  minutes = part[1];
-  seconds = part[2];
-
   for (c = *p; char_isspace (c); c = *++p)
     ;
   if (intl_mbs_ncasecmp (p, ampm[0].str, ampm[0].len) == 0)
     {
       p += ampm[0].len;
-      if (hours == 12)
+      if (part[0] == 12)
 	{
-	  hours = 0;
+	  part[0] = 0;
 	}
-      else if (hours > 12)
+      else if (part[0] > 12)
 	{
-	  hours = -1;
+	  part[0] = -1;
 	}
     }
   else if (intl_mbs_ncasecmp (p, ampm[1].str, ampm[1].len) == 0)
     {
       p += ampm[1].len;
-      if (hours < 12)
+      if (part[0] < 12)
 	{
-	  hours += 12;
+	  part[0] += 12;
 	}
-      else if (hours == 0)
+      else if (part[0] == 0)
 	{
-	  hours = -1;
+	  part[0] = -1;
 	}
     }
   else if (i == 0 && *buf)
@@ -857,20 +900,24 @@ parse_time (const char *buf, DB_TIME * time)
       return NULL;
     }
 
-  if (hours < 0 || hours > 23)
+  if (part[0] < 0 || part[0] > 23)
     {
       return NULL;
     }
-  if (minutes < 0 || minutes > 59)
+  if (part[1] < 0 || part[1] > 59)
     {
       return NULL;
     }
-  if (seconds < 0 || seconds > 59)
+  if (part[2] < 0 || part[2] > 59)
+    {
+      return NULL;
+    }
+  if (part[3] < 0 || part[3] > 999)
     {
       return NULL;
     }
 
-  db_time_encode (time, hours, minutes, seconds);
+  *mtime = encode_mtime (part[0], part[1], part[2], part[3]);
 
   return p;
 }
@@ -931,6 +978,56 @@ finalcheck:
     {
       return NULL;
     }
+}
+
+/*
+ * parse_datetime() -
+ * Returns: const char or NULL on error
+ * buf(in): pointer to a date-time expression
+ * datetime(out): pointer to a DB_DATETIME to be modified
+ */
+static const char *
+parse_datetime (const char *buf, DB_DATETIME * datetime)
+{
+  DB_DATE date = 0;
+  unsigned int mtime;
+  int error = NO_ERROR;
+  const char *p;
+
+  /* First try to parse a date followed by a time. */
+  p = parse_date (buf, &date);
+  if (p)
+    {
+      p = parse_mtime (p, &mtime);
+      if (p)
+	{
+	  goto finalcheck;
+	}
+    }
+
+  p = parse_mtime (buf, &mtime);
+  if (p)
+    {
+      p = parse_date (p, &date);
+      if (p)
+	{
+	  goto finalcheck;
+	}
+    }
+
+  return NULL;
+
+finalcheck:
+
+  if (date == 0)
+    {
+      return NULL;
+    }
+
+  datetime->date = date;
+  datetime->time = mtime;
+
+  return p;
 }
 
 /*
@@ -1027,7 +1124,7 @@ db_string_to_timestamp (const char *str, DB_TIMESTAMP * utime)
  * buf(out): a buffer to receive the printed representation
  * bufsize(in): the size of that buffer
  * date(in): a pointer to a DB_DATE to be printed
- * 
+ *
  * note: The format string MUST contain a %d in WINDOWS. Keep this file
  *    from passing through the %ld filter.
  *    Do note pass pointers to the tm structure to db_date_decode.
@@ -1059,7 +1156,7 @@ db_date_to_string (char *buf, int bufsize, DB_DATE * date)
  * buf(out): a buffer to receive the printed representation
  * bufsize(in): the size of that buffer
  * time(in): a pointer to a DB_TIME to be printed
- * 
+ *
  * note : DO NOT pass pointers to the tm structure to db_time_decode.
  */
 int
@@ -1128,4 +1225,315 @@ db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime)
       return 0;
     }
   return m + n;
+}
+
+/*
+ * db_timestamp_to_datetime() -
+ * return : error code
+ * utime(in): timestamp
+ * datetime(out): datetime
+ */
+int
+db_timestamp_to_datetime (DB_TIMESTAMP * utime, DB_DATETIME * datetime)
+{
+  struct tm *temp;
+  time_t tmp_time = *utime;
+
+#if defined(SERVER_MODE) && !defined(WINDOWS)
+  struct tm t;
+
+  temp = localtime_r (&tmp_time, &t);
+#else
+  temp = localtime (&tmp_time);
+#endif
+
+  if (temp)
+    {
+      if (datetime)
+	{
+	  db_datetime_encode (datetime, temp->tm_mon + 1, temp->tm_mday,
+			      temp->tm_year + 1900, temp->tm_hour,
+			      temp->tm_min, temp->tm_sec, 0);
+	}
+    }
+  else
+    {
+      /* error condition */
+      if (datetime)
+	{
+	  datetime->date = 0;
+	  datetime->time = 0;
+	}
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * DB_DATETIME FUNCTIONS
+ */
+
+/*
+ * encode_mtime() -
+ * return : millisecond time value
+ * hour(in): hour
+ * minute(in): minute
+ * second(in): second
+ * millisecond(in): millisecond
+ */
+static unsigned int
+encode_mtime (int hour, int minute, int second, int millisecond)
+{
+  return ((((((hour * 60) + minute) * 60) + second) * 1000) + millisecond);
+}
+
+/*
+ * decode_mtime() - Converts encoded millisecond time into
+ *                  hour/minute/second/millisecond values.
+ * return : void
+ * time(in): encoded relative time value
+ * hourp(out): hour pointer
+ * minutep(out) : minute pointer
+ * secondp(out) : second pointer
+ * millisecondp(out) : millisecond pointer
+ */
+static void
+decode_mtime (int mtimeval, int *hourp, int *minutep,
+	      int *secondp, int *millisecondp)
+{
+  int hours, minutes, seconds, milliseconds;
+
+  milliseconds = mtimeval % 1000;
+  seconds = (mtimeval / 1000) % 60;
+  minutes = (mtimeval / 60000) % 60;
+  hours = (mtimeval / 3600000) % 24;
+
+  if (hourp != NULL)
+    {
+      *hourp = hours;
+    }
+  if (minutep != NULL)
+    {
+      *minutep = minutes;
+    }
+  if (secondp != NULL)
+    {
+      *secondp = seconds;
+    }
+  if (millisecondp != NULL)
+    {
+      *millisecondp = milliseconds;
+    }
+}
+
+/*
+ * db_datetime_to_string() - Print a DB_DATETIME into a char buffer using
+ *    strftime().
+ * return : the number of characters actually printed.
+ * buf(out): a buffer to receive the printed representation
+ * bufsize(in): the size of that buffer
+ * datetime(in): a pointer to a DB_DATETIME to be printed
+ */
+int
+db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
+{
+  int mon, day, year;
+  int hour, minute, second, millisecond;
+  int retval;
+  bool pm;
+
+  if (buf == NULL || bufsize == 0)
+    {
+      return 0;
+    }
+
+  db_datetime_decode (datetime, &mon, &day, &year,
+		      &hour, &minute, &second, &millisecond);
+  pm = (hour >= 12) ? true : false;
+  if (hour == 0)
+    {
+      hour = 12;
+    }
+  else if (hour > 12)
+    {
+      hour -= 12;
+    }
+  retval = snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d ",
+		     hour, minute, second, millisecond, pm ? "PM" : "AM",
+		     mon, day, year);
+  if (bufsize < retval)
+    {
+      retval = 0;
+    }
+
+  return retval;
+}
+
+/*
+ * db_string_to_datetime() -
+ * return : 0 on success, -1 on error.
+ * buf(in): a buffer containing a date to be parsed
+ * datetime(out): a pointer to a DB_DATETIME to be modified
+ */
+int
+db_string_to_datetime (const char *str, DB_DATETIME * datetime)
+{
+  const char *p;
+
+  p = parse_datetime (str, datetime);
+  if (p)
+    {
+      while (char_isspace (p[0]))
+	p++;
+    }
+  if (p == NULL || p[0] != '\0')
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_datetime_decode() - Converts encoded datetime into
+ *                        month/day/year/hour/minute/second/millisecond values.
+ * return : error code
+ * datetime(in): pointer to DB_DATETIME
+ * month(out): pointer to month
+ * day(out): pointer to day
+ * year(out): pointer to year
+ * hour(out): pointer to hour
+ * minute(out): pointer to minute
+ * second(out): pointer to second
+ * millisecond(out): pointer to millisecond
+ */
+int
+db_datetime_decode (const DB_DATETIME * datetime, int *month, int *day,
+		    int *year, int *hour, int *minute, int *second,
+		    int *millisecond)
+{
+  db_date_decode (&datetime->date, month, day, year);
+  decode_mtime (datetime->time, hour, minute, second, millisecond);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_datetime_encode() - Converts month/day/year/hour/minute/second/millisecond
+ *                        into an encoded relative
+ * return : error code
+ * datetime(in): pointer to DB_DATETIME
+ * month(out): month
+ * day(out): day
+ * year(out): year
+ * hour(out): hour
+ * minute(out): minute
+ * second(out): second
+ * millisecond(out): millisecond
+ */
+int
+db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year,
+		    int hour, int minute, int second, int millisecond)
+{
+  db_date_encode (&datetime->date, month, day, year);
+  datetime->time = encode_mtime (hour, minute, second, millisecond);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_subtract_int_from_datetime() -
+ * return : error code
+ * datetime(in):
+ * i2(in):
+ * result_datetime(out):
+ */
+int
+db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2,
+			       DB_DATETIME * result_datetime)
+{
+  DB_BIGINT bi1, result_bi, tmp_bi;
+
+  if (bi2 < 0)
+    {
+      if (bi2 == DB_BIGINT_MIN)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_TIME_UNDERFLOW, 0);
+	  return ER_QPROC_TIME_UNDERFLOW;
+	}
+
+      db_add_int_to_datetime (dt1, -bi2, result_datetime);
+    }
+
+  bi1 = ((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time;
+
+  result_bi = bi1 - bi2;
+  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      return ER_QPROC_TIME_UNDERFLOW;
+    }
+
+  tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
+  if (OR_CHECK_INT_OVERFLOW (tmp_bi))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      return ER_QPROC_TIME_UNDERFLOW;
+    }
+  result_datetime->date = (int) tmp_bi;
+  result_datetime->time = (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_add_datetime_to_int() -
+ * return : error code
+ * datetime(in):
+ * i2(in):
+ * result_datetime(out):
+ */
+int
+db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2,
+			DB_DATETIME * result_datetime)
+{
+  DB_BIGINT bi1, result_bi, tmp_bi;
+
+  if (bi2 < 0)
+    {
+      if (bi2 == DB_BIGINT_MIN)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_TIME_UNDERFLOW, 0);
+	  return ER_QPROC_TIME_UNDERFLOW;
+	}
+
+      return db_subtract_int_from_datetime (datetime, -bi2, result_datetime);
+    }
+
+  bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY
+    + datetime->time;
+
+  result_bi = bi1 + bi2;
+  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      return ER_QPROC_TIME_UNDERFLOW;
+    }
+
+  tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
+  if (OR_CHECK_INT_OVERFLOW (tmp_bi))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      return ER_QPROC_TIME_UNDERFLOW;
+    }
+
+  result_datetime->date = (int) tmp_bi;
+  result_datetime->time = (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
+
+  return NO_ERROR;
 }

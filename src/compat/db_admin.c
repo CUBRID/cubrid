@@ -50,6 +50,9 @@
 #include "parser.h"
 #include "memory_alloc.h"
 #include "execute_schema.h"
+#if defined(SA_MODE)
+#include "jsp_sr.h"
+#endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
 #include "glo_class.h"
@@ -188,19 +191,19 @@ db_init (const char *program, int print_version,
 
   client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
   client_credential.client_info = NULL;
-  client_credential.db_name = dbname;
+  client_credential.db_name = (char *) dbname;
   client_credential.db_user = NULL;
   client_credential.db_password = NULL;
-  client_credential.program_name = program;
+  client_credential.program_name = (char *) program;
   client_credential.login_name = NULL;
   client_credential.host_name = NULL;
   client_credential.process_id = -1;
 
-  db_path_info.db_path = db_path;
-  db_path_info.vol_path = vol_path;
-  db_path_info.log_path = log_path;
-  db_path_info.db_host = host_name;
-  db_path_info.db_comments = comments;
+  db_path_info.db_path = (char *) db_path;
+  db_path_info.vol_path = (char *) vol_path;
+  db_path_info.log_path = (char *) log_path;
+  db_path_info.db_host = (char *) host_name;
+  db_path_info.db_comments = (char *) comments;
 
   error = boot_initialize_client (&client_credential, &db_path_info,
 				  (bool) overwrite, (DKNPAGES) npages,
@@ -366,7 +369,7 @@ db_get_database_comments (void)
 }
 
 int
-db_get_client_type ()
+db_get_client_type (void)
 {
   return db_Client_type;
 }
@@ -477,12 +480,12 @@ db_restart (const char *program, int print_version, const char *volume)
          returns */
       db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
-      client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;;
+      client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
       client_credential.client_info = NULL;
-      client_credential.db_name = volume;
+      client_credential.db_name = (char *) volume;
       client_credential.db_user = NULL;
       client_credential.db_password = NULL;
-      client_credential.program_name = program;
+      client_credential.program_name = (char *) program;
       client_credential.login_name = NULL;
       client_credential.host_name = NULL;
       client_credential.process_id = -1;

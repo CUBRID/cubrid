@@ -29,7 +29,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <sys/timeb.h>
 #else
 #include <sys/time.h>

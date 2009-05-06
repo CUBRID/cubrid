@@ -30,22 +30,22 @@
 #include "connection_defs.h"
 
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
-extern CSS_CONN_ENTRY *css_make_conn (int);
+extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
-extern int css_net_send_no_block (int fd, const char *buffer, int size);
+extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
 
 extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
 			 int timeout);
-extern int css_net_recv (int fd, char *buffer, int *maxlen, int timeout);
-extern int css_net_read_header (int fd, char *buffer, int *maxlen);
+extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
+extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
 
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id,
 						     const char *server_name,
 						     int name_length);
 
 extern CSS_CONN_ENTRY *css_find_exception_conn (void);
-extern void css_read_remaining_bytes (int fd, int len);
+extern void css_read_remaining_bytes (SOCKET fd, int len);
 extern int css_receive_oob (CSS_CONN_ENTRY * conn, char **buffer,
 			    int *buffer_size);
 
@@ -105,11 +105,17 @@ extern int css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn,
 					char *data2_buffer,
 					int data2_size,
 					char *reply_buffer, int reply_size);
+extern int
+css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
+				unsigned short *request_id, char *arg_buffer,
+				int arg_size, char *data_buffer,
+				FSIZE_T data_size, char *reply_buffer,
+				int reply_size);
 
 extern int css_test_for_open_conn (CSS_CONN_ENTRY * conn);
-extern CSS_CONN_ENTRY *css_find_conn_from_fd (int fd);
+extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
-extern int css_readn (int fd, char *ptr, int nbytes, int timeout);
+extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
 
 extern char *css_return_data_buffer (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id,

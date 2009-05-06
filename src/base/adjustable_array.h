@@ -31,6 +31,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "porting.h"
+
 #define ADJ_AR_EOA -1
 
 typedef enum adj_err_code ADJ_ERR_CODE;
@@ -53,11 +55,11 @@ enum adj_err_code
 typedef struct adj_array ADJ_ARRAY;
 struct adj_array
 {
-  size_t cur_length;		/* current array length */
-  void *buffer;			/* current array buffer */
-  size_t max_length;		/* maximum elements in buffer */
-  size_t min_length;		/* minimum elements in buffer */
+  int cur_length;		/* current array length */
+  int max_length;		/* maximum elements in buffer */
+  int min_length;		/* minimum elements in buffer */
   int element_size;		/* size of array element in bytes */
+  void *buffer;			/* current array buffer */
   float rate;			/* growth rate (>= 1.0) */
 };
 
@@ -87,7 +89,7 @@ extern int adj_ar_append (ADJ_ARRAY * adj_array_p, const void *src,
 
 extern void *adj_ar_get_buffer (const ADJ_ARRAY * adj_array_p);
 
-extern size_t adj_ar_length (const ADJ_ARRAY * adj_array_p);
+extern int adj_ar_length (const ADJ_ARRAY * adj_array_p);
 
 extern void *adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n);
 

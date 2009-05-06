@@ -206,7 +206,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   DB_VALUE key_copy;
   BTID_INT btid_int;
   LOG_DATA_ADDR addr;
-  char midxkeybuf[DBVAL_BUFSIZE];
+  char midxkeybuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+
+  aligned_midxkey_buf = PTR_ALIGN (midxkeybuf, MAX_ALIGNMENT);
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids)
@@ -241,6 +243,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   btid_int.reverse = reverse_flag;
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
+  btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
 
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
   db_make_null (&key_copy);
@@ -374,7 +377,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 					&sort_args->attr_ids[attr_offset],
 					&sort_args->attr_info,
 					&sort_args->in_recdes, &dbvalue,
-					midxkeybuf);
+					aligned_midxkey_buf);
 	  if (dbvalue_ptr == NULL || db_value_is_null (dbvalue_ptr))
 	    {
 	      hf_scan = S_ERROR;
@@ -1495,6 +1498,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
   LOG_DATA_ADDR addr;
   int num_pages, nthpage;
   OR_ALIGNED_BUF (NODE_HEADER_SIZE) a_temp_data;
+  unsigned short alignment;
 
   temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
   temp_recdes.area_size = NODE_HEADER_SIZE;
@@ -1562,14 +1566,16 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
     }				/* if */
   (*used_pgcnt)++;
 
+  alignment = MAX_ALIGNMENT;
   spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE,
-		    INT_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
+		    MAX_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
 
   addr.vfid = &btid->vfid;
   addr.offset = -1;		/* No header slot is initialized */
   addr.pgptr = page_ptr;
 
-  log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, 0, NULL);
+  log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment),
+			&alignment);
 
   if (header)
     {				/* This is going to be a leaf page */
@@ -1765,6 +1771,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
       /* First decompose the input record into the key and oid components */
       or_init (&buf, recdes->data, recdes->length);
+      assert (((UINTPTR) recdes->data) % 8 == 0);
 
       /* Skip forward link */
       or_advance (&buf, next_size);
@@ -1783,14 +1790,14 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	{
 	  goto error;
 	}
-      buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
+      buf.ptr = PTR_ALIGN (buf.ptr, MAX_ALIGNMENT);
 
       /* Do not copy the string--just use the pointer.  The pr_ routines
        * for strings and sets have different semantics for length.
        */
       if (load_args->btid->key_type->type->id == DB_TYPE_MIDXKEY)
 	{
-	  key_size = buf.endptr - buf.ptr;
+	  key_size = CAST_STRLEN (buf.endptr - buf.ptr);
 	}
 
       if ((*(load_args->btid->key_type->type->readval)) (&buf, &this_key,
@@ -2116,7 +2123,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       if (next)
 	{			/* move to next link */
 	  recdes->data = next;
-	  recdes->length = *((int *) (next - sizeof (int)));
+	  recdes->length = SORT_RECORD_LENGTH (next);
 	}
       else
 	{
@@ -2179,7 +2186,7 @@ btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
     {
       goto exit_on_error;
     }
-  buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
+  buf.ptr = PTR_ALIGN (buf.ptr, MAX_ALIGNMENT);
 
   /* Do not copy the string--just use the pointer.  The pr_ routines
    * for strings and sets have different semantics for length.
@@ -2383,7 +2390,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   OR_BUF buf;
   int next_size;
   int oid_size;
-  char midxkey_buf[DBVAL_BUFSIZE];
+  char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+
+  aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
   sort_args = (SORT_ARGS *) arg;
   prev_oid = sort_args->cur_oid;
@@ -2515,7 +2524,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 						    attr_ids[attr_offset],
 						    &sort_args->attr_info,
 						    &sort_args->in_recdes,
-						    &dbvalue, midxkey_buf);
+						    &dbvalue,
+						    aligned_midxkey_buf);
 	  if (dbvalue_ptr == NULL)
 	    {
 	      return (SORT_ERROR_OCCURRED);
@@ -2569,6 +2579,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  goto nofit;
 		}
 
+	      assert (((UINTPTR) temp_recdes->data) % 8 == 0);
 	      or_init (&buf, temp_recdes->data, 0);
 
 	      or_pad (&buf, next_size);	/* init as NULL */
@@ -2586,7 +2597,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  goto nofit;
 		}
 
-	      buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
+	      buf.ptr = PTR_ALIGN (buf.ptr, MAX_ALIGNMENT);
 
 	      if ((*(sort_args->key_type->type->writeval)) (&buf, dbvalue_ptr)
 		  != NO_ERROR)
@@ -2594,7 +2605,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  goto nofit;
 		}
 
-	      temp_recdes->length = buf.ptr - buf.buffer;
+	      temp_recdes->length = CAST_STRLEN (buf.ptr - buf.buffer);
 
 	      if (dbvalue_ptr == &dbvalue)
 		{
@@ -2642,6 +2653,9 @@ compare_driver (const void *first, const void *second, void *arg)
   sort_args = (SORT_ARGS *) arg;
   key_type = sort_args->key_type;
 
+  assert (((UINTPTR) mem1) % 8 == 0);
+  assert (((UINTPTR) mem2) % 8 == 0);
+
   /* Skip next link */
   mem1 += sizeof (char *);
   mem2 += sizeof (char *);
@@ -2657,6 +2671,9 @@ compare_driver (const void *first, const void *second, void *arg)
       mem1 += OR_OID_SIZE;
       mem2 += OR_OID_SIZE;
     }
+
+  mem1 = PTR_ALIGN (mem1, MAX_ALIGNMENT);
+  mem2 = PTR_ALIGN (mem2, MAX_ALIGNMENT);
 
   r = (*(key_type->type->cmpdisk)) (mem1, mem2,
 				    key_type, sort_args->reverse_flag,

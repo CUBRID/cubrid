@@ -184,7 +184,7 @@
 #undef HAVE_UINTMAX_T
 
 /* Define to 1 if the system has the type `uintptr_t'. */
-#undef HAVE_UINTPTR_T
+#define HAVE_UINTPTR_T 1
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H

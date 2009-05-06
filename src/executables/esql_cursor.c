@@ -62,7 +62,8 @@ pp_new_cursor (char *name, char *static_stmt, int length,
   cursor = pp_lookup_cursor (name);
   if (cursor && cursor->level >= pp_nesting_level)
     {
-      yyverror (pp_get_msg (EX_CURSOR_SET, MSG_REDEFINITION), cursor->name);
+      esql_yyverror (pp_get_msg (EX_CURSOR_SET, MSG_REDEFINITION),
+		     cursor->name);
       return NULL;
     }
 
@@ -306,4 +307,3 @@ pp_free_stmt (STMT * stmt)
   free_and_init (stmt->name);
   es_ht_free_symbol (stmt);
 }
-

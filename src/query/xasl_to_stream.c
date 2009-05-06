@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -42,20 +42,20 @@
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
 #define	ALIGN_MASK	(ALIGN_UNIT - 1)
-#define MAKE_ALIGN(x)	(((x) & ~((unsigned long) ALIGN_MASK)) + \
+#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + \
 			 (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0 ))
 
 /* to limit size of XASL trees */
 #define	OFFSETS_PER_BLOCK	4096
 #define	START_PTR_PER_BLOCK	15
 #define MAX_PTR_BLOCKS		256
-#define PTR_BLOCK(ptr)	(((unsigned long) ptr) / 32L) % (long) MAX_PTR_BLOCKS
+#define PTR_BLOCK(ptr)  (((UINTPTR) ptr) / __WORDSIZE) % MAX_PTR_BLOCKS
 
 /*
  * the linear byte stream for store the given XASL tree is allocated
  * and expanded dynamically on demand by the following amount of bytes
  */
-#define	STREAM_EXPANSION_UNIT	(OFFSETS_PER_BLOCK * (long) sizeof(int))
+#define	STREAM_EXPANSION_UNIT	(OFFSETS_PER_BLOCK * sizeof(int))
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -630,11 +630,13 @@ xts_save_list_id (const QFILE_LIST_ID * list_id)
       is_buf_alloced = true;
     }
 
-  if (xts_process_list_id (buf_p, list_id) == NULL)
+  buf = xts_process_list_id (buf_p, list_id);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -831,11 +833,13 @@ xts_save_outptr_list (const OUTPTR_LIST * outptr_list)
       is_buf_alloced = true;
     }
 
-  if (xts_process_outptr_list (buf_p, outptr_list) == NULL)
+  buf = xts_process_outptr_list (buf_p, outptr_list);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -898,11 +902,13 @@ xts_save_selupd_list (const SELUPD_LIST * selupd_list)
       is_buf_alloced = true;
     }
 
-  if (xts_process_selupd_list (buf_p, selupd_list) == NULL)
+  buf = xts_process_selupd_list (buf_p, selupd_list);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -965,11 +971,13 @@ xts_save_pred_expr (const PRED_EXPR * pred_expr)
       is_buf_alloced = true;
     }
 
-  if (xts_process_pred_expr (buf_p, pred_expr) == NULL)
+  buf = xts_process_pred_expr (buf_p, pred_expr);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1294,11 +1302,13 @@ xts_save_sort_list (const SORT_LIST * sort_list)
       is_buf_alloced = true;
     }
 
-  if (xts_process_sort_list (buf_p, sort_list) == NULL)
+  buf = xts_process_sort_list (buf_p, sort_list);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1361,11 +1371,13 @@ xts_save_val_list (const VAL_LIST * val_list)
       is_buf_alloced = true;
     }
 
-  if (xts_process_val_list (buf_p, val_list) == NULL)
+  buf = xts_process_val_list (buf_p, val_list);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1428,11 +1440,13 @@ xts_save_db_value (const DB_VALUE * value)
       is_buf_alloced = true;
     }
 
-  if (xts_process_db_value (buf_p, value) == NULL)
+  buf = xts_process_db_value (buf_p, value);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1494,11 +1508,13 @@ xts_save_xasl_node (const XASL_NODE * xasl)
       is_buf_alloced = true;
     }
 
-  if (xts_process_xasl_node (buf_p, xasl) == NULL)
+  buf = xts_process_xasl_node (buf_p, xasl);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -2104,10 +2120,12 @@ xts_save_start_proc (const START_PROC * start_proc)
       is_buf_alloced = true;
     }
 
-  if (xts_process_start_proc (buf_p, start_proc) == NULL)
+  buf = xts_process_start_proc (buf_p, start_proc);
+  if (buf == NULL)
     {
       return ER_FAILED;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -2140,7 +2158,7 @@ xts_save_string (const char *string)
       return ER_FAILED;
     }
 
-  or_pack_string (&xts_Stream_buffer[offset], (char *) string);
+  or_pack_string (&xts_Stream_buffer[offset], string);
 
   return offset;
 }
@@ -2554,6 +2572,8 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   int offset;
   int cnt;
   ACCESS_SPEC_TYPE *access_spec = NULL;
+
+  assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
 
   ptr = or_pack_int (ptr, xasl->type);
 
@@ -3874,7 +3894,6 @@ xts_process_indx_id (char *ptr, const INDX_ID * indx_id)
     {
     case T_BTID:
       ptr = or_pack_btid (ptr, (BTID *) & indx_id->i.btid);
-      ptr += OR_SHORT_SIZE;	/* align to word boundary */
       break;
 
     case T_EHID:
@@ -4474,8 +4493,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   int tmp_size = 0;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
-  size += PTR_SIZE +		/* next */
-    OR_INT_SIZE +		/* type */
+  size += OR_INT_SIZE +		/* type */
     OR_INT_SIZE +		/* flag */
     PTR_SIZE +			/* list_id */
     PTR_SIZE +			/* after_iscan_list */
@@ -4625,12 +4643,13 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += OR_INT_SIZE;		/* projected_size */
 
-  size += OR_DOUBLE_SIZE;	/* cardinality */
+  size += OR_DOUBLE_ALIGNED_SIZE;	/* cardinality */
 
   size += OR_INT_SIZE;		/* iscan_oid_order */
 
   size += PTR_SIZE;		/* qstmt */
 
+  size += PTR_SIZE;		/* next */
   return size;
 }
 
@@ -5286,8 +5305,7 @@ xts_sizeof_indx_id (const INDX_ID * indx_id)
   switch (indx_id->type)
     {
     case T_BTID:
-      size += OR_BTID_SIZE;
-      size += OR_SHORT_SIZE;	/* alignment padding */
+      size += OR_BTID_ALIGNED_SIZE;
       break;
 
     case T_EHID:
@@ -5399,7 +5417,7 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
 
 /*
  * xts_sizeof_list_id () -
- *   return:
+ *   return:xts_process_db_value
  *   ptr(in)    :
  */
 static int
@@ -5454,7 +5472,8 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
   switch (regu_var->type)
     {
     case TYPE_DBVAL:
-      tmp_size = xts_sizeof_db_value (&regu_var->value.dbval);
+      tmp_size =
+	OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) (&regu_var->value.dbval));
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -5614,7 +5633,7 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
   size += tmp_size;
 
   size += PTR_SIZE		/* list_id */
-    + OR_INT_SIZE + OR_BTID_SIZE;
+    + OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
 
   return size;
 }
@@ -5812,7 +5831,7 @@ xts_reserve_location_in_stream (int size)
       /* expansion is needed */
       grow = needed;
 
-      if (grow < STREAM_EXPANSION_UNIT)
+      if (grow < (int) STREAM_EXPANSION_UNIT)
 	{
 	  grow = STREAM_EXPANSION_UNIT;
 	}
@@ -5841,6 +5860,6 @@ xts_reserve_location_in_stream (int size)
     }
 
   xts_Free_offset_in_stream += size;
-
+  assert ((xts_Free_offset_in_stream - size) % MAX_ALIGNMENT == 0);
   return (xts_Free_offset_in_stream - size);
 }

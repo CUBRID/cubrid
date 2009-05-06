@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -129,20 +129,20 @@ extern int repl_Pipe_to_master;
  */
 
 #define REPL_LOGAREA_SIZE(m_idx)                                             \
-        (mInfo[m_idx]->io_pagesize - DB_SIZEOF(LOG_HDRPAGE))
+        (mInfo[m_idx]->io_pagesize - SSIZEOF(LOG_HDRPAGE))
 
 /* macros to process the log record at the edge point of the page */
 /* copied the macros of log_impl.h, and adjusted some logic */
 #define REPL_LOG_READ_ALIGN(offset, pageid, log_pgptr, release, m_idx)        \
   do {                                                                        \
-    DB_ALIGN((offset), INT_ALIGNMENT);                                        \
+    (offset) = DB_ALIGN((offset), MAX_ALIGNMENT);                             \
     while ((offset) >= REPL_LOGAREA_SIZE(m_idx)) {                            \
       if (release == 1) repl_ag_release_page_buffer(pageid, m_idx);           \
       if (((log_pgptr) = repl_ag_get_page(++(pageid), m_idx)) == NULL) {      \
         REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
       } else { release = 1; }                                                 \
       (offset) -= REPL_LOGAREA_SIZE(m_idx);                                   \
-      DB_ALIGN((offset), INT_ALIGNMENT);                                      \
+      (offset) = DB_ALIGN((offset), MAX_ALIGNMENT);                           \
     }                                                                         \
   } while(0)
 
@@ -156,13 +156,12 @@ extern int repl_Pipe_to_master;
 #define REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT(length, offset, pageid,         \
               pg_, release, m_idx)                                            \
   do {                                                                        \
-    if ((offset)+(length) >= REPL_LOGAREA_SIZE(m_idx)) {                      \
+    if ((off_t)((offset)+(length)) >= REPL_LOGAREA_SIZE(m_idx)) {             \
       if ((release) == 1) repl_ag_release_page_buffer(pageid, m_idx);         \
       if (((pg_) = repl_ag_get_page(++(pageid), m_idx)) == NULL) {            \
         REPL_ERR_LOG(REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);                   \
       } else { release = 1; }                                                 \
       (offset) = 0;                                                           \
-      DB_ALIGN((offset), INT_ALIGNMENT);                                      \
     }                                                                         \
   } while(0)
 
@@ -209,9 +208,9 @@ struct ovf_page_list
 /* debug info */
 struct debug_string
 {
+  size_t length;
+  size_t max_length;
   char *data;
-  int length;
-  int max_length;
 };
 static struct debug_string *debug_record_data = NULL;
 static struct debug_string *debug_workspace_data = NULL;
@@ -361,7 +360,7 @@ repl_ag_set_copy_log (int m_idx, PAGEID start_pageid, PAGEID first_pageid,
 static int
 repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
 {
-  off64_t offset = 0;
+  off_t offset = 0;
   int error = NO_ERROR;
   LOG_PAGE *log_page;
   int archive_vol;
@@ -371,12 +370,12 @@ repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, log_page);
 
   /* find out the last point of the target copy log */
-  offset = lseek64 (vdes, (off64_t) 0, SEEK_END);
+  offset = lseek (vdes, (off_t) 0, SEEK_END);
 
   /* If no data page, just return */
-  if (offset <= DB_SIZEOF (COPY_LOG))
+  if (offset <= SSIZEOF (COPY_LOG))
     return REPL_AGENT_IO_ERROR;
-  offset -= DB_SIZEOF (COPY_LOG);
+  offset -= SSIZEOF (COPY_LOG);
 
   /* find out the last page id */
   error =
@@ -470,7 +469,7 @@ repl_ag_get_log_header (int m_idx, bool first)
     {
 #if 0
       error = repl_io_read (pb->log_vdes, (void *) &(minfo->copy_log), 1,
-			    DB_SIZEOF (COPY_LOG), true, true);
+			    SSIZEOF (COPY_LOG), true, true);
       if (minfo->copy_log.first_pageid <= 0 ||
 	  minfo->copy_log.start_pageid <= 0 ||
 	  minfo->copy_log.last_pageid <= 0 ||
@@ -848,13 +847,13 @@ repl_ag_get_page (PAGEID pageid, int m_idx)
  */
 
 static void
-repl_log_copy_fromlog (char *rec_type, char *area, int length,
+repl_log_copy_fromlog (char *rec_type, char *area, LOG_ZIP_SIZE_T length,
 		       PAGEID log_pageid, PGLENGTH log_offset,
 		       LOG_PAGE * log_pgptr, int m_idx)
 {
-  int rec_length = DB_SIZEOF (INT16);
-  int copy_length;		/* Length to copy into area */
-  int t_length;			/* target length  */
+  int rec_length = SSIZEOF (INT16);
+  LOG_ZIP_SIZE_T copy_length;	/* Length to copy into area */
+  LOG_ZIP_SIZE_T t_length;	/* target length  */
   int area_offset = 0;		/* The area offset */
   int error = NO_ERROR;
   LOG_PAGE *pg;
@@ -868,15 +867,14 @@ repl_log_copy_fromlog (char *rec_type, char *area, int length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      copy_length =
-	((log_offset + rec_length <
-	  LOGAREA_SIZE) ? rec_length : LOGAREA_SIZE - log_offset);
+      copy_length = ((log_offset + rec_length < LOGAREA_SIZE)
+		     ? rec_length : (LOGAREA_SIZE - log_offset));
       memcpy (rec_type + area_offset, (char *) (pg)->area + log_offset,
 	      copy_length);
       rec_length -= copy_length;
       area_offset += copy_length;
       log_offset += copy_length;
-      length = length - DB_SIZEOF (INT16);
+      length = length - SSIZEOF (INT16);
     }
 
   area_offset = 0;
@@ -887,8 +885,8 @@ repl_log_copy_fromlog (char *rec_type, char *area, int length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      copy_length = ((log_offset + t_length < LOGAREA_SIZE) ? t_length
-		     : LOGAREA_SIZE - log_offset);
+      copy_length = ((log_offset + t_length < LOGAREA_SIZE)
+		     ? t_length : (LOGAREA_SIZE - log_offset));
       memcpy (area + area_offset, (char *) (pg)->area + log_offset,
 	      copy_length);
       t_length -= copy_length;
@@ -897,7 +895,9 @@ repl_log_copy_fromlog (char *rec_type, char *area, int length,
     }
 
   if (release_yn == 1)
-    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    {
+      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    }
 
 }
 
@@ -958,7 +958,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
   pg = pgptr;
   slave_info_p = repl_ag_get_slave_info (NULL);
 
-  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  offset = SSIZEOF (struct log_rec) + lsa->offset;
   pageid = lsa->pageid;
 
   REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
@@ -973,7 +973,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
       else
 	is_diff = false;
 
-      length = DB_SIZEOF (struct log_undoredo);
+      length = SSIZEOF (struct log_undoredo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset, pageid,
 					     pg, release_yn, m_idx);
 
@@ -999,7 +999,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	      *logs = (void *) NULL;
 	    }
 
-	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo), offset,
+	  REPL_LOG_READ_ADD_ALIGN (SSIZEOF (*undoredo), offset,
 				   pageid, pg, release_yn, m_idx);
 	  if (error == NO_ERROR)
 	    {
@@ -1056,7 +1056,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
       break;
 
     case LOG_UNDO_DATA:
-      length = DB_SIZEOF (struct log_undo);
+      length = SSIZEOF (struct log_undo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 					     pageid, pg, release_yn, m_idx);
       if (error == NO_ERROR)
@@ -1076,13 +1076,13 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	    {
 	      *logs = (void *) NULL;
 	    }
-	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undo), offset, pageid,
+	  REPL_LOG_READ_ADD_ALIGN (SSIZEOF (*undo), offset, pageid,
 				   pg, release_yn, m_idx);
 	}
       break;
 
     case LOG_REDO_DATA:
-      length = DB_SIZEOF (struct log_redo);
+      length = SSIZEOF (struct log_redo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 					     pageid, pg, release_yn, m_idx);
       if (error == NO_ERROR)
@@ -1102,7 +1102,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	    {
 	      *logs = (void *) NULL;
 	    }
-	  REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*redo), offset, pageid,
+	  REPL_LOG_READ_ADD_ALIGN (SSIZEOF (*redo), offset, pageid,
 				   pg, release_yn, m_idx);
 	}
       break;
@@ -1197,7 +1197,7 @@ repl_ag_get_log_data (struct log_rec *lrec,
 
       if (rec_type)
 	{
-	  rec_len = DB_SIZEOF (INT16);
+	  rec_len = SSIZEOF (INT16);
 	  length = redo_length - rec_len;
 	}
       else
@@ -1409,7 +1409,7 @@ repl_ag_add_repl_item (REPL_APPLY * apply, LOG_LSA lsa)
   REPL_ITEM *item;
   int error = NO_ERROR;
 
-  item = malloc (DB_SIZEOF (REPL_ITEM));
+  item = malloc (sizeof (REPL_ITEM));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, item);
 
   LSA_COPY (&item->lsa, &lsa);
@@ -1667,7 +1667,7 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   int copyed_len;
   int area_len;
   int area_offset;
-  int error;
+  int error = NO_ERROR;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
   prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
@@ -1690,8 +1690,7 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
       if (current_log_record->type == LOG_REDO_DATA)
 	{
 	  ovf_list_data =
-	    (struct ovf_page_list *)
-	    malloc (DB_SIZEOF (struct ovf_page_list));
+	    (struct ovf_page_list *) malloc (sizeof (struct ovf_page_list));
 	  if (ovf_list_data == NULL)
 	    {
 	      /* malloc failed */
@@ -1873,7 +1872,7 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
   struct log_rec *lrec;
   struct log_undoredo *undoredo;
   struct log_undoredo *prev_log;
-  int nLength = 0;
+  LOG_ZIP_SIZE_T nLength = 0;
   int release_yn = 0;
   int temp_length = 0;
   int undo_length = 0;
@@ -1914,10 +1913,10 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 	      else
 		bIsDiff = false;
 
-	      offset = DB_SIZEOF (struct log_rec) + lsa.offset;
+	      offset = SSIZEOF (struct log_rec) + lsa.offset;
 	      pageid = lsa.pageid;
 	      REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
-	      length = DB_SIZEOF (struct log_undoredo);
+	      length = SSIZEOF (struct log_undoredo);
 	      REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset,
 						     pageid, pg,
 						     release_yn, m_idx);
@@ -1934,7 +1933,7 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 		      undoredo->data.offset == prev_log->data.offset &&
 		      undoredo->data.volid == prev_log->data.volid)
 		    {
-		      REPL_LOG_READ_ADD_ALIGN (DB_SIZEOF (*undoredo),
+		      REPL_LOG_READ_ADD_ALIGN (SSIZEOF (*undoredo),
 					       offset, pageid, pg,
 					       release_yn, m_idx);
 
@@ -2043,7 +2042,7 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 
 			  if (rec_type)
 			    {
-			      rec_len = DB_SIZEOF (INT16);
+			      rec_len = SSIZEOF (INT16);
 			      memcpy (*rec_type,
 				      log_unzip_data->log_data, rec_len);
 			      memcpy (*data,
@@ -2237,7 +2236,7 @@ repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
 	  <= ((*record_data)->length + pt_get_varchar_length (buf) + 3)))
     {
       (*record_data) =
-	(struct debug_string *) realloc ((*record_data),
+	(struct debug_string *) realloc ((void *) (*record_data),
 					 debug_record_data->max_length +
 					 10240);
       if ((*record_data) != NULL)
@@ -2245,7 +2244,7 @@ repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
 	  (*record_data)->max_length += 10240;
 	}
     }
-  strcat ((*record_data)->data, pt_get_varchar_bytes (buf));
+  strcat ((*record_data)->data, (const char *) pt_get_varchar_bytes (buf));
   strcat ((*record_data)->data, ", ");
   parser_free_parser (parser);
 
@@ -2274,7 +2273,7 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 
   if (sm_class->variable_count)
     {
-      vars = (int *) malloc (DB_SIZEOF (int) * sm_class->variable_count);
+      vars = (int *) malloc (sizeof (int) * sm_class->variable_count);
       REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, vars);
       offset = or_get_int (buf, &rc);
       for (i = 0; i < sm_class->variable_count; i++)
@@ -2602,9 +2601,10 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
 		   debug_record_data->data, debug_workspace_data->data);
 	  fflush (debug_Log_fd);
 	}
-      debug_record_data->data[0] = 0;
-      debug_record_data->length = 0;
-      debug_workspace_data->data[0] = 0;
+
+      debug_record_data->data[0] = '\0';
+      debug_record_data->length = (size_t) 0;
+      debug_workspace_data->data[0] = '\0';
       debug_workspace_data->length = 0;
     }
 
@@ -2683,8 +2683,8 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
   t_pageid = lsa->pageid;
-  target_offset = DB_SIZEOF (struct log_rec) + lsa->offset;
-  length = DB_SIZEOF (struct log_replication);
+  target_offset = SSIZEOF (struct log_rec) + lsa->offset;
+  length = SSIZEOF (struct log_replication);
 
   REPL_LOG_READ_ALIGN (target_offset, t_pageid, log_pgptr2, release_yn,
 		       m_idx);
@@ -2703,43 +2703,46 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 
   area = (char *) malloc (length);
+  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, area);
   repl_log_copy_fromlog (NULL, area, length, t_pageid, target_offset,
 			 log_pgptr2, m_idx);
 
   apply = repl_ag_find_apply_list (sinfo, tranid, idx);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
 
+  ptr = area;
   switch (log_type)
     {
     case LOG_REPLICATION_DATA:
       {
-	ptr = or_unpack_string (area, &class_name);
+	ptr = or_unpack_string (ptr, &class_name);
 
-	if (sinfo->masters[idx].all_repl == false &&
-	    repl_ag_get_class_from_repl_group (sinfo, idx, class_name,
-					       lsa) == NULL)
+	if (!sinfo->masters[idx].all_repl
+	    && repl_ag_get_class_from_repl_group (sinfo, idx, class_name,
+						  lsa) == NULL)
 	  {
 	    /* This class should not be replicated */
 	    db_private_free_and_init (NULL, class_name);
+	    pr_clear_value (&apply->repl_tail->key);
 	  }
 	else
 	  {
 	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
+	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
 	    apply->repl_tail->type = PT_UPDATE;
-	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 	    ptr = or_unpack_value (ptr, &apply->repl_tail->key);
+	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 	    apply->repl_tail->class_name = class_name;
 	  }
 	break;
       }
     case LOG_REPLICATION_SCHEMA:
       {
-	if (sinfo->masters[idx].all_repl == true ||
-	    sinfo->masters[idx].for_recovery == 1)
+	if (sinfo->masters[idx].all_repl || sinfo->masters[idx].for_recovery)
 	  {
 	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
 	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-	    ptr = or_unpack_int (area, &apply->repl_tail->type);
+	    ptr = or_unpack_int (ptr, &apply->repl_tail->type);
 	    ptr = or_unpack_string (ptr, &apply->repl_tail->class_name);
 	    ptr = or_unpack_string (ptr, &str_value);
 	    db_make_string (&apply->repl_tail->key, str_value);
@@ -2748,7 +2751,10 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	break;
       }
     default:
-      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+      {
+	free_and_init (area);
+	REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+      }
     }
 
   if (release_yn == 1)
@@ -2756,7 +2762,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
       repl_ag_release_page_buffer (log_pgptr2->hdr.logical_pageid, m_idx);
     }
 
-  free (area);
+  free_and_init (area);
   return error;
 }
 
@@ -2785,12 +2791,12 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
   int release_yn = 0;
 
   pageid = lsa->pageid;
-  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  offset = SSIZEOF (struct log_rec) + lsa->offset;
 
   pg = pgptr;
 
   REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
-  REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (DB_SIZEOF (*donetime), offset,
+  REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (SSIZEOF (*donetime), offset,
 					 pageid, pg, release_yn, m_idx);
   donetime = (struct log_donetime *) ((char *) pg->area + offset);
 
@@ -2847,7 +2853,7 @@ repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
 	return error;
     }
 
-  commit = malloc (DB_SIZEOF (REPL_COMMIT));
+  commit = (REPL_COMMIT *) malloc (sizeof (REPL_COMMIT));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, commit);
   commit->next = NULL;
   commit->type = LOG_UNLOCK_COMMIT;
@@ -2935,7 +2941,7 @@ repl_ag_log_get_file_line (FILE * fp)
       line_count++;
     }
 
-  return line_count < 2 ? line_count - 2 : 0;
+  return ((line_count < 2) ? (line_count - 2) : 0);
 }
 
 /*
@@ -3335,7 +3341,7 @@ repl_init_pb (void)
 {
   REPL_PB *pb;
 
-  pb = (REPL_PB *) malloc (DB_SIZEOF (REPL_PB));
+  pb = (REPL_PB *) malloc (sizeof (REPL_PB));
   if (pb == NULL)
     REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
 
@@ -3379,7 +3385,7 @@ repl_init_cache_pb (void)
 {
   REPL_CACHE_PB *cache_pb;
 
-  cache_pb = (REPL_CACHE_PB *) malloc (DB_SIZEOF (REPL_CACHE_PB));
+  cache_pb = (REPL_CACHE_PB *) malloc (sizeof (REPL_CACHE_PB));
   if (cache_pb == NULL)
     REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
 
@@ -3417,7 +3423,7 @@ repl_init_log_buffer (REPL_PB * pb, int lb_cnt, int lb_size)
   int i, j;
   int error = NO_ERROR;
 
-  pb->log_buffer = malloc (lb_cnt * DB_SIZEOF (REPL_LOG_BUFFER *));
+  pb->log_buffer = malloc (lb_cnt * sizeof (REPL_LOG_BUFFER *));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
 		       pb->log_buffer);
 
@@ -3522,16 +3528,16 @@ repl_expand_cache_log_buffer (REPL_CACHE_PB * cache_pb, int slb_cnt,
 	}
     }
 
-  while (slb_cnt > (int) REPL_MAX_NUM_CONTIGUOS_BUFFERS (slb_size))
+  while (slb_cnt > (int) REPL_MAX_NUM_CONTIGUOUS_BUFFERS (slb_size))
     {
       if ((error = repl_expand_cache_log_buffer (cache_pb,
-						 REPL_MAX_NUM_CONTIGUOS_BUFFERS
+						 REPL_MAX_NUM_CONTIGUOUS_BUFFERS
 						 (slb_size), slb_size,
 						 def_buf_size)) != NO_ERROR)
 	{
 	  return error;
 	}
-      slb_cnt -= REPL_MAX_NUM_CONTIGUOS_BUFFERS (slb_size);
+      slb_cnt -= REPL_MAX_NUM_CONTIGUOUS_BUFFERS (slb_size);
     }
 
   if (slb_cnt > 0)
@@ -3540,17 +3546,17 @@ repl_expand_cache_log_buffer (REPL_CACHE_PB * cache_pb, int slb_cnt,
 
       cache_pb->log_buffer = realloc (cache_pb->log_buffer,
 				      total_buffers *
-				      DB_SIZEOF (REPL_CACHE_LOG_BUFFER *));
+				      SSIZEOF (REPL_CACHE_LOG_BUFFER *));
       REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
 			   cache_pb->log_buffer);
 
-      size = ((slb_cnt * slb_size) + DB_SIZEOF (REPL_CACHE_BUFFER_AREA));
+      size = ((slb_cnt * slb_size) + SSIZEOF (REPL_CACHE_BUFFER_AREA));
       area = malloc (size);
       REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, area);
       memset (area, 0, size);
       area->buffer_area = ((REPL_CACHE_LOG_BUFFER *) ((char *) area
 						      +
-						      DB_SIZEOF
+						      SSIZEOF
 						      (REPL_CACHE_BUFFER_AREA)));
       area->next = cache_pb->buffer_area;
       for (i = 0, bufid = cache_pb->num_buffers; i < slb_cnt; bufid++, i++)
@@ -3706,13 +3712,13 @@ repl_ag_add_master_info (int idx)
   /* allocate the memory for the master info array */
   if (mInfo == NULL)
     {
-      mInfo = malloc (MAX_NUM_OF_MASTERS * DB_SIZEOF (MASTER_INFO *));
+      mInfo = malloc (MAX_NUM_OF_MASTERS * sizeof (MASTER_INFO *));
       REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, mInfo);
       for (i = 0; i < MAX_NUM_OF_MASTERS; i++)
 	mInfo[i] = NULL;
     }
 
-  mInfo[idx] = (MASTER_INFO *) malloc (DB_SIZEOF (MASTER_INFO));
+  mInfo[idx] = (MASTER_INFO *) malloc (sizeof (MASTER_INFO));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, mInfo[idx]);
 
   if ((mInfo[idx]->conn.resp_buffer =
@@ -3844,13 +3850,13 @@ repl_ag_add_slave_info (int idx)
   /* allocate the memory for the master info array */
   if (sInfo == NULL)
     {
-      sInfo = malloc (MAX_NUM_OF_SLAVES * DB_SIZEOF (SLAVE_INFO *));
+      sInfo = malloc (MAX_NUM_OF_SLAVES * sizeof (SLAVE_INFO *));
       REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, sInfo);
       for (i = 0; i < MAX_NUM_OF_SLAVES; i++)
 	sInfo[i] = NULL;
     }
 
-  sInfo[idx] = (SLAVE_INFO *) malloc (DB_SIZEOF (SLAVE_INFO));
+  sInfo[idx] = (SLAVE_INFO *) malloc (sizeof (SLAVE_INFO));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, sInfo[idx]);
 
   sInfo[idx]->dbid = -1;
@@ -4159,7 +4165,7 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
   if (col_cnt < 2)
     REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 
-  value = malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  value = malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
@@ -4274,7 +4280,7 @@ repl_ag_get_master (DB_QUERY_RESULT * result)
   if (repl_Master_num > MAX_NUM_OF_MASTERS)
     REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_MASTERS);
 
-  value = (DB_VALUE *) malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  value = (DB_VALUE *) malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
@@ -4345,7 +4351,7 @@ repl_ag_init_repl_lists (SLAVE_INFO * sinfo, int idx, bool need_realloc)
   if (need_realloc == false)
     {
       sinfo->masters[idx].repl_lists
-	= malloc (DB_SIZEOF (REPL_APPLY *) * REPL_LIST_CNT);
+	= malloc (sizeof (REPL_APPLY *) * REPL_LIST_CNT);
       sinfo->masters[idx].repl_cnt = REPL_LIST_CNT;
       sinfo->masters[idx].cur_repl = 0;
       j = 0;
@@ -4354,7 +4360,7 @@ repl_ag_init_repl_lists (SLAVE_INFO * sinfo, int idx, bool need_realloc)
     {
       sinfo->masters[idx].repl_lists
 	= realloc (sinfo->masters[idx].repl_lists,
-		   DB_SIZEOF (REPL_APPLY *) *
+		   SSIZEOF (REPL_APPLY *) *
 		   (REPL_LIST_CNT + sinfo->masters[idx].repl_cnt));
       j = sinfo->masters[idx].repl_cnt;
       sinfo->masters[idx].repl_cnt += REPL_LIST_CNT;
@@ -4365,7 +4371,7 @@ repl_ag_init_repl_lists (SLAVE_INFO * sinfo, int idx, bool need_realloc)
 
   for (i = j; i < sinfo->masters[idx].repl_cnt; i++)
     {
-      sinfo->masters[idx].repl_lists[i] = malloc (DB_SIZEOF (REPL_APPLY));
+      sinfo->masters[idx].repl_lists[i] = malloc (sizeof (REPL_APPLY));
       if (sinfo->masters[idx].repl_lists[i] == NULL)
 	{
 	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
@@ -4425,7 +4431,7 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
       else
 	{
 	  sinfo->masters[m_idx].class_list
-	    = (REPL_GROUP_INFO *) malloc (DB_SIZEOF (REPL_GROUP_INFO)
+	    = (REPL_GROUP_INFO *) malloc (sizeof (REPL_GROUP_INFO)
 					  * result_count);
 	  if (sinfo->masters[m_idx].class_list == NULL)
 	    {
@@ -4436,7 +4442,7 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	  for (i = 0; i < result_count; i++)
 	    {
 	      sinfo->masters[m_idx].class_list[i].class_name
-		= malloc (DB_MAX_IDENTIFIER_LENGTH);
+		= (char *) malloc (DB_MAX_IDENTIFIER_LENGTH);
 	      if (sinfo->masters[m_idx].class_list[i].class_name == NULL)
 		{
 		  for (j = 0; j < i; j++)
@@ -4546,18 +4552,22 @@ repl_ag_get_class_from_repl_group (SLAVE_INFO * sinfo,
 {
   int i, result;
 
-  if (sinfo->masters[m_idx].class_list == NULL ||
-      sinfo->masters[m_idx].class_count == 0)
-    return NULL;
+  if (sinfo->masters[m_idx].class_list == NULL
+      || sinfo->masters[m_idx].class_count == 0 || class_name == NULL)
+    {
+      return NULL;
+    }
 
   for (i = 0; i < sinfo->masters[m_idx].class_count; i++)
     {
-      result =
-	strcmp (sinfo->masters[m_idx].class_list[i].class_name, class_name);
+      result = strcmp (sinfo->masters[m_idx].class_list[i].class_name,
+		       class_name);
       if (result == 0)
 	{
 	  if (LSA_LE (lsa, &sinfo->masters[m_idx].class_list[i].start_lsa))
-	    return NULL;
+	    {
+	      return NULL;
+	    }
 	  return sinfo->masters[m_idx].class_list[i].class_name;
 	}
     }
@@ -4575,7 +4585,7 @@ repl_ag_append_class_to_repl_group (SLAVE_INFO * sinfo,
 
   sinfo->masters[m_idx].class_list
     = (REPL_GROUP_INFO *) realloc (sinfo->masters[m_idx].class_list,
-				   DB_SIZEOF (REPL_GROUP_INFO) * (size + 1));
+				   SSIZEOF (REPL_GROUP_INFO) * (size + 1));
   if (sinfo->masters[m_idx].class_list == NULL)
     return ER_FAILED;
 
@@ -4602,6 +4612,7 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
   DB_VALUE value;
   int result_count = 0, i;
   int sum = 0, class_count, pos;
+  int idx;
 
   class_count = sinfo->masters[m_idx].class_count;
   for (i = 0; i < class_count; i++)
@@ -4634,7 +4645,7 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 
   sinfo->masters[m_idx].class_list
     = (REPL_GROUP_INFO *) realloc (sinfo->masters[m_idx].class_list,
-				   DB_SIZEOF (REPL_GROUP_INFO) *
+				   SSIZEOF (REPL_GROUP_INFO) *
 				   (class_count + sum));
   if (sinfo->masters[m_idx].class_list == NULL)
     return REPL_AGENT_GET_PARARMETER_FAIL;
@@ -4651,23 +4662,20 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	  error = db_query_first_tuple (result);
 	  if (error == NO_ERROR)
 	    {
-	      sinfo->masters[m_idx].class_list[class_count +
-					       pos].class_name =
-		malloc (DB_MAX_IDENTIFIER_LENGTH);
-	      if (sinfo->masters[m_idx].class_list[class_count + pos].
-		  class_name == NULL)
+	      idx = class_count + pos;
+	      sinfo->masters[m_idx].class_list[idx].class_name =
+		(char *) malloc (DB_MAX_IDENTIFIER_LENGTH);
+	      if (sinfo->masters[m_idx].class_list[idx].class_name == NULL)
 		{
 		  db_query_end (result);
 		  return REPL_AGENT_GET_PARARMETER_FAIL;
 		}
 
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].
-		      class_list[class_count + pos].class_name,
+	      strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
 		      DB_GET_STRING (&value));
 	      db_value_clear (&value);
-	      LSA_COPY (&sinfo->masters[m_idx].
-			class_list[class_count + pos].start_lsa,
+	      LSA_COPY (&sinfo->masters[m_idx].class_list[idx].start_lsa,
 			&sinfo->masters[m_idx].class_list[i].start_lsa);
 	      pos++;
 	    }
@@ -4675,23 +4683,20 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	    {
 	      if (db_query_next_tuple (result) != DB_CURSOR_SUCCESS)
 		break;
-	      sinfo->masters[m_idx].class_list[class_count +
-					       pos].class_name =
-		malloc (DB_MAX_IDENTIFIER_LENGTH);
-	      if (sinfo->masters[m_idx].class_list[class_count + pos].
-		  class_name == NULL)
+	      idx = class_count + pos;
+	      sinfo->masters[m_idx].class_list[idx].class_name =
+		(char *) malloc (DB_MAX_IDENTIFIER_LENGTH);
+	      if (sinfo->masters[m_idx].class_list[idx].class_name == NULL)
 		{
 		  db_query_end (result);
 		  return REPL_AGENT_GET_PARARMETER_FAIL;
 		}
 
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].
-		      class_list[class_count + pos].class_name,
+	      strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
 		      DB_GET_STRING (&value));
 	      db_value_clear (&value);
-	      LSA_COPY (&sinfo->masters[m_idx].
-			class_list[class_count + pos].start_lsa,
+	      LSA_COPY (&sinfo->masters[m_idx].class_list[idx].start_lsa,
 			&sinfo->masters[m_idx].class_list[i].start_lsa);
 	      pos++;
 	    }
@@ -4763,7 +4768,7 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
   if (repl_Slave_num > MAX_NUM_OF_SLAVES)
     REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_SLAVES);
 
-  value = malloc (DB_SIZEOF (DB_VALUE) * col_cnt);
+  value = malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
@@ -5004,7 +5009,7 @@ repl_ag_get_parameters ()
     }
 
   /* Initialize the trail log, if it's empty */
-  if (lseek64 (trail_File_vdes, 0, SEEK_END) == 0)
+  if (lseek (trail_File_vdes, 0, SEEK_END) == 0)
     {
       int i = 0;
       error = repl_io_write (trail_File_vdes, (void *) &i,

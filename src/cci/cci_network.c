@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -43,7 +43,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <io.h>
@@ -63,7 +63,7 @@
 #include "cas_cci.h"
 #include "cci_network.h"
 #include "cas_protocol.h"
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "version.h"
 #endif
 
@@ -84,11 +84,12 @@
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-static int connect_srv (unsigned char *ip_addr, int port, char is_first);
-static int net_send_int (int sock_fd, int value);
-static int net_recv_int (int sock_fd, int *value);
-static int net_send_str (int sock_fd, char *buf, int size);
-static int net_recv_str (int sock_fd, char *buf, int size);
+static int connect_srv (unsigned char *ip_addr, int port, char is_first,
+			SOCKET * ret_sock);
+static int net_send_int (SOCKET sock_fd, int value);
+static int net_recv_int (SOCKET sock_fd, int *value);
+static int net_send_str (SOCKET sock_fd, char *buf, int size);
+static int net_recv_str (SOCKET sock_fd, char *buf, int size);
 
 
 /************************************************************************
@@ -102,7 +103,7 @@ static int net_recv_str (int sock_fd, char *buf, int size);
 #if defined(CCI_OLEDB) || defined(CCI_ODBC)
 static char cci_client_type = CAS_CLIENT_ODBC;
 #else
-static char cci_client_type = CAS_CLIENT_CCI;;
+static char cci_client_type = CAS_CLIENT_CCI;
 #endif
 
 
@@ -121,9 +122,10 @@ static char cci_client_type = CAS_CLIENT_CCI;;
 int
 net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 		 char *db_user, char *db_passwd, char is_first,
-		 T_CCI_ERROR * err_buf, char *broker_info, int *cas_pid)
+		 T_CCI_ERROR * err_buf, char *broker_info, int *cas_pid,
+		 SOCKET *ret_sock)
 {
-  int srv_sock_fd;
+  SOCKET srv_sock_fd;
   char client_info[SRV_CON_CLIENT_INFO_SIZE];
   char db_info[SRV_CON_DB_INFO_SIZE];
   int err_code;
@@ -147,10 +149,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     strncpy (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE, db_passwd,
 	     SRV_CON_DBPASSWD_SIZE - 1);
 
-  srv_sock_fd = connect_srv (ip_addr, port, is_first);
-  if (srv_sock_fd < 0)
+  if (connect_srv (ip_addr, port, is_first, &srv_sock_fd) < 0)
     {
-      return srv_sock_fd;
+      return CCI_ER_CONNECT;
     }
 
   if (WRITE_TO_SOCKET (srv_sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) <
@@ -176,10 +177,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     {
       CLOSE_SOCKET (srv_sock_fd);
 
-      srv_sock_fd = connect_srv (ip_addr, new_port, is_first);
-      if (srv_sock_fd < 0)
+      if (connect_srv (ip_addr, new_port, is_first, &srv_sock_fd) < 0)
 	{
-	  return srv_sock_fd;
+	  return CCI_ER_CONNECT;
 	}
     }
 
@@ -240,7 +240,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     }
   FREE_MEM (msg_buf);
 
-  return srv_sock_fd;
+  *ret_sock = srv_sock_fd;
+  return CCI_ER_NO_ERROR;
 
 connect_srv_error:
   CLOSE_SOCKET (srv_sock_fd);
@@ -251,7 +252,7 @@ int
 net_cancel_request (unsigned char *ip_addr, int port, int pid)
 {
   char msg[10];
-  int srv_sock_fd;
+  SOCKET srv_sock_fd;
   int err_code;
 
   memset (msg, 0, sizeof (msg));
@@ -259,9 +260,10 @@ net_cancel_request (unsigned char *ip_addr, int port, int pid)
   pid = htonl (pid);
   memcpy (msg + 6, (char *) &pid, 4);
 
-  srv_sock_fd = connect_srv (ip_addr, port, 0);
-  if (srv_sock_fd < 0)
-    return srv_sock_fd;
+  if (connect_srv (ip_addr, port, 0, &srv_sock_fd) < 0)
+    {
+      return CCI_ER_CONNECT;
+    }
 
   if (WRITE_TO_SOCKET (srv_sock_fd, msg, sizeof (msg)) < 0)
     {
@@ -280,7 +282,7 @@ net_cancel_request (unsigned char *ip_addr, int port, int pid)
     goto cancel_error;
 
   CLOSE_SOCKET (srv_sock_fd);
-  return 0;
+  return CCI_ER_NO_ERROR;
 
 cancel_error:
   CLOSE_SOCKET (srv_sock_fd);
@@ -288,13 +290,13 @@ cancel_error:
 }
 
 int
-net_check_cas_request (int sock_fd)
+net_check_cas_request (SOCKET sock_fd)
 {
   char msg[5];
   int data_size;
   int msg_size, ret_value = -1;
 
-  if (sock_fd < 0)
+  if (IS_INVALID_SOCKET(sock_fd))
     return 0;
 
   data_size = 1;
@@ -317,7 +319,7 @@ net_check_cas_request (int sock_fd)
 
 
 int
-net_send_msg (int sock_fd, char *msg, int size)
+net_send_msg (SOCKET sock_fd, char *msg, int size)
 {
   if (net_send_int (sock_fd, size) < 0)
     return CCI_ER_COMMUNICATION;
@@ -328,7 +330,8 @@ net_send_msg (int sock_fd, char *msg, int size)
 }
 
 int
-net_recv_msg (int sock_fd, char **msg, int *msg_size, T_CCI_ERROR * err_buf)
+net_recv_msg (SOCKET sock_fd, char **msg, int *msg_size,
+	      T_CCI_ERROR * err_buf)
 {
   char *tmp_p = NULL;
   int result_code;
@@ -387,7 +390,7 @@ net_recv_msg (int sock_fd, char **msg, int *msg_size, T_CCI_ERROR * err_buf)
 
 
 int
-net_send_file (int sock_fd, char *filename, int filesize)
+net_send_file (SOCKET sock_fd, char *filename, int filesize)
 {
   int remain_size = filesize;
   int fd;
@@ -400,13 +403,13 @@ net_send_file (int sock_fd, char *filename, int filesize)
       return CCI_ER_FILE;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   setmode (fd, O_BINARY);
 #endif
 
   while (remain_size > 0)
     {
-      read_len = read (fd, read_buf, MIN (remain_size, sizeof (read_buf)));
+      read_len = read (fd, read_buf, MIN (remain_size, SSIZEOF (read_buf)));
       if (read_len < 0)
 	{
 	  close (fd);
@@ -422,14 +425,14 @@ net_send_file (int sock_fd, char *filename, int filesize)
 }
 
 int
-net_recv_file (int sock_fd, int file_size, int out_fd)
+net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
 {
   int read_len;
   char read_buf[1024];
 
   while (file_size > 0)
     {
-      read_len = MIN (file_size, sizeof (read_buf));
+      read_len = MIN (file_size, SSIZEOF (read_buf));
       if (net_recv_str (sock_fd, read_buf, read_len) < 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -446,14 +449,14 @@ net_recv_file (int sock_fd, int file_size, int out_fd)
  ************************************************************************/
 
 static int
-net_send_int (int sock_fd, int value)
+net_send_int (SOCKET sock_fd, int value)
 {
   value = htonl (value);
   return (WRITE_TO_SOCKET (sock_fd, (char *) &value, 4));
 }
 
 static int
-net_recv_int (int sock_fd, int *value)
+net_recv_int (SOCKET sock_fd, int *value)
 {
   int read_value;
 
@@ -469,13 +472,13 @@ net_recv_int (int sock_fd, int *value)
 }
 
 static int
-net_send_str (int sock_fd, char *buf, int size)
+net_send_str (SOCKET sock_fd, char *buf, int size)
 {
   return (WRITE_TO_SOCKET (sock_fd, buf, size));
 }
 
 static int
-net_recv_str (int sock_fd, char *buf, int size)
+net_recv_str (SOCKET sock_fd, char *buf, int size)
 {
   int read_len, tot_read_len = 0;
 
@@ -495,10 +498,11 @@ net_recv_str (int sock_fd, char *buf, int size)
 }
 
 static int
-connect_srv (unsigned char *ip_addr, int port, char is_first)
+connect_srv (unsigned char *ip_addr, int port, char is_first,
+	     SOCKET * ret_sock)
 {
   struct sockaddr_in sock_addr;
-  int sock_fd;
+  SOCKET sock_fd;
   int sock_addr_len;
   int one = 1;
   int retry_count = 0;
@@ -509,8 +513,10 @@ connect_srv (unsigned char *ip_addr, int port, char is_first)
 connect_retry:
 
   sock_fd = socket (AF_INET, SOCK_STREAM, 0);
-  if (sock_fd < 0)
-    return CCI_ER_CONNECT;
+  if (IS_INVALID_SOCKET (sock_fd))
+    {
+      return CCI_ER_CONNECT;
+    }
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_in));
   sock_addr.sin_family = AF_INET;
@@ -531,7 +537,9 @@ connect_retry:
 
       return CCI_ER_CONNECT;
     }
+
   setsockopt (sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
 
-  return sock_fd;
+  *ret_sock = sock_fd;
+  return CCI_ER_NO_ERROR;
 }

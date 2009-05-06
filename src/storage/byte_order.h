@@ -90,6 +90,8 @@ extern unsigned short ntohs (unsigned short);
 extern unsigned int ntohl (unsigned int);
 #endif /* !OR_HAVE_NTOHL */
 
+extern UINT64 ntohi64 (UINT64);
+
 #ifndef OR_HAVE_NTOHF
 extern void ntohf (float *, float *);
 #endif /* !OR_HAVE_NTOHF */
@@ -105,6 +107,8 @@ extern unsigned short htons (unsigned short);
 #ifndef OR_HAVE_HTONL
 extern unsigned int htonl (unsigned int);
 #endif /* !OR_HAVE_HTONL */
+
+extern UINT64 htoni64 (UINT64);
 
 #ifndef OR_HAVE_HTONF
 extern void htonf (float *, float *);
@@ -124,6 +128,8 @@ extern void htond (double *, double *);
 #define ntohl(x) (x)
 #endif /* !OR_HAVE_NTOHL */
 
+#define ntohi64(x) (x)
+
 #ifndef OR_HAVE_NTOHF
 #define ntohf(ptr, value) (*(value) = *(ptr))
 #endif /* !OR_HAVE_NTOHF */
@@ -139,6 +145,8 @@ extern void htond (double *, double *);
 #ifndef OR_HAVE_HTONL
 #define htonl(x) (x)
 #endif /* !OR_HAVE_HTONL */
+
+#define htoni64(x) (x)
 
 #ifndef OR_HAVE_HTONF
 #define htonf(ptr, value) (*(ptr) = *(value))

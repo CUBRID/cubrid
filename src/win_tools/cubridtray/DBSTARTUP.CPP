@@ -105,7 +105,7 @@ int	index = 0;
 	m_su_cancel.SetWindowText(theLang.GetMessage(WN_STD_CANCEL));
 
 	// TODO: Add extra initialization here
-	int	count = m_OrdbList->m_List.GetCount();
+	int	count = (int) m_OrdbList->m_List.GetCount();
 
 	for (int i = 0; i < count; i++) {
 		CDBInfo	*db;

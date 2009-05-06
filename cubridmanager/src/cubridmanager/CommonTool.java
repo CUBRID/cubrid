@@ -34,6 +34,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.Character.UnicodeBlock;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -605,5 +606,20 @@ public class CommonTool {
 		DateFormat formatter = new SimpleDateFormat(datepattern,Locale.US);		
 		Date date=new Date(timestamp*1000);		
 		return formatter.format(date);
+	}
+	
+	/**
+	 * return true if a string s is a ascii string. 
+	 * @param s
+	 * @return
+	 */
+	public static boolean isAscii(String s) {
+		for(int i = 0, len = s.length(); i < len; i++) {  
+		    if (!UnicodeBlock.of(s.charAt(i)).equals(UnicodeBlock.BASIC_LATIN)) {  
+		        return false;
+		    }  
+		}  
+		
+		return true;
 	}
 }

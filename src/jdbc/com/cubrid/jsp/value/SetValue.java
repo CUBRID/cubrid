@@ -278,6 +278,17 @@ public class SetValue extends Value
     return array;
   }
 
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    Timestamp[] array = new Timestamp[values.length];
+
+    for (int i = 0; i < values.length; i++)
+    {
+      array[i] = (Timestamp) values[i];
+    }
+    return array;
+  }
+
   public String[] toStringArray() throws TypeMismatchException
   {
     String[] array = new String[values.length];
@@ -459,5 +470,10 @@ public class SetValue extends Value
   public Timestamp[][] toTimestampArrayArray() throws TypeMismatchException
   {
     return new Timestamp[][] { toTimestampArray() };
+  }
+
+  public Timestamp[][] toDatetimeArrayArray() throws TypeMismatchException
+  {
+    return new Timestamp[][] { toDatetimeArray() };
   }
 }

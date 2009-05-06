@@ -49,24 +49,24 @@ typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
 {
   enum boot_client_type client_type;
-  const char *client_info;	/* DB_MAX_IDENTIFIER_LENGTH */
-  const char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  const char *db_user;		/* DB_MAX_USER_LENGTH */
-  const char *db_password;	/* DB_MAX_PASSWORD_LENGTH */
-  const char *program_name;	/* PATH_MAX */
-  const char *login_name;	/* L_cuserid */
-  const char *host_name;	/* MAXHOSTNAMELEN */
+  char *client_info;	/* DB_MAX_IDENTIFIER_LENGTH */
+  char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
+  char *db_user;		/* DB_MAX_USER_LENGTH */
+  char *db_password;	/* DB_MAX_PASSWORD_LENGTH */
+  char *program_name;	/* PATH_MAX */
+  char *login_name;	/* L_cuserid */
+  char *host_name;	/* MAXHOSTNAMELEN */
   int process_id;
 };
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;
 struct boot_db_path_info
 {
-  const char *db_path;
-  const char *vol_path;
-  const char *log_path;
-  const char *db_host;
-  const char *db_comments;
+  char *db_path;
+  char *vol_path;
+  char *log_path;
+  char *db_host;
+  char *db_comments;
 };
 
 #endif /* _BOOT_H_ */

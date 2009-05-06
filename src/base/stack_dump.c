@@ -243,6 +243,8 @@ er_dump_call_stack (FILE * outfp)
 
 #elif defined(LINUX)
 
+#if __WORDSIZE == 32
+
 #include <stdio.h>
 #include <string.h>
 
@@ -387,6 +389,45 @@ er_dump_call_stack (FILE * outfp)
 
   fflush (outfp);
 }
+
+#else /* __WORDSIZE == 32 */
+
+#include <stdio.h>
+#include <string.h>
+
+#include <ucontext.h>
+#include <dlfcn.h>
+
+#include "error_code.h"
+#include "stack_dump.h"
+
+#define PEEK_DATA(addr) (*(size_t *)(addr))
+#define MAXARGS         6
+#define BUFFER_SIZE     1024
+
+static int er_resolve_function_name (const void *address,
+				     const char *lib_file_name, char *buffer,
+				     int buffer_size);
+
+static int
+er_resolve_function_name (const void *address, const char *lib_file_name_p,
+			  char *buffer, int buffer_size)
+{
+  return NO_ERROR;
+}
+
+/*
+ * er_dump_call_stack - dump call stack
+ *   return:
+ *   outfp(in):
+ */
+void
+er_dump_call_stack (FILE * outfp)
+{
+  return;
+}
+
+#endif
 
 #else /* LINUX */
 

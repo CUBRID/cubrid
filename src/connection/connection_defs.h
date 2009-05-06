@@ -37,6 +37,7 @@
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
 
+#include "porting.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #if defined(SERVER_MODE)
@@ -324,8 +325,10 @@ struct packet_header
 typedef struct css_queue_entry CSS_QUEUE_ENTRY;
 struct css_queue_entry
 {
+  CSS_QUEUE_ENTRY *next;
+  char *buffer;
+
 #if !defined(SERVER_MODE)
-  char lock;
   unsigned int key;
 #else
   int key;
@@ -335,8 +338,10 @@ struct css_queue_entry
   int rc;
   int transaction_id;
   int db_error;
-  char *buffer;
-  CSS_QUEUE_ENTRY *next;
+
+#if !defined(SERVER_MODE)
+  char lock;
+#endif
 };
 
 /*
@@ -346,12 +351,7 @@ struct css_queue_entry
 typedef struct css_conn_entry CSS_CONN_ENTRY;
 struct css_conn_entry
 {
-#if defined(WINDOWS) && !defined(SERVER_MODE)
-  short fd;
-#else				/* WINDOWS */
-  int fd;
-#endif				/* WINDOWS */
-
+  SOCKET fd;
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int transaction_id;
@@ -371,10 +371,10 @@ struct css_conn_entry
   struct sockaddr_in *foreign_name;
 
   CSS_QUEUE_ENTRY *free_queue_list;
-  int free_queue_count;
   struct css_wait_queue_entry *free_wait_queue_list;
-  int free_wait_queue_count;
   char *free_net_header_list;
+  int free_queue_count;
+  int free_wait_queue_count;
   int free_net_header_count;
 
   CSS_LIST request_queue;	/* list of requests    */
@@ -406,11 +406,11 @@ typedef struct css_mapping_entry CSS_MAP_ENTRY;
 struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
-  unsigned short id;		/* host id to help identify the connection */
   CSS_CONN_ENTRY *conn;		/* the connection */
 #if !defined(SERVER_MODE)
   CSS_MAP_ENTRY *next;
 #endif
+  unsigned short id;		/* host id to help identify the connection */
 };
 
 extern void css_shutdown (int exit_reason);

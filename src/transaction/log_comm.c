@@ -199,7 +199,7 @@ log_alloc_client_copy_area (int min_length)
        * maximize the communication line.
        */
       network_pagesize = db_network_page_size ();
-      DB_ALIGN (total_length, network_pagesize);
+      total_length = DB_ALIGN (total_length, network_pagesize);
     }
 
   /* Allocate the stuff in pagesize */
@@ -338,8 +338,8 @@ log_copy_area_send (LOG_COPY * log_area, char **contents_ptr,
   *contents_length = 0;
 
   manylogs = LOG_MANYLOGS_PTR_IN_LOGAREA (log_area);
-  *descriptors_length = manylogs->num_logs * LOG_ONELOG_PACKED_SIZE;
-  DB_ALIGN (*descriptors_length, MAX_ALIGNMENT);
+  *descriptors_length = DB_ALIGN (manylogs->num_logs * LOG_ONELOG_PACKED_SIZE,
+				  MAX_ALIGNMENT);
   *descriptors_ptr = (char *) malloc (*descriptors_length);
   if (*descriptors_ptr == NULL)
     {
@@ -366,7 +366,7 @@ log_copy_area_send (LOG_COPY * log_area, char **contents_ptr,
 
       if (offset != -1)
 	{
-	  DB_ALIGN (*contents_length, INT_ALIGNMENT);
+	  *contents_length = DB_ALIGN (*contents_length, DOUBLE_ALIGNMENT);
 	  *contents_length += offset;
 	}
     }

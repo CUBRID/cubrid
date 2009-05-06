@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -78,7 +78,7 @@ lang_init (void)
    * recognized settings used to select message catalogs in
    * $CUBRID/admin/msg.
    */
-  env = envvar_get("LANG");
+  env = envvar_get ("LANG");
   if (env != NULL)
     {
       strcpy (lang_Loc_name, env);
@@ -97,7 +97,8 @@ lang_init (void)
     }
 
   /* Set up some internal constants based on the locale name */
-  if (strncmp (lang_Loc_name, LANG_NAME_KOREAN, strlen (LANG_NAME_KOREAN)) == 0)
+  if (strncmp (lang_Loc_name, LANG_NAME_KOREAN, strlen (LANG_NAME_KOREAN)) ==
+      0)
     {
       lang_Loc_id = INTL_LANG_KOREAN;
       lang_Loc_currency = DB_CURRENCY_WON;
@@ -351,17 +352,17 @@ lang_check_identifier (const char *name, int length)
 static DB_CHARSET lang_Server_charset;
 
 static const DB_CHARSET lang_Db_charsets[] = {
-  {INTL_CODESET_ASCII, "ascii",
-   "US English charset - ASCII encoding", 0, " ", 1},
-  {INTL_CODESET_RAW_BITS, "raw-bits",
-   "Uninterpreted bits - Raw encoding", 0, "", 1},
-  {INTL_CODESET_RAW_BYTES, "raw-bytes",
-   "Uninterpreted bytes - Raw encoding", 0, "", 1},
-  {INTL_CODESET_ISO88591, "iso8859-1",
-   "Latin 1 charset - ISO 8859 encoding", 0, " ", 1},
-  {INTL_CODESET_KSC5601_EUC, "ksc-euc",
-   "KSC 5601 1990 charset - EUC encoding", 0, "\241\241", 2},
-  {INTL_CODESET_NONE, "", "", 0, "", 0}
+  {"ascii", "US English charset - ASCII encoding", " ", INTL_CODESET_ASCII, 0,
+   1},
+  {"raw-bits", "Uninterpreted bits - Raw encoding", "", INTL_CODESET_RAW_BITS,
+   0, 1},
+  {"raw-bytes", "Uninterpreted bytes - Raw encoding", "",
+   INTL_CODESET_RAW_BYTES, 0, 1},
+  {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ",
+   INTL_CODESET_ISO88591, 0, 1},
+  {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241",
+   INTL_CODESET_KSC5601_EUC, 0, 2},
+  {"", "", "", INTL_CODESET_NONE, 0, 0}
 };
 
 static int lang_Server_charset_Initialized = 0;

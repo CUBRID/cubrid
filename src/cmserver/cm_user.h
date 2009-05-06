@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_user.h - 
+ * cm_user.h -
  */
 
 #ifndef _CM_USER_H_
@@ -74,12 +74,13 @@ void dbmt_user_free (T_DBMT_USER * dbmt_user);
 int dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error);
 int dbmt_user_write_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error);
 void dbmt_user_db_auth_str (T_DBMT_USER_DBINFO * dbinfo, char *buf);
-void dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, char *dbname,
-			   char *auth, char *uid, char *passwd);
+void dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, const char *dbname,
+			   const char *auth, const char *uid,
+			   const char *passwd);
 void dbmt_user_set_userinfo (T_DBMT_USER_INFO * usrinfo, char *user_name,
 			     char *user_passwd, int num_dbinfo,
 			     T_DBMT_USER_DBINFO * dbinfo);
-int dbmt_user_search (T_DBMT_USER_INFO * user_info, char *dbname);
+int dbmt_user_search (T_DBMT_USER_INFO * user_info, const char *dbname);
 void dbmt_user_db_delete (T_DBMT_USER * dbmt_user, char *dbname);
 int dbmt_user_add_dbinfo (T_DBMT_USER_INFO * usrinfo,
 			  T_DBMT_USER_DBINFO * dbinfo);

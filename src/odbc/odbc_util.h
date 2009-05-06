@@ -192,7 +192,7 @@ PUBLIC void long_to_byte (long value, unsigned char *bytes, int length);
 PUBLIC void byte_to_long (unsigned char *bytes, int length, long *value);
 PUBLIC ERR_CODE bincpy (D_BINARY * dest, char *src, int size);
 PUBLIC ERR_CODE binfree (D_BINARY * src);
-PUBLIC void *ut_alloc (int size);
+PUBLIC void *ut_alloc (SQLLEN size);
 PUBLIC void ut_free (void *ptr);
 PUBLIC void *ut_realloc (void *ptr, int size);
 PUBLIC char *ut_make_string (const char *src, int length);
@@ -206,11 +206,11 @@ PUBLIC void add_element_to_setstring (char *setstring, char *element);
 PUBLIC char *trim (char *str);
 PUBLIC RETCODE str_value_assign (const char *in_value,
 				 char *out_buf,
-				 int out_buf_len, int *val_len_ptr);
+				 SQLLEN out_buf_len, SQLLEN *val_len_ptr);
 PUBLIC RETCODE bin_value_assign (const void *in_value,
-				 int in_val_len,
+				 SQLLEN in_val_len,
 				 char *out_buf,
-				 int out_buf_len, int *val_len_ptr);
+				 SQLLEN out_buf_len, SQLLEN *val_len_ptr);
 
 PUBLIC short is_oidstr (char *str);
 PUBLIC short is_oidstr_array (char **array, int size);

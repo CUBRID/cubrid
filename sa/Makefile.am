@@ -37,29 +37,27 @@ BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 
-ANTLR = $(top_builddir)/pccts/antlrd/antlr
-DLG = $(top_builddir)/pccts/dlg/dlg
+BISON = bison
+FLEX = flex
 
-INCLUDES = @SRC_INC@ -I$(top_srcdir)/pccts/h @EXT_INC@ @JAVA_INC@
+INCLUDES = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@
 DEFS += @SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @OTHER_DEFS@ -DLL_K=2 -DZZCOL
 LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
 
-BUILT_SOURCES = csql_grammar.c csql_grammar_err.c csql_grammar.dlg csql_grammar_tokens.h csql_grammar_mode.h csql_grammar_scan.c \
-	loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
 #BUILT_SOURCES = cnvlex.c
-CLEANFILES = csql_grammar.c csql_grammar_err.c csql_grammar.dlg csql_grammar_tokens.h csql_grammar_mode.h csql_grammar_scan.c \
-	loader_grammar.c loader_grammar_err.c loader_grammar.dlg loader_grammar_tokens.h loader_grammar_mode.h loader_grammar_scan.c
 #CLEANFILES = cnvlex.c
 
-csql_grammar.c csql_grammar_err.c csql_grammar.dlg: $(PARSER_DIR)/csql_grammar.g
-	$(ANTLR) -ga -k 2 -fe csql_grammar_err.c -fl csql_grammar.dlg -ft csql_grammar_tokens.h -fm csql_grammar_mode.h $<
-csql_grammar_scan.c csql_grammar_mode.h: csql_grammar.dlg
-	$(DLG) -C2 -ga -m csql_grammar_mode.h $< csql_grammar_scan.c
+$(PARSER_DIR)/csql_grammar.c : $(PARSER_DIR)/csql_grammar.y
+	$(BISON) -d -r all -o $@ $<
 
-loader_grammar.c loader_grammar_err.c loader_grammar.dlg: $(EXECUTABLE_DIR)/loader_grammar.g
-	$(ANTLR) -ga -k 1 -fe loader_grammar_err.c -fl loader_grammar.dlg -ft loader_grammar_tokens.h -fm loader_grammar_mode.h $<
-loader_grammar_scan.c loader_grammar_mode.h: loader_grammar.dlg
-	$(DLG) -C2 -ga -m loader_grammar_mode.h $< loader_grammar_scan.c
+$(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
+	$(FLEX) -o $@ $<
+
+$(EXECUTABLE_DIR)/loader_grammar.c : $(EXECUTABLE_DIR)/loader_grammar.y
+	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
+
+$(EXECUTABLE_DIR)/loader_lexer.c : $(EXECUTABLE_DIR)/loader_lexer.l
+	$(FLEX) --prefix=loader_yy -o $@ $<
 
 #AM_LFLAGS = -8 -L -S$(COMPAT_DIR)/flex.skel -t
 #cnvlex.c: $(COMPAT_DIR)/cnvlex.l
@@ -92,7 +90,8 @@ EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/file_hash.c \
 	$(EXECUTABLE_DIR)/loader.c \
 	$(EXECUTABLE_DIR)/loader_object_table.c \
-	loader_grammar_scan.c loader_grammar.c loader_grammar_err.c
+	$(EXECUTABLE_DIR)/loader_grammar.c \
+	$(EXECUTABLE_DIR)/loader_lexer.c 
 COMPAT_SOURCES = \
 	$(COMPAT_DIR)/cnv.c \
 	$(COMPAT_DIR)/cnvlex.c \
@@ -167,9 +166,8 @@ PARSER_SOURCES = \
 	$(PARSER_DIR)/semantic_check.c \
 	$(PARSER_DIR)/type_checking.c \
 	$(PARSER_DIR)/xasl_generation.c \
-	csql_grammar_err.c \
-	csql_grammar.c \
-	csql_grammar_scan.c \
+	$(PARSER_DIR)/csql_grammar.c \
+	$(PARSER_DIR)/csql_lexer.c \
 	$(PARSER_DIR)/scanner_support.c \
 	$(PARSER_DIR)/view_transform.c
 OPTIMIZER_SOURCES = \
@@ -286,7 +284,6 @@ libcubridsa_la_SOURCES = \
 	$(JSP_SOURCES) \
 	$(TRANSACTION_SOURCES) \
 	$(STORAGE_SOURCES)
-dist_libcubridsa_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/loader_grammar.g
 libcubridsa_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridsa_la_LIBADD = $(LIBADD_DL)
 libcubridsa_la_LINK = $(LINK)

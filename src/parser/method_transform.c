@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -43,16 +43,16 @@ typedef struct meth_stmt_info METH_STMT_INFO;
 struct meth_stmt_info
 {
   PT_NODE *root;		/* ptr to original statement */
-  unsigned short correlation_level;	/* correlation of the SELECT */
   PT_NODE *spec_list;		/* scope of the SELECT */
   PT_NODE **where;		/* where clause of the SELECT */
+  unsigned short correlation_level;	/* correlation of the SELECT */
 };
 
 typedef struct meth_corr_info METH_CORR_INFO;
 struct meth_corr_info
 {
-  int corr_step;		/* amount to bump correlation */
   UINTPTR spec_id;		/* spec id of spec we are expanding/collapsing */
+  int corr_step;		/* amount to bump correlation */
   int corr_threshold;		/* correlation threshold which defines which
 				 * correlations need to be bumped.
 				 */
@@ -62,8 +62,8 @@ typedef struct meth_info METH_INFO;
 struct meth_info
 {
   PT_NODE *method;		/* method we are finding the entity of */
-  int nesting_depth;		/* depth of current nesting level */
   PT_NODE *entity_for_method;	/* the entity where we'll hang the method */
+  int nesting_depth;		/* depth of current nesting level */
   int entities_nesting_depth;	/* depth of the entity */
 };
 
@@ -664,7 +664,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
   PT_NODE *save_referenced_attrs;
   int i;
   int num_methods;
-  int num_method_params;
+  int num_method_params = 0;
   int num_referenced_attrs;
   METH_INFO1 info1;
   METH_INFO6 info6;
@@ -2344,7 +2344,7 @@ static void
 meth_grab_cnf_conj (PARSER_CONTEXT * parser, PT_NODE ** where,
 		    METH_INFO5 * info5)
 {
-  PT_NODE *conj, *prev, *next;
+  PT_NODE *conj, *prev = NULL, *next;
   METH_INFO1 info1;
   int outside_refs;
   int nested_meths;

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -76,7 +76,7 @@ static struct
 
 static const int QP_QRES_LIST_INIT_CNT = 10;
 			       /* query result list initial cnt */
-static const int QP_QRES_LIST_INC_RATE = 1.25;
+static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
 static DB_QUERY_RESULT *allocate_query_result (void);
@@ -602,7 +602,7 @@ db_dump_query_result (DB_QUERY_RESULT * r)
   fprintf (stdout, "\n");
   if (r->type == T_SELECT)
     {
-      fprintf (stdout, "Query_id: %d \n", r->res.s.query_id);
+      fprintf (stdout, "Query_id: %lld \n", (long long) r->res.s.query_id);
       fprintf (stdout, "Stmt_id: %d \n", r->res.s.stmt_id);
       fprintf (stdout, "Tuple Cnt: %d \n",
 	       r->res.s.cursor_id.list_id.tuple_cnt);
@@ -2322,7 +2322,7 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 
     case T_GET:
       {
-	int col_cnt, tpl_idx, n_tuple, index;
+	int col_cnt, tpl_idx, n_tuple, index = 0;
 
 	col_cnt = result->col_cnt;
 	tpl_idx = result->res.g.tpl_idx;

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -54,7 +54,7 @@ static int fill_collection (COLLECTION_ * co, DB_SET * set);
 
 
 /*
- * col_api_length - 
+ * col_api_length -
  *    return:
  *    col():
  *    len():
@@ -71,7 +71,7 @@ col_api_length (API_COLLECTION * col, int *len)
 }
 
 /*
- * col_api_insert - 
+ * col_api_insert -
  *    return:
  *    col():
  *    pos():
@@ -100,8 +100,7 @@ col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
   if (val == NULL)
     return ER_INTERFACE_NO_MORE_MEMORY;
 
-  res =
-    coerce_value_to_db_value (type, ptr, (unsigned long) size, val, false);
+  res = coerce_value_to_db_value (type, ptr, size, val, false);
   if (res != NO_ERROR)
     return res;
 
@@ -115,7 +114,7 @@ col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
 }
 
 /*
- * col_api_update - 
+ * col_api_update -
  *    return:
  *    col():
  *    pos():
@@ -142,14 +141,14 @@ col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
     co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
     return res;
-  res = coerce_value_to_db_value (type, ptr, (unsigned long) size, val, true);
+  res = coerce_value_to_db_value (type, ptr, size, val, true);
   if (res != NO_ERROR)
     return res;
   return NO_ERROR;
 }
 
 /*
- * col_api_delete - 
+ * col_api_delete -
  *    return:
  *    col():
  *    pos():
@@ -178,7 +177,7 @@ col_api_delete (API_COLLECTION * col, long pos)
 }
 
 /*
- * col_api_get_elem_domain_info - 
+ * col_api_get_elem_domain_info -
  *    return:
  *    col():
  *    pos():
@@ -215,7 +214,7 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
 }
 
 /*
- * col_api_get_elem - 
+ * col_api_get_elem -
  *    return:
  *    col():
  *    pos():
@@ -250,7 +249,7 @@ col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type,
 }
 
 /*
- * col_dtorf - 
+ * col_dtorf -
  *    return:
  *    va():
  *    aval():
@@ -265,7 +264,7 @@ col_dtorf (VALUE_AREA * va, API_VALUE * aval)
 }
 
 /*
- * col_api_destroy - 
+ * col_api_destroy -
  *    return:
  *    col():
  */
@@ -289,7 +288,7 @@ static API_COLLECTION_IFS COL_IFS_ = {
 };
 
 /*
- * apif_collection_create - 
+ * apif_collection_create -
  *    return:
  *    conn():
  *    rc():
@@ -315,7 +314,7 @@ apif_collection_create (BIND_HANDLE conn, COLLECTION_ ** rc)
 }
 
 /*
- * fill_collection - 
+ * fill_collection -
  *    return:
  *    co():
  *    set():
@@ -363,7 +362,7 @@ fill_collection (COLLECTION_ * co, DB_SET * set)
 /* EXPORTED FUNCTION */
 
 /*
- * api_collection_create_from_db_value - 
+ * api_collection_create_from_db_value -
  *    return:
  *    conn():
  *    val():
@@ -395,7 +394,7 @@ api_collection_create_from_db_value (BIND_HANDLE conn,
 }
 
 /*
- * set_to_db_value_mapf - 
+ * set_to_db_value_mapf -
  *    return:
  *    arg():
  *    idx():
@@ -421,7 +420,7 @@ set_to_db_value_mapf (void *arg, int idx, VALUE_AREA * va, API_VALUE * aval)
 }
 
 /*
- * api_collection_set_to_db_value - 
+ * api_collection_set_to_db_value -
  *    return:
  *    col():
  *    val():
@@ -462,7 +461,7 @@ api_collection_set_to_db_value (API_COLLECTION * col, DB_VALUE * val)
 }
 
 /*
- * api_collection_create - 
+ * api_collection_create -
  *    return:
  *    conn():
  *    rc():

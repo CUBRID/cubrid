@@ -1,36 +1,36 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
 
 /*
- * cci_net_buf.c - 
+ * cci_net_buf.c -
  */
 
 #ident "$Id$"
@@ -38,11 +38,12 @@
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
+#include "config.h"
 
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #else
@@ -122,14 +123,31 @@ cnet_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size)
 }
 
 int
+cnet_buf_cp_bigint (T_NET_BUF * net_buf, INT64 value)
+{
+  int size = SIZE_BIGINT;
+
+  if (net_buf_realloc (net_buf, size) < 0)
+    return CCI_ER_NO_MORE_MEMORY;
+
+  value = htoni64 (value);
+  memcpy (net_buf->data + net_buf->data_size, &value, size);
+  net_buf->data_size += size;
+
+  return 0;
+}
+
+int
 cnet_buf_cp_int (T_NET_BUF * net_buf, int value)
 {
-  if (net_buf_realloc (net_buf, 4) < 0)
+  int size = SIZE_INT;
+
+  if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
 
   value = htonl (value);
-  memcpy (net_buf->data + net_buf->data_size, &value, 4);
-  net_buf->data_size += 4;
+  memcpy (net_buf->data + net_buf->data_size, &value, size);
+  net_buf->data_size += size;
 
   return 0;
 }
@@ -137,11 +155,13 @@ cnet_buf_cp_int (T_NET_BUF * net_buf, int value)
 int
 cnet_buf_cp_float (T_NET_BUF * net_buf, float value)
 {
-  if (net_buf_realloc (net_buf, 4) < 0)
+  int size = SIZE_FLOAT;
+
+  if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
   value = htonf (value);
-  memcpy (net_buf->data + net_buf->data_size, &value, 4);
-  net_buf->data_size += 4;
+  memcpy (net_buf->data + net_buf->data_size, &value, size);
+  net_buf->data_size += size;
 
   return 0;
 }
@@ -149,11 +169,13 @@ cnet_buf_cp_float (T_NET_BUF * net_buf, float value)
 int
 cnet_buf_cp_double (T_NET_BUF * net_buf, double value)
 {
-  if (net_buf_realloc (net_buf, 8) < 0)
+  int size = SIZE_DOUBLE;
+
+  if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
   value = htond (value);
-  memcpy (net_buf->data + net_buf->data_size, &value, 8);
-  net_buf->data_size += 8;
+  memcpy (net_buf->data + net_buf->data_size, &value, size);
+  net_buf->data_size += size;
 
   return 0;
 }
@@ -161,16 +183,39 @@ cnet_buf_cp_double (T_NET_BUF * net_buf, double value)
 int
 cnet_buf_cp_short (T_NET_BUF * net_buf, short value)
 {
-  if (net_buf_realloc (net_buf, 2) < 0)
+  int size = SIZE_SHORT;
+
+  if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
   value = htons (value);
-  memcpy (net_buf->data + net_buf->data_size, &value, 2);
-  net_buf->data_size += 2;
+  memcpy (net_buf->data + net_buf->data_size, &value, size);
+  net_buf->data_size += size;
 
   return 0;
 }
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
+INT64
+cnet_buf_htoni64 (INT64 from)
+{
+  INT64 to;
+  char *p, *q;
+
+  p = (char *) &from;
+  q = (char *) &to;
+
+  q[0] = p[7];
+  q[1] = p[6];
+  q[2] = p[5];
+  q[3] = p[4];
+  q[4] = p[3];
+  q[5] = p[2];
+  q[6] = p[1];
+  q[7] = p[0];
+
+  return to;
+}
+
 float
 cnet_buf_htonf (float from)
 {

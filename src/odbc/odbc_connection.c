@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -173,11 +173,11 @@ odbc_free_connection (ODBC_CONNECTION * conn)
 *		ODBC_CONNECTION *con
 *		long attribute
 *		void* valueptr - generic value pointer
-*		long stringlength 
+*		long stringlength
 * returns/side-effects:
 * description:
 * NOTE:
-*	attribute가 SQL_ATTR_ACCESS_MODE일 경우, 
+*	attribute가 SQL_ATTR_ACCESS_MODE일 경우,
 *		내부적으로 isolation level이 TRAN_COMMIT_CLASS_COMMIT_INSTANCE로
 *		설정된다.  이 때 기존의 isolation level을 사용하기 위해서
 *		(ODBC_CONNECTION).old_txn_isolation이 사용된다.
@@ -405,11 +405,12 @@ error:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_connect_attr (ODBC_CONNECTION * conn,
-		       long attribute,
-		       void *value_ptr,
-		       long buffer_length, long *string_length_ptr)
+		       SQLINTEGER attribute,
+		       SQLPOINTER value_ptr,
+		       SQLINTEGER buffer_length, SQLINTEGER *string_length_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
+  SQLLEN tmp_length;
 
   switch (attribute)
     {
@@ -485,7 +486,9 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       /* CHECK : test */
       rc =
 	str_value_assign (conn->data_source, value_ptr, buffer_length,
-			  string_length_ptr);
+			  &tmp_length);
+      *string_length_ptr = (SQLINTEGER) tmp_length;
+
       if (rc == ODBC_SUCCESS_WITH_INFO)
 	{
 	  odbc_set_diag (conn->diag, "01004", 0, NULL);
@@ -499,7 +502,9 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 
       rc =
 	str_value_assign (conn->attr_current_catalog, value_ptr,
-			  buffer_length, string_length_ptr);
+			  buffer_length, &tmp_length);
+      *string_length_ptr = (SQLINTEGER) tmp_length;
+
       if (rc == ODBC_SUCCESS_WITH_INFO)
 	{
 	  odbc_set_diag (conn->diag, "01004", 0, NULL);
@@ -578,7 +583,9 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
     case SQL_ATTR_TRACEFILE:
       rc =
 	str_value_assign (conn->attr_tracefile, value_ptr, buffer_length,
-			  string_length_ptr);
+			  &tmp_length);
+      *string_length_ptr = (SQLINTEGER) tmp_length;
+
       if (rc == ODBC_SUCCESS_WITH_INFO)
 	{
 	  odbc_set_diag (conn->diag, "01004", 0, NULL);
@@ -593,7 +600,9 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 
       rc =
 	str_value_assign (conn->attr_translate_lib, value_ptr, buffer_length,
-			  string_length_ptr);
+			  &tmp_length);
+      *string_length_ptr = (SQLINTEGER) tmp_length;
+
       if (rc == ODBC_SUCCESS_WITH_INFO)
 	{
 	  odbc_set_diag (conn->diag, "01004", 0, NULL);
@@ -647,10 +656,10 @@ error:
 
 /************************************************************************
 * name: odbc_connect
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 * CHECK : error check
 ************************************************************************/
 PUBLIC RETCODE
@@ -705,10 +714,10 @@ error:
 
 /************************************************************************
 * name: odbc_connect_by_filedsn
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 * CHECK : error check
 ************************************************************************/
 PUBLIC RETCODE
@@ -767,10 +776,10 @@ error:
 
 /************************************************************************
 * name: odbc_connect_new
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 * CHECK : error check
 ************************************************************************/
 PUBLIC RETCODE
@@ -868,8 +877,7 @@ odbc_disconnect (ODBC_CONNECTION * conn)
   ODBC_STATEMENT *stmt;
   ODBC_STATEMENT *del_stmt;
   ODBC_DESC *desc;
-  ODBC_DESC *del_desc;;
-
+  ODBC_DESC *del_desc;
 
   if (conn->connhd <= 0)
     {
@@ -948,14 +956,17 @@ odbc_auto_commit (ODBC_CONNECTION * conn)
  ************************************************************************/
 PUBLIC RETCODE
 odbc_native_sql (ODBC_CONNECTION * conn,
-		 char *in_stmt_text,
-		 char *out_stmt_text,
-		 long buffer_length, long *out_stmt_length)
+		 SQLCHAR *in_stmt_text,
+		 SQLCHAR *out_stmt_text,
+		 SQLINTEGER buffer_length, SQLINTEGER *out_stmt_length)
 {
   RETCODE rc = ODBC_SUCCESS;
+  SQLLEN tmp_length;
 
   rc = str_value_assign (in_stmt_text, out_stmt_text,
-			 buffer_length, out_stmt_length);
+			 buffer_length, &tmp_length);
+  *out_stmt_length = (SQLINTEGER) tmp_length;
+
   if (rc == ODBC_SUCCESS_WITH_INFO)
     {
       odbc_set_diag (conn->diag, "01004", 0, NULL);
@@ -967,10 +978,10 @@ odbc_native_sql (ODBC_CONNECTION * conn,
 
 /************************************************************************
 * name: odbc_get_functions
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_functions (ODBC_CONNECTION * conn,
@@ -1047,13 +1058,13 @@ odbc_get_functions (ODBC_CONNECTION * conn,
       // Not supported
       //SQL_FUNC_SET(supported_ptr,SQL_API_SQLBROWSECONNECT );
       //SQL_FUNC_SET(supported_ptr,SQL_API_SQLCOLUMNPRIVILEGES );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLDESCRIBEPARAM ); 
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLFOREIGNKEYS ); 
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPRIMARYKEYS ); 
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURECOLUMNS ); 
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURES ); 
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLDESCRIBEPARAM );
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLFOREIGNKEYS );
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPRIMARYKEYS );
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURECOLUMNS );
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURES );
 
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLTABLEPRIVILEGES ); 
+      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLTABLEPRIVILEGES );
       break;
 
     case SQL_API_SQLALLOCHANDLE:
@@ -1256,16 +1267,16 @@ odbc_get_functions (ODBC_CONNECTION * conn,
 
 /************************************************************************
 * name: odbc_get_info
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_info (ODBC_CONNECTION * conn,
-	       unsigned short info_type,
-	       void *info_value_ptr,
-	       short buffer_length, long *string_length_ptr)
+	       SQLUSMALLINT info_type,
+	       SQLPOINTER info_value_ptr,
+	       SQLSMALLINT buffer_length, SQLLEN *string_length_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
   char buf[1024];
@@ -1448,10 +1459,12 @@ odbc_get_info (ODBC_CONNECTION * conn,
 
     case SQL_CONVERT_BIGINT:
       if (info_value_ptr != NULL)
-	*(unsigned long *) info_value_ptr = 0;
-
+        *(unsigned long *) info_value_ptr = SQL_CVT_DECIMAL | SQL_CVT_DOUBLE |
+                SQL_CVT_FLOAT | SQL_CVT_INTEGER | SQL_CVT_NUMERIC | SQL_CVT_REAL |
+                SQL_CVT_SMALLINT | SQL_CVT_CHAR | SQL_CVT_LONGVARCHAR |
+                SQL_CVT_VARCHAR | SQL_CONVERT_BIGINT;
       if (string_length_ptr != NULL)
-	*string_length_ptr = sizeof (unsigned short);
+	*string_length_ptr = sizeof (unsigned long);
       break;
     case SQL_CONVERT_BINARY:
       if (info_value_ptr != NULL)
@@ -2778,7 +2791,7 @@ odbc_get_info (ODBC_CONNECTION * conn,
 
 
 	/*-------------------------------------------------------------
-	 *				For backward compatibility 
+	 *				For backward compatibility
 	 *------------------------------------------------------------*/
     case SQL_FETCH_DIRECTION:
       if (info_value_ptr != NULL)
@@ -2855,12 +2868,12 @@ odbc_get_info (ODBC_CONNECTION * conn,
 
 /************************************************************************
 * name: get_dsn_info
-* arguments: 
-* returns/side-effects: 
-* description: 
+* arguments:
+* returns/side-effects:
+* description:
 * NOTE:
-*	1. SQLSetConfigMode(ODBC_BOTH_DSN)에 의해서 ODBC_USER_DSN에 
-*	먼저 접근하게 된다. 
+*	1. SQLSetConfigMode(ODBC_BOTH_DSN)에 의해서 ODBC_USER_DSN에
+*	먼저 접근하게 된다.
 *	2. char* length의 max size는 1024bytes이다.
 ************************************************************************/
 PUBLIC int
@@ -2953,13 +2966,13 @@ get_dsn_info (const char *dsn,
 
 /************************************************************************
 * name: get_server_setting
-* arguments: 
-* returns/side-effects: 
-* description: 
+* arguments:
+* returns/side-effects:
+* description:
 *		DSN(registry)에서 ip address, port num, db name을 얻어온다.
 * NOTE:
-*		SQLSetConfigMode(ODBC_BOTH_DSN)에 의해서 ODBC_USER_DSN에 
-*		먼저 접근하게 된다. 
+*		SQLSetConfigMode(ODBC_BOTH_DSN)에 의해서 ODBC_USER_DSN에
+*		먼저 접근하게 된다.
 ************************************************************************/
 
 PRIVATE int

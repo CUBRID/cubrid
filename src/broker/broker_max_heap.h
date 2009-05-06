@@ -29,6 +29,7 @@
 
 #include <time.h>
 
+#include "cas_common.h"
 #include "broker_msg.h"
 
 typedef struct t_max_heap_node T_MAX_HEAP_NODE;
@@ -36,7 +37,7 @@ struct t_max_heap_node
 {
   int id;
   int priority;
-  int clt_sock_fd;
+  SOCKET clt_sock_fd;
   time_t recv_time;
   unsigned char ip_addr[4];
   char script[PRE_SEND_SCRIPT_SIZE];

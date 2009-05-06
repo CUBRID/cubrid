@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -122,7 +122,7 @@
 #define CATALOG_DISK_ATTR_SIZE           112
 
 #define CATALOG_BT_STATS_BTID_OFF        0
-#define CATALOG_BT_STATS_LEAFS_OFF       12
+#define CATALOG_BT_STATS_LEAFS_OFF       OR_BTID_ALIGNED_SIZE
 #define CATALOG_BT_STATS_PAGES_OFF       16
 #define CATALOG_BT_STATS_HEIGHT_OFF      20
 #define CATALOG_BT_STATS_KEYS_OFF        24
@@ -627,7 +627,9 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
   RECDES record = {
     CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
   };
-  char data[CATALOG_PAGE_HEADER_SIZE];
+  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
+
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
   page_p = pgbuf_fix (thread_p, vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE,
 		      PGBUF_UNCONDITIONAL_LATCH);
@@ -643,7 +645,7 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
   page_header.dir_count = 0;
   page_header.is_overflow_page = (bool) is_overflow_page;
 
-  recdes_set_data_area (&record, data, CATALOG_PAGE_HEADER_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
   catalog_put_page_header (record.data, &page_header);
 
   success = spage_insert (thread_p, page_p, &record, &slot_id);
@@ -683,14 +685,16 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
 		      VPID * near_page_p, bool is_overflow_page)
 {
   PAGE_PTR page_p;
-  char data[CATALOG_PAGE_HEADER_SIZE];
+  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record = {
     CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
   };
   CATALOG_PAGE_HEADER page_header = { {NULL_PAGEID, NULL_VOLID}, 0, 0 };
 
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
+
   page_header.is_overflow_page = is_overflow_page;
-  recdes_set_data_area (&record, data, CATALOG_PAGE_HEADER_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
 
   if (file_alloc_pages (thread_p, &catalog_Id.vfid, page_id_p, 1, near_page_p,
 			catalog_initialize_new_page,
@@ -732,7 +736,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
   PAGE_PTR page_p;
   VPID near_vpid;
   PAGEID overflow_page_id;
-  char data[CATALOG_PAGE_HEADER_SIZE];
+  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record = {
     CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
   };
@@ -745,8 +749,10 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
   int rv;
 #endif /* SERVER_MODE */
 
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
+
   MUTEX_LOCK (rv, catalog_Max_space_lock);
-  recdes_set_data_area (&record, data, CATALOG_PAGE_HEADER_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
 
   if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID)
     {
@@ -843,7 +849,8 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
       dir_count = CATALOG_GET_PGHEADER_DIR_COUNT (record.data);
       if (dir_count > 0)
 	{
-	  empty_ratio = dir_count <= 0 ? 0.0 : 0.25 + (dir_count - 1) * 0.05;
+	  empty_ratio =
+	    dir_count <= 0 ? 0.0f : 0.25f + (dir_count - 1) * 0.05f;
 	  if (free_space <= (DB_PAGESIZE * empty_ratio))
 	    {
 	      /* page needs to be left empty */
@@ -1919,13 +1926,16 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
   PGLENGTH new_space;
   void *key;
   OID oid;
-  char page_header_data[CATALOG_PAGE_HEADER_SIZE];
+  char page_header_data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT];
+  char *aligned_page_header_data;
   RECDES record = { 0, -1, REC_HOME, NULL };
   RECDES tmp_record = { 0, -1, REC_HOME, NULL };
   int repr_pos, repr_count;
   char *repr_p;
   int success;
   char *old_rec_data;
+
+  aligned_page_header_data = PTR_ALIGN (page_header_data, MAX_ALIGNMENT);
 
   if (recdes_allocate_data_area (&record, DB_PAGESIZE) != NO_ERROR)
     {
@@ -2065,7 +2075,7 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      spage_delete (thread_p, page_p, oid.slotid);
 	      new_space = spage_max_space_for_new_record (thread_p, page_p);
 
-	      recdes_set_data_area (&tmp_record, page_header_data,
+	      recdes_set_data_area (&tmp_record, aligned_page_header_data,
 				    CATALOG_PAGE_HEADER_SIZE);
 
 	      if (catalog_adjust_directory_count
@@ -2917,12 +2927,14 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
 			   CLS_INFO * class_info_p)
 {
   PAGE_PTR page_p;
-  char data[CATALOG_CLS_INFO_SIZE];
+  char data[CATALOG_CLS_INFO_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record =
     { CATALOG_CLS_INFO_SIZE, CATALOG_CLS_INFO_SIZE, REC_HOME, NULL };
   CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID}, NULL_REPRID,
   NULL_SLOTID
   };
+
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
   repr_item.repr_id = NULL_REPRID;
   if (catalog_get_representation_item (thread_p, class_id_p, &repr_item) !=
@@ -2938,7 +2950,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       return NULL;
     }
 
-  recdes_set_data_area (&record, data, CATALOG_CLS_INFO_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
   if (spage_get_record (page_p, repr_item.slot_id, &record, COPY) !=
       S_SUCCESS)
     {
@@ -3221,6 +3233,9 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 
   VPID_SET_NULL (&last_repr.page_id);
   VPID_SET_NULL (&class_repr.page_id);
+  class_repr.repr_id = NULL_REPRID;
+  class_repr.slot_id = NULL_SLOTID;
+
   if (repr_count > 0)
     {
       last_repr_p = repr_p + ((repr_count - 1) * CATALOG_REPR_ITEM_SIZE);
@@ -3882,7 +3897,7 @@ catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id_p)
 {
   CLS_INFO *class_info_p = NULL;
   PAGE_PTR page_p;
-  char data[CATALOG_CLS_INFO_SIZE];
+  char data[CATALOG_CLS_INFO_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record =
     { CATALOG_CLS_INFO_SIZE, CATALOG_CLS_INFO_SIZE, REC_HOME, NULL };
   CATALOG_REPR_ITEM repr_item = { {NULL_PAGEID, NULL_VOLID}, NULL_REPRID,
@@ -3890,6 +3905,8 @@ catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id_p)
   };
 
   int retry = 0;
+
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
 start:
 
@@ -3907,7 +3924,7 @@ start:
       return NULL;
     }
 
-  recdes_set_data_area (&record, data, CATALOG_CLS_INFO_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
   if (spage_get_record (page_p, repr_item.slot_id, &record, COPY) !=
       S_SUCCESS)
     {
@@ -4434,6 +4451,9 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_INTEGER:
       fprintf (stdout, "DB_TYPE_INTEGER \n");
       break;
+    case DB_TYPE_BIGINT:
+      fprintf (stdout, "DB_TYPE_BIGINT \n");
+      break;
     case DB_TYPE_FLOAT:
       fprintf (stdout, "DB_TYPE_FLOAT \n");
       break;
@@ -4820,18 +4840,20 @@ catalog_clear_hash_table ()
 int
 catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
-  char data[CATALOG_PAGE_HEADER_SIZE];
+  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record =
     { CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL };
   PGSLOTID slot_id;
   int success;
+
+  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
   catalog_clear_hash_table ();
 
   spage_initialize (thread_p, recv_p->pgptr, ANCHORED_DONT_REUSE_SLOTS,
 		    MAX_ALIGNMENT, SAFEGUARD_RVSPACE);
 
-  recdes_set_data_area (&record, data, CATALOG_PAGE_HEADER_SIZE);
+  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
   catalog_put_page_header (record.data, (CATALOG_PAGE_HEADER *) recv_p->data);
   success = spage_insert (thread_p, recv_p->pgptr, &record, &slot_id);
 

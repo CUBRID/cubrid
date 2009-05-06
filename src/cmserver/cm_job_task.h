@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * cm_job_task.h - 
+ * cm_job_task.h -
  */
 
 #ifndef _CM_JOB_TASK_H_
@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <io.h>
 #endif
 
@@ -42,8 +42,8 @@
 
 #define SET_TRANSACTION_NO_WAIT_MODE_ENV()			\
   	do {						\
-	  putenv("CUBRID_LOCK_TIMEOUT_IN_SECS=1");	\
-	  putenv("CUBRID_ISOLATION_LEVEL=TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE");	\
+	  putenv((char *) "CUBRID_LOCK_TIMEOUT_IN_SECS=1");	\
+	  putenv((char *) "CUBRID_ISOLATION_LEVEL=TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE");	\
 	} while (0)
 
 typedef enum
@@ -238,7 +238,7 @@ typedef int (*T_TASK_FUNC) (nvplist * req, nvplist * res, char *_dbmt_error);
 
 typedef struct
 {
-  char *task_str;
+  const char *task_str;
   int task_code;
   char access_log_flag;
   T_TASK_FUNC task_func;
@@ -371,7 +371,8 @@ int ts_delete_error_log (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_check_dir (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
 				   char *_dbmt_error);
-int ts_get_autoexecquery_error_log (nvplist * req, nvplist * res, char *_dbmt_error);
+int ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
+				    char *_dbmt_error);
 int tsGetAutoaddvolLog (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_check_file (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_localdb_operation (nvplist * req, nvplist * res, char *_dbmt_error);

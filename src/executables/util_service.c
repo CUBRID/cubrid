@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -136,7 +136,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_CHANGEMODE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COPYLOGDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_APPLYLOGDB, MASK_ADMIN},
-  {-1, ""}
+  {-1, "", MASK_ADMIN}
 };
 
 #define COMMAND_TYPE_START      "start"
@@ -153,7 +153,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {ON, COMMAND_TYPE_ON, MASK_BROKER},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
-  {-1, ""}
+  {-1, "", MASK_ALL}
 };
 
 static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
@@ -244,16 +244,17 @@ print_message (FILE * output, int message_id, ...)
  *
  */
 static int
-process_admin (int argc, const char **argv)
+process_admin (int argc, char **argv)
 {
-  const char **copy_argv;
+  char **copy_argv;
   int status;
 
-  copy_argv = (const char **) malloc (sizeof (const char *) * (argc + 1));
-  memcpy (copy_argv, argv, sizeof (const char *) * argc);
+  copy_argv = (char **) malloc (sizeof (char *) * (argc + 1));
+  memcpy (copy_argv, argv, sizeof (char *) * argc);
   copy_argv[0] = argv[0];
   copy_argv[argc] = 0;
-  status = proc_execute (UTIL_ADMIN_NAME, copy_argv, true, false, NULL);
+  status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true,
+			 false, NULL);
   free (copy_argv);
 
   return status;
@@ -267,12 +268,12 @@ process_admin (int argc, const char **argv)
  * NOTE:
  */
 int
-main (int argc, const char **argv)
+main (int argc, char *argv[])
 {
   int util_type, command_type;
   int status;
 
-  Argv = argv;
+  Argv = (const char **) argv;
   if (argc == 2)
     {
       if (parse_arg (us_Service_map, (char *) argv[1]) == UTIL_VERSION)
@@ -356,14 +357,16 @@ main (int argc, const char **argv)
 			true);
       break;
     case BROKER:
-      status = process_broker (command_type, argc - 3, &argv[3]);
+      status = process_broker (command_type, argc - 3,
+			       (const char **) &argv[3]);
       break;
     case MANAGER:
       status = process_manager (command_type);
       break;
     case REPL_SERVER:
       status = process_repl_server (command_type, (char *) argv[3],
-				    (char *) argv[4], argc, argv);
+				    (char *) argv[4], argc,
+				    (const char **) argv);
       break;
     case REPL_AGENT:
       status = process_repl_agent (command_type, (char *) argv[3],
@@ -579,6 +582,7 @@ static int
 process_master (int command_type)
 {
   int status = NO_ERROR;
+  int master_port = prm_get_master_port_id ();
 
   switch (command_type)
     {
@@ -586,14 +590,14 @@ process_master (int command_type)
       {
 	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		       PRINT_MASTER_NAME, PRINT_CMD_START);
-	if (!css_does_master_exist (PRM_TCP_PORT_ID))
+	if (!css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
 	    status = proc_execute (UTIL_MASTER_NAME, args, false, false,
 				   NULL);
 	    /* The master process needs a few seconds to bind port */
 	    sleep (2);
-	    status = css_does_master_exist (PRM_TCP_PORT_ID) ?
+	    status = css_does_master_exist (master_port) ?
 	      NO_ERROR : ER_GENERIC_ERROR;
 	    print_result (PRINT_MASTER_NAME, status, command_type);
 	  }
@@ -607,7 +611,7 @@ process_master (int command_type)
     case STOP:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_MASTER_NAME, PRINT_CMD_STOP);
-      if (css_does_master_exist (PRM_TCP_PORT_ID))
+      if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_ALL_STOP, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
@@ -696,7 +700,7 @@ process_service (int command_type)
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_MASTER_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (PRM_TCP_PORT_ID))
+      if (css_does_master_exist (prm_get_master_port_id ()))
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_MASTER_NAME);
@@ -733,7 +737,7 @@ static bool
 check_server (const char *type, const char *server_name)
 {
   FILE *input;
-  char buf[4096], *token, *save_ptr, *delim = " ";
+  char buf[4096], *token, *save_ptr, *delim = (char *) " ";
 
   input = popen (UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS, "r");
   if (input == NULL)
@@ -772,7 +776,7 @@ check_server (const char *type, const char *server_name)
 static bool
 is_server_running (const char *type, const char *server_name, int pid)
 {
-  if (!css_does_master_exist (PRM_TCP_PORT_ID))
+  if (!css_does_master_exist (prm_get_master_port_id ()))
     {
       return false;
     }
@@ -814,7 +818,7 @@ is_server_running (const char *type, const char *server_name, int pid)
  *
  *      command_type(in):
  *      name(in):
- *      show_usage(in): 
+ *      show_usage(in):
  *
  * NOTE:
  */
@@ -825,6 +829,7 @@ process_server (int command_type, char *name, bool show_usage)
   char *list, *token, *save;
   const char *delim = " ,";
   int status = NO_ERROR;
+  int master_port = prm_get_master_port_id ();
 
   /* A string is copyed because strtok_r() modify an original string. */
   if (name == NULL)
@@ -848,7 +853,7 @@ process_server (int command_type, char *name, bool show_usage)
   switch (command_type)
     {
     case START:
-      if (!css_does_master_exist (PRM_TCP_PORT_ID))
+      if (!css_does_master_exist (master_port))
 	{
 	  status = process_master (command_type);
 	}
@@ -911,7 +916,7 @@ process_server (int command_type, char *name, bool show_usage)
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_SERVER_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (PRM_TCP_PORT_ID))
+      if (css_does_master_exist (master_port))
 	{
 	  const char *args[] =
 	    { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
@@ -955,7 +960,7 @@ is_broker_running (void)
 static int
 process_broker (int command_type, int argc, const char **argv)
 {
-  int status;
+  int status = NO_ERROR;
 
   switch (command_type)
     {
@@ -1206,7 +1211,7 @@ static int
 process_repl_server (int command_type, char *name, char *repl_port,
 		     int argc, const char **argv)
 {
-  int status;
+  int status = NO_ERROR;
   int count;
 
   switch (command_type)
@@ -1275,7 +1280,7 @@ process_repl_server (int command_type, char *name, char *repl_port,
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_REPL_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (PRM_TCP_PORT_ID))
+      if (css_does_master_exist (prm_get_master_port_id ()))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_REPL_STATUS, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
@@ -1305,7 +1310,7 @@ process_repl_server (int command_type, char *name, char *repl_port,
 static int
 process_repl_agent (int command_type, char *name, char *password)
 {
-  int status;
+  int status = NO_ERROR;
 
   switch (command_type)
     {
@@ -1361,7 +1366,7 @@ process_repl_agent (int command_type, char *name, char *password)
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_REPL_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (PRM_TCP_PORT_ID))
+      if (css_does_master_exist (prm_get_master_port_id ()))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_REPL_STATUS, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
@@ -1435,7 +1440,7 @@ load_properties (void)
   if (sysprm_obtain_parameters (service_list, 4096) == NO_ERROR)
     {
       char *save_ptr1, *save_ptr2, *value, *util;
-      char *delim = "\t=\"";
+      char *delim = (char *) "\t=\"";
       value = strtok_r (service_list, delim, &save_ptr1);
       value = strtok_r (NULL, delim, &save_ptr1);
       if (value != NULL)
@@ -1472,7 +1477,7 @@ load_properties (void)
   if (sysprm_obtain_parameters (server_list, 4096) == NO_ERROR)
     {
       char *save_ptr, *value;
-      char *delim = "\t=\"";
+      char *delim = (char *) "\t=\"";
       value = strtok_r (server_list, delim, &save_ptr);
       value = strtok_r (NULL, delim, &save_ptr);
       if (value != NULL)

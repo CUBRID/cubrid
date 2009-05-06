@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -389,11 +389,13 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
       switch (temp_domain->type->id)
 	{
 	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
 	case DB_TYPE_ELO:
 	case DB_TYPE_TIME:
 	case DB_TYPE_UTIME:
+	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATE:
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_SUB:
@@ -662,7 +664,7 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
 {
   DB_VALUE ptype, ele, pexpr, pattr;
   PARSER_VARCHAR *buffer;
-  char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2;
+  char line[SM_MAX_IDENTIFIER_LENGTH + 1], *ptr, *ptr2, *tmp;
   int save;
 
   if (partinfo == NULL)
@@ -695,7 +697,8 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
 	  break;
 	}
 
-      ptr = strstr (DB_GET_STRING (&pexpr), "SELECT ");
+      tmp = DB_GET_STRING (&pexpr);
+      ptr = strstr (tmp, "SELECT ");
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");
@@ -2864,7 +2867,7 @@ char **
 help_class_names (const char *qualifier)
 {
   DB_OBJLIST *mops, *m;
-  char **names;
+  char **names, *tmp;
   const char *cname;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
@@ -2910,7 +2913,8 @@ help_class_names (const char *qualifier)
 		  if (!requested_owner
 		      && db_get (owner, "name", &owner_name) >= 0)
 		    {
-		      strcpy (buffer, DB_GET_STRING (&owner_name));
+		      tmp = DB_GET_STRING (&owner_name);
+		      strcpy (buffer, tmp);
 		      strcat (buffer, ".");
 		      db_value_clear (&owner_name);
 		    }
@@ -3629,8 +3633,13 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  sprintf (line, "%lld", (long long) db_get_bigint (value));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+
 	case DB_TYPE_POINTER:
-	  sprintf (line, "%lx", (unsigned long) db_get_pointer (value));
+	  sprintf (line, "%p", db_get_pointer (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -3653,9 +3662,9 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 numeric_db_value_print ((DB_VALUE *) value));
+	  buffer = pt_append_nulstring (parser, buffer,
+					numeric_db_value_print ((DB_VALUE *)
+								value));
 	  break;
 
 	case DB_TYPE_BIT:
@@ -3689,14 +3698,16 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	       */
 	      if (pos < end)
 		{
-		  length = pos - src + 1;
+		  length = CAST_STRLEN (pos - src + 1);
 		  buffer = pt_append_bytes (parser, buffer, src, length);
 		  buffer = pt_append_nulstring (parser, buffer, "'");
 		}
 	      /* If not, copy the remaining part of the buffer */
 	      else
 		{
-		  buffer = pt_append_bytes (parser, buffer, src, end - src);
+		  buffer =
+		    pt_append_bytes (parser, buffer, src,
+				     CAST_STRLEN (end - src));
 		}
 
 	      /* advance src to just beyond the point where we left off */
@@ -3798,7 +3809,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		}
 	      else
 		{
-		  sprintf (line, "%lx", (unsigned long) elo);
+		  sprintf (line, "%p", elo);
 		}
 	      buffer = pt_append_nulstring (parser, buffer, line);
 	    }
@@ -3825,6 +3836,12 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_UTIME:
 	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER,
 				     DB_GET_UTIME (value));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+
+	case DB_TYPE_DATETIME:
+	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER,
+					DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -3919,6 +3936,12 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
 
+	case DB_TYPE_DATETIME:
+	  buffer = pt_append_nulstring (parser, buffer, "datetime '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  buffer = pt_append_nulstring (parser, buffer, "N'");
@@ -3988,7 +4011,7 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
        * Don't break the string in the middle of internal quotes('') */
       if (*pos == '\'')
 	{			/* put '\'' */
-	  length = pos - src + 1;
+	  length = CAST_STRLEN (pos - src + 1);
 	  buffer = pt_append_bytes (parser, buffer, src, length);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  token_length += 1;	/* for appended '\'' */
@@ -3997,7 +4020,7 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	}
       else if (token_length > max_token_length)
 	{			/* long string */
-	  length = pos - src + 1;
+	  length = CAST_STRLEN (pos - src + 1);
 	  buffer = pt_append_bytes (parser, buffer, src, length);
 	  buffer = pt_append_nulstring (parser, buffer, delimiter);
 	  token_length = 0;	/* reset token_len for the next new token */
@@ -4007,7 +4030,7 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
     }
 
   /* dump the remainings */
-  length = pos - src;
+  length = CAST_STRLEN (pos - src);
   buffer = pt_append_bytes (parser, buffer, src, length);
 
   return (buffer);
@@ -4029,7 +4052,7 @@ help_fprint_value (FILE * fp, const DB_VALUE * value)
 
   parser = parser_create_parser ();
   buffer = describe_value (parser, NULL, value);
-  fprintf (fp, "%.*s", pt_get_varchar_length (buffer),
+  fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer),
 	   pt_get_varchar_bytes (buffer));
   parser_free_parser (parser);
 }

@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -38,12 +38,13 @@
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#ifdef UNICODE_DATA
+#ifdef WINDOWS
 #include <winsock2.h>
 #include <windows.h>
 #endif
@@ -60,6 +61,9 @@
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
+#if defined(WINDOWS)
+#define strtoll	_strtoi64
+#endif
 
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
@@ -94,6 +98,22 @@ static char is_float_str (char *str);
 /************************************************************************
  * IMPLEMENTATION OF PUBLIC FUNCTIONS	 				*
  ************************************************************************/
+
+int
+ut_str_to_bigint (char *str, INT64 * value)
+{
+  char *end_p;
+  INT64 bi_val;
+
+  bi_val = strtoll (str, &end_p, 10);
+  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
+    {
+      *value = bi_val;
+      return 0;
+    }
+
+  return (CCI_ER_TYPE_CONVERSION);
+}
 
 int
 ut_str_to_int (char *str, int *value)
@@ -190,6 +210,53 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
 }
 
 int
+ut_str_to_mtime (char *str, T_CCI_DATE * value)
+{
+  char *p, *q;
+  int hh, mm, ss, ms;
+
+  p = str;
+  q = strchr (p, ':');
+  if (q == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+  hh = atoi (p);
+  p = q + 1;
+
+  q = strchr (p, ':');
+  if (q == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+  mm = atoi (p);
+
+  q = strchr (p, '.');
+  if (q == NULL)
+    {
+      ss = atoi (p);
+      ms = 0;
+    }
+  else
+    {
+      ss = atoi (p);
+      ms = (int) (strtod (q, &p) * 1000 + 0.5);
+      if (q == p)
+	{
+	  return CCI_ER_TYPE_CONVERSION;
+	}
+    }
+
+  memset (value, 0, sizeof (T_CCI_DATE));
+  value->hh = hh;
+  value->mm = mm;
+  value->ss = ss;
+  value->ms = ms;
+
+  return 0;
+}
+
+int
 ut_str_to_timestamp (char *str, T_CCI_DATE * value)
 {
   T_CCI_DATE date;
@@ -214,6 +281,36 @@ ut_str_to_timestamp (char *str, T_CCI_DATE * value)
   value->hh = time.hh;
   value->mm = time.mm;
   value->ss = time.ss;
+
+  return 0;
+}
+
+int
+ut_str_to_datetime (char *str, T_CCI_DATE * value)
+{
+  T_CCI_DATE date;
+  T_CCI_DATE mtime;
+  char *p;
+  int err_code;
+
+  p = strchr (str, ' ');
+
+  if ((err_code = ut_str_to_date (str, &date)) < 0)
+    {
+      return err_code;
+    }
+  if ((err_code = ut_str_to_mtime (p, &mtime)) < 0)
+    {
+      return err_code;
+    }
+
+  value->yr = date.yr;
+  value->mon = date.mon;
+  value->day = date.day;
+  value->hh = mtime.hh;
+  value->mm = mtime.mm;
+  value->ss = mtime.ss;
+  value->ms = mtime.ms;
 
   return 0;
 }
@@ -253,9 +350,9 @@ ut_str_to_oid (char *str, T_OBJECT * value)
 }
 
 void
-ut_int_to_str (int value, char *str)
+ut_int_to_str (INT64 value, char *str)
 {
-  sprintf (str, "%d", value);
+  sprintf (str, "%lld", (long long) value);
 }
 
 void
@@ -281,11 +378,17 @@ ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str)
     {
       sprintf (str, "%d:%d:%d", value->hh, value->mm, value->ss);
     }
-  else
-    {				/* u_type == CCI_U_TYPE_TIMESTAMP */
+  else if (u_type == CCI_U_TYPE_TIMESTAMP)
+    {
       sprintf (str, "%d-%d-%d %d:%d:%d",
 	       value->yr, value->mon, value->day,
 	       value->hh, value->mm, value->ss);
+    }
+  else
+    {				/* u_type == CCI_U_TYPE_DATETIME */
+      sprintf (str, "%d-%d-%d %d:%d:%d.%03d",
+	       value->yr, value->mon, value->day,
+	       value->hh, value->mm, value->ss, value->ms);
     }
 }
 

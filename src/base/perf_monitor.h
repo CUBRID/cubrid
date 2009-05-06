@@ -35,6 +35,7 @@
 #include "dbtype.h"
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
+
 #include "thread_impl.h"
 
 /* perf_monitor_1.h */
@@ -61,26 +62,26 @@ struct diag_sys_config
 typedef struct t_diag_monitor_db_value T_DIAG_MONITOR_DB_VALUE;
 struct t_diag_monitor_db_value
 {
-  long long query_open_page;
-  long long query_opened_page;
-  long long query_slow_query;
-  long long query_full_scan;
-  long long conn_cli_request;
-  long long conn_aborted_clients;
-  long long conn_conn_req;
-  long long conn_conn_reject;
-  long long buffer_page_write;
-  long long buffer_page_read;
-  long long lock_deadlock;
-  long long lock_request;
+  INT64 query_open_page;
+  INT64 query_opened_page;
+  INT64 query_slow_query;
+  INT64 query_full_scan;
+  INT64 conn_cli_request;
+  INT64 conn_aborted_clients;
+  INT64 conn_conn_req;
+  INT64 conn_conn_reject;
+  INT64 buffer_page_write;
+  INT64 buffer_page_read;
+  INT64 lock_deadlock;
+  INT64 lock_request;
 };
 
 typedef struct t_diag_monitor_cas_value T_DIAG_MONITOR_CAS_VALUE;
 struct t_diag_monitor_cas_value
 {
-  long long reqs_in_interval;
+  INT64 reqs_in_interval;
+  INT64 transactions_in_interval;
   int active_sessions;
-  long long transactions_in_interval;
 };
 
 /* Monitor config related structure */
@@ -360,13 +361,6 @@ extern int mnt_Num_tran_exec_stats;
 
 
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
-#if defined(SERVER_MODE)
-extern int xmnt_server_start_stats (THREAD_ENTRY * thread_p);
-extern void xmnt_server_stop_stats (THREAD_ENTRY * thread_p);
-extern void xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
-				    MNT_SERVER_EXEC_STATS * to_stats);
-extern void xmnt_server_reset_stats (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 
 extern int mnt_server_init (int num_tran_indices);
 extern void mnt_server_final (void);

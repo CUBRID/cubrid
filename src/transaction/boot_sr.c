@@ -973,12 +973,14 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
 {
   VOLID volid;
   char vol_fullname[PATH_MAX];
-  char vol_realpath[PATH_MAX];
   char ext_path_buf[PATH_MAX];
   DKNPAGES part_npages;
+#if !defined(WINDOWS)
+  char vol_realpath[PATH_MAX];
   char link_path[PATH_MAX];
   char link_fullname[PATH_MAX];
   struct stat stat_buf;
+#endif
 
   /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
@@ -1059,7 +1061,7 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
       strcpy (vol_fullname, link_fullname);
 
       /* we don't know character special files size */
-      part_npages = LONG_MAX;
+      part_npages = VOL_MAX_NPAGES;
     }
   else
     {
@@ -1082,15 +1084,15 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
   if (ext_npages > part_npages && part_npages >= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_OUT_OF_SPACE, 5,
-	      vol_fullname, ext_npages, (ext_npages * (IO_PAGESIZE / 1024)),
-	      part_npages, (part_npages * (IO_PAGESIZE / 1024)));
+	      vol_fullname, ext_npages,
+	      ((IO_PAGESIZE / 1024) * ((off_t) ext_npages)),
+	      part_npages, ((IO_PAGESIZE / 1024) * ((off_t) part_npages)));
       volid = NULL_VOLID;
     }
   else
     {
-      volid =
-	boot_add_volume (thread_p, vol_fullname, "Volume Extension",
-			 ext_npages, ext_purpose, ext_overwrite);
+      volid = boot_add_volume (thread_p, vol_fullname, "Volume Extension",
+			       ext_npages, ext_purpose, ext_overwrite);
     }
 
   csect_exit (CSECT_BOOT_SR_DBPARM);
@@ -1116,8 +1118,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   VOLID volid;
   DKNPAGES ext_npages;
 
-  ext_npages = (int) ((float) xdisk_get_total_numpages (thread_p,
-							LOG_DBFIRST_VOLID));
+  ext_npages = xdisk_get_total_numpages (thread_p, LOG_DBFIRST_VOLID);
 
   if (setpage_type != DISK_NONCONTIGUOUS_SPANVOLS_PAGES
       && ext_npages < min_npages)
@@ -1130,11 +1131,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
       ext_npages = BOOT_VOLUME_MINPAGES;
     }
 
-  /* TODO: M2 64-bit */
-#if !defined(LP64)
-  /* under ILP32, max(off_t) is 2G. */
-  ext_npages = MIN (ext_npages, (INT_MAX / IO_PAGESIZE));
-#endif /* !LP64 */
+  ext_npages = MIN (ext_npages, VOL_MAX_NPAGES);
 
   volid =
     boot_xadd_volume_extension (thread_p, NULL, NULL,
@@ -1215,7 +1212,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
-      ext_npages = strlen (line);
+      ext_npages = (DKNPAGES) strlen (line);
       if (line[ext_npages - 1] != '\n')
 	{
 	  line[ext_npages] = '\n';
@@ -1513,7 +1510,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   if (disk_get_first_total_free_numpages (thread_p, DISK_PERMVOL_TEMP_PURPOSE,
 					  &total_pgs, &free_pgs) >= 0)
     {
-      ext_npages = total_pgs * 0.2;	/* use the size as already created  */
+      ext_npages = (DKNPAGES) (total_pgs * 0.2);	/* use the size as already created  */
     }
   else
     {
@@ -1589,19 +1586,13 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	  /*
 	   * must add system pages of temp volumes.
 	   */
-	  /* TODO: M2 64-bit */
-#if !defined(LP64)
-	  /* under ILP32, max(off_t) is 2G. */
-	  int possible_max_npages = INT_MAX / IO_PAGESIZE;
+	  int possible_max_npages;
 	  possible_max_npages = MIN (ext_npages + boot_Temp_volumes_sys_pages,
-				     possible_max_npages);
-#else /* !LP64 */
-	  int possible_max_npages = ext_npages + boot_Temp_volumes_sys_pages;
-#endif /* !LP64 */
-	  temp_volid =
-	    boot_add_volume (thread_p, temp_vol_fullname, "Temporary Volume",
-			     possible_max_npages, DISK_TEMPVOL_TEMP_PURPOSE,
-			     true);
+				     VOL_MAX_NPAGES);
+	  temp_volid = boot_add_volume (thread_p, temp_vol_fullname,
+					"Temporary Volume",
+					possible_max_npages,
+					DISK_TEMPVOL_TEMP_PURPOSE, true);
 	  if (temp_volid != NULL_VOLID)
 	    {
 	      boot_Temp_volumes_tpgs += ext_npages;
@@ -2485,10 +2476,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
   char dbtxt_label[PATH_MAX];
+#if defined (NDEBUG)
   char format[BOOT_FORMAT_MAX_LENGTH];
+#endif
   int error_code;
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
+#if !defined(WINDOWS)
   struct stat stat_buf;
+#endif
   char *new_db_path = NULL;
   char *new_log_path = NULL;
   bool is_exist_volume;
@@ -2560,7 +2555,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
    */
   if (db_path_info->db_path == NULL)
     {
-      db_path_info->db_path = "";
+      db_path_info->db_path = (char *) "";
     }
   else
     {
@@ -3023,7 +3018,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   bool old_object;
+#if defined (NDEBUG)
   char format[BOOT_FORMAT_MAX_LENGTH];
+#endif
   int tran_index = NULL_TRAN_INDEX;
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
@@ -3176,6 +3173,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   /* initialize the type/doain module (also sets up an area) */
   tp_init ();
+
+  init_diag_mgr (db_name, MAX_NTHRDS, NULL);
 #endif /* SERVER_MODE */
 
   /*
@@ -3999,6 +3998,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool iserfinal)
   catcls_finalize_class_oid_to_oid_hash_table ();
 
 #if defined(SERVER_MODE)
+  close_diag_mgr ();
   tp_final ();
   locator_free_areas ();
   set_final ();
@@ -5595,7 +5595,9 @@ boot_find_new_db_path (char *db_pathbuf,
   char from_volname[PATH_MAX];	/* Name of new volume      */
   int from_volid;
   char *name;
+#if !defined(WINDOWS)
   struct stat stat_buf;
+#endif
 
   if (fileof_vols_and_wherepaths != NULL)
     {

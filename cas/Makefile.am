@@ -57,7 +57,7 @@ libcas_a_SOURCES = \
 	$(BROKER_DIR)/cas_log.c \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c
-libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP
+libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP -fPIC
 
 lib_LTLIBRARIES = libcascci.la libbrokeradmin.la
 libcascci_la_SOURCES = \

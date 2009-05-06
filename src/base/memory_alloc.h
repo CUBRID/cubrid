@@ -53,47 +53,32 @@
 #define DB_SIZEOF(val)          (sizeof(val))
 
 /*
- * Mascros related to alignmentss
+ * Macros related to alignments
  * TODO: Check LP64
  */
-#define CHAR_ALIGNMENT          (size_t)sizeof(char)
-#define SHORT_ALIGNMENT         (size_t)sizeof(short)
-#define INT_ALIGNMENT           (size_t)sizeof(int)
-#define LONG_ALIGNMENT          (size_t)sizeof(long)
-#define FLOAT_ALIGNMENT         (size_t)sizeof(float)
-#define DOUBLE_ALIGNMENT        (size_t)sizeof(double)
+#define CHAR_ALIGNMENT          sizeof(char)
+#define SHORT_ALIGNMENT         sizeof(short)
+#define INT_ALIGNMENT           sizeof(int)
+#define LONG_ALIGNMENT          sizeof(long)
+#define FLOAT_ALIGNMENT         sizeof(float)
+#define DOUBLE_ALIGNMENT        sizeof(double)
 #define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
 
-#if defined (AIX) && defined (ALIGNMENT)
-#undef ALIGNMENT
-#endif /* AIX && ALIGNMENT */
-
-#define ALIGNMENT       INT_ALIGNMENT
-#define ALIGNMENT_MASK  ((unsigned long)(ALIGNMENT-1))
-
-#define ALIGN_BELOW(p) \
-        ((char*)((unsigned long)(p) & ~ALIGNMENT_MASK))
-#define ALIGN_ABOVE(p) \
-        ((char*)(((unsigned long)(p) + ALIGNMENT_MASK) & ~ALIGNMENT_MASK))
 #define PTR_ALIGN(addr, boundary) \
-        ((char *)((((unsigned long)(addr) + ((unsigned long)((boundary)-1)))) \
-                  & ~((unsigned long)((boundary)-1))))
+        ((char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
+                  & ~((UINTPTR)((boundary)-1))))
 
 #define DB_ALIGN(offset, align) \
-        (offset) = (((offset) + (align) - 1) & ~((align) - 1))
+        (((offset) + (align) - 1) & ~((align) - 1))
 
 #define DB_ALIGN_BELOW(offset, align) \
-        (offset) = ((offset) & ~((align) - 1))
+        ((offset) & ~((align) - 1))
 
-#define DB_WASTED_ALIGN(offset, align, wasted) \
-        { \
-          (wasted) = (offset); \
-          DB_ALIGN(wasted, align); \
-          (wasted) -= (offset); \
-        }
+#define DB_WASTED_ALIGN(offset, align) \
+        (DB_ALIGN((offset), (align)) - (offset))
 
 #define DB_ATT_ALIGN(offset) \
-        (offset) = (((offset) + (LONG_ALIGNMENT) - 1) & ~((LONG_ALIGNMENT) - 1))
+        (((offset) + (INT_ALIGNMENT) - 1) & ~((INT_ALIGNMENT) - 1))
 
 /*
  * Macros related to memory allocation
@@ -150,7 +135,7 @@ extern int ansisql_strcmp (const char *s, const char *t);
 extern int ansisql_strcasecmp (const char *s, const char *t);
 
 #if !defined (SERVER_MODE)
-extern unsigned int private_heap_id;
+extern HL_HEAPID private_heap_id;
 #endif /* SERVER_MODE */
 
 /*
@@ -164,40 +149,40 @@ extern int db_alignment (int);
  * Return the value of "n" to the next "alignment" boundary.  "alignment"
  * must be a power of 2.
  */
-extern uintptr_t db_align_to (uintptr_t n, int alignment);
+extern int db_align_to (int n, int alignment);
 
-extern unsigned int db_create_ostk_heap (int chunk_size);
-extern void db_destroy_ostk_heap (unsigned int heap_id);
+extern HL_HEAPID db_create_ostk_heap (int chunk_size);
+extern void db_destroy_ostk_heap (HL_HEAPID heap_id);
 
-extern void *db_ostk_alloc (unsigned int heap_id, size_t size);
-extern void db_ostk_free (unsigned int heap_id, void *ptr);
+extern void *db_ostk_alloc (HL_HEAPID heap_id, size_t size);
+extern void db_ostk_free (HL_HEAPID heap_id, void *ptr);
 
-extern unsigned int db_create_private_heap (void);
+extern HL_HEAPID db_create_private_heap (void);
 extern void db_clear_private_heap (THREAD_ENTRY * thread_p,
-				   unsigned int heap_id);
-extern unsigned int db_change_private_heap (THREAD_ENTRY * thread_p,
-					    unsigned int heap_id);
-extern unsigned int db_replace_private_heap (THREAD_ENTRY * thread_p);
+				   HL_HEAPID heap_id);
+extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p,
+					 HL_HEAPID heap_id);
+extern HL_HEAPID db_replace_private_heap (THREAD_ENTRY * thread_p);
 extern void db_destroy_private_heap (THREAD_ENTRY * thread_p,
-				     unsigned int heap_id);
+				     HL_HEAPID heap_id);
 extern void *db_private_alloc (void *thrd, size_t size);
 extern void *db_private_realloc (void *thrd, void *ptr, size_t size);
 extern void db_private_free (void *thrd, void *ptr);
 
-extern unsigned int db_create_fixed_heap (int req_size, int recs_per_chunk);
-extern void db_destroy_fixed_heap (unsigned int heap_id);
-extern void *db_fixed_alloc (unsigned int heap_id, size_t size);
-extern void db_fixed_free (unsigned int heap_id, void *ptr);
+extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
+extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
+extern void *db_fixed_alloc (HL_HEAPID heap_id, size_t size);
+extern void db_fixed_free (HL_HEAPID heap_id, void *ptr);
 
 #if defined(SA_MODE)
 typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
 struct private_malloc_header_s
 {
-  int magic;
+  unsigned int magic;
   int alloc_type;
 };
 
-#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafda
+#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafdaU
 
 enum
 {

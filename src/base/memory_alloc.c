@@ -44,10 +44,8 @@
 
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
-
-unsigned int private_heap_id = 0;
+HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
-
 
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
@@ -163,16 +161,14 @@ db_alignment (int n)
  *   n(in):
  *   alignment(in):
  */
-uintptr_t
-db_align_to (uintptr_t n, int alignment)
+int
+db_align_to (int n, int alignment)
 {
   /*
    * Return the least multiple of 'alignment' that is greater than or
    * equal to 'n'.  'alignment' must be a power of 2.
    */
-  return (uintptr_t) (((uintptr_t) n +
-		       ((uintptr_t) alignment -
-			1)) & ~((uintptr_t) alignment - 1));
+  return (n + alignment - 1) & ~(alignment - 1);
 }
 
 /*
@@ -180,7 +176,7 @@ db_align_to (uintptr_t n, int alignment)
  *   return: memory heap identifier
  *   chunk_size(in):
  */
-unsigned int
+HL_HEAPID
 db_create_ostk_heap (int chunk_size)
 {
   return hl_register_ostk_heap (chunk_size);
@@ -192,7 +188,7 @@ db_create_ostk_heap (int chunk_size)
  *   heap_id(in): memory heap identifier to destroy
  */
 void
-db_destroy_ostk_heap (unsigned int heap_id)
+db_destroy_ostk_heap (HL_HEAPID heap_id)
 {
   hl_unregister_ostk_heap (heap_id);
 }
@@ -204,7 +200,7 @@ db_destroy_ostk_heap (unsigned int heap_id)
  *   size(in): size to allocate
  */
 void *
-db_ostk_alloc (unsigned int heap_id, size_t size)
+db_ostk_alloc (HL_HEAPID heap_id, size_t size)
 {
   void *ptr = NULL;
   if (heap_id && size > 0)
@@ -221,7 +217,7 @@ db_ostk_alloc (unsigned int heap_id, size_t size)
  *   ptr(in): memory pointer to free
  */
 void
-db_ostk_free (unsigned int heap_id, void *ptr)
+db_ostk_free (HL_HEAPID heap_id, void *ptr)
 {
   if (heap_id && ptr)
     {
@@ -233,10 +229,10 @@ db_ostk_free (unsigned int heap_id, void *ptr)
  * db_create_private_heap () - create a thread specific heap
  *   return: memory heap identifier
  */
-unsigned int
+HL_HEAPID
 db_create_private_heap (void)
 {
-  unsigned int heap_id = 0;
+  HL_HEAPID heap_id = 0;
 #if defined (SERVER_MODE)
   heap_id = hl_register_lea_heap ();
 #else /* SERVER_MODE */
@@ -254,7 +250,7 @@ db_create_private_heap (void)
  *   heap_id(in): memory heap identifier to clear
  */
 void
-db_clear_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 {
   if (heap_id == 0)
     {
@@ -276,10 +272,10 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
  *    return: old private heap id
  *    heap_id(in): heap id
  */
-unsigned int
-db_change_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+HL_HEAPID
+db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 {
-  unsigned int old_heap_id;
+  HL_HEAPID old_heap_id;
 
 #if defined (SERVER_MODE)
   old_heap_id = css_set_private_heap (thread_p, heap_id);
@@ -298,10 +294,10 @@ db_change_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
  *   return: old memory heap identifier
  *
  */
-unsigned int
+HL_HEAPID
 db_replace_private_heap (THREAD_ENTRY * thread_p)
 {
-  unsigned int old_heap_id, heap_id;
+  HL_HEAPID old_heap_id, heap_id;
 
 #if defined (SERVER_MODE)
   old_heap_id = css_get_private_heap (thread_p);
@@ -328,7 +324,7 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
  *   heap_id(in): memory heap identifier to destroy
  */
 void
-db_destroy_private_heap (THREAD_ENTRY * thread_p, unsigned int heap_id)
+db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 {
   if (heap_id == 0)
     {
@@ -357,7 +353,7 @@ db_private_alloc (void *thrd, size_t size)
 #if defined (CS_MODE)
   return db_ws_alloc (size);
 #elif defined (SERVER_MODE)
-  unsigned int heap_id;
+  HL_HEAPID heap_id;
   void *ptr = NULL;
 
   if (size <= 0)
@@ -427,7 +423,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 #if defined (CS_MODE)
   return db_ws_realloc (ptr, size);
 #elif defined (SERVER_MODE)
-  unsigned int heap_id;
+  HL_HEAPID heap_id;
   void *new_ptr = NULL;
 
   if (size <= 0)
@@ -509,7 +505,7 @@ db_private_free (void *thrd, void *ptr)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  unsigned int heap_id;
+  HL_HEAPID heap_id;
 
   if (ptr == NULL)
     return;

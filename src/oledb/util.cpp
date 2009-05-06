@@ -350,7 +350,7 @@ void ExtractTableName(const CComBSTR &strCommandText, CComBSTR &strTableName)
 	// 이 이름을 사용하지 않는다. 물론 뽑아낸 테이블 이름은 Valid하지 않다.
 	CW2A str(strCommandText);
 	if(str==NULL) return;
-	strlwr(str);
+	_strlwr(str);
 	strTableName = "";
 
 	char *tmp = strstr(str, "from ");

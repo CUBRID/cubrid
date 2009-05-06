@@ -53,24 +53,20 @@ struct or_attribute
   OID classoid;			/* source class object id */
 
   /* could this be converted to a server side DB_VALUE ? */
-  int val_length;		/* default value lenght */
   void *value;			/* default value */
-
-  BTID index;			/* btree id if indexed */
-
-  int n_btids;			/* Number of ID's in the btids array */
   BTID *btids;			/* B-tree ID's for indexes and constraints */
-
-  unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
-
   TP_DOMAIN *domain;		/* full domain of this attribute */
+  int val_length;		/* default value lenght */
+  int n_btids;			/* Number of ID's in the btids array */
+  BTID index;			/* btree id if indexed */
 
   /* local array of btid's to use  if possible */
   int max_btids;		/* Size of the btids array */
   BTID btid_pack[OR_ATT_BTID_PREALLOC];
 
-  unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   OID serial_obj;		/* db_serial's instance */
+  unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
+  unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
 };
 
 typedef enum
@@ -87,33 +83,38 @@ typedef struct or_foreign_key OR_FOREIGN_KEY;
 struct or_foreign_key
 {
   OR_FOREIGN_KEY *next;		/* for pk */
+  char *fkname;			/* foreign key name */
   OID ref_class_oid;
-  BTID ref_class_pk_btid;
   OID self_oid;
+  BTID ref_class_pk_btid;
   BTID self_btid;
   int del_action;
   int upd_action;
-  bool is_cache_obj;
   int cache_attr_id;
-  char *fkname;			/* foreign key name */
+  bool is_cache_obj;
 };
 
 typedef struct or_index OR_INDEX;
 struct or_index
 {
   OR_INDEX *next;
-  BTID btid;			/* btree ID */
-  BTREE_TYPE type;		/* btree type */
-  int n_atts;			/* Number of associated attributes */
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
   char *btname;			/* index( or constraint) name */
   OR_FOREIGN_KEY *fk;
+  BTREE_TYPE type;		/* btree type */
+  int n_atts;			/* Number of associated attributes */
+  BTID btid;			/* btree ID */
 };
 
 typedef struct or_classrep OR_CLASSREP;
 struct or_classrep
 {
   OR_CLASSREP *next;
+
+  OR_ATTRIBUTE *attributes;	/* list of attributes */
+  OR_ATTRIBUTE *shared_attrs;	/* list of shared attributes */
+  OR_ATTRIBUTE *class_attrs;	/* list of class attributes */
+  OR_INDEX *indexes;		/* list of BTIDs for this class */
 
   REPR_ID id;			/* representation id */
 
@@ -124,25 +125,18 @@ struct or_classrep
   int n_class_attrs;		/* number of class attributes */
   int n_indexes;		/* number of indexes */
 
-  OR_ATTRIBUTE *attributes;	/* list of attributes */
-  OR_ATTRIBUTE *shared_attrs;	/* list of shared attributes */
-  OR_ATTRIBUTE *class_attrs;	/* list of class attributes */
-  OR_INDEX *indexes;		/* list of BTIDs for this class */
-
   unsigned needs_indexes:1;	/* flag indicating if indexes were not loaded */
 };
 
 typedef struct or_class OR_CLASS;
 struct or_class
 {
-  int n_superclasses;
   OID *superclasses;
-
-  int n_subclasses;
   OID *subclasses;
+  int n_superclasses;
+  int n_subclasses;
 
   OR_CLASSREP *representations;
-
   OID statistics;		/* object containing statistics */
 };
 

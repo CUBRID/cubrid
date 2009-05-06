@@ -41,6 +41,7 @@
 #include "set_object.h"
 #include "btree.h"
 #include "message_catalog.h"
+#include "network_interface_cl.h"
 #include "server_interface.h"
 #include "system_parameter.h"
 #include "utility.h"

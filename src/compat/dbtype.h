@@ -146,6 +146,10 @@
 
 #define DB_MAKE_INT DB_MAKE_INTEGER
 
+#define DB_MAKE_BIGINT(value, num) db_make_bigint(value, num)
+
+#define DB_MAKE_BIGINTEGER DB_MAKE_BIGINT
+
 #define DB_MAKE_FLOAT(value, num) db_make_float(value, num)
 
 #define DB_MAKE_DOUBLE(value, num) db_make_double(value, num)
@@ -193,6 +197,9 @@
 #define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
 #define DB_MAKE_MONETARY_AMOUNT(value, amount) \
     db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
+
+#define DB_MAKE_DATETIME(value, datetime_value) \
+    db_make_datetime(value, datetime_value)
 
 #define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
 
@@ -250,7 +257,11 @@
 
 #define DB_GET_INTEGER(value)           db_get_int(value)
 
-#define DB_GET_INT DB_GET_INTEGER
+#define DB_GET_INT                      DB_GET_INTEGER
+
+#define DB_GET_BIGINT(value)            db_get_bigint(value)
+
+#define DB_GET_BIGINTEGER               DB_GET_BIGINT
 
 #define DB_GET_FLOAT(value)             db_get_float(value)
 
@@ -290,6 +301,8 @@
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 
+#define DB_GET_DATETIME(value)          db_get_datetime(value)
+
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
 #define DB_GET_POINTER(value)           db_get_pointer(value)
@@ -318,16 +331,20 @@
 
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
 
-/* TODO : remove this??? */
-/* These are the limits of the integer types: DB_INT16, DB_UINT16,
-   DB_INT32 & DB_UINT32. */
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
-#define DB_INT16_MAX   0x7FFFL
-#define DB_UINT16_MAX  0xFFFFUL
+#define DB_INT16_MAX   0x7FFF
+#define DB_UINT16_MAX  0xFFFFU
 #define DB_INT32_MIN   (-(DB_INT32_MAX)-1)
-#define DB_INT32_MAX   0x7FFFFFFFL
+#define DB_INT32_MAX   0x7FFFFFFF
 #define DB_UINT32_MIN  0
-#define DB_UINT32_MAX  0xFFFFFFFFUL
+#define DB_UINT32_MAX  0xFFFFFFFFU
+#if (__WORDSIZE == 64) || defined(_WIN64)
+#define DB_BIGINT_MAX  9223372036854775807L
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1L)
+#else /* (__WORDSIZE == 64) || defined(_WIN64) */
+#define DB_BIGINT_MAX  9223372036854775807LL
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1LL)
+#endif /* (__WORDSIZE == 64) || defined(_WIN64) */
 
 #define DB_DATE_MIN        DB_UINT32_MIN
 #define DB_DATE_MAX        DB_UINT32_MAX
@@ -376,12 +393,14 @@ typedef enum
   DB_TYPE_RESULTSET = 28,	/* internal use only */
   DB_TYPE_MIDXKEY = 29,		/* internal use only */
   DB_TYPE_TABLE = 30,		/* internal use only */
+  DB_TYPE_BIGINT = 31,
+  DB_TYPE_DATETIME = 32,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_TABLE
+  DB_TYPE_LAST = DB_TYPE_DATETIME
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -408,6 +427,9 @@ union db_domain_info
   } char_info;
 };
 
+/* types used for the representation of bigint values. */
+typedef INT64 DB_BIGINT;
+
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
 
@@ -419,6 +441,13 @@ typedef DB_TIMESTAMP DB_UTIME;
 
 /* Structure used for the representation of date values. */
 typedef unsigned int DB_DATE;
+
+typedef struct db_datetime DB_DATETIME;
+struct db_datetime
+{
+  unsigned int date;		/* date */
+  unsigned int time;		/* time */
+};
 
 /* Structure used for the representation of numeric values. */
 typedef struct db_numeric DB_NUMERIC;
@@ -543,6 +572,7 @@ union db_data
 {
   int i;
   short sh;
+  DB_BIGINT bigint;
   float f;
   double d;
   void *p;
@@ -550,6 +580,7 @@ union db_data
   DB_TIME time;
   DB_DATE date;
   DB_TIMESTAMP utime;
+  DB_DATETIME datetime;
   DB_MONETARY money;
   DB_COLLECTION *set;
   DB_COLLECTION *collect;
@@ -611,6 +642,7 @@ typedef enum
 {
   DB_TYPE_C_DEFAULT = 0,
   DB_TYPE_C_FIRST = 100,	/* first for iteration */
+  DB_TYPE_C_BIGINT,
   DB_TYPE_C_INT,
   DB_TYPE_C_SHORT,
   DB_TYPE_C_LONG,
@@ -633,10 +665,12 @@ typedef enum
   DB_TYPE_C_POINTER,
   DB_TYPE_C_ERROR,
   DB_TYPE_C_IDENTIFIER,
+  DB_TYPE_C_DATETIME,
   DB_TYPE_C_LAST,		/* last for iteration   */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;
 
+typedef DB_BIGINT DB_C_BIGINT;
 typedef int DB_C_INT;
 typedef short DB_C_SHORT;
 typedef long DB_C_LONG;
@@ -665,6 +699,7 @@ struct db_c_date
   int day;
 };
 
+typedef DB_DATETIME DB_C_DATETIME;
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
 typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;
@@ -744,13 +779,15 @@ extern int db_make_date (DB_VALUE * value,
 extern int db_value_put_encoded_date (DB_VALUE * value,
 				      const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
-extern int db_make_monetary (DB_VALUE * value,
-			     const DB_CURRENCY type, const double amount);
+extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
+extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type,
+			     const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
 extern int db_make_error (DB_VALUE * value, const int errcode);
 extern int db_make_method_error (DB_VALUE * value,
 				 const int errcode, const char *errmsg);
 extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
+extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_string (DB_VALUE * value, const char *str);
 extern int db_make_numeric (DB_VALUE * value,
 			    const DB_C_NUMERIC num,
@@ -792,6 +829,7 @@ extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
  */
 extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
+extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
 extern DB_C_CHAR db_get_string (const DB_VALUE * value);
 extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
 extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
@@ -801,6 +839,7 @@ extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
 extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
 extern DB_TIME *db_get_time (const DB_VALUE * value);
 extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
+extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);
 extern DB_DATE *db_get_date (const DB_VALUE * value);
 extern DB_MONETARY *db_get_monetary (const DB_VALUE * value);
 extern int db_get_error (const DB_VALUE * value);

@@ -169,7 +169,7 @@ extern int au_drop_user (MOP user);
 extern int au_set_password (MOP user, const char *password);
 
 extern const char *au_user_name (void);
-extern const char *au_user_name_dup (void);
+extern char *au_user_name_dup (void);
 extern int au_user_password (char *buffer);
 
 /* grant/revoke */

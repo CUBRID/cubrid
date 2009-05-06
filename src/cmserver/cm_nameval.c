@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * nameval.c - 
+ * nameval.c -
  */
 
 #ident "$Id$"
@@ -31,7 +31,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <unistd.h>
 #endif
 
@@ -44,7 +44,8 @@ static int _nv_make_room (nvplist * ref);
 static nvpair *_nv_search (nvplist * ref, const char *name);
 
 nvplist *
-nv_create (int defsize, char *lom, char *lcm, char *dm, char *em)
+nv_create (int defsize, const char *lom, const char *lcm, const char *dm,
+	   const char *em)
 {
   nvplist *nvpl;
 
@@ -57,7 +58,7 @@ nv_create (int defsize, char *lom, char *lcm, char *dm, char *em)
 }
 
 int
-nv_locate (nvplist * ref, char *marker, int *index, int *ilen)
+nv_locate (nvplist * ref, const char *marker, int *index, int *ilen)
 {
   int i;
   char *nbuf, *vbuf;
@@ -148,7 +149,8 @@ nv_add_nvp_int (nvplist * ref, const char *name, int value)
 }
 
 int
-nv_add_nvp_float (nvplist * ref, const char *name, float value, char *fmt)
+nv_add_nvp_float (nvplist * ref, const char *name, float value,
+		  const char *fmt)
 {
   char strbuf[32];
   sprintf (strbuf, fmt, value);
@@ -156,7 +158,7 @@ nv_add_nvp_float (nvplist * ref, const char *name, float value, char *fmt)
 }
 
 int
-nv_add_nvp_time (nvplist * ref, const char *name, time_t t, char *fmt,
+nv_add_nvp_time (nvplist * ref, const char *name, time_t t, const char *fmt,
 		 int type)
 {
   char strbuf[64];
@@ -170,7 +172,7 @@ nv_add_nvp_time (nvplist * ref, const char *name, time_t t, char *fmt,
  *  return : char* if successful, NULL if error
  */
 char *
-nv_get_val (nvplist * ref, char *name)
+nv_get_val (nvplist * ref, const char *name)
 {
   nvpair *nvp;
 
@@ -404,7 +406,8 @@ _nv_search (nvplist * ref, const char *name)
  * return : # of nvpair slots created if successful, -1 if error
  */
 int
-nv_init (nvplist * ref, int defsize, char *lom, char *lcm, char *dm, char *em)
+nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm,
+	 const char *dm, const char *em)
 {
   if ((ref == NULL) || (defsize < 1))
     return -1;

@@ -114,7 +114,7 @@ query_prepare (const char *qstr, const char *stream, int size,
  *   srv_cache_time(in) :
  */
 int
-query_execute (const XASL_ID * xasl_id, int *query_idp,
+query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	       int var_cnt, const DB_VALUE * varptr,
 	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
 	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
@@ -160,7 +160,7 @@ query_execute (const XASL_ID * xasl_id, int *query_idp,
  *       calling regu_free_listid.
  */
 int
-query_prepare_and_execute (char *stream, int size, int *query_id,
+query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
 			   int var_cnt, DB_VALUE * varptr,
 			   QFILE_LIST_ID ** result, QUERY_FLAG flag)
 {

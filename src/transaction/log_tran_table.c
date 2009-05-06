@@ -89,7 +89,7 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   NULL,				/* db_name */
   NULL,				/* db_user */
   NULL,				/* db_password */
-  "(system)",			/* program_name */
+  (char *) "(system)",		/* program_name */
   NULL,				/* login_name */
   NULL,				/* host_name */
   -1				/* process_id */
@@ -1932,9 +1932,9 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
-      *client_prog_name = log_Client_id_unknown_string;
-      *client_user_name = log_Client_id_unknown_string;
-      *client_host_name = log_Client_id_unknown_string;
+      *client_prog_name = (char *) log_Client_id_unknown_string;
+      *client_user_name = (char *) log_Client_id_unknown_string;
+      *client_host_name = (char *) log_Client_id_unknown_string;
       *client_pid = -1;
       return ER_FAILED;
     }

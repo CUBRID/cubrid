@@ -73,8 +73,8 @@ enum
 typedef struct css_critical_section
 {
   MUTEX_T lock;			/* read/write monitor lock */
-  int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
   COND_T readers_ok;		/* start waiting readers */
+  int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
   unsigned int waiting_writers;	/* # of waiting writers */
   COND_T writer_ok;		/* start a waiting writer */
   THREAD_T owner;		/* CS owner writer */

@@ -108,7 +108,8 @@ extern int repl_log_insert_schema (THREAD_ENTRY * thread_p,
 				   REPL_INFO_SCHEMA * repl_schema);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
-extern int repl_add_savepoint_info (THREAD_ENTRY * thread_p, const char *sp_name);
+extern int repl_add_savepoint_info (THREAD_ENTRY * thread_p,
+				    const char *sp_name);
 extern int repl_log_abort_to_savepoint (THREAD_ENTRY * thread_p,
 					const char *sp_name);
 extern void repl_free_savepoint_info (REPL_SAVEPOINT_INFO * node);

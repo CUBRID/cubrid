@@ -32,6 +32,7 @@ package cubridmanager.cubrid.dialog;
 
 import java.text.NumberFormat;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Button;
@@ -245,8 +246,17 @@ public class COPYDBDialog extends Dialog {
 						else
 							IDOK.setEnabled(true);
 						if (!isChanged) {
-							String newpath = MainRegistry.envCUBRID_DATABASES
-									+ "/" + tmp;
+						/** update by robinhood in 20090427 begin * */
+							// String newpath = MainRegistry.envCUBRID_DATABASES +
+							// "/" + tmp;
+							String newpath = "";
+							if ("NT".equals(MainRegistry.hostOsInfo)) {
+								newpath = MainRegistry.envCUBRID_DATABASES + "\\" + tmp;
+							} else {
+								newpath = MainRegistry.envCUBRID_DATABASES + "/" + tmp;
+							}
+						/** update by robinhood in 20090427 end * */
+
 							EDIT_COPYDB_DESTDATADIR.setText(newpath);
 							EDIT_COPYDB_EXVOLDIR.setText(newpath);
 							EDIT_COPYDB_DESTLOGDIR.setText(newpath);
@@ -481,6 +491,16 @@ public class COPYDBDialog extends Dialog {
 		for (int i = 0, n = LIST_COPYDB_VOLLIST.getColumnCount(); i < n; i++) {
 			LIST_COPYDB_VOLLIST.getColumn(i).pack();
 		}
+
+		/*  add by robinhood in 20090427 begin*/
+		if(srcLogDir==null)
+			srcLogDir="";
+		if ("NT".equals(MainRegistry.hostOsInfo)) {
+			srcLogDir = Pattern.compile("/").matcher(srcLogDir).replaceAll("\\\\");
+		} else {
+			srcLogDir = Pattern.compile("\\\\").matcher(srcLogDir).replaceAll("/");
+		}
+		/*  add by robinhood in 20090427 end*/
 		Collections.sort(CopyAction.ai.Volinfo);
 		EDIT_COPYDB_SOURCEDB.setText(CopyAction.ai.dbname);
 		EDIT_COPYDB_SRCDATADIR.setText(CopyAction.ai.dbdir);
@@ -531,6 +551,7 @@ public class COPYDBDialog extends Dialog {
 		requestMsg += "destdbpath:" + EDIT_COPYDB_DESTDATADIR.getText() + "\n";
 		requestMsg += "exvolpath:" + EDIT_COPYDB_EXVOLDIR.getText() + "\n";
 		requestMsg += "logpath:" + EDIT_COPYDB_DESTLOGDIR.getText() + "\n";
+		
 		if (CHECK_COPYDB_OVERWRITE.getSelection())
 			requestMsg += "overwrite:y\n";
 		else

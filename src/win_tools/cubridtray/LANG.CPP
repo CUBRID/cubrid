@@ -17,9 +17,9 @@ CStdioFile	file;
 CString	tmpStr, tmpMsg;
 int		ptr, count;
 
-	if (!strnicmp(lang, "ko_KR", 4)) {
+	if (!_strnicmp(lang, "ko_KR", 4)) {
 		m_menu = IDR_POPUP_KOREAN;
-	} else if (!strnicmp(lang, "en_US", 4)) {
+	} else if (!_strnicmp(lang, "en_US", 4)) {
 		m_menu = IDR_POPUP_ENGLISH;
 	} else {
 		m_menu = IDR_POPUP_ENGLISH;

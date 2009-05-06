@@ -113,7 +113,7 @@ utility_csql_print (int message_num, ...)
 }
 
 /*
- * main() - csql main module. 
+ * main() - csql main module.
  *   return: no return if no error,
  *           EXIT_FAILURE otherwise.
  */
@@ -198,7 +198,7 @@ main (int argc, char *argv[])
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
 			      VERSION);
-	  return;
+	  return 0;
 	default:
 	  goto print_usage;
 	}

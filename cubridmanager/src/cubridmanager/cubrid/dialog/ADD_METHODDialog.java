@@ -38,6 +38,7 @@ import org.eclipse.swt.SWT;
 
 import cubridmanager.ClientSocket;
 import cubridmanager.CommonTool;
+import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
 import cubridmanager.cubrid.view.CubridView;
 import cubridmanager.cubrid.dialog.PROPPAGE_CLASS_PAGE3Dialog;
@@ -158,6 +159,12 @@ public class ADD_METHODDialog extends Dialog {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						String mname = EDIT_ADD_METHOD_NAME.getText().trim();
+						if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(mname)) {
+							CommonTool.ErrorBox(dlgShell, Messages
+									.getString("ERROR.INVALIDMETHODNAMENONEASCII"));
+							return;
+						}
+						
 						String mimpl = EDIT_ADD_METHOD_IMPLEMENTATION.getText()
 								.trim();
 						if (mname.length() <= 0 || mimpl.length() <= 0) {

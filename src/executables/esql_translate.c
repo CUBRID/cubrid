@@ -18,7 +18,7 @@
  */
 
 /*
- * esql_translate.c - translate ESQL statements into sequences of 
+ * esql_translate.c - translate ESQL statements into sequences of
  *                    CUBRID CLI function calls.
  */
 
@@ -243,7 +243,8 @@ get_quasi_string (HOST_REF * ref,
 
     default:
       {
-	yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE), "emit_prepare");
+	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE),
+		       "emit_prepare");
 	*buf_str = "NULL";
 	*bufsize_str = "0";
       }
@@ -375,7 +376,7 @@ tr_rollback (void)
 }
 
 /*
- * tr_static() - emit codes to execute the given statements.   
+ * tr_static() - emit codes to execute the given statements.
  *
  * return/side-effects: none
  * stmt(in) : pointer to statement string
@@ -489,7 +490,7 @@ tr_print_n_string (char *stmt, int length)
 }
 
 /*
- * tr_open_cs() - emits codes to open a cursor. 
+ * tr_open_cs() - emits codes to open a cursor.
  *
  * return : none
  * cs_no(in) : cursor number
@@ -1216,6 +1217,14 @@ emit_put_db_value (HOST_REF * host)
       }
       break;
 
+    case C_TYPE_BIGINT:
+      {
+	type_str = (char *) "DB_TYPE_BIGINT";
+	ctype_str = "DB_TYPE_C_BITINT";
+	buf_str = pp_get_addr_expr (host);
+      }
+      break;
+
     case C_TYPE_LONG:
       {
 	type_str = (char *) "DB_TYPE_INTEGER";
@@ -1400,8 +1409,8 @@ emit_put_db_value (HOST_REF * host)
 	/*
 	 * These cases should be impossible.
 	 */
-	yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE),
-		  "emit_put_db_value");
+	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE),
+		       "emit_put_db_value");
 	type_str = (char *) "DB_TYPE_UNKNOWN";
 	ctype_str = "0";
 	buf_str = "NULL";

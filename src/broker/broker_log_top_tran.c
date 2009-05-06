@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_log_top_tran.c - 
+ * broker_log_top_tran.c -
  */
 
 #ident "$Id$"
@@ -46,8 +46,7 @@ struct t_log_info
 
 static int log_top (FILE * fp, char *filename);
 static int info_delete (T_LOG_INFO * info);
-static int info_delete (T_LOG_INFO * info);
-static void print_result ();
+static void print_result (void);
 static int info_add (T_LOG_INFO * info, char *start_date, char *end_date);
 
 static int info_arr_size = 0;
@@ -165,7 +164,7 @@ error:
 }
 
 static void
-print_result ()
+print_result (void)
 {
   T_LOG_INFO temp[TRAN_LOG_MAX_COUNT + 1];
   int i;

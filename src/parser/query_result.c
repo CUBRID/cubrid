@@ -42,7 +42,7 @@
 #include "db.h"
 #include "network_interface_cl.h"
 
-static size_t pt_find_size_from_dbtype (const DB_TYPE T_type);
+static int pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
 static char *pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node);
 static DB_COL_TYPE pt_get_col_type (const PARSER_CONTEXT * parser,
@@ -66,11 +66,11 @@ static PT_NODE *pt_get_from_list (const PARSER_CONTEXT * parser,
  *   return:  the bytesize of dt's memory representation
  *   T_type(in): a DB_TYPE
  */
-static size_t
+static int
 pt_find_size_from_dbtype (const DB_TYPE T_type)
 {
   PRIM type;
-  size_t size = 0;
+  int size = 0;
 
   if (T_type != DB_TYPE_NULL)
     {

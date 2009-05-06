@@ -55,6 +55,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.DateValue;
 import com.cubrid.jsp.value.DoubleValue;
 import com.cubrid.jsp.value.FloatValue;
+import com.cubrid.jsp.value.LongValue;
 import com.cubrid.jsp.value.IntValue;
 import com.cubrid.jsp.value.NullValue;
 import com.cubrid.jsp.value.NumericValue;
@@ -64,6 +65,7 @@ import com.cubrid.jsp.value.ShortValue;
 import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.TimeValue;
 import com.cubrid.jsp.value.TimestampValue;
+import com.cubrid.jsp.value.DatetimeValue;
 import com.cubrid.jsp.value.Value;
 
 import cubrid.jdbc.driver.CUBRIDResultSet;
@@ -104,6 +106,10 @@ public class ExecuteThread extends Thread
   public static final int DB_CHAR = 25;
 
   public static final int DB_RESULTSET = 28;
+
+  public static final int DB_BIGINT = 31;
+
+  public static final int DB_DATETIME = 32;
 
   private Socket client;
 
@@ -243,6 +249,9 @@ public class ExecuteThread extends Thread
     case DB_INT:
       resolvedResult = result.toIntegerObject();
       break;
+    case DB_BIGINT:
+      resolvedResult = result.toLongObject();
+      break;
     case DB_FLOAT:
       resolvedResult = result.toFloatObject();
       break;
@@ -266,7 +275,10 @@ public class ExecuteThread extends Thread
       resolvedResult = result.toDate();
       break;
     case DB_TIMESTAMP:
-      resolvedResult = result.toTimestamp();
+        resolvedResult = result.toTimestamp();
+        break;
+    case DB_DATETIME:
+      resolvedResult = result.toDatetime();
       break;
     case DB_SHORT:
       resolvedResult = result.toShortObject();
@@ -477,6 +489,10 @@ public class ExecuteThread extends Thread
       // assert paramSize == 4
       arg = new IntValue(dis.readInt(), mode, dbType);
       break;
+    case DB_BIGINT:
+      // assert paramSize == 8
+      arg = new LongValue(dis.readLong(), mode, dbType);
+      break;
     case DB_FLOAT:
       // assert paramSize == 4
       arg = new FloatValue(dis.readFloat(), mode, dbType);
@@ -560,6 +576,22 @@ public class ExecuteThread extends Thread
       arg = new TimestampValue(year, month, day, hour, min, sec, mode, dbType);
     }
       break;
+    case DB_DATETIME:
+      // assert paramSize == 7
+    {
+      int year = dis.readInt();
+      int month = dis.readInt();
+      int day = dis.readInt();
+      int hour = dis.readInt();
+      int min = dis.readInt();
+      int sec = dis.readInt();
+      int msec = dis.readInt();
+      Calendar cal = Calendar.getInstance();
+      cal.set(year, month, day, hour, min, sec);
+
+      arg = new DatetimeValue(year, month, day, hour, min, sec, msec, mode, dbType);
+    }
+      break;
     case DB_SET:
     case DB_MULTISET:
     case DB_SEQUENCE:
@@ -621,6 +653,11 @@ public class ExecuteThread extends Thread
       dos.writeInt(DB_INT);
       dos.writeInt(((Integer) result).intValue());
     }
+    else if (result instanceof Long)
+    {
+      dos.writeInt(DB_BIGINT);
+      dos.writeLong(((Long) result).longValue());
+    }
     else if (result instanceof Float)
     {
       dos.writeInt(DB_FLOAT);
@@ -653,7 +690,7 @@ public class ExecuteThread extends Thread
     }
     else if (result instanceof java.sql.Timestamp)
     {
-      dos.writeInt(DB_TIMESTAMP);
+      dos.writeInt(ret_type);
       packAndSendString(result.toString(), dos);
     }
     else if (result instanceof CUBRIDOID)

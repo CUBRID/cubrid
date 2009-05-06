@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -32,7 +32,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <io.h>
 #include <process.h>
 #else
@@ -50,7 +50,7 @@
 #include "cm_version.h"
 #include "assert.h"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
 
@@ -77,7 +77,7 @@ main (int argc, char *argv[])
   if (argc < 3)
     exit (0);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   wsa_initialize ();
 #endif
 
@@ -94,7 +94,7 @@ main (int argc, char *argv[])
   /* From now on, interpret all the message as 'en_US' type.
    * In other language setting, it may corrupt.
    */
-  putenv ("CUBRID_LANG=en_US");	/* set as default language type */
+  putenv ((char *) "CUBRID_LANG=en_US");	/* set as default language type */
 
   sprintf (cubrid_err_log_file, "%s/cmclt.%d.err", sco.dbmt_tmp_dir,
 	   (int) getpid ());

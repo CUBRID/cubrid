@@ -60,9 +60,9 @@
 #define REPL_CACHE_LOG_BUFFER_SIZE      500
 	/* the # of elements of replication page cache buffer */
 
-#define REPL_MAX_NUM_CONTIGUOS_BUFFERS(size) \
+#define REPL_MAX_NUM_CONTIGUOUS_BUFFERS(size) \
          ((unsigned int)(INT_MAX / (5*(size))))
-	/* the max # of elements of contiguos page cache buffer */
+	/* the max # of elements of contiguous page cache buffer */
 
 #define REPL_LOG_ARCHIVE_PAGE_COUNT     5000
 	/* the count of pages of copy log file */

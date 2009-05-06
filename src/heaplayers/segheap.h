@@ -62,7 +62,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   namespace HL {
 
     template <int NumBins,
-	      int (*getSizeClass) (const size_t),
+	      size_t (*getSizeClass) (const size_t),
 	      size_t (*getClassMaxSize) (const int),
 	      class LittleHeap,
 	      class BigHeap>
@@ -269,7 +269,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 namespace HL {
 
   template <int NumBins,
-	    int (*getSizeClass) (const size_t),
+	    size_t (*getSizeClass) (const size_t),
 	    size_t (*getClassMaxSize) (const int),
 	    class LittleHeap,
 	    class BigHeap>

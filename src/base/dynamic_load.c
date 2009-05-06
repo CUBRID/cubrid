@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -318,7 +318,7 @@ dl_get_temporary_name (const char *dir, const char *prefix, int lineno)
 	{
 	  fputs ("NULL) => ", stderr);
 	}
-      fprintf (stderr, "\"%s\" (0x%lx)\n", result, (unsigned long) result);
+      fprintf (stderr, "\"%s\" (0x%p)\n", result, result);
       fflush (stderr);
     }
   return result;
@@ -1224,7 +1224,7 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
   *argvp++ = this_->image_file;
   *argvp++ = "-T";
   /* TODO : consider LP64 */
-  (void) sprintf (load_point_buf, "%lx", (unsigned long) load_point);
+  (void) sprintf (load_point_buf, "%p", load_point);
   *argvp++ = load_point_buf;
   *argvp++ = "-o";
   *argvp++ = tmp_file;
@@ -2038,9 +2038,9 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	      if (dl_Debug)
 		{
 		  fprintf (stderr,
-			   "dl_open for handle: %d succeeded, value = %d\n",
+			   "dl_open for handle: %d succeeded, value = %p\n",
 			   this_->handler.top,
-			   (int) this_->handler.handles[this_->handler.top]);
+			   this_->handler.handles[this_->handler.top]);
 		}
 	      this_->handler.top++;
 	    }
@@ -2105,8 +2105,8 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
 	  if (dl_Debug)
 	    {
 	      fprintf (stderr,
-		       "resolving symbols with handle: %d, value = %d\n",
-		       j, (int) this_->handler.handles[j]);
+		       "resolving symbols with handle: %d, value = %p\n",
+		       j, this_->handler.handles[j]);
 	    }
 #if defined(HPUX)
 	  if (shl_findsym

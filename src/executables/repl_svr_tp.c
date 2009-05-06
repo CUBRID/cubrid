@@ -90,7 +90,7 @@ static int
 repl_log_pbfetch (REPL_PB * pb, int index, PAGEID pageid, int pagesize);
 static int repl_pbfetch_from_archive (PAGEID pageid, char *data);
 static void *repl_svr_find_conn_or_buf (int agentid, bool bufyn);
-static void repl_svr_shutdown_by_signal ();
+static void repl_svr_shutdown_by_signal (int sig_no);
 
 #if 0
 /******************************************************************************
@@ -1201,7 +1201,7 @@ repl_svr_shutdown_immediately ()
  *   as 1, then the working threads will check this value and will die..
  */
 static void
-repl_svr_shutdown_by_signal ()
+repl_svr_shutdown_by_signal (int ignore)
 {
   REPL_CONN *conn_p;
 

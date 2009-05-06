@@ -61,7 +61,7 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool iserfinal);
 extern void boot_donot_shutdown_client_at_exit (void);
-extern void boot_server_die_or_changed ();
+extern void boot_server_die_or_changed (void);
 extern void boot_client_all_finalize (bool iserfinal);
 #if !defined(SA_MODE)
 extern char *boot_get_host_connected (void);

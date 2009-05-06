@@ -34,6 +34,9 @@
 
 #define BOUND(x) (! UNBOUND(x))
 
+#define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
+#define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
+
 typedef enum
 {
   VACOMM_BUFFER_SEND = 1,
@@ -82,8 +85,8 @@ struct method_sig_node
 typedef struct method_sig_list METHOD_SIG_LIST;
 struct method_sig_list
 {				/* signature for methods */
-  int no_methods;		/* number of signatures */
   METHOD_SIG *method_sig;	/* one method signature */
+  int no_methods;		/* number of signatures */
 };
 
 typedef enum
@@ -144,7 +147,7 @@ extern int qdata_strcat_dbval (DB_VALUE * dbval1,
 			       DB_VALUE * res, TP_DOMAIN * domain);
 extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p,
 					    AGGREGATE_TYPE * agg_list,
-					    int query_id);
+					    QUERY_ID query_id);
 extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 					  AGGREGATE_TYPE * agg_list,
 					  VAL_DESCR * vd);
@@ -169,14 +172,14 @@ extern void regu_set_global_error (void);
 
 extern int query_prepare (const char *qstr,
 			  const char *stream, int size, XASL_ID ** xasl_idp);
-extern int query_execute (const XASL_ID * xasl_id, int *query_idp,
+extern int query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 			  int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
 			  CACHE_TIME * clt_cache_time,
 			  CACHE_TIME * srv_cache_time);
 extern int query_prepare_and_execute (char *stream,
 				      int size,
-				      int *query_id,
+				      QUERY_ID * query_id,
 				      int var_cnt,
 				      DB_VALUE * varptr,
 				      QFILE_LIST_ID ** result,

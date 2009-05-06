@@ -76,6 +76,8 @@ abstract public class UUType
   public static final byte U_TYPE_SEQUENCE = 18;
   public static final byte U_TYPE_OBJECT = 19;
   public static final byte U_TYPE_RESULTSET = 20;
+  public static final byte U_TYPE_BIGINT = 21;
+  public static final byte U_TYPE_DATETIME = 22;
 
   static boolean isCollectionType(byte type)
   {
@@ -101,6 +103,8 @@ abstract public class UUType
       return UUType.U_TYPE_SHORT;
     else if (values instanceof Integer[])
       return UUType.U_TYPE_INT;
+    else if (values instanceof Long[])
+      return UUType.U_TYPE_BIGINT;
     else if (values instanceof Double[])
       return UUType.U_TYPE_DOUBLE;
     else if (values instanceof Float[])
@@ -112,7 +116,7 @@ abstract public class UUType
     else if (values instanceof Time[])
       return UUType.U_TYPE_TIME;
     else if (values instanceof Timestamp[])
-      return UUType.U_TYPE_TIMESTAMP;
+      return UUType.U_TYPE_DATETIME;
     else if (values instanceof CUBRIDOID[])
       return UUType.U_TYPE_OBJECT;
     else
@@ -135,6 +139,8 @@ abstract public class UUType
       return UUType.U_TYPE_SHORT;
     else if (value instanceof Integer)
       return UUType.U_TYPE_INT;
+    else if (value instanceof Long)
+      return UUType.U_TYPE_BIGINT;
     else if (value instanceof Double)
       return UUType.U_TYPE_DOUBLE;
     else if (value instanceof Float)
@@ -146,7 +152,7 @@ abstract public class UUType
     else if (value instanceof Time)
       return UUType.U_TYPE_TIME;
     else if (value instanceof Timestamp)
-      return UUType.U_TYPE_TIMESTAMP;
+      return UUType.U_TYPE_DATETIME;
     else if (value instanceof CUBRIDOID)
       return UUType.U_TYPE_OBJECT;
     else if (value instanceof Object[])

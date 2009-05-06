@@ -73,7 +73,7 @@ static int cursor_get_first_tuple_value (char *tuple,
 static char *cursor_peek_tuple (CURSOR_ID * cursor_id);
 static int cursor_get_list_file_page (CURSOR_ID * cursor_id, VPID * vpid);
 static OID *cursor_get_oid_from_vobj (OID * current_oid_p, int length);
-static OID *cursor_get_oid_from_tuple (char *tuple_p, DATATYPE type);
+static OID *cursor_get_oid_from_tuple (char *tuple_p, DB_TYPE type);
 static int cursor_allocate_tuple_area (CURSOR_ID * cursor_id_p,
 				       int tuple_length);
 static int cursor_construct_tuple_from_overflow_pages (CURSOR_ID *
@@ -659,7 +659,7 @@ cursor_get_oid_from_vobj (OID * current_oid_p, int length)
 }
 
 static OID *
-cursor_get_oid_from_tuple (char *tuple_p, DATATYPE type)
+cursor_get_oid_from_tuple (char *tuple_p, DB_TYPE type)
 {
   OID *current_oid_p;
   int length;
@@ -815,7 +815,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
   int tupel_count, oid_index = 0, current_tuple_length, i;
-  DATATYPE type;
+  DB_TYPE type;
 
   /* set tuple count and point to the first tuple */
   tupel_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
@@ -866,7 +866,7 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   QFILE_TUPLE current_tuple;
   int tuple_count, oid_index = 0, current_tuple_length;
   int j, tuple_index, col_index, col_num;
-  DATATYPE type;
+  DB_TYPE type;
 
   /* set tuple count and point to the first tuple */
   tuple_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
@@ -1069,7 +1069,7 @@ cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
  *   list_id(in): List File Identifier
  */
 void
-cursor_print_list (int query_id, QFILE_LIST_ID * list_id_p)
+cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id_p)
 {
   CURSOR_ID cursor_id;
   DB_VALUE *value_list_p, *value_p;

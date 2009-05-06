@@ -133,6 +133,7 @@ JSPSERVER_SRCS = \
 		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/StringValue.java			\
 		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/TimeValue.java			\
 		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/TimestampValue.java		\
+		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/DatetimeValue.java		\
 		$(JSPSERVER_SRC_DIR)/com/cubrid/jsp/value/Value.java
 
 LOGGING_PROPERTIES = $(JSPSERVER_SRC_DIR)/logging.properties

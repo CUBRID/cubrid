@@ -224,7 +224,7 @@ main (int argc, char *argv[])
 	  break;
 	default:
 	  usage ();
-	  msgcat_final();
+	  msgcat_final ();
 	  return EXIT_FAILURE;
 	}
     }
@@ -237,7 +237,7 @@ main (int argc, char *argv[])
   else
     {
       usage ();
-      msgcat_final();
+      msgcat_final ();
       return EXIT_FAILURE;
     }
 
@@ -302,7 +302,7 @@ error:
     {
       free (class_file_path);
     }
-  msgcat_final();
+  msgcat_final ();
 
   return (status);
 }

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -323,6 +323,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     {
       goto error_exit;
     }
+
+  sysprm_set_to_default ("data_buffer_pages");
 
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
@@ -844,11 +846,11 @@ get_trantb (void)
   info->num_trans = num_trans;
   for (i = 0; i < num_trans; i++)
     {
-      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL ||
-	  (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL ||
-	  (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL ||
-	  (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL ||
-	  (ptr = or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
+      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
+	  || (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL
+	  || (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
 	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
 	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
 	goto error;
@@ -1874,7 +1876,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 				   APPLYLOGDB_MSG_NOT_IN_STANDALONE),
 	   basename (arg->argv0));
 
-error_exit:
   return EXIT_FAILURE;
 #else /* WINDOWS */
 #if defined (CS_MODE)
@@ -1882,7 +1883,7 @@ error_exit:
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *log_path;
-  const char *log_path_base;
+  char *log_path_base;
   int test_log;
   const char *dba_password;
   char *passbuf = NULL;

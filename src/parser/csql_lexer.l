@@ -1,0 +1,1164 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+/*
+ * csql_lexer.l - SQL lexer file
+ */
+
+
+
+
+
+
+%{
+#include "csql_grammar.h"
+#include "parse_tree.h"
+
+
+
+#define JP_MAX_NAME	256
+
+static int parser_yyinput_single_line(char* buff, int max_size);
+static int parser_yyinput_multi_line(char* buff, int max_size);
+static int parser_yyinput(char* buff, int max_size);
+static char* parser_c_hint(void);
+static char* parser_line_hint(void);
+static char* parser_quoted_string(char end);
+static void begin_token(char* token);
+static void generate_error_msg(PARSER_ERR_CODE error_code);
+
+extern int yyline;
+extern int yycolumn;
+extern int yycolumn_end;
+
+
+
+
+
+
+#undef YY_INPUT
+#define YY_INPUT(buffer, result, max_size) ( result = parser_yyinput(buffer, max_size))
+
+
+
+%}
+
+
+
+
+%%
+
+[ \t\r]+								{ begin_token(yytext); }
+\n									{
+										begin_token(yytext); 
+										this_parser->line = yyline++;
+										this_parser->column = yycolumn = yycolumn_end = 0;
+									}
+
+
+
+[aA][bB][sS][oO][lL][uU][tT][eE]					{ begin_token(yytext);   return ABSOLUTE_; }
+[aA][cC][tT][iI][oO][nN]						{ begin_token(yytext);   return ACTION; }
+[aA][cC][tT][iI][vV][eE]						{ begin_token(yytext);  
+										yylval.cptr = pt_makename(yytext);
+										return ACTIVE; }
+[aA][dD][dD]								{ begin_token(yytext);   return ADD; }
+[aA][dD][dD]_[mM][oO][nN][tT][hH][sS]					{ begin_token(yytext);   return ADD_MONTHS; }
+[aA][fF][tT][eE][rR]							{ begin_token(yytext);   return AFTER; }
+[aA][lL][iI][aA][sS]							{ begin_token(yytext);   return ALIAS; }
+[aA][lL][lL]								{ begin_token(yytext);   return ALL; }
+[aA][lL][lL][oO][cC][aA][tT][eE]					{ begin_token(yytext);   return ALLOCATE; }
+[aA][lL][tT][eE][rR]							{ begin_token(yytext);   return ALTER; }
+[aA][nN][aA][lL][yY][zZ][eE]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return ANALYZE; }
+[aA][nN][dD]								{ begin_token(yytext);   return AND; }
+[aA][nN][yY]								{ begin_token(yytext);   return ANY; }
+[aA][rR][eE]								{ begin_token(yytext);   return ARE; }
+[aA][sS]								{ begin_token(yytext);   return AS; }
+[aA][sS][cC]								{ begin_token(yytext);   return ASC; }
+[aA][sS][sS][eE][rR][tT][iI][oO][nN]					{ begin_token(yytext);   return ASSERTION; }
+[aA][sS][yY][nN][cC]							{ begin_token(yytext);   return ASYNC; }
+[aA][tT]								{ begin_token(yytext);   return AT; }
+[aA][tT][tT][aA][cC][hH]						{ begin_token(yytext);   return ATTACH; }
+[aA][tT][tT][rR][iI][bB][uU][tT][eE]					{ begin_token(yytext);   return ATTRIBUTE; }
+[aA][uU][tT][oO]_[iI][nN][cC][rR][eE][mM][eE][nN][tT]			{ begin_token(yytext);  
+										yylval.cptr = pt_makename(yytext);
+										return AUTO_INCREMENT; }
+[aA][vV][gG]								{ begin_token(yytext);   return AVG; }
+[bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
+[bB][eE][tT][wW][eE][eE][nN]						{ begin_token(yytext);   return BETWEEN; }
+[bB][iI][gG][iI][nN][tT]						{ begin_token(yytext);   return BIGINT;}
+[bB][iI][tT]								{ begin_token(yytext);   return BIT; }
+[bB][iI][tT]_[lL][eE][nN][gG][tT][hH]					{ begin_token(yytext);   return BIT_LENGTH; }
+[bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
+[bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
+[bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
+[bB][yY]								{ begin_token(yytext);   return BY; }
+[cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
+[cC][aA][cC][hH][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return CACHE; }
+[cC][aA][sS][cC][aA][dD][eE]						{ begin_token(yytext);   return CASCADE; }
+[cC][aA][sS][cC][aA][dD][eE][dD]					{ begin_token(yytext);   return CASCADED; }
+[cC][aA][sS][eE]							{ begin_token(yytext);   return CASE; }
+[cC][aA][sS][tT]							{ begin_token(yytext);   return CAST; }
+[cC][aA][tT][aA][lL][oO][gG]						{ begin_token(yytext);   return CATALOG; }
+[cC][hH][aA][nN][gG][eE]						{ begin_token(yytext);   return CHANGE; }
+[cC][hH][aA][rR][aA][cC][tT][eE][rR]					{ begin_token(yytext);   return CHAR_; }
+[cC][hH][aA][rR][aA][cC][tT][eE][rR]_[lL][eE][nN][gG][tT][hH]		{ begin_token(yytext);   return CHARACTER_LENGTH; }
+[cC][hH][eE][cC][kK]							{ begin_token(yytext);   return CHECK; }
+[cC][lL][aA][sS][sS]							{ begin_token(yytext);   return CLASS; }
+[cC][lL][aA][sS][sS][eE][sS]						{ begin_token(yytext);   return CLASSES; }
+[cC][lL][oO][sS][eE]							{ begin_token(yytext);   return CLOSE; }
+[cC][lL][uU][sS][tT][eE][rR]						{ begin_token(yytext);   return CLUSTER; }
+[cC][oO][aA][lL][eE][sS][cC][eE]					{ begin_token(yytext);   return COALESCE; }
+[cC][oO][lL][lL][aA][tT][eE]						{ begin_token(yytext);   return COLLATE; }
+[cC][oO][lL][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return COLLATION; }
+[cC][oO][lL][uU][mM][nN]						{ begin_token(yytext);   return COLUMN; }
+[cC][oO][mM][mM][iI][tT]						{ begin_token(yytext);   return COMMIT; }
+[cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext); 
+										yylval.cptr = pt_makename(yytext);
+										return COMMITTED; }
+[cC][oO][mM][pP][lL][eE][tT][iI][oO][nN]				{ begin_token(yytext);   return COMPLETION; }
+[cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }
+[cC][oO][nN][nN][eE][cC][tT][iI][oO][nN]				{ begin_token(yytext);   return CONNECTION; }
+[cC][oO][nN][sS][tT][rR][aA][iI][nN][tT]				{ begin_token(yytext);   return CONSTRAINT; }
+[cC][oO][nN][sS][tT][rR][aA][iI][nN][tT][sS]				{ begin_token(yytext);   return CONSTRAINTS; }
+[cC][oO][nN][tT][iI][nN][uU][eE]					{ begin_token(yytext);   return CONTINUE; }
+[cC][oO][nN][vV][eE][rR][tT]						{ begin_token(yytext);   return CONVERT; }
+[cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ begin_token(yytext);   return CORRESPONDING; }
+[cC][oO][sS][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return COST; 
+									}
+[cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
+[cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
+[cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
+[cC][uU][rR][rR][eE][nN][tT]						{ begin_token(yytext);   return CURRENT; }
+[cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][aA]				{ begin_token(yytext);   return CURRENT_DATE; }
+[cC][uU][rR][rR][eE][nN][tT]_[tT][iI][mM][eE]				{ begin_token(yytext);   return CURRENT_TIME; }
+[cC][uU][rR][rR][eE][nN][tT]_[tT][iI][mM][eE][sS][tT][aA][mM][pP]	{ begin_token(yytext);   return CURRENT_TIMESTAMP; }
+[cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][eE][tT][iI][mM][eE] 		{ begin_token(yytext);   return CURRENT_DATETIME; }
+[cC][uU][rR][rR][eE][nN][tT]_[uU][sS][eE][rR]				{ begin_token(yytext);   return CURRENT_USER; }
+[cC][uU][rR][sS][oO][rR]						{ begin_token(yytext);   return CURSOR; }
+[cC][yY][cC][lL][eE]							{ begin_token(yytext);   return CYCLE; }
+[cC][hH][aA][rR]							{ begin_token(yytext);   return CHAR_; }
+[dD][aA][tT][aA]							{ begin_token(yytext);   return DATA; }
+[dD][aA][tT][aA]_[tT][yY][pP][eE]___					{ begin_token(yytext);   return DATA_TYPE; }
+[dD][aA][yY]								{ begin_token(yytext);   return DAY_; }
+[dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ begin_token(yytext);   return DEALLOCATE; }
+[dD][eE][cC]								{ begin_token(yytext);   return NUMERIC; }
+[dD][eE][cC][iI][mM][aA][lL]						{ begin_token(yytext);   return NUMERIC; }
+[dD][eE][cC][lL][aA][rR][eE]						{ begin_token(yytext);   return DECLARE; }
+[dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return DECREMENT; }
+[dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
+[dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
+[dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
+[dD][eE][lL][eE][tT][eE]						{ begin_token(yytext);   return DELETE_; }
+[dD][eE][pP][tT][hH]							{ begin_token(yytext);   return DEPTH; }
+[dD][eE][sS][cC]							{ begin_token(yytext);   return DESC; }
+[dD][eE][sS][cC][rR][iI][bB][eE]					{ begin_token(yytext);   return DESCRIBE; }
+[dD][eE][sS][cC][rR][iI][pP][tT][oO][rR]				{ begin_token(yytext);   return DESCRIPTOR; }
+[dD][iI][aA][gG][nN][oO][sS][tT][iI][cC][sS]				{ begin_token(yytext);   return DIAGNOSTICS; }
+[dD][iI][cC][tT][iI][oO][nN][aA][rR][yY]				{ begin_token(yytext);   return DICTIONARY; }
+[dD][iI][fF][fF][eE][rR][eE][nN][cC][eE]				{ begin_token(yytext);   return DIFFERENCE_; }
+[dD][iI][sS][cC][oO][nN][nN][eE][cC][tT]				{ begin_token(yytext);   return DISCONNECT; }
+[dD][iI][sS][tT][iI][nN][cC][tT]					{ begin_token(yytext);   return DISTINCT; }
+[dD][oO][mM][aA][iI][nN]						{ begin_token(yytext);   return Domain; }
+[dD][rR][oO][pP]							{ begin_token(yytext);   return DROP; }
+[dD][aA][tT][eE]							{ begin_token(yytext);   return Date; }
+[dD][oO][uU][bB][lL][eE]						{ begin_token(yytext);   return Double; }
+[eE][aA][cC][hH]							{ begin_token(yytext);   return EACH; }
+[eE][lL][sS][eE]							{ begin_token(yytext);   return ELSE; }
+[eE][lL][sS][eE][iI][fF]						{ begin_token(yytext);   return ELSEIF; }
+[eE][nN][dD]								{ begin_token(yytext);   return END; }
+[eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }
+[eE][sS][cC][aA][pP][eE]						{ begin_token(yytext);   return ESCAPE; }
+[eE][vV][aA][lL][uU][aA][tT][eE]					{ begin_token(yytext);   return EVALUATE; }
+[eE][xX][cC][eE][pP][tT]						{ begin_token(yytext);   return EXCEPT; }
+[eE][xX][cC][eE][pP][tT][iI][oO][nN]					{ begin_token(yytext);   return EXCEPTION; }
+[eE][xX][cC][lL][uU][dD][eE]						{ begin_token(yytext);   return EXCLUDE; }
+[eE][xX][eE][cC]							{ begin_token(yytext);   return EXEC; }
+[eE][xX][eE][cC][uU][tT][eE]						{ begin_token(yytext);   return EXECUTE; }
+[eE][xX][iI][sS][tT][sS]						{ begin_token(yytext);   return EXISTS; }
+[eE][xX][tT][eE][rR][nN][aA][lL]					{ begin_token(yytext);   return EXTERNAL; }
+[eE][xX][tT][rR][aA][cC][tT]						{ begin_token(yytext);   return EXTRACT; }
+[fF][eE][tT][cC][hH]							{ begin_token(yytext);   return FETCH; }
+[fF][iI][rR][sS][tT]							{ begin_token(yytext);   return FIRST; }
+[fF][oO][rR][eE][iI][gG][nN]						{ begin_token(yytext);   return FOREIGN; }
+[fF][oO][uU][nN][dD]							{ begin_token(yytext);   return FOUND; }
+[fF][rR][oO][mM]							{ begin_token(yytext);   return FROM; }
+[fF][uU][lL][lL]							{ begin_token(yytext);   return FULL; }
+[fF][uU][nN][cC][tT][iI][oO][nN]					{ begin_token(yytext);   return FUNCTION; }
+[fF][aA][lL][sS][eE]							{ begin_token(yytext);   return False; }
+[fF][iI][lL][eE]							{ begin_token(yytext);   return File; }
+[fF][lL][oO][aA][tT]							{ begin_token(yytext);   return FLOAT_; }
+[fF][oO][rR]								{ begin_token(yytext);   return For; }
+[gG][eE][nN][eE][rR][aA][lL]						{ begin_token(yytext);   return GENERAL; }
+[gG][eE][tT]								{ begin_token(yytext);   return GET; }
+[gG][eE]_[iI][nN][fF]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GE_INF_; }
+[gG][eE]_[lL][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GE_LE_; }
+[gG][eE]_[lL][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GE_LT_; }
+[gG][lL][oO][bB][aA][lL]						{ begin_token(yytext);   return GLOBAL; }
+[gG][oO]								{ begin_token(yytext);   return GO; }
+[gG][oO][tT][oO]							{ begin_token(yytext);   return GOTO; }
+[gG][rR][aA][nN][tT]							{ begin_token(yytext);   return GRANT; }
+[gG][rR][oO][uU][pP]							{ begin_token(yytext);   return GROUP_; }
+[gG][rR][oO][uU][pP][sS]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GROUPS; }
+[gG][tT]_[iI][nN][fF]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GT_INF_; }
+[gG][tT]_[lL][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GT_LE_; }
+[gG][tT]_[lL][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return GT_LT_; }
+[hH][aA][sS][hH]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return HASH; }
+[hH][aA][vV][iI][nN][gG]						{ begin_token(yytext);   return HAVING; }
+[hH][oO][uU][rR]							{ begin_token(yytext);   return HOUR_; }
+[iI][dD][eE][nN][tT][iI][tT][yY]					{ begin_token(yytext);   return IDENTITY; }
+[iI][fF]								{ begin_token(yytext);   return IF; }
+[iI][gG][nN][oO][rR][eE]						{ begin_token(yytext);   return IGNORE_; }
+[iI][mM][mM][eE][dD][iI][aA][tT][eE]					{ begin_token(yytext);   return IMMEDIATE; }
+[iI][nN]								{ begin_token(yytext);   return IN_; }
+[iI][nN][aA][cC][tT][iI][vV][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INACTIVE; }
+[iI][nN][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INCREMENT; }
+[iI][nN][dD][eE][xX]							{ begin_token(yytext);   return INDEX; }
+[iI][nN][dD][iI][cC][aA][tT][oO][rR]					{ begin_token(yytext);   return INDICATOR; }
+[iI][nN][fF][iI][nN][iI][tT][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INFINITE_; }
+[iI][nN][fF]_[lL][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INF_LE_; }
+[iI][nN][fF]_[lL][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INF_LT_; }
+[iI][nN][hH][eE][rR][iI][tT]						{ begin_token(yytext);   return INHERIT; }
+[iI][nN][iI][tT][iI][aA][lL][lL][yY]					{ begin_token(yytext);   return INITIALLY; }
+[iI][nN][nN][eE][rR]							{ begin_token(yytext);   return INNER; }
+[iI][nN][oO][uU][tT]							{ begin_token(yytext);   return INOUT; }
+[iI][nN][pP][uU][tT]							{ begin_token(yytext);   return INPUT_; }
+[iI][nN][sS][eE][rR][tT]						{ begin_token(yytext);   return INSERT; }
+[iI][nN][sS][tT][aA][nN][cC][eE][sS]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INSTANCES; }
+[iI][nN][tT][eE][rR][sS][eE][cC][tT]					{ begin_token(yytext);   return INTERSECT; }
+[iI][nN][tT][eE][rR][sS][eE][cC][tT][iI][oO][nN]			{ begin_token(yytext);   return INTERSECTION; }
+[iI][nN][tT][eE][rR][vV][aA][lL]					{ begin_token(yytext);   return INTERVAL; }
+[iI][nN][tT][oO]							{ begin_token(yytext);   return INTO; }
+[iI][nN][vV][aA][lL][iI][dD][aA][tT][eE]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return INVALIDATE; }
+[iI][sS]								{ begin_token(yytext);   return IS; }
+[iI][sS][oO][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return ISOLATION; }
+[iI][nN][tT]								{ begin_token(yytext);   return INTEGER; }
+[iI][nN][tT][eE][gG][eE][rR]						{ begin_token(yytext);   return INTEGER; }
+[jJ][aA][vV][aA]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return JAVA; }
+[jJ][oO][iI][nN]							{ begin_token(yytext);   return JOIN; }
+[kK][eE][yY]								{ begin_token(yytext);   return KEY; }
+[lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
+[lL][aA][sS][tT]							{ begin_token(yytext);   return LAST; }
+[lL][dD][bB]								{ begin_token(yytext);   return LDB; }
+[lL][eE][aA][dD][iI][nN][gG]						{ begin_token(yytext);   return LEADING_; }
+[lL][eE][aA][vV][eE]							{ begin_token(yytext);   return LEAVE; }
+[lL][eE][fF][tT]							{ begin_token(yytext);   return LEFT; }
+[lL][eE][sS][sS]							{ begin_token(yytext);   return LESS; }
+[lL][eE][vV][eE][lL]							{ begin_token(yytext);   return LEVEL; }
+[lL][iI][kK][eE]							{ begin_token(yytext);   return LIKE; }
+[lL][iI][mM][iI][tT]							{ begin_token(yytext);   return LIMIT; }
+[lL][iI][sS][tT]							{ begin_token(yytext);   return LIST; }
+[lL][oO][cC][aA][lL]							{ begin_token(yytext);   return LOCAL; }
+[lL][oO][cC][aA][lL]_[tT][rR][aA][nN][sS][aA][cC][tT][iI][oO][nN]_[iI][dD] { begin_token(yytext);   return LOCAL_TRANSACTION_ID; }
+[lL][oO][cC][kK]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return LOCK_; }
+[lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
+[lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
+[mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }
+[mM][aA][xX][iI][mM][uU][mM]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return MAXIMUM; }
+[mM][aA][xX][vV][aA][lL][uU][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return MAXVALUE; }
+[mM][eE][mM][bB][eE][rR][sS]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return MEMBERS; }
+[mM][eE][tT][hH][oO][dD]						{ begin_token(yytext);   return METHOD; }
+[mM][iI][nN][uU][tT][eE]						{ begin_token(yytext);   return MINUTE_; }
+[mM][iI][nN][vV][aA][lL][uU][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return MINVALUE; }
+[mM][oO][dD][iI][fF][yY]						{ begin_token(yytext);   return MODIFY; }
+[mM][oO][dD][uU][lL][eE]						{ begin_token(yytext);   return MODULE; }
+[mM][oO][nN][tT][hH]							{ begin_token(yytext);   return MONTH_; }
+[mM][uU][lL][tT][iI][sS][eE][tT]					{ begin_token(yytext);   return MULTISET; }
+[mM][uU][lL][tT][iI][sS][eE][tT]_[oO][fF]				{ begin_token(yytext);   return MULTISET_OF; }
+[mM][aA][xX]								{ begin_token(yytext);   return Max; }
+[mM][iI][nN]								{ begin_token(yytext);   return Min; }
+[mM][oO][nN][eE][tT][aA][rR][yY]					{ begin_token(yytext);   return Monetary; }
+[nN][aA]								{ begin_token(yytext);   return NA; }
+[nN][aA][mM][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return NAME; }
+[nN][aA][mM][eE][sS]							{ begin_token(yytext);   return NAMES; }
+[nN][aA][tT][iI][oO][nN][aA][lL]					{ begin_token(yytext);   return NATIONAL; }
+[nN][aA][tT][uU][rR][aA][lL]						{ begin_token(yytext);   return NATURAL; }
+[nN][cC][hH][aA][rR]							{ begin_token(yytext);   return NCHAR; }
+[nN][eE][xX][tT]							{ begin_token(yytext);   return NEXT; }
+[nN][oO]								{ begin_token(yytext);   return NO; }
+[nN][oO][cC][yY][cC][lL][eE]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return NOCYCLE; }
+[nN][oO][mM][aA][xX][vV][aA][lL][uU][eE]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return NOMAXVALUE; }
+[nN][oO][mM][iI][nN][vV][aA][lL][uU][eE]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return NOMINVALUE; }
+[nN][oO][nN][eE]							{ begin_token(yytext);   return NONE; }
+[nN][oO][tT]								{ begin_token(yytext);   return NOT; }
+[nN][uU][lL][lL][iI][fF]						{ begin_token(yytext);   return NULLIF; }
+[nN][uU][mM][eE][rR][iI][cC]						{ begin_token(yytext);   return NUMERIC; }
+[nN][uU][lL][lL]							{ begin_token(yytext);   return Null; }
+[oO][bB][jJ][eE][cC][tT]						{ begin_token(yytext);   return OBJECT; }
+[oO][cC][tT][eE][tT]_[lL][eE][nN][gG][tT][hH]				{ begin_token(yytext);   return OCTET_LENGTH; }
+[oO][fF]								{ begin_token(yytext);   return OF; }
+[oO][fF][fF]								{ begin_token(yytext);   return OFF_; }
+[oO][iI][dD]								{ begin_token(yytext);   return OID_; }
+[oO][nN]								{ begin_token(yytext);   return ON_; }
+[oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
+[oO][pP][eE][nN]							{ begin_token(yytext);   return OPEN; }
+[oO][pP][eE][rR][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return OPERATION; }
+[oO][pP][eE][rR][aA][tT][oO][rR][sS]					{ begin_token(yytext);   return OPERATORS; }
+[oO][pP][tT][iI][mM][iI][zZ][aA][tT][iI][oO][nN]			{ begin_token(yytext);   return OPTIMIZATION; }
+[oO][pP][tT][iI][oO][nN]						{ begin_token(yytext);   return OPTION; }
+[oO][rR]								{ begin_token(yytext);   return OR; }
+[oO][rR][dD][eE][rR]							{ begin_token(yytext);   return ORDER; }
+[oO][tT][hH][eE][rR][sS]						{ begin_token(yytext);   return OTHERS; }
+[oO][uU][tT]								{ begin_token(yytext);   return OUT_; }
+[oO][uU][tT][eE][rR]							{ begin_token(yytext);   return OUTER; }
+[oO][uU][tT][pP][uU][tT]						{ begin_token(yytext);   return OUTPUT; }
+[oO][vV][eE][rR][lL][aA][pP][sS]					{ begin_token(yytext);   return OVERLAPS; }
+[pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ begin_token(yytext);   return PARAMETERS; }
+[pP][aA][rR][tT][iI][aA][lL]						{ begin_token(yytext);   return PARTIAL; }
+[pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PARTITION; }
+[pP][aA][rR][tT][iI][tT][iI][oO][nN][iI][nN][gG]			{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PARTITIONING; }
+[pP][aA][rR][tT][iI][tT][iI][oO][nN][sS]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PARTITIONS; }
+[pP][aA][sS][sS][wW][oO][rR][dD]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PASSWORD; }
+[pP][eE][nN][dD][aA][nN][tT]						{ begin_token(yytext);   return PENDANT; }
+[pP][rR][oO][xX][yY]							{ begin_token(yytext);   return PROXY; }
+[pP][oO][sS][iI][tT][iI][oO][nN]					{ begin_token(yytext);   return POSITION; }
+[pP][rR][eE][cC][iI][sS][iI][oO][nN]					{ begin_token(yytext);   return PRECISION; }
+[pP][rR][eE][oO][rR][dD][eE][rR]					{ begin_token(yytext);   return PREORDER; }
+[pP][rR][eE][pP][aA][rR][eE]						{ begin_token(yytext);   return PREPARE; }
+[pP][rR][eE][sS][eE][rR][vV][eE]					{ begin_token(yytext);   return PRESERVE; }
+[pP][rR][iI][mM][aA][rR][yY]						{ begin_token(yytext);   return PRIMARY; }
+[pP][rR][iI][nN][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PRINT; }
+[pP][rR][iI][oO][rR]							{ begin_token(yytext);   return PRIOR; }
+[pP][rR][iI][oO][rR][iI][tT][yY]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return PRIORITY; }
+[pP][rR][iI][vV][iI][lL][eE][gG][eE][sS]				{ begin_token(yytext);   return PRIVILEGES; }
+[pP][rR][oO][cC][eE][dD][uU][rR][eE]					{ begin_token(yytext);   return PROCEDURE; }
+[pP][rR][oO][tT][eE][cC][tT][eE][dD]					{ begin_token(yytext);   return PROTECTED; }
+[pP][rR][iI][vV][aA][tT][eE]						{ begin_token(yytext);   return Private; }
+[qQ][uU][eE][rR][yY]							{ begin_token(yytext);   return QUERY; }
+[rR][aA][nN][gG][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return RANGE_; }
+[rR][eE][aA][dD]							{ begin_token(yytext);   return READ; }
+[rR][eE][aA][lL]							{ begin_token(yytext);   return FLOAT_; }
+[rR][eE][bB][uU][iI][lL][dD] 						{ begin_token(yytext);   return REBUILD; }
+[rR][eE][cC][uU][rR][sS][iI][vV][eE]					{ begin_token(yytext);   return RECURSIVE; }
+[rR][eE][fF]								{ begin_token(yytext);   return REF; }
+[rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
+[rR][eE][fF][eE][rR][eE][nN][cC][iI][nN][gG]				{ begin_token(yytext);   return REFERENCING; }
+[rR][eE][gG][iI][sS][tT][eE][rR]					{ begin_token(yytext);   return REGISTER; }
+[rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);   return REJECT_; }
+[rR][eE][lL][aA][tT][iI][vV][eE]					{ begin_token(yytext);   return RELATIVE_; }
+[rR][eE][mM][oO][vV][eE]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return REMOVE; }
+[rR][eE][nN][aA][mM][eE]						{ begin_token(yytext);   return RENAME; }
+[rR][eE][oO][rR][gG][aA][nN][iI][zZ][eE]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return REORGANIZE; }
+[rR][eE][pP][eE][aA][tT][aA][bB][lL][eE]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return REPEATABLE; }
+[rR][eE][pP][lL][aA][cC][eE]						{ begin_token(yytext);   return REPLACE; }
+[rR][eE][sS][iI][gG][nN][aA][lL]					{ begin_token(yytext);   return RESIGNAL; }
+[rR][eE][sS][tT][rR][iI][cC][tT]					{ begin_token(yytext);   return RESTRICT; }
+[rR][eE][tT][aA][iI][nN]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return RETAIN; }
+[rR][eE][tT][uU][rR][nN]						{ begin_token(yytext);   return RETURN; }
+[rR][eE][tT][uU][rR][nN][sS]						{ begin_token(yytext);   return RETURNS; }
+[rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return REVERSE; }
+[rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
+[rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
+[rR][oO][lL][eE]							{ begin_token(yytext);   return ROLE; }
+[rR][oO][lL][lL][bB][aA][cC][kK]					{ begin_token(yytext);   return ROLLBACK; }
+[rR][oO][uU][tT][iI][nN][eE]						{ begin_token(yytext);   return ROUTINE; }
+[rR][oO][wW]								{ begin_token(yytext);   return ROW; }
+[rR][oO][wW][nN][uU][mM]						{ begin_token(yytext);   return ROWNUM; }
+[rR][oO][wW][sS]							{ begin_token(yytext);   return ROWS; }
+[sS][aA][vV][eE][pP][oO][iI][nN][tT]					{ begin_token(yytext);   return SAVEPOINT; }
+[sS][cC][hH][eE][mM][aA]						{ begin_token(yytext);   return SCHEMA; }
+[sS][cC][oO][pP][eE]___						 	{ begin_token(yytext);   return SCOPE; }
+[sS][cC][rR][oO][lL][lL]						{ begin_token(yytext);   return SCROLL; }
+[sS][eE][aA][rR][cC][hH]						{ begin_token(yytext);   return SEARCH; }
+[sS][eE][cC][oO][nN][dD]						{ begin_token(yytext);   return SECOND_; }
+[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return MILLISECOND_; }
+[sS][eE][cC][tT][iI][oO][nN]						{ begin_token(yytext);   return SECTION; }
+[sS][eE][lL][eE][cC][tT]						{ begin_token(yytext);   return SELECT; }
+[sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ begin_token(yytext);   return SENSITIVE; }
+[sS][eE][qQ][uU][eE][nN][cC][eE]					{ begin_token(yytext);   return SEQUENCE; }
+[sS][eE][qQ][uU][eE][nN][cC][eE]_[oO][fF]			 	{ begin_token(yytext);   return SEQUENCE_OF; }
+[sS][eE][rR][iI][aA][lL]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return SERIAL; }
+[sS][eE][rR][iI][aA][lL][iI][zZ][aA][bB][lL][eE]			{ begin_token(yytext);   return SERIALIZABLE; }
+[sS][eE][sS][sS][iI][oO][nN]						{ begin_token(yytext);   return SESSION; }
+[sS][eE][sS][sS][iI][oO][nN]_[uU][sS][eE][rR]				{ begin_token(yytext);   return SESSION_USER; }
+[sS][eE][tT]								{ begin_token(yytext);   return SET; }
+[sS][eE][tT][eE][qQ]							{ begin_token(yytext);   return SETEQ; }
+[sS][eE][tT][nN][eE][qQ]						{ begin_token(yytext);   return SETNEQ; }
+[sS][eE][tT]_[oO][fF]							{ begin_token(yytext);   return SET_OF; }
+[sS][hH][aA][rR][eE][dD]						{ begin_token(yytext);   return SHARED; }
+[sS][hH][oO][rR][tT]							{ begin_token(yytext);   return SmallInt; }
+[sS][iI][mM][iI][lL][aA][rR]						{ begin_token(yytext);   return SIMILAR; }
+[sS][iI][zZ][eE]							{ begin_token(yytext);   return SIZE_; }
+[sS][oO][mM][eE]							{ begin_token(yytext);   return SOME; }
+[sS][qQ][lL]								{ begin_token(yytext);   return SQL; }
+[sS][qQ][lL][cC][oO][dD][eE]						{ begin_token(yytext);   return SQLCODE; }
+[sS][qQ][lL][eE][rR][rR][oO][rR]					{ begin_token(yytext);   return SQLERROR; }
+[sS][qQ][lL][eE][xX][cC][eE][pP][tT][iI][oO][nN]			{ begin_token(yytext);   return SQLEXCEPTION; }
+[sS][qQ][lL][sS][tT][aA][tT][eE]					{ begin_token(yytext);   return SQLSTATE; }
+[sS][qQ][lL][wW][aA][rR][nN][iI][nN][gG]				{ begin_token(yytext);   return SQLWARNING; }
+[sS][tT][aA][bB][iI][lL][iI][tT][yY]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return STABILITY; }
+[sS][tT][aA][rR][tT]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return START_; }
+[sS][tT][aA][tT][eE][mM][eE][nN][tT]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return STATEMENT; }
+[sS][tT][aA][tT][iI][sS][tT][iI][cC][sS]				{ begin_token(yytext);   return STATISTICS; }
+[sS][tT][aA][tT][uU][sS]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return STATUS; }
+[sS][tT][dD][dD][eE][vV]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return STDDEV; }
+[sS][tT][rR][uU][cC][tT][uU][rR][eE]					{ begin_token(yytext);   return STRUCTURE; }
+[sS][uU][bB][cC][lL][aA][sS][sS]					{ begin_token(yytext);   return SUBCLASS; }
+[sS][uU][bB][sS][eE][tT]						{ begin_token(yytext);   return SUBSET; }
+[sS][uU][bB][sS][eE][tT][eE][qQ]					{ begin_token(yytext);   return SUBSETEQ; }
+[sS][uU][bB][sS][tT][rR][iI][nN][gG]					{ begin_token(yytext);   return SUBSTRING_; }
+[sS][uU][mM]								{ begin_token(yytext);   return SUM; }
+[sS][uU][pP][eE][rR][cC][lL][aA][sS][sS]				{ begin_token(yytext);   return SUPERCLASS; }
+[sS][uU][pP][eE][rR][sS][eE][tT]					{ begin_token(yytext);   return SUPERSET; }
+[sS][uU][pP][eE][rR][sS][eE][tT][eE][qQ]				{ begin_token(yytext);   return SUPERSETEQ; }
+[sS][yY][sS]_[dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
+[sS][yY][sS][dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
+[sS][yY][sS]_[tT][iI][mM][eE]						{ begin_token(yytext);   return SYS_TIME_; }
+[sS][yY][sS][tT][iI][mM][eE]						{ begin_token(yytext);   return SYS_TIME_; }
+[sS][yY][sS]_[tT][iI][mM][eE][sS][tT][aA][mM][pP]			{ begin_token(yytext);   return SYS_TIMESTAMP; }
+[sS][yY][sS][tT][iI][mM][eE][sS][tT][aA][mM][pP]			{ begin_token(yytext);   return SYS_TIMESTAMP; }
+[sS][yY][sS]_[dD][aA][tT][eE][tT][iI][mM][eE] 				{ begin_token(yytext);   return SYS_DATETIME; }
+[sS][yY][sS][dD][aA][tT][eE][tT][iI][mM][eE] 				{ begin_token(yytext);   return SYS_DATETIME; }
+[sS][yY][sS][tT][eE][mM]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return SYSTEM; }
+[sS][yY][sS][tT][eE][mM]_[uU][sS][eE][rR]				{ begin_token(yytext);   return SYSTEM_USER; }
+[sS][yY][sS]_[uU][sS][eE][rR]						{ begin_token(yytext);   return SYS_USER; }
+[sS][mM][aA][lL][lL][iI][nN][tT]					{ begin_token(yytext);   return SmallInt; }
+[sS][tT][rR][iI][nN][gG]						{ begin_token(yytext);   return String; }
+[tT][aA][bB][lL][eE]							{ begin_token(yytext);   return TABLE; }
+[tT][eE][mM][pP][oO][rR][aA][rR][yY]					{ begin_token(yytext);   return TEMPORARY; }
+[tT][eE][sS][tT]							{ begin_token(yytext);   return TEST; }
+[tT][hH][eE][nN]							{ begin_token(yytext);   return THEN; }
+[tT][hH][eE][rR][eE]							{ begin_token(yytext);   return THERE; }
+[tT][iI][mM][eE][oO][uU][tT]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return TIMEOUT; }
+[tT][iI][mM][eE][sS][tT][aA][mM][pP]					{ begin_token(yytext);   return TIMESTAMP; }
+[dD][aA][tT][eE][tT][iI][mM][eE]					{ begin_token(yytext);   return DATETIME; }
+[tT][iI][mM][eE][zZ][oO][nN][eE]_[hH][oO][uU][rR]			{ begin_token(yytext);   return TIMEZONE_HOUR; }
+[tT][iI][mM][eE][zZ][oO][nN][eE]_[mM][iI][nN][uU][tT][eE]		{ begin_token(yytext);   return TIMEZONE_MINUTE; }
+[tT][oO]								{ begin_token(yytext);   return TO; }
+[tT][rR][aA][cC][eE]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return TRACE; }
+[tT][rR][aA][iI][lL][iI][nN][gG]					{ begin_token(yytext);   return TRAILING_; }
+[tT][rR][aA][nN][sS][aA][cC][tT][iI][oO][nN]				{ begin_token(yytext);   return TRANSACTION; }
+[tT][rR][aA][nN][sS][lL][aA][tT][eE]					{ begin_token(yytext);   return TRANSLATE; }
+[tT][rR][aA][nN][sS][lL][aA][tT][iI][oO][nN]				{ begin_token(yytext);   return TRANSLATION; }
+[tT][rR][iI][gG][gG][eE][rR]						{ begin_token(yytext);   return TRIGGER; }
+[tT][rR][iI][gG][gG][eE][rR][sS]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return TRIGGERS; }
+[tT][rR][iI][mM]							{ begin_token(yytext);   return TRIM; }
+[tT][yY][pP][eE]							{ begin_token(yytext);   return TYPE; }
+[tT][hH][aA][nN]							{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return THAN; }
+[tT][iI][mM][eE]							{ begin_token(yytext);   return Time; }
+[tT][rR][uU][eE]							{ begin_token(yytext);   return True; }
+[uU][nN][cC][oO][mM][mM][iI][tT][tT][eE][dD]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return UNCOMMITTED; }
+[uU][nN][dD][eE][rR]							{ begin_token(yytext);   return UNDER; }
+[uU][nN][iI][qQ][uU][eE]						{ begin_token(yytext);   return UNIQUE; }
+[uU][nN][kK][nN][oO][wW][nN]						{ begin_token(yytext);   return UNKNOWN; }
+[uU][pP][dD][aA][tT][eE]						{ begin_token(yytext);   return UPDATE; }
+[uU][pP][pP][eE][rR]							{ begin_token(yytext);   return UPPER; }
+[uU][sS][aA][gG][eE]							{ begin_token(yytext);   return USAGE; }
+[uU][sS][eE]								{ begin_token(yytext);   return USE; }
+[uU][sS][eE][rR]							{ begin_token(yytext);   return USER; }
+[uU][sS][iI][nN][gG]							{ begin_token(yytext);   return USING; }
+[uU][nN][iI][oO][nN]							{ begin_token(yytext);   return Union; }
+[uU][tT][iI][mM][eE]							{ begin_token(yytext);   return Utime; }
+[vV][aA][lL][uU][eE]							{ begin_token(yytext);   return VALUE; }
+[vV][aA][lL][uU][eE][sS]						{ begin_token(yytext);   return VALUES; }
+[vV][aA][rR][cC][hH][aA][rR]						{ begin_token(yytext);   return VARCHAR; }
+[vV][aA][rR][iI][aA][bB][lL][eE]					{ begin_token(yytext);   return VARIABLE_; }
+[vV][aA][rR][iI][aA][nN][cC][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return VARIANCE; }
+[vV][aA][rR][yY][iI][nN][gG]						{ begin_token(yytext);   return VARYING; }
+[vV][cC][lL][aA][sS][sS]						{ begin_token(yytext);   return VCLASS; }
+[vV][iI][eE][wW]							{ begin_token(yytext);   return VIEW; }
+[vV][iI][rR][tT][uU][aA][lL]						{ begin_token(yytext);   return VIRTUAL; }
+[vV][iI][sS][iI][bB][lL][eE]						{ begin_token(yytext);   return VISIBLE; }
+[wW][aA][iI][tT]							{ begin_token(yytext);   return WAIT; }
+[wW][hH][eE][nN]							{ begin_token(yytext);   return WHEN; }
+[wW][hH][eE][nN][eE][vV][eE][rR]					{ begin_token(yytext);   return WHENEVER; }
+[wW][hH][eE][rR][eE]							{ begin_token(yytext);   return WHERE; }
+[wW][hH][iI][lL][eE]							{ begin_token(yytext);   return WHILE; }
+[wW][iI][tT][hH]							{ begin_token(yytext);   return WITH; }
+[wW][iI][tT][hH][oO][uU][tT]						{ begin_token(yytext);   return WITHOUT; }
+[wW][oO][rR][kK]							{ begin_token(yytext);   return WORK; }
+[wW][oO][rR][kK][sS][pP][aA][cC][eE]					{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return WORKSPACE; }
+[wW][rR][iI][tT][eE]							{ begin_token(yytext);   return WRITE; }
+[yY][eE][aA][rR]							{ begin_token(yytext);   return YEAR_; }
+[zZ][oO][nN][eE]							{ begin_token(yytext);   return ZONE; }
+
+
+
+"->"									{ begin_token(yytext);   return RIGHT_ARROW; }
+"||"									{ begin_token(yytext);   return STRCAT; }
+
+"<>"									{ begin_token(yytext);   return COMP_NOT_EQ; }
+">="									{ begin_token(yytext);   return COMP_GE; }
+"<="									{ begin_token(yytext);   return COMP_LE; }
+"?:"									{ begin_token(yytext);   return PARAM_HEADER; }
+
+
+[0-9]+									{ begin_token(yytext);   
+										if (strlen(yytext) >= 254) 
+											yytext[254] = 0;
+
+										yylval.cptr = pt_makename(yytext);
+										return UNSIGNED_INTEGER; 
+									}
+
+
+
+([0-9]+[Ee][\+\-]?[0-9]+[fF]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fF]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fF]?) 	{ begin_token(yytext);   
+										if (strlen(yytext) >= 254) 
+											yytext[254] = 0;
+										yylval.cptr = pt_makename(yytext);
+										return UNSIGNED_REAL; 
+									}
+
+([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))* { begin_token(yytext);   
+										if (strlen(yytext) >= 254) 
+											yytext[254] = 0;
+										yylval.cptr = pt_makename(yytext);
+										return IdName; 
+									}
+
+[nN]\'				{ 
+					char* cp = parser_quoted_string('\''); 
+					yylval.cptr = cp;
+					return NCHAR_STRING; 
+				}
+
+[bB]\' 				{ 
+					char* cp = parser_quoted_string('\''); 
+					yylval.cptr = cp;
+					return BIT_STRING; 
+				}
+
+[xX]\'				{ 
+					char* cp = parser_quoted_string('\''); 
+					yylval.cptr = cp;
+					return HEX_STRING; 
+				}
+
+\' 				{ 
+					char* cp = parser_quoted_string('\''); 
+					yylval.cptr = cp;
+					return CHAR_STRING;
+				}
+
+
+\" 				{ 
+					char* cp = parser_quoted_string('\"'); 
+					if (strlen(cp) >= 254) 
+					    cp[254] = 0;
+					
+					yylval.cptr = cp;
+					return DelimitedIdName; 
+				}
+
+
+"["				{	
+					char* cp = parser_quoted_string(']'); 
+					if (strlen(cp) >= 254) 
+					    cp[254] = 0;
+					
+					yylval.cptr = cp;
+					return BracketDelimitedIdName; 
+				}
+
+
+"//"				{ 
+					char* cp = parser_line_hint(); 
+					if (cp) 
+					  {
+					    yylval.cptr = cp;
+					    return CPP_STYLE_HINT;
+					  }
+				}
+
+
+"/*"				{ 
+					char* cp = parser_c_hint(); 
+					if (cp) 
+					  {
+					    yylval.cptr = cp;
+					    return C_STYLE_HINT;
+					  }
+				}
+
+
+
+"--"				{ 
+					char* cp = parser_line_hint(); 
+					if (cp) 
+					  {
+					    yylval.cptr = cp;
+					    return SQL_STYLE_HINT;
+					  }
+				}
+
+\xa1\xef			{ begin_token(yytext);   return YEN_SIGN; }
+\$				{ begin_token(yytext);   return DOLLAR_SIGN; }
+\\				{ begin_token(yytext);   return WON_SIGN; }
+
+
+.				{ begin_token(yytext);   return yytext[0]; }
+%%
+
+int parser_yyinput_single_mode = 0;
+
+
+static void generate_error_msg(PARSER_ERR_CODE error_code) 
+{
+  PT_NODE* dummy = parser_new_node(this_parser, PT_EXPR);
+  char* ptr;
+
+  char msg[][256] = { 
+    "DUMMY",
+
+    "invalid data type",
+
+    "invalid attach statement\n"
+    "  attach_statement : ATTACH unsigned_integer",
+
+    "invalid prefare statement\n"
+    "  prepare_statement :  PREPARE {to} COMMIT unsigend_integer",
+
+    "invalid execute statement\n"
+    "  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]",
+
+    "invalid scope statement\n"
+    "  scope_statement : SCOPE trigger_action { FROM table_spec_list }",
+
+    "invalid set system paremeter\n"
+    "  set_system : SET SYSTEM PAREMETERS 'STRING' {, 'STRING_N'}*",
+
+    "invalid set transaction\n"
+    "  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n"
+    "                 | SET TRANSACTION LOCK TIMEOUT timeout_spec",
+
+    "invalid set trigger trace\n"
+    "  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]",
+
+    "invalid set trigger depth\n"
+    "  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]",
+
+    "invalid set optimization level\n"
+    "  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]",	// 10
+
+    "invalid set optimization cost\n"
+    "  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_", 
+
+    "invalid get optimization level\n"
+    "  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get optimization cost\n"
+    "  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get transaction isol\n"
+    "  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get transaction lock\n"
+    "  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get trigger trace\n"
+    "  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get trigger depth\n"
+    "  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid get stat\n"
+    "  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}",
+
+    "invalid create index\n"
+    "  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list",
+
+    "invalid create user\n"			// 20
+    "  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }",
+
+    "invalid create trigger\n"
+    "  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n"
+    "    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n"
+    "    EXECUTE {AFTER|DEFERRED} trigger_action",
+
+    "invalid create serial\n"
+    "  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n"
+    "    serial_min_max {CYCLE|NOCYCLE}",
+
+    "invalid create procedure\n"
+    "  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'", 
+
+    "invalid create function\n"
+    "  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'", 
+
+    "invalid groups\n"
+    "  groups spec : GROUPS identifier {, identifier}*",
+
+    "invalid members\n"
+    "  member spec : MEMBERS identifier {, identifier}*",
+
+    "invalid password\n"
+    "  password spec : PASSWORD 'STRING'",
+
+    "missing authorized command list\n"
+    "  authoized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL",
+
+    "missing class spec list",
+    "missing identifier list",			// 30
+    "missing expression",
+    "invalid identifier",
+
+    "invalid use of substring\n"
+    "  SUBSTRING( expression FROM expression FOR expression )\n"
+    "  SUBSTRING( expression FROM expression )",
+
+    "invalid use of trim\n"
+    "  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n"
+    "  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n"
+    "  TRIM ( expression FROM expression )\n"
+    "  TRIM ( expression )",
+
+    "invalid use of cast\n"
+    "  CAST ( expression AS data_type )",
+
+    "function add_months needs two parameters",
+    "octet_length needs one parameters",
+    "bit_length needs one parameters",
+    "lower needs one parameters",
+    "upper needs one parameters",		// 40
+    "translate needs three parameters",
+    "replace needs two or three parameters",
+
+    "invalid use of to_number\n"
+    "  TO_NUMBER ( expression , char_string )\n"
+    "  TO_NUMBER ( expression )",
+
+    "string bind operator is not '|' but '||'",
+    "invalid alter statement",
+    "invalid drop statement",
+    "invalid create statement",
+    "invalid relational operator",
+    "equal operator is not '==' but '='",
+    "not equal operator is not '!=' but '<>'",
+
+    "invalid minus value (or minus value in list)",
+  };
+
+  ptr = msg[error_code - PARSER_ERR_START];
+  
+  if (error_code == INVALID_ID) 
+      PT_ERRORf2(this_parser, dummy, "%s: %s", ptr, yytext);
+  else 
+      PT_ERRORf(this_parser, dummy, "%s", ptr);
+
+  parser_free_tree(this_parser, dummy);
+}
+
+void yyerror_explicit(int line, int column)
+{
+  yyerror(NULL);
+  msg_ptr = 0;
+}
+
+
+void yyerror(const char* s)
+{
+  if (!parser_yyinput_single_mode) 
+    {
+      YY_FLUSH_BUFFER;
+      parser_statement_OK = 0;
+  
+	if (msg_ptr) 
+	  {
+	    generate_error_msg(g_msg[msg_ptr-1]);
+	  }
+	else 
+	  {
+	    const char* cmp_str = ", expecting \'{\'";
+	    const char* cmp_str2 = ", expecting SELECT or \'(\'";
+	    PT_NODE* dummy;
+
+	    if ( (strlen(s) > strlen(cmp_str)) &&
+		 (strcmp(&s[strlen(s) - strlen(cmp_str)], cmp_str) == 0) )
+	      {
+		*(char*)&s[strlen(s) - strlen(cmp_str)] = 0;
+	      }
+	    else if ( (strlen(s) > strlen(cmp_str2)) &&
+	    	  (strcmp(&s[strlen(s) - strlen(cmp_str2)], cmp_str2) == 0) ) 
+	      {
+		*(char*)&s[strlen(s) - strlen(cmp_str2)] = 0;
+	      }
+
+	    dummy = parser_new_node(this_parser, PT_EXPR);
+	    if (dummy == NULL) return;
+	    PT_ERRORf(this_parser, dummy, "%s", s);
+	    parser_free_tree(this_parser, dummy);
+	  }
+    }
+}
+
+
+
+int yywrap()
+{
+  return 1;
+}
+
+
+static int parser_yyinput_single_line(char* buff, int max_size)
+{
+  int c;
+  int i=0;
+
+  do 
+    {
+      c = pt_nextchar();
+      if (c == ';') 
+	{
+      	  buff[i++] = -1;
+      	  buff[i] = 0;
+      	  return i;
+	}
+
+      buff[i++] = c;
+      if (i>=max_size) 
+	{
+      	  return i;
+	}
+    } while (c != -1);
+
+  buff[i] = 0;
+  parser_yyinput_single_mode = 0;	/* all done */
+  return i;
+}
+
+static int parser_yyinput_multi_line(char* buff, int max_size)
+{
+  int c;
+  int i=0;
+
+  do 
+    {
+      c = pt_nextchar();
+      buff[i++] = c;
+      if (i>=max_size) 
+	{
+      	  return i;
+	}
+
+    } while (c != -1);
+
+  buff[i] = 0;
+  return i;
+}
+
+static int parser_yyinput(char* buff, int max_size)
+{
+  if (!parser_yyinput_single_mode) 
+    {
+      return parser_yyinput_multi_line(buff, max_size);
+    }
+  else 
+    {
+      return parser_yyinput_single_line(buff, max_size);
+    }
+}
+
+static char input_internal()
+{
+  char c = input();
+  if (c == '\n') 
+    {
+      this_parser->line = yylloc.last_line = yyline++;
+      this_parser->column = yylloc.last_column = yycolumn_end = 0;
+    }
+  else 
+    {
+      this_parser->column = yylloc.last_column = yycolumn_end++;
+    }
+
+  return c;
+}
+
+static char* parser_c_hint()
+{
+  char c, c1;
+  char buff[JP_MAXNAME];
+  int i = 0;
+  PT_HINT_ENUM hint = PT_HINT_NONE;
+
+  /* column position set */
+  yycolumn = yycolumn_end;
+  yylloc.first_column = yycolumn;
+  yylloc.first_line = yyline;
+  yylloc.last_line = yyline;
+  yylloc.last_column = yycolumn_end;
+
+loop:
+  if ((c = input_internal()) == '+') 
+    { /* hint */
+      buff[i++] = '+';
+      while ((c = input_internal()) != '*' && c != 0 && c != -1) 
+	{
+      	  if (i>=JP_MAXNAME) goto loop;
+      	  buff[i++] = c;
+	}
+
+      if ((c1 = input_internal()) != '/' && c != 0 && c != -1)
+	{
+      	  unput(c1);
+      	  goto loop;
+	}
+
+      buff[i] = 0;
+
+      pt_check_hint(buff, parser_hint_table, &hint, false);
+      if (hint == PT_HINT_NONE) 
+	{	/* comment */
+      	  return NULL;
+	}
+
+      return pt_makename(buff);
+    }
+  else 
+    { /* comment */
+      unput(c);
+      while ((c = input_internal()) != '*' && c != 0 && c != -1);
+
+      if ((c1 = input_internal()) != '/' && c != 0 && c != -1)
+	{
+      	  unput(c1);
+      	  goto loop;
+	}
+
+      return NULL;
+    }
+}
+
+
+static char* parser_line_hint(void)
+{
+  char c;
+  char buff[JP_MAXNAME];
+  int i = 0;
+  PT_HINT_ENUM hint = PT_HINT_NONE;
+
+
+  /* column position set */
+  yycolumn = yycolumn_end;
+  yylloc.first_column = yycolumn;
+  yylloc.first_line = yyline;
+  yylloc.last_line = yyline;
+  yylloc.last_column = yycolumn_end;
+
+loop:
+  if ((c = input_internal()) == '+') 
+    { /* hint */
+      buff[i++] = '+';
+      while ((c = input_internal()) != '\r' && c != '\n' && c != 0 && c!= -1) 
+	{
+      	  if (i>=JP_MAXNAME) goto loop;
+      	  buff[i++] = c;
+	}
+      buff[i] = 0;
+
+      pt_check_hint(buff, parser_hint_table, &hint, false);
+      if (hint == PT_HINT_NONE) 
+	{ /* comment */
+      	  return NULL;
+	}
+
+      return pt_makename(buff);
+    }
+  else 
+    { /* comment */
+      unput(c);
+      while ((c = input_internal()) != '\r' && c != '\n' && c != 0 && c!= -1);
+
+      return NULL;
+    }
+}
+
+
+static char* parser_quoted_string(char end)
+{
+  char c, c1;
+  char buff[8192];
+  int i = 0;
+
+  int size = 8192;
+  char* bp = buff;
+
+  /* column position set */
+  yycolumn = yycolumn_end;
+  yylloc.first_column = yycolumn;
+  yylloc.first_line = yyline;
+  yylloc.last_line = yyline;
+  yylloc.last_column = yycolumn_end;
+
+loop:
+  while ((c=input_internal()) != end && c != 0 && c != -1) 
+    {
+      bp[i++] = c;
+      if (i>=size) 
+	{
+      	  char* bp_new = parser_allocate_string_buffer(this_parser, size*2, sizeof(char));
+      	  memcpy(bp_new, bp, size);
+      	  bp = bp_new;
+      	  size *= 2;
+	}
+    } 
+
+  if (c==0 || c==-1) 
+    {
+      bp[i] = 0;
+      sprintf(buff, "unterminated string, check existence of %c", end);
+      yyerror(buff);
+      
+      return  pt_makename(bp);
+    }
+
+  if ((c1 = input_internal()) == end && c != 0 && c!= -1)
+    {
+      bp[i++] = c1;
+      if (i>=size) 
+	{
+      	  char* bp_new = parser_allocate_string_buffer(this_parser, size*2, sizeof(char));
+      	  memcpy(bp_new, bp, size);
+      	  bp = bp_new;
+      	  size *= 2;
+	}
+
+      goto loop;
+    }
+
+  unput(c1);
+  bp[i] = 0;
+  return pt_makename(bp);
+}
+
+
+static void begin_token(char* token)
+{
+  yycolumn = yycolumn_end;
+  yycolumn_end += strlen(token);
+
+  yylloc.first_line = yyline;
+  yylloc.first_column = yycolumn;
+  yylloc.last_line = yyline;
+  yylloc.last_column = yycolumn_end;
+}
+
+
+

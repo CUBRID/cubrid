@@ -190,7 +190,7 @@ void CPathRegulation::vDivisionItem( void )
 			strcpy( pCurr->sPath, sCurr );
 
 			// CUBRID path인지 확인한다.
-			if (strnicmp(target_path, pCurr->sPath, strlen(target_path)) == 0)
+			if (_strnicmp(target_path, pCurr->sPath, strlen(target_path)) == 0)
 			{
 				pCurr->bKeep = false;
 			}
@@ -205,7 +205,7 @@ void CPathRegulation::vDivisionItem( void )
 		{
 			// Parsing 할 string이 더 존재.
 			*sEnd = 0x00;
-			dStrLng = sEnd - sCurr;
+			dStrLng = (int) (sEnd - sCurr);
 
 			if( dStrLng <= 0 )
 				continue;
@@ -215,7 +215,7 @@ void CPathRegulation::vDivisionItem( void )
 			memcpy( pCurr->sPath, sCurr, dStrLng );
 
 			// CUBRID path인지 확인한다.
-			if (strnicmp(target_path, pCurr->sPath, strlen(target_path)) == 0)
+			if (_strnicmp(target_path, pCurr->sPath, strlen(target_path)) == 0)
 			{
 				pCurr->bKeep = false;
 			}

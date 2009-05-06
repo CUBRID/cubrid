@@ -105,4 +105,3 @@ extern void regu_method_sig_list_init (METHOD_SIG_LIST * ptr);
 extern void regu_free_method_sig_list (METHOD_SIG_LIST * method_sig_list);
 
 #endif /* _XASL_SUPPORT_H_ */
-

@@ -1014,8 +1014,8 @@
 		<row><td>ID_STRING1</td><td>1042</td><td>NewFeature1</td><td>0</td><td/><td>480013104</td></row>
 		<row><td>ID_STRING2</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.5</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429778475</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.5</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429721163</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R1.6</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429778475</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R1.6</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>429721163</td></row>
 		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>698209329</td></row>
 		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>480013259</td></row>
 	</table>

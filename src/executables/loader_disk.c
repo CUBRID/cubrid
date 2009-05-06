@@ -45,7 +45,7 @@
 #else /* !LDR_OLD_LOADDB */
 #include "loader.h"
 #endif /* LDR_OLD_LOADDB */
-#include "server_interface.h"
+#include "xserver_interface.h"
 #include "transform_cl.h"
 
 /*

@@ -85,26 +85,22 @@ enum
 
 struct thread_entry
 {
-  int index;			/* thread entry index */
 #if defined(WINDOWS)
-  int thread_handle;		/* thread handle */
+  UINTPTR thread_handle;	/* thread handle */
 #endif				/* WINDOWS */
+  int index;			/* thread entry index */
   int type;			/* thread type */
   THREAD_T tid;			/* thread id */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
   MUTEX_T tran_index_lock;
   unsigned int rid;		/* request id which this thread is processing */
-
   int status;			/* thread status */
-  bool interrupted;		/* is this request/transaction interrupted ? */
-  bool shutdown;		/* is server going down? */
 
   MUTEX_T th_entry_lock;	/* latch for this thread entry */
   COND_T wakeup_cond;		/* wakeup condition */
-  int resume_status;		/* resume status */
 
-  unsigned int private_heap_id;	/* id of thread private memory allocator */
+  HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
   ADJ_ARRAY *cnv_adj_buffer[3];	/* conversion buffer */
 
   struct css_conn_entry *conn_entry;	/* conn entry ptr */
@@ -122,9 +118,14 @@ struct thread_entry
 				   string form;
 				   used in the qp/numeric_db_value_print() */
 
+  int resume_status;		/* resume status */
   int request_latch_mode;	/* for page latch support */
   int request_fix_count;
   bool victim_request_fail;
+  bool interrupted;		/* is this request/transaction interrupted ? */
+  bool shutdown;		/* is server going down? */
+  bool check_interrupt;		/* check_interrupt == false, during
+				   fl_alloc* function call. */
   struct thread_entry *next_wait_thrd;
 
   void *lockwait;
@@ -133,9 +134,6 @@ struct thread_entry
   int lockwait_state;
   void *query_entry;
   struct thread_entry *tran_next_wait;
-
-  bool check_interrupt;		/* check_interrupt == false, during
-				   fl_alloc* function call. */
   struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
 };
 
@@ -151,6 +149,7 @@ struct daemon_thread_monitor
 };
 
 typedef void *CSS_THREAD_ARG;
+
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern DAEMON_THREAD_MONITOR css_Log_flush_thread;
@@ -221,9 +220,9 @@ extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
 				    int kill_tran_index, char *kill_user,
 				    char *kill_host, int kill_pid);
 
-extern unsigned int css_get_private_heap (THREAD_ENTRY * thread_p);
-extern unsigned int css_set_private_heap (THREAD_ENTRY * thread_p,
-					  unsigned int heap_id);
+extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
+extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
+				       HL_HEAPID heap_id);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

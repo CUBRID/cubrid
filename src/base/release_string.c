@@ -77,11 +77,12 @@ static const char *release_string = makestring (RELEASE_STRING);
 static const char *major_release_string = makestring (MAJOR_RELEASE_STRING);
 static const char *build_number = makestring (BUILD_NUMBER);
 static const char *package_string = PACKAGE_STRING;
+static int bit_platform = __WORDSIZE;
 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 8.0;
+static float disk_compatibility_level = 8.2f;
 
 /*
  * rel_name - Name of the product from the message catalog
@@ -173,6 +174,17 @@ void
 rel_set_disk_compatible (float level)
 {
   disk_compatibility_level = level;
+}
+
+/*
+ * rel_platform - built platform
+ *   return: none
+ *   level(in):
+ */
+int
+rel_bit_platform (void)
+{
+  return bit_platform;
 }
 
 /*

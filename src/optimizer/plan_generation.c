@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1482,7 +1482,7 @@ gen_outer (QO_ENV * env,
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   XASL_NODE *scan, *listfile, *merge, *fetch;
   QO_PLAN *outer, *inner;
-  JOIN_TYPE join_type;
+  JOIN_TYPE join_type = NO_JOIN;
   QO_TERM *term;
   int i;
   BITSET_ITERATOR bi;
@@ -1897,7 +1897,7 @@ gen_outer (QO_ENV * env,
 	    if (seg_nlen > 0 && seg_nlen < left_nlen + rght_nlen)
 	      {
 		QFILE_LIST_MERGE_INFO *ls_merge;
-		int outer_inner, pos, p;
+		int outer_inner, pos = 0, p;
 		PT_NODE *attr;
 
 		seg_pos_list = (int *) malloc (seg_nlen * sizeof (int));

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -54,11 +54,6 @@
 
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
-
-/* calculate and set size value up to next 4 boundary */
-#define OR_ALIGN32(size)    (size) = ((size) + 3) & ~3
-
-
 
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
 static char *or_pack_method_sig (char *ptr, void *method_sig_ptr);
@@ -183,7 +178,7 @@ classobj_decompose_property_oid (const char *buffer,
  *    of this type, if they are fixed size.  A value of -1 indicates that
  *    the values are of variable size.
  *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the PR_TYPE structures 
+ *    This information is duplicated in the PR_TYPE structures
  *    for use on the client.  Should consider using this on the client
  *    side as well to avoid the duplication.
  *
@@ -581,10 +576,9 @@ or_init (OR_BUF * buf, char *data, int length)
 int
 or_put_align32 (OR_BUF * buf)
 {
-  unsigned long bits;
+  unsigned int bits;
   int rc = NO_ERROR;
-  /* TODO : LLP64 problem */
-  bits = (unsigned long) buf->ptr & 3;
+  bits = (UINTPTR) buf->ptr & 3;
 
   if (bits)
     {
@@ -601,13 +595,30 @@ or_put_align32 (OR_BUF * buf)
 int
 or_get_align32 (OR_BUF * buf)
 {
-  unsigned long bits;
+  unsigned int bits;
   int rc = NO_ERROR;
-  /* TODO : LLP64 problem */
-  bits = (unsigned long) (buf->ptr) & 3;
+  bits = (UINTPTR) (buf->ptr) & 3;
   if (bits)
     {
       rc = or_advance (buf, 4 - bits);
+    }
+  return rc;
+}
+
+/*
+ * or_get_align64 - adnvance or buf pointer to next 8 byte alignment position
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ */
+int
+or_get_align64 (OR_BUF * buf)
+{
+  unsigned int bits;
+  int rc = NO_ERROR;
+  bits = (UINTPTR) (buf->ptr) & 7;
+  if (bits)
+    {
+      rc = or_advance (buf, 8 - bits);
     }
   return rc;
 }
@@ -632,7 +643,7 @@ or_packed_varchar_length (int charlen)
       len = 1 + OR_INT_SIZE + charlen + 1;
     }
 
-  OR_ALIGN32 (len);
+  len = DB_ALIGN (len, INT_ALIGNMENT);
 
   return len;
 }
@@ -833,8 +844,7 @@ or_packed_varbit_length (int bitlen)
   len += ((bitlen + 7) / 8);
 
   /* round up to a word boundary */
-  OR_ALIGN32 (len);
-
+  len = DB_ALIGN (len, INT_ALIGNMENT);
   return len;
 }
 
@@ -1180,6 +1190,51 @@ or_get_int (OR_BUF * buf, int *error)
 }
 
 /*
+ * or_put_bigint - put bigint value to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    num(in): bigint value to put
+ */
+int
+or_put_bigint (OR_BUF * buf, DB_BIGINT num)
+{
+  if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_BIGINT (buf->ptr, num);
+      buf->ptr += OR_BIGINT_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_bigint - get bigint value from or buffer
+ *    return: bigint value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ */
+DB_BIGINT
+or_get_bigint (OR_BUF * buf, int *error)
+{
+  DB_BIGINT value = 0;
+
+  if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+    }
+  else
+    {
+      value = OR_GET_BIGINT (buf->ptr);
+      buf->ptr += OR_BIGINT_SIZE;
+      *error = NO_ERROR;
+    }
+  return value;
+}
+
+/*
  * or_put_float - put a float value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -1397,6 +1452,48 @@ or_get_date (OR_BUF * buf, DB_DATE * date)
     {
       OR_GET_DATE (buf->ptr, date);
       buf->ptr += OR_DATE_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_put_datetime - write a datetime value to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    datetimeval(in): pointer to datetime value
+ */
+int
+or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval)
+{
+  if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_DATETIME (buf->ptr, datetimeval);
+      buf->ptr += OR_DATETIME_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_datetime - read a DB_DATETIME value from or_buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    date(out): pointer to DB_DATETIME value
+ */
+int
+or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
+{
+  if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_DATETIME (buf->ptr, datetime);
+      buf->ptr += OR_DATETIME_SIZE;
     }
   return NO_ERROR;
 }
@@ -1908,6 +2005,61 @@ or_unpack_int (char *ptr, int *number)
 }
 
 /*
+ * or_pack_bigint - write bigint value to ptr
+ *    return: advanced buffer pointer
+ *    ptr(out): out buffer
+ *    number(in): bigint value
+ */
+char *
+or_pack_bigint (char *ptr, DB_BIGINT number)
+{
+  return or_pack_int64 (ptr, number);
+}
+
+/*
+ * or_unpack_bigint - read a bigint value
+ *    return: advanced buffer pointer
+ *    ptr(in): input buffer
+ *    number(out): bigint value
+ */
+char *
+or_unpack_bigint (char *ptr, DB_BIGINT * number)
+{
+  return or_unpack_int64 (ptr, number);
+}
+
+/*
+ * or_pack_int64 - write INT64 value to ptr
+ *    return: advanced buffer pointer
+ *    ptr(out): out buffer
+ *    number(in): INT64 value
+ */
+char *
+or_pack_int64 (char *ptr, INT64 number)
+{
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+  OR_PUT_INT64 (ptr, number);
+  return (ptr + OR_INT64_SIZE);
+}
+
+/*
+ * or_unpack_int64 - read a INT64 value
+ *    return: advanced buffer pointer
+ *    ptr(in): input buffer
+ *    number(out): INT64 value
+ */
+char *
+or_unpack_int64 (char *ptr, INT64 * number)
+{
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+  *number = OR_GET_INT64 (ptr);
+  return (ptr + OR_INT64_SIZE);
+}
+
+
+/*
  * or_pack_short - write a short value
  *    return: advanced buffer pointer
  *    ptr(out): output buffer
@@ -2023,6 +2175,8 @@ or_unpack_float (char *ptr, float *number)
 char *
 or_pack_double (char *ptr, double number)
 {
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
   OR_PUT_DOUBLE (ptr, &number);
   return (ptr + OR_DOUBLE_SIZE);
 }
@@ -2036,6 +2190,8 @@ or_pack_double (char *ptr, double number)
 char *
 or_unpack_double (char *ptr, double *number)
 {
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
   OR_GET_DOUBLE (ptr, number);
   return (ptr + OR_DOUBLE_SIZE);
 }
@@ -2391,7 +2547,7 @@ or_pack_btid (char *ptr, BTID * btid)
       OR_PUT_NULL_BTID (ptr);
     }
 
-  return (ptr + OR_BTID_SIZE);
+  return (ptr + OR_BTID_ALIGNED_SIZE);
 }
 
 /*
@@ -2405,7 +2561,7 @@ or_unpack_btid (char *ptr, BTID * btid)
 {
   OR_GET_BTID (ptr, btid);
 
-  return (ptr + OR_BTID_SIZE);
+  return (ptr + OR_BTID_ALIGNED_SIZE);
 }
 
 /*
@@ -2505,7 +2661,7 @@ or_unpack_setref (char *ptr, DB_SET ** ref)
  *    of the string.
  */
 char *
-or_pack_string (char *ptr, char *string)
+or_pack_string (char *ptr, const char *string)
 {
   int len, bits, pad;
 
@@ -2705,31 +2861,6 @@ or_align_length (int length)
 	}
       total += len + pad;
     }
-  return (total);
-}
-
-/*
- * or_align_length_for_btree - for a given length return a aligned length
- * for btree
- *    return: aligned length
- *    length(in): given length
- * Note:
- *    Hack Alert !!!  See above comment
- */
-int
-or_align_length_for_btree (int length)
-{
-  int total, bits;
-
-  /* always have a length */
-  total = length;
-
-  bits = length & 3;
-  if (bits)
-    {
-      total += (4 - bits);
-    }
-
   return (total);
 }
 
@@ -2939,7 +3070,8 @@ int
 or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	       int include_classoids, int is_null)
 {
-  unsigned int carrier, precision, extended_precision, extended_scale;
+  unsigned int carrier, extended_precision, extended_scale;
+  int precision;
   int has_oid, has_subdomain;
   TP_DOMAIN *d;
   DB_TYPE id;
@@ -3402,12 +3534,12 @@ unpack_domain (OR_BUF * buf, int *is_null)
   DB_TYPE type;
   bool more, is_desc;
   unsigned int carrier, index;
-  unsigned int precision, scale, codeset;
+  unsigned int precision, scale, codeset = 0;
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
 
-  domain = last = NULL;
+  domain = last = dom = setdomain = NULL;
   precision = scale = 0;
 
   more = true;
@@ -3455,9 +3587,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_ELO:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
+	    case DB_TYPE_DATETIME:
 	    case DB_TYPE_DATE:
 	    case DB_TYPE_MONETARY:
 	    case DB_TYPE_SHORT:
+	    case DB_TYPE_BIGINT:
 	      dom = tp_domain_find_noparam (type, is_desc);
 	      break;
 
@@ -3612,9 +3746,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_ELO:
 		case DB_TYPE_TIME:
 		case DB_TYPE_TIMESTAMP:
+		case DB_TYPE_DATETIME:
 		case DB_TYPE_DATE:
 		case DB_TYPE_MONETARY:
 		case DB_TYPE_SHORT:
+		case DB_TYPE_BIGINT:
 		case DB_TYPE_NUMERIC:
 		  break;
 		case DB_TYPE_NCHAR:
@@ -4282,7 +4418,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 
 	  if (offset_table)
 	    {
-	      length = buf->ptr - element_start;
+	      length = CAST_BUFLEN (buf->ptr - element_start);
 	      bits = length & 3;
 	      if (bits)
 		{
@@ -4306,7 +4442,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
     }
 
   /* always pad out a packed set to a word boundary */
-  length = buf->ptr - set_start;
+  length = CAST_BUFLEN (buf->ptr - set_start);
   bits = length & 3;
   if (bits)
     {
@@ -4938,7 +5074,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
       if (expected >= 0)
 	{
 	  /* reduce the expected size by the amount consumed with the domain tag */
-	  expected -= (buf->ptr - start);
+	  expected -= CAST_BUFLEN (buf->ptr - start);
 	  start = buf->ptr;
 	}
     }
@@ -5023,6 +5159,7 @@ or_pack_value (char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
 
+  buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
   or_init (&orbuf, buf, 0);
   /* don't collapse nulls, include the domain, and include domain class oids */
   or_put_value (&orbuf, value, 0, 1, 1);
@@ -5045,6 +5182,7 @@ or_unpack_value (char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
 
+  buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
   or_init (&orbuf, buf, 0);
   or_get_value (&orbuf, value, NULL, -1, true);
 
@@ -5076,6 +5214,11 @@ or_pack_listid (char *ptr, void *listid_ptr)
 
   listid = (QFILE_LIST_ID *) listid_ptr;
 
+  OR_PUT_PTR (ptr, listid->query_id);
+  ptr += OR_PTR_SIZE;
+  OR_PUT_PTR (ptr, listid->tfile_vfid);
+  ptr += OR_PTR_SIZE;
+
   OR_PUT_INT (ptr, listid->tuple_cnt);
   ptr += OR_INT_SIZE;
 
@@ -5104,10 +5247,6 @@ or_pack_listid (char *ptr, void *listid_ptr)
       ptr = or_pack_domain (ptr, listid->type_list.domp[i], 0, 0);
     }
 
-  OR_PUT_INT (ptr, listid->query_id);
-  ptr += OR_INT_SIZE;
-  OR_PUT_INT (ptr, listid->tfile_vfid);
-  ptr += OR_INT_SIZE;
   return (ptr);
 }
 
@@ -5140,6 +5279,12 @@ or_unpack_listid (char *ptr, void **listid_ptr)
       goto error;
     }
   QFILE_CLEAR_LIST_ID (listid);
+
+  listid->query_id = OR_GET_PTR (ptr);
+  ptr += OR_PTR_SIZE;
+
+  listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_PTR (ptr);
+  ptr += OR_PTR_SIZE;
 
   listid->tuple_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -5190,12 +5335,6 @@ or_unpack_listid (char *ptr, void **listid_ptr)
       ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
     }
 
-  listid->query_id = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-/* TODO: LP64, OR_GET_INT --> OR_GET_PTR??? */
-  listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
   *listid_ptr = (void *) listid;
   return (ptr);
 
@@ -5233,6 +5372,12 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
       goto error;
     }
   QFILE_CLEAR_LIST_ID (listid);
+
+  listid->query_id = OR_GET_PTR (ptr);
+  ptr += OR_PTR_SIZE;
+
+  listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_PTR (ptr);
+  ptr += OR_PTR_SIZE;
 
   listid->tuple_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -5283,11 +5428,6 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
       ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
     }
 
-  listid->query_id = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-  listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
   *listid_ptr = (void *) listid;
   return (ptr);
 
@@ -5333,212 +5473,8 @@ or_listid_length (void *listid_ptr)
       length += or_packed_domain_size (listid->type_list.domp[i], 0);
     }
 
-  length += OR_INT_SIZE /* query_id */  + OR_INT_SIZE;	/* tfile_vfid */
+  length += OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
   return (length);
-}
-
-/*
- * or_pack_key - used for the network interface routines that handle
- * KEY_TYPE/KEY_PTR argument pairs.
- *    return: advanced pointer
- *    start(out): current pointer of output buffer
- *    key_type(in): type of key
- *    value(in): pointer to key value
- * Note:
- *    This is used for the network interface routines that handle
- *    KEY_TYPE/KEY_PTR argument pairs.  KEY_TYPE is a set of identifiers
- *    similar to DB_TYPE but not as inclusive.  It identifies only those
- *    types that are allowed to be EH OR BT KEYS.  For these functions,
- *    the value of the key is passed as a void* and cast to the appropriate
- *    value after examining KEY_TYPE.
- *    Need to have a complete DB_TYPE translator that is called here.
- */
-char *
-or_pack_key (char *start, DB_TYPE key_type, void *value)
-{
-  char *ptr = start;
-
-  if (value == NULL)
-    {
-      return ptr;
-    }
-
-  switch (key_type)
-    {
-    case DB_TYPE_OBJECT:
-      OR_PUT_OID (ptr, (OID *) value);
-      ptr += OR_OID_SIZE;
-      break;
-    case DB_TYPE_DOUBLE:
-      OR_PUT_DOUBLE (ptr, (double *) value);
-      ptr += OR_DOUBLE_SIZE;
-      break;
-    case DB_TYPE_FLOAT:
-      OR_PUT_FLOAT (ptr, (float *) value);
-      ptr += OR_FLOAT_SIZE;
-      break;
-    case DB_TYPE_INTEGER:
-      OR_PUT_INT (ptr, *(int *) value);
-      ptr += OR_INT_SIZE;
-      break;
-    case DB_TYPE_SHORT:
-      OR_PUT_SHORT (ptr, *(short *) value);
-      /*
-       * note that we advance using OR_INT_SIZE in order to ensure that
-       * everything packed is on a word boundary.
-       */
-      ptr += OR_INT_SIZE;
-      break;
-    case DB_TYPE_TIME:
-      OR_PUT_TIME (ptr, value);
-      ptr += OR_TIME_SIZE;
-      break;
-    case DB_TYPE_UTIME:
-      OR_PUT_UTIME (ptr, value);
-      ptr += OR_UTIME_SIZE;
-      break;
-    case DB_TYPE_DATE:
-      OR_PUT_DATE (ptr, value);
-      ptr += OR_DATE_SIZE;
-      break;
-    case DB_TYPE_MONETARY:
-      OR_PUT_MONETARY (ptr, (DB_MONETARY *) value);
-      ptr += OR_DATE_SIZE;
-      break;
-    case DB_TYPE_STRING:
-      ptr = or_pack_string (ptr, (char *) value);
-      break;
-    default:
-      break;
-    }
-  return (ptr);
-}
-
-
-/*
- * or_packed_key_length - Determine the number of bytes required to represent
- * a packed  EH or BT key.
- *    return: byte size of packed key
- *    key_type(in): type of key
- *    value(in): pointer to key value
- */
-int
-or_packed_key_length (DB_TYPE key_type, void *value)
-{
-/* TODO: M2 64-bit */
-  int keysize = 0;
-
-  if (value == NULL)
-    {
-      return (keysize);
-    }
-
-  switch (key_type)
-    {
-    case DB_TYPE_OBJECT:
-      keysize = OR_OID_SIZE;
-      break;
-    case DB_TYPE_INTEGER:
-      keysize = OR_INT_SIZE;
-      break;
-    case DB_TYPE_FLOAT:
-      keysize = OR_FLOAT_SIZE;
-      break;
-    case DB_TYPE_DOUBLE:
-      keysize = OR_DOUBLE_SIZE;
-      break;
-      /* Note that packed short keys take up 4 bytes for alignment */
-    case DB_TYPE_SHORT:
-      keysize = OR_INT_SIZE;
-      break;
-    case DB_TYPE_TIME:
-      keysize = OR_TIME_SIZE;
-      break;
-    case DB_TYPE_UTIME:
-      keysize = OR_UTIME_SIZE;
-      break;
-    case DB_TYPE_DATE:
-      keysize = OR_DATE_SIZE;
-      break;
-    case DB_TYPE_MONETARY:
-      keysize = OR_MONETARY_SIZE;
-      break;
-    case DB_TYPE_STRING:
-      keysize = or_packed_string_length (value);
-      break;
-    default:
-      keysize = 0;
-      break;
-    }
-
-  return (keysize);
-}
-
-
-/*
- * or_unpack_key - unpacks a key value from a network buffer.
- *    return: advanced buffer pointer
- *    start(out): starting buffer pointer
- *    key_type(in): type of key to unpack
- *    value(out): pointer to location to store key value
- *
- */
-char *
-or_unpack_key (char *start, DB_TYPE key_type, void *value)
-{
-  char *ptr = start;
-
-  if (value == NULL)
-    {
-      return ptr;
-    }
-  switch (key_type)
-    {
-    case DB_TYPE_OBJECT:
-      OR_GET_OID (ptr, (OID *) value);
-      ptr += OR_OID_SIZE;
-      break;
-    case DB_TYPE_DOUBLE:
-      OR_GET_DOUBLE (ptr, (double *) value);
-      ptr += OR_DOUBLE_SIZE;
-      break;
-    case DB_TYPE_FLOAT:
-      OR_GET_FLOAT (ptr, (float *) value);
-      ptr += OR_FLOAT_SIZE;
-      break;
-    case DB_TYPE_INTEGER:
-      *((int *) value) = OR_GET_INT (ptr);
-      ptr += OR_INT_SIZE;
-      break;
-    case DB_TYPE_SHORT:
-      *((short *) value) = OR_GET_SHORT (ptr);
-      /* shorts are stored in 4 byte fields for alignment */
-      ptr += OR_INT_SIZE;
-      break;
-    case DB_TYPE_TIME:
-      OR_GET_TIME (ptr, value);
-      ptr += OR_TIME_SIZE;
-      break;
-    case DB_TYPE_UTIME:
-      OR_GET_UTIME (ptr, value);
-      ptr += OR_UTIME_SIZE;
-      break;
-    case DB_TYPE_DATE:
-      OR_GET_DATE (ptr, value);
-      ptr += OR_DATE_SIZE;
-      break;
-    case DB_TYPE_MONETARY:
-      OR_GET_MONETARY (ptr, (DB_MONETARY *) value);
-      ptr += OR_DATE_SIZE;
-      break;
-    case DB_TYPE_STRING:
-      ptr = or_unpack_string (ptr, (char **) value);
-      break;
-    default:
-      break;
-    }
-
-  return (ptr);
 }
 
 /*
@@ -5570,7 +5506,6 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
     }
   return (ptr);
 }
-
 
 /*
  * or_unpack_method_sig - unpacks a METHOD_SIG descriptor from a buffer.
@@ -5619,7 +5554,6 @@ or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
   return (ptr);
 }
 
-
 /*
  * or_pack_method_sig_list - write a method signature list
  *    return: advanced buffer pointer
@@ -5637,7 +5571,6 @@ or_pack_method_sig_list (char *ptr, void *method_sig_list_ptr)
   ptr = or_pack_method_sig (ptr, method_sig_list->method_sig);
   return (ptr);
 }
-
 
 /*
  * or_unpack_method_sig_list - read a method signature list
@@ -5665,7 +5598,6 @@ or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
   *(METHOD_SIG_LIST **) method_sig_list_ptr = method_sig_list;
   return (ptr);
 }
-
 
 /*
  * or_method_sig_list_length - get the length of  method signature list
@@ -5713,11 +5645,10 @@ or_pack_elo (char *ptr, void *elo_ptr)
   DB_ELO *elo = (DB_ELO *) elo_ptr;
 
   ptr = or_pack_loid (ptr, &elo->loid);
-  ptr = or_pack_string (ptr, (char *) elo->pathname);
+  ptr = or_pack_string (ptr, elo->pathname);
   ptr = or_pack_int (ptr, elo->type);
   return ptr;
 }
-
 
 /*
  * or_unpack_elo - read a ELO value
@@ -5745,7 +5676,6 @@ or_unpack_elo (char *ptr, void **elo_ptr)
   *(DB_ELO **) elo_ptr = elo;
   return ptr;
 }
-
 
 /*
  * or_elo_length - get the length of given ELO
@@ -5808,7 +5738,6 @@ or_unpack_db_value (char *buffer, DB_VALUE * val)
   return or_unpack_value (buffer, val);
 }
 
-
 /*
  * or_packed_string_array_length - get the amount of space needed to pack an
  * array of strings.
@@ -5831,7 +5760,6 @@ or_packed_string_array_length (int count, const char **string_array)
   return (size);
 }
 
-
 /*
  * or_packed_db_value_array_length - get the amount of space needed to pack an
  * array of db_values.
@@ -5851,7 +5779,6 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
     }
   return (size);
 }
-
 
 /*
  * or_pack_int_array - write a int array
@@ -5883,7 +5810,6 @@ or_pack_int_array (char *buffer, int count, int *int_array)
   return (ptr);
 }
 
-
 /*
  * or_pack_string_array - write a string array
  *    return: advanced buffer pointer
@@ -5900,11 +5826,10 @@ or_pack_string_array (char *buffer, int count, const char **string_array)
   ptr = or_pack_int (buffer, count);
   for (i = 0; i < count; i++)
     {
-      ptr = or_pack_string (ptr, (char *) string_array[i]);
+      ptr = or_pack_string (ptr, string_array[i]);
     }
   return (ptr);
 }
-
 
 /*
  * unpack_str_array - read array of string
@@ -5962,7 +5887,6 @@ or_unpack_string_array (char *buffer, char ***string_array, int *cnt)
   return unpack_str_array (ptr, string_array, *cnt);
 }
 
-
 /*
  * or_pack_db_value_array - write a DB_VALUE array
  *    return: advanced buffer pointer
@@ -5988,7 +5912,6 @@ or_pack_db_value_array (char *buffer, int count, DB_VALUE * val)
     }
   return (ptr);
 }
-
 
 /*
  * or_unpack_db_value_array - write a DB_VALUE array
@@ -6031,6 +5954,36 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
     }
 
   return (ptr);
+}
+
+/*
+ * or_pack_ptr - write pointer value to ptr
+ *    return: advanced buffer pointer
+ *    ptr(out): out buffer
+ *    ptrval(in): pointer value
+ */
+char *
+or_pack_ptr (char *ptr, UINTPTR ptrval)
+{
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+  OR_PUT_PTR (ptr, ptrval);
+  return (ptr + OR_PTR_SIZE);
+}
+
+/*
+ * or_unpack_ptr - read a pointer value
+ *    return: advanced buffer pointer
+ *    ptr(in): input buffer
+ *    ptrval(out): pointer value
+ */
+char *
+or_unpack_ptr (char *ptr, UINTPTR * ptrval)
+{
+  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+  *ptrval = OR_GET_PTR (ptr);
+  return (ptr + OR_PTR_SIZE);
 }
 
 /*
@@ -6115,6 +6068,26 @@ ntohd (double *from, double *to)
 }
 #endif /* !OR_HAVE_NTOHD */
 
+UINT64
+ntohi64 (UINT64 from)
+{
+  UINT64 to;
+  char *ptr, *vptr;
+
+  ptr = (char *) &from;
+  vptr = (char *) &to;
+  vptr[0] = ptr[7];
+  vptr[1] = ptr[6];
+  vptr[2] = ptr[5];
+  vptr[3] = ptr[4];
+  vptr[4] = ptr[3];
+  vptr[5] = ptr[2];
+  vptr[6] = ptr[1];
+  vptr[7] = ptr[0];
+
+  return to;
+}
+
 #if !defined (OR_HAVE_HTONS)
 unsigned short
 htons (unsigned short from)
@@ -6130,6 +6103,12 @@ htonl (unsigned int from)
   return ntohl (from);
 }
 #endif /* !OR_HAVE_HTONL */
+
+UINT64
+htoni64 (UINT64 from)
+{
+  return ntohi64 (from);
+}
 
 #if !defined (OR_HAVE_HTONF)
 void

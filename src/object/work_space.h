@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -29,11 +29,11 @@
 #ident "$Id$"
 
 #include <stdio.h>
-#include "quick_fit.h"
 #include "oid.h"
 #include "storage_common.h"
 #include "dbtype.h"
 #include "dbdef.h"
+#include "quick_fit.h"
 
 /*
  * VID_INFO
@@ -82,14 +82,13 @@ struct db_object
   struct db_object *class_mop;	/* pointer to class */
   void *object;			/* pointer to attribute values */
 
-  LOCK lock;			/* object lock */
-
   struct db_object *class_link;	/* link for class instances list */
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
 
   void *version;		/* versioning information */
+  LOCK lock;			/* object lock */
 
   unsigned char composition_fetch;	/* set the left-most bit if this MOP */
   /* has been composition fetched and  */
@@ -194,7 +193,7 @@ typedef int (*MAPFUNC) (MOP mop, void *args);
 #define WS_MAP(mopvar, stuff) \
   { int __slot__; MOP __mop__; \
     for (__slot__ = 0 ; __slot__ < ws_Mop_table_size ; __slot__++) { \
-      for (__mop__ = ws_Mop_table[__slot__] ; __mop__ != NULL ; \
+      for (__mop__ = ws_Mop_table[__slot__].head ; __mop__ != NULL ; \
            __mop__ = __mop__->hash_link) { \
         mopvar = __mop__; \
         stuff \
@@ -269,7 +268,7 @@ typedef struct ws_property
   struct ws_property *next;
 
   int key;
-  void *value;
+  DB_BIGINT value;
 
 } WS_PROPERTY;
 
@@ -282,8 +281,8 @@ typedef struct ws_property
 
 typedef struct mop_iterator
 {
-  int index;
   MOP next;
+  unsigned int index;
 } MOP_ITERATOR;
 
 
@@ -433,9 +432,19 @@ enum ws_find_mop_status_
 };
 
 /*
+ * WS_MOP_TABLE_ENTRY
+ */
+typedef struct ws_mop_table_entry WS_MOP_TABLE_ENTRY;
+struct ws_mop_table_entry
+{
+  MOP head;
+  MOP tail;
+};
+
+/*
  * WORKSPACE GLOBALS
  */
-extern MOP *ws_Mop_table;
+extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
 extern unsigned int ws_Mop_table_size;
 extern MOP ws_Reference_mops;
 extern MOP ws_Set_mops;
@@ -470,11 +479,6 @@ extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 extern MOP ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
 				  WS_REFCOLLECTOR collector);
 extern void ws_set_reference_mop_owner (MOP refmop, MOP owner, int attid);
-
-/* Mop access functions */
-extern MOP_ITERATOR *ws_begin_mop_iteration (void);
-extern MOP ws_next_mop (MOP_ITERATOR * it);
-
 
 /* Set mops */
 extern MOP ws_make_set_mop (void *setptr);
@@ -562,9 +566,9 @@ extern void ws_free_string (const char *str);
 
 /* Property lists */
 
-extern int ws_get_prop (MOP op, int key, void **value);
+extern int ws_get_prop (MOP op, int key, DB_BIGINT * value);
 extern int ws_rem_prop (MOP op, int key);
-extern int ws_put_prop (MOP op, int key, void *value);
+extern int ws_put_prop (MOP op, int key, DB_BIGINT value);
 
 /*
  * DB_LIST functions

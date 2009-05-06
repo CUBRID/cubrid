@@ -45,8 +45,8 @@ static void *ini_dblalloc (void *ptr, int size);
 static unsigned int ini_table_hash (char *key);
 static INI_TABLE *ini_table_new (int size);
 static void ini_table_free (INI_TABLE * vd);
-static char *ini_table_get (INI_TABLE * ini, char *key, char *def,
-			    int *lineno);
+static const char *ini_table_get (INI_TABLE * ini, char *key, const char *def,
+				  int *lineno);
 static int ini_table_set (INI_TABLE * vd, char *key, char *val, int lineno);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void ini_table_unset (INI_TABLE * ini, char *key);
@@ -55,7 +55,8 @@ static char *ini_str_lower (const char *s);
 static char *ini_str_trim (char *s);
 static INI_LINE_STATUS ini_parse_line (char *input_line, char *section,
 				       char *key, char *value);
-static char *ini_get_internal (INI_TABLE * ini, const char *key, char *def);
+static const char *ini_get_internal (INI_TABLE * ini, const char *key,
+				     const char *def);
 
 /*
  * ini_dblalloc() - Doubles the allocated size associated to a pointer
@@ -231,8 +232,8 @@ ini_table_free (INI_TABLE * ini)
  * Note: The returned character pointer points to data internal to the
  *       INI_TABLE object, you should not try to free it or modify it
  */
-static char *
-ini_table_get (INI_TABLE * ini, char *key, char *def, int *lineno)
+static const char *
+ini_table_get (INI_TABLE * ini, char *key, const char *def, int *lineno)
 {
   unsigned int hash;
   int i;
@@ -274,7 +275,8 @@ ini_table_get (INI_TABLE * ini, char *key, char *def, int *lineno)
 static int
 ini_table_set (INI_TABLE * ini, char *key, char *val, int lineno)
 {
-  unsigned int i, hash;
+  int i;
+  unsigned int hash;
 
   if (ini == NULL || key == NULL)
     {
@@ -798,7 +800,7 @@ ini_seccmp (const char *key1, const char *key2)
 
   if (s1)
     {
-      key1_sec_len = s1 - key1;
+      key1_sec_len = CAST_STRLEN (s1 - key1);
     }
   else
     {
@@ -807,7 +809,7 @@ ini_seccmp (const char *key1, const char *key2)
 
   if (s2)
     {
-      key2_sec_len = s2 - key2;
+      key2_sec_len = CAST_STRLEN (s2 - key2);
     }
   else
     {
@@ -838,10 +840,11 @@ ini_seccmp (const char *key1, const char *key2)
  *       If the key cannot be found, the pointer passed as 'def' is returned
  *       do not free or modify returned pointer
  */
-static char *
-ini_get_internal (INI_TABLE * ini, const char *key, char *def)
+static const char *
+ini_get_internal (INI_TABLE * ini, const char *key, const char *def)
 {
-  char *lc_key, *sval;
+  char *lc_key;
+  const char *sval;
 
   if (ini == NULL || key == NULL)
     {
@@ -865,10 +868,12 @@ ini_get_internal (INI_TABLE * ini, const char *key, char *def)
  *       If the key cannot be found, the pointer passed as 'def' is returned
  *       do not free or modify returned pointer
  */
-char *
-ini_getstr (INI_TABLE * ini, const char *sec, const char *key, char *def)
+const char *
+ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
+	    const char *def)
 {
   char sec_key[INI_BUFSIZ + 1];
+
   sprintf (sec_key, "%s:%s", sec, key);
   return ini_get_internal (ini, sec_key, def);
 }
@@ -886,7 +891,7 @@ ini_getstr (INI_TABLE * ini, const char *sec, const char *key, char *def)
 int
 ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def)
 {
-  char *str;
+  const char *str;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY);
   if (str == INI_INVALID_KEY)
@@ -987,7 +992,7 @@ ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
 int
 ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def)
 {
-  char *str;
+  const char *str;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY);
   if (str == INI_INVALID_KEY)

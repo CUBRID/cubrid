@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * broker_log_converter.c - 
+ * broker_log_converter.c -
  */
 
 #ident "$Id$"
@@ -27,17 +27,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <unistd.h>
 #endif
 
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
-
-#ifdef WIN32
 #include "broker_getopt.h"
-#endif
 
 #define CAS_LOG_MSG_INDEX 19
 #define CAS_RUN_NEW_LINE_CHAR	1
@@ -48,7 +45,7 @@
           tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX;        \
           tmp_ptr = strchr(tmp_ptr, ' ');               \
           if (tmp_ptr == NULL)                          \
-            MSG_P = "";                                 \
+            MSG_P = (char *) "";                        \
           else                                          \
             MSG_P = tmp_ptr + 1;                        \
         } while (0)
@@ -295,7 +292,7 @@ log_bind_value (char *str, int lineno, FILE * outfp)
     {
       if (strcmp (p, "NULL") == 0)
 	{
-	  value_p = "";
+	  value_p = (char *) "";
 	}
       else
 	{
@@ -325,6 +322,8 @@ log_bind_value (char *str, int lineno, FILE * outfp)
     type = CCI_U_TYPE_VARBIT;
   else if (strcmp (p, "NUMERIC") == 0)
     type = CCI_U_TYPE_NUMERIC;
+  else if (strcmp (p, "BIGINT") == 0)
+    type = CCI_U_TYPE_BIGINT;
   else if (strcmp (p, "INT") == 0)
     type = CCI_U_TYPE_INT;
   else if (strcmp (p, "SHORT") == 0)
@@ -341,6 +340,8 @@ log_bind_value (char *str, int lineno, FILE * outfp)
     type = CCI_U_TYPE_TIME;
   else if (strcmp (p, "TIMESTAMP") == 0)
     type = CCI_U_TYPE_TIMESTAMP;
+  else if (strcmp (p, "DATETIME") == 0)
+    type = CCI_U_TYPE_DATETIME;
   else if (strcmp (p, "OBJECT") == 0)
     type = CCI_U_TYPE_OBJECT;
   else

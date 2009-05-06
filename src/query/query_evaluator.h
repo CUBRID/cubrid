@@ -45,8 +45,8 @@ struct qproc_db_value_list
 typedef struct val_list_node VAL_LIST;	/* value list */
 struct val_list_node
 {
-  int val_cnt;			/* value count */
   QPROC_DB_VALUE_LIST valp;	/* first value node */
+  int val_cnt;			/* value count */
 };
 
 typedef enum
@@ -141,8 +141,8 @@ typedef struct valptr_list_node VALPTR_LIST;
 typedef struct valptr_list_node OUTPTR_LIST;
 struct valptr_list_node
 {
-  int valptr_cnt;		/* value count */
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
+  int valptr_cnt;		/* value count */
 };
 
 typedef struct regu_varlist_list_node *REGU_VARLIST_LIST;	/* TODO */
@@ -181,10 +181,12 @@ typedef enum
   T_SYS_DATE,
   T_SYS_TIME,
   T_SYS_TIMESTAMP,
+  T_SYS_DATETIME,
   T_TO_CHAR,
   T_TO_DATE,
   T_TO_TIME,
   T_TO_TIMESTAMP,
+  T_TO_DATETIME,
   T_TO_NUMBER,
   T_CURRENT_VALUE,
   T_NEXT_VALUE,
@@ -228,10 +230,10 @@ struct arith_list_node
   ARITH_TYPE *next;		/* next arithmetic expression */
   TP_DOMAIN *domain;		/* resultant domain */
   DB_VALUE *value;		/* value of the subtree */
-  OPERATOR_TYPE opcode;		/* operator value */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
   REGU_VARIABLE *thirdptr;	/* third operand */
+  OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier
 				 * and datetime extract field specifier */
   PRED_EXPR *pred;		/* predicate expression */
@@ -258,8 +260,8 @@ typedef struct function_node FUNCTION_TYPE;
 struct function_node
 {
   DB_VALUE *value;		/* value of the function */
-  FUNC_TYPE ftype;		/* function to call */
   REGU_VARIABLE_LIST operand;	/* operands */
+  FUNC_TYPE ftype;		/* function to call */
 };
 
 /*
@@ -319,8 +321,8 @@ struct like_eval_term
 {
   REGU_VARIABLE *src;
   REGU_VARIABLE *pattern;
-  char esc_char;
   int esc_char_set;
+  char esc_char;
 };
 
 typedef struct eval_term EVAL_TERM;
@@ -345,13 +347,13 @@ struct pred
 
 struct pred_expr
 {
-  TYPE_PRED_EXPR type;
   union
   {
     PRED pred;
     EVAL_TERM eval_term;
     PRED_EXPR *not_term;
   } pe;
+  TYPE_PRED_EXPR type;
 };
 
 typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, PRED_EXPR *,
@@ -380,9 +382,9 @@ struct scan_pred
 typedef struct scan_attrs SCAN_ATTRS;
 struct scan_attrs
 {
-  int num_attrs;		/* number of attributes */
   ATTR_ID *attr_ids;		/* array of attributes id */
   HEAP_CACHE_ATTRINFO *attr_cache;	/* attributes access cache */
+  int num_attrs;		/* number of attributes */
 };
 
 /* initialize SCAN_ATTRS structure */
@@ -409,10 +411,10 @@ struct filter_info
   OID *class_oid;		/* class OID */
 
   /* index information */
-  int btree_num_attrs;		/* number of attributes of the index key */
   ATTR_ID *btree_attr_ids;	/* attribute id array of the index key */
   int *num_vstr_ptr;		/* number pointer of variable string attrs */
   ATTR_ID *vstr_ids;		/* attribute id array of variable string */
+  int btree_num_attrs;		/* number of attributes of the index key */
 };
 
 /* initialize FILTER_INFO structure as data filter */

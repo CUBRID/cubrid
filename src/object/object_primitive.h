@@ -95,7 +95,7 @@ typedef struct pr_type
  * PRIMITIVE TYPE STRUCTURES
  */
 /* The number of following types */
-#define PR_TYPE_TOTAL 30
+#define PR_TYPE_TOTAL 32
 
 extern PR_TYPE tp_Null;
 extern PR_TYPE tp_Integer;
@@ -111,6 +111,7 @@ extern PR_TYPE tp_Midxkey;
 extern PR_TYPE tp_Time;
 extern PR_TYPE tp_Utime;
 extern PR_TYPE tp_Date;
+extern PR_TYPE tp_Datetime;
 extern PR_TYPE tp_Monetary;
 extern PR_TYPE tp_Elo;
 extern PR_TYPE tp_Variable;
@@ -126,6 +127,7 @@ extern PR_TYPE tp_Char;
 extern PR_TYPE tp_NChar;
 extern PR_TYPE tp_VarNChar;
 extern PR_TYPE tp_ResultSet;
+extern PR_TYPE tp_Bigint;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;
@@ -156,6 +158,8 @@ extern PR_TYPE *tp_Type_nchar;
 extern PR_TYPE *tp_Type_varnchar;
 extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
+extern PR_TYPE *tp_Type_bigint;
+extern PR_TYPE *tp_Type_datetime;
 
 extern PR_TYPE *tp_Type_id_map[];
 
@@ -217,7 +221,7 @@ extern int pr_ordered_mem_size_total;
   (*((type)->readmem))(tr, mem, domain, len)
 
 /* PRIM_WRITE
- * Write a vlaue from instance memory into a disk buffer.
+ * Write a value from instance memory into a disk buffer.
  */
 #define PRIM_WRITE(type, domain, tr, mem) (*((type)->writemem))(tr, mem, domain)
 
@@ -255,8 +259,8 @@ extern int pr_ordered_mem_size_total;
  */
 
 /* Type structure accessors */
-#define PR_TYPE_FROM_ID(type) \
-((type) <= DB_TYPE_MIDXKEY ? tp_Type_id_map[(int)(type)] : NULL)
+#define PR_TYPE_FROM_ID(type) ((type) <= DB_TYPE_LAST && (type) != DB_TYPE_TABLE \
+                               ? tp_Type_id_map[(int)(type)] : NULL)
 
 extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);

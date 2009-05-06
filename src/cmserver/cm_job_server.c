@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * fserver.c - 
+ * fserver.c -
  */
 
 #ident "$Id$"
@@ -33,7 +33,7 @@
 #include <sys/stat.h>		/* stat()    */
 #include <fcntl.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -54,7 +54,7 @@
 #include "cm_config.h"
 #include "cm_job_task.h"
 #include "dbi.h"
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
 
@@ -66,7 +66,7 @@ typedef struct
   char req_filename[512];
   char res_filename[512];
   int childpid;
-  int clt_sock_fd;
+  SOCKET clt_sock_fd;
 } T_THR_ARG;
 
 char g_pidfile_path[1024] = "";
@@ -76,13 +76,13 @@ static THREAD_FUNC fserver_slave_thr_f (void *arg);
 static int is_conflict (char *task_entered, char *dbname_entered);
 static void print_usage (char *pname);
 static void start_fserver (void);
-static int net_init ();
-static void send_res_file (int sock_fd, char *filename);
+static int net_init (void);
+static void send_res_file (SOCKET sock_fd, char *filename);
 
-static int fserver_sockfd;
+static SOCKET fserver_sockfd;
 static FILE *start_log_fp;
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 CtrlHandler (DWORD fdwCtrlType)
 {
@@ -116,7 +116,7 @@ fserver_slave_thr_f (void *arg)
   char *req_filename = ((T_THR_ARG *) arg)->req_filename;
   char *res_filename = ((T_THR_ARG *) arg)->res_filename;
   int childpid = ((T_THR_ARG *) arg)->childpid;
-  int clt_sock_fd = ((T_THR_ARG *) arg)->clt_sock_fd;
+  SOCKET clt_sock_fd = ((T_THR_ARG *) arg)->clt_sock_fd;
   int i;
 
   wait_proc (childpid);
@@ -148,7 +148,7 @@ fserver_slave_thr_f (void *arg)
 
   free ((T_THR_ARG *) arg);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   return NULL;
@@ -328,7 +328,7 @@ static const T_CONFLICT_TABLE cft_table[] = {
 static int
 is_conflict (char *task_entered, char *dbname_entered)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE handle;
   WIN32_FIND_DATA data;
   int found;
@@ -340,7 +340,7 @@ is_conflict (char *task_entered, char *dbname_entered)
   int te_num, tr_num, i, j;	/* each task number */
   int retval = -1;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (find_file, "%s/DBMT_comm_*", sco.dbmt_tmp_dir);
   handle = FindFirstFile (find_file, &data);
   if (handle == INVALID_HANDLE_VALUE)
@@ -351,14 +351,14 @@ is_conflict (char *task_entered, char *dbname_entered)
     return 0;
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   for (found = 1; found; found = FindNextFile (handle, &data))
 #else
   while ((dirp = readdir (dp)) != NULL)
 #endif
     {
       /* if comm file is found, read task from it */
-#ifndef WIN32
+#if !defined(WINDOWS)
       if (!strncmp (dirp->d_name, "DBMT_comm_", 10))
 #endif
 	{
@@ -366,7 +366,7 @@ is_conflict (char *task_entered, char *dbname_entered)
 	  char strbuf[512];
 	  char task_running[128], dbname_running[128];
 
-#ifdef WIN32
+#if defined(WINDOWS)
 	  sprintf (strbuf, "%s/%s", sco.dbmt_tmp_dir, data.cFileName);
 #else
 	  sprintf (strbuf, "%s/%s", sco.dbmt_tmp_dir, dirp->d_name);
@@ -417,7 +417,7 @@ is_conflict (char *task_entered, char *dbname_entered)
 
 		  if (retval == 1)
 		    {		/* conflict detected */
-#ifdef WIN32
+#if defined(WINDOWS)
 		      FindClose (handle);
 #else
 		      closedir (dp);
@@ -428,7 +428,7 @@ is_conflict (char *task_entered, char *dbname_entered)
 	    }
 	}
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   FindClose (handle);
 #else
   closedir (dp);
@@ -440,7 +440,8 @@ is_conflict (char *task_entered, char *dbname_entered)
 static void
 service_start (void)
 {
-  int newsockfd, childpid;
+  SOCKET newsockfd;
+  int childpid;
   struct sockaddr_in cli_addr;
   nvplist *cli_request, *cli_response;
   struct sockaddr_in temp_addr;
@@ -450,7 +451,7 @@ service_start (void)
   int req_count = 0;
   char req_filename[512], res_filename[512];
   char cmd_name[512];
-  char *argv[4];
+  const char *argv[4];
   int one = 1;
 
   for (;;)
@@ -459,8 +460,8 @@ service_start (void)
       cli_response = nv_create (5, NULL, "\n", ":", "\n");
 
       clilen = sizeof (cli_addr);
-      newsockfd =
-	accept (fserver_sockfd, (struct sockaddr *) &cli_addr, &clilen);
+      newsockfd = accept (fserver_sockfd, (struct sockaddr *) &cli_addr,
+			  &clilen);
       if (newsockfd < 0)
 	{
 	  continue;
@@ -472,9 +473,8 @@ service_start (void)
       ut_receive_request (newsockfd, cli_request);
 
       /* conflict resolution */
-      if (is_conflict
-	  (nv_get_val (cli_request, "task"),
-	   nv_get_val (cli_request, "dbname")))
+      if (is_conflict (nv_get_val (cli_request, "task"),
+		       nv_get_val (cli_request, "dbname")))
 	{
 	  nv_add_nvp (cli_response, "task", nv_get_val (cli_request, "task"));
 	  nv_add_nvp (cli_response, "status", "failure");
@@ -555,7 +555,7 @@ print_usage (char *pname)
 static void
 start_fserver (void)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE handle;
   WIN32_FIND_DATA data;
   int found;
@@ -569,7 +569,7 @@ start_fserver (void)
   char buf[512];
 
   /* change isolation level environment variable */
-#ifdef	WIN32
+#ifdef	WINDOWS
   sprintf (isolation_lv_env_name, "CUBRID_ISOLATION_LEVEL");
   sprintf (isolation_lv_env_value, "%d", TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
 
@@ -601,7 +601,7 @@ start_fserver (void)
   /* fprintf (start_log_fp, "\ncms start ... OK\n"); */
   ut_daemon_start ();
 
-#ifdef WIN32
+#if defined(WINDOWS)
   SetConsoleCtrlHandler ((PHANDLER_ROUTINE) CtrlHandler, TRUE);
 #else
   signal (SIGINT, term_handler);
@@ -618,14 +618,14 @@ start_fserver (void)
   server_fd_clear (fserver_sockfd);
 
   /* Delete any temporary from from sco.dbmt_tmp_dir */
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (buf, "%s/*", sco.dbmt_tmp_dir);
   if ((handle = FindFirstFile (buf, &data)) != INVALID_HANDLE_VALUE)
 #else
   if ((dirp = opendir (sco.dbmt_tmp_dir)) != NULL)
 #endif
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       for (found = 1; found; found = FindNextFile (handle, &data))
 #else
       while ((dp = readdir (dirp)) != NULL)
@@ -633,7 +633,7 @@ start_fserver (void)
 	{
 	  char *p;
 
-#ifdef WIN32
+#if defined(WINDOWS)
 	  p = data.cFileName;
 #else
 	  p = dp->d_name;
@@ -649,7 +649,7 @@ start_fserver (void)
 	      unlink (buf);
 	    }
 	}
-#ifdef WIN32
+#if defined(WINDOWS)
       FindClose (handle);
 #else
       closedir (dirp);
@@ -666,12 +666,12 @@ main (int argc, char **argv)
   int pidnum;
   char *ars_cmd;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGCHLD, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   start_log_fp = fopen ("cub_jsstart.log", "w");
   if (start_log_fp == NULL)
     start_log_fp = stdout;
@@ -757,8 +757,8 @@ main (int argc, char **argv)
 	  fscanf (pidfile, "%d", &pidnum);
 	  fclose (pidfile);
 
-	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
-	      (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
+	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH))
+	      || (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
 	    {
 	      /* fprintf (start_log_fp, "Previous pid file found. Removing and proceeding ...\n"); */
 	      unlink (tmpfile);
@@ -835,17 +835,18 @@ main (int argc, char **argv)
 }
 
 static int
-net_init ()
+net_init (void)
 {
   int optval = 1;
   struct sockaddr_in serv_addr;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     return -1;
 #endif
 
-  if ((fserver_sockfd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  fserver_sockfd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (fserver_sockfd))
     {
       perror ("socket");
       return -1;
@@ -880,7 +881,7 @@ net_init ()
 }
 
 static void
-send_res_file (int sock_fd, char *filename)
+send_res_file (SOCKET sock_fd, char *filename)
 {
   int fd, read_len;
   char buf[1024];

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -75,67 +75,8 @@
 #include "object_accessor.h"
 #include "boot_cl.h"
 
-
-
-
-/* Shorthand for simple warnings and errors */
-#define ERROR(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR1(error, code, arg1) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
-
-#define ERROR2(error, code, arg1, arg2) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2);\
-       } while (0)
-
-#define ERROR3(error, code, arg1, arg2, arg3) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
-       } while (0)
-
-#define ERROR4(error, code, arg1, arg2, arg3, arg4) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
-	   arg1, arg2, arg3, arg4); } while (0)
-
-
-/* Shorthand error macros */
-#define WARN(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR1(error, code, arg1) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
-
-#define ERROR2(error, code, arg1, arg2) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); } \
-       while (0)
-
-#define ERROR3(error, code, arg1, arg2, arg3) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
-       } while (0)
-
-#define ERROR4(error, code, arg1, arg2, arg3, arg4) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
-	   arg1, arg2, arg3, arg4); } while (0)
-
 #define UNIQUE_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
 #define UNIQUE_SAVEPOINT_NAME2 "dELETEcLASSmOP"
-
-
-
 
 /*
  * SCHEMA_DEFINITION
@@ -246,16 +187,14 @@ struct sm_candidate
 
   const char *name;
   const char *alias;
-  SM_NAME_SPACE name_space;
   MOP origin;
   MOP source;
+  SM_COMPONENT *obj;		/* actual component structure */
+  SM_NAME_SPACE name_space;
   int order;
 
   unsigned int is_alias:1;	/* expanded alias candidates */
-
   unsigned int is_requested:1;	/* requrested in a resolution specifier */
-
-  SM_COMPONENT *obj;		/* actual component structure */
 };
 
 /*
@@ -355,7 +294,7 @@ static STATIC_METHOD *sm_find_static_method (const char *name);
 static int sm_count_tokens (const char *string, int *maxcharp);
 static int sm_split_loader_commands (const char *string,
 				     const char ***command_ptr);
-static void sm_free_loader_commands (const char **commands);
+static void sm_free_loader_commands (char **commands);
 static void sm_free_method_links (METHOD_LINK * links);
 static int sm_link_static_method (SM_METHOD * method,
 				  METHOD_LINK ** link_ptr);
@@ -503,6 +442,8 @@ static int allocate_disk_structures (MOP classop, SM_CLASS * class_,
 static int drop_foreign_key_ref (MOP classop,
 				 SM_CLASS_CONSTRAINT * flat_cons,
 				 SM_CLASS_CONSTRAINT * cons);
+static bool is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con);
+static int inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con);
 static int transfer_disk_structures (MOP classop, SM_CLASS * class_,
 				     SM_TEMPLATE * flat);
 static void save_previous_value (SM_ATTRIBUTE * old, SM_ATTRIBUTE * new_);
@@ -532,7 +473,7 @@ static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
 static int update_class (SM_TEMPLATE * template_, MOP * classmop,
 			 int auto_res, int verify_oid);
 static void remove_class_triggers (MOP classop, SM_CLASS * class_);
-static int sm_exist_index (MOP classop, const char *idxname);
+static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
@@ -635,7 +576,7 @@ sc_set_current_schema (MOP user)
  *
  */
 
-const char *
+static const char *
 sc_current_schema_name (void)
 {
   return (const char *) &(Current_Schema.name);
@@ -839,7 +780,7 @@ sm_split_loader_commands (const char *string, const char ***command_p)
   int tokens, maxchars, i, j;
   char *buf, *ptr;
   const char *new_;
-  const char **commands;
+  char **commands;
 
   commands = NULL;
   tokens = sm_count_tokens (string, &maxchars);
@@ -856,7 +797,7 @@ sm_split_loader_commands (const char *string, const char ***command_p)
       error = er_errid ();
       goto end;
     }
-  commands = (const char **) db_ws_alloc (sizeof (char *) * tokens + 1);
+  commands = (char **) db_ws_alloc (sizeof (char *) * (tokens + 1));
 
   if (commands == NULL)
     {
@@ -876,7 +817,7 @@ sm_split_loader_commands (const char *string, const char ***command_p)
       new_ = ws_copy_string (buf);
       if (new_ != NULL)
 	{
-	  commands[i] = new_;
+	  commands[i] = (char *) new_;
 	}
       else
 	{
@@ -893,7 +834,7 @@ sm_split_loader_commands (const char *string, const char ***command_p)
 end:
   if (error == NO_ERROR)
     {
-      *command_p = commands;
+      *command_p = (const char **) commands;
     }
   return (error);
 }
@@ -906,7 +847,7 @@ end:
  */
 
 static void
-sm_free_loader_commands (const char **commands)
+sm_free_loader_commands (char **commands)
 {
   int i;
 
@@ -1702,7 +1643,7 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 {
   int error = NO_ERROR;
   SM_METHOD_FILE *files, *file;
-  const char **names, **sorted_names, **commands;
+  char **names, **sorted_names, **commands;
   int i, nfiles, psn;
 
   if (links == NULL)
@@ -1711,14 +1652,14 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
     }
   files = class_->method_files;
   nfiles = ws_list_length ((DB_LIST *) files);
-  names = (const char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
+  names = (char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
 
   if (names == NULL)
     {
       error = er_errid ();
       return error;
     }
-  sorted_names = (const char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
+  sorted_names = (char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
 
   if (sorted_names == NULL)
     {
@@ -1740,11 +1681,11 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
     {
       if (file->expanded_name != NULL)
 	{
-	  names[i] = file->expanded_name;
+	  names[i] = (char *) file->expanded_name;
 	}
       else
 	{
-	  names[i] = file->name;
+	  names[i] = (char *) file->name;
 	}
     }
   names[nfiles] = NULL;
@@ -1770,11 +1711,12 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 	}
     }
   sorted_names[nfiles] = NULL;
-  error = sm_split_loader_commands (class_->loader_commands, &commands);
+  error = sm_split_loader_commands (class_->loader_commands,
+				    (const char ***) &commands);
   if (error == NO_ERROR)
     {
 #if defined(SOLARIS) || defined(LINUX)
-      error = sm_link_dynamic_methods (links, sorted_names);
+      error = sm_link_dynamic_methods (links, (const char **) sorted_names);
 #else /* SOLARIS || LINUX */
       error = sm_link_dynamic_methods (links, sorted_names, commands);
 #endif /* SOLARIS || LINUX */
@@ -1914,7 +1856,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
   DB_OBJLIST *cl;
   SM_METHOD_FILE *f;
   SM_CLASS *class_;
-  const char **names;
+  char **names;
   DB_NAMELIST *filenames, *name;
   int nfiles, i;
   METHOD_LINK *total_links, *links;
@@ -1987,7 +1929,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
     {
       /* build a name array for dl_load_object_module */
       nfiles = ws_list_length ((DB_LIST *) filenames);
-      names = (const char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
+      names = (char **) db_ws_alloc (sizeof (char *) * (nfiles + 1));
       if (names == NULL)
 	{
 	  error = er_errid ();
@@ -1996,13 +1938,14 @@ sm_prelink_methods (DB_OBJLIST * classes)
 	{
 	  for (i = 0, name = filenames; name != NULL; name = name->next, i++)
 	    {
-	      names[i] = name->name;
+	      names[i] = (char *) name->name;
 	    }
 	  names[nfiles] = NULL;
 
 	  /* need to have commands here ! */
 #if defined(SOLARIS) || defined(LINUX)
-	  error = sm_link_dynamic_methods (total_links, names);
+	  error =
+	    sm_link_dynamic_methods (total_links, (const char **) names);
 #else /* SOLARIS || LINUX */
 	  error = sm_link_dynamic_methods (total_links, names, NULL);
 #endif /* SOLARIS || LINUX */
@@ -2566,7 +2509,7 @@ sm_get_all_classes (int external_list)
  *   return: list of class MOPs
  *   external_list(in): non-zero to create external MOP list
 */
-DB_OBJLIST *
+static DB_OBJLIST *
 sm_get_base_classes (int external_list)
 {
   /* Lock all the classes in shared mode */
@@ -2672,7 +2615,7 @@ memory_error:
  *   op(in): class or instance object
  */
 
-DB_OBJLIST *
+static DB_OBJLIST *
 sm_get_all_objects (DB_OBJECT * op)
 {
   return sm_fetch_all_objects (op, DB_FETCH_QUERY_READ);
@@ -3291,7 +3234,7 @@ sm_check_class_domain (TP_DOMAIN * domain, MOP class_)
  *   att_id(in): attribute id
  */
 
-TP_DOMAIN *
+static TP_DOMAIN *
 sm_get_set_domain (MOP classop, int att_id)
 {
   SM_CLASS *class_;
@@ -3727,7 +3670,7 @@ sm_get_trigger_cache (DB_OBJECT * classop,
  *   cache(in/out): cache to update
  */
 
-int
+static int
 sm_update_trigger_cache (DB_OBJECT * classop,
 			 const char *attribute, int class_attribute,
 			 void *cache)
@@ -4186,13 +4129,13 @@ sm_get_class_name_internal (MOP op, bool return_null)
   return (name ? name : (return_null ? NULL : ""));
 }
 
-const char *
+static const char *
 sm_get_class_name (MOP op)
 {
   return sm_get_class_name_internal (op, true);
 }
 
-const char *
+static const char *
 sm_get_class_name_not_null (MOP op)
 {
   return sm_get_class_name_internal (op, false);
@@ -4309,7 +4252,7 @@ sm_object_size_quick (SM_CLASS * class_, MOBJ obj)
  *   op(in): class or instance object
  */
 
-int
+static int
 sm_object_disk_size (MOP op)
 {
   SM_CLASS *class_;
@@ -4349,7 +4292,7 @@ sm_object_disk_size (MOP op)
  *   classmop(in): class object
  */
 
-void
+static void
 sm_print (MOP classmop)
 {
   SM_CLASS *class_;
@@ -4476,7 +4419,7 @@ sm_has_indexes (MOBJ classobj)
  *   constraint(in): the constraint to look for
  */
 
-int
+static int
 sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint)
 {
   SM_CLASS *class_;
@@ -4584,7 +4527,7 @@ find_attribute_op (MOP op, const char *name,
  *   domain(out): returned pointer to domain
  */
 
-int
+static int
 sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain)
 {
   int error = NO_ERROR;
@@ -4636,7 +4579,7 @@ int
 sm_att_id (MOP classop, const char *name)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   int id;
 
   id = -1;
@@ -4659,7 +4602,7 @@ DB_TYPE
 sm_att_type_id (MOP classop, const char *name)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   DB_TYPE type;
 
   type = DB_TYPE_NULL;
@@ -4677,7 +4620,7 @@ sm_att_type_id (MOP classop, const char *name)
  *   id(in): type identifier
  */
 
-const char *
+static const char *
 sm_type_name (DB_TYPE id)
 {
   PR_TYPE *type;
@@ -4701,7 +4644,7 @@ MOP
 sm_att_class (MOP classop, const char *name)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   MOP attclass;
 
   attclass = NULL;
@@ -4776,7 +4719,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
   int error = NO_ERROR;
   int i;
   SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *con;
+  SM_CLASS_CONSTRAINT *con = NULL;
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
 
@@ -4839,7 +4782,7 @@ int
 sm_att_constrained (MOP classop, const char *name, SM_ATTRIBUTE_FLAG cons)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   int rc;
 
   rc = 0;
@@ -4870,7 +4813,7 @@ int
 sm_is_att_fk_cache (MOP classop, const char *name)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
 
   if (find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
     {
@@ -4891,7 +4834,7 @@ int
 sm_att_unique_constrained (MOP classop, const char *name)
 {
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   int rc;
 
   rc = 0;
@@ -4917,7 +4860,7 @@ sm_class_check_uniques (MOP classop)
   int error = NO_ERROR;
   OR_ALIGNED_BUF (200) a_buffer;	/* should handle most of the cases */
   char *buffer;
-  int buf_size, buf_len = 0, buf_malloced = 0, uniques = 0, btid_size;
+  int buf_size, buf_len = 0, buf_malloced = 0, uniques = 0;
   char *bufp, *buf_start;
   SM_CLASS_CONSTRAINT *con;
 
@@ -4925,8 +4868,6 @@ sm_class_check_uniques (MOP classop)
   bufp = buffer;
   buf_start = buffer;
   buf_size = 200;		/* could use OR_ALIGNED_BUF_SIZE */
-
-  btid_size = or_align_length_for_btree (OR_BTID_SIZE);
 
   if ((error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT))
       == NO_ERROR)
@@ -4938,7 +4879,7 @@ sm_class_check_uniques (MOP classop)
 	      uniques = 1;
 
 	      /* check if we have space for one more btid */
-	      if (buf_len + btid_size > buf_size)
+	      if (buf_len + OR_BTID_ALIGNED_SIZE > buf_size)
 		{
 		  buf_size = buf_size * 2;
 		  if (buf_malloced)
@@ -4961,8 +4902,7 @@ sm_class_check_uniques (MOP classop)
 		}
 
 	      bufp = or_pack_btid (bufp, &(con->index));
-	      bufp = PTR_ALIGN (bufp, OR_INT_SIZE);
-	      buf_len += btid_size;
+	      buf_len += OR_BTID_ALIGNED_SIZE;
 	    }
 	}
 
@@ -5182,7 +5122,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 
 	  if ((class_ =
 	       (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ)) == NULL)
-	    ERROR (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+	    ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
 	  else
 	    {
 	      switch (class_->class_type)
@@ -5225,7 +5165,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	      if ((class_ =
 		   (SM_CLASS *) locator_fetch_class (obj,
 						     DB_FETCH_READ)) == NULL)
-		ERROR (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
 	      else
 		{
 		  switch (class_->class_type)
@@ -5264,7 +5204,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			   (SM_CLASS *) locator_fetch_class (obj,
 							     DB_FETCH_READ))
 			  == NULL)
-			ERROR (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+			ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
 		      else
 			{
 			  switch (class_->class_type)
@@ -5290,7 +5230,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			}
 		    }
 		  else
-		    ERROR (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+		    ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
 		}
 	    }
 	}
@@ -5508,7 +5448,7 @@ sm_gc_object (MOP mop, void (*gcmarker) (MOP))
 
 /*
  * sm_schema_version()
- *   return: unsigned long indicating any change in schema as none
+ *   return: unsigned int indicating any change in schema as none
  */
 
 unsigned int
@@ -7176,7 +7116,7 @@ flatten_components (SM_TEMPLATE * def, SM_TEMPLATE * flat,
 		    SM_NAME_SPACE name_space, int auto_res)
 {
   int error = NO_ERROR;
-  SM_CANDIDATE *candlist, *candidates, *winner;
+  SM_CANDIDATE *candlist, *candidates, *winner = NULL;
   SM_COMPONENT *comp;
 
   /* get all of the possible candidates for this name_space (class or instance) */
@@ -8147,7 +8087,7 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class,
   if (error != NO_ERROR)
     {
       classobj_free_template (flat);
-      flat = NULL;;
+      flat = NULL;
     }
   else
     /* make sure these get kept */
@@ -8993,12 +8933,13 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 	}
     }
 
-  if (ref_count == 1 && !btree_delete_index (index))
-    error = er_errid ();
+  if (ref_count == 1 && btree_delete_index (index) != NO_ERROR)
+    {
+      error = er_errid ();
+    }
 
   return (error);
 }
-
 
 /*
  * remove_class_from_index() - Remove the class from the B-tree.
@@ -9536,6 +9477,81 @@ error:
 }
 
 /*
+ * is_index_owner() - check if class is index owner
+ *   return: true if index owner or false
+ *   classop(in):
+ *   con(in):
+ */
+
+static bool
+is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
+{
+  BTID btid;
+  MOP origin_classop;
+
+  origin_classop = con->attributes[0]->class_mop;
+
+  if (origin_classop == classop)
+    {
+      return true;
+    }
+
+  if (sm_exist_index (origin_classop, con->name, &btid) == NO_ERROR)
+    {
+      if (BTID_IS_EQUAL (&btid, &con->index))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * inherit_constraint() - inherit constrant from super class
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop(in):
+ *   con(in):
+ */
+
+static int
+inherit_constraint (MOP classop, SM_CLASS_CONSTRAINT * con)
+{
+  SM_ATTRIBUTE *att;
+  SM_CLASS *super_class;
+  SM_CLASS_CONSTRAINT *super_con;
+  int error = NO_ERROR;
+
+  att = con->attributes[0];
+  if (att != NULL && att->class_mop != classop)
+    {
+      /* its inherited, go get the btid from the super class */
+
+      error = au_fetch_class_force (att->class_mop, &super_class,
+				    AU_FETCH_READ);
+      if (error == NO_ERROR)
+	{
+	  super_con =
+	    classobj_find_class_constraint (super_class->constraints,
+					    con->type, con->name);
+	  if (super_con == NULL)
+	    {
+	      /* not supposed to happen, need a better error */
+	      error = ER_SM_INVALID_PROPERTY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  else
+	    {
+	      /* copy the index */
+	      con->index = super_con->index;
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
  * transfer_disk_structures() - Work function for install_new_representation.
  *    Here we look for any attributes that are being dropped from the
  *    class and remove their associated disk structures (if any).
@@ -9558,7 +9574,6 @@ error:
  *   flat(out): new flattened template
  */
 
-
 static int
 transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 {
@@ -9570,81 +9585,80 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
    * cache so we have a prayer of dealing with it.
    */
   if (flat == NULL)
-    flat_constraints = NULL;
+    {
+      flat_constraints = NULL;
+    }
   else
-    error = classobj_make_class_constraints (flat->properties,
-					     flat->instance_attributes,
-					     &flat_constraints);
+    {
+      error = classobj_make_class_constraints (flat->properties,
+					       flat->instance_attributes,
+					       &flat_constraints);
+    }
 
   /* loop over each old constraint */
-  for (con = class_->constraints;
-       ((con != NULL) && (error == NO_ERROR)); con = con->next)
+  for (con = class_->constraints; ((con != NULL) && (error == NO_ERROR));
+       con = con->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
 	{
-	  new_con =
-	    classobj_find_class_constraint (flat_constraints, con->type,
-					    con->name);
-	  if (new_con == NULL)
-	    {
-	      /* Constraint does not exist in the template */
-	      if (con->attributes[0] != NULL)
-		{
-		  /* destroy the old index but only if we're the owner of it ! */
-		  if (con->attributes[0]->class_mop == classop)
-		    {
-		      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
-			error =
-			  drop_foreign_key_ref (classop, flat_constraints,
-						con);
+	  continue;
+	}
 
-		      deallocate_index (class_->constraints, &con->index);
-		      BTID_SET_NULL (&con->index);
-		    }
-		  /* If we're not the owner of it, then only remove this class
-		     from the B-tree (the B-tree will still exist) */
-		  else
-		    {
-		      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
-			error =
-			  drop_foreign_key_ref (classop, flat_constraints,
-						con);
-
-		      rem_class_from_index (WS_OID (classop), &con->index,
-					    &class_->header.heap);
-		      BTID_SET_NULL (&con->index);
-		    }
-		}
-	    }
-	  else if (!BTID_IS_EQUAL (&con->index, &new_con->index))
+      new_con = classobj_find_class_constraint (flat_constraints, con->type,
+						con->name);
+      if (new_con == NULL)
+	{
+	  /* Constraint does not exist in the template */
+	  if (con->attributes[0] != NULL)
 	    {
-	      if (BTID_IS_NULL (&(new_con->index)))
+	      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 		{
-		  /* Template index isn't set, transfer the old one
-		   * Can this happen, it should have been transfered by now.
-		   */
-		  new_con->index = con->index;
+		  error = drop_foreign_key_ref (classop, flat_constraints,
+						con);
 		}
+
+	      /* destroy the old index but only if we're the owner of it ! */
+	      if (is_index_owner (classop, con))
+		{
+		  deallocate_index (class_->constraints, &con->index);
+		}
+	      /* If we're not the owner of it, then only remove this class
+	         from the B-tree (the B-tree will still exist) */
 	      else
 		{
-		  /* The index in the new template is not the same, I'm not entirely
-		   * sure what this means or how we can get here.
-		   * Possibly if we drop the unique but add it again with the same
-		   * name but over different attributes.
-		   */
-		  if (con->attributes[0] != NULL
-		      && con->attributes[0]->class_mop == classop)
-		    {
-		      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
-			{
-			  error = drop_foreign_key_ref (classop,
-							flat_constraints,
-							con);
-			}
+		  rem_class_from_index (WS_OID (classop), &con->index,
+					&class_->header.heap);
+		}
 
-		      deallocate_index (class_->constraints, &con->index);
-		      BTID_SET_NULL (&con->index);
+	      BTID_SET_NULL (&con->index);
+	    }
+	}
+      else if (!BTID_IS_EQUAL (&con->index, &new_con->index))
+	{
+	  if (BTID_IS_NULL (&(new_con->index)))
+	    {
+	      /* Template index isn't set, transfer the old one
+	       * Can this happen, it should have been transfered by now.
+	       */
+	      new_con->index = con->index;
+	    }
+	  else
+	    {
+	      /* The index in the new template is not the same, I'm not entirely
+	       * sure what this means or how we can get here.
+	       * Possibly if we drop the unique but add it again with the same
+	       * name but over different attributes.
+	       */
+	      if (con->attributes[0] != NULL && is_index_owner (classop, con))
+		{
+		  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+		    {
+		      error = drop_foreign_key_ref (classop, flat_constraints,
+						    con);
 		    }
+
+		  deallocate_index (class_->constraints, &con->index);
+		  BTID_SET_NULL (&con->index);
 		}
 	    }
 	}
@@ -9659,19 +9673,28 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
     {
       next = con->next;
       if (con->attributes[0] != NULL)
-	prev = con;
+	{
+	  prev = con;
+	}
       else
 	{
 	  if (prev == NULL)
-	    flat_constraints = con->next;
+	    {
+	      flat_constraints = con->next;
+	    }
 	  else
-	    prev->next = con->next;
+	    {
+	      prev->next = con->next;
+	    }
 
 	  con->next = NULL;
 	  if (!BTID_IS_NULL (&con->index))
 	    {
 	      if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
-		error = drop_foreign_key_ref (classop, flat_constraints, con);
+		{
+		  error = drop_foreign_key_ref (classop, flat_constraints,
+						con);
+		}
 
 	      deallocate_index (class_->constraints, &con->index);
 	      BTID_SET_NULL (&con->index);
@@ -9697,35 +9720,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	{
 	  if (BTID_IS_NULL (&(con->index)))
 	    {
-	      SM_ATTRIBUTE *att;
-	      SM_CLASS *super_class;
-	      SM_CLASS_CONSTRAINT *super_con;
-
-	      att = con->attributes[0];
-	      if (att != NULL && att->class_mop != classop)
-		{
-		  /* its inherited, go get the btid from the super class */
-		  if ((error =
-		       au_fetch_class_force (att->class_mop, &super_class,
-					     AU_FETCH_READ)) == NO_ERROR)
-		    {
-		      super_con =
-			classobj_find_class_constraint (super_class->
-							constraints,
-							con->type, con->name);
-		      if (super_con == NULL)
-			{
-			  /* not supposed to happen, need a better error */
-			  error = ER_SM_INVALID_PROPERTY;
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-			}
-		      else
-			{
-			  /* copy the index */
-			  con->index = super_con->index;
-			}
-		    }
-		}
+	      error = inherit_constraint (classop, con);
 	    }
 	}
     }
@@ -10029,7 +10024,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	     this trap so we can track it down.  Shouldn't be necessary */
 	  if (ws_class_has_cached_objects (classop))
 	    {
-	      ERROR (error, ER_SM_CORRUPTED);
+	      ERROR0 (error, ER_SM_CORRUPTED);
 	      return (error);
 	    }
 
@@ -10479,7 +10474,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 	{
 	  if (class_->new_ == NULL)
 	    {
-	      ERROR (error, ER_SM_CORRUPTED);
+	      ERROR0 (error, ER_SM_CORRUPTED);
 	    }
 	  else
 	    {
@@ -11025,7 +11020,7 @@ sm_delete_class_mop (MOP op)
     {
       /* op should be a class */
       if (!locator_is_class (op, DB_FETCH_WRITE))
-	ERROR (error, ER_OBJ_NOT_A_CLASS);
+	ERROR0 (error, ER_OBJ_NOT_A_CLASS);
 
       /* Authorization + pre-lock subclass lattice to the extent possible */
       else
@@ -11039,7 +11034,7 @@ sm_delete_class_mop (MOP op)
 	  if (pk && pk->fk_info
 	      && classobj_is_pk_referred (op, pk->fk_info, false))
 	    {
-	      ERROR (error, ER_FK_CANT_DROP_PK_REFERRED);
+	      ERROR0 (error, ER_FK_CANT_DROP_PK_REFERRED);
 	      goto fail_end;
 	    }
 
@@ -11264,7 +11259,7 @@ sm_delete_class (const char *name)
  *   idxname(in): index name
  */
 static int
-sm_exist_index (MOP classop, const char *idxname)
+sm_exist_index (MOP classop, const char *idxname, BTID * btid)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -11275,6 +11270,11 @@ sm_exist_index (MOP classop, const char *idxname)
     {
       if ((cons = classobj_find_class_index (class_, idxname)))
 	{
+	  if (btid)
+	    {
+	      BTID_COPY (btid, &cons->index);
+	    }
+
 	  return NO_ERROR;
 	}
     }
@@ -11322,7 +11322,8 @@ sm_add_index (MOP classop, const char **attnames,
       savepoint_index = 1;
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  if (sm_exist_index (sub_partitions[i], constraint_name) == NO_ERROR)
+	  if (sm_exist_index (sub_partitions[i], constraint_name, NULL) ==
+	      NO_ERROR)
 	    {
 	      class_name = sm_class_name (sub_partitions[i]);
 	      if (class_name)
@@ -11556,7 +11557,8 @@ sm_drop_index (MOP classop, const char *constraint_name)
       savepoint_index = 1;
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  if (sm_exist_index (sub_partitions[i], constraint_name) != NO_ERROR)
+	  if (sm_exist_index (sub_partitions[i], constraint_name, NULL) !=
+	      NO_ERROR)
 	    {
 	      continue;
 	    }
@@ -11760,7 +11762,7 @@ sm_default_constraint_name (const char *class_name,
    */
   if ((class_name == NULL) || (att_names == NULL))
     {
-      ERROR (error, ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS);
+      ERROR0 (error, ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS);
     }
   else
     {

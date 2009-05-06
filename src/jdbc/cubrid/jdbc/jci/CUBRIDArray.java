@@ -81,6 +81,9 @@ class CUBRIDArray
     case UUType.U_TYPE_INT:
       internalArray = (Object[]) (new Integer[length]);
       break;
+    case UUType.U_TYPE_BIGINT:
+      internalArray = (Object[]) (new Long[length]);
+      break;
     case UUType.U_TYPE_FLOAT:
       internalArray = (Object[]) (new Float[length]);
       break;
@@ -98,6 +101,7 @@ class CUBRIDArray
       internalArray = (Object[]) (new Time[length]);
       break;
     case UUType.U_TYPE_TIMESTAMP:
+    case UUType.U_TYPE_DATETIME:
       internalArray = (Object[]) (new Timestamp[length]);
       break;
     case UUType.U_TYPE_CHAR:

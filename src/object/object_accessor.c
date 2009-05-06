@@ -359,7 +359,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
   /* need to handle this case */
   if (op->is_temp)
     {
-      ERROR (error, ER_OBJ_INVALID_TEMP_OBJECT);
+      ERROR0 (error, ER_OBJ_INVALID_TEMP_OBJECT);
       return error;
     }
 
@@ -915,7 +915,7 @@ obj_set (MOP op, const char *name, DB_VALUE * value)
   if ((op == NULL) || (name == NULL)
       || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -952,7 +952,7 @@ obj_desc_set (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value)
   if ((op == NULL) || (desc == NULL)
       || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -1002,7 +1002,7 @@ obj_set_shared (MOP op, const char *name, DB_VALUE * value)
   if ((op == NULL) || (name == NULL)
       || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -1427,7 +1427,7 @@ obj_desc_get (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value)
 
   if ((op == NULL) || (desc == NULL) || (value == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -1465,7 +1465,7 @@ obj_get (MOP op, const char *name, DB_VALUE * value)
 
   if ((op == NULL) || (name == NULL) || (value == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else if (!(error = find_attribute (&class_, &att, op, name, 0)))
     {
@@ -1502,7 +1502,7 @@ obj_get_shared (MOP op, const char *name, DB_VALUE * value)
 
   if ((op == NULL) || (name == NULL) || (value == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -1556,7 +1556,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 	{
 	  if (DB_VALUE_TYPE (&temp_value) != DB_TYPE_OBJECT)
 	    {
-	      ERROR (error, ER_OBJ_INVALID_OBJECT_IN_PATH);
+	      ERROR0 (error, ER_OBJ_INVALID_OBJECT_IN_PATH);
 	    }
 	  else
 	    {
@@ -1575,7 +1575,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 
 	      if (token == end)
 		{
-		  ERROR (error, ER_OBJ_INVALID_PATH_EXPRESSION);
+		  ERROR0 (error, ER_OBJ_INVALID_PATH_EXPRESSION);
 		}
 	      else
 		{
@@ -1591,7 +1591,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 	  temp_type = DB_VALUE_TYPE (&temp_value);
 	  if (!TP_IS_SET_TYPE (temp_type))
 	    {
-	      ERROR (error, ER_OBJ_INVALID_SET_IN_PATH);
+	      ERROR0 (error, ER_OBJ_INVALID_SET_IN_PATH);
 	    }
 	  else
 	    {
@@ -1602,7 +1602,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 	      *end = '\0';
 	      if (end == token)
 		{
-		  ERROR (error, ER_OBJ_INVALID_INDEX_IN_PATH);
+		  ERROR0 (error, ER_OBJ_INVALID_INDEX_IN_PATH);
 		}
 	      else
 		{
@@ -1633,7 +1633,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 	}
       else
 	{
-	  ERROR (error, ER_OBJ_INVALID_PATH_EXPRESSION);
+	  ERROR0 (error, ER_OBJ_INVALID_PATH_EXPRESSION);
 	}
 
       /* next iteration */
@@ -1684,7 +1684,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
 
   if (obj->class_mop == NULL || obj->object == NULL)
     {
-      ERROR (error, ER_OBJ_INVALID_TEMP_OBJECT);
+      ERROR0 (error, ER_OBJ_INVALID_TEMP_OBJECT);
     }
   else
     {
@@ -1766,7 +1766,7 @@ obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att, DB_VALUE * value)
 
   if (obj->class_mop == NULL || obj->object == NULL)
     {
-      ERROR (error, ER_OBJ_INVALID_TEMP_OBJECT);
+      ERROR0 (error, ER_OBJ_INVALID_TEMP_OBJECT);
     }
   else
     {
@@ -1775,7 +1775,7 @@ obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att, DB_VALUE * value)
       if (temp->is_old_template)
 	{
 	  /* can't update templates containing "old" state */
-	  ERROR (error, ER_OBJ_INVALID_TEMP_OBJECT);
+	  ERROR0 (error, ER_OBJ_INVALID_TEMP_OBJECT);
 	}
       else
 	{
@@ -2093,7 +2093,7 @@ obj_delete (MOP op)
   /* op must be an object */
   if (op == NULL || locator_is_class (op, DB_FETCH_WRITE))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -2120,7 +2120,7 @@ obj_delete (MOP op)
 	      base_op = vid_get_referenced_mop (op);
 	      if (base_op == NULL)
 		{
-		  ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+		  ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
 		  return error;
 		}
 	      au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
@@ -2910,7 +2910,7 @@ obj_send_va (MOP obj, const char *name, DB_VALUE * returnval, va_list args)
 
   if ((obj == NULL) || (name == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -2955,7 +2955,7 @@ obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
 
   if ((obj == NULL) || (desc == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -3122,7 +3122,7 @@ obj_send_list (MOP obj, const char *name,
 
   if ((obj == NULL) || (name == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -3184,7 +3184,7 @@ obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
 
   if ((obj == NULL) || (desc == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -3299,7 +3299,7 @@ obj_send_array (MOP obj, const char *name,
 
   if ((obj == NULL) || (name == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -3343,7 +3343,7 @@ obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
 
   if ((obj == NULL) || (desc == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
@@ -3388,7 +3388,7 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
 
   if ((obj == NULL) || (desc == NULL))
     {
-      ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -182,7 +182,7 @@ find_valid_page_size (PGLENGTH page_size)
 void
 db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
 {
-  int hour, minute, second, month, day, year;
+  int hour, minute, second, millisecond, month, day, year;
 
   switch (type)
     {
@@ -192,6 +192,10 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
 
     case DB_TYPE_INTEGER:
       fprintf (fd, "%d", data->i);
+      break;
+
+    case DB_TYPE_BIGINT:
+      fprintf (fd, "%lld", (long long) data->bigint);
       break;
 
     case DB_TYPE_FLOAT:
@@ -214,6 +218,13 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
 
     case DB_TYPE_UTIME:
       fprintf (fd, "%d", data->utime);
+      break;
+
+    case DB_TYPE_DATETIME:
+      db_datetime_decode (&data->datetime, &month, &day, &year,
+			  &hour, &minute, &second, &millisecond);
+      fprintf (fd, "%d/%d/%d %d:%d:%d.%d with zone: %d",
+	       month, day, year, hour, minute, second, millisecond, 0);
       break;
 
     case DB_TYPE_MONETARY:

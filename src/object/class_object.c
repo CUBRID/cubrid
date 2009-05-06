@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -2256,7 +2256,7 @@ classobj_make_foreign_key_ref_list (DB_SEQ * fk_container)
 {
   int size, i;
   DB_VALUE fkvalue;
-  SM_FOREIGN_KEY_INFO *list = NULL, *fk_info, *cur;
+  SM_FOREIGN_KEY_INFO *list = NULL, *fk_info, *cur = NULL;
   DB_SEQ *fk_seq;
 
   size = set_size (fk_container);
@@ -2436,7 +2436,9 @@ classobj_make_class_constraints (DB_SET * class_props,
 	      /* Allocate an array to contain pointers to the attributes
 	       * involved in this constraint. The array will be NULL terminated.
 	       */
-	      new_->attributes = (SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) * (att_cnt + 1));	/* for NULL */
+	      new_->attributes =
+		(SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) *
+					       (att_cnt + 1));
 	      if (new_->attributes == NULL)
 		{
 		  goto memory_error;
@@ -5543,7 +5545,7 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
 
   /* Make sure the first attribute is brought up to a longword alignment.
    */
-  DB_ATT_ALIGN (offset);
+  offset = DB_ATT_ALIGN (offset);
 
   /* set storage order index and calculate memory offsets */
   for (i = 0, att = class_->attributes; att != NULL;
@@ -5556,7 +5558,7 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
        */
       if (i == fixed_count)
 	{
-	  DB_ATT_ALIGN (offset);
+	  offset = DB_ATT_ALIGN (offset);
 	}
 
       att->offset = offset;
@@ -5564,7 +5566,7 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
       classobj_insert_ordered_attribute (&class_->ordered_attributes, att);
     }
 
-  DB_ATT_ALIGN (offset);
+  offset = DB_ATT_ALIGN (offset);
   class_->object_size = offset;
 
   for (i = 0, att = class_->shared; att != NULL;
@@ -5863,7 +5865,7 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
 	    }
 	}
       /* bring the size of the fixed block up to a word boundary */
-      DB_ATT_ALIGN (fixed_size);
+      fixed_size = DB_ATT_ALIGN (fixed_size);
     }
 
   /* SHARED ATTRIBUTES */

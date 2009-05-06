@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -97,15 +97,14 @@ extern "C"
   extern char *pt_short_print (PARSER_CONTEXT * parser, const PT_NODE * p);
   extern char *pt_short_print_l (PARSER_CONTEXT * parser, const PT_NODE * p);
 
-  extern void *parser_alloc (const PARSER_CONTEXT * parser,
-			     const size_t length);
+  extern void *parser_alloc (const PARSER_CONTEXT * parser, const int length);
   extern char *pt_append_string (const PARSER_CONTEXT * parser,
 				 char *old_string, const char *new_tail);
 
   extern PARSER_VARCHAR *pt_append_bytes (const PARSER_CONTEXT * parser,
 					  PARSER_VARCHAR * old_bytes,
 					  const char *new_tail,
-					  const size_t length);
+					  const int length);
   extern PARSER_VARCHAR *pt_append_varchar (const PARSER_CONTEXT * parser,
 					    PARSER_VARCHAR * old_bytes,
 					    const PARSER_VARCHAR * new_tail);
@@ -117,7 +116,7 @@ extern "C"
 					 const char *name);
   extern const unsigned char *pt_get_varchar_bytes (const PARSER_VARCHAR *
 						    string);
-  extern size_t pt_get_varchar_length (const PARSER_VARCHAR * string);
+  extern int pt_get_varchar_length (const PARSER_VARCHAR * string);
 
   extern PARSER_VARCHAR *pt_print_bytes (PARSER_CONTEXT * parser,
 					 const PT_NODE * node);
@@ -237,6 +236,9 @@ extern "C"
 			      PT_NODE * dest,
 			      PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
+				 PT_TYPE_ENUM new_type, int p, int s);
+
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *,
 					   DB_VALUE *);
 

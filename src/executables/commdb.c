@@ -365,7 +365,7 @@ process_status_query (const char *host_name,
 		      CSS_CONN_ENTRY * conn, int server_type,
 		      char **server_info)
 {
-  int buffer_size, shutdown_buffer_size;
+  int buffer_size;
   int server_count, requests_serviced;
   char *buffer1 = NULL, *buffer2 = NULL;
   unsigned short rid1, rid2, rid3, rid4;

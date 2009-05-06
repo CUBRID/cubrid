@@ -56,7 +56,6 @@ typedef enum
 
 typedef struct find_id_info
 {
-  FIND_ID_TYPE type;
   struct
   {				/* input section */
     PT_NODE *spec;
@@ -64,6 +63,7 @@ typedef struct find_id_info
     PT_NODE *attr_list;
     PT_NODE *query_list;
   } in;
+  FIND_ID_TYPE type;
   struct
   {				/* output section */
     bool found;
@@ -3859,7 +3859,7 @@ mq_set_ldb_name (PARSER_CONTEXT * parser, PT_NODE * node,
 		 void *void_arg, int *continue_walk)
 {
   PT_NODE *range = (PT_NODE *) void_arg;
-  PT_NODE *arg1, *arg2, *next;;
+  PT_NODE *arg1, *arg2, *next;
   *continue_walk = PT_CONTINUE_WALK;
 
   if (node->node_type == PT_DOT_)
@@ -4638,8 +4638,22 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node,
 	      /* ON cond will be moved at optimize_queries */
 	    }			/* if (on_cond) */
 	  if (spec->info.spec.entity_name)
-	    spec->info.spec.entity_name->info.name.location =
-	      spec->info.spec.location;
+	    {
+	      PT_NODE *node = spec->info.spec.entity_name;
+	      if (node->node_type == PT_NAME)
+		{
+		  node->info.name.location = spec->info.spec.location;
+		}
+	      else if (node->node_type == PT_SPEC)
+		{
+		  node->info.spec.location = spec->info.spec.location;
+		}
+	      else
+		{
+		  /* dummy else. this case will not happen */
+		  assert (0);
+		}
+	    }
 	}			/* for (spec = ...) */
     }
   else if (locp)
@@ -8786,7 +8800,8 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
   int c, count, err = NO_ERROR, r;
   DB_OBJECT *cls;
   DB_VALUE *v;
-  UINTPTR specid, siz;
+  UINTPTR specid;
+  int siz;
   PT_NODE **stmts, *stmt = NULL, *xpr;
   PARSER_CONTEXT *parser;
 

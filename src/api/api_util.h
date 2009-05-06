@@ -109,14 +109,15 @@ extern int hash_delete (hash_table * ht, void *key, void **elem);
 #define API_ONCE_FUNC(t,r) pthread_once(t,r)
 
 /* malloc/calloc/free hook functions for memory check */
-#if 1 
+#if 1
 #define API_CALLOC(n,s) api_calloc((n),(s),__FILE__,__LINE__)
 #define API_MALLOC(s) api_malloc((s),__FILE__,__LINE__)
 #define API_FREE(p) api_free((p), __FILE__, __LINE__)
-extern void * api_calloc (size_t nmemb, size_t size, const char *file, int line);
-extern void * api_malloc (size_t size, const char *file, int line);
+extern void *api_calloc (size_t nmemb, size_t size, const char *file,
+			 int line);
+extern void *api_malloc (size_t size, const char *file, int line);
 extern void api_free (void *ptr, const char *file, int line);
-extern int api_check_memory (FILE *fp);
+extern int api_check_memory (FILE * fp);
 
 /* api_malloc_dhook_flag_set is global flag used to enable malloc debug */
 extern int api_malloc_dhook_flag_set;
@@ -126,4 +127,4 @@ extern int api_malloc_dhook_flag_set;
 #define API_FREE(p) free(p)
 #endif
 
-#endif /* _API_UTIL_H_*/
+#endif /* _API_UTIL_H_ */

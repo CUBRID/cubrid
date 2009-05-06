@@ -80,6 +80,11 @@ public class TimeValue extends Value
     return new Timestamp(time.getTime());
   }
 
+  public Timestamp toDatetime() throws TypeMismatchException
+  {
+    return new Timestamp(time.getTime());
+  }
+
   public Object toObject() throws TypeMismatchException
   {
     return toTime();
@@ -103,6 +108,11 @@ public class TimeValue extends Value
   public Timestamp[] toTimestampArray() throws TypeMismatchException
   {
     return new Timestamp[] { toTimestamp() };
+  }
+
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    return new Timestamp[] { toDatetime() };
   }
 
   public Object[] toObjectArray() throws TypeMismatchException

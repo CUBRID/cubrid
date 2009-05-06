@@ -304,7 +304,7 @@ STDMETHODIMP CCUBRIDCommand::PrepareCommand(int hConn, REFIID riid)
 
 //ICommand::Execute
 STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS * pParams, 
-						  LONG * pcRowsAffected, IUnknown ** ppRowset)
+						  DBROWCOUNT * pcRowsAffected, IUnknown ** ppRowset)
 {
 	ATLTRACE2(atlTraceDBProvider, 2, _T("CCUBRIDCommand::Execute\n"));
 
@@ -499,7 +499,7 @@ STDMETHODIMP CCUBRIDCommand::Execute(IUnknown * pUnkOuter, REFIID riid, DBPARAMS
 				uType = CCI_U_TYPE_STRING;
 #endif
 
-			if (return_code = cci_bind_param(m_hReq, iOrdinal, aType, cci_value, uType, 0) < 0)
+			if (return_code = cci_bind_param(m_hReq, (int) iOrdinal, aType, cci_value, uType, 0) < 0)
 			{
 				show_error("cci_bind_param_failed", return_code, &error);
 				if (cci_value) CoTaskMemFree(cci_value);
@@ -926,7 +926,7 @@ STDMETHODIMP CCUBRIDCommand::GetColumnInfo(DBORDINAL *pcColumns, DBCOLUMNINFO **
 	return hr;
 }
 
-ATLCOLUMNINFO* CCUBRIDCommand::GetColumnInfo(CCUBRIDCommand* pv, ULONG* pcInfo)
+ATLCOLUMNINFO* CCUBRIDCommand::GetColumnInfo(CCUBRIDCommand* pv, DBORDINAL* pcInfo)
 {
 	if(!pv->m_Columns.m_pInfo)
 	{

@@ -270,7 +270,7 @@ public:
 	//===== 컴파일이 되게 하기 위한 변수, 함수. 아무 일도 하지 않는다.
 public:
 	bool m_isPrepared; // for IColumnsRowsetImpl
-	HRESULT Execute(DBPARAMS *pParams, LONG *pcRowsAffected)
+	HRESULT Execute(DBPARAMS *pParams, DBROWCOUNT *pcRowsAffected)
 	{
 		return S_OK;
 	}

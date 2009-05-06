@@ -55,6 +55,7 @@
 #include "connection_error.h"
 #include "databases_file.h"
 #endif /* SERVER_MODE */
+
 #include "thread_impl.h"
 
 #if !defined(CS_MODE)
@@ -64,6 +65,8 @@
 #include "error_manager.h"
 #include "log_manager.h"
 #include "system_parameter.h"
+#include "xserver_interface.h"
+
 #if defined (SERVER_MODE)
 #include "thread_impl.h"
 #include "connection_error.h"
@@ -218,10 +221,6 @@ mnt_print_stats (FILE * stream)
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
-#if defined(WINDOWS)
-#define strcasecmp _stricmp
-#endif /* WINDOWS */
-
 #if defined(WINDOWS)
 #define SERVER_SHM_CREATE(SHM_KEY, SIZE, HANDLE_PTR)    \
         server_shm_create(SHM_KEY, SIZE, HANDLE_PTR)
@@ -604,7 +603,7 @@ server_shm_create (int shm_key, int size, HANDLE * hOut)
 
   shm_key_to_name (shm_key, shm_name);
 
-  hMapObject = CreateFileMapping ((HANDLE) 0xFFFFFFFF,
+  hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE,
 				  NULL, PAGE_READWRITE, 0, size, shm_name);
   if (hMapObject == NULL)
     {
@@ -1296,7 +1295,10 @@ mnt_server_init (int num_tran_indices)
 {
   MNT_SERVER_EXEC_STATS **stats;
   size_t size;
-  int rv, i;
+  int i;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 
   size = num_tran_indices * sizeof (*stats);
 
@@ -1330,7 +1332,10 @@ void
 mnt_server_final (void)
 {
   void *table;
-  int rv, i;
+  int i;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
   if (mnt_Server_table.stats != NULL)
@@ -1359,7 +1364,9 @@ int
 xmnt_server_start_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
@@ -1410,7 +1417,9 @@ void
 xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
@@ -1436,7 +1445,9 @@ MNT_SERVER_EXEC_STATS *
 mnt_server_get_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
   MNT_SERVER_EXEC_STATS *p;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -1463,7 +1474,9 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 			MNT_SERVER_EXEC_STATS * to_stats)
 {
   MNT_SERVER_EXEC_STATS *from_stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((from_stats = mnt_server_get_stats (thread_p)) == NULL)
     {
@@ -1486,7 +1499,9 @@ void
 xmnt_server_reset_stats (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1536,7 +1551,9 @@ void
 mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) == NULL)
     return;
@@ -1554,7 +1571,9 @@ void
 mnt_x_pb_fetches (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1573,7 +1592,9 @@ void
 mnt_x_pb_dirties (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1592,7 +1613,9 @@ void
 mnt_x_pb_ioreads (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1611,7 +1634,9 @@ void
 mnt_x_pb_iowrites (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1630,7 +1655,9 @@ void
 mnt_x_log_ioreads (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1649,7 +1676,9 @@ void
 mnt_x_log_iowrites (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1668,7 +1697,9 @@ void
 mnt_x_log_appendrecs (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1687,7 +1718,9 @@ void
 mnt_x_log_archives (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1706,7 +1739,9 @@ void
 mnt_x_log_checkpoints (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1725,7 +1760,9 @@ void
 mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1744,7 +1781,9 @@ void
 mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1763,7 +1802,9 @@ void
 mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1782,7 +1823,9 @@ void
 mnt_x_lk_converted_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1801,7 +1844,9 @@ void
 mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1820,7 +1865,9 @@ void
 mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1839,7 +1886,9 @@ void
 mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1858,7 +1907,9 @@ void
 mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1877,7 +1928,9 @@ void
 mnt_x_io_format_vols (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if ((stats = mnt_server_get_stats (thread_p)) != NULL)
     {
@@ -1977,4 +2030,4 @@ mnt_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time,
       *cpu_sys_time = rusage.ru_stime.tv_sec;
     }
 #endif /* WINDOWS */
-};
+}

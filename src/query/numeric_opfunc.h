@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -63,7 +63,10 @@ extern int numeric_db_value_compare (DB_VALUE * dbv1,
 
 /* Coercion routines */
 extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer);
+extern void numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer);
 extern void numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer);
+extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale,
+					 DB_BIGINT * answer);
 
 extern void numeric_coerce_dec_str_to_num (const char *dec_str,
 					   DB_C_NUMERIC result);

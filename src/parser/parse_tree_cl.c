@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -52,12 +52,12 @@
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
 {
-  int type;			/* 1: reduce_equality_terms, 0: o/w */
   PT_NODE *name;
   PT_NODE *tree;
+  int type;			/* 1: reduce_equality_terms, 0: o/w */
+  int replace_num;
   bool loc_check;
   bool dont_replace;
-  int replace_num;
 };
 
 typedef struct pt_find_id_info PT_FIND_ID_INFO;
@@ -121,7 +121,7 @@ static void pt_init_print_f (void);
 /*
  * Note :
  * When adding new functions, be sure to add to ALL 4 function types and
- * ALL 4 function vectors.  (apply, init, print, tree_print 
+ * ALL 4 function vectors.  (apply, init, print, tree_print
  */
 
 static PT_NODE *pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p,
@@ -1005,7 +1005,7 @@ pt_lambda_with_arg (PARSER_CONTEXT * parser, PT_NODE * tree_with_names,
 {
   PT_LAMBDA_ARG lambda_arg;
   PT_NODE *tree;
-  int save_paren_type;
+  int save_paren_type = 0;
   bool arg_ok;
 
   arg_ok = false;
@@ -1688,9 +1688,8 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
   parser->column = 0;
 
   {
-    output_host_index = input_host_index = 0;
+    parser_output_host_index = parser_input_host_index = 0;
     this_parser = parser;
-    lp_look_state = 0;
     dbcs_start_input ();
   }
 
@@ -1737,7 +1736,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
  *   fmt(in): printf-style format string
  *
  * Note :
- *   helper function for PT_WARNING macro 
+ *   helper function for PT_WARNING macro
  */
 
 void
@@ -1770,7 +1769,7 @@ pt_frob_warning (PARSER_CONTEXT * parser,
  *   fmt(in): printf-style format string
  *
  * Note :
- *   helper function for PT_ERROR macro 
+ *   helper function for PT_ERROR macro
  */
 
 void
@@ -1874,7 +1873,7 @@ parser_init_node (PT_NODE * node)
     {
       PARSER_INIT_NODE_FUNC f;
 
-      assert (node->node_type >= 0 && node->node_type < PT_NODE_NUMBER);
+      assert (node->node_type < PT_NODE_NUMBER);
 
       /* don't write over node_type, parser_id, line or column */
       node->next = NULL;
@@ -1890,7 +1889,7 @@ parser_init_node (PT_NODE * node)
       node->cannot_prepare = 0;
       node->do_not_keep = 0;
       node->partition_pruned = 0;
-      node->si_timestamp = 0;
+      node->si_datetime = 0;
       node->si_tran_id = 0;
       node->clt_cache_check = 0;
       node->clt_cache_reusable = 0;
@@ -2589,6 +2588,8 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "minute";
     case PT_SECOND:
       return "second";
+    case PT_MILLISECOND:
+      return "millisecond";
     case PT_SIMPLE_CASE:
       return "simple case";
     case PT_SEARCHED_CASE:
@@ -2810,6 +2811,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "sys_time ";
     case PT_SYS_TIMESTAMP:
       return "sys_timestamp ";
+    case PT_SYS_DATETIME:
+      return "sys_datetime ";
     case PT_TO_CHAR:
       return "to_char ";
     case PT_TO_DATE:
@@ -2818,6 +2821,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_time ";
     case PT_TO_TIMESTAMP:
       return "to_timestamp ";
+    case PT_TO_DATETIME:
+      return "to_datetime ";
     case PT_TO_NUMBER:
       return "to_number ";
     case PT_CURRENT_VALUE:
@@ -2994,6 +2999,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "none";
     case PT_TYPE_INTEGER:
       return "integer";
+    case PT_TYPE_BIGINT:
+      return "bigint";
     case PT_TYPE_SMALLINT:
       return "smallint";
     case PT_TYPE_NUMERIC:
@@ -3008,6 +3015,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "time";
     case PT_TYPE_TIMESTAMP:
       return "timestamp";
+    case PT_TYPE_DATETIME:
+      return "datetime";
     case PT_TYPE_CHAR:
       return "char";
     case PT_TYPE_VARCHAR:
@@ -8081,6 +8090,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	    case PT_SECOND:
 	      q = pt_append_nulstring (parser, q, "second ");
 	      break;
+	    case PT_MILLISECOND:
+	      q = pt_append_nulstring (parser, q, "millisecond ");
+	      break;
 	    default:
 	      break;
 	    }
@@ -8207,6 +8219,33 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
+    case PT_TO_DATETIME:
+      if (!parser->dont_prt)
+	{
+	  int flags;
+	  q = pt_append_nulstring (parser, q, " to_datetime(");
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_varchar (parser, q, r1);
+
+	  flags = p->info.expr.arg3->info.value.data_value.i;
+	  if (!(flags & 1))
+	    {
+	      q = pt_append_nulstring (parser, q, ", ");
+	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	      q = pt_append_varchar (parser, q, r1);
+	      if (flags & 2)
+		{
+		  q = pt_append_nulstring (parser, q, ", 'en_US'");
+		}
+	      else if (flags & 4)
+		{
+		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+		}
+	    }
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      break;
+
     case PT_TO_CHAR:
       if (!parser->dont_prt)
 	{
@@ -8252,6 +8291,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       if (!parser->dont_prt)
 	{
 	  q = pt_append_nulstring (parser, q, " SYS_TIMESTAMP ");
+	}
+      break;
+
+    case PT_SYS_DATETIME:
+      if (!parser->dont_prt)
+	{
+	  q = pt_append_nulstring (parser, q, " SYS_DATETIME ");
 	}
       break;
 
@@ -12377,6 +12423,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_DOUBLE:
     case PT_TYPE_NUMERIC:
     case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
       if (!parser->dont_prt)
 	{
@@ -12396,6 +12443,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 		  break;
 		case PT_TYPE_INTEGER:
 		  sprintf (s, "%ld", p->info.value.data_value.i);
+		  break;
+		case PT_TYPE_BIGINT:
+		  sprintf (s, "%lld",
+			   (long long) p->info.value.data_value.bigint);
 		  break;
 		case PT_TYPE_LOGICAL:
 		  sprintf (s, "%ld <> 0", p->info.value.data_value.i);
@@ -12437,6 +12488,16 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       if (!parser->dont_prt)
 	{
 	  q = pt_append_nulstring (parser, q, "timestamp ");
+	  q = pt_append_string_prefix (parser, q, p);
+	  q = pt_append_quoted_string (parser, q, p->info.value.text,
+				       ((p->info.value.text)
+					? strlen (p->info.value.text) : 0));
+	}
+      break;
+    case PT_TYPE_DATETIME:
+      if (!parser->dont_prt)
+	{
+	  q = pt_append_nulstring (parser, q, "datetime ");
 	  q = pt_append_string_prefix (parser, q, p);
 	  q = pt_append_quoted_string (parser, q, p->info.value.text,
 				       ((p->info.value.text)

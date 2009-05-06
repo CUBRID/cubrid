@@ -161,9 +161,6 @@ struct lc_lock_set
   int length;			/* Length of the area */
 
   /* *** Things related to requested objects *** */
-  bool first_fetch_lockset_call;	/* First client call to
-					 * fetch_request
-					 */
   int max_reqobjs;		/* Max number of requested objects */
   int num_reqobjs;		/* Number of requested objects to
 				 * fetch and lock. An object can be an
@@ -197,8 +194,8 @@ struct lc_lock_set
 					 * send to server or from server.
 					 */
   int quit_on_errors;		/* Quit when errors are found  */
-  char *packed;			/* Ptr to packed lock request area */
   int packed_size;		/* Size of packed lock request area */
+  char *packed;			/* Ptr to packed lock request area */
   LC_LOCKSET_CLASSOF *classes;	/* Description of set of classes.
 				 * The number of class structures
 				 * are num_classes.. Ptr into mem
@@ -207,6 +204,9 @@ struct lc_lock_set
 				 * The number of structures are
 				 * num_reqobjs
 				 */
+  bool first_fetch_lockset_call;	/* First client call to
+					 * fetch_request
+					 */
 };
 
 typedef struct lc_lockhint_class LC_LOCKHINT_CLASS;
@@ -226,9 +226,6 @@ struct lc_lock_hint
 				 * are described
 				 */
   int length;			/* Length of the area */
-  bool first_fetch_lockhint_call;	/* First client call to
-					 * fetch_lockhint
-					 */
   int max_classes;		/* Max number of classes */
   int num_classes;		/* Number of classes to prefetch and
 				 * lock.
@@ -237,12 +234,15 @@ struct lc_lock_hint
 				 * processed
 				 */
   int quit_on_errors;		/* Quit when errors are found  */
-  char *packed;			/* Ptr to packed lock lockhint area */
   int packed_size;		/* Size of packed lock lockhint area */
+  char *packed;			/* Ptr to packed lock lockhint area */
   LC_LOCKHINT_CLASS *classes;	/* Description of set of classes. The
 				 * number of class structures are
 				 * num_classes.. Ptr into mem
 				 */
+  bool first_fetch_lockhint_call;	/* First client call to
+					 * fetch_lockhint
+					 */
 };
 
 
@@ -250,17 +250,15 @@ struct lc_lock_hint
 typedef struct lc_oidmap LC_OIDMAP;
 struct lc_oidmap
 {
-
   struct lc_oidmap *next;
-  OID oid;
-  int est_size;
-
   /* Appendages for client side use, locator_unpack_oid_set must leave these unchanged
    * when unpacking into an existing structure.
    */
   void *mop;
   void *client_data;
 
+  OID oid;
+  int est_size;
 };
 
 /* LC_CLASS_OIDSET
@@ -272,16 +270,14 @@ struct lc_oidmap
 typedef struct lc_class_oidset LC_CLASS_OIDSET;
 struct lc_class_oidset
 {
-
   struct lc_class_oidset *next;
+  LC_OIDMAP *oids;
   OID class_oid;
   HFID hfid;
   int num_oids;
-  LC_OIDMAP *oids;
 
   /* set if oids is allocated as a linked list */
   bool is_list;
-
 };
 
 /* LC_OIDSET
@@ -293,7 +289,6 @@ struct lc_class_oidset
 typedef struct lc_oidset LC_OIDSET;
 struct lc_oidset
 {
-
   int total_oids;
   int num_classes;
   LC_CLASS_OIDSET *classes;

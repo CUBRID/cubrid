@@ -215,7 +215,7 @@ protected:
 	afx_msg void OnUnicasMonitor();
 	afx_msg void OnUnicasRestartup();
 	afx_msg void OnUpdateUnicasRestartup(CCmdUI* pCmdUI);
-	afx_msg void OnTimer(UINT nIDEvent);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnUpdateUnicasMonitor(CCmdUI* pCmdUI);
 	afx_msg void OnUnitoolEmanager();
 	afx_msg void OnUnitoolVsql();

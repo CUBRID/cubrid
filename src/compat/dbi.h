@@ -351,7 +351,7 @@ extern int db_drop_constraint (MOP classmop,
 extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
 extern void db_set_client_type (int client_type);
-extern int db_get_client_type ();
+extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 

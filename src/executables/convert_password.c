@@ -36,14 +36,9 @@ static int crypt_decode_caps_old (const char *crypt, unsigned char *decrypt,
 				  int maxlen);
 static int crypt_unscramble_old (unsigned char *line, int len,
 				 unsigned char *decrypt, int maxlen);
-
 static int io_relseek_old (const char *pass, int has_prefix, char *dest);
-static int crypt_unscramble_old (unsigned char *line, int len,
-				 unsigned char *decrypt, int maxlen);
-static int crypt_decode_caps_old (const char *crypt, unsigned char *decrypt,
-				  int maxlen);
-static int
-crypt_decrypt_printable_old (const char *crypt, char *decrypt, int maxlen);
+static int crypt_decrypt_printable_old (const char *crypt, char *decrypt, 
+					int maxlen);
 static void crypt_seed_old (const char *key);
 
 int

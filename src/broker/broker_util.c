@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * broker_util.c - 
+ * broker_util.c -
  */
 
 #ident "$Id$"
@@ -32,7 +32,7 @@
 #include <errno.h>
 #include <signal.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <direct.h>
@@ -86,11 +86,11 @@ ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
   if (fp == NULL)
     return -1;
   if (script == NULL)
-    script = "-";
+    script = (char *) "-";
   if (clt_ip == NULL)
-    clt_ip = "-";
+    clt_ip = (char *) "-";
   if (clt_appl == NULL)
-    clt_appl = "-";
+    clt_appl = (char *) "-";
   for (p = clt_appl; *p; p++)
     {
       if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
@@ -98,7 +98,7 @@ ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
     }
 
   if (clt_appl[0] == '\0')
-    clt_appl = "-";
+    clt_appl = (char *) "-";
 
   if (error_flag == 1)
     sprintf (err_str, "ERR");
@@ -107,16 +107,18 @@ ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
 
 #ifdef V3_TEST
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ %02d/%02d/%02d %02d:%02d:%02d %ld %s %d %d\n",
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
 	   as_index + 1, clt_ip, clt_appl, script, TIMEVAL_GET_SEC (start),
 	   TIMEVAL_GET_MSEC (start), TIMEVAL_GET_SEC (&end),
 	   TIMEVAL_GET_MSEC (&end), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
 	   ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1,
-	   ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec, getpid (),
+	   ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec, (int) getpid (),
 	   err_str, error_log_offset, uts_size ());
 #else
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ %02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
 	   as_index + 1, clt_ip, clt_appl, script, TIMEVAL_GET_SEC (start),
 	   TIMEVAL_GET_MSEC (start), TIMEVAL_GET_SEC (&end),
 	   TIMEVAL_GET_MSEC (&end), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
@@ -177,8 +179,8 @@ ut_file_lock (char *lock_file)
 	fp = fopen ("uts_file_lock.log", "a");
 	if (fp != NULL)
 	  {
-	    fprintf (fp, "[%ld] file lock error. err = [%d], [%s]\n",
-		     getpid (), errno, strerror (errno));
+	    fprintf (fp, "[%d] file lock error. err = [%d], [%s]\n",
+		     (int) getpid (), errno, strerror (errno));
 	    fclose (fp);
 	  }
       }
@@ -211,7 +213,7 @@ ut_timestamp_to_str (time_t ts)
   return time_str_buf;
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 ut_kill_process (int pid, char *br_name, int as_index)
 {
@@ -276,9 +278,9 @@ clear_sock_file:
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
-run_child (char *appl_name)
+run_child (const char *appl_name)
 {
   int new_pid;
   char cwd[1024];

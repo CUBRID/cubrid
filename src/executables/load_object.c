@@ -27,7 +27,9 @@
 
 #include <stdio.h>
 #include <fcntl.h>
-#ifndef WINDOWS
+#if defined(WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 #include <ctype.h>
@@ -82,7 +84,7 @@ static char *strnchr (char *str, char ch, int nbytes);
 static int print_quoted_str (TEXT_OUTPUT * tout, char *str, int len,
 			     int max_token_len);
 static void itoa_strreverse (char *begin, char *end);
-static int itoa_print (TEXT_OUTPUT * tout, int value, int base);
+static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
@@ -795,8 +797,8 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	    }
 	}
 
-      padded_size = fixed_size = (int) (buf->ptr - start);
-      DB_ATT_ALIGN (padded_size);
+      fixed_size = (int) (buf->ptr - start);
+      padded_size = DB_ATT_ALIGN (fixed_size);
       or_advance (buf, (padded_size - fixed_size));
 
 
@@ -1199,7 +1201,7 @@ print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len)
       else
 	{
 	  left_nbytes = write_len;
-	  write_len = internal_quote_p - p + 1;
+	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
 	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
 	  left_nbytes -= (write_len + 1);
 	  /*
@@ -1258,12 +1260,13 @@ itoa_strreverse (char *begin, char *end)
  *     with slight modification to optimize for specific architecture:
  */
 static int
-itoa_print (TEXT_OUTPUT * tout, int value, int base)
+itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base)
 {
   int error = NO_ERROR;
   char *wstr;
-  int sign;
-  div_t res;
+  bool is_negative;
+  DB_BIGINT quotient;
+  DB_BIGINT remainder;
   int nbytes;
   static const char itoa_digit[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -1276,7 +1279,8 @@ itoa_print (TEXT_OUTPUT * tout, int value, int base)
     }
 
   /* Take care of sign - in case of INT_MIN, it remains as it is */
-  if ((sign = value) < 0)
+  is_negative = (value < 0) ? true : false;
+  if (is_negative)
     {
       value = -value;		/* change to the positive number */
     }
@@ -1284,11 +1288,13 @@ itoa_print (TEXT_OUTPUT * tout, int value, int base)
   /* Conversion. Number is reversed. */
   do
     {
-      res = div (value, base);
-      *wstr++ = itoa_digit[(res.rem >= 0) ? res.rem : -res.rem];
+      quotient = value / base;
+      remainder = value % base;
+      *wstr++ = itoa_digit[(remainder >= 0) ? remainder : -remainder];
     }
-  while ((value = res.quot) != 0);
-  if (sign < 0)
+  while ((value = quotient) != 0);
+
+  if (is_negative)
     {
       *wstr++ = '-';
     }
@@ -1297,7 +1303,7 @@ itoa_print (TEXT_OUTPUT * tout, int value, int base)
   /* Reverse string */
   itoa_strreverse (tout->ptr, wstr - 1);
 
-  nbytes = wstr - tout->ptr;
+  nbytes = CAST_STRLEN (wstr - tout->ptr);
 
   tout->ptr += nbytes;
   tout->count += nbytes;
@@ -1332,6 +1338,15 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (text_print (tout, "NULL", 4, NULL));
       break;
 
+    case DB_TYPE_BIGINT:
+      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
+	{
+	  /* flush remaining buffer */
+	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	}
+      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_BIGINT (value),
+				     10 /* base */ ));
+      break;
     case DB_TYPE_INTEGER:
       if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
 	{
@@ -1383,6 +1398,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       {
 	struct tm *temp;
 	bool pm;
+	time_t tmp_time;
 
 	if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
 	  {
@@ -1390,7 +1406,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	    CHECK_PRINT_ERROR (text_print_flush (tout));
 	  }
 
-	if ((temp = localtime ((time_t *) (DB_GET_TIMESTAMP (value)))))
+	tmp_time = *(DB_GET_TIMESTAMP (value));
+	temp = localtime (&tmp_time);
+	if (temp)
 	  {
 	    pm = (temp->tm_hour >= 12) ? true : false;
 	    if (temp->tm_hour == 0)
@@ -1416,6 +1434,12 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 					   12, 0, 0, "AM", 1, 1, 1900));
 	  }
       }
+      break;
+
+    case DB_TYPE_DATETIME:
+      db_datetime_to_string (buf, MAX_DISPLAY_COLUMN,
+			     DB_GET_DATETIME (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
       break;
 
     case DB_TYPE_MONETARY:

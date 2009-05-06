@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -56,6 +56,8 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+extern unsigned int db_on_server;
+
 /*
  * need these to get the allocation areas initialized, avoid including
  * the entire file
@@ -75,7 +77,7 @@ MOP ws_Commit_mops = NULL;
  *    transaction manager.
  */
 
-MOP *ws_Mop_table = NULL;
+WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
 
 /*
  * ws_Mop_table_size
@@ -191,6 +193,10 @@ static void ws_reset_class_cache (void);
 static void ws_print_oid (OID * oid);
 static int ws_describe_mop (MOP mop, void *args);
 static void ws_flush_properties (MOP op);
+static int ws_check_hash_link (int slot);
+static void ws_insert_mop_on_hash_link (MOP mop, int slot);
+static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot,
+						      MOP prev);
 
 /*
  * MEMORY CRISES
@@ -242,7 +248,7 @@ ws_make_mop (OID * oid)
 {
   MOP op;
 
-  op = GC_MALLOC (sizeof (DB_OBJECT));
+  op = (MOP) GC_MALLOC (sizeof (DB_OBJECT));
   if (op != NULL)
     {
       op->class_mop = NULL;
@@ -606,77 +612,127 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
 }
 #endif
 
-/*
- * ws_begin_mop_iteration - begin iteration
- *    return: mop iterator
- *
- * Note:
- * Initializes static MOP_ITERATOR, which is used by ws_next_mop()
- * to iterate over ws_Mop_table.
- */
-MOP_ITERATOR *
-ws_begin_mop_iteration (void)
+static int
+ws_check_hash_link (int slot)
 {
-  static MOP_ITERATOR temp;
-  MOP_ITERATOR *it;
+  MOP head, tail;
+  MOP p, q;
+  int c;
 
-  it = &temp;
-  it->index = 0;
-  it->next = NULL;
+  head = ws_Mop_table[slot].head;
+  tail = ws_Mop_table[slot].tail;
 
-  while (it->index < ws_Mop_table_size && it->next == NULL)
+  p = head;
+  if (p == NULL)
     {
-      it->next = ws_Mop_table[it->index];
-      if (it->next == NULL)
+      /* empty list */
+      assert (head == NULL && tail == NULL);
+    }
+  else if (p->hash_link == NULL)
+    {
+      /* only one node */
+      assert (head == p && tail == p);
+    }
+  else
+    {
+      /* more than one node */
+      for (q = p->hash_link; q; p = q, q = q->hash_link)
 	{
-	  it->index++;
+	  c = oid_compare (WS_OID (p), WS_OID (q));
+	  assert (c <= 0);
 	}
+      assert (p == tail);
     }
 
-  return (it);
+  return NO_ERROR;
 }
 
-
-/*
- * ws_next_mop - returns the MOP currently pointed to by the MOP_ITERATOR
- *    return: next mop
- *    it(in/out): address of static MOP_ITERATOR
- *
- * Note:
- * If the MOP returned is a valid MOP, the MOP_ITERATOR is updated
- * to point to the next entry in the MOP table (post-increments the
- * MOP_ITERATOR).
- */
-MOP
-ws_next_mop (MOP_ITERATOR * it)
+static void
+ws_insert_mop_on_hash_link (MOP mop, int slot)
 {
-  MOP next;
+  MOP p;
+  MOP prev = NULL;
+  int c;
 
-  next = it->next;
-
-  if (next == NULL)
+  /* to find the appropriate position */
+  p = ws_Mop_table[slot].tail;
+  if (p)
     {
-      return NULL;
-    }
-  it->next = next->hash_link;
+      c = oid_compare (WS_OID (mop), WS_OID (p));
 
-  if (it->next != NULL)
-    {
-      return next;
-    }
-
-  it->index++;
-
-  while (it->index < ws_Mop_table_size && it->next == NULL)
-    {
-      it->next = ws_Mop_table[it->index];
-      if (it->next == NULL)
+      if (c > 0)
 	{
-	  it->index++;
+	  /* mop is greater than the tail */
+	  p->hash_link = mop;
+	  mop->hash_link = NULL;
+	  ws_Mop_table[slot].tail = mop;
+
+	  return;
+	}
+
+      /* Unfortunately, we have to navigate the list when c == 0,
+       * because there can be redundancies of mops which have the same oid,
+       * in case of VID.
+       * Under 'Create table A -> rollback -> Create table B' scenario, 
+       * the oid of the mop of table B can be same as that of table B.
+       * Because the newest one is located at the head of redundancies
+       * in that case, we use the first fit method.
+       */
+    }
+
+  for (p = ws_Mop_table[slot].head; p != NULL; prev = p, p = p->hash_link)
+    {
+      c = oid_compare (WS_OID (mop), WS_OID (p));
+
+      if (c <= 0)
+	{
+	  /* Unfortunately, we have to navigate the list when c == 0 */
+	  /* See the above comment */
+	  break;
 	}
     }
 
-  return (next);
+  if (p == NULL)
+    {
+      /* empty or reach at the tail of the list */
+      ws_Mop_table[slot].tail = mop;
+    }
+
+  if (prev == NULL)
+    {
+      mop->hash_link = ws_Mop_table[slot].head;
+      ws_Mop_table[slot].head = mop;
+    }
+  else
+    {
+      mop->hash_link = prev->hash_link;
+      prev->hash_link = mop;
+    }
+}
+
+static void
+ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev)
+{
+  if (prev == NULL)
+    {
+      if (ws_Mop_table[slot].tail == NULL)
+	{
+	  /* empty list */
+	  ws_Mop_table[slot].tail = mop;
+	}
+      mop->hash_link = ws_Mop_table[slot].head;
+      ws_Mop_table[slot].head = mop;
+    }
+  else
+    {
+      if (prev->hash_link == NULL)
+	{
+	  /* append mop on the tail of the list */
+	  ws_Mop_table[slot].tail = mop;
+	}
+      mop->hash_link = prev->hash_link;
+      prev->hash_link = mop;
+    }
 }
 
 /*
@@ -684,24 +740,26 @@ ws_next_mop (MOP_ITERATOR * it)
  * the workspace object table.
  *    return: MOP
  *    oid(in): oid
- *    class(in): optional class MOP (can be null if not known)
+ *    class_mop(in): optional class MOP (can be null if not known)
  *
  * Note: If the class argument is NULL, it will be added to the class list
  * when the object is cached.
  */
-MOP
-ws_mop (OID * oid, MOP class_)
-{
-  MOP mop, found;
-  unsigned int slot;
 
-  found = NULL;
+MOP
+ws_mop (OID * oid, MOP class_mop)
+{
+  MOP mop, new_mop, prev;
+  unsigned int slot;
+  int c;
+
   if (OID_ISNULL (oid))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CANT_INSTALL_NULL_OID,
 	      0);
       return NULL;
     }
+
   /* look for existing entry */
   slot = OID_PSEUDO_KEY (oid);
   if (slot >= ws_Mop_table_size)
@@ -709,38 +767,66 @@ ws_mop (OID * oid, MOP class_)
       slot = slot % ws_Mop_table_size;
     }
 
-  for (mop = ws_Mop_table[slot]; found == NULL && mop != NULL;
-       mop = mop->hash_link)
+  /* compare with the last mop */
+  prev = NULL;
+  mop = ws_Mop_table[slot].tail;
+  if (mop)
     {
-      if (oid_compare (oid, WS_OID (mop)) == 0)
+      c = oid_compare (oid, WS_OID (mop));
+      if (c > 0)
 	{
-	  found = mop;
+	  /* 'oid' is greater than the tail, 
+	   * which means 'oid' does not exist in the list
+	   *
+	   * NO need to traverse the list!
+	   */
+	  prev = ws_Mop_table[slot].tail;
+	}
+      else
+	{
+	  /* c <= 0 */
+
+	  /* Unfortunately, we have to navigate the list when c == 0 */
+	  /* See the comment of ws_insert_mop_on_hash_link() */
+
+	  for (mop = ws_Mop_table[slot].head; mop != NULL;
+	       prev = mop, mop = mop->hash_link)
+	    {
+	      c = oid_compare (oid, WS_OID (mop));
+	      if (c == 0)
+		{
+		  return mop;
+		}
+	      else if (c < 0)
+		{
+		  /* find the node which is greater than I */
+		  break;
+		}
+	    }
 	}
     }
-  if (found != NULL)
-    {
-      return found;
-    }
-  found = ws_make_mop (oid);
 
-  if (found == NULL)
+  /* make a new mop entry */
+  new_mop = ws_make_mop (oid);
+  if (new_mop == NULL)
     {
       return NULL;
     }
 
-  if (class_ != NULL)
+  if (class_mop != NULL)
     {
-      if (add_class_object (class_, found))
+      if (add_class_object (class_mop, new_mop))
 	{
-	  ws_free_mop (found);
+	  ws_free_mop (new_mop);
 	  return NULL;
 	}
     }
-  /* install it into this slot list */
-  found->hash_link = ws_Mop_table[slot];
-  ws_Mop_table[slot] = found;
 
-  return (found);
+  /* install it into this slot list */
+  ws_insert_mop_on_hash_link_with_position (new_mop, slot, prev);
+  assert (ws_check_hash_link (slot) == NO_ERROR);
+
+  return new_mop;
 }
 
 /*
@@ -778,14 +864,13 @@ ws_keys (MOP vid, unsigned int *flags)
  *    keys(in):
  */
 MOP
-ws_vmop (MOP class_, int flags, DB_VALUE * keys)
+ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 {
-  MOP mop, found;
+  MOP mop, new_mop;
   int slot;
   VID_INFO *vid_info;
   DB_TYPE keytype;
 
-  found = NULL;
   vid_info = NULL;
   keytype = (DB_TYPE) PRIM_TYPE (keys);
 
@@ -799,7 +884,7 @@ ws_vmop (MOP class_, int flags, DB_VALUE * keys)
        * swizzles oid's to objects.
        */
       mop = db_get_object (keys);
-      if (!db_is_vclass (class_))
+      if (!db_is_vclass (class_mop))
 	{
 	  return mop;
 	}
@@ -812,8 +897,8 @@ ws_vmop (MOP class_, int flags, DB_VALUE * keys)
        * if it was read thru some interface that does NOT swizzle.
        * oid's to objects.
        */
-      mop = ws_mop (&keys->data.oid, class_);
-      if (!db_is_vclass (class_))
+      mop = ws_mop (&keys->data.oid, class_mop);
+      if (!db_is_vclass (class_mop))
 	{
 	  return mop;
 	}
@@ -827,13 +912,12 @@ ws_vmop (MOP class_, int flags, DB_VALUE * keys)
   slot = mht_valhash (keys, ws_Mop_table_size);
   if (!(flags & VID_NEW))
     {
-      for (mop = ws_Mop_table[slot]; found == NULL && mop != NULL;
-	   mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 	  if (mop->is_vid)
 	    {
 	      vid_info = WS_VID_INFO (mop);
-	      if (class_ == mop->class_mop)
+	      if (class_mop == mop->class_mop)
 		{
 		  /*
 		   * NOTE, formerly called pr_value_equal. Don't coerce
@@ -842,26 +926,23 @@ ws_vmop (MOP class_, int flags, DB_VALUE * keys)
 		   */
 		  if (tp_value_equal (keys, &vid_info->keys, 0))
 		    {
-		      found = mop;
+		      return mop;
 		    }
 		}
 	    }
 	}
     }
-  if (found != NULL)
-    {
-      return found;
-    }
 
-  found = ws_make_mop (NULL);
-  if (found == NULL)
+  new_mop = ws_make_mop (NULL);
+  if (new_mop == NULL)
     {
       return NULL;
     }
-  found->is_vid = 1;
-  vid_info = WS_VID_INFO (found) =
-    (VID_INFO *) db_ws_alloc (sizeof (VID_INFO));
 
+  new_mop->is_vid = 1;
+
+  vid_info = WS_VID_INFO (new_mop) =
+    (VID_INFO *) db_ws_alloc (sizeof (VID_INFO));
   if (vid_info == NULL)
     {
       goto abort_it;
@@ -875,21 +956,21 @@ ws_vmop (MOP class_, int flags, DB_VALUE * keys)
       goto abort_it;
     }
 
-  if (add_class_object (class_, found))
+  if (add_class_object (class_mop, new_mop))
     {
       goto abort_it;
     }
 
   /* install it into this slot list */
-  found->hash_link = ws_Mop_table[slot];
-  ws_Mop_table[slot] = found;
+  ws_insert_mop_on_hash_link (new_mop, slot);
+  assert (ws_check_hash_link (slot) == NO_ERROR);
 
-  return (found);
+  return (new_mop);
 
 abort_it:
-  if (found != NULL)
+  if (new_mop != NULL)
     {
-      ws_free_mop (found);
+      ws_free_mop (new_mop);
     }
 
   if (vid_info != NULL)
@@ -960,7 +1041,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
     }
   slot = mht_valhash (keys, ws_Mop_table_size);
 
-  for (found = ws_Mop_table[slot], prev = NULL;
+  for (found = ws_Mop_table[slot].head, prev = NULL;
        found != mop && found != NULL; found = found->hash_link)
     {
       prev = found;
@@ -1043,18 +1124,30 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
   pr_clone_value (&new_key, keys);
   pr_clear_value (&new_key);
 
+  /* remove it from the original list */
   if (prev == NULL)
     {
-      ws_Mop_table[slot] = mop->hash_link;
+      ws_Mop_table[slot].head = mop->hash_link;
     }
   else
     {
       prev->hash_link = mop->hash_link;
     }
 
+  if (ws_Mop_table[slot].tail == mop)
+    {
+      /* I was the tail of the list */
+      ws_Mop_table[slot].tail = prev;
+    }
+
+  assert (ws_check_hash_link (slot) == NO_ERROR);
+
+  mop->hash_link = NULL;
+
+  /* move to the new list */
   slot = mht_valhash (keys, ws_Mop_table_size);
-  mop->hash_link = ws_Mop_table[slot];
-  ws_Mop_table[slot] = mop;
+  ws_insert_mop_on_hash_link (mop, slot);
+  assert (ws_check_hash_link (slot) == NO_ERROR);
 
   return true;
 }
@@ -1064,7 +1157,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
  * workspace is guarenteed to be unique.
  *    return: new MOP
  *    oid(in): object OID
- *    class(in): class of object
+ *    class_mop(in): class mop of object
  *
  * Note:
  *    This happens when temporary OIDs are generated for newly created objects.
@@ -1072,10 +1165,10 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
  *    the hash table collision list looking for duplicates.
  */
 MOP
-ws_new_mop (OID * oid, MOP class_)
+ws_new_mop (OID * oid, MOP class_mop)
 {
   MOP mop;
-  unsigned long slot;
+  unsigned int slot;
 
   mop = NULL;
   if (OID_ISNULL (oid))
@@ -1086,28 +1179,28 @@ ws_new_mop (OID * oid, MOP class_)
     }
 
   slot = OID_PSEUDO_KEY (oid);
-
   if (slot >= ws_Mop_table_size)
     {
       slot = slot % ws_Mop_table_size;
     }
-  mop = ws_make_mop (oid);
 
+  mop = ws_make_mop (oid);
   if (mop == NULL)
     {
       return NULL;
     }
 
-  if (class_ != NULL)
+  if (class_mop != NULL)
     {
-      if (add_class_object (class_, mop))
+      if (add_class_object (class_mop, mop))
 	{
 	  ws_free_mop (mop);
 	  return NULL;
 	}
     }
-  mop->hash_link = ws_Mop_table[slot];
-  ws_Mop_table[slot] = mop;
+
+  ws_insert_mop_on_hash_link (mop, slot);
+  assert (ws_check_hash_link (slot) == NO_ERROR);
 
   return (mop);
 }
@@ -1131,7 +1224,7 @@ void
 ws_perm_oid (MOP mop, OID * newoid)
 {
   MOP mops, prev;
-  unsigned long slot;
+  unsigned int slot;
 
   if (!OID_ISTEMP ((OID *) WS_OID (mop)))
     {
@@ -1146,7 +1239,7 @@ ws_perm_oid (MOP mop, OID * newoid)
       slot = slot % ws_Mop_table_size;
     }
 
-  mops = ws_Mop_table[slot];
+  mops = ws_Mop_table[slot].head;
   for (prev = NULL; mops != mop && mops != NULL; mops = mops->hash_link)
     {
       prev = mops;
@@ -1157,15 +1250,25 @@ ws_perm_oid (MOP mop, OID * newoid)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_MOP_NOT_FOUND, 0);
       return;
     }
+
   /* remove the current entry */
   if (prev == NULL)
     {
-      ws_Mop_table[slot] = mop->hash_link;
+      ws_Mop_table[slot].head = mop->hash_link;
     }
   else
     {
       prev->hash_link = mop->hash_link;
     }
+
+  if (ws_Mop_table[slot].tail == mop)
+    {
+      /* I was the tail of the list */
+      ws_Mop_table[slot].tail = prev;
+    }
+
+  assert (ws_check_hash_link (slot) == NO_ERROR);
+
   mop->hash_link = NULL;
 
   /* assign the new oid */
@@ -1178,9 +1281,8 @@ ws_perm_oid (MOP mop, OID * newoid)
       slot = slot % ws_Mop_table_size;
     }
 
-  mop->hash_link = ws_Mop_table[slot];
-  ws_Mop_table[slot] = mop;
-
+  ws_insert_mop_on_hash_link (mop, slot);
+  assert (ws_check_hash_link (slot) == NO_ERROR);
 }
 
 /*
@@ -1360,7 +1462,7 @@ ws_cull_mops (void)
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
       prev = NULL;
-      for (mops = ws_Mop_table[slot]; mops != NULL; mops = next)
+      for (mops = ws_Mop_table[slot].head; mops != NULL; mops = next)
 	{
 	  next = mops->hash_link;
 	  if (!mops->released)
@@ -1415,12 +1517,20 @@ ws_cull_mops (void)
 	      /* remove the mop from the hash table */
 	      if (prev == NULL)
 		{
-		  ws_Mop_table[slot] = next;
+		  ws_Mop_table[slot].head = next;
 		}
 	      else
 		{
 		  prev->hash_link = next;
 		}
+
+	      if (ws_Mop_table[slot].tail == mops)
+		{
+		  /* I was the tail of the list */
+		  ws_Mop_table[slot].tail = prev;
+		}
+
+	      assert (ws_check_hash_link (slot) == NO_ERROR);
 
 	      /* free the associated object, note for classes,
 	         this could be a fairly complex operation since all the instances
@@ -2337,8 +2447,8 @@ ws_init (void)
 
   /* build the MOP table */
   ws_Mop_table_size = PRM_WS_HASHTABLE_SIZE;
-  allocsize = sizeof (MOP) * ws_Mop_table_size;
-  ws_Mop_table = (MOP *) malloc (allocsize);
+  allocsize = sizeof (WS_MOP_TABLE_ENTRY) * ws_Mop_table_size;
+  ws_Mop_table = (WS_MOP_TABLE_ENTRY *) malloc (allocsize);
 
   if (ws_Mop_table == NULL)
     {
@@ -2347,7 +2457,8 @@ ws_init (void)
 
   for (i = 0; i < ws_Mop_table_size; i++)
     {
-      ws_Mop_table[i] = NULL;
+      ws_Mop_table[i].head = NULL;
+      ws_Mop_table[i].tail = NULL;
     }
 
   /* create the internal Null object mop */
@@ -2425,7 +2536,8 @@ ws_final (void)
     {
       for (slot = 0; slot < ws_Mop_table_size; slot++)
 	{
-	  for (mop = ws_Mop_table[slot], next = NULL; mop != NULL; mop = next)
+	  for (mop = ws_Mop_table[slot].head, next = NULL; mop != NULL;
+	       mop = next)
 	    {
 	      next = mop->hash_link;
 	      ws_free_mop (mop);
@@ -2462,7 +2574,7 @@ ws_clear_internal (bool clear_vmop_keys)
 
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
-      for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 	  ws_decache (mop);
 
@@ -2509,7 +2621,7 @@ ws_vid_clear (void)
 
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
-      for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 	  /* Don't decache non-updatable view objects because they cannot be
 	     recreated.  Let garbage collection eventually decache them.
@@ -3136,7 +3248,7 @@ ws_map (MAPFUNC function, void *args)
       for (slot = 0; slot < ws_Mop_table_size && status == WS_MAP_CONTINUE;
 	   slot++)
 	{
-	  for (mop = ws_Mop_table[slot];
+	  for (mop = ws_Mop_table[slot].head;
 	       mop != NULL && status == WS_MAP_CONTINUE; mop = mop->hash_link)
 	    {
 	      status = (*(function)) (mop, args);
@@ -3348,7 +3460,7 @@ ws_decache_allxlockmops_but_norealclasses (void)
 
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
-      for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 
 	  if (mop->pinned == 0
@@ -3606,7 +3718,7 @@ ws_count_mops (void)
   count = 0;
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
-      for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 	  count++;
 	}
@@ -3640,7 +3752,7 @@ ws_dump (FILE * fpp)
   weird = 0;
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
-      for (mop = ws_Mop_table[slot]; mop != NULL; mop = mop->hash_link)
+      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
 	  mops++;
 
@@ -3814,7 +3926,7 @@ ws_dump (FILE * fpp)
  *    value(in): value
  */
 int
-ws_put_prop (MOP op, int key, void *value)
+ws_put_prop (MOP op, int key, DB_BIGINT value)
 {
   WS_PROPERTY *p;
   int status = -1;
@@ -3858,7 +3970,7 @@ ws_put_prop (MOP op, int key, void *value)
  *    value(out): returned property value
  */
 int
-ws_get_prop (MOP op, int key, void **value)
+ws_get_prop (MOP op, int key, DB_BIGINT * value)
 {
   WS_PROPERTY *p;
   int status = -1;

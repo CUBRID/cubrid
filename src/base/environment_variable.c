@@ -35,7 +35,6 @@
 #endif
 #include "error_code.h"
 #include "environment_variable.h"
-#include "porting.h"
 
 /* available root directory symbols; NULL terminated array */
 static const char *envvar_Prefixes[] = {

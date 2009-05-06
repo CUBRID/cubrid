@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -63,9 +63,6 @@
 #if defined(WINDOWS)
 #include "intl_support.h"
 #endif
-
-#define NL_SETMAX       255
-#define NL_MSGMAX       32767
 
 /*
  * MESSAGE CATALOG FILE FORMAT.
@@ -161,14 +158,14 @@ catopen (const char *name, int type)
 			     || (lang[1] == '.' && lang[2] == '\0')))
       || strchr (lang, '/') != NULL)
     {
-      lang = "C";
+      lang = (char *) "C";
     }
 
   if ((plang = cptr1 = strdup (lang)) == NULL)
     return (NLERR);
   if ((cptr = strchr (cptr1, '@')) != NULL)
     *cptr = '\0';
-  pter = pcode = "";
+  pter = pcode = (char *) "";
   if ((cptr = strchr (cptr1, '_')) != NULL)
     {
       *cptr++ = '\0';
@@ -181,7 +178,7 @@ catopen (const char *name, int type)
     }
 
   if ((nlspath = getenv ("NLSPATH")) == NULL)
-    nlspath = DEFAULT_NLS_PATH;
+    nlspath = (char *) DEFAULT_NLS_PATH;
 
   if ((base = cptr = strdup (nlspath)) == NULL)
     {
@@ -221,15 +218,15 @@ catopen (const char *name, int type)
 		      ++nlspath;
 		      /* fallthrough */
 		    default:
-		      if (pathP - path >= sizeof (path) - 1)
+		      if (pathP - path >= PATH_MAX - 1)
 			goto too_long;
 		      *(pathP++) = *nlspath;
 		      continue;
 		    }
 		  ++nlspath;
 		put_tmpptr:
-		  spcleft = sizeof (path) - (pathP - path) - 1;
-		  if (strlcpy (pathP, tmpptr, spcleft) >= spcleft)
+		  spcleft = PATH_MAX - (CAST_STRLEN (pathP - path)) - 1;
+		  if (strlcpy (pathP, tmpptr, spcleft) >= (size_t) spcleft)
 		    {
 		    too_long:
 		      free (plang);
@@ -241,7 +238,7 @@ catopen (const char *name, int type)
 		}
 	      else
 		{
-		  if (pathP - path >= sizeof (path) - 1)
+		  if (pathP - path >= PATH_MAX - 1)
 		    goto too_long;
 		  *(pathP++) = *nlspath;
 		}
@@ -377,8 +374,7 @@ load_msgcat (const char *path)
   void *data = NULL;
 #if defined(WINDOWS)
   HANDLE map_handle;
-  OFSTRUCT open_info;
-  HFILE file_handle;
+  HANDLE file_handle;
 #else
   int fd;
 #endif
@@ -386,10 +382,11 @@ load_msgcat (const char *path)
   /* XXX: path != NULL? */
 
 #if defined(WINDOWS)
-  file_handle = OpenFile (path, &open_info, OF_READ);
-  if (file_handle == HFILE_ERROR)
+  file_handle = CreateFile (path, GENERIC_READ, FILE_SHARE_READ, NULL,
+			    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (file_handle == NULL)
     {
-      return (NLERR);
+      return NLERR;
     }
   if (stat (path, &st) != 0)
     {
@@ -398,7 +395,8 @@ load_msgcat (const char *path)
     }
 
   map_handle =
-    CreateFileMapping (file_handle, NULL, PAGE_READONLY, 0, st.st_size, NULL);
+    CreateFileMapping ((HANDLE) file_handle, NULL, PAGE_READONLY, 0,
+		       st.st_size, NULL);
   if (map_handle != NULL)
     {
       data = MapViewOfFile (map_handle, FILE_MAP_READ, 0, 0, 0);
@@ -477,7 +475,7 @@ struct msgcat_def msgcat_System[] = {
 int
 msgcat_init (void)
 {
-  int i;
+  size_t i;
 
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
@@ -501,7 +499,8 @@ msgcat_init (void)
 int
 msgcat_final (void)
 {
-  int i, rc;
+  size_t i;
+  int rc;
 
   rc = NO_ERROR;
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
@@ -530,9 +529,9 @@ char *
 msgcat_message (int cat_id, int set_id, int msg_id)
 {
   char *msg;
-  static char *empty = "";
+  static char *empty = (char *) "";
 
-  if (cat_id < 0 || cat_id >= MSGCAT_SYSTEM_DIM)
+  if (cat_id < 0 || ((size_t) cat_id) >= MSGCAT_SYSTEM_DIM)
     return NULL;
   if (msgcat_System[cat_id].msg_catd == NULL)
     {

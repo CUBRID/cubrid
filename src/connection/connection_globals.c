@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "porting.h"
 #include "memory_alloc.h"
 #include "connection_globals.h"
 
@@ -40,11 +41,11 @@ int css_Service_id = 1523;
 #if !defined(WINDOWS)
 char css_Master_unix_domain_path[TMP_MAX] = "";
 #endif
-int css_Pipe_to_master;		/* socket for Master->Slave communication */
+SOCKET css_Pipe_to_master = INVALID_SOCKET;	/* socket for Master->Slave communication */
 
 /* Stuff for the new client/server/master protocol */
 int css_Server_inhibit_connection_socket = 0;
-int css_Server_connection_socket = -1;
+SOCKET css_Server_connection_socket = INVALID_SOCKET;
 
 /* For Windows, we only support the new style of connection protocol. */
 #if defined(WINDOWS)

@@ -34,17 +34,6 @@
 #include "file_manager.h"
 #include "oid.h"
 
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern EHID *xehash_create (THREAD_ENTRY * thread_p, EHID * ehid,
-			    DB_TYPE key_type, int exp_num_entries,
-			    OID * class_oid, int attr_id);
-extern int xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
-#if 0
-extern EH_SEARCH xeh_find (EHID * ehid, void *value, OID * oid);
-#endif
-#endif /* SERVER_MODE */
-
 extern EH_SEARCH ehash_search (THREAD_ENTRY * thread_p, EHID * ehid,
 			       void *key, OID * value_ptr);
 extern void *ehash_insert (THREAD_ENTRY * thread_p, EHID * ehid, void *key,

@@ -464,12 +464,12 @@ db_compile_statement_local (DB_SESSION * session)
       return er_errid ();
     }
 
-  /* get sys_date, sys_time, sys_timestamp values from the server */
+  /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info.info_bits = 0;	/* init */
-  if (statement->si_timestamp)
+  if (statement->si_datetime)
     {
-      server_info.info_bits |= SI_SYS_TIMESTAMP;
-      server_info.value[0] = &parser->sys_timestamp;
+      server_info.info_bits |= SI_SYS_DATETIME;
+      server_info.value[0] = &parser->sys_datetime;
     }
   if (statement->si_tran_id)
     {
@@ -1559,13 +1559,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   /* forget about any previous compilation errors, if any */
   pt_reset_error (parser);
 
-  /* get sys_date, sys_time, sys_timestamp values from the server */
+  /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info.info_bits = 0;	/* init */
-  if (statement->si_timestamp && DB_IS_NULL (&parser->sys_timestamp))
+  if (statement->si_datetime && DB_IS_NULL (&parser->sys_datetime))
     {
       /* if it was reset in the previous execution step, fills it now */
-      server_info.info_bits |= SI_SYS_TIMESTAMP;
-      server_info.value[0] = &parser->sys_timestamp;
+      server_info.info_bits |= SI_SYS_DATETIME;
+      server_info.value[0] = &parser->sys_datetime;
     }
   if (statement->si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
     {
@@ -1773,9 +1773,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
     }
 
   /* reset the parser values */
-  if (statement->si_timestamp)
+  if (statement->si_datetime)
     {
-      db_make_null (&parser->sys_timestamp);
+      db_make_null (&parser->sys_datetime);
     }
   if (statement->si_tran_id)
     {
@@ -2227,6 +2227,7 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
     case DB_TYPE_MONETARY:
       strcat (predicate, " = 1 ");
       return predicate;
@@ -2246,6 +2247,9 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
       return predicate;
     case DB_TYPE_TIMESTAMP:
       strcat (predicate, " = '10/15/1986 5:45 am' ");
+      return predicate;
+    case DB_TYPE_DATETIME:
+      strcat (predicate, " = '10/15/1986 5:45:15.135 am' ");
       return predicate;
     case DB_TYPE_DATE:
       strcat (predicate, " = '10/15/1986' ");

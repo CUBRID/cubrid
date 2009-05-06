@@ -31,7 +31,7 @@
 /*#include "db.h"*/
 extern int db_Connect_status;
 
-#ifndef WINDOWS
+#if !defined(WINDOWS)
 /* this must be the last header file included!!! */
 #include "dbval.h"
 #endif
@@ -40,7 +40,7 @@ extern int db_Connect_status;
 #define CUR_CUBRID_VERSION	\
 	CUBRID_VERSION(MAJOR_VERSION, MINOR_VERSION)
 
-#ifdef WINDOWS
+#if defined(WINDOWS)
 extern char **db_get_lock_classes (DB_SESSION * session);
 #endif
 

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -31,7 +31,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <process.h>
 #include <io.h>
 #else
@@ -56,16 +56,18 @@
 #define NUM_DBMT_FILE	24
 #endif
 
-char *autobackup_conf_entry[AUTOBACKUP_CONF_ENTRY_NUM] = {
+const char *autobackup_conf_entry[AUTOBACKUP_CONF_ENTRY_NUM] = {
   "dbname", "backupid", "path", "period_type", "period_date", "time",
   "level", "archivedel", "updatestatus", "storeold", "onoff",
   "zip", "check", "mt"
 };
-char *autoaddvol_conf_entry[AUTOADDVOL_CONF_ENTRY_NUM] = {
+
+const char *autoaddvol_conf_entry[AUTOADDVOL_CONF_ENTRY_NUM] = {
   "dbname", "data", "data_warn_outofspace", "data_ext_page",
   "index", "index_warn_outofspace", "index_ext_page"
 };
-char *autohistory_conf_entry[AUTOHISTORY_CONF_ENTRY_NUM] = {
+
+const char *autohistory_conf_entry[AUTOHISTORY_CONF_ENTRY_NUM] = {
   "onoff",
   "startyear", "startmonth", "startday",
   "starthour", "startminute", "startsecond",
@@ -73,7 +75,8 @@ char *autohistory_conf_entry[AUTOHISTORY_CONF_ENTRY_NUM] = {
   "endhour", "endminute", "endsecond",
   "memory", "cpu"
 };
-char *autounicas_conf_entry[AUTOUNICAS_CONF_ENTRY_NUM] = {
+
+const char *autounicas_conf_entry[AUTOUNICAS_CONF_ENTRY_NUM] = {
   "bname", "cpumonitor", "busymonitor", "logcpu", "logbusy",
   "cpurestart", "busyrestart", "cpulimit", "busytimelimit"
 };
@@ -117,7 +120,7 @@ static int check_file (char *fname, FILE * log_fp);
 static int check_path (char *path, FILE * log_fp);
 
 void
-sys_config_init ()
+sys_config_init (void)
 {
   memset (&sco, 0, sizeof (sco));
 }
@@ -254,13 +257,13 @@ int
 uCheckSystemConfig (FILE * log_fp)
 {
   int retval;
-#ifndef WIN32
+#if !defined(WINDOWS)
   struct stat statbuf;
   uid_t userid, ownerid;
 #endif
   char filepath[1024];
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   /* CUBRID user id check */
   userid = getuid ();
   stat (sco.szCubrid, &statbuf);

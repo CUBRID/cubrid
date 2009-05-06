@@ -573,7 +573,11 @@ typedef struct
     int value_type;		/* if arg_ch is not OPTION_STRING_TABLE */
     int num_strings;		/* if arg_ch is OPTION_STRING_TABLE */
   } value_info;
-  void *arg_value;
+  union
+  {
+    int i;
+    void *p;
+  } arg_value;
 } UTIL_ARG_MAP;
 
 typedef struct
@@ -1046,11 +1050,13 @@ extern FILE *fopen_ex (const char *filename, const char *type);
 typedef struct
 {
   int keyval;
-  char *keystr;
+  const char *keystr;
 } UTIL_KEYWORD;
 
 extern int utility_keyword_value (UTIL_KEYWORD * keywords,
 				  int *keyval_p, char **keystr_p);
+extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
+				   char **keystr_p);
 
 /* admin utility main functions */
 typedef struct
@@ -1093,5 +1099,8 @@ extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
 extern int changemode (UTIL_FUNCTION_ARG * arg_map);
 extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
+
+extern void util_admin_usage (const char *argv0);
+extern void util_admin_version (const char *argv0);
 
 #endif /* _UTILITY_H_ */

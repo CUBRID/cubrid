@@ -818,7 +818,7 @@ STDMETHODIMP CCUBRIDRowset::Undo(HCHAPTER hReserved, DBCOUNTITEM cRows, const HR
 
 		if(prgRowStatus && bNotIgnore)
 		{
-			HROW *prgRowStatusTemp = (DBROWSTATUS *)CoTaskMemAlloc(ulUndone*sizeof(DBROWSTATUS));
+			DBROWSTATUS *prgRowStatusTemp = (DBROWSTATUS *)CoTaskMemAlloc(ulUndone*sizeof(DBROWSTATUS));
 			if(prgRowStatusTemp==NULL)
 			{
 				CoTaskMemFree(*prgRowsUndone);
@@ -1115,7 +1115,7 @@ STDMETHODIMP CCUBRIDRowset::Update(HCHAPTER hReserved, DBCOUNTITEM cRows, const 
 
 		if(prgRowStatus && bNotIgnore)
 		{
-			HROW *prgRowStatusTemp = (DBROWSTATUS *)CoTaskMemAlloc(ulCount*sizeof(DBROWSTATUS));
+			DBROWSTATUS *prgRowStatusTemp = (DBROWSTATUS *)CoTaskMemAlloc(ulCount*sizeof(DBROWSTATUS));
 			if(prgRowStatusTemp==NULL)
 			{
 				CoTaskMemFree(*prgRows);

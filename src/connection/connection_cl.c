@@ -53,6 +53,7 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 
+#include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "memory_alloc.h"
@@ -63,7 +64,6 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
-#include "porting.h"
 #include "connection_list_cl.h"
 #include "connection_cl.h"
 
@@ -90,7 +90,7 @@
 static CSS_CONN_ENTRY *css_Conn_anchor = NULL;
 static int css_Client_id = 0;
 
-static void css_initialize_conn (CSS_CONN_ENTRY * conn, int fd);
+static void css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 static void css_close_conn (CSS_CONN_ENTRY * conn);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
@@ -136,10 +136,10 @@ static int css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer,
 void
 css_shutdown_conn (CSS_CONN_ENTRY * conn)
 {
-  if (conn->fd >= 0)
+  if (!IS_INVALID_SOCKET (conn->fd))
     {
       css_shutdown_socket (conn->fd);
-      conn->fd = -1;
+      conn->fd = INVALID_SOCKET;
     }
   conn->status = CONN_CLOSED;
 }
@@ -151,7 +151,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
  *   fd(in):
  */
 static void
-css_initialize_conn (CSS_CONN_ENTRY * conn, int fd)
+css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 {
   conn->request_id = 0;
   conn->fd = fd;
@@ -174,7 +174,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, int fd)
  *   fd(in):
  */
 CSS_CONN_ENTRY *
-css_make_conn (int fd)
+css_make_conn (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn;
 
@@ -196,7 +196,7 @@ css_make_conn (int fd)
 static void
 css_close_conn (CSS_CONN_ENTRY * conn)
 {
-  if (conn && conn->fd >= 0)
+  if (conn && !IS_INVALID_SOCKET (conn->fd))
     {
       css_shutdown_conn (conn);
       css_initialize_conn (conn, -1);
@@ -262,7 +262,7 @@ css_find_exception_conn (void)
   FD_ZERO (&fd_var);
   for (p = css_Conn_anchor; p; p = p->next)
     {
-      if (p->fd >= 0)
+      if (!IS_INVALID_SOCKET (p->fd))
 	{
 	  FD_SET (p->fd, &fd_var);
 	}
@@ -281,7 +281,7 @@ css_find_exception_conn (void)
     default:
       for (p = css_Conn_anchor; p; p = p->next)
 	{
-	  if (p->fd >= 0 && FD_ISSET (p->fd, &fd_var))
+	  if (!IS_INVALID_SOCKET (p->fd) && FD_ISSET (p->fd, &fd_var))
 	    {
 	      return p;
 	    }
@@ -298,7 +298,7 @@ css_find_exception_conn (void)
  *   fd(in): Socket fd
  */
 CSS_CONN_ENTRY *
-css_find_conn_from_fd (int fd)
+css_find_conn_from_fd (SOCKET fd)
 {
   CSS_CONN_ENTRY *p;
 
@@ -465,7 +465,7 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
   rc = css_read_header (conn, &local_header);
   if (rc == NO_ERRORS)
     {
-      *rid = ntohl (local_header.request_id);
+      *rid = (unsigned short) ntohl (local_header.request_id);
       type = ntohl (local_header.type);
 
       if (type == COMMAND_TYPE)
@@ -568,10 +568,18 @@ begin:
 	  *buffer_size = ntohl (header.buffer_size);
 	  if (*buffer_size != 0)
 	    {
-	      *buffer = (char *) css_return_data_buffer (conn,
-							 (rid == req_id
-							  ? rid : 0),
-							 buffer_size);
+	      if (rid == req_id)
+		{
+		  *buffer = (char *) css_return_data_buffer (conn,
+							     rid,
+							     buffer_size);
+		}
+	      else
+		{
+		  *buffer = (char *) css_return_data_buffer (conn,
+							     0, buffer_size);
+		}
+
 	      if (*buffer != NULL)
 		{
 		  do
@@ -853,7 +861,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 		    int server_name_length, int port, int timeout,
 		    unsigned short *rid)
 {
-  int fd;
+  SOCKET fd;
 
 #if !defined (WINDOWS)
   if (timeout > 0)
@@ -864,7 +872,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 #else /* !WINDOWS */
   fd = css_tcp_client_open_with_retry (host_name, port, true);
 #endif /* WINDOWS */
-  if (fd >= 0)
+  if (!IS_INVALID_SOCKET (fd))
     {
       conn->fd = fd;
       if (css_send_request (conn, connect_type, rid, server_name,
@@ -974,13 +982,16 @@ CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id,
 			      const char *server_name, int name_length)
 {
-  char hname[MAXHOSTNAMELEN], *pname;
+  char hname[MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
-  int datagram_fd, socket_fd;
   unsigned short rid;
   int response, response_buff;
   int server_port_id;
   int connection_protocol;
+#if !defined(WINDOWS)
+  char *pname;
+  int datagram_fd, socket_fd;
+#endif
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, MAXHOSTNAMELEN) == 0)
@@ -1238,7 +1249,7 @@ bool
 css_does_master_exist (int port_id)
 {
   char hostname[MAXHOSTNAMELEN];
-  int fd;
+  SOCKET fd;
 
   if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
     {
@@ -1248,7 +1259,7 @@ css_does_master_exist (int port_id)
 
   /* Don't waste time retrying between master to master connections */
   fd = css_tcp_client_open_with_retry (hostname, port_id, false);
-  if (fd >= 0)
+  if (!IS_INVALID_SOCKET (fd))
     {
       css_shutdown_socket (fd);
       return true;

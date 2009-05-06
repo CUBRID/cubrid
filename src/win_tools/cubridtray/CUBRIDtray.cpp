@@ -134,7 +134,7 @@ BOOL CUnitrayApp::InitInstance()
 	}
 	bClassRegistered = TRUE ;
 
-	Enable3dControls();
+	/*Enable3dControls();*/
 
 	CMainFrame* pMainFrame = new CMainFrame;
 

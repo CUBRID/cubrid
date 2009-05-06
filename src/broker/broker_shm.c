@@ -24,7 +24,7 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #endif
@@ -33,7 +33,7 @@
 #include <sys/types.h>
 #include <errno.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <windows.h>
 #else
 #include <sys/ipc.h>
@@ -44,7 +44,7 @@
 #include "broker_shm.h"
 #include "broker_error.h"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "broker_list.h"
 #endif
 
@@ -52,13 +52,13 @@
 
 #define 	MAGIC_NUMBER		0x20080912
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static int shm_id_cmp_func (void *key1, void *key2);
 static int shm_info_assign_func (T_LIST * node, void *key, void *value);
 static char *shm_id_to_name (int shm_key);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 T_LIST *shm_id_list_header = NULL;
 #endif
 
@@ -77,7 +77,7 @@ T_LIST *shm_id_list_header = NULL;
  * description: get and attach shared memory
  *
  */
-#ifdef WIN32
+#if defined(WINDOWS)
 void *
 uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
 {
@@ -178,7 +178,7 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
  *
  */
 
-#ifdef WIN32
+#if defined(WINDOWS)
 void *
 uw_shm_create (int shm_key, int size, int which_shm)
 {
@@ -188,7 +188,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
 
   shm_name = shm_id_to_name (shm_key);
 
-  hMapObject = CreateFileMapping ((HANDLE) 0xFFFFFFFF,
+  hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE,
 				  NULL, PAGE_READWRITE, 0, size, shm_name);
   if (hMapObject == NULL)
     {
@@ -267,7 +267,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
 int
 uw_shm_destroy (int shm_key)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   return 0;
 #else
   int mid;
@@ -289,7 +289,7 @@ uw_shm_destroy (int shm_key)
 #endif
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 void
 uw_shm_detach (void *p)
 {
@@ -312,7 +312,7 @@ uw_shm_detach (void *p)
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 uw_shm_get_magic_number ()
 {
@@ -320,7 +320,7 @@ uw_shm_get_magic_number ()
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static int
 shm_id_cmp_func (void *key1, void *key2)
 {

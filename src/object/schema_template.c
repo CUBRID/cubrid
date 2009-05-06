@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -48,34 +48,6 @@
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif
-
-/* Shorthand for simple warnings and errors */
-#define WARN(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
-#define ERROR1(error, code, arg1) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
-
-#define ERROR2(error, code, arg1, arg2) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); \
-       } while (0)
-
-#define ERROR3(error, code, arg1, arg2, arg3) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
-       } while (0)
-
-#define ERROR4(error, code, arg1, arg2, arg3, arg4) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
-	   arg1, arg2, arg3, arg4); } while (0)
 
 #define DOWNCASE_NAME(a, b) \
   do { \
@@ -709,7 +681,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
       if (domain_classobj == NULL)
 	{
 	  /* can't have a proxy domain of type "object" */
-	  ERROR (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN);
+	  ERROR0 (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN);
 	}
       else if (!(error = au_fetch_class_force (domain_classobj, &class_,
 					       AU_FETCH_READ)))
@@ -992,7 +964,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
 		      break;
 
 		    default:
-		      ERROR (error, ER_SM_INVALID_ARGUMENTS);
+		      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
 		      classobj_free_attribute (att);
 		      break;
 		    }
@@ -1357,7 +1329,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 		       int n_atts, SM_FOREIGN_KEY_INFO * fk_info)
 {
   int error = NO_ERROR;
-  MOP ref_clsop;
+  MOP ref_clsop = NULL;
   SM_CLASS *ref_cls;
   SM_CLASS_CONSTRAINT *pk, *temp_cons = NULL;
   SM_ATTRIBUTE *tmp_attr, *ref_attr, *cache_attr;
@@ -1600,7 +1572,7 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 	  if (pk->fk_info
 	      && classobj_is_pk_referred (template_->op, pk->fk_info, true))
 	    {
-	      ERROR (error, ER_FK_CANT_DROP_PK_REFERRED);
+	      ERROR0 (error, ER_FK_CANT_DROP_PK_REFERRED);
 	      return error;
 	    }
 	}
@@ -1702,7 +1674,7 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 		{
 		  if (on_or_off)
 		    {
-		      ERROR (error, ER_SM_UNIQUE_ON_VCLASS);
+		      ERROR0 (error, ER_SM_UNIQUE_ON_VCLASS);
 		    }
 		}
 
@@ -1763,7 +1735,7 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 		{
 		  if (on_or_off)
 		    {
-		      ERROR (error, ER_FK_CANT_ON_VCLASS);	/* TODO */
+		      ERROR0 (error, ER_FK_CANT_ON_VCLASS);	/* TODO */
 		    }
 		}
 
@@ -1802,16 +1774,16 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 	       */
 	      if (n_atts != 1)
 		{
-		  ERROR (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
+		  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
 		}
 	      else if (template_->class_type != SM_CLASS_CT
 		       && atts[0]->header.name_space == ID_ATTRIBUTE)
 		{
-		  ERROR (error, ER_SM_NOT_NULL_ON_VCLASS);
+		  ERROR0 (error, ER_SM_NOT_NULL_ON_VCLASS);
 		}
 	      else if (class_attribute && DB_IS_NULL (&(atts[0]->value)))
 		{
-		  ERROR (error, ER_SM_INVALID_CONSTRAINT);
+		  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
 		}
 	      else
 		{
@@ -1844,7 +1816,7 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 	  /* Unknown constraint type */
 	  else
 	    {
-	      ERROR (error, ER_SM_INVALID_ARGUMENTS);
+	      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
 	    }
 
 	}
@@ -2387,7 +2359,7 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	error = check_alias_delete (template_, name, ID_CLASS, error);
       break;
     default:
-      ERROR (error, ER_SM_INVALID_ARGUMENTS);
+      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
       break;
     }
   return (error);
@@ -2431,10 +2403,10 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
   int error = NO_ERROR;
 
   if (ml_find (template_->inheritance, super_class))
-    ERROR (error, ER_SM_SUPER_CLASS_EXISTS);
+    ERROR0 (error, ER_SM_SUPER_CLASS_EXISTS);
 
   else if ((template_->op != NULL) && (template_->op == super_class))
-    ERROR (error, ER_SM_SUPER_CAUSES_CYCLES);
+    ERROR0 (error, ER_SM_SUPER_CAUSES_CYCLES);
 
   else if ((template_->class_type == SM_CLASS_CT
 	    && !db_is_class (super_class))
@@ -2463,7 +2435,7 @@ smt_delete_super (SM_TEMPLATE * template_, MOP super_class)
   int error = NO_ERROR;
 
   if (!ml_remove (&template_->inheritance, super_class))
-    ERROR (error, ER_SM_SUPER_NOT_FOUND);
+    ERROR0 (error, ER_SM_SUPER_NOT_FOUND);
 
   return (error);
 }
@@ -2485,7 +2457,7 @@ smt_delete_super_connect (SM_TEMPLATE * template_, MOP super_class)
   DB_OBJLIST *s;
 
   if (!ml_remove (&template_->inheritance, super_class))
-    ERROR (error, ER_SM_SUPER_NOT_FOUND);
+    ERROR0 (error, ER_SM_SUPER_NOT_FOUND);
 
   else
     {

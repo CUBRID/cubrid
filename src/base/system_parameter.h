@@ -83,7 +83,7 @@ extern int PRM_WS_HASHTABLE_SIZE;
 extern bool PRM_WS_MEMORY_REPORT;
 extern bool PRM_GC_ENABLE;
 extern int PRM_CSS_MAX_CLIENTS;
-IMPORT_VAR int PRM_TCP_PORT_ID;
+extern int PRM_TCP_PORT_ID;
 extern int PRM_TCP_CONNECTION_TIMEOUT;
 extern int PRM_OPTIMIZATION_LEVEL;
 extern bool PRM_QO_DUMP;
@@ -174,5 +174,5 @@ extern int xsysprm_obtain_server_parameters (char *data, int len);
 #endif /* !CS_MODE */
 extern int sysprm_set_force (const char *pname, const char *pvalue);
 extern int sysprm_set_to_default (const char *pname);
-
+extern int prm_get_master_port_id (void);
 #endif /* _SYSTEM_PARAMETER_H_ */

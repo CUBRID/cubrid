@@ -63,14 +63,14 @@ static int elo_stream_buffer_size = 4096;
 
 static int elo_copy_to_char (char *target, char *source, int c, int length);
 static int elo_read_next_buffer_from_offset (ELO_STREAM * elo_stream,
-					     int offset);
+					     FSIZE_T offset);
 static int elo_read_next_buffer (ELO_STREAM * elo_stream);
 static void elo_loid_init (LOID * loid);
 static void elo_loid_copy (LOID * dest, LOID * src);
 static char *elo_get_pathname_internal (DB_OBJECT * glo, DB_ELO * elo,
 					char *expanded_pathname, int length);
 static char elo_mode_check (const char *mode);
-static int elo_flush (ELO_STREAM * elo_stream);
+static FSIZE_T elo_flush (ELO_STREAM * elo_stream);
 
 /*
  * LOID FUNCTIONS
@@ -150,12 +150,12 @@ elo_get_pathname_internal (DB_OBJECT * glo, DB_ELO * elo,
  *
  */
 
-int
-elo_read_from (DB_ELO * elo, const long offset, const int length,
+FSIZE_T
+elo_read_from (DB_ELO * elo, const FSIZE_T offset, const FSIZE_T length,
 	       char *buffer, DB_OBJECT * glo)
 {
   int err = NO_ERROR;
-  int return_value;
+  FSIZE_T return_value;
   char pathname[PATH_MAX];
 
   switch (elo->type)
@@ -168,8 +168,8 @@ elo_read_from (DB_ELO * elo, const long offset, const int length,
 	  }
 	else
 	  {
-	    return_value =
-	      largeobjmgr_read (&elo->loid, offset, length, buffer);
+	    return_value = largeobjmgr_read (&elo->loid, offset,
+					     length, buffer);
 	    if (return_value < 0)
 	      {
 		err = er_errid ();
@@ -179,10 +179,11 @@ elo_read_from (DB_ELO * elo, const long offset, const int length,
       }
     case ELO_FBO:
       {
-	return_value = err =
-	  (int)
-	  esm_read (elo_get_pathname_internal
-		    (glo, elo, pathname, PATH_MAX), offset, length, buffer);
+	return_value = esm_read (elo_get_pathname_internal (glo, elo,
+							    pathname,
+							    PATH_MAX),
+				 offset, length, buffer);
+	err = return_value;
 	break;
       }
     default:
@@ -208,11 +209,11 @@ elo_read_from (DB_ELO * elo, const long offset, const int length,
  *
  */
 
-int
-elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
+FSIZE_T
+elo_write_to (DB_ELO * elo, FSIZE_T offset, FSIZE_T length, char *buffer,
 	      DB_OBJECT * glo)
 {
-  int err = NO_ERROR;
+  FSIZE_T err = NO_ERROR;
   OID *oid;
   char pathname[PATH_MAX];
 
@@ -240,8 +241,8 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
 
 	    if (offset > 0)
 	      {
-		if (largeobjmgr_create (&elo->loid, 0, NULL, length, oid) ==
-		    NULL
+		if (largeobjmgr_create (&elo->loid, 0, NULL,
+					length, oid) == NULL
 		    || largeobjmgr_write (&elo->loid, offset, length,
 					  buffer) < 0)
 		  {
@@ -250,8 +251,8 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
 	      }
 	    else
 	      {
-		if (largeobjmgr_create
-		    (&elo->loid, length, buffer, length, oid) == NULL)
+		if (largeobjmgr_create (&elo->loid, length, buffer,
+					length, oid) == NULL)
 		  {
 		    err = er_errid ();
 		  }
@@ -271,9 +272,10 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
 
     case ELO_FBO:
       {
-	err = (int) esm_write (elo_get_pathname_internal (glo, elo, pathname,
-							  PATH_MAX),
-			       offset, length, buffer);
+	err = (FSIZE_T) esm_write ((elo_get_pathname_internal (glo, elo,
+							       pathname,
+							       PATH_MAX)),
+				   offset, length, buffer);
 	break;
       }
 
@@ -290,7 +292,7 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
 }
 
 /*
- * elo_write_to() - inserts length bytes from buffer into the elo object
+ * elo_insert_into() - inserts length bytes from buffer into the elo object
  *      return: Returns the number of bytes inserted or a negative number
  *              corresponding to the error code encountered during
  *              the operation.
@@ -302,8 +304,8 @@ elo_write_to (DB_ELO * elo, long offset, int length, char *buffer,
  *
  */
 
-int
-elo_insert_into (DB_ELO * elo, long offset, int length, char *buffer,
+FSIZE_T
+elo_insert_into (DB_ELO * elo, FSIZE_T offset, FSIZE_T length, char *buffer,
 		 DB_OBJECT * glo)
 {
   int err = NO_ERROR;
@@ -397,10 +399,11 @@ elo_insert_into (DB_ELO * elo, long offset, int length, char *buffer,
  *  glo(in) : the glo object
  */
 
-long
-elo_delete_from (DB_ELO * elo, long offset, int length, DB_OBJECT * glo)
+FSIZE_T
+elo_delete_from (DB_ELO * elo, FSIZE_T offset, FSIZE_T length,
+		 DB_OBJECT * glo)
 {
-  int lsize;
+  FSIZE_T lsize;
   char pathname[PATH_MAX];
 
   switch (elo->type)
@@ -416,7 +419,7 @@ elo_delete_from (DB_ELO * elo, long offset, int length, DB_OBJECT * glo)
 	    lsize = largeobjmgr_delete (&elo->loid, offset, length);
 	    if (lsize < 0)
 	      {
-		return (long) er_errid ();
+		return (FSIZE_T) er_errid ();
 	      }
 	    return (lsize);
 	  }
@@ -428,7 +431,7 @@ elo_delete_from (DB_ELO * elo, long offset, int length, DB_OBJECT * glo)
 			   offset, length);
       }
     default:
-      return ((long) ELO_INVALID_TYPE);
+      return ((FSIZE_T) ELO_INVALID_TYPE);
     }				/* switch */
 }				/* elo_delete_from */
 
@@ -442,10 +445,10 @@ elo_delete_from (DB_ELO * elo, long offset, int length, DB_OBJECT * glo)
  *
  */
 
-long
+FSIZE_T
 elo_get_size (DB_ELO * elo, DB_OBJECT * glo)
 {
-  long err = 0L;
+  FSIZE_T size = 0L;
   char pathname[PATH_MAX];
 
   switch (elo->type)
@@ -458,12 +461,12 @@ elo_get_size (DB_ELO * elo, DB_OBJECT * glo)
 	  }
 	else
 	  {
-	    err = (long) largeobjmgr_length (&elo->loid);
-	    if (err < 0)
+	    size = largeobjmgr_length (&elo->loid);
+	    if (size < 0)
 	      {
-		return (long) er_errid ();
+		return (FSIZE_T) er_errid ();
 	      }
-	    return err;
+	    return size;
 	  }
       }
     case ELO_FBO:
@@ -472,9 +475,9 @@ elo_get_size (DB_ELO * elo, DB_OBJECT * glo)
 							 PATH_MAX)));
       }
     default:
-      return ((long) ELO_INVALID_TYPE);
-    }				/* switch */
-}				/* elo_get_size */
+      return ((FSIZE_T) ELO_INVALID_TYPE);
+    }
+}
 
 /*
  * elo_truncate() - Truncates the elo object at the current position
@@ -486,8 +489,8 @@ elo_get_size (DB_ELO * elo, DB_OBJECT * glo)
  *
  */
 
-long
-elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
+FSIZE_T
+elo_truncate (DB_ELO * elo, FSIZE_T offset, DB_OBJECT * glo)
 {
   char pathname[PATH_MAX];
 
@@ -495,7 +498,7 @@ elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
     {
     case ELO_LO:
       {
-	int lsize;
+	FSIZE_T lsize;
 
 	if ((&elo->loid)->vpid.pageid == NULL_PAGEID)
 	  {
@@ -506,9 +509,9 @@ elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
 	    lsize = largeobjmgr_truncate (&elo->loid, offset);
 	    if (lsize < 0)
 	      {
-		return (long) er_errid ();
+		return (FSIZE_T) er_errid ();
 	      }
-	    return ((long) lsize);
+	    return ((FSIZE_T) lsize);
 	  }
       }
     case ELO_FBO:
@@ -518,7 +521,7 @@ elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
 							PATH_MAX), offset);
       }
     default:
-      return ((long) ELO_INVALID_TYPE);
+      return ((FSIZE_T) ELO_INVALID_TYPE);
     }
 }
 
@@ -535,8 +538,8 @@ elo_truncate (DB_ELO * elo, long offset, DB_OBJECT * glo)
  *      The elo's size is adjusted and current position is set to eof.
  */
 
-int
-elo_append_to (DB_ELO * elo, int length, char *buffer, DB_OBJECT * glo)
+FSIZE_T
+elo_append_to (DB_ELO * elo, FSIZE_T length, char *buffer, DB_OBJECT * glo)
 {
   int err = NO_ERROR;
   OID *oid;
@@ -641,7 +644,7 @@ elo_compress (DB_ELO * elo)
 DB_ELO *
 elo_new_elo (void)
 {
-  DB_ELO *new_object = (DB_ELO *) db_ws_alloc (sizeof (ELO));
+  DB_ELO *new_object = (DB_ELO *) db_ws_alloc (sizeof (DB_ELO));
 
   if (new_object == NULL)
     {
@@ -665,21 +668,22 @@ elo_new_elo (void)
 DB_ELO *
 elo_copy (DB_ELO * src)
 {
-  DB_ELO *new_;
+  DB_ELO *new_elo;
 
-  new_ = (DB_ELO *) db_ws_alloc (sizeof (ELO));
-  if (new_ != NULL)
+  new_elo = (DB_ELO *) db_ws_alloc (sizeof (DB_ELO));
+  if (new_elo != NULL)
     {
-      elo_loid_copy (&new_->loid, &src->loid);
-      new_->type = src->type;
-      new_->pathname = ws_copy_string (src->pathname);
-      new_->original_pathname = ws_copy_string (src->pathname);
-      if (src->pathname && (!new_->pathname || !new_->original_pathname))
+      elo_loid_copy (&new_elo->loid, &src->loid);
+      new_elo->type = src->type;
+      new_elo->pathname = ws_copy_string (src->pathname);
+      new_elo->original_pathname = ws_copy_string (src->pathname);
+      if (src->pathname
+	  && (!new_elo->pathname || !new_elo->original_pathname))
 	{
-	  return elo_free (new_);
+	  return elo_free (new_elo);
 	}
     }
-  return (new_);
+  return (new_elo);
 }
 
 /*
@@ -696,7 +700,7 @@ elo_create (const char *pathname)
 {
   DB_ELO *elo;
 
-  elo = (DB_ELO *) db_ws_alloc (sizeof (ELO));
+  elo = (DB_ELO *) db_ws_alloc (sizeof (DB_ELO));
 
   if (elo == NULL)
     {
@@ -987,10 +991,10 @@ elo_close (ELO_STREAM * elo_stream)
  */
 
 
-static int
+static FSIZE_T
 elo_flush (ELO_STREAM * elo_stream)
 {
-  int bytes_written = 0;
+  FSIZE_T bytes_written = 0;
 
   if (elo_stream->buffer_modified
       && elo_stream->buffer_current && elo_stream->mode == ELO_READ_WRITE)
@@ -1013,9 +1017,9 @@ elo_flush (ELO_STREAM * elo_stream)
  */
 
 int
-elo_seek (ELO_STREAM * elo_stream, long offset, int origin)
+elo_seek (ELO_STREAM * elo_stream, FSIZE_T offset, int origin)
 {
-  long new_offset;
+  FSIZE_T new_offset;
 
   switch (origin)
     {
@@ -1278,7 +1282,7 @@ elo_copy_to_char (char *target, char *source, int c, int length)
 
   if (found != NULL)
     {
-      int new_length = found - source;
+      int new_length = CAST_STRLEN (found - source);
 
       (void) memcpy (target, source, new_length);
       target[length] = 0;
@@ -1301,9 +1305,9 @@ elo_copy_to_char (char *target, char *source, int c, int length)
  */
 
 static int
-elo_read_next_buffer_from_offset (ELO_STREAM * elo_stream, int offset)
+elo_read_next_buffer_from_offset (ELO_STREAM * elo_stream, FSIZE_T offset)
 {
-  int bytes_read;
+  FSIZE_T bytes_read;
 
   if (elo_stream->buffer_modified)
     {

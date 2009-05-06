@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -30,6 +30,7 @@
 #include <stdio.h>
 
 #include "dbtype.h"
+#include "memory_alloc.h"
 #include "thread_impl.h"
 
 /* Hash Table Entry - linked list */
@@ -70,16 +71,19 @@ struct mht_table
 					 * for future insertions
 					 */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  unsigned int heap_id;		/* Id of heap allocator */
+  HL_HEAPID heap_id;		/* Id of heap allocator */
 };
 
 extern unsigned int mht_1strlowerhash (const void *key,
 				       const unsigned int ht_size);
-extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size);
+extern unsigned int mht_1strhash (const void *key,
+				  const unsigned int ht_size);
 extern unsigned int mht_2strhash (const void *key,
 				  const unsigned int ht_size);
-extern unsigned int mht_3strhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
+extern unsigned int mht_3strhash (const void *key,
+				  const unsigned int ht_size);
+extern unsigned int mht_4strhash (const void *key,
+				  const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_get_hash_number (const int ht_size,
 					 const DB_VALUE * val);

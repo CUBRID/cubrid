@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -32,6 +32,7 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <sys/timeb.h>
 
 #include "chartype.h"
 #include "system_parameter.h"
@@ -115,7 +116,8 @@ typedef enum
   DT_HH12,
   DT_HH24,
   DT_MI,
-  DT_SS,			/*  So far, TIME format */
+  DT_SS,
+  DT_MS,			/*  So far, TIME format */
   DT_TEXT,
   DT_PUNCTUATION,
   DT_D
@@ -138,6 +140,7 @@ typedef enum
 #define QSTR_DATE_LENGTH 10
 #define QSTR_TIME_LENGTH 11
 #define QSTR_TIME_STAMPLENGTH 22
+#define QSTR_DATETIME_LENGTH 26
 #define QSTR_EXTRA_LENGTH_RATIO 3
 #define MAX_TOKEN_SIZE 16000
 
@@ -627,7 +630,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
      accordingly. */
   else
     {
-      int size1, size2, result_size, pad_size, n;
+      int size1, size2, result_size, pad_size = 0, n;
       unsigned char *string1, *string2, *result, *key, pad[2], *t, *t2;
       INTL_CODESET codeset;
       int num_bits = -1;
@@ -1282,6 +1285,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1)
 {
   DB_TYPE res_type;
   int itmp;
+  DB_BIGINT bi;
   double dtmp;
   char buf[2];
   DB_VALUE v;
@@ -1314,6 +1318,17 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1)
 	  break;
 	}
       buf[0] = (char) (itmp % 256);
+      buf[1] = '\0';
+      DB_MAKE_CHAR (&v, 1, buf, 1);
+      pr_clone_value (&v, res);
+      break;
+    case DB_TYPE_BIGINT:
+      bi = DB_GET_BIGINT (dbval1);
+      if (bi < 0)
+	{
+	  break;
+	}
+      buf[0] = (char) (bi % 256);
       buf[1] = '\0';
       DB_MAKE_CHAR (&v, 1, buf, 1);
       pr_clone_value (&v, res);
@@ -1423,13 +1438,14 @@ db_string_instr (const DB_VALUE * src_string,
     }
   else
     {
-      if (!(str1_type == DB_TYPE_STRING ||
-	    str1_type == DB_TYPE_CHAR || str1_type == DB_TYPE_VARCHAR ||
-	    str1_type == DB_TYPE_NCHAR || str1_type == DB_TYPE_VARNCHAR) ||
-	  !(str2_type == DB_TYPE_STRING ||
-	    str2_type == DB_TYPE_CHAR || str2_type == DB_TYPE_VARCHAR ||
-	    str2_type == DB_TYPE_NCHAR || str2_type == DB_TYPE_VARNCHAR) ||
-	  !(arg3_type == DB_TYPE_INTEGER || arg3_type == DB_TYPE_SHORT))
+      if (!(str1_type == DB_TYPE_STRING || str1_type == DB_TYPE_CHAR
+	    || str1_type == DB_TYPE_VARCHAR || str1_type == DB_TYPE_NCHAR
+	    || str1_type == DB_TYPE_VARNCHAR)
+	  || !(str2_type == DB_TYPE_STRING || str2_type == DB_TYPE_CHAR
+	       || str2_type == DB_TYPE_VARCHAR || str2_type == DB_TYPE_NCHAR
+	       || str2_type == DB_TYPE_VARNCHAR)
+	  || !(arg3_type == DB_TYPE_INTEGER || arg3_type == DB_TYPE_SHORT
+	       || arg3_type == DB_TYPE_BIGINT))
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	}
@@ -2132,8 +2148,8 @@ db_string_trim (const MISC_OPERAND tr_operand,
   int trim_charset_is_null = false;
 
   unsigned char *result;
-  int result_length, result_size, result_domain_length;
-  DB_TYPE result_type;
+  int result_length, result_size = 0, result_domain_length;
+  DB_TYPE result_type = DB_TYPE_NULL;
 
   unsigned char *trim_charset_ptr = NULL;
   int trim_charset_length = 0;
@@ -2255,7 +2271,7 @@ qstr_trim (MISC_OPERAND trim_operand,
 {
   unsigned char pad_char[2], *lead_trimmed_ptr, *trail_trimmed_ptr;
   int lead_trimmed_length, trail_trimmed_length;
-  int lead_trimmed_size, trail_trimmed_size, pad_char_size;
+  int lead_trimmed_size, trail_trimmed_size, pad_char_size = 0;
   int error_status = NO_ERROR;
 
   /* default case */
@@ -2554,7 +2570,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string,
   int total_length;
 
   unsigned char *result;
-  int result_length, result_size;
+  int result_length = 0, result_size = 0;
   DB_TYPE result_type;
 
   unsigned char *pad_charset_ptr = NULL;
@@ -2683,7 +2699,7 @@ qstr_pad (MISC_OPERAND pad_operand,
   unsigned char *cur_src_char_ptr;
   unsigned char *cur_pad_char_ptr;
   int cur_char_size;
-  int def_pad_char_size;	/* default padding char */
+  int def_pad_char_size = 0;	/* default padding char */
   int truncate_size, pad_size, alloc_size, cnt;
   int length_to_be_padded;	/* length that will be really padded */
   int remain_length_to_be_padded;	/* remained length that will be padded */
@@ -3540,8 +3556,8 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
   int repl_string_is_null = false;
 
   unsigned char *result_ptr;
-  int result_length, result_size;
-  DB_TYPE result_type;
+  int result_length = 0, result_size = 0;
+  DB_TYPE result_type = DB_TYPE_NULL;
 
   unsigned char *srch_string_ptr = NULL;
   int srch_string_length = 0, srch_string_size = 0;
@@ -3845,9 +3861,9 @@ db_string_translate (const DB_VALUE * src_string,
   int from_string_is_null = false;
   int to_string_is_null = false;
 
-  unsigned char *result_ptr;
-  int result_length, result_size;
-  DB_TYPE result_type;
+  unsigned char *result_ptr = NULL;
+  int result_length = 0, result_size = 0;
+  DB_TYPE result_type = DB_TYPE_NULL;
 
   unsigned char *from_str_ptr = NULL;
   unsigned char *to_str_ptr = NULL;
@@ -3972,7 +3988,7 @@ qstr_translate (unsigned char *src_ptr,
   int error_status = NO_ERROR;
   int j, offset, offset1, offset2;
   int from_char_loc, to_char_cnt, to_char_loc;
-  unsigned char *srcp, *fromp, *target;
+  unsigned char *srcp, *fromp, *target = NULL;
   int matched = 0, phase = 0;
 
   if ((from_str_ptr == NULL && to_str_ptr != NULL))
@@ -4574,7 +4590,7 @@ unsigned char *
 qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset)
 {
   unsigned char pad[2];
-  int i, j, pad_size;
+  int i, j, pad_size = 0;
 
 
   qstr_pad_char (codeset, pad, &pad_size);
@@ -4892,27 +4908,28 @@ db_get_string_length (const DB_VALUE * value)
 #if 0
   //Currently, only the medium model is used
 
-  switch ( value->data.ch.info.style ) {
+  switch (value->data.ch.info.style)
+    {
     case SMALL_STRING:
-      str           = value->data.ch.small.buf;
+      str = value->data.ch.small.buf;
       length = size = value->data.ch.small.size;
-      codeset       = value->data.ch.small.codeset;
+      codeset = value->data.ch.small.codeset;
       break;
 
     case MEDIUM_STRING:
-      str           = value->data.ch.medium.buf;
+      str = value->data.ch.medium.buf;
       length = size = value->data.ch.medium.size;
-      codeset       = value->data.ch.medium.codeset;
+      codeset = value->data.ch.medium.codeset;
       break;
 
     case LARGE_STRING:
-      str     = NULL;
-      size    = 0;
+      str = NULL;
+      size = 0;
       break;
 
     default:
       break;
-  }
+    }
 #endif
 
   str = value->data.ch.medium.buf;
@@ -5177,6 +5194,7 @@ is_number (const DB_VALUE * n)
   return ((domain_type == DB_TYPE_NUMERIC) ||
 	  (domain_type == DB_TYPE_INTEGER) ||
 	  (domain_type == DB_TYPE_SMALLINT) ||
+	  (domain_type == DB_TYPE_BIGINT) ||
 	  (domain_type == DB_TYPE_DOUBLE) || (domain_type == DB_TYPE_FLOAT));
 }
 
@@ -5392,7 +5410,7 @@ varnchar_compare (const unsigned char *string1, int size1,
 		  const unsigned char *string2, int size2,
 		  INTL_CODESET codeset)
 {
-  int n, i, cmp, pad_size;
+  int n, i, cmp, pad_size = 0;
   unsigned char c1, c2, pad[2];
 
   qstr_pad_char (codeset, pad, &pad_size);
@@ -5484,7 +5502,7 @@ int
 nchar_compare (const unsigned char *string1, int size1,
 	       const unsigned char *string2, int size2, INTL_CODESET codeset)
 {
-  int n, i, cmp, pad_size;
+  int n, i, cmp, pad_size = 0;
   unsigned char c1, c2, pad[2];
 
   qstr_pad_char (codeset, pad, &pad_size);
@@ -6194,7 +6212,7 @@ varchar_truncated (const unsigned char *s,
 		   int s_length, int used_chars, INTL_CODESET codeset)
 {
   unsigned char pad[2];
-  int pad_size, trim_length, trim_size;
+  int pad_size = 0, trim_length, trim_size;
   int s_size;
 
   bool truncated = false;
@@ -6601,7 +6619,7 @@ qstr_coerce (const unsigned char *src,
 						&((*dest)[copy_size]),
 						(*dest_length - copy_length),
 						codeset);
-      *dest_size = end_of_string - (char *) (*dest);
+      *dest_size = CAST_STRLEN (end_of_string - (char *) (*dest));
     }
 
   return error_status;
@@ -6904,18 +6922,16 @@ qstr_substring (const unsigned char *src,
   int src_size, leading_bytes;
   *r_size = 0;
 
-  /*
-   *  Get the size of the source string.
-   */
+  /* Get the size of the source string. */
   intl_char_size ((unsigned char *) src, src_length, codeset, &src_size);
 
   /*
-   *  Perform some error chaecking.
-   *  If the starting position is < 1, then set it to 1.
-   *  If the starting position is after the end of the source
-   *    string, then set the sub-string length to 0.
-   *  If the sub-string length will extend beyond the end of the
-   *    source string, then shorten the sub-string length to fit.
+   * Perform some error chaecking.
+   * If the starting position is < 1, then set it to 1.
+   * If the starting position is after the end of the source string, 
+   * then set the sub-string length to 0.
+   * If the sub-string length will extend beyond the end of the source string,
+   * then shorten the sub-string length to fit.
    */
   if (start < 1)
     {
@@ -7435,7 +7451,7 @@ db_sys_timestamp (DB_VALUE * result_timestamp)
   /* now return null */
   db_value_domain_init (result_timestamp, DB_TYPE_TIMESTAMP, 0, 0);
 
-  if (time (&tloc) == -1)
+  if (time (&tloc) == -1 || OR_CHECK_INT_OVERFLOW (tloc))
     {
       error_status = ER_SYSTEM_DATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -7448,12 +7464,53 @@ db_sys_timestamp (DB_VALUE * result_timestamp)
 }
 
 /*
+ * db_sys_datetime () -
+ */
+int
+db_sys_datetime (DB_VALUE * result_datetime)
+{
+  int error_status = NO_ERROR;
+  DB_DATETIME datetime;
+
+  struct timeb tloc;
+  struct tm *c_time_struct;
+
+  assert (result_datetime != (DB_VALUE *) NULL);
+
+  /* now return null */
+  db_value_domain_init (result_datetime, DB_TYPE_DATETIME, 0, 0);
+
+  if (ftime (&tloc) != 0)
+    {
+      error_status = ER_SYSTEM_DATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  c_time_struct = localtime (&tloc.time);
+  if (c_time_struct == (struct tm *) -1)
+    {
+      error_status = ER_SYSTEM_DATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
+		      c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
+		      c_time_struct->tm_hour, c_time_struct->tm_min,
+		      c_time_struct->tm_sec, tloc.millitm);
+  DB_MAKE_DATETIME (result_datetime, &datetime);
+
+  return error_status;
+}
+
+/*
  * get_last_day () -
  */
 int
 get_last_day (int month, int year)
 {
-  int lastday;
+  int lastday = 0;
 
   if (year >= 1700)
     {
@@ -7554,8 +7611,9 @@ db_to_char (const DB_VALUE * src_value,
     {
       return number_to_char (src_value, format_str, lang_str, result_str);
     }
-  else if ((type = DB_VALUE_DOMAIN_TYPE (src_value)) == DB_TYPE_DATE ||
-	   type == DB_TYPE_TIME || type == DB_TYPE_TIMESTAMP)
+  else if ((type = DB_VALUE_DOMAIN_TYPE (src_value)) == DB_TYPE_DATE
+	   || type == DB_TYPE_TIME || type == DB_TYPE_TIMESTAMP
+	   || type == DB_TYPE_DATETIME)
     {
       return date_to_char (src_value, format_str, lang_str, result_str);
     }
@@ -8266,7 +8324,7 @@ db_to_time (const DB_VALUE * src_str,
 		      strncasecmp (AM_NAME_KR, (const char *) cs,
 				   strlen (AM_NAME_KR)) == 0)
 		    {
-		      am = true;;
+		      am = true;
 		      cs += strlen (AM_NAME_KR);
 		    }
 		  else if (strlen ((const char *) cs) >=
@@ -8291,7 +8349,7 @@ db_to_time (const DB_VALUE * src_str,
 		      strncasecmp ("am", (const char *) cs,
 				   strlen ("am")) == 0)
 		    {
-		      am = true;;
+		      am = true;
 		      cs += strlen ("am");
 		    }
 		  else if (strlen ((const char *) cs) >= strlen ("a.m.") &&
@@ -8867,7 +8925,7 @@ db_to_timestamp (const DB_VALUE * src_str,
 		      strncasecmp (AM_NAME_KR, (const char *) cs,
 				   strlen (AM_NAME_KR)) == 0)
 		    {
-		      am = true;;
+		      am = true;
 		      cs += strlen (AM_NAME_KR);
 		    }
 		  else if (strlen ((const char *) cs) >=
@@ -8892,7 +8950,7 @@ db_to_timestamp (const DB_VALUE * src_str,
 		      strncasecmp ("am", (const char *) cs,
 				   strlen ("am")) == 0)
 		    {
-		      am = true;;
+		      am = true;
 		      cs += strlen ("am");
 		    }
 		  else if (strlen ((const char *) cs) >= strlen ("a.m.") &&
@@ -9244,6 +9302,747 @@ db_to_timestamp (const DB_VALUE * src_str,
 }
 
 /*
+ * db_to_datetime () -
+ */
+int
+db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
+		const DB_VALUE * date_lang, DB_VALUE * result_datetime)
+{
+  int error_status = NO_ERROR;
+
+  DB_DATETIME tmp_datetime;
+
+  unsigned char *cur_format_str_ptr, *next_format_str_ptr;
+  unsigned char *cs;		/*current source string pointer */
+  unsigned char *last_format, *last_src;
+
+  int cur_format_size;
+  int cur_format;
+
+  int month = 0, day = 0, year = 0, day_of_the_week = 0, week = -1;
+  int monthcount = 0, daycount = 0, yearcount = 0, day_of_the_weekcount = 0;
+
+  double fraction;
+  int millisecond = 0, second = 0, minute = 0, hour = 0;
+  int time_count = 0;
+  int mil_time_count = 0;
+  int am = false;
+  int pm = false;
+
+  int i;
+  bool no_user_format;
+  int date_lang_id;
+  const char **p;
+
+  assert (src_str != (DB_VALUE *) NULL);
+  assert (result_datetime != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (src_str))
+    {
+      DB_MAKE_NULL (result_datetime);
+      return error_status;
+    }
+
+  if (false == is_char_string (src_str))
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  if (DB_GET_STRING_SIZE (src_str) == 0)
+    {
+      error_status = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+  if (DB_GET_STRING_SIZE (src_str) > MAX_TOKEN_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      error_status = ER_QSTR_SRC_TOO_LONG;
+      return error_status;
+    }
+  cs = (unsigned char *) DB_GET_STRING (src_str);
+  last_src = &cs[DB_GET_STRING_SIZE (src_str)];
+
+  /* If format is NOT inputted     */
+
+  no_user_format = false;
+  if (format_str == NULL || (DB_GET_INT (date_lang) & 0x1))
+    {
+      no_user_format = true;
+    }
+  if (no_user_format)
+    {
+      DB_DATETIME datetime_tmp;
+      if (db_string_to_datetime ((const char *) cs,
+				 &datetime_tmp) != NO_ERROR)
+	{
+	  error_status = ER_TIMESTAMP_CONVERSION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+      DB_MAKE_DATETIME (result_datetime, &datetime_tmp);
+      return error_status;
+    }
+  else
+    {
+      date_lang_id = ((DB_GET_INT (date_lang) & 2) ?
+		      INTL_LANG_ENGLISH : INTL_LANG_KOREAN);
+      if (DB_IS_NULL (format_str))
+	{
+	  DB_MAKE_NULL (result_datetime);
+	  return error_status;
+	}
+      if (false == is_char_string (format_str))
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+      if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+	{
+	  error_status = ER_QSTR_FORMAT_TOO_LONG;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+      if (DB_GET_STRING_SIZE (format_str) == 0)
+	{
+	  error_status = ER_QSTR_EMPTY_STRING;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+
+      cur_format_str_ptr = (unsigned char *) DB_GET_STRING (format_str);
+      last_format = &cur_format_str_ptr[DB_GET_STRING_SIZE (format_str)];
+
+      /* Skip space, tab, CR     */
+      while (cs < last_src && strchr (WHITE_CHARS, *cs))
+	{
+	  cs++;
+	}
+      /* Skip space, tab, CR     */
+      while (cur_format_str_ptr < last_format &&
+	     strchr (WHITE_CHARS, *cur_format_str_ptr))
+	{
+	  cur_format_str_ptr++;
+	}
+      while (cs < last_src)
+	{
+
+	  cur_format = get_next_format (cur_format_str_ptr, DB_TYPE_DATETIME,
+					&cur_format_size,
+					&next_format_str_ptr);
+	  switch (cur_format)
+	    {
+	      /* Case statement for DATE begin{    */
+	    case DT_YYYY:
+	      if (yearcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		yearcount++;
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 4 && char_isdigit (*cs); cs++, i++)
+		{
+		  year = year * 10 + (*cs - '0');
+		}
+	      break;
+	    case DT_YY:
+	      if (yearcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  yearcount++;
+		}
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  year = year * 10 + (*cs - '0');
+		}
+	      i = get_cur_year ();
+	      if (i == -1)
+		{
+		  error_status = ER_SYSTEM_DATE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      year += (i / 100) * 100;
+	      break;
+	    case DT_MM:
+	      if (monthcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  monthcount++;
+		}
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  month = month * 10 + (*cs - '0');
+		}
+	      if (month < 1 || month > 12)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_MONTH:
+	      if (monthcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  monthcount++;
+		}
+
+	      p = Month_name[date_lang_id];
+	      for (i = 0; i < 12; i++)
+		{
+		  if (strncasecmp
+		      ((const char *) p[i], (const char *) cs,
+		       strlen (p[i])) == 0)
+		    {
+		      month = i + 1;
+		      cs += strlen (p[i]);
+		      break;
+		    }
+		}
+	      if (month == 0)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_MON:
+	      if (monthcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  monthcount++;
+		}
+
+	      month = 0;
+	      if (date_lang_id == INTL_LANG_KOREAN)
+		{
+		  if (!char_isdigit (*cs))
+		    {
+		      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      error_status, 0);
+		      return error_status;
+		    }
+		  for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		    {
+		      month = month * 10 + (*cs - '0');
+		    }
+		  if (month < 1 || month > 12)
+		    {
+		      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      error_status, 0);
+		      return error_status;
+		    }
+		  break;
+		}
+	      else
+		{
+		  p = Month_name[date_lang_id];
+		  for (i = 0; i < 12; i++)
+		    {
+		      if (strncasecmp (p[i], (const char *) cs, 3) == 0)
+			{
+			  month = i + 1;
+			  cs += 3;
+			  break;
+			}
+		    }
+		}
+	      if (month == 0)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_DD:
+	      if (daycount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  daycount++;
+		}
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  day = day * 10 + (*cs - '0');
+		}
+	      if (day < 0 || day > 31)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	      /*    }end Case statement for DATE    */
+	      /*    Case statement for TIME    begin{    */
+	    case DT_AM:
+	    case DT_A_M:
+	    case DT_PM:
+	    case DT_P_M:
+	      if (mil_time_count != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  mil_time_count++;
+		}
+	      if (date_lang_id == INTL_LANG_KOREAN)
+		{
+		  if (strlen ((const char *) cs) >= strlen (AM_NAME_KR) &&
+		      strncasecmp (AM_NAME_KR, (const char *) cs,
+				   strlen (AM_NAME_KR)) == 0)
+		    {
+		      am = true;
+		      cs += strlen (AM_NAME_KR);
+		    }
+		  else if (strlen ((const char *) cs) >=
+			   strlen (PM_NAME_KR)
+			   && strncasecmp (PM_NAME_KR, (const char *) cs,
+					   strlen (PM_NAME_KR)) == 0)
+		    {
+		      pm = true;
+		      cs += strlen (PM_NAME_KR);
+		    }
+		  else
+		    {
+		      error_status = ER_QSTR_INVALID_FORMAT;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      error_status, 0);
+		      return error_status;
+		    }
+		}
+	      else
+		{
+		  if (strlen ((const char *) cs) >= strlen ("am") &&
+		      strncasecmp ("am", (const char *) cs,
+				   strlen ("am")) == 0)
+		    {
+		      am = true;
+		      cs += strlen ("am");
+		    }
+		  else if (strlen ((const char *) cs) >= strlen ("a.m.") &&
+			   strncasecmp ("a.m.", (const char *) cs,
+					strlen ("a.m.")) == 0)
+		    {
+		      am = true;
+		      cs += strlen ("a.m.");
+		    }
+		  else if (strlen ((const char *) cs) >= strlen ("pm") &&
+			   strncasecmp ("pm", (const char *) cs,
+					strlen ("pm")) == 0)
+		    {
+		      pm = true;
+		      cs += strlen ("pm");
+		    }
+		  else if (strlen ((const char *) cs) >= strlen ("p.m.") &&
+			   strncasecmp ("p.m.", (const char *) cs,
+					strlen ("p.m.")) == 0)
+		    {
+		      pm = true;
+		      cs += strlen ("p.m.");
+		    }
+		  else
+		    {
+		      error_status = ER_QSTR_INVALID_FORMAT;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      error_status, 0);
+		      return error_status;
+		    }
+		}
+	      break;
+	    case DT_HH:
+	    case DT_HH12:
+	      if (time_count != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  time_count++;
+		}
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  hour = hour * 10 + (*cs - '0');
+		}
+	      if (hour < 1 || hour > 12)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_HH24:
+	      if (time_count != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  time_count++;
+		}
+	      if (mil_time_count != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		mil_time_count++;
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  hour = hour * 10 + (*cs - '0');
+		}
+	      if (hour < 0 || hour > 23)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_MI:
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  minute = minute * 10 + (*cs - '0');
+		}
+	      if (minute < 0 || minute > 59)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_SS:
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0; i < 2 && char_isdigit (*cs); cs++, i++)
+		{
+		  second = second * 10 + (*cs - '0');
+		}
+	      if (second < 0 || second > 59)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_MS:
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      for (i = 0, fraction = 100; char_isdigit (*cs); cs++, i++)
+		{
+		  millisecond += (int) ((*cs - '0') * fraction + 0.5);
+		  fraction /= 10;
+		}
+	      if (millisecond < 0 || millisecond > 999)
+		{
+		  error_status = ER_TIME_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_TEXT:
+	      if (strncasecmp
+		  ((const char *) (void *) cur_format_str_ptr + 1,
+		   (const char *) cs, cur_format_size - 2) != 0)
+		{
+		  error_status = ER_QSTR_INVALID_FORMAT;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      cs += cur_format_size - 2;
+	      break;
+	    case DT_PUNCTUATION:
+	      if (strncasecmp
+		  ((const char *) (void *) cur_format_str_ptr,
+		   (const char *) cs, cur_format_size) != 0)
+		{
+		  error_status = ER_QSTR_INVALID_FORMAT;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      cs += cur_format_size;
+	      break;
+	      /*    }end    Case statement for TIME        */
+	    case DT_CC:
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    case DT_Q:
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    case DT_DAY:
+	      if (day_of_the_weekcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  day_of_the_weekcount++;
+		}
+
+	      p = Day_name[date_lang_id];
+
+	      for (i = 0; i < 7; i++)
+		{
+		  if (strncasecmp
+		      ((const char *) p[i], (const char *) cs,
+		       strlen (p[i])) == 0)
+		    {
+		      day_of_the_week = i + 1;
+		      cs += strlen (p[i]);
+		      break;
+		    }
+		}
+	      if (day_of_the_week == 0)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_DY:
+	      if (day_of_the_weekcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  day_of_the_weekcount++;
+		}
+
+	      p = Day_name[date_lang_id];
+
+	      for (i = 0; i < 7; i++)
+		{
+		  int tmp_len;
+		  tmp_len = (date_lang_id == INTL_LANG_KOREAN) ? 2 : 3;
+		  if (strncasecmp (p[i], (const char *) cs, tmp_len) == 0)
+		    {
+		      day_of_the_week = i + 1;
+		      cs += tmp_len;
+		      break;
+		    }
+		}
+	      if (day_of_the_week == 0)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_D:
+	      if (day_of_the_weekcount != 0)
+		{
+		  error_status = ER_QSTR_FORMAT_DUPLICATION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      else
+		{
+		  day_of_the_weekcount++;
+		}
+	      if (!char_isdigit (*cs))
+		{
+		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      if (char_isdigit (*cs))
+		{
+		  day_of_the_week = *cs - '0';
+		  cs += 1;
+		}
+	      if (day_of_the_week < 1 || day_of_the_week > 7)
+		{
+		  error_status = ER_DATE_CONVERSION;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    case DT_NORMAL:
+	    case DT_INVALID:
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }			/* switch     */
+	  /* Skip space, tab, CR     */
+	  while (cs < last_src && strchr (WHITE_CHARS, *cs))
+	    {
+	      cs++;
+	    }
+	  cur_format_str_ptr = next_format_str_ptr;
+	  /* Skip space, tab, CR     */
+	  while (cur_format_str_ptr < last_format &&
+		 strchr (WHITE_CHARS, *cur_format_str_ptr))
+	    {
+	      cur_format_str_ptr++;
+	    }
+	  if (last_format == next_format_str_ptr)
+	    {
+	      while (cs < last_src && strchr (WHITE_CHARS, *cs))
+		{
+		  cs++;
+		}
+	      if (cs != last_src)
+		{
+		  error_status = ER_QSTR_INVALID_FORMAT;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  return error_status;
+		}
+	      break;
+	    }
+	}			/* while */
+    }				/* if */
+
+  /* Both format and src should end at same time     */
+  if (cs != last_src || cur_format_str_ptr != last_format)
+    {
+      error_status = ER_QSTR_INVALID_FORMAT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+    /**************            Check DATE        ****************/
+  year = (yearcount == 0) ? get_cur_year () : year;
+  month = (monthcount == 0) ? get_cur_month () : month;
+  day = (daycount == 0) ? 1 : day;
+  week = (day_of_the_weekcount == 0) ? -1 : day_of_the_week - 1;
+
+  if (!is_valid_date (month, day, year, week) == true)
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  /**************            Check TIME        ****************/
+  if (am == true && pm == false && hour <= 12)
+    {				/* If A.M.    */
+      hour = (hour == 12) ? 0 : hour;
+    }
+  else if (am == false && pm == true && hour <= 12)
+    {				/* If P.M.    */
+      hour = (hour == 12) ? hour : hour + 12;
+    }
+  else if (am == false && pm == false)
+    {				/* If military time    */
+      ;
+    }
+  else
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  /*************         Make DATETIME        *****************/
+  db_datetime_encode (&tmp_datetime, month, day, year, hour, minute,
+		      second, millisecond);
+  if (DB_MAKE_DATETIME (result_datetime, &tmp_datetime) != NO_ERROR)
+    {
+      error_status = ER_DATE_CONVERSION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  return error_status;
+}
+
+
+/*
  * adjust_precision () - Change representation of 'data' as of 'precision' and 'scale'.
  *                       When data has invalid format, just return
  * return : DOMAIN_INCOMPATIBLE, DOMAIN_OVERFLOW, NO_ERROR
@@ -9471,7 +10270,7 @@ db_to_number (const DB_VALUE * src_str,
 	}
       else
 	{
-	  error_status = ER_UCI_INVALID_DATA_TYPE;
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
@@ -9676,11 +10475,11 @@ date_to_char (const DB_VALUE * src_value,
   int cur_format_size;
   int cur_format;
 
-  char *result_buf;
-  int result_len;
+  char *result_buf = NULL;
+  int result_len = 0;
 
   int month, day, year;
-  int second, minute, hour;
+  int second, minute, hour, millisecond;
 
   int i;
   int j;
@@ -9703,8 +10502,8 @@ date_to_char (const DB_VALUE * src_value,
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
 
-  if (src_type != DB_TYPE_DATE &&
-      src_type != DB_TYPE_TIME && src_type != DB_TYPE_TIMESTAMP)
+  if (src_type != DB_TYPE_DATE && src_type != DB_TYPE_TIME
+      && src_type != DB_TYPE_TIMESTAMP && src_type != DB_TYPE_DATETIME)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -9719,7 +10518,7 @@ date_to_char (const DB_VALUE * src_value,
 
   if (no_user_format)
     {
-      int retval;
+      int retval = 0;
       switch (src_type)
 	{
 	case DB_TYPE_DATE:
@@ -9763,6 +10562,20 @@ date_to_char (const DB_VALUE * src_value,
 					   QSTR_TIME_STAMPLENGTH + 1,
 					   DB_GET_TIMESTAMP (src_value));
 	  break;
+	case DB_TYPE_DATETIME:
+	  result_buf = (char *) db_private_alloc (NULL,
+						  QSTR_DATETIME_LENGTH + 1);
+	  if (result_buf == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
+	  result_len = QSTR_DATETIME_LENGTH;
+	  retval = db_datetime_to_string (result_buf,
+					  QSTR_DATETIME_LENGTH + 1,
+					  DB_GET_DATETIME (src_value));
+	  break;
 	default:
 	  break;
 	}
@@ -9788,8 +10601,8 @@ date_to_char (const DB_VALUE * src_value,
 	  return error_status;
 	}
 
-      result_len =
-	DB_GET_STRING_LENGTH (format_str) * QSTR_EXTRA_LENGTH_RATIO;
+      result_len = (DB_GET_STRING_LENGTH (format_str)
+		    * QSTR_EXTRA_LENGTH_RATIO);
       if (result_len > MAX_TOKEN_SIZE)
 	{
 	  error_status = ER_QSTR_FORMAT_TOO_LONG;
@@ -9820,6 +10633,10 @@ date_to_char (const DB_VALUE * src_value,
 			       &tmp_time);
 	  db_date_decode (&tmp_date, &month, &day, &year);
 	  db_time_decode (&tmp_time, &hour, &minute, &second);
+	  break;
+	case DB_TYPE_DATETIME:
+	  db_datetime_decode (DB_GET_DATETIME (src_value), &month, &day,
+			      &year, &hour, &minute, &second, &millisecond);
 	  break;
 	default:
 	  break;
@@ -10142,6 +10959,10 @@ date_to_char (const DB_VALUE * src_value,
 	      sprintf (&result_buf[i], "%02d\n", second);
 	      i += 2;
 	      break;
+	    case DT_MS:
+	      sprintf (&result_buf[i], "%03d\n", millisecond);
+	      i += 3;
+	      break;
 	    case DT_INVALID:
 	      error_status = ER_QSTR_INVALID_FORMAT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -10237,6 +11058,17 @@ number_to_char (const DB_VALUE * src_value,
 	}
       strcpy (cs, tmp_str);
       break;
+    case DB_TYPE_BIGINT:
+      sprintf (tmp_str, "%lld", (long long) DB_GET_BIGINT (src_value));
+      cs = (char *) db_private_alloc (NULL, strlen (tmp_str) + 1);
+      if (cs == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+      strcpy (cs, tmp_str);
+      break;
     case DB_TYPE_SMALLINT:
       sprintf (tmp_str, "%d", DB_GET_SMALLINT (src_value));
       cs = (char *) db_private_alloc (NULL, strlen (tmp_str) + 1);
@@ -10305,7 +11137,7 @@ number_to_char (const DB_VALUE * src_value,
   if (no_user_format)
     {
       /*    Caution: VARCHAR's Size        */
-      DB_MAKE_VARCHAR (result_str, strlen (cs), cs, strlen (cs));
+      DB_MAKE_VARCHAR (result_str, (ssize_t) strlen (cs), cs, strlen (cs));
       result_str->need_clear = true;
       return error_status;
     }
@@ -10456,7 +11288,7 @@ number_to_char (const DB_VALUE * src_value,
       db_private_free_and_init (NULL, res_string);
       return error_status;
     }
-  DB_MAKE_VARCHAR (result_str, strlen (res_string), res_string,
+  DB_MAKE_VARCHAR (result_str, (ssize_t) strlen (res_string), res_string,
 		   strlen (res_string));
   result_str->need_clear = true;
   db_private_free_and_init (NULL, cs);
@@ -11123,7 +11955,7 @@ roundoff (char *src_string, int flag, int *cipher, char *format)
   int loop_state = true;
   int is_overflow = false;
   char *res = &src_string[strlen (src_string)];
-  char *for_ptr;
+  char *for_ptr = NULL;
 
   if (flag == 0)
     {
@@ -11217,7 +12049,7 @@ roundoff (char *src_string, int flag, int *cipher, char *format)
     {
       if (flag == 0)
 	{			/* if decimal format    */
-	  size_t i = 0;
+	  int i = 0;
 	  while (i < strlen (src_string))
 	    {
 	      src_string[i] = '#';
@@ -11227,7 +12059,7 @@ roundoff (char *src_string, int flag, int *cipher, char *format)
 	}
       else
 	{			/*      if scientific format    */
-	  size_t i = 0;
+	  int i = 0;
 	  res = src_string;
 	  while (!('0' <= *res && *res <= '9'))
 	    {
@@ -11777,6 +12609,7 @@ get_number_token (char *fsp, int *length,
 }
 
 /*
+ * TODO:DATETIME millisecond format???
  * get_number_format () -
  */
 static int
@@ -11791,15 +12624,17 @@ get_next_format (unsigned char *sp,
     {
       /*      Case statements for DATE format begin{  */
     case 'y':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 4
+      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 4
 	  && strncasecmp ((const char *) (void *) sp, "yyyy", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
 	  return DT_YYYY;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 2
 	       && strncasecmp ((const char *) (void *) sp, "yy", 2) == 0)
 	{
@@ -11812,15 +12647,17 @@ get_next_format (unsigned char *sp,
 	  return DT_INVALID;
 	}
     case 'd':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "dd", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_DD;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 2
 	       && strncasecmp ((const char *) (void *) sp, "dy", 2) == 0)
 	{
@@ -11828,7 +12665,8 @@ get_next_format (unsigned char *sp,
 	  *next_pos = sp + *format_length;
 	  return DT_DY;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 3
 	       && strncasecmp ((const char *) (void *) sp, "day", 3) == 0)
 	{
@@ -11843,8 +12681,9 @@ get_next_format (unsigned char *sp,
 	  return DT_D;
 	}
     case 'c':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "cc", 2) == 0)
 	{
 	  *format_length += 2;
@@ -11856,8 +12695,9 @@ get_next_format (unsigned char *sp,
 	  return DT_INVALID;
 	}
     case 'q':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 1
+      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 1
 	  && strncasecmp ((const char *) (void *) sp, "q", 1) == 0)
 	{
 	  *format_length += 1;
@@ -11871,15 +12711,17 @@ get_next_format (unsigned char *sp,
       /*      }end    Case statements for DATE format         */
       /*      Case statements for TIME || DATE format begin{          */
     case 'm':
-      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "mm", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_MM;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 5
 	       && strncasecmp ((const char *) (void *) sp, "month", 5) == 0)
 	{
@@ -11887,7 +12729,8 @@ get_next_format (unsigned char *sp,
 	  *next_pos = sp + *format_length;
 	  return DT_MONTH;
 	}
-      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_DATE || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 3
 	       && strncasecmp ((const char *) (void *) sp, "mon", 3) == 0)
 	{
@@ -11895,7 +12738,8 @@ get_next_format (unsigned char *sp,
 	  *next_pos = sp + *format_length;
 	  return DT_MON;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 2
 	       && strncasecmp ((const char *) (void *) sp, "mi", 2) == 0)
 	{
@@ -11910,15 +12754,17 @@ get_next_format (unsigned char *sp,
       /*      }end Case statements for TIME || DATE format            */
       /*      Case statements for TIME format begin{          */
     case 'a':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "am", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_AM;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 4
 	       && strncasecmp ((const char *) (void *) sp, "a.m.", 4) == 0)
 	{
@@ -11931,15 +12777,17 @@ get_next_format (unsigned char *sp,
 	  return DT_INVALID;
 	}
     case 'p':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "pm", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_PM;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 4
 	       && strncasecmp ((const char *) (void *) sp, "p.m.", 4) == 0)
 	{
@@ -11952,15 +12800,17 @@ get_next_format (unsigned char *sp,
 	  return DT_INVALID;
 	}
     case 'h':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 4
+      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 4
 	  && strncasecmp ((const char *) (void *) sp, "hh24", 4) == 0)
 	{
 	  *format_length += 4;
 	  *next_pos = sp + *format_length;
 	  return DT_HH24;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 4
 	       && strncasecmp ((const char *) (void *) sp, "hh12", 4) == 0)
 	{
@@ -11968,7 +12818,8 @@ get_next_format (unsigned char *sp,
 	  *next_pos = sp + *format_length;
 	  return DT_HH12;
 	}
-      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP)
+      else if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+		|| str_type == DB_TYPE_DATETIME)
 	       && qstr_length (sp) >= 2
 	       && strncasecmp ((const char *) (void *) sp, "hh", 2) == 0)
 	{
@@ -11981,13 +12832,27 @@ get_next_format (unsigned char *sp,
 	  return DT_INVALID;
 	}
     case 's':
-      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP) &&
-	  qstr_length (sp) >= 2
+      if ((str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMESTAMP
+	   || str_type == DB_TYPE_DATETIME)
+	  && qstr_length (sp) >= 2
 	  && strncasecmp ((const char *) (void *) sp, "ss", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_SS;
+	}
+      else
+	{
+	  return DT_INVALID;
+	}
+    case 'f':
+      if (str_type == DB_TYPE_DATETIME
+	  && qstr_length (sp) >= 2
+	  && strncasecmp ((const char *) (void *) sp, "ff", 2) == 0)
+	{
+	  *format_length += 2;
+	  *next_pos = sp + *format_length;
+	  return DT_MS;
 	}
       else
 	{

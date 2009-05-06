@@ -36,6 +36,8 @@
 #include "esql_misc.h"
 #include "esql_translate.h"
 
+extern FILE *esql_yyout;
+
 /*
  * This struct is used as a catchall struct for all of the various
  * structures that are put in hash tables. We take care that each such
@@ -147,7 +149,7 @@ void
 pp_startup (void)
 {
   esql_Translate_table.tr_set_line_terminator ("\n");
-  esql_Translate_table.tr_set_out_stream (yyout);
+  esql_Translate_table.tr_set_out_stream (esql_yyout);
   vs_new (&pp_subscript_buf);
   vs_new (&pp_host_var_buf);
   pp_symbol_init ();
@@ -170,7 +172,7 @@ pp_finish (void)
   pp_decl_finish ();
   pp_cursor_finish ();
   pp_symbol_finish ();
-  pp_symbol_stats (yyout);
+  pp_symbol_stats (esql_yyout);
 }
 
 /*
@@ -185,9 +187,9 @@ tr_prelude (void)
 
   if (pp_varchar2)
     {
-      fprintf (yyout, "#define _ESQLX_VARCHAR2_STYLE_\n");
+      fprintf (esql_yyout, "#define _ESQLX_VARCHAR2_STYLE_\n");
     }
-  fprintf (yyout, "#include \"%s\"\n",
+  fprintf (esql_yyout, "#include \"%s\"\n",
 	   pp_include_file ? pp_include_file : default_include_file);
 }
 
@@ -274,7 +276,7 @@ grow_ptr_vec (PTR_VEC * vec)
 
   if (new_elems == NULL)
     {
-      yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+      esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
       exit (1);
     }
 

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -36,16 +36,33 @@
 
 /* DB_DATE functions */
 extern void db_date_encode (DB_DATE * date, int month, int day, int year);
-extern void db_date_decode (DB_DATE * date, int *monthp,
+extern void db_date_decode (const DB_DATE * date, int *monthp,
 			    int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
 extern int db_string_to_date (const char *buf, DB_DATE * date);
 
+extern int db_timestamp_to_datetime (DB_TIMESTAMP * utime,
+				     DB_DATETIME * datetime);
+
+/* DB_DATETIME functions */
+extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
+			       int year, int hour, int minute, int second,
+			       int millisecond);
+extern int db_datetime_decode (const DB_DATETIME * datetime, int *month,
+			       int *day, int *year, int *hour, int *minute,
+			       int *second, int *millisecond);
+extern int db_datetime_to_string (char *buf, int bufsize,
+				  DB_DATETIME * datetime);
+extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
+extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
+					  DB_DATETIME * result_datetime);
+extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
+				   DB_DATETIME * result_datetime);
 /* DB_TIMESTAMP functions */
 extern int db_timestamp_encode (DB_TIMESTAMP * utime,
 				DB_DATE * date, DB_TIME * timeval);
-extern void db_timestamp_decode (DB_TIMESTAMP * utime,
+extern void db_timestamp_decode (const DB_TIMESTAMP * utime,
 				 DB_DATE * date, DB_TIME * timeval);
 extern int db_timestamp_to_string (char *buf, int bufsize,
 				   DB_TIMESTAMP * utime);

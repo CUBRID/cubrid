@@ -51,7 +51,10 @@
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
 extern int db_Connect_status;
+#if !defined(_DB_DISABLE_MODIFICATIONS_)
+#define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
+#endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #define DB_CLIENT_TYPE_SYSTEM_INTERNAL  0
 #define DB_CLIENT_TYPE_DEFAULT          1

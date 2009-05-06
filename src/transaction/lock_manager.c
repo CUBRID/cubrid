@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,7 +53,6 @@
 #include "query_manager.h"
 
 extern bool lock_Comp[][9];
-extern LOCK lock_Conv[][9];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */
@@ -371,10 +370,10 @@ typedef enum
 typedef struct lk_lockinfo LK_LOCKINFO;
 struct lk_lockinfo
 {
+  OID *org_oidp;
   OID oid;
   OID class_oid;
   LOCK lock;
-  OID *org_oidp;
 };
 
 /* composite locking for delete and update operation */
@@ -406,10 +405,10 @@ struct lk_WFG_node
   int candidate;
   int current;
   int ancestor;
+  time_t thrd_wait_stime;
   int tran_edge_seq_num;
   bool checked_by_deadlock_detector;
   bool DL_victim;
-  time_t thrd_wait_stime;
 };
 
 typedef struct lk_WFG_edge LK_WFG_EDGE;
@@ -418,19 +417,20 @@ struct lk_WFG_edge
   int to_tran_index;
   int edge_seq_num;
   int holder_flag;
-  time_t edge_wait_stime;
   int next;
+  time_t edge_wait_stime;
 };
 
 typedef struct lk_deadlock_victim LK_DEADLOCK_VICTIM;
 struct lk_deadlock_victim
 {
-  int tran_index;		/* Index of selected victim */
-  TRANID tranid;		/* Transaction identifier   */
-  int can_timeout;		/* Is abort or timeout      */
   /* following two fields are used for only global deadlock detection */
   int (*cycle_fun) (int tran_index, void *args);
   void *args;			/* Arguments to be passed to cycle_fun */
+
+  int tran_index;		/* Index of selected victim */
+  TRANID tranid;		/* Transaction identifier   */
+  int can_timeout;		/* Is abort or timeout      */
 };
 
 /*
@@ -468,8 +468,8 @@ typedef struct lk_entry_block LK_ENTRY_BLOCK;
 struct lk_entry_block
 {
   LK_ENTRY_BLOCK *next_block;	/* next lock entry block */
-  int count;			/* # of entries in lock entry block */
   LK_ENTRY *block;		/* lk_entry block */
+  int count;			/* # of entries in lock entry block */
 };
 
 /*
@@ -479,8 +479,8 @@ typedef struct lk_res_block LK_RES_BLOCK;
 struct lk_res_block
 {
   LK_RES_BLOCK *next_block;	/* next lock resource block */
-  int count;			/* # of entries in lock res block */
   LK_RES *block;		/* lk_res block */
+  int count;			/* # of entries in lock res block */
 };
 
 /*
@@ -497,13 +497,13 @@ struct lk_tran_lock
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int class_hold_count;		/* # of entries in class_hold_list */
 
-  /* lock escalation related fields */
-  bool lock_escalation_on;
-
   /* non two phase lock list */
   MUTEX_T non2pl_mutex;		/* mutex for non2pl_list */
   LK_ENTRY *non2pl_list;	/* non2pl list */
   int num_incons_non2pl;	/* # of inconsistent non2pl */
+
+  /* lock escalation related fields */
+  bool lock_escalation_on;
 
   /* locking on manual duration */
   bool is_instant_duration;
@@ -539,20 +539,19 @@ struct lk_global_data
   time_t last_deadlock_run;	/* last deadlock detetion time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
+  unsigned char *scanid_bitmap;
   int max_TWFG_edge;
   int TWFG_free_edge_idx;
   int global_edge_seq_num;
 
   /* miscellaneous things */
+  short dump_level_when_deadlock;
+  short dump_lock_table_count;
+  short no_victim_case_count;
   bool verbose_mode;
 #if defined(LK_DUMP)
   bool dump_level;
 #endif				/* LK_DUMP */
-  short dump_level_when_deadlock;
-  short dump_lock_table_count;
-  short no_victim_case_count;
-
-  unsigned char *scanid_bitmap;
 };
 
 LK_GLOBAL_DATA lk_Gl = {
@@ -560,11 +559,11 @@ LK_GLOBAL_DATA lk_Gl = {
   MUTEX_INITIALIZER, MUTEX_INITIALIZER,
   MUTEX_INITIALIZER, MUTEX_INITIALIZER,
   NULL, NULL, NULL, NULL, 0, 0, NULL,
-  MUTEX_INITIALIZER, 0, NULL, NULL, 0, 0, 0, false,
+  MUTEX_INITIALIZER, 0, NULL, NULL, NULL, 0, 0, 0,
+  0, 0, 0, false
 #if defined(LK_DUMP)
-  0,
+    , 0
 #endif /* LK_DUMP */
-  0, 0, 0, NULL
 };
 
 /* size of each data structure */
@@ -2371,7 +2370,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int wait_for_buf[DEFAULT_WAIT_USERS];
   int *wait_for = wait_for_buf, *t;
   LK_ENTRY *entry;
-  LK_RES *res_ptr;
+  LK_RES *res_ptr = NULL;
   int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + 20 + 4;
   char *ptr;
   const char *fmt;
@@ -2646,7 +2645,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime =
-    entry_ptr->thrd_entry->lockwait_stime / 1000;
+    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
 
   /* wakeup the dealock detect thread */
   (void) thread_wakeup_deadlock_detect_thread ();
@@ -6416,7 +6415,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	{
 	  if (entry_ptr->blocked_mode != NULL_LOCK)
 	    {
-	      time_t stime = entry_ptr->thrd_entry->lockwait_stime / 1000;
+	      time_t stime =
+		(time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
 #if defined(WINDOWS)
 	      strcpy (time_val, ctime (&stime));
 #else /* WINDOWS */
@@ -6466,7 +6466,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != (LK_ENTRY *) NULL)
 	{
-	  time_t stime = entry_ptr->thrd_entry->lockwait_stime / 1000;
+	  time_t stime =
+	    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
 #if defined(WINDOWS)
 	  strcpy (time_val, ctime (&stime));
 #else /* WINDOWS */
@@ -9451,15 +9452,17 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
-						hj->thrd_entry->
-						lockwait_stime / 1000);
+						(time_t) (hj->thrd_entry->
+							  lockwait_stime /
+							  1000));
 		    }
 		  if (!lock_Comp[hi->blocked_mode][hj->granted_mode])
 		    {
 		      (void) lock_add_WFG_edge (hi->tran_index,
 						hj->tran_index, true,
-						hi->thrd_entry->
-						lockwait_stime / 1000);
+						(time_t) (hi->thrd_entry->
+							  lockwait_stime /
+							  1000));
 		    }
 		}
 	    }
@@ -9474,8 +9477,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
-						hj->thrd_entry->
-						lockwait_stime / 1000);
+						(time_t) (hj->thrd_entry->
+							  lockwait_stime /
+							  1000));
 		    }
 		}
 	    }
@@ -9489,8 +9493,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, false,
-						hj->thrd_entry->
-						lockwait_stime / 1000);
+						(time_t) (hj->thrd_entry->
+							  lockwait_stime /
+							  1000));
 		    }
 		}
 	    }

@@ -439,7 +439,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 #include "ToolManage.h"
 
-void CMainFrame::OnTimer(UINT nIDEvent) 
+void CMainFrame::OnTimer(UINT_PTR nIDEvent) 
 {
 	if (nIDEvent == m_refreshTimer) {
 		if (!bCUBRIDServiceCheck())
@@ -1393,7 +1393,7 @@ void CMainFrame::OnUpdateUnicasRestart(CCmdUI* pCmdUI)
 
 BOOL CMainFrame::refreshIcon()
 {
-	return SetTimer(m_refreshTimer, 15000, NULL);	
+	return (BOOL) SetTimer(m_refreshTimer, 15000, NULL);	
 }
 
 bool CMainFrame::bCUBRIDServiceCheck()

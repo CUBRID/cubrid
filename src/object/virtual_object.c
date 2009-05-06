@@ -2012,7 +2012,7 @@ vid_db_value_size (DB_VALUE * dbval)
    * some OR_PUT functions assume data to be copied is always properly aligned,
    * so we oblige here at the cost of maybe some extra space
    */
-  DB_ALIGN (val_size, MAX_ALIGNMENT);
+  val_size = DB_ALIGN (val_size, MAX_ALIGNMENT);
 
   return val_size;
 }
@@ -2039,7 +2039,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
 
-  if (dbval_type > DB_TYPE_MIDXKEY)
+  if (dbval_type > DB_TYPE_LAST || dbval_type == DB_TYPE_TABLE)
     {
       return NULL;
     }

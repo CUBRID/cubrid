@@ -180,7 +180,7 @@ utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch)
   int index = utility_get_option_index (arg_map, arg_ch);
   if (index != -1)
     {
-      return ((int) arg_map[index].arg_value);
+      return arg_map[index].arg_value.i;
     }
   return 0;
 }
@@ -198,8 +198,10 @@ utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch)
   int index = utility_get_option_index (arg_map, arg_ch);
   if (index != -1)
     {
-      if (arg_map[index].arg_value != NULL)
-	return true;
+      if (arg_map[index].arg_value.i == 1)
+	{
+	  return true;
+	}
     }
   return false;
 }
@@ -222,12 +224,12 @@ utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch,
 	{
 	  if (index < arg_map[arg_index].value_info.num_strings)
 	    {
-	      return (((char **) arg_map[arg_index].arg_value)[index]);
+	      return (((char **) arg_map[arg_index].arg_value.p)[index]);
 	    }
 	}
       else
 	{
-	  return ((char *) arg_map[arg_index].arg_value);
+	  return ((char *) arg_map[arg_index].arg_value.p);
 	}
     }
   return NULL;

@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -18,7 +18,7 @@
  */
 
 /*
- * db_value_table.c - 
+ * db_value_table.c -
  */
 
 #include "config.h"
@@ -85,7 +85,7 @@ static void vbt_dtor (VALUE_AREA * v, API_VALUE * aval);
 static void vbt_api_destroy (VALUE_BIND_TABLE * table);
 
 /*
- * value_to_db_value - 
+ * value_to_db_value -
  *    return:
  *    type():
  *    addr():
@@ -139,6 +139,13 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 
   switch (type)
     {
+    case CI_TYPE_BIGINT:
+      {
+	if (len < sizeof (INT64))
+	  return ER_INTERFACE_INVALID_ARGUMENT;
+	res = db_value_put (val, DB_TYPE_C_BIGINT, addr, len);
+	break;
+      }
     case CI_TYPE_INT:
       {
 	if (len < sizeof (int))
@@ -251,6 +258,23 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 	(void) db_value_clear (&t);
 	break;
       }
+    case CI_TYPE_DATETIME:
+      {
+	CI_TIME *xtime;
+	DB_VALUE d, t;
+	DB_DATETIME dt;
+
+	if (len < sizeof (*xtime))
+	  return ER_INTERFACE_INVALID_ARGUMENT;
+
+	xtime = (CI_TIME *) addr;
+	res = db_datetime_encode (&dt, xtime->month, xtime->day, xtime->year,
+				  xtime->hour, xtime->minute, xtime->second,
+				  xtime->millisecond);
+	if (res == NO_ERROR)
+	  res = db_value_put (val, DB_TYPE_C_DATETIME, &dt, sizeof (dt));
+	break;
+      }
     case CI_TYPE_MONETARY:
       {
 	if (len < sizeof (double))
@@ -319,7 +343,7 @@ res_return:
 }
 
 /*
- * db_value_to_value - 
+ * db_value_to_value -
  *    return:
  *    conn():
  *    val():
@@ -358,78 +382,72 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
       {
 	if (len < sizeof (int))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_INT, addr, buflen, &xflen,
-			&outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_INT, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_SHORT:
       {
 	if (len < sizeof (short))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_SHORT, addr, buflen,
-			&xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_SHORT, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_FLOAT:
       {
 	if (len < sizeof (float))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_FLOAT, addr, buflen,
-			&xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_FLOAT, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_DOUBLE:
       {
 	if (len < sizeof (double))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_DOUBLE, addr, buflen,
-			&xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DOUBLE, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_CHAR:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen,
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARCHAR:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARCHAR, addr, buflen,
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARCHAR, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_NCHAR:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_NCHAR, addr, buflen,
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_NCHAR, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARNCHAR:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARNCHAR, addr, buflen,
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARNCHAR, addr,
+			    buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_BIT:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_BIT, addr, buflen, &xflen,
-			&outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_BIT, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARBIT:
       {
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARBIT, addr, buflen,
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARBIT, addr, buflen,
+			    &xflen, &outlen);
 	break;
       }
     case CI_TYPE_TIME:
@@ -440,11 +458,12 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIME, &t, sizeof (t),
-			&xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIME, &t, sizeof (t),
+			    &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
+
 	db_time_decode (&t, &h, &m, &s);
 	xtime->hour = h;
 	xtime->minute = m;
@@ -461,11 +480,11 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_DATE, &d, sizeof (d),
-			&xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DATE, &d, sizeof (d),
+			    &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
+
 	db_date_decode (&d, &M, &D, &Y);
 	xtime->year = Y;
 	xtime->month = M;
@@ -483,14 +502,16 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIMESTAMP, &ts,
-			sizeof (ts), &xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIMESTAMP, &ts,
+			    sizeof (ts), &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
+
 	db_timestamp_decode ((DB_TIMESTAMP *) & ts, &date, &time);
 	db_date_decode (&date, &M, &D, &Y);
 	db_time_decode (&time, &h, &m, &s);
+
 	xtime->year = Y;
 	xtime->month = M;
 	xtime->day = D;
@@ -504,37 +525,40 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
       {
 	if (len < sizeof (double))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
-	res =
-	  db_value_get ((DB_VALUE *) val, DB_TYPE_C_MONETARY, addr, buflen,
-			&xflen, &outlen);
+
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_MONETARY, addr,
+			    buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_NUMERIC:
       {
-	if (dbtype == DB_TYPE_INTEGER || dbtype == DB_TYPE_FLOAT
+	if (dbtype == DB_TYPE_INTEGER || dbtype == DB_TYPE_SHORT
+	    || dbtype == DB_TYPE_BIGINT || dbtype == DB_TYPE_FLOAT
 	    || dbtype == DB_TYPE_DOUBLE || dbtype == DB_TYPE_MONETARY
 	    || dbtype == DB_TYPE_NUMERIC)
 	  {
-	    res =
-	      db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen,
-			    &xflen, &outlen);
+	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr,
+				buflen, &xflen, &outlen);
 	  }
 	else if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_VARCHAR
 		 || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_VARNCHAR)
 	  {
 	    DB_VALUE nval;
 	    char *nstr;
+
 	    /* need check if the string is numeric string */
 	    db_make_null (&nval);
 	    nstr = db_get_string (val);
+
 	    assert (nstr != NULL);
+
 	    res = numeric_coerce_string_to_num (nstr, &nval);
 	    (void) db_value_clear (&nval);
 	    if (res != NO_ERROR)
 	      return ER_INTERFACE_GENERIC;
-	    res =
-	      db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen,
-			    &xflen, &outlen);
+
+	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr,
+				buflen, &xflen, &outlen);
 	  }
 	else
 	  {
@@ -553,6 +577,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 
 	dt = db_value_domain_type (val);
 	oid = NULL;
+
 	if (dt == DB_TYPE_OBJECT)
 	  {
 	    DB_OBJECT *object = db_get_object (val);
@@ -582,8 +607,10 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
       {
 	CI_COLLECTION *col;
 	API_COLLECTION *col_;
+
 	if (len < sizeof (CI_COLLECTION *))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
+
 	col = (CI_COLLECTION *) addr;
 	res = api_collection_create_from_db_value (conn, val, &col_);
 	if (res == NO_ERROR)
@@ -603,18 +630,20 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	return ER_INTERFACE_INVALID_ARGUMENT;
       }
     }
+
   if (res == NO_ERROR)
     {
       *out_len = ((outlen == 0) ? xflen : outlen);
       *is_null = false;
       return NO_ERROR;
     }
+
   return ER_INTERFACE_GENERIC;
 }
 
 
 /*
- * vbt_lazy_init_db_value - 
+ * vbt_lazy_init_db_value -
  *    return:
  *    vbt():
  *    index():
@@ -638,9 +667,8 @@ vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
   if (res != NO_ERROR)
     return res;
 
-  res =
-    vbt->indexer->ifs->get (vbt->indexer, index, (VALUE_AREA **) & va,
-			    (API_VALUE **) & val);
+  res = vbt->indexer->ifs->get (vbt->indexer, index, (VALUE_AREA **) (&va),
+				(API_VALUE **) (&val));
   if (res != NO_ERROR)
     return res;
 
@@ -678,7 +706,7 @@ vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
 }
 
 /*
- * vbt_api_get_value - 
+ * vbt_api_get_value -
  *    return:
  *    tbl():
  *    index():
@@ -722,7 +750,7 @@ vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
 }
 
 /*
- * vbt_api_set_value - 
+ * vbt_api_set_value -
  *    return:
  *    tbl():
  *    index():
@@ -770,7 +798,7 @@ vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
 }
 
 /*
- * vbt_api_get_value_by_name - 
+ * vbt_api_get_value_by_name -
  *    return:
  *    tbl():
  *    name():
@@ -797,7 +825,7 @@ vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
 }
 
 /*
- * vbt_api_set_value_by_name - 
+ * vbt_api_set_value_by_name -
  *    return:
  *    tbl():
  *    name():
@@ -822,7 +850,7 @@ vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
 
 
 /*
- * vbt_apply_updatesf_map - 
+ * vbt_apply_updatesf_map -
  *    return:
  *    arg():
  *    index():
@@ -855,7 +883,7 @@ vbt_apply_updatesf_map (void *arg, int index, VALUE_AREA * v,
 }
 
 /*
- * vbt_api_apply_updates - 
+ * vbt_api_apply_updates -
  *    return:
  *    tbl():
  */
@@ -873,7 +901,7 @@ vbt_api_apply_updates (VALUE_BIND_TABLE * tbl)
 }
 
 /*
- * vbt_resetf_map - 
+ * vbt_resetf_map -
  *    return:
  *    arg():
  *    index():
@@ -907,7 +935,7 @@ vbt_resetf_map (void *arg, int index, VALUE_AREA * v, API_VALUE * aval)
 }
 
 /*
- * vbt_api_reset - 
+ * vbt_api_reset -
  *    return:
  *    tbl():
  */
@@ -925,7 +953,7 @@ vbt_api_reset (VALUE_BIND_TABLE * tbl)
 }
 
 /*
- * vbt_dtor - 
+ * vbt_dtor -
  *    return:
  *    v():
  *    aval():
@@ -942,7 +970,7 @@ vbt_dtor (VALUE_AREA * v, API_VALUE * aval)
 }
 
 /*
- * vbt_api_destroy - 
+ * vbt_api_destroy -
  *    return:
  *    table():
  */
@@ -969,7 +997,7 @@ static VALUE_BIND_TABLE_IFS VB_IFS_ = {
 /* VALUE_BIND_TABLE interface implementation */
 
 /*
- * db_type_to_type - 
+ * db_type_to_type -
  *    return:
  *    dt():
  *    xt():
@@ -984,6 +1012,9 @@ db_type_to_type (DB_TYPE dt, CI_TYPE * xt)
     {
     case DB_TYPE_INTEGER:
       *xt = CI_TYPE_INT;
+      break;
+    case DB_TYPE_BIGINT:
+      *xt = CI_TYPE_BIGINT;
       break;
     case DB_TYPE_FLOAT:
       *xt = CI_TYPE_FLOAT;
@@ -1009,6 +1040,9 @@ db_type_to_type (DB_TYPE dt, CI_TYPE * xt)
       break;
     case DB_TYPE_TIMESTAMP:
       *xt = CI_TYPE_TIMESTAMP;
+      break;
+    case DB_TYPE_DATETIME:
+      *xt = CI_TYPE_DATETIME;
       break;
     case DB_TYPE_DATE:
       *xt = CI_TYPE_DATE;
@@ -1047,7 +1081,7 @@ db_type_to_type (DB_TYPE dt, CI_TYPE * xt)
 }
 
 /*
- * type_to_db_type - 
+ * type_to_db_type -
  *    return:
  *    xt():
  *    dt():
@@ -1067,6 +1101,9 @@ type_to_db_type (CI_TYPE xt, DB_TYPE * dt)
       break;
     case CI_TYPE_SHORT:
       *dt = DB_TYPE_SHORT;
+      break;
+    case CI_TYPE_BIGINT:
+      *dt = DB_TYPE_BIGINT;
       break;
     case CI_TYPE_FLOAT:
       *dt = DB_TYPE_FLOAT;
@@ -1098,6 +1135,9 @@ type_to_db_type (CI_TYPE xt, DB_TYPE * dt)
     case CI_TYPE_TIMESTAMP:
       *dt = DB_TYPE_TIMESTAMP;
       break;
+    case CI_TYPE_DATETIME:
+      *dt = DB_TYPE_DATETIME;
+      break;
     case CI_TYPE_MONETARY:
       *dt = DB_TYPE_MONETARY;
       break;
@@ -1117,7 +1157,7 @@ type_to_db_type (CI_TYPE xt, DB_TYPE * dt)
 }
 
 /*
- * xoid2oid - 
+ * xoid2oid -
  *    return:
  *    xoid():
  *    oid():
@@ -1133,7 +1173,7 @@ xoid2oid (CI_OID * xoid, OID * oid)
 }
 
 /*
- * oid2xoid - 
+ * oid2xoid -
  *    return:
  *    oid():
  *    conn():
@@ -1148,7 +1188,7 @@ oid2xoid (OID * oid, BIND_HANDLE conn, CI_OID * xoid)
 }
 
 /*
- * coerce_value_to_db_value - 
+ * coerce_value_to_db_value -
  *    return:
  *    type():
  *    addr():
@@ -1169,7 +1209,7 @@ coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len,
 }
 
 /*
- * coerce_db_value_to_value - 
+ * coerce_db_value_to_value -
  *    return:
  *    dbval():
  *    conn():
@@ -1194,7 +1234,7 @@ coerce_db_value_to_value (const DB_VALUE * dbval,
 }
 
 /*
- * create_db_value_bind_table - 
+ * create_db_value_bind_table -
  *    return:
  *    nvalue():
  *    impl():

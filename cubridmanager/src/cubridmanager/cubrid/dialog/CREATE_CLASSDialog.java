@@ -41,6 +41,7 @@ import cubridmanager.Messages;
 import cubridmanager.CommonTool;
 import cubridmanager.MainRegistry;
 import cubridmanager.cubrid.AuthItem;
+import cubridmanager.cubrid.Parameters;
 import cubridmanager.cubrid.view.CubridView;
 import cubridmanager.cubrid.action.NewClassAction;
 import org.eclipse.swt.widgets.Label;
@@ -166,6 +167,12 @@ public class CREATE_CLASSDialog extends Dialog {
 							org.eclipse.swt.events.SelectionEvent e) {
 						String classname = EDIT_CLASS_NEW_NAME.getText()
 								.toLowerCase().trim();
+						if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(classname)) {
+							CommonTool.ErrorBox(dlgShell, Messages
+									.getString("ERROR.INVALIDCLASSNAMENONASCII"));
+							return;
+						}
+						
 						String username = EDIT_CREATECLASS_USERNAME.getText()
 								.trim();
 						String retstr = CommonTool

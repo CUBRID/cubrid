@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -99,6 +99,10 @@ static int yyyymmdd (const DB_DATE * date, char *buf, int buflen);
 static int yymmdd (const DB_DATE * date, char *buf, int buflen);
 static int yymmddhhmiss (const DB_UTIME * utime, char *buf, int buflen);
 static int mmddyyyyhhmiss (const DB_UTIME * utime, char *buf, int buflen);
+static int yyyymmddhhmissms (const DB_DATETIME * datetime, char *buf,
+			     int buflen);
+static int mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf,
+			     int buflen);
 static char *host_var_name (unsigned int custom_print);
 static void pt_flush_object_info (PARSER_CONTEXT * parser,
 				  PT_NODE * node_list);
@@ -713,7 +717,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
   void *saved_etc;
   int dummy;
   PT_NODE *save_node;
-  REGU_VARIABLE *regu_var1, *regu_var2;
+  REGU_VARIABLE *regu_var1 = NULL, *regu_var2 = NULL;
 
   if (!argp)
     {
@@ -916,7 +920,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 		PT_NODE *arg1, *arg2, *lower, *upper;
 		PRED_EXPR *pred1, *pred2;
 		REGU_VARIABLE *regu;
-		REL_OP op1, op2;
+		REL_OP op1 = 0, op2 = 0;
 
 		arg1 = node->info.expr.arg1;
 		regu = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
@@ -1442,6 +1446,33 @@ hhmiss (const DB_TIME * time, char *buf, int buflen)
   return db_strftime (buf, buflen, date_fmt, &date, (DB_TIME *) time);
 }
 
+/*
+ * hhmissms () - print a time value as 'hh:mi:ss.ms'
+ *   return:
+ *   time(in):
+ *   buf(out):
+ *   buflen(in):
+ */
+static int
+hhmissms (const unsigned int mtime, char *buf, int buflen)
+{
+  DB_DATETIME datetime;
+  int month, day, year;
+  int hour, minute, second, millisecond;
+  int retval;
+
+  datetime.date = 0;
+  datetime.time = mtime;
+
+  db_datetime_decode (&datetime, &month, &day, &year,
+		      &hour, &minute, &second, &millisecond);
+
+  /* "H:%M:%S.MS"; */
+  retval = sprintf (buf, "%d:%d:%d.%d", hour, minute, second, millisecond);
+
+  return retval;
+}
+
 
 /*
  * yyyymmdd () - print a date as 'yyyymmdd'
@@ -1492,7 +1523,7 @@ yymmddhhmiss (const DB_UTIME * utime, char *buf, int buflen)
   const char fmt[] = "%Y-%m-%d:%H:%M:%S";
 
   /* extract date & time from utime */
-  db_utime_decode ((DB_UTIME *) utime, &date, &time);
+  db_utime_decode (utime, &date, &time);
 
   return db_strftime (buf, buflen, fmt, &date, &time);
 }
@@ -1513,9 +1544,60 @@ mmddyyyyhhmiss (const DB_UTIME * utime, char *buf, int buflen)
   const char fmt[] = "%m/%d/%Y %H:%M:%S";
 
   /* extract date & time from utime */
-  db_utime_decode ((DB_UTIME *) utime, &date, &time);
+  db_utime_decode (utime, &date, &time);
 
   return db_strftime (buf, buflen, fmt, &date, &time);
+}
+
+/*
+ * yyyymmddhhmissms () - print utime as 'yyyy-mm-dd:hh:mi:ss.ms'
+ *   return:
+ *   datetime(in):
+ *   buf(out):
+ *   buflen(in):
+ */
+static int
+yyyymmddhhmissms (const DB_DATETIME * datetime, char *buf, int buflen)
+{
+  int month, day, year;
+  int hour, minute, second, millisecond;
+  int retval;
+
+  /* extract date & time from datetime */
+  db_datetime_decode (datetime, &month, &day, &year,
+		      &hour, &minute, &second, &millisecond);
+
+  /* "%Y-%m-%d:%H:%M:%S.MS"; */
+  retval = sprintf (buf, "%d-%d-%d:%d:%d:%d.%d",
+		    year, month, day, hour, minute, second, millisecond);
+
+  return retval;
+}
+
+
+/*
+ * mmddyyyyhhmissms () - print utime as 'mm/dd/yyyy hh:mi:ss.ms'
+ *   return:
+ *   datetime(in):
+ *   buf(in):
+ *   buflen(in):
+ */
+static int
+mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen)
+{
+  int month, day, year;
+  int hour, minute, second, millisecond;
+  int retval;
+
+  /* extract date & time from datetime */
+  db_datetime_decode (datetime, &month, &day, &year,
+		      &hour, &minute, &second, &millisecond);
+
+  /* "%m/%d/%Y %H:%M:%S.MS"; */
+  retval = sprintf (buf, "%d/%d/%d %d:%d:%d.%d",
+		    month, day, year, hour, minute, second, millisecond);
+
+  return retval;
 }
 
 
@@ -1580,7 +1662,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int i, size = 0, rc;
   DB_VALUE element;
   int error = NO_ERROR;
-  char dt[40], *p, *ptr;
+  char dt[50], *p, *ptr;
   PT_NODE foo;
   unsigned int save_custom = parser->custom_print;
 
@@ -1665,7 +1747,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 	  /* print date value as DATE'yyyy-mm-dd' */
 	  todate = pt_append_nulstring (parser, NULL, "DATE'");
 	  dt[0] = '\0';
-	  if (yymmdd (DB_GET_DATE (val), dt, 40) < 0)
+	  if (yymmdd (DB_GET_DATE (val), dt, sizeof (dt)) < 0)
 	    {
 	      /* a date/time conversion error has occurred in db_strftime */
 	      PT_ERRORc (parser, &foo, er_msg ());
@@ -1713,7 +1795,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 	  /* print date value as 'yyyymmdd' */
 	  todate = pt_append_nulstring (parser, NULL, "'");
 	  dt[0] = '\0';
-	  if (yyyymmdd (DB_GET_DATE (val), dt, 40) < 0)
+	  if (yyyymmdd (DB_GET_DATE (val), dt, sizeof (dt)) < 0)
 	    {
 	      /* a date/time conversion error has occurred in db_strftime */
 	      PT_ERRORc (parser, &foo, er_msg ());
@@ -1742,14 +1824,14 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       if (parser->custom_print & PT_SUPRA_PRINT)
 	{
 	  todate = pt_append_nulstring (parser, NULL, "'");
-	  rc = hhhhmmss (DB_GET_TIME (val), dt, 40);
+	  rc = hhhhmmss (DB_GET_TIME (val), dt, sizeof (dt));
 	  result = pt_append_nulstring (parser, todate, dt);
 	  result = pt_append_nulstring (parser, result, "'");
 	}
       else if (parser->custom_print & PT_INFORMIX_PRINT)
 	{
 	  todate = pt_append_nulstring (parser, NULL, "DATETIME(");
-	  rc = hhmiss (DB_GET_TIME (val), dt, 40);
+	  rc = hhmiss (DB_GET_TIME (val), dt, sizeof (dt));
 	  result = pt_append_nulstring (parser, todate, dt);
 	  result = pt_append_nulstring (parser, result, ") hour to second");
 	}
@@ -1764,7 +1846,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 	  dt[0] = '\0';
 	  /* translate 'hh:mi:ss' into TIME'hh:mi:ss' */
 	  todate = pt_append_nulstring (parser, NULL, "TIME'");
-	  rc = hhmiss (DB_GET_TIME (val), dt, 40);
+	  rc = hhmiss (DB_GET_TIME (val), dt, sizeof (dt));
 	  result = pt_append_nulstring (parser, todate, dt);
 	  result = pt_append_nulstring (parser, result, "'");
 	}
@@ -1791,7 +1873,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       if (parser->custom_print & PT_INFORMIX_PRINT)
 	{
 	  todate = pt_append_nulstring (parser, NULL, "DATETIME(");
-	  rc = yymmddhhmiss (DB_GET_UTIME (val), dt, 40);
+	  rc = yymmddhhmiss (DB_GET_UTIME (val), dt, sizeof (dt));
 
 	  if (strncmp (dt, "1970", 4) < 0 || strncmp (dt, "2038", 4) > 0)
 	    {
@@ -1825,13 +1907,71 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 	  /* print utime as TIMESTAMP'yy-mm-dd:hh:mi:ss' */
 	  dt[0] = '\0';
 	  todate = pt_append_nulstring (parser, NULL, "TIMESTAMP'");
-	  rc = yymmddhhmiss (DB_GET_UTIME (val), dt, 40);
+	  rc = yymmddhhmiss (DB_GET_UTIME (val), dt, sizeof (dt));
 	  result = pt_append_nulstring (parser, todate, dt);
 	  result = pt_append_nulstring (parser, result, "'");
 	}
       else if (parser->custom_print & PT_INGRES_PRINT)
 	{
-	  rc = mmddyyyyhhmiss (DB_GET_UTIME (val), dt, 40);
+	  rc = mmddyyyyhhmiss (DB_GET_UTIME (val), dt, sizeof (dt));
+
+	  todatetime = pt_append_nulstring (parser, NULL, "'");
+	  result = pt_append_nulstring (parser, todatetime, dt);
+	  result = pt_append_nulstring (parser, result, "'");
+	}
+      else if (parser->custom_print & PT_ORACLE_PRINT)
+	{
+	  todatetime = pt_append_nulstring (parser, NULL, "to_date('");
+	  result = describe_data (parser, todatetime, val);
+	  result = pt_append_nulstring
+	    (parser, result, "','HH:MI:SS AM MM/DD/YYYY')");
+	}
+      else
+	{
+	  /* everyone else gets csql's utime format */
+	  result = describe_value (parser, NULL, val);
+	}
+      if (rc < 0)
+	{
+	  /* a date/time conversion error has occurred in db_strftime */
+	  PT_ERRORc (parser, &foo, er_msg ());
+	}
+      break;
+
+    case DB_TYPE_DATETIME:
+      rc = 0;
+      if (parser->custom_print & PT_INFORMIX_PRINT)
+	{
+	  todate = pt_append_nulstring (parser, NULL, "DATETIME(");
+	  rc = yyyymmddhhmissms (DB_GET_DATETIME (val), dt, sizeof (dt));
+
+	  /* Get rid of the : between date and time. Informix chokes on it */
+	  if ((ptr = strchr (dt, ':')) != NULL)
+	    {
+	      *ptr = ' ';
+	    }
+
+	  result = pt_append_nulstring (parser, todate, dt);
+	  result = pt_append_nulstring (parser, result, ") year to second");
+	}
+      else if (parser->custom_print & PT_SYBASE_PRINT)
+	{
+	  temp = pt_append_nulstring (parser, temp, "'");
+	  temp = describe_data (parser, temp, val);
+	  result = pt_append_nulstring (parser, temp, "'");
+	}
+      else if (parser->custom_print & PT_RDB_PRINT)
+	{
+	  /* print datetime as DATETIME'yyyy-mm-dd:hh:mi:ss.ms' */
+	  dt[0] = '\0';
+	  todate = pt_append_nulstring (parser, NULL, "DATETIME'");
+	  rc = yyyymmddhhmissms (DB_GET_DATETIME (val), dt, sizeof (dt));
+	  result = pt_append_nulstring (parser, todate, dt);
+	  result = pt_append_nulstring (parser, result, "'");
+	}
+      else if (parser->custom_print & PT_INGRES_PRINT)
+	{
+	  rc = mmddyyyyhhmissms (DB_GET_DATETIME (val), dt, sizeof (dt));
 
 	  todatetime = pt_append_nulstring (parser, NULL, "'");
 	  result = pt_append_nulstring (parser, todatetime, dt);
@@ -4623,7 +4763,7 @@ static int
 setof_mop_to_setof_vobj (PARSER_CONTEXT * parser, DB_SET * seq,
 			 DB_VALUE * new_val)
 {
-  size_t i, siz;
+  int i, siz;
   DB_VALUE elem, *new_elem;
   DB_SET *new_set;
   DB_OBJECT *obj;
@@ -5550,11 +5690,13 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
   switch (e)
     {
     case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
     case PT_TYPE_DOUBLE:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
     case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_DATETIME:
     case PT_TYPE_MONETARY:
       dt->data_type = NULL;
       break;
@@ -5835,7 +5977,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	case PT_EXPR:
 	  {
-	    REGU_VARIABLE *r1, *r2, *r3;
+	    REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
 
 	    domain = NULL;
 	    if (node->info.expr.op == PT_PLUS
@@ -5957,7 +6099,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    else if (node->info.expr.op == PT_TO_CHAR
 		     || node->info.expr.op == PT_TO_DATE
 		     || node->info.expr.op == PT_TO_TIME
-		     || node->info.expr.op == PT_TO_TIMESTAMP)
+		     || node->info.expr.op == PT_TO_TIMESTAMP
+		     || node->info.expr.op == PT_TO_DATETIME)
 	      {
 		r1 = pt_to_regu_variable (parser,
 					  node->info.expr.arg1, unbox);
@@ -5971,6 +6114,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		     || node->info.expr.op == PT_SYS_DATE
 		     || node->info.expr.op == PT_SYS_TIME
 		     || node->info.expr.op == PT_SYS_TIMESTAMP
+		     || node->info.expr.op == PT_SYS_DATETIME
 		     || node->info.expr.op == PT_LOCAL_TRANSACTION_ID)
 	      {
 		domain = pt_xasl_node_to_domain (parser, node);
@@ -6113,7 +6257,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_LTRIM:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg2 == NULL)
 		    {
@@ -6140,7 +6284,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_RTRIM:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg2 == NULL)
 		    {
@@ -6168,7 +6312,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_LPAD:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg3 == NULL)
 		    {
@@ -6189,7 +6333,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_RPAD:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg3 == NULL)
 		    {
@@ -6210,7 +6354,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_REPLACE:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg3 == NULL)
 		    {
@@ -6231,7 +6375,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_TRANSLATE:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg3 == NULL)
 		    {
@@ -6292,6 +6436,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					   T_SYS_TIMESTAMP, domain);
 		break;
 
+	      case PT_SYS_DATETIME:
+		regu = pt_make_regu_arith (NULL, NULL, NULL,
+					   T_SYS_DATETIME, domain);
+		break;
+
 	      case PT_LOCAL_TRANSACTION_ID:
 		regu = pt_make_regu_arith (NULL, NULL, NULL,
 					   T_LOCAL_TRANSACTION_ID, domain);
@@ -6349,6 +6498,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		regu = pt_make_regu_arith (r1, r2, r3,
 					   T_TO_TIMESTAMP, domain);
+		parser_free_tree (parser, data_type);
+		break;
+
+	      case PT_TO_DATETIME:
+		data_type = pt_make_prim_data_type (parser, PT_TYPE_DATETIME);
+		domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		regu = pt_make_regu_arith (r1, r2, r3, T_TO_DATETIME, domain);
 		parser_free_tree (parser, data_type);
 		break;
 
@@ -6491,7 +6648,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	      case PT_TRIM:
 		{
-		  PT_NODE *empty_str;
+		  PT_NODE *empty_str = NULL;
 
 		  if (node->info.expr.arg2 == NULL)
 		    {
@@ -9280,11 +9437,11 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	       SELUPD_LIST ** selupd_list_ptr, UNBOX unbox)
 {
   OUTPTR_LIST *outlist;
-  PT_NODE *node, *node_next, *col;
+  PT_NODE *node = NULL, *node_next, *col;
   int count = 0;
   REGU_VARIABLE *regu;
   REGU_VARIABLE_LIST *regulist;
-  PT_NODE *save_node, *save_next;
+  PT_NODE *save_node, *save_next = NULL;
   XASL_NODE *xasl = NULL;
   QFILE_SORTED_LIST_ID *srlist_id;
   QPROC_DB_VALUE_LIST value_list = NULL;
@@ -10547,9 +10704,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	      if (select_node->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
 		  && PT_IS_HINT_NODE (hint_arg))
 		{
-		  waitsecs = atof (hint_arg->info.name.original) * 1000;
+		  waitsecs =
+		    (float) atof (hint_arg->info.name.original) * 1000;
 		  xasl->selected_upd_list->waitsecs =
-		    (waitsecs >= -1) ? waitsecs : XASL_WAITSECS_NOCHANGE;
+		    (waitsecs >=
+		     -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
 		}
 	    }
 
@@ -10816,9 +10975,9 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  if (select_node->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = atof (hint_arg->info.name.original) * 1000;
+	      waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
 	      xasl->selected_upd_list->waitsecs =
-		(waitsecs >= -1) ? waitsecs : XASL_WAITSECS_NOCHANGE;
+		(waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
 	    }
 	}
 
@@ -11304,7 +11463,11 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
   PT_NODE *flat;
   OID *oid, *o_list;
   int *r_list;
+#if defined(WINDOWS)
+  int t_num, t_size, prev_t_num;
+#else
   size_t t_num, t_size, prev_t_num;
+#endif
 
   if (!*oid_listp || !*rep_listp)
     {
@@ -11681,9 +11844,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = atof (hint_arg->info.name.original) * 1000;
+	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
 	  insert->waitsecs =
-	    ((waitsecs >= -1) ? waitsecs : XASL_WAITSECS_NOCHANGE);
+	    ((waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE);
 	}
       insert->no_logging = (statement->info.insert.hint & PT_HINT_NO_LOGGING);
       insert->release_lock = (statement->info.insert.hint & PT_HINT_REL_LOCK);
@@ -11937,9 +12100,9 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = atof (hint_arg->info.name.original) * 1000;
+	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
 	  delete_->waitsecs =
-	    (waitsecs >= -1) ? waitsecs : XASL_WAITSECS_NOCHANGE;
+	    (waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
 	}
       delete_->no_logging =
 	(statement->info.delete_.hint & PT_HINT_NO_LOGGING);
@@ -12182,9 +12345,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = atof (hint_arg->info.name.original) * 1000;
+	  waitsecs = (float) atof (hint_arg->info.name.original) * 1000;
 	  update->waitsecs =
-	    (waitsecs >= -1) ? waitsecs : XASL_WAITSECS_NOCHANGE;
+	    (waitsecs >= -1) ? (int) waitsecs : XASL_WAITSECS_NOCHANGE;
 	}
       update->no_logging = (statement->info.update.hint & PT_HINT_NO_LOGGING);
       update->release_lock = (statement->info.update.hint & PT_HINT_REL_LOCK);

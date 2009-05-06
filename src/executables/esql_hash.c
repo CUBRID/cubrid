@@ -354,8 +354,8 @@ es_ht_get_symbol_count (HASH_TAB * table)
 void *
 es_ht_alloc_new_symbol (int size)
 {
-  BUCKET *sym = (BUCKET *) pp_malloc(size + sizeof (BUCKET));
-  memset(sym, 0, size + sizeof (BUCKET));
+  BUCKET *sym = (BUCKET *) pp_malloc (size + sizeof (BUCKET));
+  memset (sym, 0, size + sizeof (BUCKET));
   return (void *) (sym + 1);
 }
 

@@ -9,7 +9,7 @@ ARGS="CC=\"$CC\" CXX=\"$CXX\" --prefix=$EXTERNAL --enable-cplusplus --disable-sh
 
 while [ -n "$(echo $1)" ]; do
 	case $1 in
-		--enable-64bit ) ;;
+		--enable-64bit ) ARGS="$ARGS --with-pic" ;;
 		--enable-debug ) ARGS="$ARGS --enable-full-debug --enable-gc-assertions";;
 	esac
 	shift

@@ -261,6 +261,8 @@ public class UColumnInfo
       return "java.lang.Short";
     case UUType.U_TYPE_INT:
       return "java.lang.Integer";
+    case UUType.U_TYPE_BIGINT:
+      return "java.lang.Long";
     case UUType.U_TYPE_FLOAT:
       return "java.lang.Float";
     case UUType.U_TYPE_MONETARY:
@@ -271,6 +273,7 @@ public class UColumnInfo
     case UUType.U_TYPE_TIME:
       return "java.sql.Time";
     case UUType.U_TYPE_TIMESTAMP:
+    case UUType.U_TYPE_DATETIME:
       return "java.sql.Timestamp";
     case UUType.U_TYPE_SET:
     case UUType.U_TYPE_SEQUENCE:
@@ -300,6 +303,8 @@ public class UColumnInfo
       return "java.lang.Short[]";
     case UUType.U_TYPE_INT:
       return "java.lang.Integer[]";
+    case UUType.U_TYPE_BIGINT:
+      return "java.lang.Long[]";
     case UUType.U_TYPE_FLOAT:
       return "java.lang.Float[]";
     case UUType.U_TYPE_MONETARY:
@@ -310,6 +315,7 @@ public class UColumnInfo
     case UUType.U_TYPE_TIME:
       return "java.sql.Time[]";
     case UUType.U_TYPE_TIMESTAMP:
+    case UUType.U_TYPE_DATETIME:
       return "java.sql.Timestamp[]";
     case UUType.U_TYPE_SET:
     case UUType.U_TYPE_SEQUENCE:

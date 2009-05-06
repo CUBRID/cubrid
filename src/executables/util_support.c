@@ -244,11 +244,11 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
 	  switch (arg_map[i].value_info.value_type)
 	    {
 	    case ARG_BOOLEAN:
-	      arg_map[i].arg_value = (void *) 1;
+	      arg_map[i].arg_value.i = 1;
 	      return NO_ERROR;
 	    case ARG_INTEGER:
 	      {
-		int value;
+		long value;
 		char *endptr;
 		errno = 0;	/* to distinguish success/failure */
 		value = strtol (option_arg, &endptr, 10);
@@ -258,12 +258,12 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
 		  {
 		    return ER_FAILED;
 		  }
-		if (*endptr != '\0')
+		if (*endptr != '\0' || value > INT_MAX || value < INT_MIN)
 		  {
 		    return ER_FAILED;
 		  }
 
-		arg_map[i].arg_value = (void *) value;
+		arg_map[i].arg_value.i = (int) value;
 		return NO_ERROR;
 	      }
 	    case ARG_STRING:
@@ -272,7 +272,7 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
 		  return ER_FAILED;
 		}
 
-	      arg_map[i].arg_value = strdup (option_arg);
+	      arg_map[i].arg_value.p = strdup (option_arg);
 	      return NO_ERROR;
 	    default:
 	      return ER_FAILED;
@@ -323,7 +323,7 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count,
       string_table[i] = argv[index];
       //fprintf (stdout, "%s\n", (*string_table)[i]);
     }
-  string_table_arg->arg_value = string_table;
+  string_table_arg->arg_value.p = string_table;
   string_table_arg->value_info.num_strings = num_string_args;
   if (need_args_num < num_string_args)
     {

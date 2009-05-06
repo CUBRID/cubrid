@@ -38,6 +38,7 @@ import org.eclipse.swt.SWT;
 
 import cubridmanager.ClientSocket;
 import cubridmanager.CommonTool;
+import cubridmanager.MainRegistry;
 import cubridmanager.Messages;
 import cubridmanager.cubrid.view.CubridView;
 
@@ -184,6 +185,12 @@ public class EDIT_METHODDialog extends Dialog {
 					public void widgetSelected(
 							org.eclipse.swt.events.SelectionEvent e) {
 						String mname = EDIT_METHOD_EDIT_NAME.getText().trim();
+						if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(mname)) {
+							CommonTool.ErrorBox(dlgShell, Messages
+									.getString("ERROR.INVALIDMETHODNAMENONEASCII"));
+							return;
+						}
+						
 						String mret = EDIT_METHOD_EDIT_RETURN.getText().trim();
 						String mimpl = EDIT_METHOD_EDIT_IMPLEMENTATION
 								.getText().trim();

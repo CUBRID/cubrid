@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -62,7 +62,7 @@ struct db_query_type
 
 typedef struct db_select_result
 {
-  int query_id;			/* Query Identifier */
+  QUERY_ID query_id;		/* Query Identifier */
   int stmt_id;			/* Statement identifier */
   int stmt_type;		/* Statement type */
   CURSOR_ID cursor_id;		/* Cursor on the query result */
@@ -128,10 +128,6 @@ extern int db_execute_with_values (const char *CSQL_query,
 				   DB_QUERY_RESULT ** result,
 				   DB_QUERY_ERROR * query_error,
 				   int arg_count, DB_VALUE * vals);
-
-extern int db_query_execute_oid (const char *CSQL_query,
-				 DB_QUERY_RESULT ** result,
-				 DB_QUERY_ERROR * query_error);
 
 extern int db_query_seek_tuple (DB_QUERY_RESULT * result,
 				int offset, int seek_mode);

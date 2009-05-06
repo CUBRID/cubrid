@@ -77,7 +77,6 @@ struct area
   char *name;
   size_t element_size;
   size_t alloc_count;
-  bool need_gc;
 
 #if defined (SERVER_MODE)
   size_t n_threads;
@@ -102,6 +101,7 @@ struct area
 #endif				/* SERVER_MODE */
 
   void (*failure_function) (void);
+  bool need_gc;
 };
 
 

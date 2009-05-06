@@ -104,7 +104,7 @@ BOOL CProperty::OnInitDialog()
 
 	if (!m_OrdbList->m_List.IsEmpty()) {
 		CDBInfo *db;
-		int count = m_OrdbList->m_List.GetCount();
+		int count = (int) m_OrdbList->m_List.GetCount();
 		for (int i = 0; i < count; i++) {
 			db = (CDBInfo *)m_OrdbList->m_List.GetAt(m_OrdbList->m_List.FindIndex(i));
 			m_list.InsertString(i, (char *)LPCSTR(db->m_dbname));

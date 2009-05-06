@@ -451,7 +451,9 @@ extractobjects (const char *exec_name)
   SM_ATTRIBUTE *attribute;
   void (*prev_intr_handler) (int sig);
   void (*prev_term_handler) (int sig);
+#if !defined (WINDOWS)
   void (*prev_quit_handler) (int sig);
+#endif
   LOG_LSA lsa;
   char unloadlog_filename[PATH_MAX];
 
@@ -472,7 +474,7 @@ extractobjects (const char *exec_name)
 				       UNLOADDB_MSG_INVALID_CACHED_PAGES));
       return 1;
     }
-  if (page_size < (DB_SIZEOF (OID) + DB_SIZEOF (int)))
+  if (page_size < (ssize_t) (sizeof (OID) + sizeof (int)))
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_UNLOADDB,
@@ -1677,13 +1679,8 @@ process_value (DB_VALUE * value)
 			  sprintf (lo_dirname, "%s/%s_lo%d",
 				   output_dirname, output_prefix,
 				   output_number / lo_count);
-#if defined (WINDOWS)
-			  if (mkdir (lo_dirname))
-			    {
-#else /* !WINDOWS */
 			  if (mkdir (lo_dirname, S_IRWXU))
 			    {
-#endif /* WINDOWS */
 			      goto exit_on_error;
 			    }
 			}

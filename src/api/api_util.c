@@ -255,8 +255,7 @@ hash_lookup (hash_table * ht, void *key, void **relem)
 
       if ((rc = ht->keyf (hte->elem, &ekey)) != NO_ERROR)
 	return rc;
-      if ((rc = ht->comparef (key, ekey, &r)) == NO_ERROR
-	  && r == 0)
+      if ((rc = ht->comparef (key, ekey, &r)) == NO_ERROR && r == 0)
 	{
 	  *relem = hte->elem;
 	  return NO_ERROR;
@@ -343,8 +342,7 @@ hash_delete (hash_table * ht, void *key, void **relem)
       if ((rc = ht->keyf (hte->elem, &ekey)) != NO_ERROR)
 	return rc;
 
-      if ((rc = ht->comparef (key, ekey, &r)) == NO_ERROR
-	  && r == 0)
+      if ((rc = ht->comparef (key, ekey, &r)) == NO_ERROR && r == 0)
 	{
 	  *relem = hte->elem;
 	  dlisth_delete (h);
@@ -450,7 +448,7 @@ api_free (void *ptr, const char *file, int line)
     }
   free (p);
 }
- 
+
 /*
  * api_check_memory - check memory 
  *    return: 0 if successful, count of failure otherwise
@@ -489,4 +487,3 @@ api_check_memory (FILE * fp)
   API_UNLOCK (&mutex);
   return res;
 }
-

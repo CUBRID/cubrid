@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -41,10 +41,12 @@
  */
 #define	MAX_SHORT_DISPLAY_LENGTH	6
 #define	MAX_INTEGER_DISPLAY_LENGTH	11
+#define	MAX_BIGINT_DISPLAY_LENGTH	20
 #define	MAX_FLOAT_DISPLAY_LENGTH	(FLT_DIG + 7)
 #define	MAX_DOUBLE_DISPLAY_LENGTH	(DBL_DIG + 9)
 #define	MAX_TIME_DISPLAY_LENGTH		11
 #define	MAX_UTIME_DISPLAY_LENGTH	25
+#define MAX_DATETIME_DISPLAY_LENGTH     29
 #define	MAX_DATE_DISPLAY_LENGTH		10
 #define	MAX_MONETARY_DISPLAY_LENGTH	20
 #define	MAX_DEFAULT_DISPLAY_LENGTH	20
@@ -245,6 +247,10 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	  attr_lengths[i] =
 	    MAX (MAX_INTEGER_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
+	case DB_TYPE_BIGINT:
+	  attr_lengths[i] =
+	    MAX (MAX_BIGINT_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  break;
 	case DB_TYPE_FLOAT:
 	  attr_lengths[i] =
 	    MAX (MAX_FLOAT_DISPLAY_LENGTH, attr_name_lengths[i]);
@@ -260,6 +266,10 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	case DB_TYPE_UTIME:
 	  attr_lengths[i] =
 	    -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  break;
+	case DB_TYPE_DATETIME:
+	  attr_lengths[i] =
+	    -MAX (MAX_DATETIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DATE:
 	  attr_lengths[i] =
@@ -433,6 +443,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
       len[i] = 0;
     }
 
+  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+
   /* get attribute values */
   for (i = 0; i < num_attrs; i++)
     {
@@ -540,9 +552,6 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
 	{
 	  len[i] = strlen (val[i]);
 	}
-
-      /* free the db_value storage */
-      db_value_clear (&db_value);
     }
 
   if (lengths)

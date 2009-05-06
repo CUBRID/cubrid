@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -30,7 +30,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <math.h>
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <process.h>
@@ -43,10 +43,7 @@
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
-
-#ifdef WIN32
 #include "broker_getopt.h"
-#endif
 
 #define PRINT_CCI_ERROR(ERRCODE, CCI_ERROR)	\
 	do {					\
@@ -84,7 +81,7 @@
 #define MAX_NODE_INFO	100
 #define MAX_IGN_SRV_ERR	100
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #define	strcasecmp(X, Y)		_stricmp(X, Y)
 #ifdef THREAD_FUNC
 #undef THREAD_FUNC
@@ -109,8 +106,8 @@
 typedef struct t_bind_info T_BIND_INFO;
 struct t_bind_info
 {
-  int type;
   char *value;
+  int type;
 };
 
 typedef struct t_node_info T_NODE_INFO;
@@ -119,16 +116,16 @@ struct t_node_info
   char *node_name;
   char *dbname;
   char *ip;
-  int port;
   char *dbuser;
   char *dbpasswd;
+  int port;
 };
 
 static double calc_stddev (double *t, double avg, int count);
 static double calc_avg (double *t, int count);
 static void calc_min_max (double *t, int count, double *min, double *max);
 static int get_args (int argc, char *argv[]);
-static int read_conf ();
+static int read_conf (void);
 static void cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 			double *ret_prepare_time);
 static THREAD_FUNC thr_main (void *arg);
@@ -148,7 +145,7 @@ static int set_args_with_node_info (char *node_name);
 static int ignore_error (int code);
 static char *make_sql_stmt (char *src);
 
-char *cci_client_name = "JDBC";
+const char *cci_client_name = "JDBC";
 
 static char *cas_ip = NULL;
 static int cas_port = 0;
@@ -160,7 +157,7 @@ static int repeat_count = 1;
 static char *exec_script_file;
 static int batch_mode = 0;
 static char *result_file = NULL;
-static char *cas_err_file = "cas_error";
+static char *cas_err_file = (char *) "cas_error";
 static int fork_delay = 0;
 static char *node_name = NULL;
 static int think_time = 0;
@@ -183,14 +180,14 @@ main (int argc, char *argv[])
 {
   T_THREAD *thr_id;
   int i;
-  char *err_str = "-";
+  const char *err_str = "-";
   double avg;
   double stddev;
   double min, max;
   char *cm_out_msg_fname;
-  FILE *cm_out_msg_fp;
+  FILE *cm_out_msg_fp = NULL;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
 
@@ -232,9 +229,9 @@ main (int argc, char *argv[])
       return -1;
     }
   if (dbuser == NULL)
-    dbuser = "public";
+    dbuser = (char *) "public";
   if (dbpasswd == NULL)
-    dbpasswd = "";
+    dbpasswd = (char *) "";
 
   cas_error_fp = fopen (cas_err_file, (batch_mode ? "a" : "w"));
   if (cas_error_fp == NULL)
@@ -314,12 +311,11 @@ main (int argc, char *argv[])
 	  SLEEP_SEC (fork_delay);
 	}
 
-#ifdef WIN32
+#if defined(WINDOWS)
       if ((thr_id[i] =
-	   (HANDLE) _beginthreadex (NULL, 0, thr_main, (void *) i, 0,
-				    NULL)) < 0)
+	   _beginthreadex (NULL, 0, thr_main, (void *) &i, 0, NULL)) < 0)
 #else
-      if (pthread_create (&thr_id[i], NULL, thr_main, (void *) i) < 0)
+      if (pthread_create (&thr_id[i], NULL, thr_main, (void *) &i) < 0)
 #endif
 	{
 	  perror ("Error:cannot create thread");
@@ -329,7 +325,7 @@ main (int argc, char *argv[])
 
   for (i = 0; i < num_thread; i++)
     {
-#ifdef WIN32
+#if defined(WINDOWS)
       if (WaitForSingleObject (thr_id[i], INFINITE) == WAIT_FAILED)
 	{
 	  printf ("Error: wait thread %d\n", GetLastError ());
@@ -553,7 +549,7 @@ getargs_err:
 static THREAD_FUNC
 thr_main (void *arg)
 {
-  int id = (int) arg;
+  int id = *(int *) arg;
   FILE *fp;
   int i;
   FILE *result_fp;
@@ -607,7 +603,7 @@ thr_main (void *arg)
     fclose (result_fp);
 
 end:
-#ifdef WIN32
+#if defined(WINDOWS)
   return 0;
 #else
   return NULL;
@@ -794,13 +790,13 @@ end_cas_runner:
 }
 
 static int
-read_conf ()
+read_conf (void)
 {
   FILE *fp;
   char read_buf[1024];
   char buf1[1024], buf2[1024], buf3[1024];
   int lineno = 0;
-  char *conf_file;
+  const char *conf_file;
   int num_token;
   char *p;
 

@@ -89,8 +89,8 @@ struct aggregate_info
   REGU_VARIABLE_LIST regu_list;
   PT_NODE *out_names;
   DB_VALUE **grbynum_valp;
-  int flag_agg_optimize;
   const char *class_name;
+  int flag_agg_optimize;
 };
 
 typedef enum
@@ -99,11 +99,11 @@ typedef enum
 } COMPATIBLE_LEVEL;
 typedef struct
 {
-  COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
   UINTPTR spec_id;		/* id of entity to be compatible with */
   const char *ldb;		/* ldb to be compatible with */
   PT_NODE *spec;		/* to allow for recursion on subquery */
   PT_NODE *root;		/* the root of this compatibility test */
+  COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
 } COMPATIBLE_INFO;
 
 
@@ -215,14 +215,3 @@ extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
 					    PT_NODE * select_node);
 
 #endif /* _XASL_GENERATION_H_ */
-
-
-
-
-
-
-
-
-
-
-

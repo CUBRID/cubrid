@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "xserver_interface.h"
 #include "memory_alloc.h"
 #include "statistics_sr.h"
 #include "object_representation.h"
@@ -56,6 +57,8 @@ static int stats_compare_data (DB_DATA * data1, DB_DATA * data2,
 static int stats_compare_date (DB_DATE * date1, DB_DATE * date2);
 static int stats_compare_time (DB_TIME * time1, DB_TIME * time2);
 static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
+static int stats_compare_datetime (DB_DATETIME * datetime1_p,
+				   DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static unsigned int stats_get_time_stamp (void);
 #if defined(CUBRID_DEBUG)
@@ -450,7 +453,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
        + OR_INT_SIZE		/* n_btstats of DISK_ATTR */
     ) * n_attrs;		/* number of attributes */
 
-  size += (OR_BTID_SIZE + 2	/* btid of BTREE_STATS */
+  size += (OR_BTID_ALIGNED_SIZE	/* btid of BTREE_STATS */
 	   + OR_INT_SIZE	/* leafs of BTREE_STATS */
 	   + OR_INT_SIZE	/* pages of BTREE_STATS */
 	   + OR_INT_SIZE	/* height of BTREE_STATS */
@@ -462,6 +465,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
 
+  /* TODO: 64bit alignment */
   start_p = buf_p = (char *) malloc (size);
   if (!buf_p)
     {
@@ -530,8 +534,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  OR_PUT_BIGINT (buf_p, disk_attr_p->min_value.bigint);
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  OR_PUT_BIGINT (buf_p, disk_attr_p->max_value.bigint);
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  break;
+
 	case DB_TYPE_SHORT:
-	  /* store these as full integers because of allignment */
+	  /* store these as full integers because of alignment */
 	  OR_PUT_INT (buf_p, disk_attr_p->min_value.i);
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  OR_PUT_INT (buf_p, disk_attr_p->max_value.i);
@@ -573,6 +584,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
+	case DB_TYPE_DATETIME:
+	  OR_PUT_DATETIME (buf_p, &(disk_attr_p->min_value.datetime));
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  OR_PUT_DATETIME (buf_p, &(disk_attr_p->max_value.datetime));
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  break;
+
 	case DB_TYPE_MONETARY:
 	  OR_PUT_MONETARY (buf_p, &(disk_attr_p->min_value.money));
 	  buf_p += STATS_MIN_MAX_SIZE;
@@ -591,9 +609,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  OR_PUT_BTID (buf_p, &btree_stats_p->btid);
-	  buf_p += OR_BTID_SIZE;
-	  /* alignment */
-	  buf_p += 2;
+	  buf_p += OR_BTID_ALIGNED_SIZE;
 
 	  /* If the btree file has currently more pages than when we gathered
 	     statistics, assume that all growth happen at the leaf level. If
@@ -660,7 +676,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   catalog_free_representation (disk_repr_p);
   catalog_free_class_info (cls_info_p);
 
-  *length_p = (buf_p - start_p);
+  *length_p = CAST_STRLEN (buf_p - start_p);
 
   return start_p;
 }
@@ -753,7 +769,7 @@ stats_compare_date (DB_DATE * date1_p, DB_DATE * date2_p)
 static int
 stats_compare_time (DB_TIME * time1_p, DB_TIME * time2_p)
 {
-  return (*time1_p - *time2_p);
+  return (int) (*time1_p - *time2_p);
 }
 
 /*
@@ -769,7 +785,42 @@ stats_compare_time (DB_TIME * time1_p, DB_TIME * time2_p)
 static int
 stats_compare_utime (DB_UTIME * utime1_p, DB_UTIME * utime2_p)
 {
-  return (*utime1_p - *utime2_p);
+  return (int) (*utime1_p - *utime2_p);
+}
+
+/*
+ * stats_compare_datetime () -
+ *   return:
+ *   datetime1(in): First datetime value
+ *   datetime2(in): Second datetime value
+ *
+ * Note: This function compares two datetime values and returns an integer less
+ *       than, equal to, or greater than 0, if the first one is less than,
+ *       equal to, or greater than the second one, respectively.
+ */
+static int
+stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * datetime2_p)
+{
+  if (datetime1_p->date < datetime2_p->date)
+    {
+      return -1;
+    }
+  else if (datetime1_p->date > datetime2_p->date)
+    {
+      return 1;
+    }
+  else if (datetime1_p->time < datetime2_p->time)
+    {
+      return -1;
+    }
+  else if (datetime1_p->time > datetime2_p->time)
+    {
+      return 1;
+    }
+  else
+    {
+      return 0;
+    }
 }
 
 /*
@@ -832,6 +883,12 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
 		? DB_LT : ((data1_p->i > data2_p->i) ? DB_GT : DB_EQ));
       break;
 
+    case DB_TYPE_BIGINT:
+      status = ((data1_p->bigint < data2_p->bigint)
+		? DB_LT : ((data1_p->bigint > data2_p->bigint) ? DB_GT :
+			   DB_EQ));
+      break;
+
     case DB_TYPE_SHORT:
       status = ((data1_p->sh < data2_p->sh)
 		? DB_LT : ((data1_p->sh > data2_p->sh) ? DB_GT : DB_EQ));
@@ -857,6 +914,11 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
 
     case DB_TYPE_UTIME:
       status = stats_compare_utime (&data1_p->utime, &data2_p->utime);
+      break;
+
+    case DB_TYPE_DATETIME:
+      status = stats_compare_datetime (&data1_p->datetime,
+				       &data2_p->datetime);
       break;
 
     case DB_TYPE_MONETARY:
@@ -927,6 +989,10 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_INTEGER \n");
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  fprintf (fpp, "DB_TYPE_BIGINT \n");
+	  break;
+
 	case DB_TYPE_SHORT:
 	  fprintf (fpp, "DB_TYPE_SHORT \n");
 	  break;
@@ -965,6 +1031,10 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
 	case DB_TYPE_UTIME:
 	  fprintf (fpp, "DB_TYPE_UTIME \n");
+	  break;
+
+	case DB_TYPE_DATETIME:
+	  fprintf (fpp, "DB_TYPE_DATETIME \n");
 	  break;
 
 	case DB_TYPE_MONETARY:

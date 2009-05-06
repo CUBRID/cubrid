@@ -34,6 +34,9 @@
 
 #define SORT_PUT_STOP     2
 
+#define SORT_RECORD_LENGTH_SIZE (sizeof(INT64))	/* for 8byte align */
+#define SORT_RECORD_LENGTH(item_p) (*((int *) ((item_p) - SORT_RECORD_LENGTH_SIZE)))
+
 typedef enum
 {
   SORT_REC_DOESNT_FIT,
@@ -51,10 +54,6 @@ typedef enum
 typedef SORT_STATUS SORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
 typedef int SORT_PUT_FUNC (THREAD_ENTRY * thread_p, const RECDES *, void *);
 typedef int SORT_CMP_FUNC (const void *, const void *, void *);
-
-
-
-
 
 typedef struct SORT_REC SORT_REC;
 typedef struct SUBKEY_INFO SUBKEY_INFO;

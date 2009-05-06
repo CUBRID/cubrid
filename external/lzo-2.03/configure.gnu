@@ -9,7 +9,8 @@ ARGS="CC=\"$CC\" CXX=\"$CXX\" --prefix=$EXTERNAL --disable-shared"
 
 while [ -n "$(echo $1)" ]; do
 	case $1 in
-		--enable-64bit ) ;;
+		--enable-64bit )
+			ARGS="$ARGS --with-pic" ;;
 	esac
 	shift
 done

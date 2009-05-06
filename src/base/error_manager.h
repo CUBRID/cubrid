@@ -45,6 +45,30 @@
 #define ARG_FILE_LINE           __FILE__, __LINE__
 #define NULL_LEVEL              0
 
+/* Shorthand for simple warnings and errors */
+#define ERROR0(error, code) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
+
+#define ERROR1(error, code, arg1) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 1, arg1); } while (0)
+
+#define ERROR2(error, code, arg1, arg2) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); \
+       } while (0)
+
+#define ERROR3(error, code, arg1, arg2, arg3) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
+       } while (0)
+
+#define ERROR4(error, code, arg1, arg2, arg3, arg4) \
+  do { error = code; \
+       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, \
+	   arg1, arg2, arg3, arg4); } while (0)
+
 enum er_exit_ask
 {
   ER_NEVER_EXIT, ER_EXIT_ASK, ER_EXIT_DONT_ASK,
@@ -93,9 +117,9 @@ union er_va_arg
 typedef struct er_spec ER_SPEC;
 struct er_spec
 {
+  int width;			/* minimum width of field */
   char code;			/* what to retrieve from the va_list
 				   int, long, double, long double or char */
-  int width;			/* minimum width of field */
   char spec[10];		/* buffer to hold the actual sprintf code */
 };
 
@@ -105,13 +129,13 @@ struct er_fmt
   int err_id;			/* The int associated with the msg */
   int age;			/* Timestamp for eviction priority */
   char *fmt;			/* A printf-style format for the msg */
+  ER_SPEC *spec;		/* Pointer to real array; points to
+				   spec_buf if nspecs < DIM(spec_buf) */
   int fmt_length;		/* The strlen() of fmt */
   int must_free;		/* TRUE iff fmt must be free_and_initd */
   int nspecs;			/* The number of format specs in fmt */
-  ER_SPEC spec_buf[4];		/* Array of format specs for args */
   int spec_top;			/* The capacity of spec */
-  ER_SPEC *spec;		/* Pointer to real array; points to
-				   spec_buf if nspecs < DIM(spec_buf) */
+  ER_SPEC spec_buf[4];		/* Array of format specs for args */
 };
 
 typedef struct er_fmt_cache ER_FMT_CACHE;
@@ -119,9 +143,6 @@ struct er_fmt_cache
 {
   int timestamp;
   ER_FMT fmt[10];
-#if 0				/* We use csect_enter instead of mutex_lock */
-  MUTEX_T lock;
-#endif
 };
 
 typedef struct er_msg ER_MSG;

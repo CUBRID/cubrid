@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -134,6 +134,11 @@ struct xasl_id
 #define QFILE_GET_OVERFLOW_VOLUME_ID(ptr) \
   (VOLID) OR_GET_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET )
 
+/*
+ * Don't change the order of reading VPID's member in 'GET_XXX_VPID' series.
+ * It is arranged for synchronization of async query execution.
+ */
+
 #define QFILE_GET_PREV_VPID(des,ptr) \
   do { \
     (des)->pageid = (PAGEID) OR_GET_INT( (ptr) + QFILE_PREV_PAGE_ID_OFFSET ); \
@@ -176,40 +181,45 @@ struct xasl_id
 #define QFILE_PUT_OVERFLOW_VOLUME_ID(ptr,val) \
    OR_PUT_SHORT( (ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (val) )
 
+/*
+ * Don't change the order of writing VPID's member in 'PUT_XXX_VPID' series.
+ * It is arranged for synchronization of async query execution.
+ */
+
 #define QFILE_PUT_PREV_VPID(ptr,vpid) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, (vpid)->pageid); \
     OR_PUT_SHORT((ptr) + QFILE_PREV_VOL_ID_OFFSET, (vpid)->volid); \
+    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, (vpid)->pageid); \
   } while(0)
 
 #define QFILE_PUT_NEXT_VPID(ptr,vpid) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (vpid)->pageid); \
     OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, (vpid)->volid); \
+    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (vpid)->pageid); \
   } while(0)
 
 #define QFILE_PUT_OVERFLOW_VPID(ptr,vpid) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (vpid)->pageid); \
     OR_PUT_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (vpid)->volid); \
+    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (vpid)->pageid); \
   } while(0)
 
 #define QFILE_PUT_PREV_VPID_NULL(ptr) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID); \
     OR_PUT_SHORT((ptr) + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID); \
+    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID); \
   } while(0)
 
 #define QFILE_PUT_NEXT_VPID_NULL(ptr) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
     OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); \
+    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
   } while(0)
 
 #define QFILE_PUT_OVERFLOW_VPID_NULL(ptr) \
   do { \
-    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID); \
     OR_PUT_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID); \
+    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID); \
   } while(0)
 
 #define QFILE_COPY_VPID(ptr1, ptr2) \
@@ -306,8 +316,8 @@ typedef char *QFILE_TUPLE;	/* list file tuple */
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
 struct qfile_tuple_record
 {
-  int size;			/* area _allocated_ for tuple pointer */
   char *tpl;			/* tuple pointer */
+  int size;			/* area _allocated_ for tuple pointer */
 };
 
 typedef enum
@@ -328,16 +338,16 @@ struct qfile_tuple_value_header
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
-  int type_cnt;			/* number of data types */
   TP_DOMAIN **domp;		/* array of column domains */
+  int type_cnt;			/* number of data types */
 };
 
 /* tuple value position descriptor */
 typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
-  int pos_no;			/* value position number */
   TP_DOMAIN *dom;		/* value domain */
+  int pos_no;			/* value position number */
 };
 
 /* List File Merge Information */
@@ -347,13 +357,13 @@ struct qfile_list_merge_info
   JOIN_TYPE join_type;		/* inner, left, right or outer */
   QPROC_SINGLE_FETCH single_fetch;	/* merge in single fetch mode */
   int ls_column_cnt;		/* join columns count */
+  int ls_pos_cnt;		/* tuple value fetch count */
   int *ls_outer_column;		/* outer list join columns number */
   int *ls_outer_unique;		/* outer column values unique? */
   /* currently, not used */
   int *ls_inner_column;		/* inner list join columns number */
   int *ls_inner_unique;		/* inner column values unique? */
   /* currently, not used */
-  int ls_pos_cnt;		/* tuple value fetch count */
   int *ls_outer_inner_list;	/* outer/inner list indicators */
   int *ls_pos_list;		/* tuple value positions */
 };
@@ -436,11 +446,11 @@ struct qfile_list_id
 				 *       therefore, this field must be int
 				 *       instead of a short value
 				 */
-  int query_id;			/* Associated Query Id */
+  QUERY_ID query_id;		/* Associated Query Id */
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-};				/* List file identifier */
+};
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
   do { \
@@ -495,8 +505,8 @@ struct qfile_list_scan_id
   SCAN_POSITION position;	/* Scan Position */
   VPID curr_vpid;		/* current real page identifier */
   PAGE_PTR curr_pgptr;		/* current page pointer */
-  int curr_offset;		/* current page offset */
   QFILE_TUPLE curr_tpl;		/* current tuple pointer */
+  int curr_offset;		/* current page offset */
   int curr_tplno;		/* current tuple number */
   QFILE_TUPLE_RECORD tplrec;	/* used for overflow tuple peeking */
   QFILE_LIST_ID list_id;	/* list file identifier */
@@ -525,8 +535,8 @@ enum
 typedef struct qfile_sorted_list_id QFILE_SORTED_LIST_ID;
 struct qfile_sorted_list_id
 {
-  int sorted;			/* Has file already been sorted? */
   QFILE_LIST_ID *list_id;	/* List File identifier */
+  int sorted;			/* Has file already been sorted? */
 };
 
 /* Sorting Scan Identifier */

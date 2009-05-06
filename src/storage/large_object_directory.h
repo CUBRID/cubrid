@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -104,18 +104,18 @@ typedef struct largeobjmgr_dirheader LARGEOBJMGR_DIRHEADER;
 struct largeobjmgr_dirheader
 {
   LOID loid;			/* LOM identifier */
+  FSIZE_T tot_length;		/* Total large object length          */
+  FSIZE_T pg_tot_length;	/* Total length of data represented by
+				 * this page
+				 */
   int index_level;		/* Directory level:
 				 * if 0,   page is a dir page (no indices),
 				 * if > 0, page is an index page to directory
 				 * pages.
 				 */
-  int tot_length;		/* Total large object length          */
   int tot_slot_cnt;		/* Total number of slots that form LO */
   VPID goodvpid_fordata;	/* A hint for a data page with space.
 				 * Usually the last allocated data page.
-				 */
-  int pg_tot_length;		/* Total length of data represented by
-				 * this page
 				 */
   int pg_act_idxcnt;		/* Active entry count represented by this
 				 * page
@@ -128,7 +128,7 @@ typedef struct largeobjmgr_dirmap_entry LARGEOBJMGR_DIRMAP_ENTRY;
 struct largeobjmgr_dirmap_entry
 {
   VPID vpid;			/* Directory page identifier */
-  int length;			/* Length represented by this index item */
+  FSIZE_T length;		/* Length represented by this index item */
 };				/* Directory Index Entry Structure */
 
 
@@ -176,8 +176,8 @@ struct largeobjmgr_dirstate
 				 * onto directory pages.
 				 */
   SCAN_POSITION pos;		/* Directory state position */
-  int tot_length;		/* Current total length of large object */
-  int lo_offset;		/* Current large object offset */
+  FSIZE_T tot_length;		/* Current total length of large object */
+  FSIZE_T lo_offset;		/* Current large object offset */
   VPID goodvpid_fordata;	/* A hint for a data page with space.
 				 * Usually the last allocated data page.
 				 */
@@ -216,12 +216,12 @@ extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  LOID * loid);
 extern bool largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid);
 extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid,
-				       int offset, int opr_mode,
+				       FSIZE_T offset, int opr_mode,
 				       LARGEOBJMGR_DIRSTATE * ds);
 extern void largeobjmgr_dir_close (THREAD_ENTRY * thread_p,
 				   LARGEOBJMGR_DIRSTATE * ds);
-extern int largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p,
-					 LOID * loid);
+extern FSIZE_T largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p,
+					     LOID * loid);
 extern SCAN_CODE largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
 						 LARGEOBJMGR_DIRSTATE * ds);
 extern void largeobjmgr_dir_get_pos (LARGEOBJMGR_DIRSTATE * ds,

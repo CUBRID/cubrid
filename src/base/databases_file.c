@@ -72,10 +72,6 @@ static const char *cfg_pop_host (const char *host_list, char *buffer,
 				 int *length);
 static bool cfg_host_exists (char *host_list, char *hostname, int num_items);
 
-#if defined(WINDOWS)
-static DB_INFO *make_fake_db (const char *name, const char *hostname);
-#endif /* WINDOWS */
-
 /* PARSING UTILITIES */
 /*
  * cfg_next_char() - Advances the given pointer until a non-whitespace character
@@ -426,8 +422,8 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		  str = cfg_pop_token (str, &db->name);
 		  str = cfg_pop_token (str, &db->pathname);
 		  str = cfg_pop_token (str, &primary_host);
-		  db->hosts =
-		    cfg_get_hosts (primary_host, &db->num_hosts, false);
+		  db->hosts = cfg_get_hosts (primary_host, &db->num_hosts, 
+					     false);
 		  if (primary_host != NULL)
 		    {
 		      free_and_init (primary_host);
@@ -525,8 +521,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	      str = cfg_pop_linetoken (str, &db->name);
 	      str = cfg_pop_linetoken (str, &db->pathname);
 	      str = cfg_pop_linetoken (str, &primary_host);
-	      db->hosts =
-		cfg_get_hosts (primary_host, &db->num_hosts, false);
+	      db->hosts = cfg_get_hosts (primary_host, &db->num_hosts, false);
 	      if (primary_host != NULL)
 		{
 		  free_and_init (primary_host);
@@ -716,14 +711,11 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 	  s += sprintf (s, "\t%s", db_info_p->logpath);
 	}
       s += sprintf (s, "\n");
-      n = s - line;
+      n = (int) (s - line);
       write (vdes, line, n);
     }
-#if defined(WINDOWS)
-  _chsize (vdes, lseek (vdes, 0L, SEEK_CUR));
-#else /* WINDOWS */
+
   ftruncate (vdes, lseek (vdes, 0L, SEEK_CUR));
-#endif /* WINDOWS */
 
 #if !defined(WINDOWS)
   sigprocmask (SIG_SETMASK, &old_mask, NULL);
@@ -868,7 +860,6 @@ cfg_new_db (const char *name, const char *path,
 	    const char *logpath, const char **hosts)
 {
   DB_INFO *db_info_p;
-  char localhost[MAXHOSTNAMELEN];
 
   db_info_p = (DB_INFO *) malloc (DB_SIZEOF (DB_INFO));
   if (db_info_p == NULL)
@@ -1471,60 +1462,3 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
   return NULL;
 }
 
-#if defined(WINDOWS)
-/*
- * make_fake_db() -  Build a DB_INFO structure for an ODBC database.
- *                   We make dummy entries for the pathname & logname which
- *                   we don't actually need on the client anyway.
- *                   Careful with the pathname though, we use it to format
- *                   the bo_Vlabel.
- *    return: DB_INFO *
- */
-static DB_INFO *
-make_fake_db (const char *name, const char *hostname)
-{
-  DB_INFO *db;
-  db = (DB_INFO *) malloc (sizeof (DB_INFO));
-  if (db == NULL)
-    {
-      goto memory_error;
-    }
-  db->next = NULL;
-  db->hosts = NULL;
-
-  db->name = (char *) malloc (strlen (name) + 1);
-  if (db->name == NULL)
-    {
-      goto memory_error;
-    }
-  strcpy ((char *) (db->name), (char *) name);
-  db->pathname = (char *) malloc (strlen (FAKE_PATHNAME) + 1);
-  if (db->pathname == NULL)
-    {
-      goto memory_error;
-    }
-  strcpy ((char *) (db->pathname), (char *) FAKE_PATHNAME);
-  db->logpath = (char *) malloc (strlen (FAKE_PATHNAME) + 1);
-  if (db->logpath == NULL)
-    {
-      goto memory_error;
-    }
-  strcpy ((char *) (db->logpath), (char *) FAKE_PATHNAME);
-  if (hostname != NULL)
-    {
-      /* Create hosts array, do not include local host name in list
-       * This list is made up of hostname, hosts in parameter db_hosts
-       */
-      db->hosts = cfg_get_hosts (db->name, hostname, &db->num_hosts, false);
-      if ((db->hosts == NULL) || (db->num_hosts == 0))
-	{
-	  goto memory_error;
-	}
-    }
-  return db;
-
-memory_error:
-  cfg_free_directory (db);
-  return NULL;
-}
-#endif /* WINDOWS */

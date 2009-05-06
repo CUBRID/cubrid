@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -44,7 +44,7 @@
 
 /*----------------------------------------------------------------------
 	STMT_NEED_DATA - SQL stmt에 parameter가 있으며, binding된 param이
-		SQL_DATA_AT_EXEC가 설정된 경우로 stmt가 SQLPutData를 
+		SQL_DATA_AT_EXEC가 설정된 경우로 stmt가 SQLPutData를
 		필요로 하는 경우
 	STMT_NEED_NO_MORE_DATA - binding된 param이 없거나 SQL_DATA_AT_EXEC
 	가 아닌 경우이거나 SQLPutData로 data를 모두 보낸 경우
@@ -80,9 +80,9 @@ PRIVATE SQLSMALLINT next_param_data_at_exec (ODBC_STATEMENT * stmt,
 PRIVATE void get_appl_desc_info (ODBC_DESC * desc,
 				 short col_index, DescInfo * desc_info_ptr);
 PRIVATE void recalculate_bind_pointer (DescInfo * desc_info_ptr,
-				       unsigned long row_index,
-				       long *value_addr,
-				       long *ind_addr, long *octet_len_addr);
+				       SQLSETPOSIROW row_index,
+				       UINT_PTR *value_addr,
+				       UINT_PTR *ind_addr, UINT_PTR *octet_len_addr);
 PRIVATE void make_param_array (ODBC_STATEMENT * stmt,
 			       short column_index,
 			       DescInfo * desc_info,
@@ -100,10 +100,10 @@ PRIVATE RETCODE delete_row_by_cursor_pos (ODBC_STATEMENT * stmt,
 PRIVATE RETCODE odbc_set_pos_update (ODBC_STATEMENT * stmt,
 				     DescInfo * bookmark_desc_info_ptr,
 				     DescInfo * desc_info_ptr,
-				     unsigned long row_pos);
+				     SQLSETPOSIROW row_pos);
 PRIVATE RETCODE odbc_set_pos_delete (ODBC_STATEMENT * stmt,
 				     DescInfo * boomark_desc_info_ptr,
-				     unsigned long row_pos);
+				     SQLSETPOSIROW row_pos);
 PRIVATE void free_param_array (ParamArray * param_ptr, int array_count,
 			       int member_count);
 PRIVATE short default_type_to_c_type (short value_type, short parameter_type);
@@ -114,12 +114,12 @@ PRIVATE void debug_print_appl_desc (DescInfo * desc_info,
 
 /************************************************************************
 * name: odbc_alloc_statement
-* arguments: 
+* arguments:
 *		con : connection
 *		st_pointer : returned statement structure
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_alloc_statement (ODBC_CONNECTION * conn, ODBC_STATEMENT ** stmt_ptr)
@@ -152,7 +152,7 @@ odbc_alloc_statement (ODBC_CONNECTION * conn, ODBC_STATEMENT ** stmt_ptr)
   s->result_type = NULL_RESULT;
   s->data_at_exec_state = STMT_NEED_NO_MORE_DATA;
   s->tpl_number = 0;
-  s->current_tpl_pos = 0;	/* 0 means cursor closed, prev first tuple, 
+  s->current_tpl_pos = 0;	/* 0 means cursor closed, prev first tuple,
 				 *      -1 means over last tuple */
   s->param_number = 0;
   s->stmt_type = 0;
@@ -218,10 +218,10 @@ error:
 
 /************************************************************************
 * name: odbc_reset_statement
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	SQLFreeStmt와 match된다.
 ************************************************************************/
 PUBLIC RETCODE
@@ -255,10 +255,10 @@ odbc_reset_statement (ODBC_STATEMENT * stmt, unsigned short option)
 
 /************************************************************************
 * name: odbc_free_statement
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_free_statement (ODBC_STATEMENT * stmt)
@@ -320,13 +320,13 @@ odbc_free_statement (ODBC_STATEMENT * stmt)
 
 /************************************************************************
 * name: odbc_set_stmt_attr
-* arguments: 
+* arguments:
 *	is_driver - SQLSetStmtAttr에 의한 ftn call인지 판단.
 *	0 - SQLSetStmtAttr, 1 - driver
-* returns/side-effects: 
-* description: 
+* returns/side-effects:
+* description:
 *	is_client의 값에 따라 read-only ATTR에 대해 다른 작업
-* NOTE: 
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_set_stmt_attr (ODBC_STATEMENT * stmt,
@@ -615,16 +615,17 @@ error:
 
 /************************************************************************
 * name: odbc_get_stmt_attr
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
 		    long attr,
-		    void *value_ptr, long buffer_length, long *length_ptr)
+		    SQLPOINTER value_ptr, SQLINTEGER buffer_length, SQLINTEGER *length_ptr)
 {
+  SQLLEN tmp_length;
 
   if (value_ptr == NULL)
     {
@@ -691,32 +692,38 @@ odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
 
     case SQL_ATTR_PARAM_BIND_OFFSET_PTR:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_BIND_OFFSET_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_PARAM_BIND_TYPE:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_BIND_TYPE,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_PARAM_OPERATION_PTR:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_ARRAY_STATUS_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_PARAM_STATUS_PTR:
       odbc_get_desc_field (stmt->ipd, 0, SQL_DESC_ARRAY_STATUS_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_PARAMS_PROCESSED_PTR:
       odbc_get_desc_field (stmt->ipd, 0, SQL_DESC_ROWS_PROCESSED_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_PARAMSET_SIZE:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_ARRAY_SIZE,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_RETRIEVE_DATA:
@@ -730,27 +737,32 @@ odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
     case SQL_ATTR_ROW_ARRAY_SIZE:
     case SQL_ROWSET_SIZE:	// for 2.x backward compatiablity
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_ARRAY_SIZE,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_ROW_BIND_OFFSET_PTR:
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_BIND_OFFSET_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_ROW_BIND_TYPE:
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_BIND_TYPE,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_ROW_STATUS_PTR:
       odbc_get_desc_field (stmt->ird, 0, SQL_DESC_ARRAY_STATUS_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_ROWS_FETCHED_PTR:
       odbc_get_desc_field (stmt->ird, 0, SQL_DESC_ROWS_PROCESSED_PTR,
-			   value_ptr, buffer_length, length_ptr);
+			   value_ptr, buffer_length, &tmp_length);
+      *length_ptr = (SQLINTEGER) tmp_length;
       break;
 
     case SQL_ATTR_ROW_NUMBER:
@@ -911,8 +923,8 @@ odbc_set_cursor_name (ODBC_STATEMENT * stmt,
  ************************************************************************/
 PUBLIC RETCODE
 odbc_get_cursor_name (ODBC_STATEMENT * stmt,
-		      char *cursor_name,
-		      short buffer_length, long *name_length_ptr)
+		      SQLCHAR *cursor_name,
+		      SQLSMALLINT buffer_length, SQLLEN *name_length_ptr)
 {
   RETCODE rc, status = ODBC_SUCCESS;
   char *pt;
@@ -938,22 +950,22 @@ odbc_get_cursor_name (ODBC_STATEMENT * stmt,
 
 /************************************************************************
 * name: odbc_bind_parameter
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	column_size에 대해서 고려하지 않고 있음.
 ************************************************************************/
 PUBLIC RETCODE
 odbc_bind_parameter (ODBC_STATEMENT * stmt,
-		     unsigned short parameter_num,
-		     short input_output_type,
-		     short value_type,
-		     short parameter_type,
-		     unsigned long column_size,
-		     short decimal_digits,
-		     void *parameter_value_ptr,
-		     long buffer_length, long *strlen_ind_ptr)
+		     SQLUSMALLINT parameter_num,
+		     SQLSMALLINT input_output_type,
+		     SQLSMALLINT value_type,
+		     SQLSMALLINT parameter_type,
+		     SQLULEN column_size,
+		     SQLSMALLINT decimal_digits,
+		     SQLPOINTER parameter_value_ptr,
+		     SQLLEN buffer_length, SQLLEN *strlen_ind_ptr)
 {
   ODBC_DESC *apd = NULL, *ipd = NULL;
   RETCODE rc;
@@ -1004,7 +1016,7 @@ odbc_bind_parameter (ODBC_STATEMENT * stmt,
     }
 
   /* char data type의 경우는 buffer_length를 octet_length로 사용한다. */
-  size = odbc_octet_length (value_type, buffer_length);
+  size = odbc_octet_length (value_type, (int) buffer_length);
   rc = odbc_set_desc_field (apd, parameter_num, SQL_DESC_OCTET_LENGTH,
 			    (void *) size, 0, 1);
   ERROR_GOTO (rc, error1);
@@ -1111,10 +1123,10 @@ error2:
 
 /************************************************************************
 * name: odbc_num_params
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *		odbc_num_result_cols는 ird가 sql stmt에 맞게 생성되기 때문에
 *		ird의 record개수가 num of result cols이지만,
 *		odbc_num_params에서는 ipd가 자동적으로 생성되지 않기 때문에,
@@ -1134,10 +1146,10 @@ odbc_num_params (ODBC_STATEMENT * stmt, short *parameter_count)
 
 /************************************************************************
 * name: odbc_prepare
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	- statement_text가 null이면 DM error가 난다.
 *	- IRD setting이 일어난다.
 *	- Method에 의한 result set에 대해서
@@ -1220,10 +1232,10 @@ error:
 
 /************************************************************************
 * name: odbc_execute
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *   1) 현재 array parameter bind & execution을 지원하고 있지 않다.
 *	2) error가 발생한 경우, SQL_ERROR나 SQL_SUCCESS_WITH_INFO를 return한다.
 *	이 때는 autocommit mode일지라도 autocommit은 일어나지 않는다.(rollback도 없다.)
@@ -1259,7 +1271,7 @@ odbc_execute (ODBC_STATEMENT * stmt)
   T_CCI_QUERY_RESULT *qr;
   int res;
   int update_count;
-  char *err_msg;
+  const char *err_msg;
 
   void *value_ptr;
   long *ind_ptr;
@@ -1268,7 +1280,7 @@ odbc_execute (ODBC_STATEMENT * stmt)
 
 
 
-  // Init 
+  // Init
   reset_result_set (stmt);
 
   stmt->result_type = QUERY;
@@ -1301,9 +1313,8 @@ odbc_execute (ODBC_STATEMENT * stmt)
 	  a_type = odbc_type_to_cci_a_type (desc_info.type);
 	  u_type = odbc_type_to_cci_u_type (sql_type);
 
-	  recalculate_bind_pointer (&desc_info, 1, (long *) &value_ptr,
-				    (long *) &ind_ptr,
-				    (long *) &octet_len_ptr);
+	  recalculate_bind_pointer (&desc_info, 1, (UINT_PTR *) &value_ptr,
+				    (UINT_PTR *) &ind_ptr, (UINT_PTR *) &octet_len_ptr);
 
 	  if (octet_len_ptr)
 	    {
@@ -1600,10 +1611,10 @@ error:
 
 /************************************************************************
 * name: odbc_param_data
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 
 PUBLIC RETCODE
@@ -1697,7 +1708,7 @@ odbc_param_data (ODBC_STATEMENT * stmt, void **valueptr_ptr)
       stmt->data_at_exec_state = param;
       stmt->param_data.index = param;
 
-      // spec에서는 SQLBindCol에 의한 data ptr도 얻어올 수 있다고 언급하는데, 
+      // spec에서는 SQLBindCol에 의한 data ptr도 얻어올 수 있다고 언급하는데,
       // 이해하기 힘들다. SQLBindParam에 대해서만 얻어온다.
       odbc_get_desc_field (stmt->apd, param, SQL_DESC_DATA_PTR, valueptr_ptr,
 			   0, NULL);
@@ -1743,17 +1754,17 @@ error:
 
 /************************************************************************
 * name: odbc_put_data
-* arguments: 
-* returns/side-effects: 
-* description: 
+* arguments:
+* returns/side-effects:
+* description:
 *	data_at_exec parameter를 위해서 stmt->param_data에 data를 적재한다.
-* NOTE: 
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
-odbc_put_data (ODBC_STATEMENT * stmt, void *data_ptr, long strlen_or_ind)
+odbc_put_data (ODBC_STATEMENT * stmt, void *data_ptr, SQLLEN strlen_or_ind)
 {
 
-  MemcatImproved (&stmt->param_data.val, data_ptr, strlen_or_ind);
+  MemcatImproved (&stmt->param_data.val, data_ptr, (int) strlen_or_ind);
 
   return ODBC_SUCCESS;
 
@@ -1761,10 +1772,10 @@ odbc_put_data (ODBC_STATEMENT * stmt, void *data_ptr, long strlen_or_ind)
 
 /************************************************************************
 * name: odbc_close_cursor
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_close_cursor (ODBC_STATEMENT * stmt)
@@ -1787,14 +1798,14 @@ odbc_close_cursor (ODBC_STATEMENT * stmt)
 
 /************************************************************************
 * name: odbc_cancel
-* arguments: 
-* returns/side-effects: 
-* description: 
+* arguments:
+* returns/side-effects:
+* description:
 *		1. Canceling Functions that Need Data
 *		More functions
 *			Canceling Asynchronous Processing
 *			Canceling Functions in Multithread Applications
-* NOTE: 
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_cancel (ODBC_STATEMENT * stmt)
@@ -1822,16 +1833,17 @@ odbc_cancel (ODBC_STATEMENT * stmt)
 
 /************************************************************************
 * name: odbc_bulk_operations
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC RETCODE
 odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
 {
   RETCODE rc;
-  unsigned long row_array_size, i;
+  unsigned long row_array_size;
+  SQLSETPOSIROW i;
   unsigned long update_count = 0;
   unsigned long *RowFetchedPtr;
   short j;
@@ -1874,15 +1886,15 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
       for (i = 1; i <= row_array_size; ++i)
 	{
 	  recalculate_bind_pointer (&bookmark_desc_info, i,
-				    (long *) &value_ptr, (long *) &ind_ptr,
+				    (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr,
 				    NULL);
 	  bookmark = *((long *) value_ptr);
 
 	  for (j = 1; j <= stmt->ard->max_count; ++j)
 	    {
 	      recalculate_bind_pointer (&desc_info_ptr[j - 1], i,
-					(long *) &value_ptr,
-					(long *) &ind_ptr, NULL);
+					(UINT_PTR *) &value_ptr,
+					(UINT_PTR *) &ind_ptr, NULL);
 	      a_type = odbc_type_to_cci_a_type (desc_info_ptr[j - 1].type);
 
 	      if (*ind_ptr == SQL_COLUMN_IGNORE)
@@ -1930,7 +1942,7 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
       for (i = 1; i <= row_array_size; ++i)
 	{
 	  recalculate_bind_pointer (&bookmark_desc_info, i,
-				    (long *) &value_ptr, (long *) &ind_ptr,
+				    (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr,
 				    NULL);
 	  bookmark = *((long *) value_ptr);
 
@@ -1951,7 +1963,7 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
       /* 주의1 :select의 결과가 하나의 table에서 기인할 때만 유효하다.
        * 그렇지 않은 경우 오작동
        * 주의2 : base_column_name이 지원되지 않으므로 select attribute
-       * 에 alias걸면 안된다. 
+       * 에 alias걸면 안된다.
        */
       {
 	int addhd = -1;
@@ -1968,7 +1980,7 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
 	for (i = 1; i <= row_array_size; ++i)
 	  {
 	    recalculate_bind_pointer (&bookmark_desc_info, i,
-				      (long *) &value_ptr, (long *) &ind_ptr,
+				      (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr,
 				      NULL);
 	    bookmark = *((long *) value_ptr);
 
@@ -1980,8 +1992,8 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
 	    for (j = 1, attr_num = 0; j <= stmt->ard->max_count; ++j)
 	      {
 		recalculate_bind_pointer (&desc_info_ptr[j - 1], i,
-					  (long *) &value_ptr,
-					  (long *) &ind_ptr, NULL);
+					  (UINT_PTR *) &value_ptr,
+					  (UINT_PTR *) &ind_ptr, NULL);
 		if (*ind_ptr == SQL_COLUMN_IGNORE)
 		  {
 		    continue;
@@ -2024,8 +2036,8 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
 	    for (j = 1, attr_num = 0; j <= stmt->ard->max_count; ++j)
 	      {
 		recalculate_bind_pointer (&desc_info_ptr[j - 1], i,
-					  (long *) &value_ptr,
-					  (long *) &ind_ptr, NULL);
+					  (UINT_PTR *) &value_ptr,
+					  (UINT_PTR *) &ind_ptr, NULL);
 
 		odbc_get_desc_field (stmt->ird, j, SQL_DESC_CONCISE_TYPE,
 				     &sql_type, 0, NULL);
@@ -2111,11 +2123,11 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
       for (i = 1; i <= row_array_size; ++i)
 	{
 	  recalculate_bind_pointer (&bookmark_desc_info, i,
-				    (long *) &value_ptr, (long *) &ind_ptr,
+				    (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr,
 				    NULL);
 	  bookmark = *((long *) value_ptr);
 	  // cursor의 위치는 그대로.
-	  rc = odbc_fetch (stmt, SQL_FETCH_ABSOLUTE, bookmark, i - 1, 1);
+	  rc = odbc_fetch (stmt, SQL_FETCH_ABSOLUTE, bookmark, (long) i - 1, 1);
 	  if (rc < 0)
 	    {
 	      err_flag = 1;
@@ -2146,25 +2158,26 @@ odbc_bulk_operations (ODBC_STATEMENT * stmt, short operation)
 
 /************************************************************************
 * name: odbc_set_pos
-* arguments: 
+* arguments:
 *	lock_type  - ignored...
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* returns/side-effects:
+* description:
+* NOTE:
 *	- refresh일 때는 operation이 반영이 안된다.
-*	- 누군가 bookmark를 조정하면 오작동한다.  절대로 bookmark를 조절해서는 
+*	- 누군가 bookmark를 조정하면 오작동한다.  절대로 bookmark를 조절해서는
 *	안된다.
 ************************************************************************/
 PUBLIC RETCODE
 odbc_set_pos (ODBC_STATEMENT * stmt,
-	      unsigned short row_number,
-	      unsigned short operation, unsigned short lock_type)
+	      SQLSETPOSIROW row_number,
+	      SQLUSMALLINT operation, SQLUSMALLINT lock_type)
 {
   RETCODE rc;
   DescInfo *desc_info_ptr = NULL, bookmark_desc_info;
   unsigned short *RowOperationPtr;
   unsigned short *RowStatusPtr;
-  unsigned long row_array_size, i;
+  unsigned long row_array_size;
+  SQLSETPOSIROW i;
   short max_col_num, j;
   char error_flag;
 
@@ -2283,12 +2296,12 @@ odbc_set_pos (ODBC_STATEMENT * stmt,
 
 /************************************************************************
 * name: reset_result_set
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 *	IRD는 SQLPrepare 시점에서 이루어지므로, 여기서 IRD를 delete해서는
-*	안된다.  왜냐면 SQLExecute도 reset_result_set을 사용하고, 
+*	안된다.  왜냐면 SQLExecute도 reset_result_set을 사용하고,
 *	SQLCloseCursor시 IRD가 delete되지 않기 때문이다.
 ************************************************************************/
 PUBLIC void
@@ -2318,10 +2331,10 @@ reset_result_set (ODBC_STATEMENT * stmt)
 
 /************************************************************************
 * name: create_ird
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC void
 create_ird (ODBC_STATEMENT * stmt, T_CCI_COL_INFO * cci_col_info,
@@ -2464,13 +2477,13 @@ create_ird (ODBC_STATEMENT * stmt, T_CCI_COL_INFO * cci_col_info,
 
 /************************************************************************
 * name: next_param_data_at_exec
-* arguments: 
-* returns/side-effects: 
+* arguments:
+* returns/side-effects:
 *
-* description: 
+* description:
 *	APD에서 param_pos이후의 record에 대해서 indicator가 DATA_AT_EXEC 인 것을
 *	찾는다.  찾으면 record number, else -1
-* NOTE: 
+* NOTE:
 ************************************************************************/
 PRIVATE short
 next_param_data_at_exec (ODBC_STATEMENT * stmt, short param_pos)
@@ -2531,12 +2544,12 @@ free_column_data (COLUMN_DATA * data, int option)
 
 /************************************************************************
 * name: get_appl_desc_info
-* arguments: 
+* arguments:
 
 *	col_index - parameter col index, starting from 1
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PRIVATE void
 get_appl_desc_info (ODBC_DESC * desc,
@@ -2580,27 +2593,27 @@ get_appl_desc_info (ODBC_DESC * desc,
 
 /************************************************************************
 * name: recalculate_bind_pointer
-* arguments: 
+* arguments:
 *	row_index - array index, starting from 1
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PRIVATE void
 recalculate_bind_pointer (DescInfo * desc_info_ptr,
-			  unsigned long row_index,
-			  long *value_addr,
-			  long *ind_addr, long *octet_len_addr)
+			  SQLSETPOSIROW row_index,
+			  UINT_PTR *value_addr,
+			  UINT_PTR *ind_addr, UINT_PTR *octet_len_addr)
 {
   long element_size;
 
   if (desc_info_ptr->value_ptr == NULL)
     {
       (void *) *value_addr = NULL;
-      (void *) *ind_addr = NULL;
+      (long *) *ind_addr = NULL;
       if (octet_len_addr)
 	{
-	  (void *) *octet_len_addr = NULL;
+	  (long *) *octet_len_addr = NULL;
 	}
     }
   else
@@ -2608,39 +2621,38 @@ recalculate_bind_pointer (DescInfo * desc_info_ptr,
       if (desc_info_ptr->bind_type == SQL_PARAM_BIND_BY_COLUMN)
 	{
 	  *value_addr =
-	    (long) desc_info_ptr->value_ptr + desc_info_ptr->offset_size +
+	    (UINT_PTR) desc_info_ptr->value_ptr + desc_info_ptr->offset_size +
 	    (row_index - 1) * (desc_info_ptr->length);
 	  *ind_addr =
-	    (long) desc_info_ptr->ind_ptr + desc_info_ptr->offset_size +
+	    (UINT_PTR) desc_info_ptr->ind_ptr + desc_info_ptr->offset_size +
 	    (row_index - 1) * sizeof (long);
 	  if (octet_len_addr)
 	    {
 	      if (desc_info_ptr->octet_len_ptr)
 		*octet_len_addr =
-		  (long) desc_info_ptr->octet_len_ptr +
+		  (UINT_PTR) desc_info_ptr->octet_len_ptr +
 		  desc_info_ptr->offset_size + (row_index -
 						1) * sizeof (long);
 	      else
-		*octet_len_addr = 0;
+		(long *) *octet_len_addr = NULL;
 	    }
 	}
       else
 	{
 	  element_size = desc_info_ptr->bind_type;
 	  *value_addr =
-	    (long) desc_info_ptr->value_ptr + desc_info_ptr->offset_size +
+            (UINT_PTR) desc_info_ptr->value_ptr + desc_info_ptr->offset_size +
 	    (row_index - 1) * element_size;
 	  *ind_addr =
-	    (long) desc_info_ptr->ind_ptr + desc_info_ptr->offset_size +
+            (UINT_PTR) desc_info_ptr->ind_ptr + desc_info_ptr->offset_size +
 	    (row_index - 1) * element_size;
 	  if (octet_len_addr)
 	    {
 	      if (desc_info_ptr->octet_len_ptr)
-		*octet_len_addr =
-		  (long) desc_info_ptr->octet_len_ptr +
+		*octet_len_addr = (UINT_PTR) desc_info_ptr->octet_len_ptr +
 		  desc_info_ptr->offset_size + (row_index - 1) * element_size;
 	      else
-		*octet_len_addr = 0;
+		(long *) *octet_len_addr = NULL;
 	    }
 	}
     }
@@ -2836,7 +2848,8 @@ make_param_array (ODBC_STATEMENT * stmt,
 		  DescInfo * desc_info,
 		  ParamArray * param_array, int array_size)
 {
-  unsigned long h, i;
+  SQLSETPOSIROW h;
+  unsigned long i;
   void *value_ptr;
   long *ind_ptr;
   void *cci_value = NULL;
@@ -2858,8 +2871,8 @@ make_param_array (ODBC_STATEMENT * stmt,
 	    }
 	}
 
-      recalculate_bind_pointer (desc_info, h, (long *) &value_ptr,
-				(long *) &ind_ptr, NULL);
+      recalculate_bind_pointer (desc_info, h, (UINT_PTR *) &value_ptr,
+				(UINT_PTR *) &ind_ptr, NULL);
 
       if (ind_ptr != NULL && *ind_ptr == SQL_NULL_DATA)
 	{
@@ -2879,7 +2892,7 @@ make_param_array (ODBC_STATEMENT * stmt,
 }
 
 /************************************************************************
- * name:  
+ * name:
  * arguments:
  * returns/side-effects:
  * description:
@@ -2894,6 +2907,9 @@ memory_alloc_param_array (ParamArray * param_array, int array_size)
     {
     case CCI_A_TYPE_STR:
       param_array->value_array = UT_ALLOC (sizeof (char *) * array_size);
+      break;
+    case CCI_A_TYPE_BIGINT:
+      param_array->value_array = UT_ALLOC (sizeof (__int64) * array_size);
       break;
     case CCI_A_TYPE_INT:
       param_array->value_array = UT_ALLOC (sizeof (int) * array_size);
@@ -2964,7 +2980,7 @@ cci_error:
 PRIVATE RETCODE
 odbc_set_pos_update (ODBC_STATEMENT * stmt,
 		     DescInfo * bookmark_desc_info_ptr,
-		     DescInfo * desc_info_ptr, unsigned long row_pos)
+		     DescInfo * desc_info_ptr, SQLSETPOSIROW row_pos)
 {
 
   short max_col_num, j;
@@ -2982,13 +2998,13 @@ odbc_set_pos_update (ODBC_STATEMENT * stmt,
   max_col_num = stmt->ard->max_count;
 
   recalculate_bind_pointer (bookmark_desc_info_ptr, row_pos,
-			    (long *) &value_ptr, (long *) &ind_ptr, NULL);
+			    (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr, NULL);
   bookmark = *((long *) value_ptr);
 
   for (j = 1; j <= stmt->ard->max_count; ++j)
     {
       recalculate_bind_pointer (&desc_info_ptr[j - 1], row_pos,
-				(long *) &value_ptr, (long *) &ind_ptr, NULL);
+				(UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr, NULL);
       a_type = odbc_type_to_cci_a_type (desc_info_ptr[j - 1].type);
 
       if (*ind_ptr == SQL_COLUMN_IGNORE)
@@ -3037,7 +3053,7 @@ cci_error:
  ************************************************************************/
 PRIVATE RETCODE
 odbc_set_pos_delete (ODBC_STATEMENT * stmt,
-		     DescInfo * bookmark_desc_info_ptr, unsigned long row_pos)
+		     DescInfo * bookmark_desc_info_ptr, SQLSETPOSIROW row_pos)
 {
   RETCODE rc;
   void *value_ptr;
@@ -3048,7 +3064,7 @@ odbc_set_pos_delete (ODBC_STATEMENT * stmt,
     return ODBC_ERROR;
 
   recalculate_bind_pointer (bookmark_desc_info_ptr, row_pos,
-			    (long *) &value_ptr, (long *) &ind_ptr, NULL);
+			    (UINT_PTR *) &value_ptr, (UINT_PTR *) &ind_ptr, NULL);
   bookmark = *((long *) value_ptr);
 
   rc = delete_row_by_cursor_pos (stmt, bookmark);
@@ -3128,9 +3144,11 @@ debug_print_appl_desc (DescInfo * desc_info, void *value_ptr, long *ind_ptr)
     case SQL_C_LONG:		// for 2.x backward compatibility
     case SQL_C_SLONG:
     case SQL_C_ULONG:
-    case SQL_C_SBIGINT:	// warning : __int64에 대해서 고려 안됨
-    case SQL_C_UBIGINT:
       printf ("[long] %ld || ", *(long *) value_ptr);
+      break;
+    case SQL_C_SBIGINT:
+    case SQL_C_UBIGINT:
+      printf ("[bigint] %lld || ", (long long)(*(__int64 *) value_ptr));
       break;
 
 	/*---------------------------------------------------------------

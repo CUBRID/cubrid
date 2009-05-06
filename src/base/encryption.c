@@ -25,6 +25,7 @@
 #include "config.h"
 
 #if defined (WINDOWS)
+#undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0400
 #include <windows.h>
 #include <tchar.h>
@@ -111,8 +112,8 @@ int
 crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 {
 #if defined(WINDOWS)
-  HCRYPTPROV hProv = NULL;
-  HCRYPTKEY hKey = NULL;
+  HCRYPTPROV hProv = 0;
+  HCRYPTKEY hKey = 0;
   DWORD dwLength;
   DWORD dwCount;
   DWORD padding = PKCS5_PADDING;
@@ -132,13 +133,13 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
       else
 	{
 	  /* Set DES ECB MODE */
-	  if (!CryptSetKeyParam (hKey, KP_MODE, (PBYTE) & cipher_mode, NULL))
+	  if (!CryptSetKeyParam (hKey, KP_MODE, (PBYTE) & cipher_mode, 0))
 	    {
 	      return -1;
 	    }
 
 	  /* Set Padding PKCS#5 */
-	  if (!CryptSetKeyParam (hKey, KP_PADDING, (PBYTE) & padding, NULL))
+	  if (!CryptSetKeyParam (hKey, KP_PADDING, (PBYTE) & padding, 0))
 	    {
 	      return -1;
 	    }
@@ -147,7 +148,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 	  memcpy (pbBuffer, line, dwLength);
 	  dwCount = dwLength;
 
-	  if (!CryptEncrypt (hKey, NULL, TRUE, 0, pbBuffer, &dwCount, 2048))
+	  if (!CryptEncrypt (hKey, 0, TRUE, 0, pbBuffer, &dwCount, 2048))
 	    {
 	      return -1;
 	    }

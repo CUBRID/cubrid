@@ -341,6 +341,12 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 						return;
 					}
 					String conname = g1_text.getText().trim();
+					if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(conname)) {
+						CommonTool.ErrorBox(dlgShell, Messages
+								.getString("ERROR.INVALIDCONSTNAMENONEASCII"));
+						return;
+					}
+					
 					String contype = "PRIMARY KEY";
 
 					boolean isclass = false;
@@ -384,6 +390,12 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 				} else
 				if (tabidx == 1) { //FK
 					String conname = g2_text.getText().trim();
+					if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(conname)) {
+						CommonTool.ErrorBox(dlgShell, Messages
+								.getString("ERROR.INVALIDCONSTNAMENONEASCII"));
+						return;
+					}
+					
 					String contype = "FOREIGN KEY";
 
 					String attrs = "";
@@ -448,6 +460,12 @@ public class ADD_CONSTRAINTDialog extends Dialog {
 						return;
 					}
 					String conname = g3_text.getText().trim();
+					if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(conname)) {
+						CommonTool.ErrorBox(dlgShell, Messages
+								.getString("ERROR.INVALIDCONSTNAMENONEASCII"));
+						return;
+					}
+					
 							if (conname == null || conname.length() == 0) {
 								CommonTool
 										.ErrorBox(

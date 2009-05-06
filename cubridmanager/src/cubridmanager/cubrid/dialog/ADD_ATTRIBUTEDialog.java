@@ -292,6 +292,13 @@ public class ADD_ATTRIBUTEDialog extends Dialog {
 							org.eclipse.swt.events.SelectionEvent e) {
 						String attname = EDIT_ATTRIBUTE_ADD_NAME.getText()
 								.trim();
+						
+						if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(attname)) {
+							CommonTool.ErrorBox(dlgShell, Messages
+									.getString("ERROR.INVALIDATTRNAMENONEASCII"));
+							return;
+						}
+						
 						String attdeft = EDIT_ATTRIBUTE_ADD_DEFAULT.getText();
 						String retstr = CommonTool
 								.ValidateCheckInIdentifier(attname);

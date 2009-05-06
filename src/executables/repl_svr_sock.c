@@ -518,7 +518,7 @@ repl_svr_select_error (void)
  *    called by MAIN thread
  */
 int
-repl_svr_sock_get_request ()
+repl_svr_sock_get_request (void)
 {
   int rc;
   fd_set read_fds, exception_fds;

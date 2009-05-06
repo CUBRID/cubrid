@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * cmd_exec.c - 
+ * cmd_exec.c -
  */
 
 #ident "$Id$"
@@ -30,7 +30,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <process.h>
 #else
 #include <unistd.h>
@@ -48,9 +48,9 @@
 #define new_commdb_result()		(T_COMMDB_RESULT*) new_cmd_result()
 #define new_csql_result()		(T_CSQL_RESULT*) new_cmd_result()
 
-static T_CMD_RESULT *new_cmd_result ();
-static T_SPACEDB_RESULT *new_spacedb_result ();
-static char *get_cubrid_mode_opt (T_CUBRID_MODE mode);
+static T_CMD_RESULT *new_cmd_result (void);
+static T_SPACEDB_RESULT *new_spacedb_result (void);
+static const char *get_cubrid_mode_opt (T_CUBRID_MODE mode);
 static void read_commdb_output (T_COMMDB_RESULT * res, char *out_file);
 static void read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file);
 static void set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid,
@@ -74,7 +74,7 @@ cmd_csql (char *dbname, char *uid, char *passwd, T_CUBRID_MODE mode,
   char out_file[512];
   T_CSQL_RESULT *res;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[15];
+  const char *argv[15];
   int argc = 0;
 
   cmd_name[0] = '\0';
@@ -151,13 +151,13 @@ cmd_result_free (T_CMD_RESULT * res)
 }
 
 T_SPACEDB_RESULT *
-cmd_spacedb (char *dbname, T_CUBRID_MODE mode)
+cmd_spacedb (const char *dbname, T_CUBRID_MODE mode)
 {
   T_SPACEDB_RESULT *res;
   char out_file[128];
   char *cubrid_err_file;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[10];
+  const char *argv[10];
 
   res = new_spacedb_result ();
   if (res == NULL)
@@ -186,12 +186,12 @@ cmd_spacedb (char *dbname, T_CUBRID_MODE mode)
 }
 
 T_COMMDB_RESULT *
-cmd_commdb ()
+cmd_commdb (void)
 {
   T_COMMDB_RESULT *res;
   char out_file[512];
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[5];
+  const char *argv[5];
 
   res = new_commdb_result ();
   if (res == NULL)
@@ -222,7 +222,7 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   int pid, ret_val, i;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char cubrid_error_log_env[512];
-  char *argv[3];
+  const char *argv[3];
   struct tm start_tm;
   time_t start_time;
 
@@ -304,12 +304,12 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
 int
 cmd_start_diag (char *err_buf, int err_buf_size)
 {
-  char *argv[3];
+  const char *argv[3];
   char cmd_name[512];
   char param[10];
   int pid;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   sprintf (cmd_name, "%s/bin/diag.exe", sco.szCubrid);
 #else
   sprintf (cmd_name, "%s/bin/diag", sco.szCubrid);
@@ -341,7 +341,7 @@ cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
   char strbuf[1024];
   int t, timeout = 30, interval = 3;	/* sec */
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[5];
+  const char *argv[5];
 
   if (err_buf)
     memset (err_buf, 0, err_buf_size);
@@ -381,11 +381,11 @@ cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
 }
 
 void
-cmd_start_master ()
+cmd_start_master (void)
 {
   int pid;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char *argv[2];
+  const char *argv[2];
 
   cmd_name[0] = '\0';
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
@@ -422,12 +422,12 @@ read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 
       ut_trim (buf);
 
-#ifdef WIN32
+#if defined(WINDOWS)
       if ((_strnicmp (buf, "ERROR", 5) == 0)
-	  || (_strnicmp (buf, "¿¡·¯", 4) == 0))
+	  || (_strnicmp (buf, "Â¿Â¡Â·Â¯", 4) == 0))
 #else
       if ((strncasecmp (buf, "ERROR", 5) == 0)
-	  || (strncasecmp (buf, "¿¡·¯", 4) == 0))
+	  || (strncasecmp (buf, "Â¿Â¡Â·Â¯", 4) == 0))
 #endif
 	{
 	  if (err_buf)
@@ -454,13 +454,13 @@ read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 }
 
 int
-read_error_file (char *err_file, char *err_buf, int err_buf_size)
+read_error_file (const char *err_file, char *err_buf, int err_buf_size)
 {
   FILE *fp;
   char buf[1024];
   int msg_size = 0;
   char rm_prev_flag = 0;
-  int i;
+  size_t i;
 
   if (err_buf)
     memset (err_buf, 0, err_buf_size);
@@ -513,87 +513,95 @@ read_error_file (char *err_file, char *err_buf, int err_buf_size)
   return (msg_size > 0 ? -1 : 0);
 }
 
-int 
-read_error_file2(char *err_file, char *err_buf, int err_buf_size,
-		int* err_code) {
-	FILE* fp;
-	char buf[1024];
-	int msg_size = 0;
-	char rm_prev_flag = 0;
-	int found = 0;
-	int success = 1;
+int
+read_error_file2 (char *err_file, char *err_buf, int err_buf_size,
+		  int *err_code)
+{
+  FILE *fp;
+  char buf[1024];
+  int msg_size = 0;
+  char rm_prev_flag = 0;
+  int found = 0;
+  int success = 1;
 
-	if (err_buf == NULL)
-		return 0;
+  if (err_buf == NULL)
+    return 0;
 
-	err_buf[0] = 0;
+  err_buf[0] = 0;
 
-	fp = fopen(err_file, "r");
-	if (fp == NULL) {
-		*err_code = 0;
-		return 0; /* not found error file */
+  fp = fopen (err_file, "r");
+  if (fp == NULL)
+    {
+      *err_code = 0;
+      return 0;			/* not found error file */
+    }
+
+  while (1)
+    {
+      char *p = NULL;
+      if (fgets (buf, sizeof (buf), fp) == NULL)
+	break;
+
+      /* start with "ERROR: " */
+      if (strlen (buf) > 7 && memcmp (buf, "ERROR: ", 7) == 0)
+	{
+
+	  int len = strlen (buf + 7);
+	  if (len > 0 && buf[len + 7] == '\n')
+	    len--;
+
+	  if (len >= err_buf_size)
+	    len = err_buf_size - 1;
+
+	  memcpy (err_buf, buf + 7, len);
+	  err_buf[len] = 0;
+
+	  success = 0;
+	  continue;
 	}
 
-	while (1) {
-		char* p= NULL;
-		if (fgets(buf, sizeof(buf), fp) == NULL)
-			break;
+      /* find "CODE = " */
+      p = strstr (buf, "CODE = ");
+      if (p != NULL)
+	{
+	  int len = 0;
+	  if (sscanf (p, "CODE = %d", err_code) != 1)
+	    continue;
 
-		/* start with "ERROR: " */
-		if (strlen(buf) > 7 && memcmp(buf, "ERROR: ", 7) == 0) {
+	  success = 0;
+	  found = 1;
 
-			int len = strlen(buf + 7);
-			if (len > 0 && buf[len + 7] == '\n')
-				len--;
+	  /* read error description */
+	  if (fgets (buf, sizeof (buf), fp) == NULL)
+	    break;
 
-			if (len >= err_buf_size)
-				len = err_buf_size - 1;
+	  len = strlen (buf);
+	  if (len > 0 && buf[len] == '\n')
+	    len--;
 
-			memcpy(err_buf, buf + 7, len);
-			err_buf[len] = 0;
+	  if (len >= err_buf_size)
+	    len = err_buf_size - 1;
 
-			success = 0;
-			continue;
-		}
-
-		/* find "CODE = " */
-		p = strstr(buf, "CODE = ");
-		if (p != NULL) {
-			int len = 0;
-			if (sscanf(p, "CODE = %d", err_code) != 1)
-				continue;
-
-			success = 0;
-			found = 1;
-
-			/* read error description */
-			if (fgets(buf, sizeof(buf), fp) == NULL)
-				break;
-
-			len = strlen(buf);
-			if (len > 0 && buf[len] == '\n')
-				len--;
-
-			if (len >= err_buf_size)
-				len = err_buf_size - 1;
-
-			memcpy(err_buf, buf, len);
-			err_buf[len] = 0;
-		}
+	  memcpy (err_buf, buf, len);
+	  err_buf[len] = 0;
 	}
+    }
 
-	if (success != 0) {
-		*err_code = 0;
-		return 0;
-	} else if (found == 0) {
-		*err_code = -1;
-	}
+  if (success != 0)
+    {
+      *err_code = 0;
+      return 0;
+    }
+  else if (found == 0)
+    {
+      *err_code = -1;
+    }
 
-	return -1;
+  return -1;
 }
 
 static T_SPACEDB_RESULT *
-new_spacedb_result ()
+new_spacedb_result (void)
 {
   T_SPACEDB_RESULT *res;
 
@@ -605,7 +613,7 @@ new_spacedb_result ()
 }
 
 static T_CMD_RESULT *
-new_cmd_result ()
+new_cmd_result (void)
 {
   T_CMD_RESULT *res;
 
@@ -616,7 +624,7 @@ new_cmd_result ()
   return res;
 }
 
-static char *
+static const char *
 get_cubrid_mode_opt (T_CUBRID_MODE mode)
 {
   if (mode == CUBRID_MODE_SA)
@@ -769,9 +777,13 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  page_size = atoi (tmp_p + 1);
 	}
       else
-	if ((strncmp (str_buf, "µ¥ÀÌÅ¸º£ÀÌ½º", strlen ("µ¥ÀÌÅ¸º£ÀÌ½º")) == 0)
-	    || (strncmp (str_buf, "µ¥ÀÌÅÍº£ÀÌ½º", strlen ("µ¥ÀÌÅÍº£ÀÌ½º")) ==
-		0))
+	if ((strncmp
+	     (str_buf, "ÂµÂ¥Ã€ÃŒÅ¸ÂºÂ£Ã€Ì½Âº",
+	      strlen ("ÂµÂ¥Ã€ÃŒÅ¸ÂºÂ£Ã€Ì½Âº")) == 0)
+	    ||
+	    (strncmp
+	     (str_buf, "ÂµÂ¥Ã€ÃŒÃ…ÍºÂ£Ã€Ì½Âº",
+	      strlen ("ÂµÂ¥Ã€ÃŒÃ…ÍºÂ£Ã€Ì½Âº")) == 0))
 	{
 	  tmp_p = strrchr (str_buf, ')');
 	  if (tmp_p == NULL)
@@ -783,7 +795,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  page_size = atoi (tmp_p + 1);
 	}
       else if (strncmp (str_buf, "Volid", 5) == 0 ||
-	       strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
+	       strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
 	{
 	  break;
 	}
@@ -797,7 +809,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  continue;
 	}
       if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
+	  strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
 	{
 	  break;
 	}
@@ -828,7 +840,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  continue;
 	}
       if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
+	  strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
 	{
 	  break;
 	}
@@ -877,7 +889,7 @@ set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid, char *purpose,
   vol_info->total_page = total_page;
   vol_info->free_page = free_page;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   unix_style_path (vol_name);
 #endif
 

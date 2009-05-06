@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * broker_admin_so.c - 
+ * broker_admin_so.c -
  */
 
 #ident "$Id$"
@@ -29,10 +29,10 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
-#endif
+#endif /* WINDOWS */
 
 #include "cas_common.h"
 #include "broker_admin_so.h"
@@ -44,9 +44,9 @@
 #include "broker_shm.h"
 #include "broker_process_size.h"
 #include "broker_process_info.h"
-#ifdef WIN32
+#if defined(WINDOWS)
 #include "broker_wsa_init.h"
-#endif
+#endif /* WINDOWS */
 
 #define ADMIN_LOG_WRITE(log_file, msg)					\
 	do {								\
@@ -111,7 +111,7 @@
 
 #define SET_CONF_ITEM_KEEP_CON(CONF_ITEM, IDX, NAME, VALUE)             \
         do {								\
-          char *_macro_tmp_ptr;						\
+          const char *_macro_tmp_ptr;						\
           if ((VALUE) == KEEP_CON_AUTO)					\
             _macro_tmp_ptr = "AUTO";					\
           else if ((VALUE) == KEEP_CON_ON)				\
@@ -149,11 +149,11 @@ static int conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 			     int num_br, char *err_msg);
 static void conf_item_free (T_UC_CONF_ITEM * conf_item, int num);
 static char *get_broker_name (T_BR_CONF * br_conf);
-static char *get_as_type_str (char as_type);
+static const char *get_as_type_str (char as_type);
 static void change_conf_as_type (T_BR_CONF * br_conf, int old_as_type,
 				 int new_as_type);
 static void reset_conf_value (int num_item, T_UC_CONF_ITEM * item,
-			      char *name);
+			      const char *name);
 static int get_as_type (char *type_str);
 
 #ifdef DIAG_DEVEL
@@ -310,7 +310,7 @@ uc_shm_detach (void *p)
 }
 #endif
 
-DLL_EXPORT char *
+DLL_EXPORT const char *
 uc_version ()
 {
   return makestring (BUILD_NUMBER);
@@ -729,7 +729,7 @@ uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
       as_info[i].cpu_time = proc_info.cpu_time;
       as_info[i].pcpu = proc_info.pcpu;
       as_info[i].num_request = shm_appl->as_info[i].num_request;
-#ifdef WIN32
+#if defined(WINDOWS)
       if (shm_appl->use_pdh_flag == TRUE)
 	{
 	  float pct_cpu;
@@ -739,12 +739,12 @@ uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
 	  as_info[i].psize = shm_appl->as_info[i].pdh_workset;
 	  as_info[i].cpu_time = shm_appl->as_info[i].cpu_time;
 	}
-#endif
-#ifdef WIN32
+#endif /* WINDOWS */
+#if defined(WINDOWS)
       as_info[i].as_port = shm_appl->as_info[i].as_port;
-#else
+#else /* WINDOWS */
       as_info[i].as_port = 0;
-#endif
+#endif /* WINDOWS */
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	{
 	  if ((shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
@@ -763,10 +763,10 @@ uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
 	  else
 	    as_info[i].status = AS_STATUS_BUSY;
 	}
-#ifdef WIN32
+#if defined(WINDOWS)
       else if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY_WAIT)
 	as_info[i].status = AS_STATUS_BUSY;
-#endif
+#endif /* WINDOWS */
       else if (shm_appl->as_info[i].uts_status == UTS_STATUS_RESTART)
 	as_info[i].status = AS_STATUS_RESTART;
       else
@@ -857,9 +857,9 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
       br_info[i].status = SET_FLAG (shm_br->br_info[i].service_flag);
       if (shm_br->br_info[i].service_flag == ON)
 	{
-#ifndef WIN32
+#if !defined(WINDOWS)
 	  T_PSINFO proc_info;
-#endif
+#endif /* !WINDOWS */
 	  int num_req, j;
 	  T_SHM_APPL_SERVER *shm_appl;
 
@@ -880,17 +880,17 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  br_info[i].max_as = shm_br->br_info[i].appl_server_max_num;
 	  br_info[i].min_as = shm_br->br_info[i].appl_server_min_num;
 	  br_info[i].num_job_q = shm_appl->job_queue[0].id;
-#ifdef WIN32
+#if defined(WINDOWS)
 	  br_info[i].num_thr = shm_br->br_info[i].pdh_num_thr;
 	  br_info[i].pcpu = shm_br->br_info[i].pdh_pct_cpu;
 	  br_info[i].cpu_time = shm_br->br_info[i].cpu_time;
-#else
+#else /* WINDOWS */
 	  memset (&proc_info, 0, sizeof (proc_info));
 	  get_psinfo (br_info[i].pid, &proc_info);
 	  br_info[i].num_thr = proc_info.num_thr;
 	  br_info[i].pcpu = proc_info.pcpu;
 	  br_info[i].cpu_time = proc_info.cpu_time;
-#endif
+#endif /* WINDOWS */
 	  for (num_req = 0, j = 0; j < shm_br->br_info[i].appl_server_max_num;
 	       j++)
 	    num_req += shm_appl->as_info[j].num_request;
@@ -1157,11 +1157,11 @@ get_broker_name (T_BR_CONF * br_conf)
       if (strcmp (conf_item[i].name, UC_CONF_PARAM_BROKER_NAME) == 0)
 	{
 	  if (conf_item[i].value == NULL)
-	    return "";
+	    return (char *) "";
 	  return conf_item[i].value;
 	}
     }
-  return "";
+  return (char *) "";
 }
 
 static void
@@ -1315,13 +1315,13 @@ admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id,
   if (!admin_flag)
     return 0;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (wsa_initialize () < 0)
     {
       strcpy (err_msg, "Error: WSAinit");
       return -1;
     }
-#endif
+#endif /* WINDOWS */
 
 #if 0
   if (admin_get_host_ip ())
@@ -1370,7 +1370,7 @@ copy_job_info (T_JOB_INFO ** ret_job_info, T_MAX_HEAP_NODE * job_q)
   return num_job;
 }
 
-static char *
+static const char *
 get_as_type_str (char as_type)
 {
   if (as_type == APPL_SERVER_CAS_ORACLE)
@@ -1413,7 +1413,7 @@ change_conf_as_type (T_BR_CONF * br_conf, int old_as_type, int new_as_type)
 }
 
 static void
-reset_conf_value (int num_item, T_UC_CONF_ITEM * item, char *name)
+reset_conf_value (int num_item, T_UC_CONF_ITEM * item, const char *name)
 {
   int i;
 

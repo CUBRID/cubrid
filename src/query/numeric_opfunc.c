@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "query_opfunc.h"
 #include "numeric_opfunc.h"
 #include "db.h"
 #include "db_date.h"
@@ -51,7 +52,7 @@
 #define TWICE_NUM_MAX_PREC	(2*DB_MAX_NUMERIC_PRECISION)
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
 
-#define ROUND(x)                  (int)((x) > 0 ? ((x) + .5) : ((x) - .5))
+#define ROUND(x)                  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 
 typedef struct dec_string DEC_STRING;
 struct dec_string
@@ -92,6 +93,7 @@ static double numeric_Pow_of_10[10] = {
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_increase (DB_C_NUMERIC answer);
+static void numeric_decrease (DB_C_NUMERIC answer);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
 static void numeric_zero_dec_str (DEC_STRING * answer);
 static void numeric_add_dec_str (DEC_STRING * arg1,
@@ -116,6 +118,7 @@ static void numeric_shift_byte (DB_C_NUMERIC arg,
 				int length);
 static bool numeric_is_zero (DB_C_NUMERIC arg);
 static bool numeric_is_long (DB_C_NUMERIC arg);
+static bool numeric_is_bigint (DB_C_NUMERIC arg);
 static bool numeric_is_bit_set (DB_C_NUMERIC arg, int pos);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1,
@@ -193,6 +196,27 @@ numeric_increase (DB_C_NUMERIC answer)
     {
       answer[digit] += 1;
       carry = (answer[digit] == 0) ? 1 : 0;
+    }
+}
+
+/*
+ * numeric_decrease () -
+ *   return:
+ *   answer(in/out) : DB_C_NUMERIC value
+ *
+ * Note: This routine decrements a numeric value.
+ */
+static void
+numeric_decrease (DB_C_NUMERIC answer)
+{
+  int carry = 1;
+  int digit;
+
+  /*  Loop through answer as long as there is a carry  */
+  for (digit = DB_NUMERIC_BUF_SIZE - 1; digit >= 0 && carry == 1; digit--)
+    {
+      answer[digit] -= 1;
+      carry = (answer[digit] == 0xff) ? 1 : 0;
     }
 }
 
@@ -546,19 +570,13 @@ numeric_is_zero (DB_C_NUMERIC arg)
  *   return: bool
  *   arg(in)    : DB_C_NUMERIC
  *
- * Note: This routine checks if -2**31 < arg < 2**31-1
+ * Note: This routine checks if -2**31 <= arg <= 2**31-1
  */
 static bool
 numeric_is_long (DB_C_NUMERIC arg)
 {
   unsigned int digit;
   unsigned char pad;
-
-  /* Check for early return */
-  if (DB_NUMERIC_BUF_SIZE < 5)
-    {
-      return (true);
-    }
 
   /*  Get pad value */
   pad = arg[0];
@@ -571,7 +589,42 @@ numeric_is_long (DB_C_NUMERIC arg)
    * Loop through arg's bits except the 32 LSB looking for non-sign
    * extended values
    */
-  for (digit = 1; digit < DB_NUMERIC_BUF_SIZE - 4; digit++)
+  for (digit = 1; digit < DB_NUMERIC_BUF_SIZE - sizeof (int); digit++)
+    {
+      if (arg[digit] != pad)
+	{
+	  return (false);
+	}
+    }
+
+  return (arg[digit] & 0x80) == (pad & 0x80) ? true : false;
+}
+
+/*
+ * numeric_is_bigint () -
+ *   return: bool
+ *   arg(in)    : DB_C_NUMERIC
+ *
+ * Note: This routine checks if -2**63 <= arg <= 2**63-1
+ */
+static bool
+numeric_is_bigint (DB_C_NUMERIC arg)
+{
+  unsigned int digit;
+  unsigned char pad;
+
+  /*  Get pad value */
+  pad = arg[0];
+  if (pad != 0xff && pad != 0)
+    {
+      return (false);
+    }
+
+  /*
+   * Loop through arg's bits except the 64 LSB looking for non-sign
+   * extended values
+   */
+  for (digit = 1; digit < DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT); digit++)
     {
       if (arg[digit] != pad)
 	{
@@ -857,9 +910,6 @@ static void
 numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 	     DB_C_NUMERIC answer, DB_C_NUMERIC remainder)
 {
-  int long_arg1;
-  int long_arg2;
-
   /* Case 1 - arg2 = 0 */
   if (numeric_is_zero (arg2))
     {
@@ -876,10 +926,23 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
   /* Case 3 - arg1, arg2 are long ints. Do machine divide */
   else if (numeric_is_long (arg1) && numeric_is_long (arg2))
     {
+      int long_arg1, long_arg2;
+
       numeric_coerce_num_to_int (arg1, &long_arg1);
       numeric_coerce_num_to_int (arg2, &long_arg2);
       numeric_coerce_int_to_num ((long_arg1 / long_arg2), answer);
       numeric_coerce_int_to_num ((long_arg1 % long_arg2), remainder);
+    }
+
+  /* Case 4 - arg1, arg2 are bigints. Do machine divide */
+  else if (numeric_is_bigint (arg1) && numeric_is_bigint (arg2))
+    {
+      DB_BIGINT bi_arg1, bi_arg2;
+
+      numeric_coerce_num_to_bigint (arg1, 0, &bi_arg1);
+      numeric_coerce_num_to_bigint (arg2, 0, &bi_arg2);
+      numeric_coerce_bigint_to_num ((bi_arg1 / bi_arg2), answer);
+      numeric_coerce_bigint_to_num ((bi_arg1 % bi_arg2), remainder);
     }
 
   /* Default case: perform long division  */
@@ -1911,15 +1974,53 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer)
 {
   unsigned char pad;
   int digit;
+
   /*  Check for negative/positive and set pad accordingly  */
   pad = (arg >= 0) ? 0 : 0xff;
+
   /*  Copy the lower 32 bits into answer  */
   answer[DB_NUMERIC_BUF_SIZE - 1] = ((arg) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 2] = ((arg >> 8) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 3] = ((arg >> 16) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 4] = ((arg >> 24) & 0xff);
+
   /*  Pad extra bytes of answer accordingly  */
   for (digit = DB_NUMERIC_BUF_SIZE - 5; digit >= 0; digit--)
+    {
+      answer[digit] = pad;
+    }
+}
+
+/*
+ * numeric_coerce_bigint_to_num () -
+ *   return:
+ *   arg(in)    : unsigned bigint value
+ *   answer(out): DB_C_NUMERIC
+ *
+ * Note: This routine converts 64 bit integer into DB_C_NUMERIC format and
+ * returns the result.
+ */
+void
+numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer)
+{
+  unsigned char pad;
+  int digit;
+
+  /*  Check for negative/positive and set pad accordingly  */
+  pad = (arg >= 0) ? 0 : 0xff;
+
+  /*  Copy the lower 64 bits into answer  */
+  answer[DB_NUMERIC_BUF_SIZE - 1] = ((arg) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 2] = ((arg >> 8) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 3] = ((arg >> 16) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 4] = ((arg >> 24) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 5] = ((arg >> 32) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 6] = ((arg >> 40) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 7] = ((arg >> 48) & 0xff);
+  answer[DB_NUMERIC_BUF_SIZE - 8] = ((arg >> 56) & 0xff);
+
+  /*  Pad extra bytes of answer accordingly  */
+  for (digit = DB_NUMERIC_BUF_SIZE - 9; digit >= 0; digit--)
     {
       answer[digit] = pad;
     }
@@ -1958,14 +2059,74 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer)
 	}
     }
 
-  /*  Copy the lower 32 bits into answer
-   *  The unsigned int casts are necessary to avoid 16 bit integer overflow
-   *  on the PC's
-   */
-  *answer = (arg[DB_NUMERIC_BUF_SIZE - 1]) +
-    (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 2])) << 8) +
-    (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 3])) << 16) +
-    (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 4])) << 24);
+  /* Copy the lower 32 bits into answer */
+  *answer = ((arg[DB_NUMERIC_BUF_SIZE - 1]) +
+	     (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 2])) << 8) +
+	     (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 3])) << 16) +
+	     (((unsigned int) (arg[DB_NUMERIC_BUF_SIZE - 4])) << 24));
+}
+
+/*
+ * numeric_coerce_num_to_bigint () -
+ *   return:
+ *   arg(in)    : ptr to a DB_C_NUMERIC
+ *   answer(out): ptr to an bigint
+ *
+ * Note: This routine converts a numeric into an bigint returns the result.
+ * If arg overflows answer, answer is set to +/- MAXINT.
+ */
+int
+numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
+{
+  DB_NUMERIC zero_scale_numeric, numeric_rem, numeric_tmp;
+  DB_C_NUMERIC zero_scale_arg = zero_scale_numeric.d.buf;
+  DB_C_NUMERIC rem = numeric_rem.d.buf;
+  DB_C_NUMERIC tmp = numeric_tmp.d.buf;
+  unsigned int i;
+  char *ptr;
+
+  if (scale > 0)
+    {
+      numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
+      if (!numeric_is_negative (zero_scale_arg))
+	{
+	  numeric_negate (rem);
+	}
+
+      /* round */
+      numeric_add (numeric_get_pow_of_10 (scale), rem, tmp,
+		   DB_NUMERIC_BUF_SIZE);
+      numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
+      if (numeric_is_negative (tmp))
+	{
+	  if (numeric_is_negative (zero_scale_arg))
+	    {
+	      numeric_decrease (zero_scale_arg);
+	    }
+	  else
+	    {
+	      numeric_increase (zero_scale_arg);
+	    }
+	}
+    }
+  else
+    {
+      numeric_copy (zero_scale_arg, arg);
+    }
+
+  if (!numeric_is_bigint (zero_scale_arg))
+    {
+      return ER_NUM_OVERFLOW;
+    }
+
+  /* Copy the lower 64 bits into answer */
+  ptr = (char *) answer;
+  for (i = 0; i < sizeof (DB_BIGINT); i++)
+    {
+      ptr[i] = zero_scale_arg[DB_NUMERIC_BUF_SIZE - (i + 1)];
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2643,6 +2804,16 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
 	break;
       }
 
+    case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT bigint = DB_GET_BIGINT (src);
+	numeric_coerce_bigint_to_num (bigint, num);
+	precision = 19;
+	desired_precision = MAX (desired_precision, precision);
+	scale = 0;
+	break;
+      }
+
     case DB_TYPE_NUMERIC:
       {
 	precision = DB_VALUE_PRECISION (src);
@@ -2763,6 +2934,21 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	break;
       }
 
+    case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT bint;
+
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src), &bint);
+	if (ret != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	DB_MAKE_BIGINT (dest, bint);
+	break;
+      }
+
     case DB_TYPE_SMALLINT:
       {
 	double adouble;
@@ -2877,6 +3063,31 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 				      DB_VALUE_SCALE (src), &adouble);
 	v_timestamp = (DB_TIMESTAMP) (adouble);
 	DB_MAKE_TIMESTAMP (dest, v_timestamp);
+	break;
+      }
+
+    case DB_TYPE_DATETIME:
+      {
+	DB_BIGINT bi, tmp_bi;
+	DB_DATETIME v_datetime;
+
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src), &bi);
+	if (ret == NO_ERROR)
+	  {
+	    /* make datetime value from interval value */
+	    tmp_bi = (DB_BIGINT) (bi / MILLISECONDS_OF_ONE_DAY);
+	    if (OR_CHECK_INT_OVERFLOW (tmp_bi))
+	      {
+		ret = ER_NUM_OVERFLOW;
+	      }
+	    else
+	      {
+		v_datetime.date = (int) tmp_bi;
+		v_datetime.time = (int) (bi % MILLISECONDS_OF_ONE_DAY);
+		db_make_datetime (dest, &v_datetime);
+	      }
+	  }
 	break;
       }
 

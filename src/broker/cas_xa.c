@@ -48,7 +48,7 @@ static int compare_xid (XID * xid1, XID * xid2);
 int xa_prepare_flag = 0;
 
 int
-fn_xa_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -96,7 +96,7 @@ fn_xa_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_xa_recover (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -136,7 +136,7 @@ fn_xa_recover (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_xa_end_tran (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {

@@ -117,4 +117,3 @@ max_heap_incr_priority (T_MAX_HEAP_NODE * max_heap)
       (max_heap[i].priority)++;
     }
 }
-

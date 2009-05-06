@@ -55,6 +55,7 @@
 #include <unistd.h>
 #endif /* SOLARIS || LINUX */
 
+#include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "memory_alloc.h"
@@ -72,7 +73,6 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "connection_sr.h"
-#include "porting.h"
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\
@@ -87,12 +87,12 @@
 /* data wait queue */
 typedef struct css_wait_queue_entry
 {
-  unsigned int key;
   char **buffer;
   int *size;
   int *rc;
   struct thread_entry *thrd_entry;	/* thread waiting for data */
   struct css_wait_queue_entry *next;
+  unsigned int key;
 } CSS_WAIT_QUEUE_ENTRY;
 
 typedef struct queue_search_arg
@@ -105,7 +105,7 @@ typedef struct queue_search_arg
 typedef struct wait_queue_search_arg
 {
   CSS_WAIT_QUEUE_ENTRY *entry_ptr;
-  int key;
+  unsigned int key;
   int remove_entry;
 } CSS_WAIT_QUEUE_SEARCH_ARG;
 
@@ -234,7 +234,7 @@ css_get_next_client_id (void)
  *   fd(in):
  */
 int
-css_initialize_conn (CSS_CONN_ENTRY * conn, int fd)
+css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 {
   int err;
 
@@ -298,11 +298,11 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 {
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
-  if (conn->fd >= 0)
+  if (!IS_INVALID_SOCKET (conn->fd))
     {
       /* if this is the PC, it also shuts down Winsock */
       css_shutdown_socket (conn->fd);
-      conn->fd = -1;
+      conn->fd = INVALID_SOCKET;
     }
 
   if (conn->status == CONN_OPEN || conn->status == CONN_CLOSING)
@@ -358,7 +358,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       while (conn->free_net_header_list != NULL)
 	{
 	  p = conn->free_net_header_list;
-	  conn->free_net_header_list = (char *) (*(int *) p);
+	  conn->free_net_header_list = (char *) (*(UINTPTR *) p);
 	  conn->free_net_header_count--;
 	  free_and_init (p);
 	}
@@ -454,7 +454,7 @@ css_final_conn_list (void)
  *   fd(in): socket discriptor
  */
 CSS_CONN_ENTRY *
-css_make_conn (int fd)
+css_make_conn (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL;
 
@@ -690,11 +690,11 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 		    const char *host_name, int connect_type,
 		    const char *server_name, int server_name_length, int port)
 {
-  int fd;
+  SOCKET fd;
 
   fd = css_tcp_client_open ((char *) host_name, port);
 
-  if (fd >= 0)
+  if (!IS_INVALID_SOCKET (fd))
     {
       conn->fd = fd;
       if (css_send_request (conn, connect_type, rid, server_name,
@@ -718,13 +718,16 @@ CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id, const char *server_name,
 			      int name_length)
 {
-  char hname[MAXHOSTNAMELEN], *pname;
+  char hname[MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
-  int datagram_fd, socket_fd;
   unsigned short rid;
   int response, response_buff;
   int server_port_id;
   int connection_protocol;
+#if !defined(WINDOWS)
+  char *pname;
+  int datagram_fd, socket_fd;
+#endif
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, MAXHOSTNAMELEN) == 0)
@@ -890,7 +893,7 @@ css_find_conn_by_tran_index (int tran_index)
  *   fd(in): socket fd
  */
 CSS_CONN_ENTRY *
-css_find_conn_from_fd (int fd)
+css_find_conn_from_fd (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL, *next;
 
@@ -1058,8 +1061,8 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
 
   do
     {
-      rc =
-	css_net_read_header (conn->fd, (char *) local_header, &buffer_size);
+      rc = css_net_read_header (conn->fd, (char *) local_header,
+				&buffer_size);
     }
   while (rc == INTERRUPTED_READ);
 
@@ -1123,7 +1126,8 @@ css_read_and_queue (CSS_CONN_ENTRY * conn, int *type)
     }
 
   *type = ntohl (header.type);
-  css_queue_packet (conn, ntohl (header.type), ntohl (header.request_id),
+  css_queue_packet (conn, (int) ntohl (header.type),
+		    (unsigned short) ntohl (header.request_id),
 		    &header, sizeof (NET_HEADER));
   return (rc);
 }
@@ -1218,7 +1222,7 @@ css_make_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key,
 
   if (p != NULL)
     {
-      p->key = (unsigned int) key;
+      p->key = key;
       p->buffer = buffer;
       p->size = size;
       p->rc = rc;
@@ -1378,7 +1382,7 @@ css_make_wait_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key,
 
   if (p != NULL)
     {
-      p->key = (unsigned int) key;
+      p->key = key;
       p->buffer = buffer;
       p->size = size;
       p->rc = rc;
@@ -1560,10 +1564,10 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
 static void
 css_process_close_packet (CSS_CONN_ENTRY * conn)
 {
-  if (conn->fd >= 0)
+  if (!IS_INVALID_SOCKET (conn->fd))
     {
       css_shutdown_socket (conn->fd);
-      conn->fd = -1;
+      conn->fd = INVALID_SOCKET;
     }
 
   conn->status = CONN_CLOSED;
@@ -1813,7 +1817,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   if (conn->free_net_header_list != NULL)
     {
       p = (NET_HEADER *) conn->free_net_header_list;
-      conn->free_net_header_list = (char *) (*(int *) p);
+      conn->free_net_header_list = (char *) (*(UINTPTR *) p);
       conn->free_net_header_count--;
     }
   else
@@ -1830,9 +1834,9 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
       if (ntohl (header->buffer_size) > 0)
 	{
 	  css_read_header (conn, &data_header);
-	  css_queue_packet (conn, ntohl (data_header.type),
-			    ntohl (data_header.request_id), &data_header,
-			    sizeof (NET_HEADER));
+	  css_queue_packet (conn, (int) ntohl (data_header.type),
+			    (unsigned short) ntohl (data_header.request_id),
+			    &data_header, sizeof (NET_HEADER));
 	}
     }
 }
@@ -1934,7 +1938,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 	  conn->transaction_id = p->transaction_id;
 	  conn->db_error = p->db_error;
 	  rc = NO_ERRORS;
-	  *(int *) buffer = (int) conn->free_net_header_list;
+	  *(UINTPTR *) buffer = (UINTPTR) conn->free_net_header_list;
 	  conn->free_net_header_list = (char *) buffer;
 	  conn->free_net_header_count++;
 	  css_free_queue_entry (conn, p);

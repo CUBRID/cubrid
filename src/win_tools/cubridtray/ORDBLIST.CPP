@@ -97,7 +97,7 @@ char			*tmp;
 			if (tmp) {
 				db->m_logpath.Format("%s", tmp);
 			}
-			int cnt = plist.GetCount();
+			int cnt = (int) plist.GetCount();
 			if (cnt > 0) {
 				for (int i = 0; i < cnt; i++) {
 					CDBInfo *p = (CDBInfo *)plist.GetAt(plist.FindIndex(i));
@@ -183,7 +183,7 @@ int		count;
 	if (m_List.IsEmpty()) return false;
 
 	if (infofile.Open(m_ordbinfo, CFile::modeCreate | CFile::modeWrite, &e)) {
-		count = m_List.GetCount();
+		count = (int) m_List.GetCount();
 		for (int i = 0; i < count; i++) {
 			db = (CDBInfo *)m_List.GetAt(m_List.FindIndex(i));
 			if (!db->m_permanent) continue;
@@ -205,7 +205,7 @@ int	count;
 
 	if (m_List.IsEmpty()) return false;
 
-	count = m_List.GetCount();
+	count = (int) m_List.GetCount();
 	for (int i = 0; i < count; i++) {
 		db = (CDBInfo *)m_List.GetAt(m_List.FindIndex(i));
 		if (db->m_dbname == dbname) {
@@ -223,7 +223,7 @@ int	count;
 
 	if (m_List.IsEmpty()) return;
 
-	count = m_List.GetCount();
+	count = (int) m_List.GetCount();
 	for (int i = 0; i < count; i++) {
 		db = (CDBInfo *)m_List.GetAt(m_List.FindIndex(i));
 		if (db->m_dbname == dbname) {

@@ -47,10 +47,6 @@
     return(ER_OBJ_INVALID_ARGUMENTS); \
     }
 
-#define ERROR(error, code) \
-  do { error = code; \
-       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 0); } while (0)
-
 /* this needs to go into the pr_ level */
 
 #define SET_FIX_VALUE(value) \
@@ -73,10 +69,10 @@
  * Leaving it as is for now, not sure if the code relies on this being 1 larger
  * than the necessary size.
  */
-#define EXPAND(blockindex) ((long) (((blockindex)*1.1) + 1))
+#define EXPAND(blockindex) ((int) (((blockindex)*1.1) + 1))
 
-#define BLOCK(collection_index) ((long) ((collection_index)/COL_BLOCK_SIZE))
-#define OFFSET(collection_index) ((long) ((collection_index)%COL_BLOCK_SIZE))
+#define BLOCK(collection_index) ((int) ((collection_index)/COL_BLOCK_SIZE))
+#define OFFSET(collection_index) ((int) ((collection_index)%COL_BLOCK_SIZE))
 #define INDEX(collection,index) (&(collection->array[BLOCK(index)][OFFSET(index)]))
 #define BLOCKING_LESS1 (COL_BLOCK_SIZE -1)
 #define VALUETOP(col) ((col->topblock*COL_BLOCK_SIZE)+col->topblockcount)
@@ -97,10 +93,9 @@ typedef struct set_iterator
 
   DB_SET *ref;			/* set we're iterating over */
   SETOBJ *set;			/* set object */
-  int position;			/* current element index */
   DB_VALUE_LIST *element;	/* current list element */
   DB_VALUE *value;		/* current element pointer */
-
+  int position;			/* current element index */
 } SET_ITERATOR;
 
 /*
@@ -114,22 +109,22 @@ struct setobj
 {
 
   DB_TYPE coltype;
-  long size;			/* valid indexes from 0 to size -1
+  int size;			/* valid indexes from 0 to size -1
 				 * aka the number of represented values in
 				 * the collection */
-  long lastinsert;		/* the last value insertion point
+  int lastinsert;		/* the last value insertion point
 				 * 0 to size. */
-  long topblock;		/* maximum index of an allocated block.
+  int topblock;			/* maximum index of an allocated block.
 				 * This is the maximum non-NULL db_value
 				 * pointer index of array. array[topblock]
 				 * should be non-NULL. array[topblock+1] will
 				 * be a NULL pointer for future expansion.
 				 */
-  long arraytop;		/* maximum indexable pointer in array the valid
+  int arraytop;			/* maximum indexable pointer in array the valid
 				 * indexes for array are 0 to arraytop
 				 * inclusive Generally this may be greater
 				 * than topblock */
-  long topblockcount;		/* This is the max index of the top block
+  int topblockcount;		/* This is the max index of the top block
 				 * Since it may be shorter than a standard
 				 * sized block for space efficicency.
 				 */

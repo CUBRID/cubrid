@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include <ctype.h>
 #include <sys/stat.h>
 #if defined(LINUX)
 #include <sys/resource.h>
@@ -139,8 +140,8 @@ pthread_key_t slave_Key;
             lrec->forw_lsa.pageid < first_pageid ||                           \
             lrec->forw_lsa.pageid < -1        ||                              \
             lrec->back_lsa.pageid < -1        ||                              \
-            lrec->type > LOG_LARGER_LOGREC_TYPE ||                            \
-            lrec->type < LOG_SMALLER_LOGREC_TYPE))
+            !(LOG_SMALLER_LOGREC_TYPE <= lrec->type                           \
+             && lrec->type <= LOG_LARGER_LOGREC_TYPE)) )
 
 #define REPL_PREFETCH_PAGE_COUNT         1000
 
@@ -149,55 +150,52 @@ static void *repl_tr_log_apply_fail (void *arg);
 static void *repl_tr_log_recv_fail (void *arg);
 static void *repl_tr_log_flush_fail (void *arg);
 static int repl_ag_set_trail_log (MASTER_MAP * masters);
-static int
-repl_log_volume_open (REPL_PB * pb, const char *vlabel, bool * create);
+static int repl_log_volume_open (REPL_PB * pb, const char *vlabel,
+				 bool * create);
 static void repl_ag_set_slave_info (int idx);
 static void repl_ag_slave_key_delete (void *value);
-static void repl_ag_shutdown_by_signal ();
-static int repl_ag_find_last_applied_lsa ();
-static int
-repl_ag_truncate_copy_log (MASTER_INFO * minfo, PAGEID flushed, char *buf,
-			   PAGEID last_pageid);
-static int
-repl_ag_archive_by_file_copy (MASTER_INFO * minfo, PAGEID flushed, char *buf,
-			      char *archive_path, PAGEID last_pageid);
-static int
-repl_ag_archive_by_file_rename (MASTER_INFO * minfo, PAGEID flushed,
-				char *buf, char *archive_path,
-				PAGEID last_pageid);
+static void repl_ag_shutdown_by_signal (int sig_no);
+static int repl_ag_find_last_applied_lsa (void);
+static int repl_ag_truncate_copy_log (MASTER_INFO * minfo, PAGEID flushed,
+				      char *buf, PAGEID last_pageid);
+static int repl_ag_archive_by_file_copy (MASTER_INFO * minfo, PAGEID flushed,
+					 char *buf, char *archive_path,
+					 PAGEID last_pageid);
+static int repl_ag_archive_by_file_rename (MASTER_INFO * minfo,
+					   PAGEID flushed, char *buf,
+					   char *archive_path,
+					   PAGEID last_pageid);
 static void repl_ag_delete_min_trantable (MASTER_INFO * minfo);
 static int repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed);
 static int repl_update_distributor (SLAVE_INFO * sinfo, int idx);
-static bool
-repl_tr_log_apply_pre (void *arg, SLAVE_INFO * sinfo, MASTER_INFO * minfo,
-		       int m_idx, REPL_PB * pb, REPL_CACHE_PB * cache_pb,
-		       bool * restart, LOG_LSA * final);
-static bool
-repl_tr_log_check_final_page (MASTER_INFO * minfo, REPL_PB * pb,
-			      PAGEID pageid);
+static bool repl_tr_log_apply_pre (void *arg, SLAVE_INFO * sinfo,
+				   MASTER_INFO * minfo, int m_idx,
+				   REPL_PB * pb, REPL_CACHE_PB * cache_pb,
+				   bool * restart, LOG_LSA * final);
+static bool repl_tr_log_check_final_page (MASTER_INFO * minfo, REPL_PB * pb,
+					  PAGEID pageid);
 static const char *repl_rectype_string (LOG_RECTYPE type);
-static bool
-repl_tr_log_record_process (void *arg, struct log_rec *lrec, int m_idx,
-			    LOG_LSA * final, MASTER_INFO * minfo,
-			    SLAVE_INFO * sinfo, LOG_PAGE * pg_ptr,
-			    REPL_PB * pb);
+static bool repl_tr_log_record_process (void *arg, struct log_rec *lrec,
+					int m_idx, LOG_LSA * final,
+					MASTER_INFO * minfo,
+					SLAVE_INFO * sinfo, LOG_PAGE * pg_ptr,
+					REPL_PB * pb);
 static int repl_tr_log_commit (SLAVE_INFO * sinfo, int m_idx, REPL_PB * pb);
 static void *repl_tr_log_apply (void *arg);
-static unsigned long repl_ag_get_resource_size ();
+static size_t repl_ag_get_resource_size (void);
 static void *repl_tr_log_flush (void *arg);
 static void *repl_tr_log_recv (void *arg);
-static void *repl_ag_status ();
-static int repl_ag_thread_alloc ();
-static int
-repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
-			      REPL_DUMP_NODE * dump_node);
-static int
-repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
-			      REPL_DUMP_NODE * dump_node);
-static int
-repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
-				REPL_DUMP_NODE ** tail,
-				REPL_DUMP_NODE * dump_node);
+static void *repl_ag_status (void *ignore);
+static int repl_ag_thread_alloc (void);
+static int repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head,
+					 REPL_DUMP_NODE ** tail,
+					 REPL_DUMP_NODE * dump_node);
+static int repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head,
+					 REPL_DUMP_NODE ** tail,
+					 REPL_DUMP_NODE * dump_node);
+static int repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
+					   REPL_DUMP_NODE ** tail,
+					   REPL_DUMP_NODE * dump_node);
 
 /*
  * repl_tr_log_apply_fail() - error processing when the apply thread fails
@@ -472,7 +470,7 @@ repl_ag_slave_key_delete (void *value)
  *        process "shutdown"
  */
 static void
-repl_ag_shutdown_by_signal ()
+repl_ag_shutdown_by_signal (int ignore)
 {
   int i;
 
@@ -867,7 +865,7 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
   char *buf = NULL;
   char archive_path[FILE_PATH_LENGTH];
   REPL_PB *pb = minfo->pb;
-  off64_t file_size;
+  off_t file_size;
 
   /* wait for the APPLY thread to run, not to purge the copy log */
   if (pb->read_pageid == 0)
@@ -938,7 +936,9 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
       if (file_size >= 0)
 	{
 
-	  if (file_size < minfo->copylog_size * minfo->io_pagesize * 2)
+	  if (file_size <
+	      ((off_t) minfo->copylog_size) *
+	      ((off_t) (minfo->io_pagesize)) * 2)
 	    {
 	      error = repl_ag_archive_by_file_rename (minfo, flushed, buf,
 						      archive_path,
@@ -1906,7 +1906,8 @@ repl_tr_log_apply (void *arg)
 					   REPL_AGENT_CANT_CONNECT_TO_SLAVE,
 					   sinfo->conn.dbname, arg);
 		}
-	      if (is_idle && repl_ag_get_resource_size () > agent_Max_size)
+	      if (is_idle
+		  && repl_ag_get_resource_size () > (size_t) agent_Max_size)
 		{
 		  restart_Agent = true;
 		  pb->need_shutdown = true;
@@ -1945,12 +1946,12 @@ repl_ag_skip_token (const char *p)
  *
  * Note:
  */
-static unsigned long
-repl_ag_get_resource_size ()
+static size_t
+repl_ag_get_resource_size (void)
 {
 #if defined(LINUX)
   int fd;
-  unsigned long mem;
+  size_t mem;
   char buffer[4096], *current_p;
   int length;
 
@@ -2450,7 +2451,7 @@ repl_tr_log_recv (void *arg)
  *   return: void *
  */
 static void *
-repl_ag_status ()
+repl_ag_status (void *ignore)
 {
   int error = NO_ERROR;
 
@@ -2628,6 +2629,8 @@ repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
       dump_node->next = *head;
       *head = dump_node;
     }
+
+  return NO_ERROR;
 }
 
 static int
@@ -2654,6 +2657,8 @@ repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
       dump_node->next->prev = dump_node->prev;
     }
   free_and_init (dump_node);
+
+  return NO_ERROR;
 }
 
 static int
@@ -2661,7 +2666,7 @@ repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
 				REPL_DUMP_NODE ** tail,
 				REPL_DUMP_NODE * dump_node)
 {
-
+  return NO_ERROR;
 }
 
 /*

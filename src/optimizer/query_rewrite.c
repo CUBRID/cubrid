@@ -75,9 +75,9 @@ typedef enum COMP_DBVALUE_WITH_OPTYPE_RESULT
 typedef struct qo_reset_location_info RESET_LOCATION_INFO;
 struct qo_reset_location_info
 {
+  PT_NODE *start_spec;
   short start;
   short end;
-  PT_NODE *start_spec;
   bool found_outerjoin;
 };
 
@@ -1599,7 +1599,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  DB_VALUE *dbval, dbval_res;
 	  TP_DOMAIN *dom;
-	  PT_NODE *new_dt;
 
 	  /* don't replace node's data type precision, scale
 	   */
@@ -2008,11 +2007,11 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 
 	      col2 = col2_next;	/* restore next link */
-	    }			/* for (j = 1; j < i; j++) */
-	}			/* if (col->node_type == PT_NAME) */
+	    }
+	}
 
       order_prev = order;	/* go ahead */
-    }				/* for (order = ...) */
+    }
 
   if (order_move_count > 0)
     {

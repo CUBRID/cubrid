@@ -32,6 +32,7 @@
 #include <limits.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "condition_handler.h"
 #include "condition_handler_code.h"
 #include "message_catalog.h"
@@ -587,8 +588,7 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
   width *= MB_LEN_MAX;
 
   /* Valid parameter index? */
-  if (index < 0
-      || (unsigned int) index >= adj_ar_length (co_Current_arguments))
+  if (index < 0 || index >= adj_ar_length (co_Current_arguments))
     {
       adj_ar_replace (co_Parameter_string, bad_index,
 		      strlen (bad_index) + 1, 0, ADJ_AR_EOA);
@@ -802,10 +802,10 @@ co_find_conversion (const char *format, int from, int *end,
     }
 
   /* Return end of conversion spec. */
-  *end = p + csize - format;
+  *end = CAST_STRLEN (p + csize - format);
 
   /* Return start of conversion spec. */
-  return start - format;
+  return CAST_STRLEN (start - format);
 }
 
 /*
@@ -843,7 +843,7 @@ co_conversion_spec (const char *cspec, int size)
        */
       adj_ar_remove (co_Conversion_buffer,
 		     mblen (new_cspec, MB_LEN_MAX),
-		     end + mblen (end, MB_LEN_MAX) - new_cspec);
+		     CAST_STRLEN (end + mblen (end, MB_LEN_MAX) - new_cspec));
     }
 
   return new_cspec;

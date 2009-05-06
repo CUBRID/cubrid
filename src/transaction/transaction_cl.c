@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -63,8 +63,6 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
-extern char *cuserid (char *string);
-
 int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_DEFAULT_ISOLATION;
 bool tm_Tran_async_ws = false;
@@ -101,7 +99,7 @@ tran_cache_tran_settings (int tran_index, float lock_timeout,
 			  TRAN_ISOLATION tran_isolation)
 {
   tm_Tran_index = tran_index;
-  tm_Tran_waitsecs = lock_timeout * 1000;	/* lock timeout in miliseconds */
+  tm_Tran_waitsecs = (int) (lock_timeout * 1000);	/* lock timeout in miliseconds */
   tm_Tran_isolation = tran_isolation;
 
   /* This is a dirty, but quick, method by which we can flag that
@@ -154,8 +152,18 @@ tran_get_tran_settings (float *lock_wait, TRAN_ISOLATION * tran_isolation,
 float
 tran_reset_wait_times (float waitsecs)
 {
-  tm_Tran_waitsecs = waitsecs * 1000;	/* set lock timeout in miliseconds */
-  return log_reset_waitsecs (waitsecs * 1000);
+  if (waitsecs > 0)
+    {
+      /* set lock timeout in miliseconds */
+      tm_Tran_waitsecs = (int) (waitsecs * 1000);
+    }
+  else
+    {
+      /* special value like -1 (LK_INFINITE_WAIT) */
+      tm_Tran_waitsecs = (int) waitsecs;
+    }
+
+  return (float) log_reset_waitsecs (tm_Tran_waitsecs);
 }
 
 /*

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -27,7 +27,6 @@
 
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <broker_error.h>
 #if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/resource.h>
@@ -37,6 +36,7 @@
 #include <netdb.h>
 #include <netinet/tcp.h>
 
+#include "broker_error.h"
 #include "repl_tp.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
@@ -46,6 +46,7 @@
 #include "repl_agent.h"
 #include "message_catalog.h"
 #include "utility.h"
+
 
 extern REPL_ERR *err_Head;
 extern int debug_Dump_info;
@@ -80,11 +81,11 @@ repl_io_read (int vdes, void *io_pgptr, PAGEID pageid, int pagesize)
 {
   int remain_bytes = pagesize;
   int nbytes;
-  off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  off_t offset = REPL_GET_FILE_SIZE (pagesize, pageid);
   char errno_buffer[FILE_PATH_LENGTH];
   char *current_ptr = (char *) io_pgptr;
 
-  if (lseek64 (vdes, offset, SEEK_SET) == -1)
+  if (lseek (vdes, offset, SEEK_SET) == -1)
     {
       snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
       REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
@@ -148,11 +149,11 @@ repl_io_write (int vdes, void *op_pgptr, PAGEID pageid, int pagesize)
 {
   int remain_bytes = pagesize;
   int nbytes;
-  off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  off_t offset = REPL_GET_FILE_SIZE (pagesize, pageid);
   char errno_buffer[FILE_PATH_LENGTH];
   char *current_ptr = (char *) op_pgptr;
 
-  if (lseek64 (vdes, offset, SEEK_SET) == -1)
+  if (lseek (vdes, offset, SEEK_SET) == -1)
     {
       snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
       REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
@@ -185,11 +186,11 @@ repl_io_write_copy_log_info (int vdes, void *op_pgptr, PAGEID pageid,
 {
   int remain_bytes = DB_SIZEOF (COPY_LOG);
   int nbytes;
-  off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  off_t offset = REPL_GET_FILE_SIZE (pagesize, pageid);
   char errno_buffer[FILE_PATH_LENGTH];
   char *current_ptr = (char *) op_pgptr;
 
-  if (lseek64 (vdes, offset, SEEK_SET) == -1)
+  if (lseek (vdes, offset, SEEK_SET) == -1)
     {
       snprintf (errno_buffer, FILE_PATH_LENGTH, "%d", errno);
       REPL_ERR_RETURN_ONE_ARG (REPL_FILE_COMM, REPL_COMMON_ERROR,
@@ -235,7 +236,7 @@ repl_io_open (const char *vlabel, int flags, int mode)
 
   do
     {
-      vdes = open64 (vlabel, flags, mode);
+      vdes = open (vlabel, flags, mode);
     }
   while (vdes == NULL_VOLDES && errno == EINTR);
 
@@ -255,13 +256,13 @@ int
 repl_io_truncate (int vdes, int pagesize, PAGEID pageid)
 {
   int retry = true;
-  off64_t length = ((off64_t) pagesize) * ((off64_t) pageid);
+  off_t length = REPL_GET_FILE_SIZE (pagesize, pageid);
 
   while (retry == true)
     {
       retry = false;
 
-      if (ftruncate64 (vdes, length))
+      if (ftruncate (vdes, length))
 	{
 	  if (errno == EINTR)
 	    retry = true;
@@ -305,7 +306,7 @@ repl_io_rename (char *active_copy_log, int *active_vol,
 
   /* create the active log */
   umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-  *active_vol = creat64 (active_copy_log, FILE_CREATE_MODE);
+  *active_vol = creat (active_copy_log, FILE_CREATE_MODE);
 
   /* TO DO : verify why we need to re-open after close */
   close (*active_vol);
@@ -322,12 +323,12 @@ repl_io_rename (char *active_copy_log, int *active_vol,
  *   return: file size
  *   vdes(in)
  */
-off64_t
+off_t
 repl_io_file_size (int vdes)
 {
-  off64_t seek_result;
+  off_t seek_result;
 
-  seek_result = lseek64 (vdes, 0, SEEK_END);
+  seek_result = lseek (vdes, 0, SEEK_END);
 
   return seek_result;
 }
@@ -420,7 +421,7 @@ repl_connect_to_master (bool serveryn, const char *server_name)
   CSS_CONN_ENTRY *conn;
   int error = NO_ERROR;
   char *packed_name;
-  int name_length;
+  int name_length = 0;
 
   packed_name = repl_pack_server_name (serveryn, server_name, &name_length);
   conn = css_connect_to_master_server (PRM_TCP_PORT_ID, packed_name,
@@ -483,37 +484,11 @@ out:
    * could be a shell. For now, leave in/out/err open
    */
 
-#if defined (HAVE_GETRLIMIT)
-  fd_max = 0;
-  if (getrlimit (RLIMIT_NOFILE, &rlp) == 0)
-    fd_max = MIN (1024, rlp.rlim_cur);
-#elif defined (OPEN_MAX)
-  fd_max = OPEN_MAX;
-#elif defined(HAVE_SYSCONF) && defined(_SC_OPEN_MAX)
-  fd_max = sysconf (_SC_OPEN_MAX);
-#else
-#error "There's no known way to get the maximum number of file descriptors!"
-#endif
+  fd_max = css_get_max_socket_fds();
   for (fd = 3; fd < fd_max; fd++)
-    close (fd);
-#endif
-
-  /*
-   * Change the current directory to the root directory. the current working
-   * directory inherited from the parent could be on a mounted filesystem,
-   * Since we normally never exit, if the daemon stays on a mounted filesystem,
-   * that filesystem cannot be unmounted.
-   *
-   * For now, we do not change to the root directory since we may not
-   * have permission to write in such directory and we may want to capture
-   * coredumps of the repl_agent process. If a file system needs to be unmounted,
-   * we need to terminate the repl_agent.
-   *
-   * Another alternative is to change to tmp.
-   */
-
-#if 0
-  chdir ("/");
+    {
+      close (fd);
+    }
 #endif
 
   /*
@@ -532,7 +507,7 @@ out:
  *   routine  : signal handler
  */
 void
-repl_signal_process (void (*routine) (int))
+repl_signal_process (SIGNAL_HANDLER_FUNCTION routine)
 {
 #if defined(WINDOWS)
   (void) os_set_signal_handler (SIGABRT, routine);

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -93,7 +93,7 @@ static const int PACKING_MMGR_CHUNK_SIZE = 1024;
 static const int PACKING_MMGR_BLOCK_SIZE = 10;
 
 static int packing_heap_num_slot = 0;
-static unsigned int *packing_heap = NULL;
+static HL_HEAPID *packing_heap = NULL;
 static int packing_level = 0;
 
 static void pt_free_packing_buf (int slot);
@@ -798,7 +798,7 @@ pt_is_attr (PT_NODE * node)
 int
 pt_instnum_compatibility (PT_NODE * expr)
 {
-  PT_NODE *arg1, *arg2, *arg3;
+  PT_NODE *arg1, *arg2, *arg3 = NULL;
 
   if (expr->node_type != PT_EXPR)
     {
@@ -2663,9 +2663,9 @@ QPROC_DB_VALUE_LIST
 regu_dbvlist_alloc (void)
 {
   QPROC_DB_VALUE_LIST ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (struct qproc_db_value_list);
+  size = (int) sizeof (struct qproc_db_value_list);
   ptr = (QPROC_DB_VALUE_LIST) pt_alloc_packing_buf (size);
 
   if (ptr == NULL)
@@ -2749,9 +2749,9 @@ REGU_VARIABLE_LIST
 regu_varlist_alloc (void)
 {
   REGU_VARIABLE_LIST ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (struct regu_variable_list_node);
+  size = (int) sizeof (struct regu_variable_list_node);
   ptr = (REGU_VARIABLE_LIST) pt_alloc_packing_buf (size);
 
   if (ptr == NULL)
@@ -2831,9 +2831,9 @@ REGU_VARLIST_LIST
 regu_varlist_list_alloc (void)
 {
   REGU_VARLIST_LIST ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (struct regu_variable_list_node);
+  size = (int) sizeof (struct regu_variable_list_node);
   ptr = (REGU_VARLIST_LIST) pt_alloc_packing_buf (size);
 
   if (ptr == NULL)
@@ -3694,9 +3694,9 @@ QFILE_SORTED_LIST_ID *
 regu_srlistid_alloc (void)
 {
   QFILE_SORTED_LIST_ID *ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (QFILE_SORTED_LIST_ID);
+  size = (int) sizeof (QFILE_SORTED_LIST_ID);
   ptr = (QFILE_SORTED_LIST_ID *) pt_alloc_packing_buf (size);
 
   if (ptr == NULL)
@@ -3919,9 +3919,9 @@ HEAP_CACHE_ATTRINFO *
 regu_cache_attrinfo_alloc (void)
 {
   HEAP_CACHE_ATTRINFO *ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (HEAP_CACHE_ATTRINFO);
+  size = (int) sizeof (HEAP_CACHE_ATTRINFO);
   ptr = (HEAP_CACHE_ATTRINFO *) pt_alloc_packing_buf (size);
   if (ptr == NULL)
     {
@@ -4213,12 +4213,12 @@ XASL_PARTITION_INFO **
 regu_partition_array_alloc (int nelements)
 {
   XASL_PARTITION_INFO **ptr;
-  size_t size;
+  int size;
 
   if (nelements == 0)
     return NULL;
 
-  size = sizeof (XASL_PARTITION_INFO *) * nelements;
+  size = (int) sizeof (XASL_PARTITION_INFO *) * nelements;
   ptr = (XASL_PARTITION_INFO **) pt_alloc_packing_buf (size);
 
   if (ptr == NULL)
@@ -4241,12 +4241,12 @@ XASL_PARTS_INFO **
 regu_parts_array_alloc (int nelements)
 {
   XASL_PARTS_INFO **ptr;
-  size_t size;
+  int size;
 
   if (nelements == 0)
     return NULL;
 
-  size = sizeof (XASL_PARTS_INFO *) * nelements;
+  size = (int) sizeof (XASL_PARTS_INFO *) * nelements;
   ptr = (XASL_PARTS_INFO **) pt_alloc_packing_buf (size);
   if (ptr == NULL)
     {
@@ -4267,9 +4267,9 @@ XASL_PARTITION_INFO *
 regu_partition_info_alloc (void)
 {
   XASL_PARTITION_INFO *ptr;
-  size_t size;
+  int size;
 
-  size = sizeof (XASL_PARTITION_INFO);
+  size = (int) sizeof (XASL_PARTITION_INFO);
   ptr = (XASL_PARTITION_INFO *) pt_alloc_packing_buf (size);
   if (ptr == NULL)
     {
@@ -4392,7 +4392,7 @@ char *
 pt_alloc_packing_buf (int size)
 {
   char *res;
-  unsigned int heap_id;
+  HL_HEAPID heap_id;
   int i;
 
   if (size <= 0)
@@ -4403,13 +4403,13 @@ pt_alloc_packing_buf (int size)
   if (packing_heap == NULL)
     {				/* first time */
       packing_heap_num_slot = PACKING_MMGR_BLOCK_SIZE;
-      packing_heap = (unsigned int *) calloc (packing_heap_num_slot,
-					      sizeof (unsigned int));
+      packing_heap = (HL_HEAPID *) calloc (packing_heap_num_slot,
+					   sizeof (HL_HEAPID));
       if (packing_heap == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  PACKING_MMGR_BLOCK_SIZE * sizeof (unsigned int));
+		  PACKING_MMGR_BLOCK_SIZE * sizeof (HL_HEAPID));
 	  return NULL;
 	}
     }
@@ -4417,14 +4417,14 @@ pt_alloc_packing_buf (int size)
     {
       packing_heap_num_slot += PACKING_MMGR_BLOCK_SIZE;
 
-      packing_heap = (unsigned int *) realloc (packing_heap,
-					       packing_heap_num_slot
-					       * sizeof (unsigned int));
+      packing_heap = (HL_HEAPID *) realloc (packing_heap,
+					    packing_heap_num_slot
+					    * sizeof (HL_HEAPID));
       if (packing_heap == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  PACKING_MMGR_BLOCK_SIZE * sizeof (unsigned int));
+		  PACKING_MMGR_BLOCK_SIZE * sizeof (HL_HEAPID));
 	  return NULL;
 	}
 
@@ -4435,12 +4435,13 @@ pt_alloc_packing_buf (int size)
     }
 
   heap_id = packing_heap[packing_level - 1];
-  if (heap_id <= 0)
+  if (heap_id == 0)
     {
       heap_id = db_create_ostk_heap (PACKING_MMGR_CHUNK_SIZE);
       packing_heap[packing_level - 1] = heap_id;
     }
-  if (heap_id <= 0)
+
+  if (heap_id == 0)
     {
       /* make sure an error is set, one way or another */
       er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,

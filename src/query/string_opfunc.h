@@ -54,12 +54,22 @@
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
 /*
+ * These are the sizes for scratch buffers for formatting numbers, dates,
+ * etc. inside db_value_get() and db_value_put().
+ */
+#define NUM_BUF_SIZE            64
+#define TIME_BUF_SIZE           64
+#define DATE_BUF_SIZE           64
+#define TIMESTAMP_BUF_SIZE      (TIME_BUF_SIZE + DATE_BUF_SIZE)
+#define DATETIME_BUF_SIZE       (TIMESTAMP_BUF_SIZE + 4)
+
+/*
  *  For the trim operation, db_string_trim(), this operand specifies
  *  that the trim character should be removed from the front, back
  *  or from both ends. In addition, this operand specifies an
  *  extract component (field) from the given datetime source.
  */
-#define NUM_MISC_OPERANDS      11
+#define NUM_MISC_OPERANDS      12
 
 typedef enum
 {
@@ -72,6 +82,7 @@ typedef enum
   HOUR,
   MINUTE,
   SECOND,
+  MILLISECOND,
 
   SUBSTRING,
   SUBSTR
@@ -166,7 +177,7 @@ extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size,
 extern int db_get_string_length (const DB_VALUE * value);
 extern void qstr_make_typed_string (DB_TYPE domain, DB_VALUE * value,
 				    int precision, const DB_C_CHAR src,
-				    int s_unit);
+				    const int s_unit);
 extern int db_add_months (const DB_VALUE * src_date,
 			  const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);
@@ -176,6 +187,7 @@ extern int db_months_between (const DB_VALUE * start_mon,
 extern int db_sys_date (DB_VALUE * result_date);
 extern int db_sys_time (DB_VALUE * result_time);
 extern int db_sys_timestamp (DB_VALUE * result_timestamp);
+extern int db_sys_datetime (DB_VALUE * result_datetime);
 extern int db_to_char (const DB_VALUE * src_value,
 		       const DB_VALUE * format_str,
 		       const DB_VALUE * lang_str, DB_VALUE * result_str);
@@ -189,6 +201,10 @@ extern int db_to_timestamp (const DB_VALUE * src_str,
 			    const DB_VALUE * format_str,
 			    const DB_VALUE * date_lang,
 			    DB_VALUE * result_timestamp);
+extern int db_to_datetime (const DB_VALUE * src_str,
+			   const DB_VALUE * format_str,
+			   const DB_VALUE * date_lang,
+			   DB_VALUE * result_datetime);
 extern int db_to_number (const DB_VALUE * src_str,
 			 const DB_VALUE * format_str, DB_VALUE * result_num);
 

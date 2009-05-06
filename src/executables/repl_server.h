@@ -159,7 +159,7 @@ extern int repl_svr_tp_start (void);
 extern bool repl_svr_check_shutdown (void);
 extern void repl_svr_shutdown_immediately (void);
 extern char *repl_svr_get_ip (int agent_fd);
-extern int repl_svr_sock_get_request ();
+extern int repl_svr_sock_get_request (void);
 extern int repl_svr_sock_send_result (int agent_fd, int result);
 extern int repl_svr_sock_send_logpage (int agent_fd, int result,
 				       bool in_archive, SIMPLE_BUF * buf);

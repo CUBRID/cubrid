@@ -114,7 +114,6 @@ stats_client_unpack_statistics (char *buf_p)
       return NULL;
     }
 
-
   class_stats_p->attr_stats =
     (ATTR_STATS *) db_ws_alloc (class_stats_p->n_attrs * sizeof (ATTR_STATS));
   if (!class_stats_p->attr_stats)
@@ -142,8 +141,15 @@ stats_client_unpack_statistics (char *buf_p)
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  attr_stats_p->min_value.bigint = OR_GET_BIGINT (buf_p);
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  attr_stats_p->max_value.bigint = OR_GET_BIGINT (buf_p);
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  break;
+
 	case DB_TYPE_SHORT:
-	  /* stored these as full integers because of allignment */
+	  /* stored these as full integers because of alignment */
 	  attr_stats_p->min_value.i = OR_GET_INT (buf_p);
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  attr_stats_p->max_value.i = OR_GET_INT (buf_p);
@@ -185,6 +191,13 @@ stats_client_unpack_statistics (char *buf_p)
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
+	case DB_TYPE_DATETIME:
+	  OR_GET_DATETIME (buf_p, &(attr_stats_p->min_value.datetime));
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  OR_GET_DATETIME (buf_p, &(attr_stats_p->max_value.datetime));
+	  buf_p += STATS_MIN_MAX_SIZE;
+	  break;
+
 	case DB_TYPE_MONETARY:
 	  OR_GET_MONETARY (buf_p, &(attr_stats_p->min_value.money));
 	  buf_p += STATS_MIN_MAX_SIZE;
@@ -218,8 +231,7 @@ stats_client_unpack_statistics (char *buf_p)
 	   j < attr_stats_p->n_btstats; j++, btree_stats_p++)
 	{
 	  OR_GET_BTID (buf_p, &btree_stats_p->btid);
-	  buf_p += OR_BTID_SIZE;
-	  buf_p += 2;		/* alignment */
+	  buf_p += OR_BTID_ALIGNED_SIZE;
 
 	  btree_stats_p->leafs = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
@@ -387,6 +399,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_INTEGER\n");
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  fprintf (file_p, "DB_TYPE_BIGINT\n");
+	  break;
+
 	case DB_TYPE_FLOAT:
 	  fprintf (file_p, "DB_TYPE_FLOAT\n");
 	  break;
@@ -421,6 +437,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
 	case DB_TYPE_UTIME:
 	  fprintf (file_p, "DB_TYPE_UTIME\n");
+	  break;
+
+	case DB_TYPE_DATETIME:
+	  fprintf (file_p, "DB_TYPE_DATETIME\n");
 	  break;
 
 	case DB_TYPE_MONETARY:

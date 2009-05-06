@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -60,9 +60,9 @@ struct trigger_exec_info
   DB_OBJECT *object2;
   const char *name1;
   const char *name2;
-  bool is_update_object;
   int path_expr_level;
   int trig_corr_path;		/* path expr rooted by trigger corr name */
+  bool is_update_object;
 };
 
 /* structure used for parser_walk_tree in pt_class_pre_fetch */
@@ -564,7 +564,7 @@ static PT_NODE *
 pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 		     void *arg, int *continue_walk)
 {
-  size_t len;
+  int len;
   PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
 
   /* Set up the lock type for the first class.  All others will be read
@@ -1057,11 +1057,11 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
 
   server_info.info_bits = 0;
 
-  /* set sys_date, sys_time, sys_timestamp values for trigger statement. */
-  if (trigger_stmt->si_timestamp)
+  /* set sys_date, sys_time, sys_timestamp, sys_datetime values for trigger statement. */
+  if (trigger_stmt->si_datetime)
     {
-      server_info.info_bits |= SI_SYS_TIMESTAMP;
-      server_info.value[0] = &parser->sys_timestamp;
+      server_info.info_bits |= SI_SYS_DATETIME;
+      server_info.value[0] = &parser->sys_datetime;
     }
 
   if (trigger_stmt->si_tran_id)

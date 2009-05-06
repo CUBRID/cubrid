@@ -34,11 +34,11 @@ extern const char *css_Service_name;
 
 extern int css_Server_use_new_connection_protocol;
 extern int css_Server_inhibit_connection_socket;
-extern int css_Server_connection_socket;
+extern SOCKET css_Server_connection_socket;
 
 #if !defined(WINDOWS)
 extern char css_Master_unix_domain_path[];
 #endif
-extern int css_Pipe_to_master;
+extern SOCKET css_Pipe_to_master;
 
 #endif /* _CONNECTION_GLOBALS_H_ */

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -49,6 +49,11 @@
 #include "boot_sr.h"
 #include "system_parameter.h"
 #include "perf_monitor.h"
+#if defined(WINDOWS)
+#include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
+#endif /* WINDOWS */
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException,
@@ -116,7 +121,6 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
   TCHAR DumpPath[MAX_PATH] = { 0, };
   SYSTEMTIME SystemTime;
   HANDLE FileHandle;
-  char *cubid_env;
 
   GetLocalTime (&SystemTime);
 
@@ -201,12 +205,14 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
     }
 
   if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
-    return;
+    {
+      return;
+    }
 
   if (!BO_ISSERVER_RESTARTED () || !PRM_AUTO_RESTART_SERVER)
-    return;
-
-  close_diag_mgr ();
+    {
+      return;
+    }
 
   pid = fork ();
   if (pid == 0)
@@ -215,29 +221,21 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       char err_log[PATH_MAX];
       int ppid;
       int fd, fd_max;
-#if defined(HAVE_GETRLIMIT)
-      struct rlimit rlp;
-#endif /* HAVE_GETRLIMIT */
 
-#if defined (HAVE_GETRLIMIT)
-      if (getrlimit (RLIMIT_NOFILE, &rlp) == 0)
-	fd_max = MIN (1024, rlp.rlim_cur);
-#elif defined(OPEN_MAX)
-      fd_max = OPEN_MAX;
-#elif defined(HAVE_SYSCONF) && defined(_SC_OPEN_MAX)
-      fd_max = sysconf (_SC_OPEN_MAX);
-#else
-#error "There's no known way to get the maximum number of file descriptors!"
-#endif
+      fd_max = css_get_max_socket_fds();
 
       for (fd = 3; fd < fd_max; fd++)
-	close (fd);
+        {
+          close (fd);
+        }
 
       ppid = getppid ();
       while (1)
 	{
 	  if (kill (ppid, 0) < 0)
-	    break;
+	    {
+	      break;
+	    }
 	  sleep (1);
 	}
 
@@ -261,7 +259,6 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
  *   returns: 0 for SUCCESS, non-zero for ERROR
  *
  */
-
 int
 main (int argc, char **argv)
 {

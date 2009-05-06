@@ -269,7 +269,7 @@ namespace DLBigHeapNS
     return c;
   }
   
-  inline int getSizeClass (const size_t sz);
+  inline size_t getSizeClass (const size_t sz);
   
   inline size_t getClassSize (const int i) {
     assert (i >= 0);
@@ -301,7 +301,7 @@ namespace DLBigHeapNS
 #endif
   }
 
-  inline int getSizeClass (const size_t sz) {
+  inline size_t getSizeClass (const size_t sz) {
     size_t sz1 = sz - 1;
     if (sz1 <= 513) {
       return sz1 >> 3;
@@ -350,7 +350,7 @@ namespace DLBigHeapNS
 
 namespace DLSmallHeapNS {
   enum { NUMBINS = 8 };
-  inline int getSizeClass (const size_t sz) {
+  inline size_t getSizeClass (const size_t sz) {
     return (int) ((sz-1) >> 3);
   }
   inline size_t getClassSize (const int i) {

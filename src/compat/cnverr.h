@@ -64,11 +64,15 @@
 #define CNV_ERR_BAD_HOUR          CO_CODE( CO_MODULE_CNV, 32)
 #define CNV_ERR_BAD_MIN           CO_CODE( CO_MODULE_CNV, 33)
 #define CNV_ERR_BAD_SEC           CO_CODE( CO_MODULE_CNV, 34)
-#define CNV_ERR_BAD_AM_PM         CO_CODE( CO_MODULE_CNV, 35)
-#define CNV_ERR_BAD_TIMESTAMP         CO_CODE( CO_MODULE_CNV, 36)
-#define CNV_ERR_TIMESTAMP_UNDERFLOW   CO_CODE( CO_MODULE_CNV, 37)
-#define CNV_ERR_TIMESTAMP_OVERFLOW    CO_CODE( CO_MODULE_CNV, 38)
-#define CNV_ERR_BAD_FORMAT        CO_CODE( CO_MODULE_CNV, 39)
+#define CNV_ERR_BAD_MSEC          CO_CODE( CO_MODULE_CNV, 35)
+#define CNV_ERR_BAD_AM_PM         CO_CODE( CO_MODULE_CNV, 36)
+#define CNV_ERR_BAD_TIMESTAMP         CO_CODE( CO_MODULE_CNV, 37)
+#define CNV_ERR_TIMESTAMP_UNDERFLOW   CO_CODE( CO_MODULE_CNV, 38)
+#define CNV_ERR_TIMESTAMP_OVERFLOW    CO_CODE( CO_MODULE_CNV, 39)
+#define CNV_ERR_BAD_DATETIME          CO_CODE( CO_MODULE_CNV, 40)
+#define CNV_ERR_DATETIME_UNDERFLOW    CO_CODE( CO_MODULE_CNV, 41)
+#define CNV_ERR_DATETIME_OVERFLOW     CO_CODE( CO_MODULE_CNV, 42)
+#define CNV_ERR_BAD_FORMAT        CO_CODE( CO_MODULE_CNV, 43)
 
 /* conversion error message format */
 #define CNV_ER_FMT_STRING_TOO_LONG \
@@ -139,6 +143,8 @@
   "Format error -- missing or invalid minute (%%%s)."
 #define CNV_ER_FMT_BAD_SEC \
   "Format error -- missing or invalid second (%%%s)."
+#define CNV_ER_FMT_BAD_MSEC \
+  "Format error -- missing or invalid millisecond (%%%s)."
 #define CNV_ER_FMT_BAD_AM_PM \
   "Format error -- missing or invalid AM/PM (%%%s)."
 #define CNV_ER_FMT_BAD_TIMESTAMP \
@@ -147,6 +153,13 @@
   "Invalid timestamp -- less than %s."
 #define CNV_ER_FMT_TIMESTAMP_OVERFLOW \
   "Invalid timestamp -- greater than %s."
+#define CNV_ER_FMT_BAD_DATETIME \
+  "Format error -- missing or invalid datetime (%%%s)."
+#define CNV_ER_FMT_DATETIME_UNDERFLOW \
+  "Invalid datetime -- less than %s."
+#define CNV_ER_FMT_DATETIME_OVERFLOW \
+  "Invalid datetime -- greater than %s."
+
 #define CNV_ER_FMT_BAD_FORMAT \
   "`%s' is not a valid %s format."
 

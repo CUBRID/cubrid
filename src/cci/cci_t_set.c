@@ -1,36 +1,36 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
 
 /*
- * cci_t_set.c - 
+ * cci_t_set.c -
  */
 
 #ident "$Id$"
@@ -38,12 +38,13 @@
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock.h>
 #else
 #include <arpa/inet.h>
@@ -151,6 +152,10 @@ t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value,
     case CCI_A_TYPE_INT:
       err_code = qe_get_data_int ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
+    case CCI_A_TYPE_BIGINT:
+      err_code =
+	qe_get_data_bigint ((T_CCI_U_TYPE) u_type, ele_value_p, value);
+      break;
     case CCI_A_TYPE_FLOAT:
       err_code =
 	qe_get_data_float ((T_CCI_U_TYPE) u_type, ele_value_p, value);
@@ -240,6 +245,13 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	    ADD_ARG_BYTES (&net_buf, ele_value.buf, ele_value.size);
 	  }
 	  break;
+	case CCI_U_TYPE_BIGINT:
+	  {
+	    INT64 ele_value;
+	    ele_value = ((INT64 *) value)[i];
+	    ADD_ARG_BIGINT (&net_buf, ele_value);
+	  }
+	  break;
 	case CCI_U_TYPE_INT:
 	case CCI_U_TYPE_SHORT:
 	  {
@@ -266,10 +278,11 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	case CCI_U_TYPE_DATE:
 	case CCI_U_TYPE_TIME:
 	case CCI_U_TYPE_TIMESTAMP:
+	case CCI_U_TYPE_DATETIME:
 	  {
 	    T_CCI_DATE ele_value;
 	    ele_value = ((T_CCI_DATE *) value)[i];
-	    ADD_ARG_TIMESTAMP (&net_buf, &ele_value);
+	    ADD_ARG_DATETIME (&net_buf, &ele_value);
 	  }
 	  break;
 	case CCI_U_TYPE_OBJECT:
@@ -405,7 +418,7 @@ t_set_to_str (T_SET * set, T_VALUE_BUF * conv_val)
 
       if (indicator < 0 || buf == NULL)
 	{
-	  buf = "NULL";
+	  buf = (char *) "NULL";
 	}
 
       net_buf_cp_str (&net_buf, buf, strlen (buf));

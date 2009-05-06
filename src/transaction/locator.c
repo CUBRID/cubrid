@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "porting.h"
 #include "memory_alloc.h"
 #include "oid.h"
 #include "locator.h"
@@ -283,8 +284,11 @@ locator_free_areas (void)
 static char *
 locator_allocate_packed (int packed_size)
 {
-  int i, rv;
+  int i;
   char *packed_area = NULL;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, locator_Keep.packed_areas.lock);
 
@@ -355,7 +359,9 @@ locator_reallocate_packed (char *packed, int packed_size)
 static void
 locator_free_packed (char *packed_area, int packed_size)
 {
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, locator_Keep.packed_areas.lock);
 
@@ -370,8 +376,11 @@ locator_free_packed (char *packed_area, int packed_size)
        * Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
-      MEM_REGION_SCRAMBLE (locator_Keep.packed_areas.areas[locator_Keep.packed_areas.number]->mem,
-                           locator_Keep.packed_areas.areas[locator_Keep.packed_areas.number]->length);
+      MEM_REGION_SCRAMBLE (locator_Keep.packed_areas.
+			   areas[locator_Keep.packed_areas.number]->mem,
+			   locator_Keep.packed_areas.areas[locator_Keep.
+							   packed_areas.
+							   number]->length);
       ++locator_Keep.packed_areas.number;
     }
   else
@@ -412,7 +421,10 @@ locator_allocate_copy_area_by_length (int min_length)
 {
   LC_COPYAREA *copyarea = NULL;
   int network_pagesize;
-  int i, rv;
+  int i;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 
   /*
    * Make the min_length to be multiple of NETWORK_PAGESIZE since the
@@ -421,7 +433,7 @@ locator_allocate_copy_area_by_length (int min_length)
    */
   network_pagesize = db_network_page_size ();
 
-  DB_ALIGN (min_length, network_pagesize);
+  min_length = DB_ALIGN (min_length, network_pagesize);
 
   /*
    * Do we have an area of given or larger length cached ?
@@ -476,7 +488,9 @@ locator_allocate_copy_area_by_length (int min_length)
 void
 locator_free_copy_area (LC_COPYAREA * copyarea)
 {
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, locator_Keep.copy_areas.lock);
 
@@ -608,8 +622,8 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr,
   *contents_length = 0;
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
-  *desc_length = mobjs->num_objs * LC_AREA_ONEOBJ_PACKED_SIZE;
-  DB_ALIGN (*desc_length, MAX_ALIGNMENT);
+  *desc_length = DB_ALIGN (mobjs->num_objs * LC_AREA_ONEOBJ_PACKED_SIZE,
+			   MAX_ALIGNMENT);
   *desc_ptr = (char *) malloc (*desc_length);
 
   if (!*desc_ptr)
@@ -637,14 +651,14 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr,
 
       if (offset != -1)
 	{
-	  DB_ALIGN (*contents_length, INT_ALIGNMENT);
+	  *contents_length = DB_ALIGN (*contents_length, MAX_ALIGNMENT);
 	  *contents_length += offset;
 	}
     }
 
   end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea,
 					   *desc_ptr);
-  *desc_length = end - *desc_ptr;
+  *desc_length = CAST_BUFLEN (end - *desc_ptr);
 
   return mobjs->num_objs;
 }
@@ -891,7 +905,10 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock,
 {
   LC_LOCKSET *lockset = NULL;	/* Area for requested objects    */
   int length;
-  int i, rv;
+  int i;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
 
   length = (sizeof (*lockset)
 	    + (max_reqobjs * (sizeof (*(lockset->classes))
@@ -966,7 +983,7 @@ locator_initialize_lockset (LC_LOCKSET * lockset, int length, int max_reqobjs,
 			    LOCK reqobj_inst_lock, LOCK reqobj_class_lock,
 			    int quit_on_errors)
 {
-  if (lockset == NULL || length < sizeof (*lockset))
+  if (lockset == NULL || length < SSIZEOF (*lockset))
     {
       return ER_FAILED;
     }
@@ -1084,7 +1101,9 @@ locator_reallocate_lockset (LC_LOCKSET * lockset, int max_reqobjs)
 void
 locator_free_lockset (LC_LOCKSET * lockset)
 {
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if (lockset->packed)
     {
@@ -1453,7 +1472,7 @@ locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes,
       packed = locator_pack_lockset_objects (packed, lockset);
     }
 
-  return packed - lockset->packed;
+  return CAST_BUFLEN (packed - lockset->packed);
 }
 
 /*
@@ -1578,7 +1597,7 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes,
       unpacked = locator_unpack_lockset_objects (unpacked, lockset);
     }
 
-  return unpacked - lockset->packed;
+  return CAST_BUFLEN (unpacked - lockset->packed);
 }
 
 /*
@@ -1599,7 +1618,9 @@ locator_allocate_lockhint (int max_classes, int quit_on_errors)
   int length;
   LC_LOCKHINT *lockhint = NULL;
   int i;
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   length = sizeof (*lockhint) + (max_classes * sizeof (*(lockhint->classes)));
 
@@ -1666,7 +1687,7 @@ static int
 locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length,
 			     int max_classes, int quit_on_errors)
 {
-  if (lockhint == NULL || length < sizeof (*lockhint))
+  if (lockhint == NULL || length < SSIZEOF (*lockhint))
     {
       return ER_FAILED;
     }
@@ -1736,7 +1757,9 @@ locator_reallocate_lockhint (LC_LOCKHINT * lockhint, int max_classes)
 void
 locator_free_lockhint (LC_LOCKHINT * lockhint)
 {
+#if defined (SERVER_MODE)
   int rv;
+#endif /* SERVER_MODE */
 
   if (lockhint->packed)
     {
@@ -1996,7 +2019,7 @@ locator_pack_lockhint (LC_LOCKHINT * lockhint, bool pack_classes)
       packed = locator_pack_lockhint_classes (packed, lockhint);
     }
 
-  return packed - lockhint->packed;
+  return CAST_BUFLEN (packed - lockhint->packed);
 }
 
 /*
@@ -2072,7 +2095,7 @@ locator_unpack_lockhint (LC_LOCKHINT * lockhint, bool unpack_classes)
       unpacked = locator_unpack_lockhint_classes (unpacked, lockhint);
     }
 
-  return unpacked - lockhint->packed;
+  return CAST_BUFLEN (unpacked - lockhint->packed);
 }
 
 /*
@@ -2269,12 +2292,14 @@ locator_add_oid_set (THREAD_ENTRY * thread_p, LC_OIDSET * set, HFID * heap,
     {
       /* haven't seen this class yet, add a new entry */
       class_oidset_p =
-	(LC_CLASS_OIDSET *) db_private_alloc (thread_p, sizeof (LC_CLASS_OIDSET));
+	(LC_CLASS_OIDSET *) db_private_alloc (thread_p,
+					      sizeof (LC_CLASS_OIDSET));
       if (class_oidset_p == NULL)
 	{
 	  return NULL;
 	}
-      oidmap_p = (LC_OIDMAP *) db_private_alloc (thread_p, sizeof (LC_OIDMAP));
+      oidmap_p =
+	(LC_OIDMAP *) db_private_alloc (thread_p, sizeof (LC_OIDMAP));
       if (oidmap_p == NULL)
 	{
 	  db_private_free_and_init (thread_p, class_oidset_p);

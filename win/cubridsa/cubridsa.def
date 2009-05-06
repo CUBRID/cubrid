@@ -3,7 +3,6 @@ EXPORTS
 ;
 ; variables
 ;
-    PRM_TCP_PORT_ID
 ;
 ; functions
 ;
@@ -41,6 +40,8 @@ EXPORTS
     db_trigger_name
     db_trigger_priority
     db_trigger_status
+    ntohi64
+    prm_get_master_port_id
     rel_build_number
     rel_name
     sysprm_load_and_init
@@ -175,6 +176,8 @@ EXPORTS
     db_date_encode
     db_date_to_string
     db_date_weekday
+    db_datetime_decode
+    db_datetime_encode
     db_decode_object
     db_dfind_multi_unique
     db_dfind_unique
@@ -264,6 +267,7 @@ EXPORTS
     db_get_attribute_type
     db_get_attributes
     db_get_base_classes
+    db_get_bigint
     db_get_bit
     db_get_btree_statistics
     db_get_char
@@ -283,6 +287,7 @@ EXPORTS
     db_get_client_type
     db_get_database_name
     db_get_date
+    db_get_datetime
     db_get_db_value_query_result
     db_get_double
     db_get_elo
@@ -375,10 +380,12 @@ EXPORTS
     db_localtime
     db_lock_read
     db_lock_write
+    db_make_bigint
     db_make_bit
     db_make_char
     db_make_collection
     db_make_date
+    db_make_datetime
     db_make_double
     db_make_elo
     db_make_error

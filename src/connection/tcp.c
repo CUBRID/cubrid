@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -97,10 +98,10 @@ static MUTEX_T gethostbyname_lock = MUTEX_INITIALIZER;
 }
 #endif /* !WINDOWS */
 
-static void css_sockopt (int sd);
+static void css_sockopt (SOCKET sd);
 static int css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 			 socklen_t * slen);
-static int css_fd_error (int fd);
+static int css_fd_error (SOCKET fd);
 
 /*
  * css_tcp_client_open () -
@@ -108,13 +109,13 @@ static int css_fd_error (int fd);
  *   host(in):
  *   port(in):
  */
-int
+SOCKET
 css_tcp_client_open (const char *host, int port)
 {
-  int fd;
-  fd = css_tcp_client_open_with_retry (host, port, true);
+  SOCKET fd;
 
-  if (fd < 0)
+  fd = css_tcp_client_open_with_retry (host, port, true);
+  if (IS_INVALID_SOCKET (fd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
@@ -123,7 +124,7 @@ css_tcp_client_open (const char *host, int port)
 }
 
 static void
-css_sockopt (int sd)
+css_sockopt (SOCKET sd)
 {
   if (PRM_TCP_RCVBUF_SIZE > 0)
     {
@@ -190,7 +191,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return ER_FAILED;
+	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
 	      hent.h_length);
@@ -203,7 +204,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return ER_FAILED;
+	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
 	      hent.h_length);
@@ -215,7 +216,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return ER_FAILED;
+	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
 	      hent.h_length);
@@ -233,7 +234,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	  MUTEX_UNLOCK (gethostbyname_lock);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return ER_FAILED;
+	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr,
 	      hp->h_length);
@@ -276,10 +277,10 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
  *   port(in):
  *   willretry(in):
  */
-int
+SOCKET
 css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 {
-  int sd = -1;
+  SOCKET sd = INVALID_SOCKET;
   struct sockaddr *saddr;
   socklen_t slen;
   time_t start_contime;
@@ -296,17 +297,17 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 
   saddr = (struct sockaddr *) &saddr_buf;
   if (css_sockaddr (host, port, saddr, &slen) != NO_ERROR)
-    return -1;
+    return INVALID_SOCKET;
 
   start_contime = time (NULL);
   do
     {
       sd = socket (saddr->sa_family, SOCK_STREAM, 0);
-      if (sd < 0)
+      if (IS_INVALID_SOCKET (sd))
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
-	  return -1;
+	  return INVALID_SOCKET;
 	}
       else
 	{
@@ -389,7 +390,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
        * See connect and listen MAN pages.
        */
       close (sd);
-      sd = -1;
+      sd = INVALID_SOCKET;
     }
   while (success < 0 && will_retry == true);
 
@@ -400,7 +401,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 		    "connection failed with retries %d errno %d\n",
 		    num_retries, errno);
 #endif /* CUBRID_DEBUG */
-      return -1;
+      return INVALID_SOCKET;
     }
 
   return sd;
@@ -414,10 +415,10 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
  *   port(in): port no
  *   timeout(in): timeout in mili-seconds
  */
-int
+SOCKET
 css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
 {
-  int sd = -1;
+  SOCKET sd = -1;
   struct sockaddr *saddr;
   socklen_t slen;
   int n;
@@ -435,14 +436,14 @@ css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
 
   saddr = (struct sockaddr *) &saddr_buf;
   if (css_sockaddr (host, port, saddr, &slen) != NO_ERROR)
-    return -1;
+    return INVALID_SOCKET;
 
   sd = socket (saddr->sa_family, SOCK_STREAM, 0);
   if (sd < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
-      return -1;
+      return INVALID_SOCKET;
     }
   else
     {
@@ -468,7 +469,7 @@ again_eintr:
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
 		    "connection failed with errno %d", errno);
 #endif /* CUBRID_DEBUG */
-      return -1;
+      return INVALID_SOCKET;
     }
 
 
@@ -488,7 +489,7 @@ again_eintr:
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
 		    "connection failed with timeout %d", timeout);
 #endif /* CUBRID_DEBUG */
-      return -1;
+      return INVALID_SOCKET;
     }
   /* has connection been established? */
   if (n > 0)
@@ -510,7 +511,7 @@ again_eintr:
       er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
 		    "connection failed errno %d", errno);
 #endif /* CUBRID_DEBUG */
-      return -1;
+      return INVALID_SOCKET;
     }
 
   return sd;
@@ -524,7 +525,7 @@ again_eintr:
  *   sockfd(in):
  */
 int
-css_tcp_master_open (int port, int *sockfd)
+css_tcp_master_open (int port, SOCKET * sockfd)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
   struct sockaddr_un unix_srv_addr;
@@ -568,7 +569,7 @@ retry:
    */
 
   sockfd[0] = socket (AF_INET, SOCK_STREAM, 0);
-  if (sockfd[0] < 0)
+  if (IS_INVALID_SOCKET (sockfd[0]))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
@@ -656,7 +657,7 @@ retry:
 retry2:
 
   sockfd[1] = socket (AF_UNIX, SOCK_STREAM, 0);
-  if (sockfd[1] < 0)
+  if (IS_INVALID_SOCKET (sockfd[1]))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
@@ -714,11 +715,11 @@ retry2:
  *   return:
  *   sockfd(in):
  */
-int
-css_master_accept (int sockfd)
+SOCKET
+css_master_accept (SOCKET sockfd)
 {
   struct sockaddr sa;
-  static int new_sockfd;
+  static SOCKET new_sockfd;
   socklen_t clilen;
   int boolean = 1;
 
@@ -727,7 +728,7 @@ css_master_accept (int sockfd)
       clilen = sizeof (sa);
       new_sockfd = accept (sockfd, &sa, &clilen);
 
-      if (new_sockfd < 0)
+      if (IS_INVALID_SOCKET (new_sockfd))
 	{
 	  if (errno == EINTR)
 	    {
@@ -737,7 +738,7 @@ css_master_accept (int sockfd)
 
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_ACCEPT_ERROR, 0);
-	  return -1;
+	  return INVALID_SOCKET;
 	}
 
       break;
@@ -763,13 +764,13 @@ css_master_accept (int sockfd)
  *       the new socket fd
  */
 bool
-css_tcp_setup_server_datagram (char *pathname, int *sockfd)
+css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
 {
   int servlen;
   struct sockaddr_un serv_addr;
 
   *sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
-  if (*sockfd < 0)
+  if (IS_INVALID_SOCKET (*sockfd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
@@ -814,7 +815,7 @@ css_tcp_setup_server_datagram (char *pathname, int *sockfd)
  *   newfd(in):
  */
 bool
-css_tcp_listen_server_datagram (int sockfd, int *newfd)
+css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd)
 {
   socklen_t clilen;
   struct sockaddr_un cli_addr;
@@ -825,7 +826,7 @@ css_tcp_listen_server_datagram (int sockfd, int *newfd)
   while (true)
     {
       *newfd = accept (sockfd, (struct sockaddr *) &cli_addr, &clilen);
-      if (*newfd < 0)
+      if (IS_INVALID_SOCKET (*newfd) < 0)
 	{
 	  if (errno == EINTR)
 	    {
@@ -853,7 +854,7 @@ css_tcp_listen_server_datagram (int sockfd, int *newfd)
  *   sockfd(in):
  */
 bool
-css_tcp_master_datagram (char *path_name, int *sockfd)
+css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 {
   int servlen;
   struct sockaddr_un serv_addr;
@@ -875,7 +876,7 @@ css_tcp_master_datagram (char *path_name, int *sockfd)
        * To avoid a possible infinite loop, we only retry few times
        */
       *sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
-      if (*sockfd < 0)
+      if (IS_INVALID_SOCKET (*sockfd))
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
@@ -910,7 +911,7 @@ css_tcp_master_datagram (char *path_name, int *sockfd)
 	    }
 
 	  close (*sockfd);
-	  *sockfd = -1;
+	  *sockfd = INVALID_SOCKET;
 	  (void) sleep (1);
 	  continue;
 	}
@@ -949,11 +950,12 @@ css_tcp_master_datagram (char *path_name, int *sockfd)
  *   fd(in):
  *   rid(in):
  */
-int
-css_open_new_socket_from_master (int fd, unsigned short *rid)
+SOCKET
+css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 {
   unsigned short req_id;
-  int new_fd = 0, rc;
+  SOCKET new_fd = INVALID_SOCKET;
+  int rc;
   struct iovec iov[1];
   struct msghdr msg;
   int pid;
@@ -974,7 +976,7 @@ css_open_new_socket_from_master (int fd, unsigned short *rid)
   if (cmptr == NULL
       && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
     {
-      return -1;
+      return INVALID_SOCKET;
     }
   msg.msg_control = (void *) cmptr;
   msg.msg_controllen = CONTROLLEN;
@@ -986,14 +988,14 @@ css_open_new_socket_from_master (int fd, unsigned short *rid)
       TPRINTF ("recvmsg failed for fd = %d\n", rc);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_RECVMSG, 0);
-      return -1;
+      return INVALID_SOCKET;
     }
 
   *rid = ntohs (req_id);
 
   pid = getpid ();
 #if defined(LINUX)
-  new_fd = *(int *) CMSG_DATA (cmptr);
+  new_fd = *(SOCKET *) CMSG_DATA (cmptr);
 #endif /* LINUX */
 
 #ifdef SYSV
@@ -1014,7 +1016,7 @@ css_open_new_socket_from_master (int fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (int server_fd, int client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
 {
   int request;
   unsigned short req_id;
@@ -1055,7 +1057,7 @@ css_transfer_fd (int server_fd, int client_fd, unsigned short rid)
   cmptr->cmsg_len = CONTROLLEN;
   msg.msg_control = (void *) cmptr;
   msg.msg_controllen = CONTROLLEN;
-  *(int *) CMSG_DATA (cmptr) = client_fd;
+  *(SOCKET *) CMSG_DATA (cmptr) = client_fd;
 #endif /* LINUX */
 
   if (sendmsg (server_fd, &msg, 0) < 0)
@@ -1076,7 +1078,7 @@ css_transfer_fd (int server_fd, int client_fd, unsigned short rid)
  *   data(in):
  */
 bool
-css_broadcast_to_client (int client_fd, char data)
+css_broadcast_to_client (SOCKET client_fd, char data)
 {
   int rc;
 
@@ -1099,7 +1101,7 @@ css_broadcast_to_client (int client_fd, char data)
  *   byte(out):
  */
 int
-css_read_broadcast_information (int fd, char *byte)
+css_read_broadcast_information (SOCKET fd, char *byte)
 {
   return (recv (fd, byte, 1, MSG_OOB));
 }
@@ -1110,11 +1112,11 @@ css_read_broadcast_information (int fd, char *byte)
  *   fd(in):
  */
 void
-css_shutdown_socket (int fd)
+css_shutdown_socket (SOCKET fd)
 {
   int rc;
 
-  if (fd > 0)
+  if (!IS_INVALID_SOCKET (fd))
     {
     again_eintr:
       rc = close (fd);
@@ -1187,10 +1189,10 @@ css_close_server_connection_socket (void)
  *       Eventually should try to support these on non-NT platforms.
  *       See also wintcp.c
  */
-int
-css_server_accept (int sockfd)
+SOCKET
+css_server_accept (SOCKET sockfd)
 {
-  return -1;
+  return INVALID_SOCKET;
 }
 
 /*
@@ -1199,7 +1201,7 @@ css_server_accept (int sockfd)
  *   fd(in):
  */
 static int
-css_fd_error (int fd)
+css_fd_error (SOCKET fd)
 {
   int rc = 0, count = 0;
 
@@ -1227,7 +1229,7 @@ again_:
  *   fd(in):
  */
 int
-css_fd_down (int fd)
+css_fd_down (SOCKET fd)
 {
   int error_code;
   socklen_t error_size = sizeof (socklen_t);
@@ -1243,6 +1245,12 @@ css_fd_down (int fd)
     }
 
   return rc;
+}
+
+int
+css_get_max_socket_fds(void)
+{
+  return (int) sysconf (_SC_OPEN_MAX);
 }
 
 #if !defined (WINDOWS)
@@ -1299,7 +1307,7 @@ in_cksum (u_short * addr, int len)
  *  timeout(in): timeout in mili seconds
  */
 int
-css_ping (int sd, struct sockaddr_in *sa_send, int timeout)
+css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
 {
   char sendbuf[1500], recvbuf[1500];
   struct icmp *icmp;
@@ -1399,9 +1407,11 @@ css_ping (int sd, struct sockaddr_in *sa_send, int timeout)
  *    timeout(in): timeout in mili seconds
  */
 bool
-css_peer_alive (int sd, int timeout)
+css_peer_alive (SOCKET sd, int timeout)
 {
-  int nsd, n, size;
+  SOCKET nsd;
+  int n;
+  socklen_t size;
   struct sockaddr_in saddr;
   socklen_t slen;
   struct timeval tv;

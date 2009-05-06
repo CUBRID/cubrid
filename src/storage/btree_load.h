@@ -42,7 +42,7 @@
 /* The revision level of the the Btree should be incremented whenever there
  * is a disk representation change for the Btree structure.
  */
-#define BTREE_CURRENT_REV_LEVEL 1
+#define BTREE_CURRENT_REV_LEVEL 2
 
 #define NON_LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Non_Leaf Node Record Size */
 #define LEAF_RECORD_SIZE (2 * OR_INT_SIZE)	/* Leaf Node Record Size */
@@ -63,7 +63,7 @@
    considerations of a delete operation */
 #define FIXED_EMPTY   ( DB_PAGESIZE * 0.33 )
 
-#define MAX_ALIGN 7		/* Maximum Alignment            */
+#define MAX_ALIGN 8		/* Maximum Alignment            */
 					     /* Maximum Leaf Node Entry Size */
 #define LEAFENTSZ(n)  ( LEAF_RECORD_SIZE + MAX_ALIGN + OR_OID_SIZE + MAX_ALIGN + n )
 					     /* Maximum Non_Leaf Entry Size  */
@@ -325,17 +325,6 @@ struct btree_node
   BTREE_NODE *next;		/* Pointer to next node */
   VPID pageid;			/* Identifier of the page */
 };
-
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
-				TP_DOMAIN * key_type, OID * class_oids,
-				int n_classes, int n_attrs, int *attr_ids,
-				HFID * hfids, int unique_flag,
-				int reverse_flag, OID * fk_refcls_oid,
-				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fk_name);
-#endif /* SERVER_MODE */
 
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid,
 				    HFID * hfid, OID * oid, DB_VALUE * keyval,

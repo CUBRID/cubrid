@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -19,7 +19,7 @@
 
 
 /*
- * statistics_sr.h -  
+ * statistics_sr.h -
  */
 
 #ifndef _STATISTICS_SR_H_
@@ -30,14 +30,6 @@
 #include "dbtype.h"
 #include "statistics.h"
 #include "system_catalog.h"
-
-extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p,
-						OID * class_id,
-						unsigned int timestamp,
-						int *length);
-extern int xstats_update_class_statistics (THREAD_ENTRY * thread_p,
-					   OID * class_id);
-extern int xstats_update_statistics (THREAD_ENTRY * thread_p);
 
 #if defined(CUBRID_DEBUG)
 extern void stats_dump_class_statistics (CLASS_STATS * class_stats,

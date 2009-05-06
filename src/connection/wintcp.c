@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -57,8 +57,9 @@ static const int CSS_MAXIMUM_SERVER_COUNT = 5;
 /* containing the last WSA error */
 static int css_Wsa_error = CSS_ER_WINSOCK_NOERROR;
 static FARPROC old_hook = NULL;
+static int max_socket_fds = _SYS_OPEN;
 
-static unsigned int css_fd_error (int fd);
+static unsigned int css_fd_error (SOCKET fd);
 
 /*
  * css_get_wsa_error() - return the last WSA error
@@ -106,6 +107,8 @@ css_windows_startup (void)
       return -1;
     }
 
+  max_socket_fds = wsaData.iMaxSockets;
+
 #if 0
   /*
    * Establish a blocking "hook" function to prevent Windows messages
@@ -150,13 +153,13 @@ css_windows_shutdown (void)
  *   hostname(in):
  *   port(in):
  */
-int
+SOCKET
 css_tcp_client_open (const char *host_name, int port)
 {
-  int fd;
+  SOCKET fd;
 
   fd = css_tcp_client_open_with_retry (host_name, port, true);
-  if (fd < 0)
+  if (IS_INVALID_SOCKET(fd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
@@ -171,11 +174,12 @@ css_tcp_client_open (const char *host_name, int port)
  *   port(in):
  *   willretry(in):
  */
-int
+SOCKET
 css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry)
 {
   int bool_value;
-  int s, err;
+  SOCKET s;
+  int err;
   struct hostent *dest_host;
   unsigned int remote_ip;
   struct sockaddr_in addr;
@@ -193,7 +197,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME,
 		  1, WSAGetLastError ());
-	  return -1;
+	  return INVALID_SOCKET;
 	}
       remote_ip = *((unsigned int *) (dest_host->h_addr));
     }
@@ -211,11 +215,11 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
   while (!success && numtries < CSS_TCP_MAX_CONNECT_TRIES)
     {
       s = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-      if (s == INVALID_SOCKET)
+      if (IS_INVALID_SOCKET (s))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
-	  return -1;
+	  return INVALID_SOCKET;
 	}
 
       addr.sin_family = AF_INET;
@@ -242,7 +246,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
 	  if (err != WSAECONNREFUSED && err != WSAETIMEDOUT)
 	    {
 	      /* this isn't an error we handle */
-	      return -1;
+	      return INVALID_SOCKET;
 	    }
 	  else
 	    {
@@ -260,7 +264,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
 
   if (!success)
     {
-      return -1;
+      return INVALID_SOCKET;
     }
 
   /* ask for the "keep alive" option, ignore errors */
@@ -282,9 +286,9 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
  *   fd(in):
  */
 void
-css_shutdown_socket (int fd)
+css_shutdown_socket (SOCKET fd)
 {
-  if (fd >= 0)
+  if (!IS_INVALID_SOCKET (fd))
     {
       closesocket (fd);
     }
@@ -296,12 +300,12 @@ css_shutdown_socket (int fd)
  *   fd(in):
  */
 static unsigned int
-css_fd_error (int fd)
+css_fd_error (SOCKET fd)
 {
   unsigned long count;
   long rc;
 
-  rc = ioctlsocket ((SOCKET) fd, FIONREAD, &count);
+  rc = ioctlsocket (fd, FIONREAD, &count);
   if (rc == SOCKET_ERROR)
     {
       count = -1;
@@ -316,12 +320,12 @@ css_fd_error (int fd)
  *   fd(in):
  */
 int
-css_fd_down (int fd)
+css_fd_down (SOCKET fd)
 {
   int error_code = 0;
   int error_size = sizeof (int);
 
-  if (getsockopt ((SOCKET) fd, SOL_SOCKET, SO_ERROR,
+  if (getsockopt (fd, SOL_SOCKET, SO_ERROR,
 		  (char *) &error_code, &error_size) == SOCKET_ERROR
       || error_code != 0 || css_fd_error (fd) <= 0)
     {
@@ -383,7 +387,6 @@ css_gethostid (void)
   char hostname[MAXHOSTNAMELEN];
   unsigned int inaddr;
   unsigned int retval;
-  int err;
 
 #if !defined(SERVER_MODE)
   if (css_windows_startup () < 0)
@@ -437,7 +440,7 @@ css_gethostid (void)
  *   data(in):
  */
 bool
-css_broadcast_to_client (int client_fd, char data)
+css_broadcast_to_client (SOCKET client_fd, char data)
 {
   int rc;
 
@@ -465,7 +468,7 @@ css_broadcast_to_client (int client_fd, char data)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_tcp_setup_server_datagram (char *pathname, int *sockfd)
+css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
 {
   return false;
 }
@@ -480,7 +483,7 @@ css_tcp_setup_server_datagram (char *pathname, int *sockfd)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_tcp_listen_server_datagram (int sockfd, int *newfd)
+css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd)
 {
   return false;
 }
@@ -495,7 +498,7 @@ css_tcp_listen_server_datagram (int sockfd, int *newfd)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_tcp_master_datagram (char *pathname, int *sockfd)
+css_tcp_master_datagram (char *pathname, SOCKET * sockfd)
 {
   return false;
 }
@@ -509,10 +512,10 @@ css_tcp_master_datagram (char *pathname, int *sockfd)
  * Note: The Windows platforms do not support this and will instead use the
  *       "new-style" multiple port-id connection interface
  */
-bool
-css_open_new_socket_from_master (int fd, unsigned short *rid)
+SOCKET
+css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 {
-  return false;
+  return INVALID_SOCKET;
 }
 
 /*
@@ -526,7 +529,7 @@ css_open_new_socket_from_master (int fd, unsigned short *rid)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_transfer_fd (int server_fd, int client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
 {
   return false;
 }
@@ -541,10 +544,10 @@ css_transfer_fd (int server_fd, int client_fd, unsigned short rid)
  *   sockfd(in):
  */
 int
-css_tcp_master_open (int port, int *sockfd)
+css_tcp_master_open (int port, SOCKET * sockfd)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
-  struct servent *sp;
+  SOCKET sock;
   int retry_count = 0;
   int bool_value;
 
@@ -577,11 +580,12 @@ css_tcp_master_open (int port, int *sockfd)
    */
 
 retry:
-  *sockfd = socket (AF_INET, SOCK_STREAM, 0);
-  if (*sockfd == INVALID_SOCKET)
+  sock = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (sock))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
+      *sockfd = sock;
       return ERR_CSS_WINTCP_CANNOT_CREATE_STREAM;
     }
 
@@ -590,27 +594,28 @@ retry:
    * clients with open connections from previous masters.
    */
   bool_value = 0;
-  setsockopt (*sockfd, SOL_SOCKET, SO_REUSEADDR,
+  setsockopt (sock, SOL_SOCKET, SO_REUSEADDR,
 	      (const char *) &bool_value, sizeof (int));
 
   bool_value = 1;
-  setsockopt (*sockfd, IPPROTO_TCP, TCP_NODELAY,
+  setsockopt (sock, IPPROTO_TCP, TCP_NODELAY,
 	      (const char *) &bool_value, sizeof (int));
 
-  if (bind (*sockfd, (struct sockaddr *) &tcp_srv_addr,
+  if (bind (sock, (struct sockaddr *) &tcp_srv_addr,
 	    sizeof (tcp_srv_addr)) == SOCKET_ERROR)
     {
       if (WSAGetLastError () == WSAEADDRINUSE && retry_count <= 5)
 	{
 	  retry_count++;
 	  sleep (1);
-	  css_shutdown_socket (*sockfd);
+	  css_shutdown_socket (sock);
 	  goto retry;
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ERR_CSS_WINTCP_BIND_ABORT, 1, WSAGetLastError ());
-      css_shutdown_socket (*sockfd);
+      css_shutdown_socket (sock);
+      *sockfd = sock;
       return ERR_CSS_WINTCP_BIND_ABORT;
     }
 
@@ -618,8 +623,9 @@ retry:
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
-  listen (*sockfd, CSS_MAXIMUM_SERVER_COUNT);
+  listen (sock, CSS_MAXIMUM_SERVER_COUNT);
 
+  *sockfd = sock;
   return NO_ERROR;
 }
 
@@ -628,18 +634,19 @@ retry:
  *   return:
  *   sockfd(in):
  */
-static int
-css_accept (int sockfd)
+static SOCKET
+css_accept (SOCKET sockfd)
 {
   struct sockaddr_in tcp_cli_addr;
-  int newsockfd, clilen, error;
+  SOCKET newsockfd;
+  int clilen, error;
 
   while (true)
     {
       clilen = sizeof (tcp_cli_addr);
       newsockfd = accept (sockfd, (struct sockaddr *) &tcp_cli_addr, &clilen);
 
-      if (newsockfd == INVALID_SOCKET)
+      if (IS_INVALID_SOCKET (newsockfd))
 	{
 	  error = WSAGetLastError ();
 	  if (error == WSAEINTR)
@@ -649,7 +656,7 @@ css_accept (int sockfd)
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ERR_CSS_WINTCP_ACCEPT_ERROR, 1, error);
-	  return -1;
+	  return INVALID_SOCKET;
 	}
 
       break;
@@ -664,8 +671,8 @@ css_accept (int sockfd)
  *   return:
  *   sockfd(in):
  */
-int
-css_master_accept (int sockfd)
+SOCKET
+css_master_accept (SOCKET sockfd)
 {
   return css_accept (sockfd);
 }
@@ -677,7 +684,7 @@ css_master_accept (int sockfd)
  *   byte(out):
  */
 int
-css_read_broadcast_information (int fd, char *byte)
+css_read_broadcast_information (SOCKET fd, char *byte)
 {
   return (recv (fd, byte, 1, MSG_OOB));
 }
@@ -692,10 +699,9 @@ int
 css_open_server_connection_socket (void)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
-  int fd, get_length;
+  SOCKET fd;
+  int get_length;
   int bool_value;
-
-  fd = -1;
 
 #if !defined(SERVER_MODE)
   if (css_windows_startup () < 0)
@@ -706,7 +712,7 @@ css_open_server_connection_socket (void)
 
   /* Create the socket */
   fd = socket (AF_INET, SOCK_STREAM, 0);
-  if (fd == INVALID_SOCKET)
+  if (IS_INVALID_SOCKET (fd))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
@@ -772,10 +778,10 @@ error:
 void
 css_close_server_connection_socket (void)
 {
-  if (css_Server_connection_socket != -1)
+  if (!IS_INVALID_SOCKET (css_Server_connection_socket))
     {
       closesocket (css_Server_connection_socket);
-      css_Server_connection_socket = -1;
+      css_Server_connection_socket = INVALID_SOCKET;
     }
 }
 
@@ -785,8 +791,14 @@ css_close_server_connection_socket (void)
  *   return: the fd of the new connection
  *   sockfd(in):
  */
-int
-css_server_accept (int sockfd)
+SOCKET
+css_server_accept (SOCKET sockfd)
 {
   return css_accept (sockfd);
+}
+
+int
+css_get_max_socket_fds(void)
+{
+  return max_socket_fds;
 }

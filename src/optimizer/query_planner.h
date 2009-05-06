@@ -189,17 +189,14 @@ struct qo_plan
 typedef struct qo_planvec QO_PLANVEC;
 struct qo_planvec
 {
-  bool overflow;
-  int nplans;
   QO_PLAN *plan[NPLANS];
-
+  int nplans;
+  bool overflow;
 };
 
 struct qo_info
 {
   struct qo_info *next;
-
-
 
   /*
    * The environment relative to which all of the following sets, etc.
@@ -249,7 +246,6 @@ struct qo_info
    * by plans at this node.
    */
   BITSET projected_segs;
-  int projected_size;
   double cardinality;
 
   /*
@@ -257,6 +253,8 @@ struct qo_info
    * seen so far.  This vector is NULL after a node is detached.
    */
   QO_PLANVEC *planvec;
+
+  int projected_size;
 
   /*
    * The last join level.
@@ -289,7 +287,6 @@ struct qo_planner
    * The relations being considered in this join; there are N of them.
    */
   QO_NODE *node;
-  unsigned int N;
 
   /*
    * The join terms (e.g., employee.dno = dept.dno); there are T of
@@ -299,13 +296,9 @@ struct qo_planner
    * be allocated.
    */
   QO_TERM *term;
+  unsigned int N;
   unsigned int E, M, T;
   unsigned long node_mask;
-
-  /*
-   * The last join level.
-   */
-  int join_unit;
 
   /*
    * The path segments involved in the various join terms, and the
@@ -314,15 +307,20 @@ struct qo_planner
    * the purposes of determining sort orderings).
    */
   QO_SEGMENT *segment;
-  unsigned int S;
 
   QO_EQCLASS *eqclass;
-  unsigned int EQ;
 
   /*
    * The partitions (strong components) of the join graph.
    */
   QO_PARTITION *partition;
+
+  /*
+   * The last join level.
+   */
+  int join_unit;
+  unsigned int S;
+  unsigned int EQ;
   unsigned int P;
 
   /*
@@ -360,9 +358,6 @@ struct qo_planner
 };
 
 extern void qo_plans_stats (FILE *);
-#if !defined(WINDOWS)
-extern double log2 (double);
-#endif
 extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);
 extern void qo_info_stats (FILE *);

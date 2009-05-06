@@ -74,37 +74,41 @@ oid_is_root (const OID * oid)
 int
 oid_compare (const void *a, const void *b)
 {
-  const OID *oid1 = (const OID *) a;
-  const OID *oid2 = (const OID *) b;
+  const OID *oid1_p = (const OID *) a;
+  const OID *oid2_p = (const OID *) b;
+  int diff;
 
-  if (oid1 == oid2)
+  if (oid1_p == oid2_p)
     {
       return 0;
     }
 
-  if (oid1->volid > oid2->volid)
+  diff = oid1_p->volid - oid2_p->volid;
+  if (diff > 0)
     {
       return 1;
     }
-  if (oid1->volid < oid2->volid)
+  else if (diff < 0)
     {
       return -1;
     }
 
-  if (oid1->pageid > oid2->pageid)
+  diff = oid1_p->pageid - oid2_p->pageid;
+  if (diff > 0)
     {
       return 1;
     }
-  if (oid1->pageid < oid2->pageid)
+  else if (diff < 0)
     {
       return -1;
     }
 
-  if (oid1->slotid > oid2->slotid)
+  diff = oid1_p->slotid - oid2_p->slotid;
+  if (diff > 0)
     {
       return 1;
     }
-  if (oid1->slotid < oid2->slotid)
+  else if (diff < 0)
     {
       return -1;
     }

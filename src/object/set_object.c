@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -79,6 +79,10 @@
 #define MUTEX_UNLOCK(a)
 #endif
 
+#if !defined(SERVER_MODE)
+extern unsigned int db_on_server;
+#endif /* !SERVER_MODE */
+
 /*
  * COL_ARRAY_SIZE
  *      return: size of the value indirection array
@@ -113,15 +117,7 @@ typedef int (*SETOBJ_OP) (COL * set1, COL * set2, COL * result);
 
 static long col_init = 0;
 static int debug_level = 0;
-static DB_VALUE *temp_block = NULL;
-static long col_memcpy_overlap_up_ok = 0;
-static long col_memcpy_overlap_down_ok = 0;
 
-#ifdef SERVER_MODE
-static MUTEX_T free_col_block_lock = MUTEX_INITIALIZER;
-#endif
-
-static COL_BLOCK *free_collect = NULL;
 static long collection_quick_offset = 0;	/* inited by col_initialize */
 
 /* Area for allocation of set reference structures */
@@ -280,8 +276,7 @@ set_free_block (DB_VALUE * in_block)
 }
 
 /*
- * set_final() - This frees all the free list blocks at shutdown
- * 	         to help with memory leak detection.
+ * set_final() -
  *      return: none
  *
  */
@@ -289,23 +284,7 @@ set_free_block (DB_VALUE * in_block)
 void
 set_final (void)
 {
-  struct collect_block *next;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
   col_init = 0;
-  set_free_block (temp_block);
-  temp_block = NULL;
-
-  MUTEX_LOCK (rv, free_col_block_lock);
-  while (free_collect)
-    {
-      next = free_collect->next;
-      db_private_free_and_init (NULL, free_collect);
-      free_collect = next;
-    }
-  MUTEX_UNLOCK (free_col_block_lock);
 }
 
 /*
@@ -1410,8 +1389,6 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 static void
 col_initialize (void)
 {
-  long i, ok, out;
-
   if (col_init)
     {
       return;
@@ -1424,8 +1401,10 @@ col_initialize (void)
   /* Calculate the largest collect_block offset that will fit in
    * the workspace "quick" size. */
 #define WS_MAX_QUICK_SIZE       1024
+
   collection_quick_offset = 1 +
     (WS_MAX_QUICK_SIZE - (sizeof (struct collect_block))) / sizeof (DB_VALUE);
+
   /* make sure that collection quick offset is smaller than
    * COL_BLOCK_SIZE. Otherwise, it will disable the more
    * efficient block handling.
@@ -1434,42 +1413,6 @@ col_initialize (void)
     {
       collection_quick_offset = COL_BLOCK_SIZE / 2;
     }
-
-  temp_block = new_block (BLOCKING_LESS1);
-
-  for (i = 0; i < BLOCKING_LESS1; i++)
-    {
-      DB_MAKE_INT (&temp_block[i], i);
-    }
-  memcpy (&temp_block[1], temp_block, BLOCKING_LESS1 * sizeof (DB_VALUE));
-
-  ok = 1;
-  for (i = 0; i < BLOCKING_LESS1; i++)
-    {
-      out = DB_GET_INT (&temp_block[i + 1]);
-      if (out != i)
-	{
-	  ok = 0;
-	}
-    }
-  col_memcpy_overlap_up_ok = ok;
-
-  for (i = 0; i < BLOCKING_LESS1; i++)
-    {
-      DB_MAKE_INT (&temp_block[i + 1], i);
-    }
-  memcpy (temp_block, &temp_block[1], BLOCKING_LESS1 * sizeof (DB_VALUE));
-
-  ok = 1;
-  for (i = 0; i < BLOCKING_LESS1; i++)
-    {
-      out = DB_GET_INT (&temp_block[i]);
-      if (out != i)
-	{
-	  ok = 0;
-	}
-    }
-  col_memcpy_overlap_down_ok = ok;
 
   col_init = 1;
 }
@@ -1502,7 +1445,7 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       col_initialize ();
     }
 
-  if (!col || colindex < 0 || !val || !temp_block)
+  if (!col || colindex < 0 || !val)
     {
       error = ER_GENERIC_ERROR;
       return error;
@@ -1540,47 +1483,16 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 	{
 	  /* for all the blocks greater than the insertion block,
 	   * we must move all the db_values UP one space.
-	   * During initialization we test memcpy up to see
-	   * if we can skip a copy here.
 	   */
-	  if (col_memcpy_overlap_up_ok)
+	  while (topblock > blockindex)
 	    {
-	      /* can optimize with in place copy */
-	      while (topblock > blockindex)
-		{
-		  memcpy (&col->array[topblock][1],
-			  &col->array[topblock][0],
-			  topblockcount * sizeof (DB_VALUE));
-		  col->array[topblock][0] =
-		    col->array[topblock - 1][BLOCKING_LESS1];
-		  topblock--;
-		  topblockcount = BLOCKING_LESS1;
-		}
-	    }
-	  else
-	    {
-#if defined(SERVER_MODE)
-	      DB_VALUE tmp_block[COL_BLOCK_SIZE];
-#endif
-
-	      while (topblock > blockindex)
-		{
-#if defined(SERVER_MODE)
-		  memcpy (&tmp_block, &col->array[topblock][0],
-			  topblockcount * sizeof (DB_VALUE));
-		  memcpy (&col->array[topblock][1], &tmp_block,
-			  topblockcount * sizeof (DB_VALUE));
-#else
-		  memcpy (temp_block, &col->array[topblock][0],
-			  topblockcount * sizeof (DB_VALUE));
-		  memcpy (&col->array[topblock][1], temp_block,
-			  topblockcount * sizeof (DB_VALUE));
-#endif
-		  col->array[topblock][0] =
-		    col->array[topblock - 1][BLOCKING_LESS1];
-		  topblock--;
-		  topblockcount = BLOCKING_LESS1;
-		}
+	      memmove (&col->array[topblock][1],
+		       &col->array[topblock][0],
+		       topblockcount * sizeof (DB_VALUE));
+	      col->array[topblock][0] =
+		col->array[topblock - 1][BLOCKING_LESS1];
+	      topblock--;
+	      topblockcount = BLOCKING_LESS1;
 	    }
 	  topoffset = BLOCKING_LESS1;
 	}
@@ -1641,8 +1553,7 @@ col_delete (COL * col, long colindex)
       col_initialize ();
     }
 
-
-  if (!col || colindex < 0 || !temp_block)
+  if (!col || colindex < 0)
     {
       error = ER_GENERIC_ERROR;
       return error;
@@ -1673,60 +1584,23 @@ col_delete (COL * col, long colindex)
     {
       /* for all the blocks greater than the insertion block,
        * we must move all the db_values DOWN one space.
-       * During initialization we tested memcpy to see
-       * if we can skip a copy here.
        */
-      if (col_memcpy_overlap_down_ok)
+      while (blockindex < fillblock)
 	{
-	  /* can optimize to copy in place */
-	  while (blockindex < fillblock)
+	  col->array[blockindex][BLOCKING_LESS1] =
+	    col->array[blockindex + 1][0];
+	  blockindex++;
+	  if (blockindex < topblock)
 	    {
-	      col->array[blockindex][BLOCKING_LESS1] =
-		col->array[blockindex + 1][0];
-	      blockindex++;
-	      if (blockindex < topblock)
-		{
-		  topblockcount = BLOCKING_LESS1;
-		}
-	      else
-		{
-		  topblockcount = col->topblockcount;
-		}
-	      memcpy (&col->array[blockindex][0],
-		      &col->array[blockindex][1],
-		      topblockcount * sizeof (DB_VALUE));
+	      topblockcount = BLOCKING_LESS1;
 	    }
-	}
-      else
-	{
-#if defined(SERVER_MODE)
-	  DB_VALUE tmp_block[COL_BLOCK_SIZE];
-#endif
-	  while (blockindex < fillblock)
+	  else
 	    {
-	      col->array[blockindex][BLOCKING_LESS1] =
-		col->array[blockindex + 1][0];
-	      blockindex++;
-	      if (blockindex < topblock)
-		{
-		  topblockcount = BLOCKING_LESS1;
-		}
-	      else
-		{
-		  topblockcount = col->topblockcount;
-		}
-#if defined(SERVER_MODE)
-	      memcpy (&tmp_block, &col->array[blockindex][1],
-		      topblockcount * sizeof (DB_VALUE));
-	      memcpy (&col->array[blockindex][0], &tmp_block,
-		      topblockcount * sizeof (DB_VALUE));
-#else
-	      memcpy (temp_block, &col->array[blockindex][1],
-		      topblockcount * sizeof (DB_VALUE));
-	      memcpy (&col->array[blockindex][0], temp_block,
-		      topblockcount * sizeof (DB_VALUE));
-#endif
+	      topblockcount = col->topblockcount;
 	    }
+	  memmove (&col->array[blockindex][0],
+		   &col->array[blockindex][1],
+		   topblockcount * sizeof (DB_VALUE));
 	}
     }
 
@@ -1783,7 +1657,6 @@ col_delete (COL * col, long colindex)
  *     returns SET_DUPLICATE_VALUE which is > 0
  *
  */
-
 
 int
 col_add (COL * col, DB_VALUE * val)
@@ -2404,8 +2277,8 @@ set_get_setobj (DB_COLLECTION * ref, COL ** setptr, int for_write)
 	char *mem;
 	if (set == NULL && ref->owner != NULL)
 	  {
-	    error = obj_locate_attribute
-	      (ref->owner, ref->attribute, for_write, &mem, NULL);
+	    error = obj_locate_attribute (ref->owner, ref->attribute,
+					  for_write, &mem, NULL);
 	    if (error == NO_ERROR)
 	      {
 		/* this should be a PRIM level accessor */
@@ -2974,18 +2847,31 @@ static int
 set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals)
 {
   TP_DOMAIN *dom;
-  int i, size = 0;
+  int i, size, total = 0;
 
   for (dom = domains, i = 0; dom; dom = dom->next, i++)
     {
       if (!DB_IS_NULL (&dbvals[i]))
 	{
-	  size += pr_writeval_disk_size (&dbvals[i]);
-	  DB_ALIGN (size, OR_INT_SIZE);
+	  size = pr_writeval_disk_size (&dbvals[i]);
+
+	  if (dom->next)
+	    {
+	      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->next->type->id))
+		{
+		  size = DB_ALIGN (size, MAX_ALIGNMENT);
+		}
+	      else
+		{
+		  size = DB_ALIGN (size, INT_ALIGNMENT);
+		}
+	    }
+
+	  total += size;
 	}
     }
 
-  return size;
+  return total;
 }
 
 /*
@@ -3030,6 +2916,15 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
 
   /* phase 2: calculate how many bytes need */
   added_size = new_bitmap_size - old_bitmap_size;
+  if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
+    {
+      added_size = DB_ALIGN (added_size, MAX_ALIGNMENT);
+    }
+  else
+    {
+      added_size = DB_ALIGN (added_size, INT_ALIGNMENT);
+    }
+
   added_size += set_midxkey_get_vals_size (dbvals_domain_list, dbvals);
 
   /* phase 3: initailize new_IDXbuf */
@@ -3040,7 +2935,6 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
     }
 
   new_valptr = new_IDXbuf + new_bitmap_size;
-
   (void) init_boundbits (new_IDXbuf, new_bitmap_size);
 
   /* phase 4: copy new_IDXbuf from old_IDXbuf */
@@ -3052,6 +2946,15 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
   /* values (fixed values and offsets of variable values) */
   if (old_vals_size)
     {
+      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
+	{
+	  new_valptr = PTR_ALIGN (new_valptr, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  new_valptr = PTR_ALIGN (new_valptr, INT_ALIGNMENT);
+	}
+
       memcpy (new_valptr, old_valptr, old_vals_size);
       new_valptr += old_vals_size;
     }
@@ -3065,8 +2968,16 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
 	  continue;		/* skip and go ahead */
 	}
 
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
+	{
+	  or_get_align64 (&buf);
+	}
+      else
+	{
+	  or_get_align32 (&buf);
+	}
+
       (*((dom->type)->writeval)) (&buf, &dbvals[i]);
-      or_get_align32 (&buf);
 
       OR_ENABLE_BOUND_BIT (new_IDXbuf, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
@@ -3079,7 +2990,7 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
     }
 
   midxkey->buf = new_IDXbuf;
-  midxkey->size = buf.ptr - new_IDXbuf;
+  midxkey->size = CAST_BUFLEN (buf.ptr - new_IDXbuf);
   midxkey->ncolumns += num_dbvals;
 
   /* phase 6: set domain */
@@ -5273,7 +5184,7 @@ setobj_filter (COL * col, int filter, int *cardptr)
 {
   int error = NO_ERROR;
   DB_VALUE *var;
-  int i, card, removed;
+  int i, card, removed = 0;
 
   card = 0;
 
@@ -6882,7 +6793,7 @@ setobj_midxkey_get_element (const DB_MIDXKEY * midxkey, int index,
 	  int j, offset;
 
 	  j = *prev_indexp;
-	  offset = *prev_ptrp - midxkey->buf;
+	  offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
 	  if (j <= 0 || j > index || offset <= 0)
 	    {			/* invalid info */
 	      /* nop */
@@ -6907,7 +6818,6 @@ setobj_midxkey_get_element (const DB_MIDXKEY * midxkey, int index,
 	  or_init (buf, midxkey->buf, midxkey->size);
 
 	  advance_size = OR_MULTI_BOUND_BIT_BYTES (num_atts);
-
 	  if (or_advance (buf, advance_size) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -6922,10 +6832,26 @@ setobj_midxkey_get_element (const DB_MIDXKEY * midxkey, int index,
 	      continue;		/* skip and go ahead */
 	    }
 
-	  advance_size = pr_writemem_disk_size (buf->ptr, domain);
+	  if (TP_IS_DOUBLE_ALIGN_TYPE (domain->type->id))
+	    {
+	      or_get_align64 (buf);
+	    }
+	  else
+	    {
+	      or_get_align32 (buf);
+	    }
 
-	  DB_ALIGN (advance_size, OR_INT_SIZE);
+	  advance_size = pr_writemem_disk_size (buf->ptr, domain);
 	  or_advance (buf, advance_size);
+	}
+
+      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->type->id))
+	{
+	  or_get_align64 (buf);
+	}
+      else
+	{
+	  or_get_align32 (buf);
 	}
 
       status = (*(domain->type->readval)) (buf, value, domain, -1, copy,
@@ -6934,8 +6860,6 @@ setobj_midxkey_get_element (const DB_MIDXKEY * midxkey, int index,
 	{
 	  goto exit_on_error;
 	}
-
-      or_get_align32 (buf);
 
       /* save the next index info */
       if (prev_indexp && prev_ptrp)

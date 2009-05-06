@@ -157,7 +157,7 @@ int
 csql_get_session_cmd_no (const char *input)
 {
   int i;			/* loop counter */
-  size_t input_cmd_length;	/* input command length */
+  int input_cmd_length;		/* input command length */
   int num_matches = 0;		/* # of matched commands */
   int matched_index = -1;	/* last matched entry index */
 
@@ -207,7 +207,7 @@ int
 csql_get_help_cmd_no (const char *cmd, DB_HELP_COMMAND * csql_cmd_no_ptr)
 {
   int i;			/* loop counter */
-  size_t input_cmd_length;	/* input command length */
+  int input_cmd_length;		/* input command length */
   int num_matches = 0;		/* # of matched commands */
   int matched_index = -1;	/* last matched entry index */
   char *lc_cmd = NULL;		/* lower case input */

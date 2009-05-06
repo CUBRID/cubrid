@@ -30,6 +30,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined(WINDOWS)
+#include <io.h>
+#endif
 
 #include "porting.h"
 #include "chartype.h"
@@ -54,6 +57,9 @@
 #include "csql.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"
+#if defined(WINDOWS)
+#include "wintcp.h"
+#endif
 
 #define SR_CLASS_NAME           CT_SERIAL_NAME
 
@@ -86,7 +92,6 @@ typedef int pid_t;
 static char bo_Dbfullname[PATH_MAX];
 
 extern bool catcls_Enable;
-extern char **environ;
 extern int log_default_input_for_archive_log_location;
 
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);

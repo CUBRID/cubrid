@@ -86,5 +86,9 @@ void CFolderDialog::OnInitDone()
 	pFD->GetDlgItem(lst1)->SetWindowPos(0,0,0,rectList2.Width(), abs(rectList2.top - (rectCancel.top - 4)), SWP_NOMOVE | SWP_NOZORDER);
 	SetControlText(IDOK, _T("Select"));
 	pFD->SetWindowText(_T("Choose folder"));
-	m_wndProc = (WNDPROC)SetWindowLong(pFD->m_hWnd, GWL_WNDPROC, (long)WindowProcNew);
+#ifdef _WIN64
+    m_wndProc = (WNDPROC)SetWindowLongPtr(pFD->m_hWnd, GWLP_WNDPROC, (LONG_PTR)WindowProcNew);
+#else
+	m_wndProc = (WNDPROC)SetWindowLong(pFD->m_hWnd, GWL_WNDPROC, (LONG)WindowProcNew);
+#endif
 }

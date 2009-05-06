@@ -35,8 +35,10 @@
 
 #if defined(WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
+#define EXPORT_VAR 	__declspec(dllexport)
 #else
 #define IMPORT_VAR 	extern
+#define EXPORT_VAR
 #endif
 
 #if defined(WINDOWS)
@@ -62,10 +64,9 @@
 #define PATH_MAX	256
 #define NAME_MAX	256
 
-#define ftruncate(fd, size)     _chsize (fd, size)
 #define log2(x)                 (log ((double) x) / log ((double) 2))
 #define realpath(path, resolved_path) \
-        _fullpath (resolved_path, path, _MAX_PATH)
+        _fullpath(resolved_path, path, _MAX_PATH)
 #define sleep(x) Sleep(1000*x)
 
 #define mkdir(dir, mode)        _mkdir(dir)
@@ -73,12 +74,17 @@
 #define snprintf                    _snprintf
 #define strcasecmp(str1, str2)      _stricmp(str1, str2)
 #define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
-#define lseek(fd, offset, origin)   _lseek(fd, offset, origin)
+#define lseek(fd, offset, origin)   _lseeki64(fd, offset, origin)
+#define fseek(fd, offset, origin)   _fseeki64(fd, offset, origin)
+#define ftruncate(fd, size)     _chsize_s(fd, size)
 #define strdup(src)                 _strdup(src)
 #define getcwd(buffer, length) _getcwd(buffer, length)
 #define popen _popen
 #define pclose _pclose
 #define strtok_r            strtok_s
+#define strtoll             _strtoi64
+#define ftime		    _ftime_s
+#define timeb		    _timeb
 #define vsnprintf           _vsprintf_p
 
 #if 0
@@ -138,7 +144,7 @@
 
 typedef char *caddr_t;
 
-typedef size_t ssize_t;
+typedef SSIZE_T ssize_t;
 
 #if 0
 struct stat
@@ -195,7 +201,7 @@ int sigprocmask (int how, sigset_t * set, sigset_t * oldset);
 extern void pc_init (void);
 extern void pc_final (void);
 extern int lock_region (int fd, int cmd, long offset, long size);
-extern long free_space (const char *);
+extern int free_space (const char *);
 
 #define _longjmp                longjmp
 /*
@@ -239,6 +245,7 @@ extern long free_space (const char *);
 #ifndef wcswcs
 #define wcswcs(ws1, ws2)     wcsstr((ws1), (ws2))
 #endif
+#define wcsspn(ws1, ws2)     ((int) wcsspn((ws1), (ws2)))
 #endif /* WINDOWS */
 
 #if defined(SOLARIS)
@@ -278,13 +285,30 @@ extern char *basename (const char *path);
 #if !defined(HAVE_STRSEP)
 extern char *strsep (char **stringp, const char *delim);
 #endif
+extern char *getpass (const char *prompt);
+#endif
+
+#define strlen(s1)  ((int) strlen(s1))
+#define CAST_STRLEN (int)
+#define CAST_BUFLEN (int)
+#if _FILE_OFFSET_BITS == 32
+#define OFF_T_MAX  INT_MAX
+#else
+#define OFF_T_MAX  LLONG_MAX
+#endif
+
+#if defined(WINDOWS)
+#define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
+#else
+typedef int SOCKET;
+#define INVALID_SOCKET (-1)
+#define IS_INVALID_SOCKET(socket) ((socket) < 0)
 #endif
 
 /*
  * wrapper for cuserid()
  */
 extern char *getuserid (char *string, int size);
-
 /*
  * wrapper for OS dependent operations
  */
@@ -301,5 +325,10 @@ extern SIGNAL_HANDLER_FUNCTION os_set_signal_handler (const int sig_no,
 						      SIGNAL_HANDLER_FUNCTION
 						      sig_handler);
 extern void os_send_signal (const int sig_no);
+
+#if defined(WINDOWS)
+#define atoll(a)	_atoi64((a))
+#define llabs(a)	_abs64((a))
+#endif
 
 #endif /* _PORTING_H_ */

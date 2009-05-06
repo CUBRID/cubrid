@@ -29,6 +29,9 @@
 #include <stdarg.h>
 #include <signal.h>
 #include <setjmp.h>
+#if defined(WINDOWS)
+#include <io.h>
+#endif
 
 #include "csql.h"
 #include "memory_alloc.h"
@@ -583,9 +586,9 @@ csql_display_more_lines (const char *title)
 {
   int i;
   FILE *pf;			/* pipe stream to pager */
+#if !defined(WINDOWS)
   void (*iq_pipe_save) (int sig);
 
-#if !defined(WINDOWS)
   iq_pipe_save = signal (SIGPIPE, &iq_pipe_handler);
 #endif /* ! WINDOWS */
   if (setjmp (iq_Jmp_buf) == 0)
@@ -902,8 +905,9 @@ csql_edit_write_file (FILE * fp)
   int write_len;
   while (remain_size > 0)
     {
-      write_len = fwrite (p + (csql_Edit_contents.data_size - remain_size), 1,
-			  remain_size, fp);
+      write_len =
+	(int) fwrite (p + (csql_Edit_contents.data_size - remain_size), 1,
+		      remain_size, fp);
       if (write_len <= 0)
 	{
 	  csql_Error_code = CSQL_ERR_OS_ERROR;

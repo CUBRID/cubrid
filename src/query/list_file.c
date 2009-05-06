@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -100,10 +100,10 @@ typedef SCAN_CODE (*ADVANCE_FUCTION) (THREAD_ENTRY * thread_p,
 typedef struct qfile_list_cache QFILE_LIST_CACHE;
 struct qfile_list_cache
 {
-  unsigned int n_hts;		/* number of elements of list_hts */
   MHT_TABLE **list_hts;		/* array of memory hash tables for list cache;
 				   pool for list_ht of XASL_CACHE_ENTRY */
   bool *ht_assigned;		/* flags denoting list_hts[] assignment */
+  unsigned int n_hts;		/* number of elements of list_hts */
   unsigned int next_ht_no;	/* next no. of list_hts[] to be assigned */
   QFILE_LIST_CACHE_ENTRY **tran_list;	/* array[MAX_NTRANS] of list per trx */
   int n_entries;		/* total number of cache entries */
@@ -168,7 +168,7 @@ struct qfile_list_cache_entry_pool
 
 /* list cache and related information */
 static QFILE_LIST_CACHE qfile_List_cache =
-  { 0, NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, 0 };
+  { NULL, NULL, 0, 0, NULL, 0, 0, 0, 0, 0, 0 };
 
 /* information of candidates to be removed from XASL cache */
 static QFILE_LIST_CACHE_CANDIDATE qfile_List_cache_candidate =
@@ -1322,7 +1322,7 @@ qfile_finalize (void)
 QFILE_LIST_ID *
 qfile_open_list (THREAD_ENTRY * thread_p,
 		 QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p,
-		 SORT_LIST * sort_list_p, int query_id, int flag)
+		 SORT_LIST * sort_list_p, QUERY_ID query_id, int flag)
 {
   QFILE_LIST_ID *list_id_p;
   int len, i;
@@ -1703,8 +1703,7 @@ qfile_save_single_bound_item_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 {
   int align;
 
-  align = tuple_descr_p->item_size;
-  DB_ALIGN (align, MAX_ALIGNMENT);
+  align = DB_ALIGN (tuple_descr_p->item_size, MAX_ALIGNMENT);
 
   QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
   QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, align);
@@ -1784,9 +1783,7 @@ qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p,
   QFILE_LIST_MERGE_INFO *merge_info_p;
   char *src_p;
   int i, tuple_value_size;
-  long
-    ls_unbound[((QFILE_TUPLE_VALUE_FLAG_SIZE +
-		 QFILE_TUPLE_VALUE_LENGTH_SIZE) / sizeof (long)) + 1];
+  INT32 ls_unbound[2];
 
   QFILE_PUT_TUPLE_VALUE_FLAG ((char *) ls_unbound, V_UNBOUND);
   QFILE_PUT_TUPLE_VALUE_LENGTH ((char *) ls_unbound, 0);
@@ -2033,8 +2030,8 @@ qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 
   if (list_id_p->tfile_vfid == NULL)
     {
-      list_id_p->tfile_vfid =
-	qmgr_create_new_temp_file (thread_p, list_id_p->query_id);
+      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p,
+							 list_id_p->query_id);
       if (list_id_p->tfile_vfid == NULL)
 	{
 	  return ER_FAILED;
@@ -2150,7 +2147,7 @@ qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p,
  *              store a list file page.
  */
 int
-xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
+xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 			   VOLID vol_id, PAGEID page_id, char *page_buf_p,
 			   int *page_size_p)
 {
@@ -2171,7 +2168,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
 
   VPID_SET (&vpid, vol_id, page_id);
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (query_id < 0 || query_id >= SHRT_MAX)
+  if (query_id >= SHRT_MAX)
     {
       tfile_vfid_p = (QMGR_TEMP_FILE *) query_id;
       goto get_page;
@@ -2195,7 +2192,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
   if (query_entry_p->list_id == NULL || page_id == NULL_PAGEID_ASYNC)
     {
       /*
-       * async query dose not yet make the output list file;
+       * async query does not yet make the output list file;
        * wait for the async query to end and to make the output list file
        */
       /* TODO: replace fixed-constants */
@@ -2215,8 +2212,8 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
 	    }
 	  thread_sleep (sleep_sec, sleep_msec);
 
-	  query_entry_p =
-	    qmgr_get_query_entry (thread_p, query_id, tran_index);
+	  query_entry_p = qmgr_get_query_entry (thread_p, query_id,
+						tran_index);
 	  if (query_entry_p == NULL)
 	    {
 	      /*
@@ -2301,8 +2298,8 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, int query_id,
 
 		  error = qmgr_get_query_error_with_id (thread_p, query_id);
 		  if (error != NO_ERROR
-		      || qmgr_is_async_query_interrupted (thread_p,
-							  query_id) != false)
+		      || (qmgr_is_async_query_interrupted (thread_p, query_id)
+			  != false))
 		    {
 		      MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
 		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
@@ -2468,9 +2465,7 @@ qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item_p, int item_size,
   tuple_length =
     QFILE_TUPLE_LENGTH_SIZE + QFILE_TUPLE_VALUE_HEADER_SIZE + item_size;
 
-  align = item_size;
-  DB_ALIGN (align, MAX_ALIGNMENT);
-  align -= item_size;
+  align = DB_ALIGN (item_size, MAX_ALIGNMENT) - item_size;
   tuple_length += align;
 
   if (tuple_length < QFILE_MAX_TUPLE_SIZE_IN_PAGE)
@@ -2736,10 +2731,10 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
   QFILE_LIST_SCAN_ID *lhs_scan_p = NULL, *rhs_scan_p = NULL;
   QFILE_LIST_SCAN_ID *last_lhs_scan_p = NULL, *last_rhs_scan_p = NULL;
   int have_lhs = 0, have_rhs = 0, cmp;
-  QFILE_TUPLE_RECORD lhs = { 0, NULL };
-  QFILE_TUPLE_RECORD rhs = { 0, NULL };
-  QFILE_TUPLE_RECORD last_lhs = { 0, NULL };
-  QFILE_TUPLE_RECORD last_rhs = { 0, NULL };
+  QFILE_TUPLE_RECORD lhs = { NULL, 0 };
+  QFILE_TUPLE_RECORD rhs = { NULL, 0 };
+  QFILE_TUPLE_RECORD last_lhs = { NULL, 0 };
+  QFILE_TUPLE_RECORD last_rhs = { NULL, 0 };
   QUERY_OPTIONS distinct_or_all;
 
   ADVANCE_FUCTION advance_func;
@@ -3006,7 +3001,7 @@ qfile_copy_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * to_list_id_p,
 		  QFILE_LIST_ID * from_list_id_p)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { 0, NULL };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   SCAN_CODE qp_scan;
 
   /* scan through the first list file and add the tuples to the result
@@ -3109,7 +3104,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p,
  *
  */
 int
-qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, long tuple_size)
+qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
 {
   QFILE_TUPLE tuple;
 
@@ -3150,7 +3145,7 @@ void
 qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { 0, NULL };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
 
   if (!list_id_p || list_id_p->type_list.type_cnt < 0)
     {
@@ -3220,9 +3215,9 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p,
 
       /* get sort_key body start position, align data to 8 bytes boundary */
       data = &(sort_record_p->s.original.body[0]);
-      data = (char *) (((unsigned long) data + 0x3) & ~0x3);	/* align */
+      data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
-      length = data - key_record_p->data;	/* i.e, 12 */
+      length = CAST_BUFLEN (data - key_record_p->data);	/* i.e, 12 */
 
       /* STEP 1: build header(tuple_ID) */
       if (length <= key_record_p->area_size)
@@ -3265,9 +3260,9 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p,
 
       /* get sort_key body start position, align data to 8 bytes boundary */
       data = (char *) &sort_record_p->s.offset[nkeys];
-      data = (char *) (((unsigned long) data + 0x3) & ~0x3);
+      data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
-      length = data - key_record_p->data;	/* i.e, 4 + 4 * (n - 1) */
+      length = CAST_BUFLEN (data - key_record_p->data);	/* i.e, 4 + 4 * (n - 1) */
 
       /* STEP 1: build header(offset_MAP) - go on with STEP 2 */
 
@@ -3287,8 +3282,8 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p,
 	    {
 	      /* non-NULL value */
 
-	      offset =
-		data - key_record_p->data + QFILE_TUPLE_VALUE_HEADER_SIZE;
+	      offset = CAST_BUFLEN (data - key_record_p->data
+				    + QFILE_TUPLE_VALUE_HEADER_SIZE);
 	      length = offset + field_length;
 
 	      if (length <= key_record_p->area_size)
@@ -3316,7 +3311,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p,
 	}
     }
 
-  key_record_p->length = data - key_record_p->data;
+  key_record_p->length = CAST_BUFLEN (data - key_record_p->data);
 
   if (key_record_p->length <= key_record_p->area_size)
     {
@@ -3667,10 +3662,10 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1,
 
   /* get body start position of k0, k1 */
   fp0 = &(k0->s.original.body[0]);
-  fp0 = (char *) (((unsigned long) fp0 + 0x3) & ~0x3);	/* align */
+  fp0 = PTR_ALIGN (fp0, MAX_ALIGNMENT);
 
   fp1 = &(k1->s.original.body[0]);
-  fp1 = (char *) (((unsigned long) fp1 + 0x3) & ~0x3);	/* align */
+  fp1 = PTR_ALIGN (fp1, MAX_ALIGNMENT);
 
   for (i = 0; i < n; i++)
     {
@@ -3794,10 +3789,10 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p,
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
-      sort_key_size = offsetof (SORT_REC, s.original.body[0]);
+      sort_key_size = (int) offsetof (SORT_REC, s.original.body[0]);
       sort_key_overhead =
-	ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
-	      DB_PAGESIZE);
+	(int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
+		    DB_PAGESIZE);
       /*
        * Estimate how much by simply taking the ratio of the number of key
        * fields to the number of input fields.
@@ -3823,11 +3818,11 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p,
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
-      sort_key_size = offsetof (SORT_REC, s.offset[0]) +
+      sort_key_size = (int) offsetof (SORT_REC, s.offset[0]) +
 	sizeof (((SORT_REC *) 0)->s.offset[0]) * key_info_p->nkeys;
       sort_key_overhead =
-	ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
-	      DB_PAGESIZE);
+	(int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
+		    DB_PAGESIZE);
       prorated_pages = (int) list_id_p->page_cnt;
     }
 
@@ -5425,7 +5420,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   QFILE_POOLED_LIST_CACHE_ENTRY *pent;
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int i;
-  unsigned int old_pri_heap_id; 
+  HL_HEAPID old_pri_heap_id;
 
   if (data == NULL)
     {
@@ -5455,7 +5450,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
       (void) memset (&pent->s.entry, 0, sizeof (QFILE_LIST_CACHE_ENTRY));
       pent->s.next = qfile_List_cache_entry_pool.free_list;
       qfile_List_cache_entry_pool.free_list =
-	(pent - qfile_List_cache_entry_pool.pool);
+	CAST_BUFLEN (pent - qfile_List_cache_entry_pool.pool);
     }
 
   return NO_ERROR;
@@ -5478,6 +5473,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   int i;
   char str[20];
   TP_DOMAIN **d;
+  time_t tmp_time;
 
   if (!ent)
     {
@@ -5508,12 +5504,12 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
     }
 
   fprintf (fp, " } tuple_cnt %d page_cnt %d first_vpid { %d %d } "
-	   " last_vpid { %d %d } lasttpl_len %d query_id %d  "
+	   " last_vpid { %d %d } lasttpl_len %d query_id %lld  "
 	   " temp_vfid { %d %d } }\n",
 	   ent->list_id.tuple_cnt, ent->list_id.page_cnt,
 	   ent->list_id.first_vpid.pageid, ent->list_id.first_vpid.volid,
 	   ent->list_id.last_vpid.pageid, ent->list_id.last_vpid.volid,
-	   ent->list_id.lasttpl_len, ent->list_id.query_id,
+	   ent->list_id.lasttpl_len, (long long) ent->list_id.query_id,
 	   ent->list_id.temp_vfid.fileid, ent->list_id.temp_vfid.volid);
 
 #if defined(SERVER_MODE)
@@ -5522,23 +5518,24 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   fprintf (fp, "  tran_isolation = %d\n", ent->tran_isolation);
   fprintf (fp, "  tran_index_array = [");
 
-  for (i = 0; i < ent->last_ta_idx; i++)
+  for (i = 0; (unsigned int) i < ent->last_ta_idx; i++)
     {
       fprintf (fp, " %d", ent->tran_index_array[i]);
     }
 
   fprintf (fp, " ]\n");
-  fprintf (fp, "  last_ta_idx = %d\n", ent->last_ta_idx);
+  fprintf (fp, "  last_ta_idx = %lld\n", (long long) ent->last_ta_idx);
 #endif /* SERVER_MODE */
 
   fprintf (fp, "  query_string = %s\n", ent->query_string);
-  (void) strftime (str, sizeof (str), "%x %X",
-		   localtime ((time_t *) (&ent->time_created.tv_sec)));
+
+  tmp_time = ent->time_created.tv_sec;
+  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
   fprintf (fp, "  time_created = %s.%d\n", str,
 	   (int) ent->time_created.tv_usec);
 
-  (void) strftime (str, sizeof (str), "%x %X",
-		   localtime ((time_t *) (&ent->time_last_used.tv_sec)));
+  tmp_time = ent->time_last_used.tv_sec;
+  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
   fprintf (fp, "  time_last_used = %s.%d\n", str,
 	   (int) ent->time_last_used.tv_usec);
 
@@ -5827,6 +5824,11 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
   int tran_index;
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
+#if defined(WINDOWS)
+  int num_elements;
+#else
+  size_t num_elements;
+#endif
 #endif /* SERVER_MODE */
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -5877,14 +5879,20 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 	  tran_isolation = logtb_find_isolation (tran_index);
 	  /* 1. my isolation is not (greater than) read uncommited
 	     2. the entry is cached by an uncommitted other transaction */
+	  num_elements = (int) lent->last_ta_idx;
 	  if (tran_isolation > TRAN_READ_UNCOMMITTED
 	      && lent->uncommitted_marker == true
 	      && lfind (&tran_index, lent->tran_index_array,
-			(unsigned int *) &lent->last_ta_idx, sizeof (int),
+			&num_elements, sizeof (int),
 			qfile_compare_tran_id) != NULL)
 	    {
+	      lent->last_ta_idx = num_elements;
 	      /* treat as look-up failed */
 	      lent = NULL;
+	    }
+	  else
+	    {
+	      lent->last_ta_idx = num_elements;
 	    }
 	}
 #endif /* 1 */
@@ -5896,11 +5904,13 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 	  /* record my transaction id into the entry
 	     and adjust timestamp and reference counter */
 #if defined(SERVER_MODE)
-	  if (lent->last_ta_idx < MAX_NTRANS)
+	  if (lent->last_ta_idx < (size_t) MAX_NTRANS)
 	    {
+	      num_elements = (int) lent->last_ta_idx;
 	      (void) lsearch (&tran_index, lent->tran_index_array,
-			      (size_t *) (&lent->last_ta_idx),
+			      &num_elements,
 			      sizeof (int), qfile_compare_tran_id);
+	      lent->last_ta_idx = num_elements;
 	    }
 #endif /* SERVER_MODE */
 	  (void) gettimeofday (&lent->time_last_used, NULL);
@@ -6063,9 +6073,14 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   int tran_index;
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;
+#if defined(WINDOWS)
+  int num_elements;
+#else
+  size_t num_elements;
+#endif
 #endif /* SERVER_MODE */
   unsigned int n;
-  unsigned int old_pri_heap_id; 
+  HL_HEAPID old_pri_heap_id;
   int i, j, k;
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6148,11 +6163,12 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
       /* record my transaction id into the entry
          and adjust timestamp and reference counter */
 #if defined(SERVER_MODE)
-      if (lent->last_ta_idx < MAX_NTRANS)
+      if (lent->last_ta_idx < (size_t) MAX_NTRANS)
 	{
+	  num_elements = (int) lent->last_ta_idx;
 	  (void) lsearch (&tran_index, lent->tran_index_array,
-			  (size_t *) (&lent->last_ta_idx), sizeof (int),
-			  qfile_compare_tran_id);
+			  &num_elements, sizeof (int), qfile_compare_tran_id);
+	  lent->last_ta_idx = num_elements;
 	}
 #endif /* SERVER_MODE */
       (void) gettimeofday (&lent->time_last_used, NULL);
@@ -6329,17 +6345,18 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   lent->list_id.tfile_vfid = NULL;
   lent->query_string = query_string;
   (void) gettimeofday (&lent->time_created, NULL);
-  (void) gettimeofday (&lent->time_last_used, NULL);;
+  (void) gettimeofday (&lent->time_last_used, NULL);
   lent->ref_count = 0;
   lent->deletion_marker = false;
 
   /* record my transaction id into the entry */
 #if defined(SERVER_MODE)
-  if (lent->last_ta_idx < MAX_NTRANS)
+  if (lent->last_ta_idx < (size_t) MAX_NTRANS)
     {
+      num_elements = (int) lent->last_ta_idx;
       (void) lsearch (&tran_index, lent->tran_index_array,
-		      (size_t *) (&lent->last_ta_idx), sizeof (int),
-		      qfile_compare_tran_id);
+		      &num_elements, sizeof (int), qfile_compare_tran_id);
+      lent->last_ta_idx = num_elements;
     }
 #endif /* SERVER_MODE */
 
@@ -6389,6 +6406,11 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   int tran_index;
 #if defined(SERVER_MODE)
   int *p, *r;
+#if defined(WINDOWS)
+  int num_elements;
+#else
+  size_t num_elements;
+#endif
 #endif /* SERVER_MODE */
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6412,9 +6434,10 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   do
     {
       /* find my tran_id */
+      num_elements = (int) lent->last_ta_idx;
       p = (int *) lfind (&tran_index, lent->tran_index_array,
-			 (unsigned int *) &lent->last_ta_idx, sizeof (int),
-			 qfile_compare_tran_id);
+			 &num_elements, sizeof (int), qfile_compare_tran_id);
+      lent->last_ta_idx = num_elements;
       if (p)
 	{
 	  *p = 0;

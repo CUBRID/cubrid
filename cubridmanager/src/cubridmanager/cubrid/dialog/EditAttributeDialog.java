@@ -170,6 +170,12 @@ public class EditAttributeDialog extends Dialog {
 							org.eclipse.swt.events.SelectionEvent e) {
 						if (ti == null) {
 							String attname = txtName.getText().trim();
+							if (!MainRegistry.isMultibyteSupport && !CommonTool.isAscii(attname)) {
+								CommonTool.ErrorBox(sShell, Messages
+										.getString("ERROR.INVALIDATTRNAMENONEASCII"));
+								return;
+							}
+							
 							String attdeft = txtDefault.getText();
 							String retstr = CommonTool
 									.ValidateCheckInIdentifier(attname);

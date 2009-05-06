@@ -173,6 +173,18 @@ public class NullValue extends Value
     return new Timestamp[1];
   }
 
+  public Timestamp toDatetime() throws TypeMismatchException
+  {
+    return null;
+  }
+
+  public Timestamp[] toDatetimeArray() throws TypeMismatchException
+  {
+    if (mode == Value.IN)
+      return null;
+    return new Timestamp[1];
+  }
+
   public BigDecimal toBigDecimal() throws TypeMismatchException
   {
     return null;
@@ -408,6 +420,14 @@ public class NullValue extends Value
   }
 
   public Timestamp[][] toTimestampArrayArray() throws TypeMismatchException
+  {
+    if (mode == Value.IN)
+      return null;
+
+    return new Timestamp[1][];
+  }
+
+  public Timestamp[][] toDatetimeArrayArray() throws TypeMismatchException
   {
     if (mode == Value.IN)
       return null;

@@ -29,7 +29,7 @@
 #include <stdarg.h>
 #include <string.h>
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 #include <unistd.h>
 #include <sys/time.h>
 #endif
@@ -39,7 +39,7 @@
 #include "cas_sql_log2.h"
 #include "broker_filename.h"
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 static char sql_log2_file[256] = "";
 static FILE *sql_log2_fp = NULL;
 static int log_count = 0;
@@ -50,7 +50,7 @@ void
 sql_log2_init (char *br_name, int index, int sql_log_value,
 	       char log_reuse_flag)
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   char filename[PATH_MAX];
 
   if (!sql_log_value)
@@ -78,7 +78,7 @@ sql_log2_init (char *br_name, int index, int sql_log_value,
 char *
 sql_log2_get_filename ()
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   return "";
 #else
   return sql_log2_file;
@@ -88,7 +88,7 @@ sql_log2_get_filename ()
 void
 sql_log2_dup_stdout ()
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (sql_log2_fp)
     {
       saved_fd1 = dup (1);
@@ -100,7 +100,7 @@ sql_log2_dup_stdout ()
 void
 sql_log2_restore_stdout ()
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (sql_log2_fp)
     {
       dup2 (saved_fd1, 1);
@@ -112,7 +112,7 @@ sql_log2_restore_stdout ()
 void
 sql_log2_end (char reset_filename_flag)
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (sql_log2_fp)
     {
       fclose (sql_log2_fp);
@@ -126,7 +126,7 @@ sql_log2_end (char reset_filename_flag)
 void
 sql_log2_flush ()
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   fflush (stdout);
 #endif
 }
@@ -134,7 +134,7 @@ sql_log2_flush ()
 void
 sql_log2_write (const char *fmt, ...)
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   va_list ap;
   time_t t;
   struct tm lt;
@@ -161,7 +161,7 @@ sql_log2_write (const char *fmt, ...)
 void
 sql_log2_append_file (char *file_name)
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   FILE *in_fp;
   int read_len;
   char read_buf[1024];

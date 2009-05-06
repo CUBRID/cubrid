@@ -50,23 +50,6 @@ extern bool skip_to_check_ct_classes_for_rebuild;
 
 #if defined(SERVER_MODE)
 /* in xserver_interface.h */
-extern int
-xboot_initialize_server (THREAD_ENTRY * thread_p,
-			 const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 BOOT_DB_PATH_INFO * db_path_info,
-			 bool db_overwrite, PGLENGTH db_desired_pagesize,
-			 DKNPAGES db_npages, const char *file_addmore_vols,
-			 DKNPAGES xlog_npages, OID * rootclass_oid,
-			 HFID * rootclass_hfid, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation);
-extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
-					 const char *ext_path,
-					 const char *ext_name,
-					 const char *ext_comments,
-					 DKNPAGES ext_npages,
-					 DISK_VOLPURPOSE ext_purpose,
-					 bool ext_overwrite);
-
 extern void boot_donot_shutdown_server_at_exit (void);
 extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p,
 					    int tran_index);
@@ -75,12 +58,6 @@ extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p,
 extern const char *boot_db_name (void);
 extern const char *boot_db_full_name (void);
 extern HFID *boot_find_root_heap (void);
-
-#if defined(SERVER_MODE)
-extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
-extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
-extern VOLID xboot_find_last_temp (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
 extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);
@@ -101,22 +78,6 @@ extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p,
 				      int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal);
-#if defined(SERVER_MODE)
-extern int
-xboot_register_client (THREAD_ENTRY * thread_p,
-		       const BOOT_CLIENT_CREDENTIAL * client_credential,
-		       OID * rootclass_oid, HFID * rootclass_hfid,
-		       int client_lock_wait, TRAN_ISOLATION client_isolation,
-		       TRAN_STATE * transtate, PGLENGTH * current_pagesize);
-extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
-extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
-			 FILEIO_BACKUP_LEVEL backup_level,
-			 bool delete_unneeded_logarchives,
-			 const char *backup_verbose_file, int num_threads,
-			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
-			 PAGEID safe_pageid);
-#endif /* SERVER_MODE */
 extern int xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 		       const char *newdb_name, const char *newdb_path,
 		       const char *newlog_path,
@@ -140,10 +101,5 @@ extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
 				      bool iserfinal);
-
-#if defined(SERVER_MODE)
-extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
-				       int check_flag);
-#endif /* SERVER_MODE */
 
 #endif /* _BOOT_SR_H_ */

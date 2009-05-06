@@ -56,8 +56,6 @@ CUniToolManage::~CUniToolManage()
 
 bool CUniToolManage::bCheckInstallEasyManage()
 {
-	bool ret_val;
-
 	if (cubridmanager_path == NULL)
 	{
 		CManageRegistry* cReg = new CManageRegistry( "cmclient" );

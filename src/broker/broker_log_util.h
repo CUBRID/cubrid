@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <windows.h>
 #else
 #include <sys/time.h>

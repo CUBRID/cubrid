@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -35,7 +35,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <process.h>
 #include <io.h>
 #include <direct.h>
@@ -49,6 +49,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
+#if defined(LINUX)
+#include <sys/wait.h>
+#endif /* LINUX */
 #if !defined(HPUX) && !defined(AIX)
 #include <sys/procfs.h>
 #endif
@@ -70,7 +73,7 @@
 #define DEF_TASK_FUNC(TASK_FUNC_PTR)	NULL
 #endif
 
-static int _uReadDBtxtFile (char *dn, int idx, char *outbuf);
+static int _uReadDBtxtFile (const char *dn, int idx, char *outbuf);
 
 static T_FSERVER_TASK_INFO task_info[] = {
   {"startinfo", TS_STARTINFO, 0, DEF_TASK_FUNC (ts_startinfo), FSVR_SA},
@@ -382,7 +385,7 @@ uRemoveCRLF (char *str)
 }
 
 char *
-time_to_str (time_t t, char *fmt, char *buf, int type)
+time_to_str (time_t t, const char *fmt, char *buf, int type)
 {
   struct tm ltm;
 
@@ -418,9 +421,9 @@ uStringEqualIgnoreCase (const char *str1, const char *str2)
 }
 
 int
-ut_error_log (nvplist * req, char *errmsg)
+ut_error_log (nvplist * req, const char *errmsg)
 {
-  char *id, *addr, *task, *stype;
+  const char *id, *addr, *task, *stype;
   FILE *logf;
   char strbuf[512];
   int lock_fd;
@@ -462,9 +465,9 @@ ut_error_log (nvplist * req, char *errmsg)
 }
 
 int
-ut_access_log (nvplist * req, char *msg)
+ut_access_log (nvplist * req, const char *msg)
 {
-  char *id, *cli_addr, *task, *stype;
+  const char *id, *cli_addr, *task, *stype;
   FILE *logf;
   char strbuf[512];
   int lock_fd;
@@ -531,7 +534,7 @@ ut_get_task_info (char *task, char *access_log_flag, T_TASK_FUNC * task_func)
 
 #ifndef FSERVER_SLAVE
 int
-ut_send_response (int fd, nvplist * res)
+ut_send_response (SOCKET fd, nvplist * res)
 {
   int i;
 
@@ -558,7 +561,7 @@ ut_send_response (int fd, nvplist * res)
  *  read incoming data and construct name-value pair list of request
  */
 int
-ut_receive_request (int fd, nvplist * req)
+ut_receive_request (SOCKET fd, nvplist * req)
 {
   int rc;
   char c;
@@ -600,21 +603,21 @@ ut_receive_request (int fd, nvplist * req)
 
 
 void
-send_msg_with_file (int sock_fd, char *filename)
+send_msg_with_file (SOCKET sock_fd, char *filename)
 {
   FILE *res_file;
   char *file_name[10];
   char buf[1024];
   int file_num;
-  long *file_size;
+  long *file_size = NULL;
   int index, file_send_flag;
-  int *del_flag;
+  int *del_flag = NULL;
 #ifdef	_DEBUG_
   FILE *log_file;
   char log_filepath[1024];
 #endif
 
-  if (sock_fd < 0)
+  if (IS_INVALID_SOCKET (sock_fd))
     return;
 
 #ifdef	_DEBUG_
@@ -700,7 +703,7 @@ send_msg_with_file (int sock_fd, char *filename)
 
 	  if (recv (sock_fd, recv_buf, sizeof (recv_buf), 0) < 0)
 	    {
-#ifndef	WIN32
+#ifndef	WINDOWS
 	      if (errno == EINTR)
 		{
 		  break;
@@ -772,7 +775,7 @@ send_msg_with_file (int sock_fd, char *filename)
 }
 
 int
-send_file_to_client (int sock_fd, char *file_name, FILE * log_file)
+send_file_to_client (SOCKET sock_fd, char *file_name, FILE * log_file)
 {
   int send_file;
   int read_len;
@@ -780,7 +783,7 @@ send_file_to_client (int sock_fd, char *file_name, FILE * log_file)
   char buf[5120];
 
   memset (buf, '\0', sizeof (buf));
-#ifdef	WIN32
+#ifdef	WINDOWS
   send_file = open (file_name, O_RDONLY | O_BINARY);
 #else
   send_file = open (file_name, O_RDONLY);
@@ -822,9 +825,9 @@ send_file_to_client (int sock_fd, char *file_name, FILE * log_file)
 #endif
 
 void
-ut_daemon_start ()
+ut_daemon_start (void)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   return;
 #else
   int childpid;
@@ -857,7 +860,7 @@ ut_daemon_start ()
   /* clear umask */
   umask (0);
 #endif
-#endif /* ifndef WIN32 */
+#endif /* ifndef WINDOWS */
 }
 
 int
@@ -877,10 +880,10 @@ ut_write_pid (char *pid_file)
 }
 
 void
-server_fd_clear (int srv_fd)
+server_fd_clear (SOCKET srv_fd)
 {
 #if !defined(WINDOWS)
-  int i;
+  SOCKET i;
   int fd;
 
   for (i = 3; i < 1024; i++)
@@ -898,15 +901,15 @@ server_fd_clear (int srv_fd)
 }
 
 int
-uRetrieveDBDirectory (char *dbname, char *target)
+uRetrieveDBDirectory (const char *dbname, char *target)
 {
   int ret_val;
-#ifdef	WIN32
+#ifdef	WINDOWS
   char temp_name[512];
 #endif
 
   ret_val = _uReadDBtxtFile (dbname, 1, target);
-#ifdef	WIN32
+#ifdef	WINDOWS
   if (ret_val == ERR_NO_ERROR)
     {
       strcpy (temp_name, target);
@@ -925,12 +928,12 @@ int
 uRetrieveDBLogDirectory (char *dbname, char *target)
 {
   int ret_val;
-#ifdef	WIN32
+#ifdef	WINDOWS
   char temp_name[512];
 #endif
 
   ret_val = _uReadDBtxtFile (dbname, 3, target);
-#ifdef	WIN32
+#ifdef	WINDOWS
   if (ret_val == ERR_NO_ERROR)
     {
       strcpy (temp_name, target);
@@ -1110,7 +1113,7 @@ int
 uCreateLockFile (char *lockfile)
 {
   int outfd;
-#ifndef WIN32
+#if !defined(WINDOWS)
   struct flock lock;
 #endif
 
@@ -1119,7 +1122,7 @@ uCreateLockFile (char *lockfile)
   if (outfd < 0)
     return outfd;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   while (_locking (outfd, _LK_NBLCK, 1) < 0)
     Sleep (100);
 #else
@@ -1138,7 +1141,7 @@ uCreateLockFile (char *lockfile)
 void
 uRemoveLockFile (int outfd)
 {
-#ifndef WIN32
+#if !defined(WINDOWS)
   struct flock lock;
 
   lock.l_type = F_UNLCK;
@@ -1147,7 +1150,7 @@ uRemoveLockFile (int outfd)
   lock.l_len = 0;
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   _locking (outfd, _LK_UNLCK, 1);
 #else
   fcntl (outfd, F_SETLK, &lock);
@@ -1168,7 +1171,7 @@ uRemoveDir (char *dir, int remove_file_in_dir)
   memset (command, '\0', sizeof (command));
   ut_trim (path);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   unix_style_path (path);
 #endif
 
@@ -1205,11 +1208,11 @@ uCreateDir (char *new_dir)
   strcpy (path, new_dir);
   ut_trim (path);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   unix_style_path (path);
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
   else if (strlen (path) > 3 && path[2] == '/')
@@ -1286,7 +1289,7 @@ ut_trim (char *str)
   return (str);
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 ut_disk_free_space (char *path)
 {
@@ -1429,7 +1432,7 @@ get_db_server_pid (char *dbname)
 }
 
 static int
-_uReadDBtxtFile (char *dn, int idx, char *outbuf)
+_uReadDBtxtFile (const char *dn, int idx, char *outbuf)
 {
   char strbuf[1024];
   FILE *dbf;
@@ -1454,7 +1457,7 @@ _uReadDBtxtFile (char *dn, int idx, char *outbuf)
 	  if (outbuf)
 	    {
 	      strcpy (outbuf, value_p[idx]);
-#ifdef WIN32
+#if defined(WINDOWS)
 	      unix_style_path (outbuf);
 #endif
 	    }
@@ -1482,7 +1485,7 @@ read_from_socket (SOCKET sock_fd, char *buf, int size)
 
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
-  maxfd = sock_fd + 1;
+  maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, &read_mask, (fd_set *) 0, (fd_set *) 0, &timeout_val);
   if (nfound < 0)
@@ -1503,7 +1506,7 @@ read_from_socket (SOCKET sock_fd, char *buf, int size)
 }
 
 int
-write_to_socket (SOCKET sock_fd, char *buf, int size)
+write_to_socket (SOCKET sock_fd, const char *buf, int size)
 {
   int write_len;
   fd_set write_mask;
@@ -1514,14 +1517,14 @@ write_to_socket (SOCKET sock_fd, char *buf, int size)
   timeout_val.tv_sec = 5;
   timeout_val.tv_usec = 0;
 
-  if (sock_fd < 0)
+  if (IS_INVALID_SOCKET (sock_fd))
     {
       return -1;
     }
 
   FD_ZERO (&write_mask);
   FD_SET (sock_fd, (fd_set *) & write_mask);
-  maxfd = sock_fd + 1;
+  maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, (fd_set *) 0, &write_mask, (fd_set *) 0, &timeout_val);
   if (nfound < 0)
@@ -1542,7 +1545,7 @@ write_to_socket (SOCKET sock_fd, char *buf, int size)
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
 kill (int pid, int signo)
 {
@@ -1567,10 +1570,10 @@ kill (int pid, int signo)
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 int
-run_child (char *argv[], int wait_flag, char *stdin_file, char *stdout_file,
-	   char *stderr_file, int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file,
+	   char *stdout_file, char *stderr_file, int *exit_status)
 {
   int new_pid;
   STARTUPINFO start_info;
@@ -1681,8 +1684,8 @@ run_child (char *argv[], int wait_flag, char *stdin_file, char *stdout_file,
 }
 #else
 int
-run_child (char *argv[], int wait_flag, char *stdin_file, char *stdout_file,
-	   char *stderr_file, int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file,
+	   char *stdout_file, char *stderr_file, int *exit_status)
 {
   int pid;
 
@@ -1752,7 +1755,7 @@ run_child (char *argv[], int wait_flag, char *stdin_file, char *stdout_file,
 }
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 void
 unix_style_path (char *path)
 {
@@ -1820,14 +1823,14 @@ nt_style_path (char *path, char *new_path_buf)
 void
 wait_proc (int pid)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE h;
 #endif
 
   if (pid <= 0)
     return;
 
-#ifdef WIN32
+#if defined(WINDOWS)
   h = OpenProcess (SYNCHRONIZE, FALSE, pid);
   if (h)
     {
@@ -1878,7 +1881,7 @@ file_copy (char *src_file, char *dest_file)
       return -1;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (setmode (src_fd, O_BINARY) == -1 || setmode (dest_fd, O_BINARY) == -1)
     {
       close (src_fd);
@@ -1917,7 +1920,7 @@ move_file (char *src_file, char *dest_file)
   return 0;
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 void
 remove_end_of_dir_ch (char *path)
 {
@@ -1927,9 +1930,9 @@ remove_end_of_dir_ch (char *path)
 #endif
 
 int
-is_cmserver_process (int pid, char *module_name)
+is_cmserver_process (int pid, const char *module_name)
 {
-#ifdef WIN32
+#if defined(WINDOWS)
   HANDLE hModuleSnap = NULL;
   MODULEENTRY32 me32 = { 0 };
 
@@ -1954,7 +1957,7 @@ is_cmserver_process (int pid, char *module_name)
   CloseHandle (hModuleSnap);
   return 0;
 #else
-  char *argv[10];
+  const char *argv[10];
   int argc = 0;
   char cmjs_pid[10];
   char result_file[1024];
@@ -1999,7 +2002,7 @@ is_cmserver_process (int pid, char *module_name)
 }
 
 int
-make_default_env ()
+make_default_env (void)
 {
   int retval = ERR_NO_ERROR;
   char strbuf[512];

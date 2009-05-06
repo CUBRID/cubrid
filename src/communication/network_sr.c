@@ -28,7 +28,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(CS_MODE)
 #include "server_interface.h"
+#else
+#include "xserver_interface.h"
+#endif
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "network.h"
@@ -111,10 +115,6 @@ net_server_init (void)
   /*
    * ping
    */
-  net_Requests[NET_SERVER_PING_WITH_HANDSHAKE].action_attribute = 0;
-  net_Requests[NET_SERVER_PING_WITH_HANDSHAKE].processing_function = NULL;
-  net_Requests[NET_SERVER_PING_WITH_HANDSHAKE].name =
-    "NET_SERVER_PING_WITH_HANDSHAKE";
   net_Requests[NET_SERVER_PING].action_attribute = 0;
   net_Requests[NET_SERVER_PING].processing_function = server_ping;
   net_Requests[NET_SERVER_PING].name = "NET_SERVER_PING";
@@ -1055,20 +1055,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
       goto end;
     }
 
-  if (request <= NET_SERVER_REQUEST_START
-      || request >= NET_SERVER_REQUEST_END)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ,
-	      0);
-      return_error_to_client (thread_p, rid);
-      goto end;
-    }
-#if defined(CUBRID_DEBUG)
-  net_server_histo_add_entry (request, size);
-#endif /* CUBRID_DEBUG */
-  conn = thread_p->conn_entry;
-  assert (conn != NULL);
-
   /* handle some special requests */
   if (request == NET_SERVER_PING_WITH_HANDSHAKE)
     {
@@ -1082,6 +1068,20 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
       status = CSS_UNPLANNED_SHUTDOWN;
       goto end;
     }
+
+  if (request <= NET_SERVER_REQUEST_START
+      || request >= NET_SERVER_REQUEST_END)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ,
+	      0);
+      return_error_to_client (thread_p, rid);
+      goto end;
+    }
+#if defined(CUBRID_DEBUG)
+  net_server_histo_add_entry (request, size);
+#endif /* CUBRID_DEBUG */
+  conn = thread_p->conn_entry;
+  assert (conn != NULL);
 
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
@@ -1319,17 +1319,8 @@ net_server_start (const char *server_name)
       packed_name = css_pack_server_name (server_name, &name_length);
       css_init_job_queue ();
 
-#if defined(DIAG_DEVEL)
-      init_diag_mgr (server_name, MAX_NTHRDS, NULL);
-#endif /* DIAG_DEVEL */
-
       r = css_init (packed_name, name_length, PRM_TCP_PORT_ID);
-
       free_and_init (packed_name);
-
-#if defined(DIAG_DEVEL)
-      close_diag_mgr ();
-#endif /* DIAG_DEVEL */
 
       if (r < 0)
 	{

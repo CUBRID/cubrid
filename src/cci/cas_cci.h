@@ -152,6 +152,12 @@ extern "C"
 #define CCI_CONSTRAINT_TYPE_UNIQUE	0
 #define CCI_CONSTRAINT_TYPE_INDEX	1
 
+#if defined(WINDOWS)
+#define SSIZEOF(val) ((SSIZE_T) sizeof(val))
+#else
+#define SSIZEOF(val) ((ssize_t) sizeof(val))
+#endif
+
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/
@@ -176,6 +182,7 @@ extern "C"
     short hh;
     short mm;
     short ss;
+    short ms;
   } T_CCI_DATE;
 
   typedef struct
@@ -192,28 +199,30 @@ extern "C"
     CCI_U_TYPE_UNKNOWN = 0,
     CCI_U_TYPE_NULL = 0,
 
-    CCI_U_TYPE_CHAR,
-    CCI_U_TYPE_STRING,
-    CCI_U_TYPE_NCHAR,
-    CCI_U_TYPE_VARNCHAR,
-    CCI_U_TYPE_BIT,
-    CCI_U_TYPE_VARBIT,
-    CCI_U_TYPE_NUMERIC,
-    CCI_U_TYPE_INT,
-    CCI_U_TYPE_SHORT,
-    CCI_U_TYPE_MONETARY,
-    CCI_U_TYPE_FLOAT,
-    CCI_U_TYPE_DOUBLE,
-    CCI_U_TYPE_DATE,
-    CCI_U_TYPE_TIME,
-    CCI_U_TYPE_TIMESTAMP,
-    CCI_U_TYPE_SET,
-    CCI_U_TYPE_MULTISET,
-    CCI_U_TYPE_SEQUENCE,
-    CCI_U_TYPE_OBJECT,
-    CCI_U_TYPE_RESULTSET,
+    CCI_U_TYPE_CHAR = 1,
+    CCI_U_TYPE_STRING = 2,
+    CCI_U_TYPE_NCHAR = 3,
+    CCI_U_TYPE_VARNCHAR = 4,
+    CCI_U_TYPE_BIT = 5,
+    CCI_U_TYPE_VARBIT = 6,
+    CCI_U_TYPE_NUMERIC = 7,
+    CCI_U_TYPE_INT = 8,
+    CCI_U_TYPE_SHORT = 9,
+    CCI_U_TYPE_MONETARY = 10,
+    CCI_U_TYPE_FLOAT = 11,
+    CCI_U_TYPE_DOUBLE = 12,
+    CCI_U_TYPE_DATE = 13,
+    CCI_U_TYPE_TIME = 14,
+    CCI_U_TYPE_TIMESTAMP = 15,
+    CCI_U_TYPE_SET = 16,
+    CCI_U_TYPE_MULTISET = 17,
+    CCI_U_TYPE_SEQUENCE = 18,
+    CCI_U_TYPE_OBJECT = 19,
+    CCI_U_TYPE_RESULTSET = 20,
+    CCI_U_TYPE_BIGINT = 21,
+    CCI_U_TYPE_DATETIME = 22,
 
-    CCI_U_TYPE_LAST = CCI_U_TYPE_RESULTSET
+    CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIME
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
@@ -228,7 +237,10 @@ extern "C"
     CCI_A_TYPE_BIT,
     CCI_A_TYPE_DATE,
     CCI_A_TYPE_SET,
-    CCI_A_TYTP_LAST = CCI_A_TYPE_SET
+    CCI_A_TYPE_BIGINT,
+    CCI_A_TYPE_LAST = CCI_A_TYPE_BIGINT,
+
+    CCI_A_TYTP_LAST = CCI_A_TYPE_LAST /* typo but backward compatibility */
   } T_CCI_A_TYPE;
 
   typedef enum
@@ -385,7 +397,6 @@ extern "C"
     CUBRID_STMT_CREATE_USER,
     CUBRID_STMT_DROP_USER,
     CUBRID_STMT_ALTER_USER
-
   } T_CCI_CUBRID_STMT;
 #endif
 #endif

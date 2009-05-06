@@ -483,7 +483,7 @@ binfree (D_BINARY * src)
 * NOTE:
 ************************************************************************/
 PUBLIC void *
-ut_alloc (int size)
+ut_alloc (SQLLEN size)
 {
   char *new = NULL;
 
@@ -1859,7 +1859,7 @@ replace_oid (char *sql_text, char **org_param_pos_pt,
 	  if (pt_tmp == NULL)
 	    break;
 
-	  oid_buf = UT_MAKE_STRING (pt + 1, pt_tmp - pt - 1);
+	  oid_buf = UT_MAKE_STRING (pt + 1, (int) (pt_tmp - pt - 1));
 	  trim (oid_buf);
 
 	  if (is_oidstr (oid_buf) == _TRUE_)
@@ -1945,7 +1945,7 @@ trim (char *str)
  ************************************************************************/
 PUBLIC RETCODE
 str_value_assign (const char *in_value,
-		  char *out_buf, int out_buf_len, int *val_len_ptr)
+		  char *out_buf, SQLLEN out_buf_len, SQLLEN *val_len_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
 
@@ -1985,8 +1985,8 @@ str_value_assign (const char *in_value,
  ************************************************************************/
 PUBLIC RETCODE
 bin_value_assign (const void *in_value,
-		  int in_val_len,
-		  char *out_buf, int out_buf_len, int *val_len_ptr)
+		  SQLLEN in_val_len,
+		  char *out_buf, SQLLEN out_buf_len, SQLLEN *val_len_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
 

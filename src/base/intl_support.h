@@ -125,8 +125,8 @@ extern "C"
   extern int intl_mbs_upper (const char *mbs1, char *mbs2);
 
   extern char *intl_mbs_chr (const char *mbs, wchar_t the_char);
-  extern size_t intl_mbs_spn (const char *mbs, const wchar_t * chars);
-  extern size_t intl_mbs_len (const char *mbs);
+  extern int intl_mbs_spn (const char *mbs, const wchar_t * chars);
+  extern int intl_mbs_len (const char *mbs);
 
   extern const char *intl_mbs_nth (const char *mbs, size_t n);
   extern char *intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n);

@@ -30,7 +30,6 @@
 #include <string.h>
 #include <ctype.h>
 #include "language_support.h"
-#include "zzpref.h"
 #include "loader_old.h"
 #include "class_object.h"
 #include "object_domain.h"
@@ -41,15 +40,7 @@
 #include "utility.h"
 #include "loader_action.h"
 
-extern bool Syntax_check;
-extern bool Verbose;
-
-/*
- * Defined somewhere in the antlr internals.   May need to
- * recognize the antlr prefix if we can ever be used in multiple-antlr
- * situations.
- */
-extern int zzline;
+extern int loader_yylineno;
 
 /* The class currently being referenced. */
 static MOP Refclass = NULL;
@@ -114,7 +105,7 @@ display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   zzline + adjust);
+	   loader_yylineno + adjust);
 }
 
 
@@ -635,7 +626,6 @@ act_int (char *token)
     }
 }
 
-
 /*
  * act_real - Assign a floating point value.
  *    return: void
@@ -843,6 +833,42 @@ act_time (char *token, int ttype)
     }
 }
 
+/*
+ * act_datetime - assign a date value
+ *    return: void
+ *    token(in): token string
+ */
+void
+act_datetime (char *token)
+{
+  DB_VALUE *value;
+  int args, month, day, year;
+  int hour, minute, second, millisecond;
+  DB_DATETIME datetime;
+
+  if ((value = get_value (DB_TYPE_DATETIME)) != NULL)
+    {
+      if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_DATETIME)
+	{
+	  domain_error (DB_TYPE_DATETIME);
+	}
+      else
+	{
+	  args = sscanf (token, "%d/%d/%d %d:%d:%d.%d", &month, &day, &year,
+			 &hour, &minute, &second, &millisecond);
+	  if (args != 7)
+	    {
+	      parse_error (DB_TYPE_DATETIME, token);
+	    }
+	  else
+	    {
+	      db_datetime_encode (&datetime, month, day, year, hour,
+				  minute, second, millisecond);
+	      db_make_datetime (value, &datetime);
+	    }
+	}
+    }
+}
 
 /*
  * act_string - assign a string value
@@ -872,9 +898,10 @@ act_string (char *token, int size, DB_TYPE dtype)
       domain_ptr = tp_domain_resolve_value (value, &domain);
       if (tp_value_cast (&temp, value, domain_ptr, false))
 	{
-	  if (domain_ptr->type->id == DB_TYPE_TIME ||
-	      domain_ptr->type->id == DB_TYPE_DATE ||
-	      domain_ptr->type->id == DB_TYPE_TIMESTAMP)
+	  if (domain_ptr->type->id == DB_TYPE_TIME
+	      || domain_ptr->type->id == DB_TYPE_DATE
+	      || domain_ptr->type->id == DB_TYPE_TIMESTAMP
+	      || domain_ptr->type->id == DB_TYPE_DATETIME)
 	    {
 	      printf ("Illegal date/time literal - %s. Resetting to NULL\n",
 		      token);

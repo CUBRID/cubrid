@@ -307,7 +307,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
     {
       if (log_unzip (undo_unzip_ptr, rcv->length, (char *) rcv->data))
 	{
-	  rcv->length = undo_unzip_ptr->data_length;
+	  rcv->length = (int) undo_unzip_ptr->data_length;
 	  rcv->data = (char *) undo_unzip_ptr->log_data;
 	}
       else
@@ -492,12 +492,12 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	      (void) log_diff (undo_length, undo_data,
 			       redo_unzip_ptr->data_length,
 			       redo_unzip_ptr->log_data);
-	      rcv->length = redo_unzip_ptr->data_length;
+	      rcv->length = (int) redo_unzip_ptr->data_length;
 	      rcv->data = (char *) redo_unzip_ptr->log_data;
 	    }
 	  else
 	    {
-	      rcv->length = redo_unzip_ptr->data_length;
+	      rcv->length = (int) redo_unzip_ptr->data_length;
 	      rcv->data = (char *) redo_unzip_ptr->log_data;
 	    }
 	}
@@ -1955,7 +1955,7 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
 
   donetime = (struct log_donetime *) ((char *) log_page_p->area
 				      + log_lsa->offset);
-  last_at_time = donetime->at_time;
+  last_at_time = (time_t) donetime->at_time;
   if (stop_at != NULL && *stop_at != (time_t) - 1
       && difftime (*stop_at, last_at_time) < 0)
     {
@@ -2856,7 +2856,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 {
   LOG_LSA check_point_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA
 				 * is located
 				 */
@@ -2876,6 +2876,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   int size;
   int i;
 
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
   /*
    * Find the committed, aborted, and unilaterrally aborted (active)
    * transactions at system crash
@@ -2887,7 +2889,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   LSA_COPY (end_redolsa, &lsa);
   *did_incom_recovery = false;
 
-  log_page_p = (LOG_PAGE *) log_pgbuf;
+  log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
 
   while (!LSA_ISNULL (&lsa))
@@ -3078,7 +3080,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
       log_lsa.pageid = check_point_lsa.pageid;
       log_lsa.offset = check_point_lsa.offset;
 
-      log_page_p = (LOG_PAGE *) log_pgbuf;
+      log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
       if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
 	{
@@ -3187,7 +3189,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   const LOG_LSA * end_redolsa, time_t * stopat)
 {
   LOG_LSA lsa;			/* LSA of log record to redo  */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA
 				 * is located
 				 */
@@ -3220,6 +3222,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_diff_rec;
 
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -3231,7 +3234,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
   LSA_COPY (&lsa, start_redolsa);
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
   redo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
@@ -3506,7 +3509,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  log_rv_redo_record (thread_p, &log_lsa,
 				      log_pgptr, RV_fun[rcvindex].redofun,
 				      &rcv, &rcv_lsa, false,
-				      undo_unzip_ptr->data_length,
+				      (int) undo_unzip_ptr->data_length,
 				      (char *) undo_unzip_ptr->log_data,
 				      redo_unzip_ptr);
 		}
@@ -4093,7 +4096,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  donetime =
 		    (struct log_donetime *) ((char *) log_pgptr->area +
 					     log_lsa.offset);
-		  if (difftime (*stopat, donetime->at_time) < 0)
+		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
 		    {
 		      /*
 		       * Stop the recovery process at this point
@@ -4279,7 +4282,7 @@ static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
 {
   LOG_LSA *lsa_ptr;		/* LSA of log record to undo  */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA
 				 * is located
 				 */
@@ -4299,6 +4302,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int last_tranlogrec;		/* Is this last log record ?  */
   int tran_index;
   LOG_ZIP *undo_unzip_ptr = NULL;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /*
    * Remove from the list of transaction to abort, those that have finished
@@ -4347,7 +4352,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   /* Find the largest LSA to undo */
   lsa_ptr = log_find_unilaterally_largest_undo_lsa (thread_p);
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
   if (undo_unzip_ptr == NULL)
@@ -4990,7 +4995,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
   VOLID start_volid;
   VOLID volid;
   char vol_fullname[PATH_MAX];
-  time_t vol_dbcreation;	/* Database creation time in volume */
+  INT64 vol_dbcreation;		/* Database creation time in volume */
   char *alloc_extpath = NULL;
   int ret = NO_ERROR;
 
@@ -5051,7 +5056,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	{
 	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
 	  fileio_dismount (vdes);
-	  if (difftime (vol_dbcreation, log_Gl.hdr.db_creation) != 0)
+	  if (difftime
+	      ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation) != 0)
 	    {
 	      /* This volume does not belong to given database */
 	      ;			/* NO-OP */
@@ -5084,7 +5090,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 static void
 log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
 {
-  int newappend_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char newappend_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_newappend_pgbuf;
   LOG_PAGE *newappend_pgptr = NULL;
   int arv_num;
   const char *catmsg;
@@ -5092,6 +5099,8 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
   int ret = NO_ERROR;
 
   assert (LOG_CS_OWN ());
+
+  aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
 
   if (log_Gl.append.vdes != NULL_VOLDES && log_Gl.append.log_pgptr != NULL)
     {
@@ -5103,7 +5112,6 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
     {
       log_Gl.hdr.append_lsa.pageid = 0;
       log_Gl.hdr.append_lsa.offset = 0;
-      DB_ALIGN (log_Gl.hdr.append_lsa.offset, INT_ALIGNMENT);
     }
   else
     {
@@ -5120,7 +5128,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
 	   * We need to destroy any log archive createded after this point
 	   */
 
-	  newappend_pgptr = (LOG_PAGE *) newappend_pgbuf;
+	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
 
 	  if ((logpb_fetch_page (thread_p, new_appendlsa->pageid,
 				 newappend_pgptr)) == NULL)
@@ -5281,7 +5289,7 @@ LOG_LSA *
 log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 		   bool canuse_forwaddr)
 {
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where
 				 * LSA is located
 				 */
@@ -5305,13 +5313,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
   unsigned int nobj_locks;
   size_t size;
 
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (LSA_ISNULL (lsa))
     {
       return NULL;
     }
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   if (logpb_fetch_page (thread_p, lsa->pageid, log_pgptr) == NULL)
     {
@@ -5652,7 +5661,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 	if (nobj_locks > 0)
 	  {
 	    size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	    LOG_READ_ADD_ALIGN (thread_p, size, &log_lsa, log_pgptr);
+	    LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
 	  }
 	break;
       }

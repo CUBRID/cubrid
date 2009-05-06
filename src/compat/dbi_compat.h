@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -25,14 +25,18 @@
 #include <time.h>
 #include <sys/types.h>
 
+#ifndef _DBI_COMPAT_H_
+#define _DBI_COMPAT_H_
+
 #define bool char
 
 #ifdef WINDOWS
 #define int32_t __int32
+#define int64_t __int64
+#define u_int32_t unsigned __int32
+#define u_int64_t unsigned __int64
 #endif
 
-#ifndef _DBER_H_
-#define _DBER_H_
 
 #ifdef NO_ERROR
 #undef NO_ERROR
@@ -1197,11 +1201,6 @@
 
 #define ER_LAST_ERROR                               -967
 
-#endif /* _DBER_H_ */
-
-#ifndef _DBDEF_H_
-#define _DBDEF_H_
-
 #define DB_TRUE 1
 #define DB_FALSE 0
 
@@ -1695,10 +1694,6 @@ enum LOCKHINT
     /* other lock hint, having value of 2, 4, 8 ..., may be added here */
 };
 
-#endif /* _DBDEF_H_ */
-
-#ifndef _DBTYPE_H_
-#define _DBTYPE_H_
 
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
@@ -1811,6 +1806,10 @@ enum LOCKHINT
 
 #define DB_MAKE_INT DB_MAKE_INTEGER
 
+#define DB_MAKE_BIGINT(value, num) db_make_bigint(value, num)
+
+#define DB_MAKE_BIGINTEGER DB_MAKE_BIGINT
+
 #define DB_MAKE_FLOAT(value, num) db_make_float(value, num)
 
 #define DB_MAKE_DOUBLE(value, num) db_make_double(value, num)
@@ -1858,6 +1857,9 @@ enum LOCKHINT
 #define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
 #define DB_MAKE_MONETARY_AMOUNT(value, amount) \
     db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
+
+#define DB_MAKE_DATETIME(value, datetime_value) \
+  db_make_datetime(value, datetime_value)
 
 #define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
 
@@ -1917,6 +1919,10 @@ enum LOCKHINT
 
 #define DB_GET_INT DB_GET_INTEGER
 
+#define DB_GET_BIGINT(value)            db_get_bigint(value)
+
+#define DB_GET_BIGINTEGER               DB_GET_BIGINT
+
 #define DB_GET_FLOAT(value)             db_get_float(value)
 
 #define DB_GET_DOUBLE(value)            db_get_double(value)
@@ -1955,6 +1961,8 @@ enum LOCKHINT
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 
+#define DB_GET_DATETIME(value)          db_get_datetime(value)
+
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
 #define DB_GET_POINTER(value)           db_get_pointer(value)
@@ -1990,6 +1998,8 @@ enum LOCKHINT
 #define DB_INT32_MAX   0x7FFFFFFFL
 #define DB_UINT32_MIN  0
 #define DB_UINT32_MAX  0xFFFFFFFFUL
+#define DB_BIGINT_MAX  9223372036854775807L
+#define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1L)
 
 #define DB_DATE_MIN        DB_UINT32_MIN
 #define DB_DATE_MAX        DB_UINT32_MAX
@@ -2038,12 +2048,14 @@ typedef enum
   DB_TYPE_RESULTSET = 28,	/* internal use only */
   DB_TYPE_MIDXKEY = 29,		/* internal use only */
   DB_TYPE_TABLE = 30,		/* internal use only */
+  DB_TYPE_BIGINT = 31,
+  DB_TYPE_DATETIME = 32,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_TABLE
+  DB_TYPE_LAST = DB_TYPE_DATETIME
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -2070,6 +2082,9 @@ union db_domain_info
   } char_info;
 };
 
+/* types used for the representation of bigint values. */
+typedef int64_t DB_BIGINT;
+
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
 
@@ -2081,6 +2096,13 @@ typedef DB_TIMESTAMP DB_UTIME;
 
 /* Structure used for the representation of date values. */
 typedef unsigned int DB_DATE;
+
+typedef struct db_datetime DB_DATETIME;
+struct db_datetime
+{
+  unsigned int date;		/* date */
+  unsigned int time;		/* time */
+};
 
 /* Structure used for the representation of numeric values. */
 typedef struct db_numeric DB_NUMERIC;
@@ -2205,6 +2227,7 @@ union db_data
 {
   int i;
   short sh;
+  DB_BIGINT bigint;
   float f;
   double d;
   void *p;
@@ -2212,6 +2235,7 @@ union db_data
   DB_TIME time;
   DB_DATE date;
   DB_TIMESTAMP utime;
+  DB_DATETIME datetime;
   DB_MONETARY money;
   DB_COLLECTION *set;
   DB_COLLECTION *collect;
@@ -2295,10 +2319,13 @@ typedef enum
   DB_TYPE_C_POINTER,
   DB_TYPE_C_ERROR,
   DB_TYPE_C_IDENTIFIER,
+  DB_TYPE_C_BIGINT,
+  DB_TYPE_C_DATETIME,
   DB_TYPE_C_LAST,		/* last for iteration   */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;
 
+typedef DB_BIGINT DB_C_BIGINT;
 typedef int DB_C_INT;
 typedef short DB_C_SHORT;
 typedef long DB_C_LONG;
@@ -2327,12 +2354,26 @@ struct db_c_date
   int day;
 };
 
+typedef struct db_c_datetime DB_C_DATETIME;
+struct db_c_datetime
+{
+  int year;
+  int month;
+  int day;
+
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+};
+
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
 typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 
+/* Value manipulation */
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
 extern int db_value_clone (DB_VALUE * src, DB_VALUE * dest);
@@ -2379,6 +2420,9 @@ extern int db_value_put_monetary_currency (DB_VALUE * value,
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value,
 						   const double amount);
 
+extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
+extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
+
 /*
  * DB_MAKE_ value constructors.
  * These macros are provided to make the construction of DB_VALUE
@@ -2406,6 +2450,7 @@ extern int db_make_date (DB_VALUE * value,
 extern int db_value_put_encoded_date (DB_VALUE * value,
 				      const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
+extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
 extern int db_make_monetary (DB_VALUE * value,
 			     const DB_CURRENCY type, const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
@@ -2413,6 +2458,7 @@ extern int db_make_error (DB_VALUE * value, const int errcode);
 extern int db_make_method_error (DB_VALUE * value,
 				 const int errcode, const char *errmsg);
 extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
+extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_string (DB_VALUE * value, const char *str);
 extern int db_make_numeric (DB_VALUE * value,
 			    const DB_C_NUMERIC num,
@@ -2454,6 +2500,7 @@ extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
  */
 extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
+extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
 extern DB_C_CHAR db_get_string (const DB_VALUE * value);
 extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
 extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
@@ -2463,6 +2510,7 @@ extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
 extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
 extern DB_TIME *db_get_time (const DB_VALUE * value);
 extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
+extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);
 extern DB_DATE *db_get_date (const DB_VALUE * value);
 extern DB_MONETARY *db_get_monetary (const DB_VALUE * value);
 extern int db_get_error (const DB_VALUE * value);
@@ -2477,13 +2525,6 @@ extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
-#endif /* _DBTYPE_H_ */
-
-#ifndef _DB_DATE_H_
-#define _DB_DATE_H_
-
-#define db_utime_to_string db_timestamp_to_string
-#define db_string_to_utime db_string_to_timestamp
 
 /* DB_DATE functions */
 extern void db_date_encode (DB_DATE * date, int month, int day, int year);
@@ -2494,12 +2535,16 @@ extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
 extern int db_string_to_date (const char *buf, DB_DATE * date);
 
 /* DB_TIMESTAMP functions */
+#define db_utime_encode db_timestamp_encode
 extern int db_timestamp_encode (DB_TIMESTAMP * utime,
 				DB_DATE * date, DB_TIME * timeval);
+#define db_utime_decode db_timestamp_decode
 extern void db_timestamp_decode (DB_TIMESTAMP * utime,
 				 DB_DATE * date, DB_TIME * timeval);
+#define db_utime_to_string db_timestamp_to_string
 extern int db_timestamp_to_string (char *buf, int bufsize,
 				   DB_TIMESTAMP * utime);
+#define db_string_to_utime db_string_to_timestamp
 extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
 
 /* DB_TIME functions */
@@ -2510,6 +2555,21 @@ extern void db_time_decode (DB_TIME * timeval, int *hourp,
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
 extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
 
+/* DB_DATETIME function */
+extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
+			       int year, int hour, int minute, int second,
+			       int millisecond);
+extern int db_datetime_decode (DB_DATETIME * datetime, int *month, int *day,
+			       int *year, int *hour, int *minute, int *second,
+			       int *millisecond);
+extern int db_datetime_to_string (char *buf, int bufsize,
+				  DB_DATETIME * datetime);
+extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
+extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
+					  DB_DATETIME * result_datetime);
+extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
+				   DB_DATETIME * result_datetime);
+
 /* Unix-like functions */
 extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
 extern int db_strftime (char *s, int smax, const char *fmt,
@@ -2518,46 +2578,10 @@ extern void db_localtime (time_t * epoch_time,
 			  DB_DATE * date, DB_TIME * timeval);
 
 /* generic calculation functions */
-extern int julian_encode (int m, int d, int y);
-extern void julian_decode (int jul, int *monthp, int *dayp,
-			   int *yearp, int *weekp);
-extern int day_of_week (int jul_day);
-
-extern int time_encode (int hour, int minute, int second);
-extern void time_decode (int timeval, int *hourp, int *minutep, int *secondp);
-
 extern int db_tm_encode (struct tm *c_time_struct,
 			 DB_DATE * date, DB_TIME * timeval);
 
-#endif /* _DB_DATE_H_ */
 
-#ifndef _DB_QUERY_H_
-#define _DB_QUERY_H_
-
-/* QUERY TYPE/FORMAT STRUCTURES */
-typedef enum
-{
-  OID_COLUMN,			/* hidden OID column */
-  USER_COLUMN,			/* user visible column */
-  SYSTEM_ADDED_COLUMN		/* system added hidden column */
-} COL_VISIBLE_TYPE;
-
-struct db_query_type
-{
-  struct db_query_type *next;
-  DB_COL_TYPE col_type;		/* Column type */
-  char *name;			/* Column name */
-  char *attr_name;		/* Attribute name */
-  char *spec_name;		/* Spec name */
-  char *original_name;		/* user specified column name */
-  DB_TYPE db_type;		/* Column data type */
-  int size;			/* Column data size */
-  SM_DOMAIN *domain;		/* Column domain information */
-  SM_DOMAIN *src_domain;	/* Column source domain information */
-  COL_VISIBLE_TYPE visible_type;	/* Is the column user visible? */
-};
-
-/* QUERY RESULT STRUCTURES */
 
 typedef struct cache_time CACHE_TIME;
 struct cache_time
@@ -2566,342 +2590,53 @@ struct cache_time
   int usec;
 };
 
-typedef enum
-{
-  C_BEFORE = 1,
-  C_ON,
-  C_AFTER
-} CURSOR_POSITION;
+#define CACHE_TIME_EQ(T1, T2)               \
+        (((T1)->sec != 0) &&                \
+         ((T1)->sec == (T2)->sec) &&        \
+         ((T1)->usec == (T2)->usec))
 
-typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
-struct vpid
-{
-  int32_t pageid;		/* Page identifier */
-  short volid;			/* Volume identifier where the page reside */
-};
+#define CACHE_TIME_RESET(T)     \
+        do {                    \
+          (T)->sec = 0;         \
+          (T)->usec = 0;        \
+        } while (0)
 
-typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
-struct vfid
-{
-  int32_t fileid;		/* File identifier */
-  short volid;			/* Volume identifier where the file reside */
-};
+#define CACHE_TIME_MAKE(CT, TV)         \
+        do {                            \
+          (CT)->sec = (TV)->tv_sec;     \
+          (CT)->usec = (TV)->tv_usec;   \
+        } while (0)
 
-typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
-struct qfile_tuple_value_type_list
-{
-  int type_cnt;			/* number of data types */
-  TP_DOMAIN **domp;		/* array of column domains */
-};
+#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
 
-typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
-struct qfile_tuple_value_position
-{
-  int pos_no;			/* value position number */
-  TP_DOMAIN *dom;		/* value domain */
-};
+#define OR_PACK_CACHE_TIME(PTR, T)                      \
+        do {                                            \
+          if (T) {                                      \
+            PTR = or_pack_int(PTR, (T)->sec);        \
+            PTR = or_pack_int(PTR, (T)->usec);       \
+          }                                             \
+          else {                                        \
+            PTR = or_pack_int(PTR, 0);                  \
+            PTR = or_pack_int(PTR, 0);                  \
+          }                                             \
+        } while (0)
 
-typedef enum
-{
-  S_ASC = 1,
-  S_DESC
-} SORT_ORDER;
+#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
+        do {                                            \
+          if (T) {                                      \
+            PTR = or_unpack_int(PTR, &((T)->sec));      \
+            PTR = or_unpack_int(PTR, &((T)->usec));     \
+          }                                             \
+        } while (0)
 
-typedef struct sort_list SORT_LIST;
-struct sort_list
-{
-  struct sort_list *next;	/* Next sort item */
-  QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
-  SORT_ORDER s_order;		/* Ascending/Descending Order */
-};				/* Sort item list */
 
-typedef char *PAGE_PTR;		/* Pointer to a page */
 
-typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
-struct qfile_tuple_record
-{
-  int size;			/* area _allocated_ for tuple pointer */
-  char *tpl;			/* tuple pointer */
-};
-
-typedef enum
-{
-  NO_JOIN = -1,
-  JOIN_INNER = 0,
-  JOIN_LEFT,
-  JOIN_RIGHT,
-  JOIN_OUTER,
-  JOIN_CSELECT
-} JOIN_TYPE;
-
-typedef enum
-{
-  QPROC_NO_SINGLE_INNER = 0,	/* 0 or n qualified rows */
-  QPROC_SINGLE_INNER,		/* 0 or 1 qualified row - currently, not used */
-  QPROC_SINGLE_OUTER,		/* 1 NULL row or 1 qualified row */
-  QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
-} QPROC_SINGLE_FETCH;
-
-typedef struct qfile_list_merge_info QFILE_LIST_MERGE_INFO;
-struct qfile_list_merge_info
-{
-  JOIN_TYPE join_type;		/* inner, left, right or outer */
-  QPROC_SINGLE_FETCH single_fetch;	/* merge in single fetch mode */
-  int ls_column_cnt;		/* join columns count */
-  int *ls_outer_column;		/* outer list join columns number */
-  int *ls_outer_unique;		/* outer column values unique? */
-  /* currently, not used */
-  int *ls_inner_column;		/* inner list join columns number */
-  int *ls_inner_unique;		/* inner column values unique? */
-  /* currently, not used */
-  int ls_pos_cnt;		/* tuple value fetch count */
-  int *ls_outer_inner_list;	/* outer/inner list indicators */
-  int *ls_pos_list;		/* tuple value positions */
-};
-
-typedef struct qfile_tuple_descriptor QFILE_TUPLE_DESCRIPTOR;
-struct qfile_tuple_descriptor
-{
-  /* T_SINGLE_BOUND_ITEM */
-  char *item;			/* pointer of item (i.e, single bound field tuple) */
-  int item_size;		/* item size */
-
-  /* T_NORMAL */
-  int tpl_size;			/* tuple size */
-  int f_cnt;			/* number of field */
-  DB_VALUE **f_valp;		/* pointer of field value pointer array */
-
-  /* T_SORTKEY */
-  void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
-  void *sort_rec;		/* casted pointer of (SORT_REC *) */
-
-  /* T_MERGE */
-  QFILE_TUPLE_RECORD *tplrec1;	/* first tuple */
-  QFILE_TUPLE_RECORD *tplrec2;	/* second tuple */
-  QFILE_LIST_MERGE_INFO *merge_info;	/* tuple merge info */
-};
-
-typedef struct qfile_list_id QFILE_LIST_ID;
-struct qfile_list_id
-{
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list;	/* data type of each column */
-  SORT_LIST *sort_list;		/* sort info of each column */
-  int tuple_cnt;		/* total number of tuples in the file */
-  int page_cnt;			/* total number of pages in the list file */
-  VPID first_vpid;		/* first real page identifier */
-  VPID last_vpid;		/* last real page identifier */
-  PAGE_PTR last_pgptr;		/* last page pointer */
-  int last_offset;		/* mark current end of last page */
-  int lasttpl_len;		/* length of the last tuple file identifier
-				 * NOTE: A tuple can be larger than one page
-				 *       therefore, this field must be int
-				 *       instead of a short value
-				 */
-  int query_id;			/* Associated Query Id */
-  VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
-  struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
-  QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-};				/* List file identifier */
-
-typedef struct cursor_id CURSOR_ID;	/* Cursor Identifier */
-struct cursor_id
-{
-  int query_id;			/* Query id for this cursor */
-  QFILE_LIST_ID list_id;	/* List file identifier */
-  bool is_updatable;		/* Cursor updatable ?   */
-  bool is_oid_included;		/* Cursor has first hidden oid col. */
-  int oid_ent_count;		/* Number of OIDs in the oid set */
-  OID *oid_set;			/* Cursor current page oid set */
-  MOP *mop_set;			/* Cursor current page MOP set */
-  CURSOR_POSITION position;	/* Cursor position */
-  VPID current_vpid;		/* Current real page identifier */
-  VPID next_vpid;		/* Next page identifier */
-  VPID header_vpid;		/* Header page identifier in buffer area */
-  int tuple_no;			/* Tuple position number */
-  QFILE_TUPLE_RECORD tuple_record;	/* Tuple descriptor */
-  int on_overflow;		/* cursor buffer has an overflow page */
-  char *buffer;			/* Current page */
-  char *buffer_area;
-  int buffer_filled_size;
-  int buffer_tuple_count;	/* Tuple count in current page */
-  int current_tuple_no;		/* Tuple position in current page */
-  int current_tuple_offset;	/* Tuple offset in current page */
-  char *current_tuple_p;	/* Current tuple */
-  int current_tuple_length;	/* Current tuple length */
-  int *oid_col_no;		/* Column numbers of OID's */
-  int oid_col_no_cnt;		/* Number of values in oid_col_no */
-  DB_FETCH_MODE prefetch_lock_mode;
-  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
-				 *               false = peek */
-  int current_tuple_value_index;	/* Current tplvalue index within current_tuple_p */
-  char *current_tuple_value_p;	/* Current tplvalue pointer within current_tuple_p */
-};
-
-typedef struct db_select_result
-{
-  int query_id;			/* Query Identifier */
-  int stmt_id;			/* Statement identifier */
-  int stmt_type;		/* Statement type */
-  CURSOR_ID cursor_id;		/* Cursor on the query result */
-  CACHE_TIME cache_time;	/* query cache time */
-} DB_SELECT_RESULT;		/* Select query result structure */
-
-typedef struct db_call_result
-{
-  CURSOR_POSITION crs_pos;	/* Cursor position relative to value tuple */
-  DB_VALUE *val_ptr;		/* single value  */
-} DB_CALL_RESULT;		/* call_method result structure */
-
-typedef struct db_objfetch_result
-{
-  CURSOR_POSITION crs_pos;	/* Cursor position relative to value list tuple */
-  DB_VALUE **valptr_list;	/* list of value pointers */
-} DB_OBJFETCH_RESULT;		/* object_fetch result structure */
-
-typedef struct db_get_result
-{
-  CURSOR_POSITION crs_pos;	/* Cursor position relative to value list tuple */
-  int tpl_idx;
-  int n_tuple;
-  DB_VALUE *tpl_list;
-} DB_GET_RESULT;
-
-typedef struct db_query_tplpos
-{
-  CURSOR_POSITION crs_pos;	/* Cursor position                       */
-  VPID vpid;			/* Real page identifier containing tuple */
-  int tpl_no;			/* Tuple number inside the page          */
-  int tpl_off;			/* Tuple offset inside the page          */
-} DB_QUERY_TPLPOS;		/* Tuple position structure              */
-
-typedef enum
-{ T_SELECT = 1, T_CALL, T_OBJFETCH, T_GET, T_CACHE_HIT } DB_RESULT_TYPE;
-
-typedef enum
-{ T_OPEN = 1, T_CLOSED } DB_RESULT_STATUS;
-
-struct db_query_result
-{
-  DB_RESULT_TYPE type;		/* result type */
-  DB_RESULT_STATUS status;	/* result status */
-  int col_cnt;			/* number of values */
-  bool oid_included;		/* first oid column included? */
-  DB_QUERY_TYPE *query_type;	/* query type list */
-  int type_cnt;			/* query type list count */
-  int qtable_ind;		/* index to the query table */
-  union
-  {
-    DB_SELECT_RESULT s;		/* select query result */
-    DB_CALL_RESULT c;		/* CALL result */
-    DB_OBJFETCH_RESULT o;	/* OBJFETCH result */
-    DB_GET_RESULT g;		/* GET result */
-  } res;
-  struct db_query_result *next;	/* next str. ptr, used internally */
-};
-
-extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
-
-extern int db_execute_with_values (const char *CSQL_query,
-				   DB_QUERY_RESULT ** result,
-				   DB_QUERY_ERROR * query_error,
-				   int arg_count, DB_VALUE * vals);
-
-extern int db_query_execute_oid (const char *CSQL_query,
-				 DB_QUERY_RESULT ** result,
-				 DB_QUERY_ERROR * query_error);
-
+extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
 extern int db_query_seek_tuple (DB_QUERY_RESULT * result,
 				int offset, int seek_mode);
-
-extern DB_QUERY_TPLPOS *db_query_get_tplpos (DB_QUERY_RESULT * result);
-
-extern int db_query_set_tplpos (DB_QUERY_RESULT * result,
-				DB_QUERY_TPLPOS * tplpos);
-
-extern void db_query_free_tplpos (DB_QUERY_TPLPOS * tplpos);
-
-extern int db_query_get_tuple_object (DB_QUERY_RESULT * result,
-				      int index, DB_OBJECT ** object);
-
-extern int db_query_get_tuple_object_by_name (DB_QUERY_RESULT * result,
-					      char *column_name,
-					      DB_OBJECT ** object);
-
-extern int db_query_get_value_length (DB_QUERY_RESULT * result, int index);
-
-extern int db_query_get_value_to_space (DB_QUERY_RESULT * result,
-					int index,
-					unsigned char *ptr,
-					int maxlength,
-					bool * truncated,
-					DB_TYPE user_type, bool * null_flag);
-
-extern int db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index,
-					  unsigned char **ptr,
-					  DB_TYPE user_type,
-					  bool * null_flag);
-
-extern DB_TYPE db_query_get_value_type (DB_QUERY_RESULT * result, int index);
-
-extern void db_sqlx_debug_print_result (DB_QUERY_RESULT * result);
-extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
-
 extern int db_query_get_cache_time (DB_QUERY_RESULT * result,
 				    CACHE_TIME * cache_time);
 
-extern DB_QUERY_TYPE *db_cp_query_type (DB_QUERY_TYPE * query_type,
-					int copy_only_user);
-
-extern DB_QUERY_TYPE *db_alloc_query_format (int cnt);
-extern void db_free_query_format (DB_QUERY_TYPE * q);
-extern DB_QUERY_RESULT *db_get_db_value_query_result (DB_VALUE * var);
-
-extern void db_free_colname_list (char **colname_list, int cnt);
-extern void db_free_domain_list (SM_DOMAIN ** domain_list, int cnt);
-extern void db_free_query_result (DB_QUERY_RESULT * r);
-extern DB_QUERY_RESULT *db_alloc_query_result (DB_RESULT_TYPE r_type,
-					       int col_cnt);
-extern void db_init_query_result (DB_QUERY_RESULT * r, DB_RESULT_TYPE r_type);
-extern void db_dump_query_result (DB_QUERY_RESULT * r);
-extern char **db_cp_colname_list (char **colname_list, int cnt);
-extern SM_DOMAIN **db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt);
-extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list,
-					 char **colname_list,
-					 char **attrname_list,
-					 SM_DOMAIN ** domain_list,
-					 SM_DOMAIN ** src_domain_list,
-					 int cnt, bool oid_included);
-extern int db_query_execute_immediate (const char *CSQL_query,
-				       DB_QUERY_RESULT ** result,
-				       DB_QUERY_ERROR * query_error);
-extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list,
-						      int val_cnt,
-						      int *size_list,
-						      char **colname_list,
-						      char **attrname_list);
-extern int db_query_stmt_id (DB_QUERY_RESULT * result);
-
-extern int db_query_end (DB_QUERY_RESULT * result);
-extern int db_query_sync_end (DB_QUERY_RESULT * result);
-extern int db_query_end_internal (DB_QUERY_RESULT * result,
-				  bool notify_server);
-
-extern void db_clear_client_query_result (int notify_server);
-extern void db_final_client_query_result (void);
-
-#endif /* _DB_QUERY_H_ */
-
-#ifndef _DBI_H_
-#define _DBI_H_
-
-#define db_utime_encode db_timestamp_encode
-#define db_utime_decode db_timestamp_decode
-#define db_utime_to_string db_timestamp_to_string
-#define db_string_to_utime db_string_to_timestamp
-
-/* constants for db_include_oid */
-enum
-{ DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
 typedef enum
 {
@@ -3009,9 +2744,6 @@ extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
 extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
 extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
 extern int db_disable_first_user (void);
-
-extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
 
 /*  Serial value manipulation */
 extern int db_get_serial_current_value (const char *serial_name,
@@ -3235,7 +2967,7 @@ extern int db_drop_constraint (MOP classmop,
 extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
 extern void db_set_client_type (int client_type);
-extern int db_get_client_type ();
+extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 
@@ -3564,6 +3296,7 @@ extern DB_QUERY_SPEC *db_query_spec_next (DB_QUERY_SPEC * query_spec);
 extern const char *db_query_spec_string (DB_QUERY_SPEC * query_spec);
 extern int db_change_query_spec (DB_OBJECT * vclass,
 				 const char *new_query, const int query_no);
+
 extern int db_validate (DB_OBJECT * vclass);
 extern int db_validate_query_spec (DB_OBJECT * vclass,
 				   const char *query_spec);
@@ -3572,6 +3305,9 @@ extern DB_OBJECT *db_real_instance (DB_OBJECT * obj);
 extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);
 extern int db_is_updatable_object (DB_OBJECT * obj);
 extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
+
+extern int db_check_single_query (DB_SESSION * session, int stmt_no);
+
 /* query pre-processing functions */
 extern int db_get_query_format (const char *CSQL_query,
 				DB_QUERY_TYPE ** type_list,
@@ -3617,6 +3353,9 @@ extern int db_query_prefetch_columns (DB_QUERY_RESULT * result,
 				      int *columns, int col_count);
 
 extern int db_query_format_size (DB_QUERY_TYPE * query_type);
+
+extern int db_query_end (DB_QUERY_RESULT * result);
+extern int db_query_sync_end (DB_QUERY_RESULT * result);
 
 /* query post-processing functions */
 extern int db_query_plan_dump_file (char *filename);
@@ -3665,6 +3404,10 @@ extern bool db_is_output_marker (DB_MARKER * marker);
 extern int db_get_start_line (DB_SESSION * session, int stmt);
 
 extern int db_get_statement_type (DB_SESSION * session, int stmt);
+
+/* constants for db_include_oid */
+enum
+{ DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS /* deprecated constant */  };
 
 extern void db_include_oid (DB_SESSION * session, int include_oid);
 
@@ -3723,6 +3466,8 @@ extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
 				     CACHE_TIME * cache_time);
 extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx,
 				  int *life_time);
+extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx,
+			      bool * use_plan_cache, bool * use_query_cache);
 
 /* These are used by csql but weren't in the 2.0 dbi.h file, added
    it for the PC.  If we don't want them here, they should go somewhere
@@ -3821,4 +3566,5 @@ extern int db_decode_object (const char *string, DB_OBJECT ** object);
 
 extern int db_set_system_parameters (const char *data);
 extern int db_get_system_parameters (char *data, int len);
-#endif /* _DBI_H_ */
+
+#endif /* _DBI_COMPAT_H_ */

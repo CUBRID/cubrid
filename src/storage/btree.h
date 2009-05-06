@@ -91,6 +91,7 @@ struct btid_int
 				 * derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info;
 				 * derived from INDX_SCAN_ID.copy_buf_len */
+  int rev_level;
 };
 
 /* key range structure */
@@ -231,21 +232,6 @@ struct btree_capacity
 };
 
 #define DBVAL_BUFSIZE   4096
-
-#if defined(SERVER_MODE)
-/* in xserver_interface.h */
-extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
-			       TP_DOMAIN * key_type, OID * class_oid,
-			       int attr_id, int unique_btree,
-			       int reverse_btree, int num_oids, int num_nulls,
-			       int num_keys);
-extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
-extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
-					DB_VALUE * key, OID * class_oid,
-					OID * oid, bool is_all_class_srch);
-extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
-				     int buf_size);
-#endif /* SERVER_MODE */
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 				   DB_VALUE * key, OID * class_oid);

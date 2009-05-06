@@ -126,6 +126,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	    ele_type[i] = -1;
 	    break;
 
+	  case UUType.U_TYPE_BIGINT:
+	    col_type_name[i] = "BIGINT";
+	    col_type[i] = java.sql.Types.BIGINT;
+	    ele_type[i] = -1;
+	    break;
+
 	  case UUType.U_TYPE_FLOAT:
 	    col_type_name[i] = "FLOAT";
 	    col_type[i] = java.sql.Types.REAL;
@@ -164,6 +170,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 
 	  case UUType.U_TYPE_TIMESTAMP:
 	    col_type_name[i] = "TIMESTAMP";
+	    col_type[i] = java.sql.Types.TIMESTAMP;
+	    ele_type[i] = -1;
+	    break;
+
+	  case UUType.U_TYPE_DATETIME:
+	    col_type_name[i] = "DATETIME";
 	    col_type[i] = java.sql.Types.TIMESTAMP;
 	    ele_type[i] = -1;
 	    break;
@@ -231,6 +243,10 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 		ele_type[i] = java.sql.Types.INTEGER;
 		ele_type_name[i] = "INTEGER";
 		break;
+	      case UUType.U_TYPE_BIGINT:
+		ele_type[i] = java.sql.Types.BIGINT;
+		ele_type_name[i] = "BIGINT";
+		break;
 	      case UUType.U_TYPE_FLOAT:
 		ele_type[i] = java.sql.Types.REAL;
 		ele_type_name[i] = "FLOAT";
@@ -258,6 +274,10 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	      case UUType.U_TYPE_TIMESTAMP:
 		ele_type[i] = java.sql.Types.TIMESTAMP;
 		ele_type_name[i] = "TIMESTAMP";
+		break;
+	      case UUType.U_TYPE_DATETIME:
+		ele_type[i] = java.sql.Types.TIMESTAMP;
+		ele_type_name[i] = "DATETIME";
 		break;
 	      case UUType.U_TYPE_NULL:
 		ele_type[i] = java.sql.Types.NULL;

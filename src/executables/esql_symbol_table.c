@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -27,12 +27,10 @@
 
 #include <assert.h>
 #include <stdlib.h>
+
+#include "esql_grammar.h"
 #include "misc_string.h"
 #include "esql_misc.h"
-#define   ZZ_PREFIX em_
-#include "zzpref.h"
-#define  INSIDE_SCAN_DOT_C
-#include "esql_grammar_tokens.h"
 #include "memory_alloc.h"
 
 #define LCHUNK	10
@@ -105,7 +103,7 @@ pp_free_symtab (SYMTAB * symtab, HT_FREE_FN free_fn)
  * scope(in): nesting level of this symbol
  */
 SYMBOL *
-pp_new_symbol (const YY_CHAR * name, int scope)
+pp_new_symbol (const char *name, int scope)
 {
   SYMBOL *sym;
 
@@ -121,7 +119,7 @@ pp_new_symbol (const YY_CHAR * name, int scope)
 
   ++syms_allocated;
 
-  sym->name = name ? strdup (name) : NULL;
+  sym->name = name ? ((unsigned char *) strdup (name)) : NULL;
   sym->level = scope;
   sym->type = NULL;
   sym->etype = NULL;
@@ -141,8 +139,13 @@ pp_new_symbol (const YY_CHAR * name, int scope)
 void
 pp_discard_symbol (SYMBOL * sym)
 {
+
   if (sym)
     {
+      if (sym->args)
+	{
+	  pp_discard_symbol (sym->args);
+	}
       ++syms_deallocated;
 
       if (sym->name)
@@ -151,7 +154,7 @@ pp_discard_symbol (SYMBOL * sym)
 	}
 
       if (sym->type)
-	{
+        {
 	  if (IS_FUNCT (sym->type))
 	    {
 	      pp_discard_symbol_chain (sym->args);
@@ -169,6 +172,7 @@ pp_discard_symbol (SYMBOL * sym)
 	  es_ht_free_symbol (sym);
 	}
     }
+
 }
 
 /*
@@ -283,7 +287,7 @@ pp_discard_link (LINK * p)
  * tag(in): the tagname for the struct
  */
 STRUCTDEF *
-pp_new_structdef (const YY_CHAR * tag)
+pp_new_structdef (const char *tag)
 {
   /*
    * Structs, even "anonymous" ones, must always have tag names for the
@@ -315,8 +319,8 @@ pp_new_structdef (const YY_CHAR * tag)
       tag = buf;
     }
 
-  sdef->tag = strdup (tag);
-  sdef->type_string = "struct";
+  sdef->tag = (unsigned char *) strdup (tag);
+  sdef->type_string = (unsigned char *) "struct";
   sdef->type = 1;		/* struct */
   sdef->fields = NULL;
   sdef->next = NULL;
@@ -416,7 +420,7 @@ pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript)
   pp_discard_link (pp_current_type_spec ());
 
   length_field = pp_new_symbol (VARCHAR_LENGTH_NAME, pp_nesting_level);
-  db_int32 = pp_findsym (pp_Symbol_table, (char *) "int");
+  db_int32 = pp_findsym (pp_Symbol_table, (unsigned char *) "int");
   pp_reset_current_type_spec ();
   pp_add_typedefed_spec (db_int32->type);
   pp_add_spec_to_decl (pp_current_type_spec (), length_field);
@@ -452,7 +456,7 @@ pp_add_declarator (SYMBOL * sym, int type)
 
   if (type == D_FUNCTION && sym->etype && IS_ARRAY (sym->etype))
     {
-      yyverror (pp_get_msg (EX_SYMBOL_SET, MSG_ILLEGAL_ARRAY));
+      esql_yyverror (pp_get_msg (EX_SYMBOL_SET, MSG_ILLEGAL_ARRAY));
       pp_add_declarator (sym, D_POINTER);
     }
 
@@ -486,7 +490,7 @@ pp_clone_symbol (SYMBOL * sym)
 {
   SYMBOL *newsym;
 
-  newsym = pp_new_symbol (sym->name, sym->level);
+  newsym = pp_new_symbol ((char *) sym->name, sym->level);
   newsym->type = pp_clone_type (sym->type, &newsym->etype);
   newsym->next = NULL;
 
@@ -592,20 +596,20 @@ pp_the_same_type (LINK * p1, LINK * p2, int relax)
 	}
     }
 
-  yyerror (pp_get_msg (EX_SYMBOL_SET, MSG_UNKNOWN_CLASS));
+  esql_yyerror (pp_get_msg (EX_SYMBOL_SET, MSG_UNKNOWN_CLASS));
   return 0;
 }
 
 /*
  * pp_attr_str() - Return a string representing the interesting attributes
  *    in a specifier other than the noun and storage class.
- * return : YY_CHAR *
+ * return : char *
  * spec(in): a type link
  */
-YY_CHAR *
+char *
 pp_attr_str (LINK * type)
 {
-  static YY_CHAR str[32];
+  static char str[32];
 
   assert (IS_SPECIFIER (type));
 
@@ -648,14 +652,14 @@ pp_attr_str (LINK * type)
 /*
  * pp_type_str() - Return a string representing the type represented by
  *    the link chain.
- * return : YY_CHAR *
+ * return : char *
  * link(in): a type chain
  */
-const YY_CHAR *
+const char *
 pp_type_str (LINK * link)
 {
-  static YY_CHAR target[80];
-  static YY_CHAR buf[64];
+  static char target[80];
+  static char buf[64];
   int available = sizeof (target) - 1;
 
   target[0] = '\0';
@@ -695,7 +699,7 @@ pp_type_str (LINK * link)
       else
 	{
 	  /* it's a specifier */
-	  const YY_CHAR *noun_str;
+	  const char *noun_str;
 
 	  strcpy (buf, pp_attr_str (link));
 
@@ -717,7 +721,8 @@ pp_type_str (LINK * link)
 	      noun_str = "label";
 	      break;
 	    case N_STRUCTURE:
-	      noun_str = link->decl.s.val.v_struct->type_string;
+	      noun_str =
+		(const char *) link->decl.s.val.v_struct->type_string;
 	      break;
 	    case N_VARCHAR:
 	      noun_str = "varchar";
@@ -740,8 +745,9 @@ pp_type_str (LINK * link)
 	      available -= strlen (buf);
 
 	      sprintf (buf, " %s",
-		       link->decl.s.val.v_struct->tag ? link->decl.s.val.
-		       v_struct->tag : "untagged");
+		       (link->decl.s.val.v_struct->tag
+			? link->decl.s.val.v_struct->tag
+			: ((unsigned char *) "untagged")));
 	    }
 	}
 
@@ -776,8 +782,8 @@ es_print_struct (STRUCTDEF * sdef, FILE * fp)
 {
   SYMBOL *field;
 
-  fprintf (fp, " * %s %s:\n",
-	   sdef->type_string, sdef->tag ? sdef->tag : "<anon>");
+  fprintf (fp, " * %s %s:\n", sdef->type_string,
+	   (sdef->tag ? sdef->tag : ((unsigned char *) "<anon>")));
 
   for (field = sdef->fields; field; field = field->next)
     {
@@ -823,7 +829,7 @@ pp_print_syms (FILE * fp)
  * name(in): The name to be searched for.
  */
 SYMBOL *
-pp_findsym (SYMTAB * symtab, YY_CHAR * name)
+pp_findsym (SYMTAB * symtab, unsigned char *name)
 {
   SYMBOL dummy;
 

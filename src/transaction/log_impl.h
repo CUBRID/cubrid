@@ -85,7 +85,7 @@
 #define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
 #define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */
 
-#define LOGAREA_SIZE (IO_PAGESIZE - DB_SIZEOF(LOG_HDRPAGE))	/* Log data area */
+#define LOGAREA_SIZE (IO_PAGESIZE - SSIZEOF(LOG_HDRPAGE))	/* Log data area */
 
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() (PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS > 0)
@@ -107,7 +107,7 @@
   do {                                                                        \
     if ((current_setdirty) == LOG_SET_DIRTY)                                  \
       logpb_set_dirty(log_Gl.append.log_pgptr, DONT_FREE);                     \
-    DB_ALIGN(log_Gl.hdr.append_lsa.offset, INT_ALIGNMENT);                    \
+    log_Gl.hdr.append_lsa.offset = DB_ALIGN(log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT);                    \
     if (log_Gl.hdr.append_lsa.offset >= (int)LOGAREA_SIZE)                    \
       logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
   } while(0)
@@ -126,14 +126,14 @@
 
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr)                                        \
   do {                                                                        \
-    DB_ALIGN((lsa)->offset, INT_ALIGNMENT);                                   \
+    (lsa)->offset = DB_ALIGN((lsa)->offset, DOUBLE_ALIGNMENT);                                   \
     while ((lsa)->offset >= (int)LOGAREA_SIZE) {                              \
       assert(log_pgptr != NULL);                                              \
       (lsa)->pageid++;                                                        \
       if ((logpb_fetch_page((thread_p), (lsa)->pageid, log_pgptr)) == NULL)                 \
         logpb_fatal_error((thread_p), true, ARG_FILE_LINE, "LOG_READ_ALIGN");               \
         (lsa)->offset -= LOGAREA_SIZE;                                        \
-        DB_ALIGN((lsa)->offset, INT_ALIGNMENT);                               \
+        (lsa)->offset = DB_ALIGN((lsa)->offset, DOUBLE_ALIGNMENT);                               \
     }                                                                         \
   } while(0)
 
@@ -152,7 +152,6 @@
         logpb_fatal_error((thread_p), true, ARG_FILE_LINE,                                  \
                         "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");                  \
       (lsa)->offset = 0;                                                      \
-      DB_ALIGN((lsa)->offset, INT_ALIGNMENT);                                 \
     }                                                                         \
   while(0)
 
@@ -271,7 +270,11 @@
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
 
+#if !defined(_DB_DISABLE_MODIFICATIONS_)
+#define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
+#endif /* _DB_DISABLE_MODIFICATIONS_ */
+
 #ifndef CHECK_MODIFICATION_NO_RETURN
 #if defined (SA_MODE)
 #define CHECK_MODIFICATION_NO_RETURN(error) \
@@ -445,10 +448,10 @@ struct log_flush_info
    * Not all of the append pages may be full.
    */
   int num_toflush;
-  LOG_FLUSH_TYPE flush_type;
 
   /* A sorted order of log append free pages to flush */
   LOG_PAGE **toflush;
+  LOG_FLUSH_TYPE flush_type;
 
 #if defined(SERVER_MODE)
   /* for protecting LOG_FLUSH_INFO */
@@ -650,6 +653,11 @@ struct log_tdes
 				   log
 				 */
   int client_id;		/* unique client id */
+  int gtrid;			/* Global transaction identifier; used only
+				   if this transaction is a participant to
+				   a global transaction and it is prepared
+				   to commit.
+				 */
   LOG_CLIENTIDS client;		/* Client identification            */
   CSS_CRITICAL_SECTION cs_topop;	/* critical section to serialize
 					   system top operations
@@ -658,11 +666,6 @@ struct log_tdes
 				   Used for system permanent nested
 				   operations which are independent from
 				   current transaction outcome.
-				 */
-  int gtrid;			/* Global transaction identifier; used only
-				   if this transaction is a participant to
-				   a global transaction and it is prepared
-				   to commit.
 				 */
   LOG_2PC_GTRINFO gtrinfo;	/* Global transaction user information;
 				   used to store XID of XA interface.
@@ -698,10 +701,10 @@ struct log_tdes
   int num_repl_records;		/* # of replication records */
   int cur_repl_record;		/* # of replication records */
   int append_repl_recidx;	/* index of append replication records */
+  struct log_repl *repl_records;	/* replication records */
   int fl_mark_repl_recidx;	/* index of flush marked
 				   replication record at first
 				 */
-  struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert target lsa */
   LOG_LSA repl_update_lsa;	/* update target lsa */
 
@@ -760,12 +763,12 @@ struct trantable
 typedef struct log_hdr_bkup_level_info LOG_HDR_BKUP_LEVEL_INFO;
 struct log_hdr_bkup_level_info
 {
-  time_t bkup_attime;		/* Timestamp when this backup lsa taken */
+  INT64 bkup_attime;		/* Timestamp when this backup lsa taken */
+  INT64 io_baseln_time;		/* time (secs.) to write a single page */
+  INT64 io_bkuptime;		/* total time to write the backup  */
   int ndirty_pages_post_bkup;	/* number of pages written since the lsa
 				   for this backup level. */
-  time_t io_baseln_time;	/* time (secs.) to write a single page */
   int io_numpages;		/* total number of pages in last backup */
-  time_t io_bkuptime;		/* total time to write the backup  */
 };
 
 /*
@@ -776,12 +779,13 @@ struct log_header
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix
 					 * utility
 					 */
-  time_t db_creation;		/* Database creation time. For safety reasons,
+  INT32 dummy;			/* for 8byte align */
+  INT64 db_creation;		/* Database creation time. For safety reasons,
 				 * this value is set on all volumes and the
 				 * log. The value is generated by the log
 				 * manager
 				 */
-  char db_release[CUBRID_REL_STRING_MAX_LENGTH];	/* CUBRID Release */
+  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
   float db_compatibility;	/* Compatibility of the database against the
 				 * current release of CUBRID
 				 */
@@ -844,7 +848,8 @@ struct log_arv_header
 {				/* Log archive header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix
 					 * utility     */
-  time_t db_creation;		/* Database creation time. For safety reasons,
+  INT32 dummy;			/* for 8byte align */
+  INT64 db_creation;		/* Database creation time. For safety reasons,
 				 * this value is set on all volumes and the
 				 * log. The value is generated by the log
 				 * manager
@@ -1234,7 +1239,7 @@ struct log_2pc_particp_ack
 /* Log the time of termination of transaction */
 struct log_donetime
 {
-  time_t at_time;		/* Database creation time. For safety reasons */
+  INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
 /* Log the change of the server's HA state */
@@ -1309,7 +1314,6 @@ struct log_global
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
-
   /* remote log writer information */
   LOGWR_INFO writer_info;
 };
@@ -1402,7 +1406,7 @@ typedef struct log_logging_stat
 
   /* async commit request count */
   long async_commit_request_count;
-} log_logging_stat;
+} LOG_LOGGING_STAT;
 
 
 #if !defined(SERVER_MODE)
@@ -1413,7 +1417,7 @@ extern int log_Tran_index;	/* Index onto transaction table for
 
 extern LOG_GLOBAL log_Gl;
 
-extern log_logging_stat log_Stat;
+extern LOG_LOGGING_STAT log_Stat;
 
 /* Name of the database and logs */
 extern char log_Path[];
@@ -1443,7 +1447,7 @@ extern int logpb_print_hash_entry (FILE * outfp, const void *key,
 extern int logpb_initialize_header (THREAD_ENTRY * thread_p,
 				    struct log_header *loghdr,
 				    const char *prefix_logname,
-				    DKNPAGES npages, time_t * db_creation);
+				    DKNPAGES npages, INT64 * db_creation);
 extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p,
 				struct log_header *hdr);
@@ -1464,12 +1468,12 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      const char *logpath,
 					      const char *prefix_logname,
 					      PGLENGTH * db_iopagesize,
-					      time_t * db_creation,
+					      INT64 * db_creation,
 					      float *db_compatibility);
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern void logpb_next_append_page (THREAD_ENTRY * thread_p,
 				    LOG_SETDIRTY current_setdirty);
-extern int logpb_flush_all_append_pages_low (THREAD_ENTRY * thread_p);
+extern int logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p);
 extern void logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
 					  LOG_FLUSH_TYPE flush_type);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
@@ -1508,6 +1512,9 @@ extern bool logpb_is_page_in_archive (PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid);
 extern void logpb_decache_archive_info (void);
+extern int logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, 
+					    PAGEID pageid, 
+					    struct log_arv_header *ret_arvhdr);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area,
@@ -1705,29 +1712,14 @@ extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_host_name,
 					    int *client_pid);
 
-#if defined(SERVER_MODE)
-extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
-				       char **buffer_p, int *size_p);
-#endif /* SERVER_MODE */
 extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
 extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
-#if defined(SERVER_MODE)
-extern int xlogtb_reset_wait_secs (THREAD_ENTRY * thread_p, int waitsecs);
-#endif /* SERVER_MODE */
 extern int logtb_find_wait_secs (int tran_index);
 extern int logtb_find_current_wait_secs (THREAD_ENTRY * thread_p);
-#if defined(SERVER_MODE)
-extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p,
-				   TRAN_ISOLATION isolation,
-				   bool unlock_by_isolation);
-#endif /* SERVER_MODE */
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
-#if defined(SERVER_MODE)
-extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
-#endif /* SERVER_MODE */
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,
 					    int tran_index, int set);
 extern bool logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
@@ -1740,9 +1732,6 @@ extern bool logtb_are_any_interrupts (void);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
-#if defined(SERVER_MODE)
-extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);

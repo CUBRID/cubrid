@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -105,7 +105,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_ATTRIBUTE **attp;
   char **namep = NULL, **attrnames;
   int *asc_desc = NULL;
-  int i, partnum, coalesce_num;
+  int i, partnum = 0, coalesce_num = 0;
   SM_CLASS *smclass;
   TP_DOMAIN *key_type;
   bool partition_savepoint = false;
@@ -1728,12 +1728,12 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
   int i, nnames;
   DB_CONSTRAINT_TYPE ctype;
   PT_NODE *c, *n;
-  const char **attnames;
+  char **attnames;
   int *asc_desc;
   char *cname;
 
   nnames = pt_length_of_list (statement->info.index.column_names);
-  attnames = (const char **) malloc ((nnames + 1) * sizeof (char *));
+  attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
   asc_desc = (int *) malloc ((nnames) * sizeof (int));
   if (attnames == NULL || asc_desc == NULL)
     {
@@ -1745,7 +1745,7 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
     {
       asc_desc[i] = c->info.sort_spec.asc_or_desc == PT_ASC ? 0 : 1;
       n = c->info.sort_spec.expr;	/* column name node */
-      attnames[i] = n->info.name.original;
+      attnames[i] = (char *) n->info.name.original;
     }
   attnames[i] = NULL;
 
@@ -1762,7 +1762,7 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
     }
 
   cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
-				      attnames, asc_desc,
+				      (const char **) attnames, asc_desc,
 				      (c ? c->info.name.original : NULL));
   if (cname == NULL)
     {
@@ -1772,12 +1772,14 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
     {
       if (do_index == CREATE)
 	{
-	  error =
-	    sm_add_constraint (obj, ctype, cname, attnames, asc_desc, false);
+	  error = sm_add_constraint (obj, ctype, cname,
+				     (const char **) attnames, asc_desc,
+				     false);
 	}
       else			/* do_index == DROP */
 	{
-	  error = sm_drop_constraint (obj, ctype, cname, attnames, false);
+	  error = sm_drop_constraint (obj, ctype, cname,
+				      (const char **) attnames, false);
 	}
       sm_free_constraint_name (cname);
     }
@@ -1786,7 +1788,6 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
   free_and_init (asc_desc);
 
   return error;
-
 }
 
 /*
@@ -2180,7 +2181,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 		     DB_OBJECT * class_obj, DB_CTMPL * clstmpl)
 {
   int error;
-  PT_NODE *pinfo, *hash_parts = NULL, *newparts, *hashtail;
+  PT_NODE *pinfo, *hash_parts, *newparts, *hashtail;
   PT_NODE *parts, *parts_save, *fmin;
   PT_NODE *parttemp, *names;
   PART_CLASS_INFO pci = { NULL, NULL, NULL, NULL };
@@ -2191,6 +2192,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   int size;
   int save;
   SM_CLASS *smclass;
+
+  pinfo = hash_parts = newparts = hashtail = NULL;
+  parts = parts_save = fmin = NULL;
 
   if (node->node_type == PT_ALTER)
     {
@@ -3621,8 +3625,10 @@ evaluate_partition_range (PARSER_CONTEXT * parser, PT_NODE * expr)
   int cmprst = 0, optype;
   PT_NODE *elem, *llim, *ulim;
   DB_VALUE *orgval, *llimval, *ulimval;
-  DB_VALUE_COMPARE_RESULT cmp1;
-  DB_VALUE_COMPARE_RESULT cmp2;
+  DB_VALUE_COMPARE_RESULT cmp1 = DB_UNK;
+  DB_VALUE_COMPARE_RESULT cmp2 = DB_UNK;
+
+  orgval = llimval = ulimval = NULL;
 
   if (!expr || expr->node_type != PT_EXPR
       || expr->info.expr.op != PT_RANGE
@@ -3790,6 +3796,9 @@ conver_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_SYS_TIMESTAMP:
 	  db_sys_timestamp (&retval);
 	  break;
+	case PT_SYS_DATETIME:
+	  db_sys_datetime (&retval);
+	  break;
 	case PT_PLUS:
 	case PT_MINUS:
 	case PT_MODULUS:
@@ -3817,6 +3826,7 @@ conver_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_TO_NUMBER:
 	case PT_TO_TIME:
 	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
 	case PT_EXTRACT:
 	case PT_TO_CHAR:
 	case PT_STRCAT:
@@ -4015,6 +4025,9 @@ increase_value (DB_VALUE * val)
     case DB_TYPE_INTEGER:
       val->data.i++;
       break;
+    case DB_TYPE_BIGINT:
+      val->data.bigint++;
+      break;
     case DB_TYPE_SHORT:
       val->data.i++;
       break;
@@ -4023,6 +4036,17 @@ increase_value (DB_VALUE * val)
       break;
     case DB_TYPE_UTIME:
       val->data.utime++;
+      break;
+    case DB_TYPE_DATETIME:
+      if (val->data.datetime.time == MILLISECONDS_OF_ONE_DAY - 1)
+	{
+	  val->data.datetime.date++;
+	  val->data.datetime.time = 0;
+	}
+      else
+	{
+	  val->data.datetime.time++;
+	}
       break;
     case DB_TYPE_DATE:
       val->data.date++;
@@ -4058,6 +4082,9 @@ decrease_value (DB_VALUE * val)
     case DB_TYPE_INTEGER:
       val->data.i--;
       break;
+    case DB_TYPE_BIGINT:
+      val->data.bigint--;
+      break;
     case DB_TYPE_SHORT:
       val->data.i--;
       break;
@@ -4066,6 +4093,17 @@ decrease_value (DB_VALUE * val)
       break;
     case DB_TYPE_UTIME:
       val->data.utime--;
+      break;
+    case DB_TYPE_DATETIME:
+      if (val->data.datetime.time == 0)
+	{
+	  val->data.datetime.date--;
+	  val->data.datetime.time = MILLISECONDS_OF_ONE_DAY - 1;
+	}
+      else
+	{
+	  val->data.datetime.time--;
+	}
       break;
     case DB_TYPE_DATE:
       val->data.date--;
@@ -4100,20 +4138,18 @@ check_hash_range (PRUNING_INFO * ppi, char *partmap, PT_OP_TYPE op,
 
   if (!from_expr
       || (from_expr->type_enum != PT_TYPE_INTEGER
+	  && from_expr->type_enum != PT_TYPE_BIGINT
 	  && from_expr->type_enum != PT_TYPE_SMALLINT
-	  && from_expr->type_enum != PT_TYPE_DATE
-	  && from_expr->type_enum != PT_TYPE_TIME
-	  && from_expr->type_enum != PT_TYPE_TIMESTAMP))
+	  && !PT_IS_DATE_TIME_TYPE (from_expr->type_enum)))
     {
       return -1;
     }
 
   if (!to_expr
       || (to_expr->type_enum != PT_TYPE_INTEGER
+	  && to_expr->type_enum != PT_TYPE_BIGINT
 	  && to_expr->type_enum != PT_TYPE_SMALLINT
-	  && to_expr->type_enum != PT_TYPE_DATE
-	  && to_expr->type_enum != PT_TYPE_TIME
-	  && to_expr->type_enum != PT_TYPE_TIMESTAMP))
+	  && !PT_IS_DATE_TIME_TYPE (to_expr->type_enum)))
     {
       return -1;
     }
@@ -4184,7 +4220,7 @@ select_hash_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 {
   DB_OBJLIST *objs;
   PT_NODE *elem, *pruned;
-  int rst, setsize, i1, hashnum, sval, target_cnt;
+  int rst = 0, setsize, i1, hashnum, sval, target_cnt;
   int ret;
   char *partmap;
   DB_VALUE *hval, ele;
@@ -4390,7 +4426,7 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
   DB_VALUE pval, minele, maxele;
   SM_CLASS *subcls;
   PT_NODE *elem, *pruned;
-  DB_VALUE *minval, *maxval, *lval, *uval, ele;
+  DB_VALUE *minval, *maxval, *lval = NULL, *uval, ele;
   PT_OP_TYPE minop, maxop, lop, uop;
   int rst, optype, setsize, i1, target_cnt;
   DB_TYPE range_type;
@@ -4638,9 +4674,11 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 	  range_type = DB_VALUE_TYPE (maxval);
 	  if (range_type != DB_TYPE_INTEGER
 	      && range_type != DB_TYPE_SMALLINT
+	      && range_type != DB_TYPE_BIGINT
 	      && range_type != DB_TYPE_DATE
 	      && range_type != DB_TYPE_TIME
-	      && range_type != DB_TYPE_TIMESTAMP)
+	      && range_type != DB_TYPE_TIMESTAMP
+	      && range_type != DB_TYPE_DATETIME)
 	    {
 	      rst = 1;
 	      break;
@@ -5174,7 +5212,7 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   AU_DISABLE (au_save);
 
-  spec = NULL;
+  spec = cond = name = retflat = NULL;
   switch (stmt->node_type)
     {
     case PT_SELECT:
@@ -7154,6 +7192,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
 
 static const int DO_DB_MAX_DOUBLE_PRECISION = 53;
 static const int DO_DB_MAX_FLOAT_PRECISION = 24;
+static const int DO_DB_MAX_BIGINT_PRECISION = 19;
 static const int DO_DB_MAX_INTEGER_PRECISION = 10;
 
 static int valiate_attribute_domain (PARSER_CONTEXT * parser,
@@ -7243,8 +7282,18 @@ valiate_attribute_domain (PARSER_CONTEXT * parser,
 		    }
 		  else if (s == 0)
 		    {
-		      if (p <= DO_DB_MAX_INTEGER_PRECISION)
+		      if (p < DO_DB_MAX_INTEGER_PRECISION)
+			/*
+			 * not all the numbers within the max precision
+			 * are represented.
+			 */
 			attribute->type_enum = PT_TYPE_INTEGER;
+		      else if (p < DO_DB_MAX_BIGINT_PRECISION)
+			/*
+			 * not all the numbers within the max precision
+			 * are represented.
+			 */
+			attribute->type_enum = PT_TYPE_BIGINT;
 		      else if (p <= DB_MAX_NUMERIC_PRECISION)
 			attribute->type_enum = PT_TYPE_NUMERIC;
 		      else if (p <= DO_DB_MAX_DOUBLE_PRECISION)
@@ -7572,7 +7621,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
 {
   PT_FOREIGN_KEY_INFO *fk_info;
   const char *constraint_name = NULL;
-  const char **ref_attrs = NULL;
+  char **ref_attrs = NULL;
   int i, n_atts, n_ref_atts;
   PT_NODE *p;
   int error = NO_ERROR;
@@ -7592,7 +7641,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
     {
       n_ref_atts = pt_length_of_list (fk_info->referenced_attrs);
 
-      ref_attrs = (const char **) malloc ((n_ref_atts + 1) * sizeof (char *));
+      ref_attrs = (char **) malloc ((n_ref_atts + 1) * sizeof (char *));
       if (ref_attrs == NULL)
 	{
 	  return er_errid ();
@@ -7601,7 +7650,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
       i = 0;
       for (p = fk_info->referenced_attrs; p; p = p->next)
 	{
-	  ref_attrs[i++] = p->info.name.original;
+	  ref_attrs[i++] = (char *) p->info.name.original;
 	}
       ref_attrs[i] = NULL;
     }
@@ -7619,7 +7668,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
 
   error = dbt_add_foreign_key (ctemplate, constraint_name, att_names,
 			       fk_info->referenced_class->info.name.original,
-			       ref_attrs,
+			       (const char **) ref_attrs,
 			       map_pt_to_sm_action (fk_info->delete_action),
 			       map_pt_to_sm_action (fk_info->update_action),
 			       cache_attr);
@@ -7716,7 +7765,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
   int error = NO_ERROR;
   PT_NODE *cnstr;
   int max_attrs = 0;
-  const char **att_names = NULL;
+  char **att_names = NULL;
 
   /*  Find the size of the largest UNIQUE constraint list and allocate
      a character array large enough to contain it. */
@@ -7744,7 +7793,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
-      att_names = (const char **) malloc ((max_attrs + 1) * sizeof (char *));
+      att_names = (char **) malloc ((max_attrs + 1) * sizeof (char *));
 
       if (att_names == NULL)
 	{
@@ -7768,7 +7817,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  for (p = cnstr->info.constraint.un.unique.attrs; p;
 		       p = p->next)
 		    {
-		      att_names[i++] = p->info.name.original;
+		      att_names[i++] = (char *) p->info.name.original;
 
 		      /*  Determine if the unique constraint is being applied to
 		         class or normal attributes.  The way the parser currently
@@ -7790,7 +7839,8 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		    }
 
 		  error = dbt_add_constraint (ctemplate, DB_CONSTRAINT_UNIQUE,
-					      constraint_name, att_names,
+					      constraint_name,
+					      (const char **) att_names,
 					      class_attributes);
 		  if (error != NO_ERROR)
 		    {
@@ -7812,7 +7862,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  for (p = cnstr->info.constraint.un.primary_key.attrs; p;
 		       p = p->next)
 		    {
-		      att_names[i++] = p->info.name.original;
+		      att_names[i++] = (char *) p->info.name.original;
 
 		      /*  Determine if the unique constraint is being applied to
 		         class or normal attributes.  The way the parser currently
@@ -7833,10 +7883,11 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 			cnstr->info.constraint.name->info.name.original;
 		    }
 
-		  error =
-		    dbt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY,
-					constraint_name, att_names,
-					class_attributes);
+		  error = dbt_add_constraint (ctemplate,
+					      DB_CONSTRAINT_PRIMARY_KEY,
+					      constraint_name,
+					      (const char **) att_names,
+					      class_attributes);
 		  if (error != NO_ERROR)
 		    {
 		      goto constraint_error;
@@ -7845,7 +7896,8 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
 	      if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
 		{
-		  error = add_foreign_key (ctemplate, cnstr, att_names);
+		  error = add_foreign_key (ctemplate, cnstr,
+					   (const char **) att_names);
 		  if (error != NO_ERROR)
 		    {
 		      goto constraint_error;

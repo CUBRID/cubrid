@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <sys/timeb.h>
@@ -63,7 +63,7 @@ struct t_glo_cmd_info
 static const char *get_schema_type_str (int schema_type);
 static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value);
-static char *get_error_log_eids ();
+static char *get_error_log_eids (int err);
 #ifndef LIBCAS_FOR_JSP
 static void bind_value_log (int start, int argc, void **argv, int, char *,
 			    unsigned int);
@@ -130,6 +130,9 @@ static const char *type_str_tbl[] = {
   "MULTISET",			/* CCI_U_TYPE_MULTISET */
   "SEQUENCE",			/* CCI_U_TYPE_SEQUENCE */
   "OBJECT",			/* CCI_U_TYPE_OBJECT */
+  "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
+  "BIGINT",			/* CCI_U_TYPE_BIGINT */
+  "DATETIME"			/* CCI_U_TYPE_DATETIME */
 };
 
 static int query_sequence_num = 0;
@@ -137,7 +140,7 @@ static int query_sequence_num = 0;
 #define QUERY_SEQ_NUM_CURRENT_VALUE()   query_sequence_num
 
 int
-fn_end_tran (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -235,7 +238,7 @@ fn_end_tran (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -303,7 +306,7 @@ fn_prepare (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_execute (int sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	    T_REQ_INFO * req_info)
 {
   int srv_h_id;
@@ -458,7 +461,7 @@ fn_execute (int sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 }
 
 int
-fn_get_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -515,7 +518,7 @@ fn_get_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_set_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -586,7 +589,7 @@ fn_set_db_parameter (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_close_req_handle (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -622,7 +625,7 @@ fn_close_req_handle (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_cursor (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -646,7 +649,7 @@ fn_cursor (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_fetch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
+fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 	  T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   int srv_h_id;
@@ -684,7 +687,7 @@ fn_fetch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 }
 
 int
-fn_schema_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_schema_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -722,7 +725,7 @@ fn_schema_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_oid_get (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_oid_get (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -746,7 +749,7 @@ fn_oid_get (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_oid_put (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_oid_put (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -764,7 +767,7 @@ fn_oid_put (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_glo_new (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -818,7 +821,7 @@ fn_glo_new (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	  return 0;
 	}
 #ifndef LIBCAS_FOR_JSP
-#ifdef WIN32
+#if defined(WINDOWS)
       shm_appl->as_info[shm_as_index].glo_read_size = file_size;
 #endif
 #endif
@@ -857,7 +860,7 @@ fn_glo_new (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_glo_save (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_glo_save (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -890,7 +893,7 @@ fn_glo_save (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	  return 0;
 	}
 #ifndef LIBCAS_FOR_JSP
-#ifdef WIN32
+#if defined(WINDOWS)
       shm_appl->as_info[shm_as_index].glo_read_size = file_size;
 #endif
 #endif
@@ -938,7 +941,7 @@ fn_glo_save (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_glo_load (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_glo_load (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -968,7 +971,7 @@ fn_glo_load (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_get_db_version (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -996,7 +999,7 @@ fn_get_db_version (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_get_class_num_objs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1021,7 +1024,7 @@ fn_get_class_num_objs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_oid (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
+fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 	T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   DB_OBJECT *obj;
@@ -1111,7 +1114,7 @@ fn_oid (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
       if (res_msg == NULL)
 	{
 	  err_code = db_error_code ();
-	  res_msg = "";
+	  res_msg = (char *) "";
 	}
       else
 	{
@@ -1146,7 +1149,7 @@ fn_oid (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
   else
     {
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
-      if (cmd == 5)
+      if (cmd == CCI_OID_CLASS_NAME)
 	{
 	  net_buf_cp_str (CAS_FN_ARG_NET_BUF, res_msg, strlen (res_msg) + 1);
 	}
@@ -1156,14 +1159,14 @@ fn_oid (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 }
 
 int
-fn_collection (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
   char cmd;
   DB_OBJECT *obj;
-  char *attr_name = "";
-  int attr_name_size = 0, seq_index;
+  char *attr_name = (char *) "";
+  int attr_name_size = 0, seq_index = 0;
   int err_code;
   DB_VALUE val;
   DB_COLLECTION *collection;
@@ -1360,7 +1363,7 @@ fn_col_finale:
 }
 
 int
-fn_next_result (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1392,7 +1395,7 @@ fn_next_result (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_execute_batch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_execute_batch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1408,7 +1411,7 @@ fn_execute_batch (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_execute_array (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_execute_array (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1446,7 +1449,7 @@ fn_execute_array (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_cursor_update (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_cursor_update (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1476,7 +1479,7 @@ fn_cursor_update (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_get_attr_type_str (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_attr_type_str (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1500,7 +1503,7 @@ fn_get_attr_type_str (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_get_query_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1563,7 +1566,7 @@ fn_get_query_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       db_query_end (result);
       db_close_session (session);
 
-#ifndef WIN32
+#if !defined(WINDOWS)
       cas_log_query_info_next ();
       histo_print ();
       cas_log_query_info_end ();
@@ -1583,7 +1586,7 @@ end:
 }
 
 int
-fn_savepoint (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1601,7 +1604,7 @@ fn_savepoint (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   NET_ARG_GET_CHAR (cmd, CAS_FN_ARG_ARGV[0]);
   NET_ARG_GET_STR (savepoint_name, savepoint_name_size, CAS_FN_ARG_ARGV[1]);
   if (savepoint_name == NULL)
-    savepoint_name = "";
+    savepoint_name = (char *) "";
 
   if (cmd == 1)
     {				/* set */
@@ -1632,7 +1635,7 @@ fn_savepoint (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_parameter_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_parameter_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1652,7 +1655,7 @@ fn_parameter_info (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_glo_cmd (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1888,7 +1891,7 @@ glo_cmd_end:
 }
 
 int
-fn_con_close (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_con_close (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1898,7 +1901,7 @@ fn_con_close (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_check_cas (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_check_cas (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1924,7 +1927,7 @@ fn_check_cas (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_make_out_rs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_make_out_rs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -1943,7 +1946,7 @@ fn_make_out_rs (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 }
 
 int
-fn_get_generated_keys (int CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
 {
@@ -2064,6 +2067,13 @@ bind_value_print (char type, void *net_value)
 	cas_log_write_query_string (str_val, FALSE);
       }
       break;
+    case CCI_U_TYPE_BIGINT:
+      {
+	DB_BIGINT bi_val;
+	NET_ARG_GET_BIGINT (bi_val, net_value);
+	cas_log_write2 ("%lld", (long long) bi_val);
+      }
+      break;
     case CCI_U_TYPE_INT:
       {
 	int i_val;
@@ -2096,15 +2106,19 @@ bind_value_print (char type, void *net_value)
     case CCI_U_TYPE_DATE:
     case CCI_U_TYPE_TIME:
     case CCI_U_TYPE_TIMESTAMP:
+    case CCI_U_TYPE_DATETIME:
       {
-	int yr, mon, day, hh, mm, ss;
-	NET_ARG_GET_TIMESTAMP (yr, mon, day, hh, mm, ss, net_value);
+	int yr, mon, day, hh, mm, ss, ms;
+	NET_ARG_GET_DATETIME (yr, mon, day, hh, mm, ss, ms, net_value);
 	if (type == CCI_U_TYPE_DATE)
 	  cas_log_write2 ("%d/%d/%d", yr, mon, day);
 	else if (type == CCI_U_TYPE_TIME)
 	  cas_log_write2 ("%d:%d:%d", hh, mm, ss);
-	else
+	else if (type == CCI_U_TYPE_TIMESTAMP)
 	  cas_log_write2 ("%d/%d/%d %d:%d:%d", yr, mon, day, hh, mm, ss);
+	else
+	  cas_log_write2 ("%d/%d/%d %d:%d:%d.%03d",
+			  yr, mon, day, hh, mm, ss, ms);
       }
       break;
     case CCI_U_TYPE_SET:
@@ -2178,7 +2192,7 @@ get_error_log_eids (int err)
 
   if (err >= 0)
     {
-      return "";
+      return (char *) "";
     }
 
   if (pending_alloc != NULL)

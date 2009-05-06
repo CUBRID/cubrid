@@ -345,7 +345,7 @@ void CUCMDetail::OnClose()
 	OnUcmdEnd();
 }
 
-void CUCMDetail::OnTimer(UINT nIDEvent) 
+void CUCMDetail::OnTimer(UINT_PTR nIDEvent) 
 {
 	Display();
 	

@@ -42,7 +42,7 @@ namespace Type {
 T_CCI_U_TYPE GetCASTypeUFromProviderType(LPOLESTR provType)
 {
 	for (int i = 0; i < ProvInfo::size_provider_types; i++)
-		if (!wcsicmp(ProvInfo::provider_types[i].szName, provType))
+		if (!_wcsicmp(ProvInfo::provider_types[i].szName, provType))
 			return ProvInfo::provider_types[i].nCCIUType;
 	return CCI_U_TYPE_UNKNOWN;
 }
@@ -253,7 +253,7 @@ HRESULT GetColumnDefinitionString(DBCOLUMNDESC colDesc, CComBSTR& strType)
 		 L"TIMESTAMP"
 		*/
 		LPWSTR pwszTypeName = colDesc.pwszTypeName;
-		ULONG colSize = colDesc.ulColumnSize;
+		DBLENGTH colSize = colDesc.ulColumnSize;
 		T_CCI_U_TYPE targetType;
 
 		DBTYPE validType = GetOledbTypeFromName(pwszTypeName);
@@ -442,12 +442,13 @@ T_CCI_A_TYPE GetCASTypeA(DBTYPE wType)
 	case DBTYPE_I1:
 	case DBTYPE_I2:
 	case DBTYPE_I4:
-	case DBTYPE_I8:
 	case DBTYPE_UI1:
 	case DBTYPE_UI2:
 	case DBTYPE_UI4:
-	case DBTYPE_UI8:
 		return CCI_A_TYPE_INT;
+	case DBTYPE_I8:
+	case DBTYPE_UI8:
+		return CCI_A_TYPE_BIGINT;
 	case DBTYPE_R4:
 		return CCI_A_TYPE_FLOAT;
 	case DBTYPE_R8:
@@ -639,10 +640,14 @@ HRESULT OLEDBValueToCCIValue(DBTYPE wType, T_CCI_A_TYPE* aType, T_CCI_U_TYPE* uT
 			case VT_I4:
 			case VT_INT:
 			case VT_UINT:
-			case VT_I8:
 							*dstValue = CoTaskMemAlloc(sizeof(int));
 							*aType = CCI_A_TYPE_INT;
 							*uType = CCI_U_TYPE_INT;
+							break;
+			case VT_I8:
+							*dstValue = CoTaskMemAlloc(sizeof(__int64));
+							*aType = CCI_A_TYPE_BIGINT;
+							*uType = CCI_U_TYPE_BIGINT;
 							break;
 			case VT_R4:
 							*dstValue = CoTaskMemAlloc(sizeof(float));

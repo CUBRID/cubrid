@@ -36,7 +36,7 @@
 #include	"odbc_connection.h"
 #include	"odbc_util.h"
 
-PUBLIC BOOL CALLBACK
+PUBLIC INT_PTR CALLBACK
 ConfigDSNDlgProc (HWND hwndParent, UINT message, WPARAM wParam,
 		  LPARAM lParam);
 
@@ -78,7 +78,7 @@ ConfigDSN (HWND hwndParent,
 	   WORD fRequest, LPCSTR lpszDriver, LPCSTR lpszAttributes)
 {
   UWORD wConfigMode;
-  int dlgrc;
+  INT_PTR dlgrc;
   CUBRIDDSNItem dsn_item;
   const char *pt;
 
@@ -172,7 +172,7 @@ ConfigDSN (HWND hwndParent,
  *  SQLDriverConnect시 사용되는 dialog box를 띄운다.
  * NOTE:
  ************************************************************************/
-PUBLIC BOOL CALLBACK
+PUBLIC INT_PTR CALLBACK
 ConfigDSNDlgProc (HWND hwndParent, UINT message, WPARAM wParam, LPARAM lParam)
 {
   CUBRIDDSNItem *ptDSNItem;

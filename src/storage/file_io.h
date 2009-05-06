@@ -165,14 +165,14 @@ typedef struct fileio_restore_page_cache FILEIO_RESTORE_PAGE_CACHE;
 struct fileio_restore_page_cache
 {
   MHT_TABLE *ht;
-  unsigned int heap_id;
+  HL_HEAPID heap_id;
 };
 
 typedef struct fileio_backup_record_info FILEIO_BACKUP_RECORD_INFO;
 struct fileio_backup_record_info
 {
+  INT64 at_time;
   LOG_LSA lsa;
-  time_t at_time;
 };
 
 /* Backup header */
@@ -184,14 +184,15 @@ struct fileio_backup_header
 				   NOTE: a union would be better. */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic
 					   Unix utility */
-  int bk_hdr_version;		/* For future compatibility checking */
-  char db_release[CUBRID_REL_STRING_MAX_LENGTH];	/* CUBRID Release */
+  float db_compatibility;       /* Compatibility of the database against the
+                                   current release of CUBRID */
+  int bk_hdr_version;           /* For future compatibility checking */
+  INT64 db_creation;		/* Database creation time */
+  INT64 at_time;		/* Time of backup */
+  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
   char db_fullname[FILEIO_MAX_BACKUP_PATH_LENGTH];	/* Fullname of backed up database.
 							   Really more than one byte */
-  time_t db_creation;		/* Database creation time */
   PGLENGTH db_iopagesize;	/* Size of database pages */
-  float db_compatibility;	/* Compatibility of the database against the
-				   current release of CUBRID */
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following
 				 * level 0: Full backup, every database page
 				 *          that has been allocated.
@@ -205,7 +206,6 @@ struct fileio_backup_header
   LOG_LSA chkpt_lsa;		/* LSA for next incremental backup */
 
   /* remember lsa's for every backup level */
-  time_t at_time;		/* Time of backup */
   int unit_num;			/* Part # of removable backup vol, count
 				   from 1 */
   int bkup_iosize;		/* Buffered io size when backup was taken */
@@ -217,7 +217,6 @@ struct fileio_backup_header
   /* Forward chain to next backup volume. Note not implemented yet. */
   char db_next_bkvolname[FILEIO_MAX_BACKUP_PATH_LENGTH];
 
-  FILE *verbose_file_p;		/* Backupdb/Restoredb status msg */
   int bkpagesize;		/* size of backup page */
   FILEIO_ZIP_METHOD zip_method;	/* compression method  */
   FILEIO_ZIP_LEVEL zip_level;	/* compression level   */
@@ -244,10 +243,10 @@ struct fileio_backup_buffer
 
   int dtype;			/* Set to the type (dir, file, dev) */
   int iosize;			/* Optimal I/O pagesize for backup device */
-  int count;			/* Number of current buffered bytes */
-  int voltotalio;		/* Total number of bytes that have been
+  FSIZE_T count;		/* Number of current buffered bytes */
+  FSIZE_T voltotalio;		/* Total number of bytes that have been
 				   either read or written (current volume) */
-  int alltotalio;		/* total for all volumes */
+  FSIZE_T alltotalio;		/* total for all volumes */
   char *buffer;			/* Pointer to the buffer */
   char *ptr;			/* Pointer to the first buffered byte when
 				 * reading and pointer to the next byte to
@@ -291,7 +290,7 @@ struct fileio_node
   struct fileio_node *next;
   int pageid;
   bool writeable;
-  int nread;
+  ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
   FILEIO_ZIP_PAGE *zip_page;	/* Area to compress/decompress the page */
   lzo_bytep wrkmem;
@@ -342,6 +341,7 @@ struct io_backup_session
   FILEIO_BACKUP_BUFFER bkup;	/* Buffering area for backup device  */
   FILEIO_BACKUP_DB_BUFFER dbfile;	/* Buffer area for database files */
   FILEIO_THREAD_INFO read_thread_info;	/* read-threads info */
+  FILE *verbose_fp;         /* Backupdb/Restoredb status msg */
 };
 
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
@@ -369,7 +369,7 @@ extern void *fileio_read_user_area (int vdes, PAGEID pageid,
 				    off_t start_offset, size_t nbytes,
 				    void *area);
 extern void *fileio_write_user_area (int vdes, PAGEID pageid,
-				     off_t start_offset, ssize_t nbytes,
+				     off_t start_offset, int nbytes,
 				     void *area);
 extern bool fileio_is_volume_exist_and_file (const char *vlabel);
 extern DKNPAGES fileio_get_number_of_volume_pages (int vdes);
@@ -434,7 +434,7 @@ extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char
 							int num_threads);
 extern FILEIO_BACKUP_SESSION *fileio_start_backup (THREAD_ENTRY * thread_p,
 						   const char *db_fullname,
-						   time_t * db_creation,
+						   INT64 * db_creation,
 						   FILEIO_BACKUP_LEVEL
 						   backup_level,
 						   LOG_LSA * backup_start_lsa,
@@ -459,14 +459,14 @@ extern int fileio_backup_volume (THREAD_ENTRY * thread_p,
 extern FILEIO_BACKUP_SESSION *fileio_start_restore (THREAD_ENTRY * thread_p,
 						    const char *db_fullname,
 						    char *backup_source,
-						    time_t match_dbcreation,
+						    INT64 match_dbcreation,
 						    PGLENGTH * db_iopagesize,
 						    float *db_compatibility,
 						    FILEIO_BACKUP_SESSION *
 						    session,
 						    FILEIO_BACKUP_LEVEL level,
 						    bool authenticate,
-						    time_t match_bkupcreation,
+						    INT64 match_bkupcreation,
 						    const char
 						    *restore_verbose_file,
 						    bool newvolpath);

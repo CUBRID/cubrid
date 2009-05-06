@@ -241,10 +241,12 @@ class UInputBuffer
       dateStr += "0" + year + "-";
     else
       dateStr += year + "-";
+    
     if (month < 10)
       dateStr += "0" + month + "-";
     else
       dateStr += month + "-";
+    
     if (day < 10)
       dateStr += "0" + day;
     else
@@ -265,10 +267,12 @@ class UInputBuffer
       timeStr += "0" + hour + ":";
     else
       timeStr += hour + ":";
+    
     if (minute < 10)
       timeStr += "0" + minute + ":";
     else
       timeStr += minute + ":";
+    
     if (second < 10)
       timeStr += "0" + second;
     else
@@ -296,26 +300,87 @@ class UInputBuffer
       tsStr += "0" + year + "-";
     else
       tsStr += year + "-";
+    
     if (month < 10)
       tsStr += "0" + month + "-";
     else
       tsStr += month + "-";
+    
     if (day < 10)
       tsStr += "0" + day + " ";
     else
       tsStr += day + " ";
+    
     if (hour < 10)
       tsStr += "0" + hour + ":";
     else
       tsStr += hour + ":";
+    
     if (minute < 10)
       tsStr += "0" + minute + ":";
     else
       tsStr += minute + ":";
+    
     if (second < 10)
       tsStr += "0" + second;
     else
       tsStr += second;
+
+    return (Timestamp.valueOf(tsStr));
+  }
+
+  Timestamp readDatetime() throws UJciException
+  {
+    int year, month, day, hour, minute, second, millisecond;
+    year = readShort();
+    month = readShort();
+    day = readShort();
+    hour = readShort();
+    minute = readShort();
+    second = readShort();
+    millisecond = readShort();
+
+    String tsStr = "";
+    if (year < 10)
+      tsStr += "000" + year + "-";
+    else if (year < 100)
+      tsStr += "00" + year + "-";
+    else if (year < 1000)
+      tsStr += "0" + year + "-";
+    else
+      tsStr += year + "-";
+    
+    if (month < 10)
+      tsStr += "0" + month + "-";
+    else
+      tsStr += month + "-";
+    
+    if (day < 10)
+      tsStr += "0" + day + " ";
+    else
+      tsStr += day + " ";
+    
+    if (hour < 10)
+      tsStr += "0" + hour + ":";
+    else
+      tsStr += hour + ":";
+    
+    if (minute < 10)
+      tsStr += "0" + minute + ":";
+    else
+      tsStr += minute + ":";
+    
+    if (second < 10)
+      tsStr += "0" + second + ".";
+    else
+      tsStr += second + ".";
+    
+    if (millisecond < 10)
+      tsStr += "00" + millisecond;
+    else if (millisecond < 100)
+        tsStr += "0" + millisecond;
+    else
+        tsStr += millisecond;
 
     return (Timestamp.valueOf(tsStr));
   }

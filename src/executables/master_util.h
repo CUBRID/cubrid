@@ -33,11 +33,7 @@
 typedef struct socket_queue_entry SOCKET_QUEUE_ENTRY;
 struct socket_queue_entry
 {
-#if defined(WINDOWS)
-  short fd;
-#else				/* WINDOWS */
-  int fd;
-#endif				/* WINDOWS */
+  SOCKET fd;
   int fd_type;
   int db_error;
   int transaction_id;

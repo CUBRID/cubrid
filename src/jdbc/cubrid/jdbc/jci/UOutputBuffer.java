@@ -131,6 +131,13 @@ class UOutputBuffer
     return 8;
   }
 
+  int addLong(long longValue)
+  {
+    writeInt(8);
+    writeLong(longValue);
+    return 12;
+  }
+
   int addByte(byte bValue)
   {
     writeInt(1);
@@ -198,23 +205,30 @@ class UOutputBuffer
 
   int addDate(Date value)
   {
-    writeInt(12);
+    writeInt(14);
     writeDate(value);
-    return 16;
+    return 18;
   }
 
   int addTime(Time value)
   {
-    writeInt(12);
+    writeInt(14);
     writeTime(value);
-    return 16;
+    return 18;
   }
 
   int addTimestamp(Timestamp value)
   {
-    writeInt(12);
+    writeInt(14);
     writeTimestamp(value);
-    return 16;
+    return 18;
+  }
+
+  int addDatetime(Timestamp value)
+  {
+    writeInt(14);
+    writeDatetime(value);
+    return 18;
   }
 
   int addOID(CUBRIDOID value)
@@ -310,7 +324,10 @@ class UOutputBuffer
       addTime(UGetTypeConvertedValue.getTime(value));
       break;
     case UUType.U_TYPE_TIMESTAMP:
-      addTimestamp(UGetTypeConvertedValue.getTimestamp(value));
+        addTimestamp(UGetTypeConvertedValue.getTimestamp(value));
+        break;
+    case UUType.U_TYPE_DATETIME:
+      addDatetime(UGetTypeConvertedValue.getTimestamp(value));
       break;
     case UUType.U_TYPE_FLOAT:
       addFloat(UGetTypeConvertedValue.getFloat(value));
@@ -320,6 +337,9 @@ class UOutputBuffer
       break;
     case UUType.U_TYPE_INT:
       addInt(UGetTypeConvertedValue.getInt(value));
+      break;
+    case UUType.U_TYPE_BIGINT:
+      addLong(UGetTypeConvertedValue.getLong(value));
       break;
     case UUType.U_TYPE_SET:
     case UUType.U_TYPE_MULTISET:
@@ -415,6 +435,19 @@ class UOutputBuffer
       }
     }
       break;
+    case UUType.U_TYPE_BIGINT:
+    {
+      Long[] longValues;
+      longValues = (Long[]) data.getArray();
+      for (int i = 0; longValues != null && i < longValues.length; i++)
+      {
+        if (longValues[i] == null)
+          collection_size += addNull();
+        else
+          collection_size += addLong(longValues[i].longValue());
+      }
+    }
+      break;
     case UUType.U_TYPE_FLOAT:
     {
       Float[] floatValues;
@@ -486,6 +519,7 @@ class UOutputBuffer
     }
       break;
     case UUType.U_TYPE_TIMESTAMP:
+    case UUType.U_TYPE_DATETIME:
     {
       Timestamp[] timestampValues;
       timestampValues = (Timestamp[]) data.getArray();
@@ -644,6 +678,7 @@ class UOutputBuffer
     writeShort((short) 0);
     writeShort((short) 0);
     writeShort((short) 0);
+    writeShort((short) 0);
   }
 
   private void writeTime(Time data) throws IllegalArgumentException
@@ -658,6 +693,7 @@ class UOutputBuffer
     writeShort(Short.parseShort(stringData.substring(0, 2)));
     writeShort(Short.parseShort(stringData.substring(3, 5)));
     writeShort(Short.parseShort(stringData.substring(6, 8)));
+    writeShort((short) 0);
   }
 
   private void writeTimestamp(Timestamp data) throws IllegalArgumentException
@@ -672,6 +708,22 @@ class UOutputBuffer
     writeShort(Short.parseShort(stringData.substring(11, 13)));
     writeShort(Short.parseShort(stringData.substring(14, 16)));
     writeShort(Short.parseShort(stringData.substring(17, 19)));
+    writeShort((short) 0);
+  }
+
+  private void writeDatetime(Timestamp data) throws IllegalArgumentException
+  {
+    String stringData;
+    SimpleDateFormat localFormat;
+    localFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+    stringData = localFormat.format((Timestamp) data);
+    writeShort(Short.parseShort(stringData.substring(0, 4)));
+    writeShort(Short.parseShort(stringData.substring(5, 7)));
+    writeShort(Short.parseShort(stringData.substring(8, 10)));
+    writeShort(Short.parseShort(stringData.substring(11, 13)));
+    writeShort(Short.parseShort(stringData.substring(14, 16)));
+    writeShort(Short.parseShort(stringData.substring(17, 19)));
+    writeShort(Short.parseShort(stringData.substring(20, 23)));
   }
 
   private void writeFloat(float data)

@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -257,8 +257,9 @@ odbc_default_c_type (short odbc_type)
     case SQL_BIT:
       return SQL_C_SHORT;
     case SQL_INTEGER:
-    case SQL_BIGINT:
       return SQL_C_LONG;
+    case SQL_BIGINT:
+      return SQL_C_SBIGINT;
     case SQL_FLOAT:
     case SQL_REAL:
       return SQL_C_FLOAT;
@@ -288,9 +289,9 @@ odbc_default_c_type (short odbc_type)
 
 /************************************************************************
 * name: odbc_size_of_by_type_id
-* arguments: 
-* returns/side-effects: 
-* description: 
+* arguments:
+* returns/side-effects:
+* description:
 * NOTE: interval type은 지원되지 않으며,
 *		string, binary type은 length(non-fixed)에 의해서 결정된다.
 ************************************************************************/
@@ -414,7 +415,7 @@ odbc_concise_to_verbose_type (short type)
     case SQL_INTERVAL_HOUR_TO_MINUTE:
     case SQL_INTERVAL_HOUR_TO_SECOND:
     case SQL_INTERVAL_MINUTE_TO_SECOND:
-      /*      
+      /*
          case SQL_C_INTERVAL_MONTH :
          case SQL_C_INTERVAL_YEAR :
          case SQL_C_INTERVAL_YEAR_TO_MONTH :
@@ -636,10 +637,11 @@ odbc_octet_length (short odbc_type, int precision)
     case SQL_INTEGER:
     case SQL_C_ULONG:
     case SQL_C_SLONG:
+      return sizeof (long);
     case SQL_BIGINT:
     case SQL_C_UBIGINT:
     case SQL_C_SBIGINT:
-      return sizeof (long);
+      return sizeof (__int64);
     case SQL_REAL:		/* SQL_C_FLOAT */
     case SQL_FLOAT:
       return sizeof (float);
@@ -689,10 +691,10 @@ odbc_num_prec_radix (short odbc_type)
 
 /************************************************************************
 * name: odbc_display_size
-* arguments: 
-* returns/side-effects: 
-* description: 
-* NOTE: 
+* arguments:
+* returns/side-effects:
+* description:
+* NOTE:
 ************************************************************************/
 PUBLIC int
 odbc_display_size (short odbc_type, int precision)
@@ -713,8 +715,9 @@ odbc_display_size (short odbc_type, int precision)
     case SQL_TINYINT:
       return 6;
     case SQL_INTEGER:
-    case SQL_BIGINT:
       return 11;
+    case SQL_BIGINT:
+      return 20;
     case SQL_REAL:
     case SQL_FLOAT:
       return 15;
@@ -733,7 +736,7 @@ odbc_display_size (short odbc_type, int precision)
     case SQL_TYPE_TIMESTAMP:
     case SQL_TIMESTAMP:	// for 2.x backward compatibility
       return 23;
-      /* XXX : deprecated 
+      /* XXX : deprecated
          case SQL_UNI_OBJECT :
          return 15;
        */
@@ -742,8 +745,8 @@ odbc_display_size (short odbc_type, int precision)
     }
 }
 
-/* 
- *		SQL_VARCHAR에서 precision이 MAX_PRECISON일 경우, 
+/*
+ *		SQL_VARCHAR에서 precision이 MAX_PRECISON일 경우,
  *		SQL_LONGVARCHAR로 mapping한다.
  */
 PUBLIC short
@@ -775,6 +778,8 @@ odbc_type_by_cci (T_CCI_U_TYPE cci_type, int precision)
       return SQL_VARBINARY;
     case CCI_U_TYPE_NUMERIC:
       return SQL_NUMERIC;
+    case CCI_U_TYPE_BIGINT:
+      return SQL_BIGINT;
     case CCI_U_TYPE_INT:
       return SQL_INTEGER;
     case CCI_U_TYPE_SHORT:
@@ -788,6 +793,7 @@ odbc_type_by_cci (T_CCI_U_TYPE cci_type, int precision)
     case CCI_U_TYPE_TIME:
       return SQL_TYPE_TIME;
     case CCI_U_TYPE_TIMESTAMP:
+    case CCI_U_TYPE_DATETIME:
       return SQL_TYPE_TIMESTAMP;
     case CCI_U_TYPE_MONETARY:
       return SQL_DOUBLE;
@@ -846,7 +852,7 @@ odbc_type_name (short odbc_type)
       pt = "INTEGER";
       break;
     case SQL_BIGINT:
-      pt = "INTEGER";
+      pt = "BIGINT";
       break;
     case SQL_REAL:
       pt = "REAL";
@@ -879,7 +885,7 @@ odbc_type_name (short odbc_type)
     case SQL_UNI_MONETARY:
       pt = "MONETARY";
       break;
-      /* XXX : deprecated 
+      /* XXX : deprecated
          case SQL_UNI_SET :
          pt = "SET";
          break;
@@ -924,9 +930,10 @@ odbc_type_to_cci_a_type (short c_type)
     case SQL_C_STINYINT:
     case SQL_C_UTINYINT:
     case SQL_C_TINYINT:	// for 2.x backward compatibility
+      return CCI_A_TYPE_INT;
     case SQL_C_SBIGINT:
     case SQL_C_UBIGINT:
-      return CCI_A_TYPE_INT;
+      return CCI_A_TYPE_BIGINT;
 
     case SQL_C_FLOAT:
       return CCI_A_TYPE_FLOAT;
@@ -987,8 +994,10 @@ odbc_type_to_cci_u_type (short sql_type)
     case SQL_SMALLINT:
     case SQL_INTEGER:
     case SQL_TINYINT:
-    case SQL_BIGINT:
       return CCI_U_TYPE_INT;
+
+    case SQL_BIGINT:
+      return CCI_U_TYPE_BIGINT;
 
     case SQL_FLOAT:
     case SQL_REAL:
@@ -1005,7 +1014,7 @@ odbc_type_to_cci_u_type (short sql_type)
       return CCI_U_TYPE_TIME;
     case SQL_TYPE_TIMESTAMP:
     case SQL_TIMESTAMP:	// for 2.x backward compatibility
-      return CCI_U_TYPE_TIMESTAMP;
+      return CCI_U_TYPE_DATETIME;
     default:
       return CCI_U_TYPE_UNKNOWN;
     }
@@ -1072,10 +1081,13 @@ odbc_value_to_cci (void *c_value, short c_type, long c_length,
     case SQL_C_LONG:		// for 2.x backward compatibility
     case SQL_C_SLONG:
     case SQL_C_ULONG:
-    case SQL_C_SBIGINT:	// warning : __int64에 대해서 고려 안됨
-    case SQL_C_UBIGINT:
       value = UT_ALLOC (sizeof (int));
       *(int *) value = *(long *) c_value;
+      break;
+    case SQL_C_SBIGINT:
+    case SQL_C_UBIGINT:
+      value = UT_ALLOC (sizeof (__int64));
+      *(__int64 *) value = *(__int64 *) c_value;
       break;
 
 	/*---------------------------------------------------------------
@@ -1202,7 +1214,7 @@ odbc_value_to_cci (void *c_value, short c_type, long c_length,
  * name: odbc_value_to_cci2
  * arguments:
  *		index - array index
- *		sql_value_root - void* type 
+ *		sql_value_root - void* type
  * returns/side-effects:
  * description:
  * NOTE:
@@ -1259,9 +1271,11 @@ odbc_value_to_cci2 (void *sql_value_root, int index, void *c_value,
     case SQL_C_LONG:		// for 2.x backward compatibility
     case SQL_C_SLONG:
     case SQL_C_ULONG:
-    case SQL_C_SBIGINT:	// warning : __int64에 대해서 고려 안됨
-    case SQL_C_UBIGINT:
       *((int *) sql_value_root + index) = *(long *) c_value;
+      break;
+    case SQL_C_SBIGINT:
+    case SQL_C_UBIGINT:
+      *((__int64 *) sql_value_root + index) = *(__int64 *) c_value;
       break;
 
 	/*---------------------------------------------------------------
@@ -1406,13 +1420,13 @@ odbc_value_to_cci2 (void *sql_value_root, int index, void *c_value,
  *		value truncation에 대해서 고려되지 않았다.
  *		string type과 binary type은 실제로 발생하지 않는다.
  ************************************************************************/
-PUBLIC long
+PUBLIC SQLLEN
 cci_value_to_odbc (void *c_value, short concise_type,
 		   short precision, short scale,
-		   long buffer_length, UNI_CCI_A_TYPE * cci_value,
+		   SQLLEN buffer_length, UNI_CCI_A_TYPE * cci_value,
 		   T_CCI_A_TYPE a_type)
 {
-  long length = 0;
+  SQLLEN length = 0;
 
   switch (concise_type)
     {
@@ -1437,10 +1451,13 @@ cci_value_to_odbc (void *c_value, short concise_type,
     case SQL_C_LONG:		// for 2.x backward compatibility
     case SQL_C_SLONG:
     case SQL_C_ULONG:
-    case SQL_C_SBIGINT:
-    case SQL_C_UBIGINT:	// warning : __int64, yet not implemented
       *(long *) c_value = cci_value->i;
       length = sizeof (long);
+      break;
+    case SQL_C_SBIGINT:
+    case SQL_C_UBIGINT:
+      *(__int64 *) c_value = cci_value->bi;
+      length = sizeof (__int64);
       break;
 
 
@@ -1627,7 +1644,7 @@ free_value_container (VALUE_CONTAINER * value)
 }
 
 /*
- *	partially not implemented 
+ *	partially not implemented
  *			BINARY, date type
  *	Not implemented about
  *			BIT, NUMERIC, OBJECT, SET, TINYINT, BIGINT
@@ -1674,6 +1691,11 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  target_value->value.l = atol (src_value->value.str);
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          target_value->value.bi = _atoi64 (src_value->value.str);
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  target_value->value.f = (float) atof (src_value->value.str);
 	  target_value->length = sizeof (float);
@@ -1723,6 +1745,11 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  target_value->value.l = (long) src_value->value.s;
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          target_value->value.bi = (__int64) src_value->value.s;
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  target_value->value.f = (float) src_value->value.s;
 	  target_value->length = sizeof (float);
@@ -1774,6 +1801,11 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  target_value->value.l = src_value->value.l;
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          target_value->value.bi = (__int64) src_value->value.l;
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  target_value->value.f = (float) src_value->value.l;
 	  target_value->length = sizeof (float);
@@ -1795,6 +1827,55 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  return ODBC_UNKNOWN_TYPE;
 	}
       break;
+
+      case SQL_C_SBIGINT:
+      case SQL_C_UBIGINT:
+        switch (target_value->type)
+          {
+          case SQL_C_CHAR:
+            sprintf (buf, "%lld", (long long) src_value->value.bi);
+            target_value->value.str = UT_MAKE_STRING (buf, -1);
+            target_value->length = strlen (buf) + 1;
+            break;
+          case SQL_C_BINARY:
+            target_value->value.bin = UT_ALLOC (sizeof (__int64));
+            bin_value_assign (&src_value->value.bi, sizeof (__int64),
+                              target_value->value.bin, sizeof (__int64),
+                              &(target_value->length));
+            break;
+          case SQL_C_SHORT:
+          case SQL_C_SSHORT:
+          case SQL_C_USHORT:
+            target_value->value.s = (short) src_value->value.bi;
+            target_value->length = sizeof (short);
+            break;
+          case SQL_C_LONG:
+          case SQL_C_SLONG:
+          case SQL_C_ULONG:
+            target_value->value.l = (long) src_value->value.bi;
+            target_value->length = sizeof (long);
+            break;
+          case SQL_C_FLOAT:
+            target_value->value.f = (float) src_value->value.bi;
+            target_value->length = sizeof (float);
+            break;
+          case SQL_C_DOUBLE:
+            target_value->value.d = (double) src_value->value.bi;
+            target_value->length = sizeof (double);
+            break;
+          case SQL_C_NUMERIC:
+          case SQL_C_BIT:
+          case SQL_C_TYPE_DATE:
+          case SQL_C_TYPE_TIME:
+          case SQL_C_TYPE_TIMESTAMP:
+          case SQL_C_DATE:        // for 2.x backward compatibility
+          case SQL_C_TIME:        // for 2.x backward compatibility
+          case SQL_C_TIMESTAMP:   // for 2.x backward compatibility
+            return ODBC_NOT_IMPLEMENTED;
+          default:
+            return ODBC_UNKNOWN_TYPE;
+          }
+        break;
 
     case SQL_C_FLOAT:
       switch (target_value->type)
@@ -1822,6 +1903,11 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  target_value->value.l = (long) src_value->value.f;
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          target_value->value.bi = (__int64) src_value->value.f;
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  target_value->value.f = src_value->value.f;
 	  target_value->length = sizeof (float);
@@ -1869,6 +1955,11 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	  target_value->value.l = (long) src_value->value.d;
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          target_value->value.bi = (__int64) src_value->value.d;
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  target_value->value.f = (float) src_value->value.d;
 	  target_value->length = sizeof (float);
@@ -1921,6 +2012,12 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 		  sizeof (long));
 	  target_value->length = sizeof (long);
 	  break;
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
+          memcpy (&target_value->value.bi, src_value->value.bin,
+                  sizeof (__int64));
+          target_value->length = sizeof (__int64);
+          break;
 	case SQL_C_FLOAT:
 	  memcpy (&target_value->value.f, src_value->value.bin,
 		  sizeof (float));
@@ -1986,6 +2083,8 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	case SQL_C_LONG:
 	case SQL_C_SLONG:
 	case SQL_C_ULONG:
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
 	case SQL_C_FLOAT:
 	case SQL_C_DOUBLE:
 	case SQL_C_TYPE_TIME:
@@ -2039,6 +2138,8 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	case SQL_C_LONG:
 	case SQL_C_SLONG:
 	case SQL_C_ULONG:
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
 	case SQL_C_FLOAT:
 	case SQL_C_DOUBLE:
 	case SQL_C_NUMERIC:
@@ -2103,6 +2204,8 @@ odbc_value_converter (VALUE_CONTAINER * target_value,
 	case SQL_C_LONG:
 	case SQL_C_SLONG:
 	case SQL_C_ULONG:
+        case SQL_C_SBIGINT:
+        case SQL_C_UBIGINT:
 	case SQL_C_FLOAT:
 	case SQL_C_DOUBLE:
 	case SQL_C_NUMERIC:

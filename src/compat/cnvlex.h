@@ -102,7 +102,8 @@ typedef enum
   FT_WEEKDAY_LONG = 40,
   FT_YEAR = 41,
   FT_ZEROES = 42,
-  FT_ZONE = 43
+  FT_ZONE = 43,
+  FT_MILLISECOND = 44
 } FMT_TOKEN_TYPE;
 
 typedef struct fmt_token FMT_TOKEN;

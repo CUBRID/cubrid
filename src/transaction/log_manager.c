@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,11 +35,11 @@
 #endif /* SOLARIS */
 #include <sys/stat.h>
 #include <assert.h>
-
 #if defined(WINDOWS)
-#include "porting.h"
+#include <io.h>
 #endif /* WINDOWS */
 
+#include "porting.h"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_comm.h"
@@ -150,11 +150,11 @@ static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
-				   const time_t * log_dbcreation);
+				   const INT64 * log_dbcreation);
 static void log_create_internal (THREAD_ENTRY * thread_p,
 				 const char *db_fullname, const char *logpath,
 				 const char *prefix_logname, DKNPAGES npages,
-				 time_t * db_creation);
+				 INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p,
 				    const char *db_fullname,
 				    const char *logpath,
@@ -162,8 +162,7 @@ static int log_initialize_internal (THREAD_ENTRY * thread_p,
 				    int ismedia_crash, time_t * stopat,
 				    bool init_emergency);
 #if defined(SERVER_MODE)
-static int log_abort_by_tran_index (THREAD_ENTRY * thread_p,
-				    CSS_THREAD_ARG arg);
+static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
 static void log_append_run_postpone (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex,
@@ -635,16 +634,16 @@ log_get_final_restored_lsa (void)
  */
 static bool
 log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
-		       const time_t * log_dbcreation)
+		       const INT64 * log_dbcreation)
 {
-  time_t vol_dbcreation;	/* Database creation time in volume */
+  INT64 vol_dbcreation;		/* Database creation time in volume */
 
   if (disk_get_creation_time (thread_p, volid, &vol_dbcreation) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime (vol_dbcreation, *log_dbcreation) == 0)
+  if (difftime ((time_t) vol_dbcreation, (time_t) * log_dbcreation) == 0)
     {
       return true;
     }
@@ -672,7 +671,7 @@ log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
  *              new defined volumes.
  */
 int
-log_get_db_start_parameters (time_t * db_creation, LOG_LSA * chkpt_lsa)
+log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa)
 {
 #if defined(SERVER_MODE)
   int rv;
@@ -755,10 +754,10 @@ int
 log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    const char *logpath, const char *prefix_logname, DKNPAGES npages)
 {
-  time_t db_creation;
+  INT64 db_creation;
 
   db_creation = time (NULL);
-  if (db_creation == (time_t) - 1)
+  if (db_creation == -1)
     {
       return ER_FAILED;
     }
@@ -784,7 +783,7 @@ log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 static void
 log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 		     const char *logpath, const char *prefix_logname,
-		     DKNPAGES npages, time_t * db_creation)
+		     DKNPAGES npages, INT64 * db_creation)
 {
   LOG_PAGE *loghdr_pgptr;	/* Pointer to log header */
   const char *catmsg;
@@ -869,10 +868,12 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
 #if defined(LOG_DEBUG)
   {
-    int temp_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+    char temp_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_temp_pgbuf;
     LOG_PAGE *temp_pgptr;
 
-    temp_pgptr = (LOG_PAGE *) temp_pgbuf;
+    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, MAX_ALIGNMENT);
+
+    temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, SIZEOF_LOG_PAGE_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
     assert (memcmp ((struct log_header *) temp_pgptr->area,
@@ -886,10 +887,12 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 #if defined(LOG_DEBUG)
   {
-    int temp_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+    char temp_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_temp_pgbuf;
     LOG_PAGE *temp_pgptr;
 
-    temp_pgptr = (LOG_PAGE *) temp_pgbuf;
+    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, MAX_ALIGNMENT);
+
+    temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, SIZEOF_LOG_PAGE_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
     assert (memcmp ((struct log_header *) temp_pgptr->area,
@@ -1156,7 +1159,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  /*
 	   * Set an approximate log header to continue the recovery process
 	   */
-	  time_t db_creation = -1;	/* Database creation time in volume */
+	  INT64 db_creation = -1;	/* Database creation time in volume */
 	  int log_npages;
 
 	  log_npages = log_get_num_pages_for_creation (-1);
@@ -1275,7 +1278,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 
   if (rel_is_log_compatible (log_Gl.hdr.db_release,
-			     (char *) rel_release_string ()) != true)
+			     rel_release_string ()) != true)
     {
       /*
        * First time this database is restarted using the current version of
@@ -1322,7 +1325,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
        * It seems safe to move to new version of the system
        */
 
-      if ((int) (strlen (rel_release_string ()) + 1) > REL_MAX_RELEASE_LENGTH)
+      if (strlen (rel_release_string ()) >= REL_MAX_RELEASE_LENGTH)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_COMPILATION_RELEASE, 2,
@@ -1520,30 +1523,26 @@ log_get_db_compatibility (void)
 
 #if defined(SERVER_MODE)
 /*
- * log_abort_by_tran_index - Abort a transaction
+ * log_abort_by_tdes - Abort a transaction
  *
  * return: NO_ERROR
  *
- *   arg(in): transaction index
+ *   arg(in): Transaction descriptor
  *
  * NOTE:
  */
 static int
-log_abort_by_tran_index (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  int tran_index;
-
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  tran_index = (int) arg;
-
-  THREAD_SET_TRAN_INDEX (thread_p, tran_index);
+  THREAD_SET_TRAN_INDEX (thread_p, tdes->tran_index);
   MUTEX_UNLOCK (thread_p->tran_index_lock);
 
-  (void) log_abort (thread_p, tran_index);
+  (void) log_abort (thread_p, tdes->tran_index);
 
   return NO_ERROR;
 }
@@ -1606,8 +1605,9 @@ loop:
 	    {
 	      conn = css_find_conn_by_tran_index (i);
 	      job_entry = css_make_job_entry (conn,
-					      log_abort_by_tran_index,
-					      (CSS_THREAD_ARG) i,
+					      (CSS_THREAD_FN)
+					      log_abort_by_tdes,
+					      (CSS_THREAD_ARG) tdes,
 					      -1 /* implicit: DEFAULT */ );
 	      css_add_to_job_queue (job_entry);
 	      abort_thread_running[i] = 1;
@@ -2038,7 +2038,7 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_undo_zip)
     {
-      logpb_append_data (thread_p, log_zip_undo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_undo->data_length,
 			 (char *) log_zip_undo->log_data);
     }
   else
@@ -2048,7 +2048,7 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_redo_zip)
     {
-      logpb_append_data (thread_p, log_zip_redo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_redo->data_length,
 			 (char *) log_zip_redo->log_data);
     }
   else
@@ -2243,7 +2243,7 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_zip)
     {
-      logpb_append_data (thread_p, log_zip_undo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_undo->data_length,
 			 (char *) log_zip_undo->log_data);
     }
   else
@@ -2422,7 +2422,7 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (bIsZip)
     {
-      logpb_append_data (thread_p, log_zip_redo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_redo->data_length,
 			 (char *) log_zip_redo->log_data);
     }
   else
@@ -2691,7 +2691,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_undo_zip)
     {
-      logpb_append_data (thread_p, log_zip_undo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_undo->data_length,
 			 (char *) log_zip_undo->log_data);
     }
   else
@@ -2701,7 +2701,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_redo_zip)
     {
-      logpb_append_data (thread_p, log_zip_redo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_redo->data_length,
 			 (char *) log_zip_redo->log_data);
     }
   else
@@ -2897,7 +2897,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (bIsZip)
     {
-      logpb_append_data (thread_p, log_zip_undo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_undo->data_length,
 			 (char *) log_zip_undo->log_data);
     }
   else
@@ -3096,7 +3096,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   if (is_zip)
     {
-      logpb_append_data (thread_p, log_zip_redo->data_length,
+      logpb_append_data (thread_p, (int) log_zip_redo->data_length,
 			 (char *) log_zip_redo->log_data);
     }
   else
@@ -4404,7 +4404,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
 		       LOG_TDES * tdes, LOG_LSA * savept_lsa)
 {
   char *ptr;			/* Pointer to savepoint name       */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where a
 				 * savepoint log record is located
 				 */
@@ -4415,10 +4415,12 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
   int length;			/* Length of savepoint name        */
   bool found = false;
 
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
   /* Find the savepoint LSA, for the given savepoint name */
   LSA_COPY (&prev_lsa, &tdes->savept_lsa);
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
@@ -5348,7 +5350,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       tdes->state = TRAN_UNACTIVE_COMMITTED;
 
-      ++log_Stat.commit_count;
+      log_Stat.commit_count++;
 
       logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
 
@@ -6725,7 +6727,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   int length;			/* Length to copy                  */
   LOG_LSA forward_lsa;		/* Lsa of log rec. being proceesed */
   LOG_LSA log_lsa;
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page           */
   struct log_rec *log_rec;	/* Pointer to log record           */
   struct log_client *client;	/* An undo/postpone client log
@@ -6753,6 +6755,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 */
   bool isdone;
 
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* The last client record cannot be after the current tail */
   LSA_COPY (&end_clientlsa, &tdes->tail_lsa);
@@ -6795,7 +6798,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       LSA_COPY (&forward_lsa, &start_rangelsa);
 
-      log_pgptr = (LOG_PAGE *) log_pgbuf;
+      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       isdone = false;
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
@@ -6984,9 +6987,9 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 			  /* Update the length and offset of area */
 
-			  length = onelog->length;
 			  /* Add any wasted space due to alignment */
-			  DB_ALIGN (length, INT_ALIGNMENT);
+			  length =
+			    DB_ALIGN (onelog->length, DOUBLE_ALIGNMENT);
 			  area_length -= length + sizeof (*onelog);
 			  area_offset += length;
 			}
@@ -7627,7 +7630,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 
       if (is_zip && is_unzip)
 	{
-	  (*dumpfun) (out_fp, log_dump_ptr->data_length,
+	  (*dumpfun) (out_fp, (int) log_dump_ptr->data_length,
 		      log_dump_ptr->log_data);
 	  log_lsa->offset += length;
 	}
@@ -7655,7 +7658,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 
       if (is_zip && is_unzip)
 	{
-	  (*dumpfun) (out_fp, log_dump_ptr->data_length,
+	  (*dumpfun) (out_fp, (int) log_dump_ptr->data_length,
 		      log_dump_ptr->log_data);
 	}
       else
@@ -7671,18 +7674,21 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
 static void
 log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 {
+  time_t tmp_time;
+
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
+  tmp_time = (time_t) log_header_p->db_creation;
   fprintf (out_fp,
-	   "HDR: Magic Symbol = %s at disk location = %d\n"
+	   "HDR: Magic Symbol = %s at disk location = %lld\n"
 	   "     Creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %d,\n"
 	   "     Current_append = %d|%d, Checkpoint = %d|%d,\n",
-	   log_header_p->magic, offsetof (LOG_PAGE, area),
-	   ctime (&log_header_p->db_creation), log_header_p->db_release,
+	   log_header_p->magic, (long long) offsetof (LOG_PAGE, area),
+	   ctime (&tmp_time), log_header_p->db_release,
 	   log_header_p->db_compatibility,
 	   log_header_p->db_iopagesize, log_header_p->is_shutdown,
 	   log_header_p->next_trid, log_header_p->avg_ntrans,
@@ -7997,11 +8003,10 @@ log_dump_record_client_user_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
 #if defined(SA_MODE)
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa,
-		 log_page_p,
-		 ((RVCL_fun[rcvclient_index].dump_undofun !=
-		   NULL) ? RVCL_fun[rcvclient_index].
-		  dump_undofun : log_ascii_dump), NULL);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
+		 ((RVCL_fun[rcvclient_index].dump_undofun != NULL)
+		  ? RVCL_fun[rcvclient_index].dump_undofun : log_ascii_dump),
+		 NULL);
 #else /* SA_MODE */
   log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
 		 log_ascii_dump, NULL);
@@ -8041,11 +8046,10 @@ log_dump_record_client_user_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   fprintf (out_fp, "-->> Client-User postpone Redo (After) Data:\n");
 #if defined(SA_MODE)
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa,
-		 log_page_p,
-		 ((RVCL_fun[rcvclient_index].dump_redofun !=
-		   NULL) ? RVCL_fun[rcvclient_index].
-		  dump_redofun : log_ascii_dump), NULL);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
+		 ((RVCL_fun[rcvclient_index].dump_redofun != NULL)
+		  ? RVCL_fun[rcvclient_index].dump_redofun : log_ascii_dump),
+		 NULL);
 #else /* SA_MODE */
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 log_ascii_dump, NULL);
@@ -8116,14 +8120,16 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp,
 				    LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   struct log_donetime *donetime;
+  time_t tmp_time;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa,
 				    log_page_p);
   donetime =
     (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
+  tmp_time = (time_t) donetime->at_time;
   fprintf (out_fp, ",\n     Transaction finish time at = %s\n",
-	   ctime (&donetime->at_time));
+	   ctime (&tmp_time));
 
   return log_page_p;
 }
@@ -8640,7 +8646,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 	   TRANID desired_tranid)
 {
   LOG_LSA lsa;			/* LSA of log record to dump */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where
 				 * LSA is located
 				 */
@@ -8649,6 +8655,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
   struct log_rec *log_rec;	/* Pointer to log record     */
 
   LOG_ZIP *log_dump_ptr = NULL;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (out_fp == NULL)
     {
@@ -8716,7 +8724,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
   log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   if (log_dump_ptr == NULL)
     {
@@ -9009,7 +9017,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       /* Data UnZip */
       if (log_unzip (log_unzip_ptr, rcv->length, (char *) rcv->data))
 	{
-	  rcv->length = log_unzip_ptr->data_length;
+	  rcv->length = (int) log_unzip_ptr->data_length;
 	  rcv->data = (char *) log_unzip_ptr->log_data;
 	}
       else
@@ -9201,7 +9209,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   LOG_LSA prev_tranlsa;		/* Previous LSA                    */
   LOG_LSA upto_lsa;		/* copy of upto_lsa_ptr contents   */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer of LSA log
 				 * record
 				 */
@@ -9220,6 +9228,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   bool isdone;
   int old_waitsecs = 0;		/* Old transaction lock wait   */
   LOG_ZIP *log_unzip_ptr = NULL;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /*
    * Execute every single undo log record upto the given upto_lsa_ptr since it
@@ -9254,7 +9264,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       LSA_SET_NULL (&upto_lsa);
     }
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   isdone = false;
 
@@ -9504,10 +9514,12 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			 LOG_LSA * nxtop_result_lsa)
 {
   struct log_topop_result *top_result;
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   struct log_rec *log_rec;
   LOG_LSA log_lsa;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   LSA_SET_NULL (nxtop_result_lsa);
   LSA_SET_NULL (nxtop_lastparent_lsa);
@@ -9525,7 +9537,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   LSA_COPY (&log_lsa, &tdes->tail_topresult_lsa);
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   do
     {
@@ -9645,7 +9657,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_LSA nxtop_result_lsa;	/* End address of top system operation */
   LOG_LSA ref_lsa;		/* The address of a postpone record    */
   LOG_LSA forward_lsa;		/* Next log-record to check            */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is
 				 * located
 				 */
@@ -9658,6 +9670,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_DATA_ADDR rvaddr;
   char *area = NULL;
   bool isdone;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (!LSA_ISNULL (start_posplsa))
     {
@@ -9681,7 +9695,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    }
 	}
 
-      log_pgptr = (LOG_PAGE *) log_pgbuf;
+      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       while (!LSA_ISNULL (&next_start_posplsa))
 	{
@@ -10020,17 +10034,19 @@ static void
 log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 {
   PAGEID pageid;		/* Log page identifier   */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page */
   struct log_rec *eof = NULL;	/* End of log record     */
   LOG_RECTYPE type;		/* Type of a log record  */
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* Guess the end of the log from the header */
 
   LSA_COPY (end_lsa, &log_Gl.hdr.append_lsa);
   type = LOG_LARGER_LOGREC_TYPE;
 
-  log_pgptr = (LOG_PAGE *) log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
@@ -10172,7 +10188,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      const char *prefix_logname, DKNPAGES log_npages)
 {
   const char *vlabel;
-  time_t db_creation;
+  INT64 db_creation;
   DISK_VOLPURPOSE vol_purpose;
   int vol_total_pages;
   int vol_free_pages;
@@ -10240,7 +10256,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       logpb_force (thread_p);
       LOG_CS_EXIT ();
 
-      (void) pgbuf_flush_all_unfixed_and_set_las_as_null (thread_p, volid);
+      (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, volid);
 
       /*
        * reset temp LSA to special temp LSA
@@ -10286,7 +10302,7 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      const char *logpath, const char *prefix_logname)
 {
   PGLENGTH db_iopagesize;
-  time_t ignore_dbcreation;
+  INT64 ignore_dbcreation;
   float ignore_dbcomp;
 
   LOG_CS_ENTER (thread_p);

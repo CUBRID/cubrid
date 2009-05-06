@@ -211,16 +211,16 @@ struct cls_spec_node
   REGU_VARIABLE_LIST cls_regu_list_rest;	/* regu list for rest of attrs */
   HFID hfid;			/* heap file identifier */
   OID cls_oid;			/* class object identifier */
-  int num_attrs_key;		/* number of atts from the key filter */
   ATTR_ID *attrids_key;		/* array of attr ids from the key filter */
   HEAP_CACHE_ATTRINFO *cache_key;	/* cache for the key filter attrs */
+  int num_attrs_key;		/* number of atts from the key filter */
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  int num_attrs_rest;		/* number of atts other than pred */
   ATTR_ID *attrids_rest;	/* array of attr ids other than pred */
   HEAP_CACHE_ATTRINFO *cache_rest;	/* cache for the non-pred attrs */
-};				/* class access specification */
+  int num_attrs_rest;		/* number of atts other than pred */
+};
 
 typedef struct list_spec_node LIST_SPEC_TYPE;
 struct list_spec_node
@@ -230,7 +230,7 @@ struct list_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the
 				 * list file idenfifier
 				 */
-};				/* list file access specification */
+};
 
 typedef struct set_spec_node SET_SPEC_TYPE;
 struct set_spec_node
@@ -263,7 +263,6 @@ struct access_spec_node
 {
   TARGET_TYPE type;		/* target class or list */
   ACCESS_METHOD access;		/* access method */
-  int lock_hint;		/* lock hint */
   INDX_INFO *indexptr;		/* index info if index accessing */
   PRED_EXPR *where_key;		/* key filter expression */
   PRED_EXPR *where_pred;	/* predicate expression */
@@ -275,32 +274,32 @@ struct access_spec_node
   QPROC_SINGLE_FETCH single_fetch;	/* open scan in single fetch mode */
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
-};				/* access specification node */
+  int lock_hint;		/* lock hint */
+};
 
 
 /*
  * Xasl body node information
  */
 
+/* UNION_PROC, DIFFERENCE_PROC, INTERSECTION_PROC */
 typedef struct union_proc_node UNION_PROC_NODE;
 struct union_proc_node
 {
   XASL_NODE *left;		/* first subquery */
   XASL_NODE *right;		/* second subquery */
-};				/* UNION_PROC,
-				 * DIFFERENCE_PROC,
-				 * INTERSECTION_PROC
-				 */
+};
+
+/* OBJFETCH_PROC, SETFETCH_PROC */
 typedef struct fetch_proc_node FETCH_PROC_NODE;
 struct fetch_proc_node
 {
   DB_VALUE *arg;		/* argument: oid or oid_set */
-  bool fetch_res;		/* path expr. fetch result */
   PRED_EXPR *set_pred;		/* predicate expression */
+  bool fetch_res;		/* path expr. fetch result */
   bool ql_flag;			/* on/off flag  */
-};				/* OBJFETCH_PROC,
-				 * SETFETCH_PROC
-				 */
+};
+
 typedef struct buildlist_proc_node BUILDLIST_PROC_NODE;
 struct buildlist_proc_node
 {
@@ -319,10 +318,10 @@ struct buildlist_proc_node
   PRED_EXPR *g_having_pred;	/* having  predicate */
   PRED_EXPR *g_grbynum_pred;	/* groupby_num() predicate */
   DB_VALUE *g_grbynum_val;	/* groupby_num() value result */
-  int g_grbynum_flag;		/* stop or continue grouping? */
   AGGREGATE_TYPE *g_agg_list;	/* aggregate function list */
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
-};				/* BUILDLIST_PROC */
+  int g_grbynum_flag;		/* stop or continue grouping? */
+};
 
 
 typedef struct buildvalue_proc_node BUILDVALUE_PROC_NODE;
@@ -332,7 +331,7 @@ struct buildvalue_proc_node
   DB_VALUE *grbynum_val;	/* groupby_num() value result */
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
-};				/* BUILDVALUE_PROC */
+};
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
 struct mergelist_proc_node
@@ -403,9 +402,9 @@ struct insert_proc_node
 typedef struct delete_proc_node DELETE_PROC_NODE;
 struct delete_proc_node
 {
-  int no_classes;		/* total number of classes involved     */
   OID *class_oid;		/* OID's of the classes                 */
   HFID *class_hfid;		/* Heap file ID's of the classes        */
+  int no_classes;		/* total number of classes involved     */
   int waitsecs;			/* lock timeout in miliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
@@ -454,20 +453,20 @@ struct xasl_node
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
   int flag;			/* flags */
-  XASL_STATUS status;		/* current status */
   QFILE_LIST_ID *list_id;	/* list file identifier */
   SORT_LIST *after_iscan_list;	/* sorting fields */
   SORT_LIST *orderby_list;	/* sorting fields */
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   int ordbynum_flag;		/* stop or continue ordering? */
+  XASL_STATUS status;		/* current status */
 
   VAL_LIST *single_tuple;	/* single tuple result */
-  int is_single_tuple;		/* single tuple subquery? */
 
   START_PROC *start_proc;	/* corresponding start procedure
 				 * for READ_PROC or READ_MPROC
 				 */
+  int is_single_tuple;		/* single tuple subquery? */
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */
@@ -484,11 +483,11 @@ struct xasl_node
   PRED_EXPR *if_pred;		/* if predicate */
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
   DB_VALUE *instnum_val;	/* inst_num() value result */
-  int instnum_flag;		/* stop or continue scan? */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
   ACCESS_SPEC_TYPE *curr_spec;	/* current spec. node */
+  int instnum_flag;		/* stop or continue scan? */
   int next_scan_on;		/* next scan is initiated ? */
   int next_scan_block_on;	/* next scan block is initiated ? */
 
@@ -522,19 +521,17 @@ struct xasl_node
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
   } proc;
 
-  int projected_size;		/* # of bytes per result tuple */
   double cardinality;		/* estimated cardinality of result */
 
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
+  int projected_size;		/* # of bytes per result tuple */
   int n_oid_list;		/* size of the class OID list */
   OID *class_oid_list;		/* list of class OIDs referenced in the XASL */
   int *repr_id_list;		/* representation ids of the classes in the class OID list */
-  int dbval_cnt;		/* number of host variables in this XASL */
-
-  bool iscan_oid_order;
-
   const char *qstmt;
+  int dbval_cnt;		/* number of host variables in this XASL */
+  bool iscan_oid_order;
 };
 
 
@@ -579,16 +576,16 @@ typedef struct xasl_state XASL_STATE;
 struct xasl_state
 {
   VAL_DESCR vd;			/* Value Descriptor */
-  int query_id;			/* Query associated with XASL */
+  QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
 };				/* XASL Tree State Information */
 
 typedef struct xasl_parts_info XASL_PARTS_INFO;
 struct xasl_parts_info
 {
+  DB_VALUE *vals;		/* values  - sequence of */
   OID class_oid;		/* OID of the sub-class */
   HFID class_hfid;		/* Heap file ID of the sub-class */
-  DB_VALUE *vals;		/* values  - sequence of */
 };
 
 typedef struct xasl_partition_info XASL_PARTITION_INFO;
@@ -616,22 +613,22 @@ struct xasl_cache_ent
 #if defined(SERVER_MODE)
   int *tran_index_array;	/* array of TID(tran index)s that are currently
 				   using this XASL; size is MAX_NTRANS */
-  int last_ta_idx;		/* index of the last element in TIDs array */
+  size_t last_ta_idx;		/* index of the last element in TIDs array */
 #endif
   OID creator_oid;		/* OID of the user who created this XASL */
-  int n_oid_list;		/* size of the class OID list */
   const OID *class_oid_list;	/* list of class OIDs referenced in the XASL */
   const int *repr_id_list;	/* representation ids of the classes in the class OID list */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
+  int n_oid_list;		/* size of the class OID list */
   int ref_count;		/* how many times this entry used */
-  bool deletion_marker;		/* this entry will be deleted if marker set */
   int dbval_cnt;		/* number of DB_VALUE parameters of the XASL */
   int list_ht_no;		/* memory hash table for query result(lsit file)
 				   cache generated by this XASL
 				   referencing by DB_VALUE parameters bound to
 				   the result */
   struct xasl_cache_clo *clo_list;	/* list of cache clones for this XASL */
+  bool deletion_marker;		/* this entry will be deleted if marker set */
 };
 
 /* XASL cache clone type definition */
@@ -649,7 +646,7 @@ struct xasl_cache_clo
 extern QFILE_LIST_ID *qexec_execute_query (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr,
-					   int query_id);
+					   QUERY_ID query_id);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    XASL_STATE * xasl_state);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p,

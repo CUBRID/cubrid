@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -31,14 +31,10 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
+#include "esql_grammar.h"
 #include "util_func.h"
 #include "misc_string.h"
-
 #include "esql_misc.h"
-#define   ZZ_PREFIX em_
-#include "zzpref.h"
-#define  INSIDE_SCAN_DOT_C
-#include "esql_grammar_tokens.h"
 #include "memory_alloc.h"
 
 #define BAD_C_TYPE		((C_TYPE) -1)
@@ -46,21 +42,6 @@
 #define C_TYPE_STRUCT		((C_TYPE) -3)
 #define UNINITIALIZED(p)	((p) == UNINIT_C_TYPE)
 
-enum
-{
-  MSG_MUST_BE_SHORT = 1,
-  MSG_INDICATOR_NOT_ALLOWED = 2,
-  MSG_INCOMPLETE_DEF = 3,
-  MSG_NOT_VALID = 4,
-  MSG_TYPE_NOT_ACCEPTABLE = 5,
-  MSG_UNKNOWN_HV_TYPE = 6,
-  MSG_BAD_ADDRESS = 7,
-  MSG_NOT_POINTER = 8,
-  MSG_NOT_POINTER_TO_STRUCT = 9,
-  MSG_NOT_STRUCT = 10,
-  MSG_NO_FIELD = 11,
-  MSG_DEREF_NOT_ALLOWED = 12
-};
 
 typedef struct builtin_type_s BUILTIN_TYPE;
 struct builtin_type_s
@@ -245,7 +226,7 @@ pp_new_host_var (HOST_VAR * var, SYMBOL * sym)
 
   var->type = pp_clone_type (sym->type, &var->etype);
   vs_new (&var->expr);
-  vs_strcat (&var->expr, sym->name);
+  vs_strcat (&var->expr, (char *) sym->name);
   vs_new (&var->addr_expr);
 
   return var;
@@ -312,8 +293,8 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
   if (indicator != NULL
       && (!(IS_INT (indicator->type) && !IS_LONG (indicator->type))))
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_MUST_BE_SHORT),
-		vs_str (&indicator->expr));
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_MUST_BE_SHORT),
+		     vs_str (&indicator->expr));
       goto bad_news;
     }
 
@@ -327,7 +308,8 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
     {
       if (indicator)
 	{
-	  yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_INDICATOR_NOT_ALLOWED));
+	  esql_yyverror (pp_get_msg
+			 (EX_HOSTVAR_SET, MSG_INDICATOR_NOT_ALLOWED));
 	  goto bad_news;
 	}
 
@@ -413,7 +395,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
 
   if (field == NULL)
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_INCOMPLETE_DEF), prefix);
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_INCOMPLETE_DEF), prefix);
       pp_free_host_var (var);
       return NULL;
     }
@@ -599,8 +581,8 @@ pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg)
        */
       char *msg_copy;
       msg_copy = pp_strdup (msg);
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_VALID),
-		pp_expr (ref->var), msg_copy);
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_VALID),
+		     pp_expr (ref->var), msg_copy);
       free_and_init (msg_copy);
       return NULL;
     }
@@ -625,9 +607,9 @@ pp_check_host_var_list (void)
     {
       if (pp_get_type (&pp_host_refs->refs[i]) >= NUM_C_VARIABLE_TYPES)
 	{
-	  yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
-		    pp_type_str (pp_host_refs->refs[i].var->type),
-		    pp_get_expr (&pp_host_refs->refs[i]));
+	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
+			 pp_type_str (pp_host_refs->refs[i].var->type),
+			 pp_get_expr (&pp_host_refs->refs[i]));
 	}
     }
 }
@@ -720,8 +702,8 @@ pp_get_precision (HOST_REF * ref)
 
 	default:
 	  {
-	    yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
-		      pp_type_str (ref->var->type));
+	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
+			   pp_type_str (ref->var->type));
 	    vs_strcpy (ref->precision_buf, "0");
 	  }
 	  break;
@@ -816,8 +798,8 @@ pp_get_input_size (HOST_REF * ref)
 
 	default:
 	  {
-	    yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
-		      pp_type_str (ref->var->type));
+	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
+			   pp_type_str (ref->var->type));
 	    size_str = "0";
 	  }
 	  break;
@@ -1108,8 +1090,8 @@ pp_check (HOST_VAR * var, bool structs_allowed)
 	}
     }
 
-  yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
-	    pp_type_str (type), vs_str (&var->expr));
+  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
+		 pp_type_str (type), vs_str (&var->expr));
   return BAD_C_TYPE;
 }
 
@@ -1163,7 +1145,7 @@ pp_addr_expr (HOST_VAR * var)
 
   if (var == NULL)
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_BAD_ADDRESS));
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_BAD_ADDRESS));
       result = (char *) "NULL";
     }
   else if (IS_PTR_TYPE (var->type) && IS_CHAR (var->type->next))
@@ -1207,8 +1189,8 @@ pp_ptr_deref (HOST_VAR * var, int style)
 
   if (!IS_PTR_TYPE (var->type))
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_DEREF_NOT_ALLOWED),
-		vs_str (&var->expr), style ? "[]" : "*");
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_DEREF_NOT_ALLOWED),
+		     vs_str (&var->expr), style ? "[]" : "*");
       return NULL;
     }
 
@@ -1242,8 +1224,8 @@ pp_struct_deref (HOST_VAR * var, char *field, int indirect)
       LINK *base_type;
       if (!IS_PTR_TYPE (var->type))
 	{
-	  yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_POINTER),
-		    vs_str (&var->expr));
+	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_POINTER),
+			 vs_str (&var->expr));
 	  return NULL;
 	}
       base_type = var->type->next;
@@ -1253,17 +1235,17 @@ pp_struct_deref (HOST_VAR * var, char *field, int indirect)
 
   if (!IS_STRUCT (var->type) && !IS_PSEUDO_TYPE (var->type))
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET,
-			    indirect ? MSG_NOT_POINTER_TO_STRUCT :
-			    MSG_NOT_STRUCT), vs_str (&var->expr));
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET,
+				 indirect ? MSG_NOT_POINTER_TO_STRUCT :
+				 MSG_NOT_STRUCT), vs_str (&var->expr));
       return NULL;
     }
 
   field_def = pp_find_field (var->type->decl.s.val.v_struct, field);
   if (field_def == NULL)
     {
-      yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NO_FIELD),
-		var->type->decl.s.val.v_struct->type_string, field);
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NO_FIELD),
+		     var->type->decl.s.val.v_struct->type_string, field);
       return NULL;
     }
 
@@ -1309,7 +1291,7 @@ pp_find_field (STRUCTDEF * sdef, const char *field)
   SYMBOL *sym;
   for (sym = sdef->fields; sym; sym = sym->next)
     {
-      if (STREQ (field, sym->name))
+      if (STREQ (field, (char *) sym->name))
 	{
 	  return sym;
 	}
@@ -1546,11 +1528,11 @@ pp_switch_to_descriptor (void)
       return NULL;
     }
 
-  pp_host_refs->desc = pp_get_expr (&pp_host_refs->refs[0]);
+  pp_host_refs->desc = (unsigned char *) pp_get_expr (&pp_host_refs->refs[0]);
   pp_host_refs->n_refs = 0;
   pp_host_refs->refs = NULL;
 
-  return pp_host_refs->desc;
+  return (char *) pp_host_refs->desc;
 }
 
 /*

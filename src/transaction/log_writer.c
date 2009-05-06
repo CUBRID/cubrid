@@ -40,34 +40,28 @@
 #include "system_parameter.h"
 #include "file_io.h"
 #include "log_writer.h"
+#include "network_interface_cl.h"
+#include "network_interface_sr.h"
 #if defined(SERVER_MODE)
 #include "memory_alloc.h"
 #include "server_support.h"
 #endif
+#include "dbi.h"
 
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* hdr */
-  {{'0'}
-   , 0, {'0'}
-   , 0.0, 0, 0, 0, 0, 0, 0, 0,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
+  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0,
+   {NULL_PAGEID, NULL_OFFSET},
+   {NULL_PAGEID, NULL_OFFSET},
    0, 0, 0, 0, 0, false,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {'0'}
-   , 0, 0, 0,
-   {{0, 0, 0, 0, 0}
-    }
-   }
-  ,
+   {NULL_PAGEID, NULL_OFFSET},
+   {NULL_PAGEID, NULL_OFFSET},
+   {NULL_PAGEID, NULL_OFFSET},
+   {'0'}, 0, 0, 0,
+   {{0, 0, 0, 0, 0}},
+   0, 0,
+   {NULL_PAGEID, NULL_OFFSET}},
   /* loghdr_pgptr */
   NULL,
   /* db_name */
@@ -189,7 +183,7 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr)
  * Note:
  */
 static int
-logwr_read_log_header ()
+logwr_read_log_header (void)
 {
   if (!fileio_is_volume_exist (logwr_Gl.active_name))
     {
@@ -311,7 +305,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
  * Note:
  */
 static void
-logwr_finalize ()
+logwr_finalize (void)
 {
   if (logwr_Gl.logpg_area != NULL)
     {
@@ -345,7 +339,7 @@ logwr_finalize ()
  * Note:
  */
 int
-logwr_set_hdr_and_flush_info ()
+logwr_set_hdr_and_flush_info (void)
 {
   LOG_PAGE *log_pgptr, *last_pgptr;
   char *p;
@@ -487,7 +481,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
  * Note:
  */
 static int
-logwr_flush_all_append_pages ()
+logwr_flush_all_append_pages (void)
 {
   LOG_PAGE *pgptr, *prv_pgptr;
   PAGEID pageid, prv_pageid;
@@ -646,7 +640,7 @@ logwr_flush_all_append_pages ()
  * Note:
  */
 void
-logwr_flush_header_page ()
+logwr_flush_header_page (void)
 {
   PAGEID phy_pageid;
   PAGEID logical_pageid;
@@ -721,7 +715,7 @@ logwr_flush_header_page ()
  * Note:
  */
 static int
-logwr_archive_active_log ()
+logwr_archive_active_log (void)
 {
   char archive_name[PATH_MAX] = { '\0' };
   LOG_PAGE *arvhdr_pgptr = NULL;
@@ -875,7 +869,7 @@ error:
  * Note:
  */
 int
-logwr_write_log_pages ()
+logwr_write_log_pages (void)
 {
   int error;
 
@@ -1102,7 +1096,7 @@ logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status)
  * Note:
  */
 static int
-logwr_get_server_status ()
+logwr_get_server_status (void)
 {
   switch (css_ha_server_state ())
     {
@@ -1238,7 +1232,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	}
     }
 
-  *logpg_used_size = (p - logpg_area);
+  *logpg_used_size = (int) (p - logpg_area);
 
   /* In case that EOL exists at lpageid */
   if (!is_hdr_page_only && (lpageid >= log_Gl.hdr.eof_lsa.pageid))
@@ -1285,7 +1279,6 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid, int mode)
   LOGWR_ENTRY *entry;
   char *logpg_area;
   int logpg_used_size;
-  LOG_PAGE *last_pgptr;
   PAGEID next_fpageid;
   int next_mode;
   int status;

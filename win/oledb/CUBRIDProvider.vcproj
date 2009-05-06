@@ -12,14 +12,17 @@
 		<Platform
 			Name="Win32"
 		/>
+		<Platform
+			Name="x64"
+		/>
 	</Platforms>
 	<ToolFiles>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory="..\Debug"
-			IntermediateDirectory=".\Debug"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="2"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfATL="1"
@@ -28,6 +31,7 @@
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
+				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;$(OutDir)\CUBRIDProvider.tlb&quot; /h &quot;..\..\src\oledb\CUBRIDProvider.h&quot; /iid &quot;..\..\src\oledb\CUBRIDProvider_i.c&quot; /proxy &quot;..\..\src\oledb\CUBRIDProvider_p.c&quot; &quot;..\..\src\oledb\_CUBRIDProvider.idl&quot; /nologo"
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
@@ -61,7 +65,7 @@
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderFile="$(IntDir)/CUBRIDProvider.pch"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -79,10 +83,10 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\Debug\cas_cci.lib wsock32.lib"
-				OutputFile="$(OutDir)/CUBRIDProvider.dll"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="2"
-				MergedIDLBaseFileName="_CUBRIDProvider.idl"
+				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile="$(OutDir)/CUBRIDProvider.pdb"
 				SubSystem="2"
@@ -116,9 +120,9 @@
 			/>
 		</Configuration>
 		<Configuration
-			Name="Release|Win32"
-			OutputDirectory="..\Release"
-			IntermediateDirectory=".\Release"
+			Name="Debug|x64"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="2"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfATL="1"
@@ -127,7 +131,108 @@
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
-				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;..\Release\CUBRIDProvider.tlb&quot; /h &quot;..\..\src\oledb\CUBRIDProvider.h&quot; /iid &quot;..\..\src\oledb\CUBRIDProvider_i.c&quot; /proxy &quot;..\..\src\oledb\CUBRIDProvider_p.c&quot; &quot;..\..\src\oledb\_CUBRIDProvider.idl&quot; /nologo"
+				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;$(OutDir)\CUBRIDProvider.tlb&quot; /h &quot;..\..\src\oledb\CUBRIDProvider.h&quot; /iid &quot;..\..\src\oledb\CUBRIDProvider_i.c&quot; /proxy &quot;..\..\src\oledb\CUBRIDProvider_p.c&quot; &quot;..\..\src\oledb\_CUBRIDProvider.idl&quot; /nologo"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="false"
+				TargetEnvironment="3"
+				GenerateStublessProxies="true"
+				TypeLibraryName="$(IntDir)/CUBRIDProvider.tlb"
+				HeaderFileName="CUBRIDProvider.h"
+				DLLDataFileName=""
+				InterfaceIdentifierFileName="CUBRIDProvider_i.c"
+				ProxyFileName="CUBRIDProvider_p.c"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\..\src\cci"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_DEBUG;_USRDLL;_ATL_ATTRIBUTES;FIXME;FIXED_CODE;_CRT_SECURE_NO_WARNINGS"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="3"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderFile="$(IntDir)/CUBRIDProvider.pch"
+				WarningLevel="3"
+				Detect64BitPortabilityProblems="false"
+				DebugInformationFormat="3"
+				DisableSpecificWarnings="4581"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="1033"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				IgnoreImportLibrary="true"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				OutputFile="$(OutDir)\$(ProjectName).dll"
+				LinkIncremental="2"
+				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/CUBRIDProvider.pdb"
+				SubSystem="2"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)/CUBRIDProvider.lib"
+				TargetMachine="17"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+				Description="Performing registration"
+				CommandLine="regsvr32 /s /c &quot;$(TargetPath)&quot;"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|Win32"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
+			UseOfATL="1"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;$(OutDir)\CUBRIDProvider.tlb&quot; /h &quot;..\..\src\oledb\CUBRIDProvider.h&quot; /iid &quot;..\..\src\oledb\CUBRIDProvider_i.c&quot; /proxy &quot;..\..\src\oledb\CUBRIDProvider_p.c&quot; &quot;..\..\src\oledb\_CUBRIDProvider.idl&quot; /nologo"
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
@@ -161,7 +266,7 @@
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderFile="$(IntDir)/CUBRIDProvider.pch"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -179,11 +284,11 @@
 			<Tool
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="true"
-				AdditionalDependencies="..\Release\cas_cci.lib wsock32.lib"
-				OutputFile="$(OutDir)/CUBRIDProvider.dll"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				OutputFile="$(OutDir)\$(ProjectName).dll"
 				LinkIncremental="1"
 				IgnoreEmbeddedIDL="false"
-				MergedIDLBaseFileName="_CUBRIDProvider.idl"
+				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile="$(OutDir)/CUBRIDProvider.pdb"
 				SubSystem="2"
@@ -193,6 +298,110 @@
 				DataExecutionPrevention="0"
 				ImportLibrary="$(OutDir)/CUBRIDProvider.lib"
 				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+				Description="Performing registration"
+				CommandLine="regsvr32 /s /c &quot;$(TargetPath)&quot;"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|x64"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
+			UseOfATL="1"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;$(OutDir)\CUBRIDProvider.tlb&quot; /h &quot;..\..\src\oledb\CUBRIDProvider.h&quot; /iid &quot;..\..\src\oledb\CUBRIDProvider_i.c&quot; /proxy &quot;..\..\src\oledb\CUBRIDProvider_p.c&quot; &quot;..\..\src\oledb\_CUBRIDProvider.idl&quot; /nologo"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="false"
+				TargetEnvironment="3"
+				GenerateStublessProxies="true"
+				TypeLibraryName="$(IntDir)/CUBRIDProvider.tlb"
+				HeaderFileName="CUBRIDProvider.h"
+				DLLDataFileName=""
+				InterfaceIdentifierFileName="CUBRIDProvider_i.c"
+				ProxyFileName="CUBRIDProvider_p.c"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="..\..\src\cci"
+				PreprocessorDefinitions="WIN32;_WINDOWS;NDEBUG;_USRDLL;_ATL_ATTRIBUTES;FIXME;_CRT_SECURE_NO_WARNINGS"
+				StringPooling="true"
+				RuntimeLibrary="2"
+				EnableFunctionLevelLinking="true"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderFile="$(IntDir)/CUBRIDProvider.pch"
+				WarningLevel="3"
+				Detect64BitPortabilityProblems="false"
+				DebugInformationFormat="3"
+				DisableSpecificWarnings="4581"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="1033"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				IgnoreImportLibrary="true"
+				AdditionalDependencies="..\$(PlatformName)\$(ConfigurationName)\cas_cci.lib wsock32.lib"
+				OutputFile="$(OutDir)\$(ProjectName).dll"
+				LinkIncremental="1"
+				IgnoreEmbeddedIDL="false"
+				MergedIDLBaseFileName="$(OutDir)\_CUBRIDProvider.idl"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/CUBRIDProvider.pdb"
+				SubSystem="2"
+				OptimizeReferences="2"
+				EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)/CUBRIDProvider.lib"
+				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -342,7 +551,23 @@
 					/>
 				</FileConfiguration>
 				<FileConfiguration
+					Name="Debug|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						UsePrecompiledHeader="1"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
 					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						UsePrecompiledHeader="1"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|x64"
 					>
 					<Tool
 						Name="VCCLCompilerTool"

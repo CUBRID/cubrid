@@ -44,10 +44,11 @@ public class LongValue extends Value
     this.value = value;
   }
 
-  public LongValue(long value, int mode)
+  public LongValue(long value, int mode, int dbType)
   {
     super(mode);
     this.value = value;
+    this.dbType = dbType;
   }
 
   public byte toByte() throws TypeMismatchException

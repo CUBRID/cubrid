@@ -37,21 +37,21 @@
 #include "file_io.h"
 
 static UTIL_ARG_MAP ua_Create_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {CREATE_PAGES_S, ARG_INTEGER, (void *) 5000},
-  {CREATE_COMMENT_S, ARG_STRING, 0},
-  {CREATE_FILE_PATH_S, ARG_STRING, 0},
-  {CREATE_LOG_PATH_S, ARG_STRING, 0},
-  {CREATE_SERVER_NAME_S, ARG_STRING, 0},
-  {CREATE_REPLACE_S, ARG_BOOLEAN, 0},
-  {CREATE_MORE_VOLUME_FILE_S, ARG_STRING, 0},
-  {CREATE_USER_DEFINITION_FILE_S, ARG_STRING, 0},
-  {CREATE_CSQL_INITIALIZATION_FILE_S, ARG_STRING, 0},
-  {CREATE_OUTPUT_FILE_S, ARG_STRING, 0},
-  {CREATE_VERBOSE_S, ARG_BOOLEAN, 0},
-  {CREATE_LOG_PAGE_COUNT_S, ARG_INTEGER, (void *) -1},
-  {CREATE_PAGE_SIZE_S, ARG_INTEGER, (void *) -1},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {CREATE_PAGES_S, {ARG_INTEGER}, {5000}},
+  {CREATE_COMMENT_S, {ARG_STRING}, {0}},
+  {CREATE_FILE_PATH_S, {ARG_STRING}, {0}},
+  {CREATE_LOG_PATH_S, {ARG_STRING}, {0}},
+  {CREATE_SERVER_NAME_S, {ARG_STRING}, {0}},
+  {CREATE_REPLACE_S, {ARG_BOOLEAN}, {0}},
+  {CREATE_MORE_VOLUME_FILE_S, {ARG_STRING}, {0}},
+  {CREATE_USER_DEFINITION_FILE_S, {ARG_STRING}, {0}},
+  {CREATE_CSQL_INITIALIZATION_FILE_S, {ARG_STRING}, {0}},
+  {CREATE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {CREATE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+  {CREATE_LOG_PAGE_COUNT_S, {ARG_INTEGER}, {-1}},
+  {CREATE_PAGE_SIZE_S, {ARG_INTEGER}, {-1}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Create_Option[] = {
@@ -74,11 +74,11 @@ static GETOPT_LONG ua_Create_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Rename_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {RENAME_EXTENTED_VOLUME_PATH_S, ARG_STRING, 0},
-  {RENAME_CONTROL_FILE_S, ARG_STRING, 0},
-  {RENAME_DELETE_BACKUP_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {RENAME_EXTENTED_VOLUME_PATH_S, {ARG_STRING}, {0}},
+  {RENAME_CONTROL_FILE_S, {ARG_STRING}, {0}},
+  {RENAME_DELETE_BACKUP_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Rename_Option[] = {
@@ -89,15 +89,15 @@ static GETOPT_LONG ua_Rename_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Copy_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {COPY_SERVER_NAME_S, ARG_STRING, 0},
-  {COPY_FILE_PATH_S, ARG_STRING, 0},
-  {COPY_LOG_PATH_S, ARG_STRING, 0},
-  {COPY_EXTENTED_VOLUME_PATH_S, ARG_STRING, 0},
-  {COPY_CONTROL_FILE_S, ARG_STRING, 0},
-  {COPY_REPLACE_S, ARG_BOOLEAN, 0},
-  {COPY_DELETE_SOURCE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {COPY_SERVER_NAME_S, {ARG_STRING}, {0}},
+  {COPY_FILE_PATH_S, {ARG_STRING}, {0}},
+  {COPY_LOG_PATH_S, {ARG_STRING}, {0}},
+  {COPY_EXTENTED_VOLUME_PATH_S, {ARG_STRING}, {0}},
+  {COPY_CONTROL_FILE_S, {ARG_STRING}, {0}},
+  {COPY_REPLACE_S, {ARG_BOOLEAN}, {0}},
+  {COPY_DELETE_SOURCE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Copy_Option[] = {
@@ -112,10 +112,10 @@ static GETOPT_LONG ua_Copy_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Delete_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {DELETE_OUTPUT_FILE_S, ARG_STRING, 0},
-  {DELETE_DELETE_BACKUP_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {DELETE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {DELETE_DELETE_BACKUP_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Delete_Option[] = {
@@ -125,19 +125,19 @@ static GETOPT_LONG ua_Delete_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Backup_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {BACKUP_DESTINATION_PATH_S, ARG_STRING, 0},
-  {BACKUP_OUTPUT_FILE_S, ARG_STRING, 0},
-  {BACKUP_REMOVE_ARCHIVE_S, ARG_BOOLEAN, 0},
-  {BACKUP_LEVEL_S, ARG_INTEGER, (void *) FILEIO_BACKUP_FULL_LEVEL},
-  {BACKUP_SA_MODE_S, ARG_BOOLEAN, 0},
-  {BACKUP_CS_MODE_S, ARG_BOOLEAN, 0},
-  {BACKUP_NO_CHECK_S, ARG_BOOLEAN, 0},
-  {BACKUP_THREAD_COUNT_S, ARG_INTEGER, (void *) FILEIO_NUM_THREADS_AUTO},
-  {BACKUP_COMPRESS_S, ARG_BOOLEAN, 0},
-  {BACKUP_EXCEPT_ACTIVE_LOG_S, ARG_BOOLEAN, 0},
-  {BACKUP_SAFE_PAGE_ID_S, ARG_INTEGER, (void *) -1},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {BACKUP_DESTINATION_PATH_S, {ARG_STRING}, {0}},
+  {BACKUP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {BACKUP_REMOVE_ARCHIVE_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_LEVEL_S, {ARG_INTEGER}, {FILEIO_BACKUP_FULL_LEVEL}},
+  {BACKUP_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_NO_CHECK_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_THREAD_COUNT_S, {ARG_INTEGER}, {FILEIO_NUM_THREADS_AUTO}},
+  {BACKUP_COMPRESS_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_EXCEPT_ACTIVE_LOG_S, {ARG_BOOLEAN}, {0}},
+  {BACKUP_SAFE_PAGE_ID_S, {ARG_INTEGER}, {-1}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Backup_Option[] = {
@@ -156,16 +156,16 @@ static GETOPT_LONG ua_Backup_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Restore_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {RESTORE_UP_TO_DATE_S, ARG_STRING, 0},
-  {RESTORE_LIST_S, ARG_BOOLEAN, 0},
-  {RESTORE_BACKUP_FILE_PATH_S, ARG_STRING, 0},
-  {RESTORE_LEVEL_S, ARG_INTEGER, 0},
-  {RESTORE_PARTIAL_RECOVERY_S, ARG_BOOLEAN, 0},
-  {RESTORE_OUTPUT_FILE_S, ARG_STRING, 0},
-  {RESTORE_REPLICATION_MODE_S, ARG_BOOLEAN, 0},
-  {RESTORE_USE_DATABASE_LOCATION_PATH_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {RESTORE_UP_TO_DATE_S, {ARG_STRING}, {0}},
+  {RESTORE_LIST_S, {ARG_BOOLEAN}, {0}},
+  {RESTORE_BACKUP_FILE_PATH_S, {ARG_STRING}, {0}},
+  {RESTORE_LEVEL_S, {ARG_INTEGER}, {0}},
+  {RESTORE_PARTIAL_RECOVERY_S, {ARG_BOOLEAN}, {0}},
+  {RESTORE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {RESTORE_REPLICATION_MODE_S, {ARG_BOOLEAN}, {0}},
+  {RESTORE_USE_DATABASE_LOCATION_PATH_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Restore_Option[] = {
@@ -182,14 +182,18 @@ static GETOPT_LONG ua_Restore_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {ADDVOL_VOLUME_NAME_S, ARG_STRING, 0},
-  {ADDVOL_FILE_PATH_S, ARG_STRING, 0},
-  {ADDVOL_COMMENT_S, ARG_STRING, 0},
-  {ADDVOL_PURPOSE_S, ARG_STRING, (void *) "generic"},
-  {ADDVOL_SA_MODE_S, ARG_BOOLEAN, 0},
-  {ADDVOL_CS_MODE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {ADDVOL_VOLUME_NAME_S, {ARG_STRING}, {0}},
+  {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
+  {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
+#if defined(LINUX)
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {.p = (void *) "generic"}},
+#else
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(void *) "generic"}},
+#endif
+  {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Addvol_Option[] = {
@@ -203,12 +207,16 @@ static GETOPT_LONG ua_Addvol_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Space_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {SPACE_OUTPUT_FILE_S, ARG_STRING, 0},
-  {SPACE_SA_MODE_S, ARG_BOOLEAN, 0},
-  {SPACE_CS_MODE_S, ARG_BOOLEAN, 0},
-  {SPACE_SIZE_UNIT_S, ARG_STRING, (void *) "page"},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {SPACE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {SPACE_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {SPACE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+#if defined(LINUX)
+  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {.p = (void *) "page"}},
+#else
+  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(void *) "page"}},
+#endif
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Space_Option[] = {
@@ -220,9 +228,9 @@ static GETOPT_LONG ua_Space_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Lock_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {LOCK_OUTPUT_FILE_S, ARG_STRING, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {LOCK_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Lock_Option[] = {
@@ -231,9 +239,9 @@ static GETOPT_LONG ua_Lock_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Optimize_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {OPTIMIZE_CLASS_NAME_S, ARG_STRING, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {OPTIMIZE_CLASS_NAME_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Optimize_Option[] = {
@@ -242,11 +250,11 @@ static GETOPT_LONG ua_Optimize_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Install_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {INSTALL_SERVER_NAME_S, ARG_STRING, 0},
-  {INSTALL_FILE_PATH_S, ARG_STRING, 0},
-  {INSTALL_LOG_PATH_S, ARG_STRING, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {INSTALL_SERVER_NAME_S, {ARG_STRING}, {0}},
+  {INSTALL_FILE_PATH_S, {ARG_STRING}, {0}},
+  {INSTALL_LOG_PATH_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Install_Option[] = {
@@ -257,9 +265,9 @@ static GETOPT_LONG ua_Install_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Diag_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {DIAG_DUMP_TYPE_S, ARG_INTEGER, (void *) -1},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {DIAG_DUMP_TYPE_S, {ARG_INTEGER}, {-1}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Diag_Option[] = {
@@ -268,9 +276,9 @@ static GETOPT_LONG ua_Diag_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Patch_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {PATCH_RECREATE_LOG_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {PATCH_RECREATE_LOG_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Patch_Option[] = {
@@ -279,11 +287,11 @@ static GETOPT_LONG ua_Patch_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Check_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {CHECK_SA_MODE_S, ARG_BOOLEAN, 0},
-  {CHECK_CS_MODE_S, ARG_BOOLEAN, 0},
-  {CHECK_REPAIR_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {CHECK_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {CHECK_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {CHECK_REPAIR_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Check_Option[] = {
@@ -297,9 +305,9 @@ static GETOPT_LONG ua_Check_Option[] = {
 #define ALTERDBHOST_HOST_S                'h'
 
 static UTIL_ARG_MAP ua_Alterdbhost_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {ALTERDBHOST_HOST_S, ARG_STRING, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {ALTERDBHOST_HOST_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Alterdbhost_Option[] = {
@@ -308,10 +316,10 @@ static GETOPT_LONG ua_Alterdbhost_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Plandump_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {PLANDUMP_DROP_S, ARG_BOOLEAN, 0},
-  {PLANDUMP_OUTPUT_FILE_S, ARG_STRING, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {PLANDUMP_DROP_S, {ARG_BOOLEAN}, {0}},
+  {PLANDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Plandump_Option[] = {
@@ -321,15 +329,22 @@ static GETOPT_LONG ua_Plandump_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {KILLTRAN_KILL_TRANSACTION_INDEX_S, ARG_INTEGER, (void *) -1},
-  {KILLTRAN_KILL_USER_NAME_S, ARG_STRING, (void *) ""},
-  {KILLTRAN_KILL_HOST_NAME_S, ARG_STRING, (void *) ""},
-  {KILLTRAN_KILL_PROGRAM_NAME_S, ARG_STRING, (void *) ""},
-  {KILLTRAN_DBA_PASSWORD_S, ARG_STRING, (void *) ""},
-  {KILLTRAN_DISPLAY_INFORMATION_S, ARG_BOOLEAN, 0},
-  {KILLTRAN_FORCE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_INTEGER}, {-1}},
+#if defined(LINUX)
+  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
+  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
+  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
+  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
+#else
+  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(void *) ""}},
+  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(void *) ""}},
+  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(void *) ""}},
+  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
+#endif
+  {KILLTRAN_DISPLAY_INFORMATION_S, {ARG_BOOLEAN}, {0}},
+  {KILLTRAN_FORCE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Killtran_Option[] = {
@@ -345,25 +360,25 @@ static GETOPT_LONG ua_Killtran_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Load_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {LOAD_USER_S, ARG_STRING, 0},
-  {LOAD_PASSWORD_S, ARG_STRING, 0},
-  {LOAD_CHECK_ONLY_S, ARG_BOOLEAN, 0},
-  {LOAD_LOAD_ONLY_S, ARG_BOOLEAN, 0},
-  {LOAD_ESTIMATED_SIZE_S, ARG_INTEGER, 0},
-  {LOAD_VERBOSE_S, ARG_BOOLEAN, 0},
-  {LOAD_NO_STATISTICS_S, ARG_BOOLEAN, 0},
-  {LOAD_PERIODIC_COMMIT_S, ARG_INTEGER, 0},
-  {LOAD_NO_OID_S, ARG_BOOLEAN, 0},
-  {LOAD_SCHEMA_FILE_S, ARG_STRING, 0},
-  {LOAD_INDEX_FILE_S, ARG_STRING, 0},
-  {LOAD_IGNORE_LOGGING_S, ARG_BOOLEAN, 0},
-  {LOAD_DATA_FILE_S, ARG_STRING, 0},
-  {LOAD_ERROR_CONTROL_FILE_S, ARG_STRING, 0},
-  {LOAD_IGNORE_CLASS_S, ARG_STRING, 0},
-  {LOAD_CS_MODE_S, ARG_BOOLEAN, 0},
-  {LOAD_SA_MODE_S, ARG_BOOLEAN, (void *) 1},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {LOAD_USER_S, {ARG_STRING}, {0}},
+  {LOAD_PASSWORD_S, {ARG_STRING}, {0}},
+  {LOAD_CHECK_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_LOAD_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_ESTIMATED_SIZE_S, {ARG_INTEGER}, {0}},
+  {LOAD_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_NO_STATISTICS_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_PERIODIC_COMMIT_S, {ARG_INTEGER}, {0}},
+  {LOAD_NO_OID_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_SCHEMA_FILE_S, {ARG_STRING}, {0}},
+  {LOAD_INDEX_FILE_S, {ARG_STRING}, {0}},
+  {LOAD_IGNORE_LOGGING_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_DATA_FILE_S, {ARG_STRING}, {0}},
+  {LOAD_ERROR_CONTROL_FILE_S, {ARG_STRING}, {0}},
+  {LOAD_IGNORE_CLASS_S, {ARG_STRING}, {0}},
+  {LOAD_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_SA_MODE_S, {ARG_BOOLEAN}, {1}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Load_Option[] = {
@@ -388,23 +403,23 @@ static GETOPT_LONG ua_Load_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Unload_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {UNLOAD_INPUT_CLASS_FILE_S, ARG_STRING, 0},
-  {UNLOAD_INCLUDE_REFERENCE_S, ARG_BOOLEAN, 0},
-  {UNLOAD_INPUT_CLASS_ONLY_S, ARG_BOOLEAN, 0},
-  {UNLOAD_LO_COUNT_S, ARG_INTEGER, 0},
-  {UNLOAD_ESTIMATED_SIZE_S, ARG_INTEGER, 0},
-  {UNLOAD_CACHED_PAGES_S, ARG_INTEGER, (void *) 100},
-  {UNLOAD_OUTPUT_PATH_S, ARG_STRING, 0},
-  {UNLOAD_SCHEMA_ONLY_S, ARG_BOOLEAN, 0},
-  {UNLOAD_DATA_ONLY_S, ARG_BOOLEAN, 0},
-  {UNLOAD_OUTPUT_PREFIX_S, ARG_STRING, 0},
-  {UNLOAD_HASH_FILE_S, ARG_STRING, 0},
-  {UNLOAD_VERBOSE_S, ARG_BOOLEAN, 0},
-  {UNLOAD_USE_DELIMITER_S, ARG_BOOLEAN, 0},
-  {UNLOAD_SA_MODE_S, ARG_BOOLEAN, 0},
-  {UNLOAD_CS_MODE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {UNLOAD_INPUT_CLASS_FILE_S, {ARG_STRING}, {0}},
+  {UNLOAD_INCLUDE_REFERENCE_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_INPUT_CLASS_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_LO_COUNT_S, {ARG_INTEGER}, {0}},
+  {UNLOAD_ESTIMATED_SIZE_S, {ARG_INTEGER}, {0}},
+  {UNLOAD_CACHED_PAGES_S, {ARG_INTEGER}, {100}},
+  {UNLOAD_OUTPUT_PATH_S, {ARG_STRING}, {0}},
+  {UNLOAD_SCHEMA_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_DATA_ONLY_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_OUTPUT_PREFIX_S, {ARG_STRING}, {0}},
+  {UNLOAD_HASH_FILE_S, {ARG_STRING}, {0}},
+  {UNLOAD_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_USE_DELIMITER_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {UNLOAD_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Unload_Option[] = {
@@ -427,9 +442,9 @@ static GETOPT_LONG ua_Unload_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Compact_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {COMPACT_VERBOSE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {COMPACT_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Compact_Option[] = {
@@ -438,11 +453,11 @@ static GETOPT_LONG ua_Compact_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Paramdump_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {PARAMDUMP_OUTPUT_FILE_S, ARG_STRING, 0},
-  {PARAMDUMP_SA_MODE_S, ARG_BOOLEAN, 0},
-  {PARAMDUMP_CS_MODE_S, ARG_BOOLEAN, 0},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {PARAMDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {PARAMDUMP_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {PARAMDUMP_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Paramdump_Option[] = {
@@ -453,12 +468,16 @@ static GETOPT_LONG ua_Paramdump_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Changemode_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {CHANGEMODE_MODE_S, ARG_STRING, 0},
-  {CHANGEMODE_WAIT_S, ARG_BOOLEAN, 0},
-  {CHANGEMODE_FORCE_S, ARG_BOOLEAN, 0},
-  {CHANGEMODE_DBA_PASSWORD_S, ARG_STRING, (void *) ""},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {CHANGEMODE_MODE_S, {ARG_STRING}, {0}},
+  {CHANGEMODE_WAIT_S, {ARG_BOOLEAN}, {0}},
+  {CHANGEMODE_FORCE_S, {ARG_BOOLEAN}, {0}},
+#if defined(LINUX)
+  {CHANGEMODE_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
+#else
+  {CHANGEMODE_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
+#endif
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Changemode_Option[] = {
@@ -470,11 +489,15 @@ static GETOPT_LONG ua_Changemode_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {COPYLOG_LOG_PATH_S, ARG_STRING, 0},
-  {COPYLOG_MODE_S, ARG_STRING, 0},
-  {COPYLOG_DBA_PASSWORD_S, ARG_STRING, (void *) ""},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
+  {COPYLOG_MODE_S, {ARG_STRING}, {0}},
+#if defined(LINUX)
+  {COPYLOG_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
+#else
+  {COPYLOG_DBA_PASSWORD_S, {ARG_STRING}, (void *) ""},
+#endif
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Copylog_Option[] = {
@@ -485,11 +508,15 @@ static GETOPT_LONG ua_Copylog_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Applylog_Option_Map[] = {
-  {OPTION_STRING_TABLE, 0, 0},
-  {APPLYLOG_LOG_PATH_S, ARG_STRING, 0},
-  {APPLYLOG_DBA_PASSWORD_S, ARG_STRING, (void *) ""},
-  {APPLYLOG_TEST_LOG_S, ARG_INTEGER, (void *) -1},
-  {0, 0, 0}
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {APPLYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
+#if defined(LINUX)
+  {APPLYLOG_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
+#else
+  {APPLYLOG_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
+#endif
+  {APPLYLOG_TEST_LOG_S, {ARG_INTEGER}, {-1}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Applylog_Option[] = {
@@ -717,7 +744,8 @@ static const char *
 util_get_library_name (int utility_index)
 {
   int utility_type = ua_Utility_Map[utility_index].utility_type;
-  UTIL_ARG_MAP *arg_map = ua_Utility_Map[utility_index].arg_map;;
+  UTIL_ARG_MAP *arg_map = ua_Utility_Map[utility_index].arg_map;
+
   switch (utility_type)
     {
     case SA_ONLY:
@@ -730,12 +758,13 @@ util_get_library_name (int utility_index)
 	for (i = 0; arg_map[i].arg_ch; i++)
 	  {
 	    int key = arg_map[i].arg_ch;
-	    void *value = arg_map[i].arg_value;
-	    if ((key == 'C' || key == LOAD_CS_MODE_S) && value != NULL)
+	    if ((key == 'C' || key == LOAD_CS_MODE_S)
+		&& arg_map[i].arg_value.p != NULL)
 	      {
 		return LIB_UTIL_CS_NAME;
 	      }
-	    if ((key == 'S' || key == LOAD_SA_MODE_S) && value != NULL)
+	    if ((key == 'S' || key == LOAD_SA_MODE_S)
+		&& arg_map[i].arg_value.p != NULL)
 	      {
 		return LIB_UTIL_SA_NAME;
 	      }

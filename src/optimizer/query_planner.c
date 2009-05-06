@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -344,6 +344,20 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_POINTER      */
   0,				/* DB_TYPE_ERROR        */
   _INT,				/* DB_TYPE_SHORT        */
+  0,				/* DB_TYPE_VOBJ         */
+  0,				/* DB_TYPE_OID          */
+  0,				/* DB_TYPE_DB_VALUE     */
+  0,				/* DB_TYPE_NUMERIC      *//* FIXME */
+  0,				/* DB_TYPE_BIT          */
+  0,				/* DB_TYPE_VARBIT       */
+  0,				/* DB_TYPE_CHAR         */
+  0,				/* DB_TYPE_NCHAR        */
+  0,				/* DB_TYPE_VARNCHAR     */
+  0,				/* DB_TYPE_RESULTSET    */
+  0,				/* DB_TYPE_MIDXKEY      */
+  0,				/* DB_TYPE_TABLE        */
+  _INT + _NUM,			/* DB_TYPE_BIGINT       */
+  _INT + _NUM			/* DB_TYPE_DATETIME     */
 };
 
 /* Structural equivalence classes for expressions */
@@ -1167,8 +1181,7 @@ qo_plan_print_subqueries (QO_PLAN * plan, FILE * f, int howfar)
   if (!bitset_is_empty (&(plan->subqueries)))
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "subqs: ");
-      bitset_print (&(plan->subqueries),
-		    (int (*)(void *, const char *, int)) fprintf, f);
+      bitset_print (&(plan->subqueries), f);
     }
 }
 
@@ -5042,8 +5055,7 @@ qo_dump_info (QO_INFO * info, FILE * f)
   int i;
 
   fputs ("  projected segments: ", f);
-  bitset_print (&(info->projected_segs),
-		(int (*)(void *, const char *, int)) fprintf, f);
+  bitset_print (&(info->projected_segs), f);
   fputs ("\n", f);
 
   fputs ("  best: ", f);
@@ -7613,7 +7625,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 double
 qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  double lhs_selectivity, rhs_selectivity, selectivity, total_selectivity;
+  double lhs_selectivity, rhs_selectivity, selectivity = 0.0, total_selectivity;
   PT_NODE *node;
 
   QO_ASSERT (env, pt_expr != NULL && pt_expr->node_type == PT_EXPR);
@@ -7727,18 +7739,16 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	default:
 	  break;
-	}			/* switch (node->info.expr.op) */
+	}
 
       total_selectivity = qo_or_selectivity (env, total_selectivity,
 					     selectivity);
       total_selectivity = MAX (total_selectivity, 0.0);
       total_selectivity = MIN (total_selectivity, 1.0);
-
-    }				/* for (node = expr; node; node = node->or_next) */
+    }
 
   return total_selectivity;
-
-}				/* qo_expr_selectivity() */
+}
 
 /*
  * qo_or_selectivity () - Calculate the selectivity of an OR expression
@@ -7756,10 +7766,7 @@ qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
   QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
   result = lhs_sel + rhs_sel - (lhs_sel * rhs_sel);
   return result;
-
-}				/* qo_or_selectivity */
-
-
+}
 
 /*
  * qo_and_selectivity () -
@@ -7776,8 +7783,7 @@ qo_and_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
   QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
   result = lhs_sel * rhs_sel;
   return result;
-
-}				/* qo_and_selectivity */
+}
 
 /*
  * qo_not_selectivity () - Calculate the selectivity of a not expresssion
@@ -7790,9 +7796,7 @@ qo_not_selectivity (QO_ENV * env, double sel)
 {
   QO_ASSERT (env, sel >= 0.0 && sel <= 1.0);
   return 1.0 - sel;
-
-}				/* qo_not_selectivity */
-
+}
 
 /*
  * qo_equal_selectivity () - Compute the selectivity of an equality predicate
@@ -7884,13 +7888,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		  const_val = get_const_value (env, rhs);
 		  if (const_val == lhs_low_value
 		      && lhs_low_value == lhs_high_value)
-		    selectivity = 1.0;
-		  else
-		    if (const_val < lhs_low_value
-			|| const_val > lhs_high_value)
-		    selectivity = 0.0;
-		  else
-		    if (lhs->type_enum == PT_TYPE_INTEGER && lhs_icard == 0)
+		    {
+		      selectivity = 1.0;
+		    }
+		  else if (const_val < lhs_low_value
+			   || const_val > lhs_high_value)
+		    {
+		      selectivity = 0.0;
+		    }
+		  else if (lhs->type_enum == PT_TYPE_INTEGER
+			   && lhs_icard == 0)
 		    {		/* still default-selectivity */
 		      double diff;
 
@@ -7902,7 +7909,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 
 	  break;
-	}			/* swicht (pc_rhs) */
+	}
 
       break;
 
@@ -7936,13 +7943,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		  const_val = get_const_value (env, lhs);
 		  if (const_val == rhs_low_value
 		      && rhs_low_value == rhs_high_value)
-		    selectivity = 1.0;
-		  else
-		    if (const_val < rhs_low_value
-			|| const_val > rhs_high_value)
-		    selectivity = 0.0;
-		  else
-		    if (rhs->type_enum == PT_TYPE_INTEGER && rhs_icard == 0)
+		    {
+		      selectivity = 1.0;
+		    }
+		  else if (const_val < rhs_low_value
+			   || const_val > rhs_high_value)
+		    {
+		      selectivity = 0.0;
+		    }
+		  else if (rhs->type_enum == PT_TYPE_INTEGER
+			   && rhs_icard == 0)
 		    {		/* still default-selectivity */
 		      double diff;
 
@@ -7965,14 +7975,13 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
 
 	  break;
-	}			/* swicht (pc_rhs) */
+	}
 
       break;
-    }				/* switch (pc_lhs) */
+    }
 
   return selectivity;
-
-}				/* qo_equal_selectivity() */
+}
 
 /*
  * qo_comp_selectivity () - Compute the selectivity of a comparison predicate.
@@ -8062,8 +8071,7 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     }
 
   return DEFAULT_COMP_SELECTIVITY;
-
-}				/* qo_comp_selectivity */
+}
 
 /*
  * qo_between_selectivity () - Compute the selectivity of a between predicate
@@ -8133,9 +8141,7 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     }
 
   return DEFAULT_BETWEEN_SELECTIVITY;
-
-}				/* qo_between_selectivity */
-
+}
 
 /*
  * qo_range_selectivity () -
@@ -8472,8 +8478,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     }
 
   return DEFAULT_IN_SELECTIVITY;
-
-}				/* qo_all_some_in_selectivity */
+}
 
 /*
  * qo_classify () - Determine which predicate class the node belongs in
@@ -8511,7 +8516,7 @@ qo_classify (PT_NODE * attr)
     default:
       return PC_OTHER;
     }
-}				/* qo_classify */
+}
 
 /*
  * qo_is_arithmetic_type () - Check whether the attribute has an arithmetic type
@@ -8530,22 +8535,23 @@ qo_is_arithmetic_type (PT_NODE * attr)
     {
     case PT_VALUE:
     case PT_NAME:
-      return (attr->type_enum == PT_TYPE_INTEGER ||
-	      attr->type_enum == PT_TYPE_FLOAT ||
-	      attr->type_enum == PT_TYPE_DOUBLE ||
-	      attr->type_enum == PT_TYPE_SMALLINT ||
-	      attr->type_enum == PT_TYPE_DATE ||
-	      attr->type_enum == PT_TYPE_TIME ||
-	      attr->type_enum == PT_TYPE_TIMESTAMP ||
-	      attr->type_enum == PT_TYPE_MONETARY);
+      return (attr->type_enum == PT_TYPE_INTEGER
+	      || attr->type_enum == PT_TYPE_BIGINT
+	      || attr->type_enum == PT_TYPE_FLOAT
+	      || attr->type_enum == PT_TYPE_DOUBLE
+	      || attr->type_enum == PT_TYPE_SMALLINT
+	      || attr->type_enum == PT_TYPE_DATE
+	      || attr->type_enum == PT_TYPE_TIME
+	      || attr->type_enum == PT_TYPE_TIMESTAMP
+	      || attr->type_enum == PT_TYPE_DATETIME
+	      || attr->type_enum == PT_TYPE_MONETARY);
 
     default:
       break;
     }
 
   return false;
-
-}				/* qo_is_arithmetic_type */
+}
 
 /*
  * get_const_value () - Get the value from the pt value node and coerce
@@ -8567,6 +8573,9 @@ get_const_value (QO_ENV * env, PT_NODE * val)
     case PT_TYPE_INTEGER:
       return (double) val->info.value.data_value.i;
 
+    case PT_TYPE_BIGINT:
+      return (double) val->info.value.data_value.bigint;
+
     case PT_TYPE_FLOAT:
       return (double) val->info.value.data_value.f;
 
@@ -8578,6 +8587,15 @@ get_const_value (QO_ENV * env, PT_NODE * val)
 
     case PT_TYPE_TIMESTAMP:
       return (double) val->info.value.data_value.utime;
+
+    case PT_TYPE_DATETIME:
+      {
+	DB_BIGINT tmp_bi;
+	tmp_bi = val->info.value.data_value.datetime.date;
+	tmp_bi <<= 32;
+	tmp_bi += val->info.value.data_value.datetime.time;
+	return (double) tmp_bi;
+      }
 
     case PT_TYPE_DATE:
       return (double) val->info.value.data_value.date;
@@ -8595,7 +8613,7 @@ get_const_value (QO_ENV * env, PT_NODE * val)
       QO_ASSERT (env, UNEXPECTED_CASE);
       return 0.0;
     }
-}				/* get_const_value */
+}
 
 /*
  * qo_index_cardinality () - Determine if the attribute has an index
@@ -8672,6 +8690,11 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
       *high_value = (double) cum_statsp->max_value.i;
       rc = 1;
       break;
+    case DB_TYPE_BIGINT:
+      *low_value = (double) cum_statsp->min_value.bigint;
+      *high_value = (double) cum_statsp->max_value.bigint;
+      rc = 1;
+      break;
     case DB_TYPE_FLOAT:
       *low_value = (double) cum_statsp->min_value.f;
       *high_value = (double) cum_statsp->max_value.f;
@@ -8691,6 +8714,22 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
       *low_value = (double) cum_statsp->min_value.utime;
       *high_value = (double) cum_statsp->max_value.utime;
       rc = 1;
+      break;
+    case DB_TYPE_DATETIME:
+      {
+	DB_BIGINT bi;
+
+	bi = cum_statsp->min_value.datetime.date;
+	bi = (bi * MILLISECONDS_OF_ONE_DAY
+	      + cum_statsp->min_value.datetime.time);
+	*low_value = (double) bi;
+
+	bi = cum_statsp->max_value.datetime.date;
+	bi = (bi * MILLISECONDS_OF_ONE_DAY
+	      + cum_statsp->max_value.datetime.time);
+	*high_value = (double) bi;
+	rc = 1;
+      }
       break;
     case DB_TYPE_DATE:
       *low_value = (double) cum_statsp->min_value.date;
@@ -8714,4 +8753,4 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
     }
 
   return rc;
-}				/* qo_get_range() */
+}

@@ -27,16 +27,18 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #else
 #include <arpa/inet.h>
 #endif
 
+#include "dbtype.h"
+
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)
 #define BYTE_ORDER_BIG_ENDIAN
-#elif defined(WIN32) || defined(LINUX) || defined(OSF1) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(SOLARIS_X86)
+#elif defined(WINDOWS) || defined(LINUX) || defined(OSF1) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(SOLARIS_X86)
 #ifdef BYTE_ORDER_BIG_ENDIAN
 #error BYTE_ORDER_BIG_ENDIAN defined
 #endif
@@ -45,11 +47,14 @@
 #endif
 
 #ifdef BYTE_ORDER_BIG_ENDIAN
-#define net_htonf(X)		(X)
+#define net_htoni64(X)		(X)
+#define net_htonf(X)            (X)
 #define net_htond(X)		(X)
+#define net_ntohi64(X)          (X)
 #define net_ntohf(X)		(X)
 #define net_ntohd(X)		(X)
 #else
+#define net_ntohi64(X)          net_htoni64(X)
 #define net_ntohf(X)		net_htonf(X)
 #define net_ntohd(X)		net_htond(X)
 #endif
@@ -104,19 +109,22 @@ extern int net_buf_cp_byte (T_NET_BUF *, char);
 extern int net_buf_cp_str (T_NET_BUF *, const char *, int);
 extern int net_buf_cp_int (T_NET_BUF *, int, int *);
 extern void net_buf_overwrite_int (T_NET_BUF *, int, int);
+extern int net_buf_cp_bigint (T_NET_BUF *, DB_BIGINT, int *);
+extern void net_buf_overwrite_bigint (T_NET_BUF *, int, DB_BIGINT);
 extern int net_buf_cp_float (T_NET_BUF *, float);
 extern int net_buf_cp_double (T_NET_BUF *, double);
 extern int net_buf_cp_short (T_NET_BUF *, short);
 
 extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errcode,
-				   char *errstr, char *file, int line);
+				   char *errstr, const char *file, int line);
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
+extern INT64 net_htoni64 (INT64 from);
 extern float net_htonf (float from);
 extern double net_htond (double from);
 #endif
 
 extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut,
-				     short scale, int prec, char *name);
+				     short scale, int prec, const char *name);
 
 #endif /* _CAS_NET_BUF_H_ */

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -52,9 +52,9 @@
 typedef struct or_btree_property OR_BTREE_PROPERTY;
 struct or_btree_property
 {
-  BTREE_TYPE type;
   const char *name;
   DB_SEQ *seq;
+  BTREE_TYPE type;
   int length;
 };
 
@@ -1328,7 +1328,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
   int args, size, i;
   int pageid, slotid, volid, fileid;
   DB_SEQ *fk_seq;
-  OR_FOREIGN_KEY *fk, *p;
+  OR_FOREIGN_KEY *fk, *p = NULL;
   char *fkname;
 
   size = set_size (fk_container);
@@ -1688,12 +1688,12 @@ static void
 or_install_btids (OR_CLASSREP * rep, DB_SET * props)
 {
   OR_BTREE_PROPERTY property_vars[] = {
-    {BTREE_INDEX, SM_PROPERTY_INDEX, NULL, 0},
-    {BTREE_UNIQUE, SM_PROPERTY_UNIQUE, NULL, 0},
-    {BTREE_REVERSE_INDEX, SM_PROPERTY_REVERSE_INDEX, NULL, 0},
-    {BTREE_REVERSE_UNIQUE, SM_PROPERTY_REVERSE_UNIQUE, NULL, 0},
-    {BTREE_PRIMARY_KEY, SM_PROPERTY_PRIMARY_KEY, NULL, 0},
-    {BTREE_FOREIGN_KEY, SM_PROPERTY_FOREIGN_KEY, NULL, 0}
+    {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
+    {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
+    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
+    {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
+    {SM_PROPERTY_PRIMARY_KEY, NULL, BTREE_PRIMARY_KEY, 0},
+    {SM_PROPERTY_FOREIGN_KEY, NULL, BTREE_FOREIGN_KEY, 0}
   };
 
   DB_VALUE vals[DIM (property_vars)];
@@ -2304,9 +2304,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
    * representation plus the starting offset, remove the starting offset
    * to get the length of just the fixed width attributes.
    */
-  rep->fixed_length = offset - start;
   /* must align up to a word boundar ! */
-  DB_ATT_ALIGN (rep->fixed_length);
+  rep->fixed_length = DB_ATT_ALIGN (offset - start);
 
   /* Read the B-tree IDs from the class property list */
   if (do_indexes)
@@ -2640,16 +2639,20 @@ or_get_attrname (RECDES * record, int attrid)
        Get the attribute name. */
       if (found == true)
 	{
+	  unsigned char len;
+
 	  attr_name = (diskatt +
 		       OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
 						    ORC_ATT_NAME_INDEX));
 
-	  /* kludge kludge kludge
+	  /*
+	   * kludge kludge kludge
 	   * This is now an encoded "varchar" string, we need to skip over the
 	   * length before returning it.  Note that this also depends on the
 	   * stored string being NULL terminated.
 	   */
-	  if (*attr_name < 0xFF)
+	  len = *((unsigned char *) attr_name);
+	  if (len < 0xFFU)
 	    {
 	      attr_name += 1;
 	    }

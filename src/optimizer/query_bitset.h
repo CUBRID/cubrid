@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -52,20 +52,18 @@ typedef struct bitset_iterator BITSET_ITERATOR;
 struct bitset
 {
   QO_ENV *env;
-  int nwords;
   BITSET_CARRIER *setp;
+  int nwords;
   struct
   {
     BITSET_CARRIER word[NWORDS];
   } set;
-
 };
 
 struct bitset_iterator
 {
   const BITSET *set;
   int next;
-
 };
 
 #define BITSET_CLEAR(s)		memset((char *)(s).setp, 0, \
@@ -107,8 +105,7 @@ extern int bitset_position (const BITSET *, int);
 extern int bitset_iterate (const BITSET *, BITSET_ITERATOR *);
 extern int bitset_next_member (BITSET_ITERATOR *);
 extern int bitset_first_member (const BITSET *);
-extern void bitset_print (const BITSET *, int (*)(void *, const char *, int),
-			  void *);
+extern void bitset_print (const BITSET *, FILE * fp);
 extern void bitset_init (BITSET *, QO_ENV *);
 extern void bitset_delset (BITSET *);
 

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -221,19 +221,19 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
       NULL)
     goto error;
   if ((area->n_allocs =
-       (size_t *) malloc (sizeof (int) * area->n_threads)) == NULL)
+       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
     goto error;
   if ((area->n_frees =
-       (size_t *) malloc (sizeof (int) * area->n_threads)) == NULL)
+       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
     goto error;
   if ((area->b_cnt =
-       (size_t *) malloc (sizeof (int) * area->n_threads)) == NULL)
+       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
     goto error;
   if ((area->a_cnt =
-       (size_t *) malloc (sizeof (int) * area->n_threads)) == NULL)
+       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
     goto error;
   if ((area->f_cnt =
-       (size_t *) malloc (sizeof (int) * area->n_threads)) == NULL)
+       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
     goto error;
 
   for (i = 0; i < area->n_threads; i++)
@@ -354,8 +354,8 @@ area_grow (AREA * area)
   if (area->element_size < AREA_MIN_SIZE)
     {
       /* should make an error for this */
-      fprintf (stdout, "Area \"%s\" element size %d too small, aborting.\n",
-	       area->name, area->element_size);
+      fprintf (stdout, "Area \"%s\" element size %lld too small, aborting.\n",
+	       area->name, (long long) area->element_size);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       if (area->failure_function != NULL)
@@ -765,18 +765,20 @@ area_info (AREA * area, FILE * fp)
     }
 
   fprintf (fp, "Area: %s\n", area->name);
-  fprintf (fp, "  %d bytes/element ", area->element_size);
+  fprintf (fp, "  %lld bytes/element ", (long long) area->element_size);
   if (area_Check_free)
-    fprintf (fp, "(plus %d bytes overhead) ", AREA_PREFIX_SIZE);
-  fprintf (fp, "%d elements/block\n", area->alloc_count);
-  fprintf (fp, "  %d blocks, %d bytes, %d elements,"
-	   " %d unallocated, %d free, %d in use\n",
-	   blocks, bytes, elements, unallocated, freed, used);
+    fprintf (fp, "(plus %d bytes overhead) ", (int) AREA_PREFIX_SIZE);
+  fprintf (fp, "%lld elements/block\n", (long long) area->alloc_count);
+  fprintf (fp, "  %lld blocks, %lld bytes, %lld elements,"
+	   " %lld unallocated, %lld free, %lld in use\n",
+	   (long long) blocks, (long long) bytes, (long long) elements,
+	   (long long) unallocated, (long long) freed, (long long) used);
 #if defined (SERVER_MODE)
-  fprintf (fp, "  %d total allocs, %d total frees\n", nallocs, nfrees);
+  fprintf (fp, "  %lld total allocs, %lld total frees\n",
+	   (long long) nallocs, (long long) nfrees);
 #else /* SERVER_MODE */
-  fprintf (fp, "  %d total allocs, %d total frees\n", area->n_allocs,
-	   area->n_frees);
+  fprintf (fp, "  %lld total allocs, %lld total frees\n",
+	   (long long) area->n_allocs, (long long) area->n_frees);
 #endif /* SERVER_MODE */
 }
 

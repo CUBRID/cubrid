@@ -2589,7 +2589,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				LOG_LSA * upto_chain_lsa)
 {
   struct log_rec *log_rec;	/* Pointer to log record     */
-  int log_pgbuf[IO_MAX_PAGE_SIZE / sizeof (int)];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA
 				 * is located
 				 */
@@ -2600,6 +2600,8 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   int ack_count = 0;
   int *ack_list = NULL;
   int size_ack_list = 0;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (!LOG_ISTRAN_2PC (tdes))
     {
@@ -2632,7 +2634,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    * Follow the undo tail chain starting at upto_chain_tail finding all
    * 2PC related information
    */
-  log_page_p = (LOG_PAGE *) log_pgbuf;
+  log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
   LSA_COPY (&prev_tranlsa, upto_chain_lsa);
   while (!LSA_ISNULL (&prev_tranlsa)

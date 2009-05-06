@@ -41,10 +41,10 @@ enum cnf_mode
 typedef struct find_id_info FIND_ID_INFO;
 struct find_id_info
 {
-  bool found;
   UINTPTR id;
   UINTPTR join_spec;
   PT_NODE *in_query;
+  bool found;
   bool tag_subqueries;
 };
 

@@ -110,10 +110,10 @@ intl_mbs_chr (const char *mbs, wchar_t wc)
  *              EINVAL  : mbs contains an invalid byte sequence.
  *   mbs(in)
  */
-size_t
+int
 intl_mbs_len (const char *mbs)
 {
-  size_t num_of_chars;
+  int num_of_chars;
   int clen;
 
   assert (mbs != NULL);
@@ -196,23 +196,23 @@ intl_mbs_nth (const char *mbs, size_t n)
  *   mbs(in)
  *   chars(in)
  */
-size_t
+int
 intl_mbs_spn (const char *mbs, const wchar_t * chars)
 {
   int clen;
   wchar_t wc;
-  size_t size;
+  int size;
 
   assert (mbs != NULL && chars != NULL);
 
   if (!intl_Mbs_support)
     {
-      return strspn (mbs, (const char *) chars);
+      return (int) strspn (mbs, (const char *) chars);
     }
 
   for (size = 0;
        (clen = mbtowc (&wc, mbs, MB_LEN_MAX)) > 0 && *mbs
-       && wcschr (chars, wc); mbs += clen, size += (size_t) clen)
+       && wcschr (chars, wc); mbs += clen, size += clen)
     {
       continue;
     }

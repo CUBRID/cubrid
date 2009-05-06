@@ -63,7 +63,7 @@ compute_rec_size (int nominal_size)
  *   req_size(in): a paramter to get chunk size
  *   recs_per_chunk(in): a parameter to get chunk size
  */
-unsigned int
+HL_HEAPID
 db_create_fixed_heap (int req_size, int recs_per_chunk)
 {
   int chunk_size, rec_size;
@@ -71,7 +71,7 @@ db_create_fixed_heap (int req_size, int recs_per_chunk)
   rec_size = compute_rec_size (req_size);
   chunk_size = rec_size * recs_per_chunk;
 
-  return hl_register_fixed_heap (chunk_size);
+  return (HL_HEAPID) hl_register_fixed_heap (chunk_size);
 }
 
 /*
@@ -80,7 +80,7 @@ db_create_fixed_heap (int req_size, int recs_per_chunk)
  *   heap_id(in): memory heap identifier to destroy
  */
 void
-db_destroy_fixed_heap (unsigned int heap_id)
+db_destroy_fixed_heap (HL_HEAPID heap_id)
 {
   hl_unregister_fixed_heap (heap_id);
 }
@@ -92,7 +92,7 @@ db_destroy_fixed_heap (unsigned int heap_id)
  *   size(in): size to allocate
  */
 void *
-db_fixed_alloc (unsigned int heap_id, size_t size)
+db_fixed_alloc (HL_HEAPID heap_id, size_t size)
 {
   void *ptr = NULL;
   if (heap_id && (size > 0))
@@ -109,7 +109,7 @@ db_fixed_alloc (unsigned int heap_id, size_t size)
  *   ptr(in): memory pointer to free
  */
 void
-db_fixed_free (unsigned int heap_id, void *ptr)
+db_fixed_free (HL_HEAPID heap_id, void *ptr)
 {
   if (heap_id && ptr)
     {

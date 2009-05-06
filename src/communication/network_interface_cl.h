@@ -154,7 +154,7 @@ extern TRAN_STATE tran_server_partial_abort (const char *savept_name,
 extern void lock_dump (FILE * outfp);
 
 int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
-			    const BOOT_DB_PATH_INFO * db_path_info,
+			    BOOT_DB_PATH_INFO * db_path_info,
 			    bool db_overwrite, PGLENGTH db_desired_pagesize,
 			    DKNPAGES db_npages, const char *file_addmore_vols,
 			    DKNPAGES log_npages, OID * rootclass_oid,
@@ -208,20 +208,21 @@ extern int boot_copy (const char *from_dbname, const char *newdb_name,
 extern int boot_emergency_patch (const char *db_name, bool recreate_log);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state,
 					    bool force, bool wait);
-extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer,
-				 int est_lo_length, OID * oid);
+extern LOID *largeobjmgr_create (LOID * loid, FSIZE_T length, char *buffer,
+				 FSIZE_T est_lo_length, OID * oid);
 extern int largeobjmgr_destroy (LOID * loid);
-extern int largeobjmgr_read (LOID * loid, int offset, int length,
-			     char *buffer);
-extern int largeobjmgr_write (LOID * loid, int offset, int length,
-			      char *buffer);
-extern int largeobjmgr_insert (LOID * loid, int offset, int length,
-			       char *buffer);
-extern int largeobjmgr_delete (LOID * loid, int offset, int length);
-extern int largeobjmgr_append (LOID * loid, int length, char *buffer);
-extern int largeobjmgr_truncate (LOID * loid, int offset);
+extern FSIZE_T largeobjmgr_read (LOID * loid, FSIZE_T offset, FSIZE_T length,
+				 char *buffer);
+extern FSIZE_T largeobjmgr_write (LOID * loid, FSIZE_T offset, FSIZE_T length,
+				  char *buffer);
+extern FSIZE_T largeobjmgr_insert (LOID * loid, FSIZE_T offset,
+				   FSIZE_T length, char *buffer);
+extern FSIZE_T largeobjmgr_delete (LOID * loid, FSIZE_T offset,
+				   FSIZE_T length);
+extern FSIZE_T largeobjmgr_append (LOID * loid, FSIZE_T length, char *buffer);
+extern FSIZE_T largeobjmgr_truncate (LOID * loid, FSIZE_T offset);
 extern int largeobjmgr_compress (LOID * loid);
-extern int largeobjmgr_length (LOID * loid);
+extern FSIZE_T largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid,
 					       unsigned int timestamp,
 					       int *length_ptr);
@@ -244,25 +245,26 @@ extern int locator_remove_class_from_index (OID * oid, BTID * btid,
 extern BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
 extern int btree_class_test_unique (char *buf, int buf_size);
-extern int qfile_get_list_file_page (int query_id, VOLID volid, PAGEID pageid,
-				     char *buffer, int *buffer_size);
+extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
+				     PAGEID pageid, char *buffer,
+				     int *buffer_size);
 extern XASL_ID *qmgr_prepare_query (const char *query_str,
 				    const OID * user_oid,
 				    const char *xasl_buffer, int size,
 				    XASL_ID * xasl_id);
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id,
-					  int *query_idp, int dbval_cnt,
+					  QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals,
 					  QUERY_FLAG flag,
 					  CACHE_TIME * clt_cache_time,
 					  CACHE_TIME * srv_cache_time);
 extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_buffer,
 						      int xasl_size,
-						      int *query_id,
+						      QUERY_ID * query_id,
 						      int dbval_cnt,
 						      DB_VALUE * dbval_ptr,
 						      QUERY_FLAG flag);
-extern int qmgr_end_query (int query_id);
+extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
 				 const XASL_ID * xasl_id, bool drop);
 extern int qmgr_drop_all_query_plans (void);
@@ -301,6 +303,8 @@ extern int jsp_get_server_port (void);
 extern int repl_log_get_append_lsa (LOG_LSA * lsa);
 extern int repl_set_info (REPL_INFO * repl_info);
 
+extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
+
 extern bool histo_is_supported (void);
 extern int histo_start (void);
 extern int histo_stop (void);
@@ -317,6 +321,10 @@ extern int net_client_request (int request, char *argbuf, int argsize,
 			       char *replybuf, int replysize, char *databuf,
 			       int datasize, char *replydata,
 			       int replydatasize);
+extern int net_client_request_send_large_data (int request, char *argbuf, int argsize,
+				    char *replybuf, int replysize,
+				    char *databuf, FSIZE_T datasize,
+				    char *replydata, int replydatasize);
 extern int net_client_request_via_oob (int request, char *argbuf, int argsize,
 				       char *replybuf, int replysize,
 				       char *databuf, int datasize,
@@ -370,6 +378,12 @@ extern int net_client_request_recv_logarea (int request, char *argbuf,
 					    int argsize, char *replybuf,
 					    int replysize,
 					    LOG_COPY ** reply_log_area);
+extern int net_client_request_recv_large_data (int request, char *argbuf, int argsize,
+				    char *replybuf, int replysize,
+				    char *databuf, int datasize,
+				    char *replydata,
+				    FSIZE_T * replydatasize_ptr);
+
 extern int net_client_request_2recv_copyarea (int request, char *argbuf,
 					      int argsize, char *replybuf,
 					      int replysize, char *databuf,

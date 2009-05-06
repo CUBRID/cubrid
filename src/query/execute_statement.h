@@ -159,7 +159,8 @@ extern int do_prepare_statement (PARSER_CONTEXT * parser,
 extern int do_execute_statement (PARSER_CONTEXT * parser,
 				 PT_NODE * statement);
 extern int do_internal_statements (PARSER_CONTEXT * parser,
-				   PT_NODE * internal_stmt_list, int phase);
+				   PT_NODE * internal_stmt_list,
+				   const int phase);
 extern int do_check_internal_statements (PARSER_CONTEXT * parser,
 					 PT_NODE * statement,
 					 /* PT_NODE * internal_stmt_list, */

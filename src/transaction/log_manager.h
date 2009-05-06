@@ -84,14 +84,11 @@ extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int
-log_get_db_start_parameters (time_t * db_creation, LOG_LSA * chkpt_lsa);
+log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_napges);
 extern int
 log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    const char *logpath, const char *prefix_logname, DKNPAGES npages);
-#if defined(SERVER_MODE)
-extern int log_set_no_logging (void);
-#endif
 extern void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 		const char *logpath, const char *prefix_logname,
@@ -99,9 +96,6 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p,
 						 float compatibility,
 						 char release[]);
-#if defined(SERVER_MODE)
-extern float log_get_db_compatibility (void);
-#endif /* SERVER_MODE */
 extern void log_abort_all_active_transaction (THREAD_ENTRY * thread_p);
 extern void log_final (THREAD_ENTRY * thread_p);
 extern void
@@ -200,15 +194,6 @@ extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_skip_tailsa_logging (THREAD_ENTRY * thread_p,
 				     LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
-#if defined(SERVER_MODE)
-extern void
-xlog_append_client_undo (THREAD_ENTRY * thread_p,
-			 LOG_RCVCLIENT_INDEX rcvindex, int length,
-			 void *data);
-extern void xlog_append_client_postpone (THREAD_ENTRY * thread_p,
-					 LOG_RCVCLIENT_INDEX rcvindex,
-					 int length, void *data);
-#endif /* SERVER_MODE */
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p,
 				      const char *savept_name);
 extern LOG_LSA *log_start_system_op (THREAD_ENTRY * thread_p);
@@ -238,22 +223,6 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
 extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				LOG_RECTYPE iscommitted,
 				LOG_GETNEWTRID get_newtrid);
-#if defined(SERVER_MODE)
-extern LOG_COPY *xlog_client_get_first_postpone (THREAD_ENTRY * thread_p,
-						 LOG_LSA * next_lsa);
-extern LOG_COPY *xlog_client_get_next_postpone (THREAD_ENTRY * thread_p,
-						LOG_LSA * next_lsa);
-extern TRAN_STATE xlog_client_complete_postpone (THREAD_ENTRY * thread_p);
-extern LOG_COPY *xlog_client_get_first_undo (THREAD_ENTRY * thread_p,
-					     LOG_LSA * next_lsa);
-extern LOG_COPY *xlog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY
-								 * thread_p,
-								 LOG_LSA *
-								 next_lsa);
-extern LOG_COPY *xlog_client_get_next_undo (THREAD_ENTRY * thread_p,
-					    LOG_LSA * next_lsa);
-extern TRAN_STATE xlog_client_complete_undo (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 extern void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,

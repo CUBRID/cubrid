@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -82,6 +82,7 @@
 #include "intl_support.h"
 #include "replication.h"
 #include "view_transform.h"
+#include "network_interface_cl.h"
 
 /*
  * Function Group:
@@ -1091,6 +1092,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
     {
     case PT_TYPE_INTEGER:
       db_make_int (&value, DB_INT32_MAX);
+      break;
+    case PT_TYPE_BIGINT:
+      db_make_bigint (&value, DB_BIGINT_MAX);
       break;
     case PT_TYPE_SMALLINT:
       db_make_int (&value, DB_INT16_MAX);
@@ -2820,7 +2824,7 @@ extract_att_name (const char *str)
 	}
       if (t && t != s)
 	{
-	  size = t - s;
+	  size = CAST_STRLEN (t - s);
 	  att = (char *) malloc (size + 1);
 	  if (att)
 	    {
@@ -2970,6 +2974,9 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	  case DB_TYPE_INTEGER:
 	    db_make_int (db_val, attr_statsp->min_value.i);
 	    break;
+	  case DB_TYPE_BIGINT:
+	    db_make_bigint (db_val, attr_statsp->min_value.bigint);
+	    break;
 	  case DB_TYPE_SHORT:
 	    db_make_short (db_val, attr_statsp->min_value.i);
 	    break;
@@ -2987,6 +2994,9 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	    break;
 	  case DB_TYPE_UTIME:
 	    db_make_timestamp (db_val, attr_statsp->min_value.utime);
+	    break;
+	  case DB_TYPE_DATETIME:
+	    db_make_datetime (db_val, &attr_statsp->min_value.datetime);
 	    break;
 	  case DB_TYPE_MONETARY:
 	    db_make_monetary (db_val,
@@ -3010,6 +3020,9 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	    case DB_TYPE_INTEGER:
 	      db_make_int (db_val, attr_statsp->max_value.i);
 	      break;
+	    case DB_TYPE_BIGINT:
+	      db_make_bigint (db_val, attr_statsp->max_value.bigint);
+	      break;
 	    case DB_TYPE_SHORT:
 	      db_make_short (db_val, attr_statsp->max_value.i);
 	      break;
@@ -3029,6 +3042,9 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	      break;
 	    case DB_TYPE_UTIME:
 	      db_make_timestamp (db_val, attr_statsp->max_value.utime);
+	      break;
+	    case DB_TYPE_DATETIME:
+	      db_make_datetime (db_val, &attr_statsp->max_value.datetime);
 	      break;
 	    case DB_TYPE_MONETARY:
 	      db_make_monetary (db_val,
@@ -4068,7 +4084,7 @@ static int check_trigger (DB_TRIGGER_EVENT event, DB_OBJECT * class_,
 			  const char **attributes, int attribute_count,
 			  PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
 			  PT_NODE * statement);
-static const char **find_update_columns (int *count_ptr, PT_NODE * statement);
+static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser,
 			       DB_TRIGGER_ACTION * type, const char **source,
 			       PT_NODE * statement);
@@ -4536,11 +4552,11 @@ do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
  *    the statement.  It builds a array of strings and returns the length of
  *    the array.
  */
-static const char **
+static char **
 find_update_columns (int *count_ptr, PT_NODE * statement)
 {
   PT_NODE *assign;
-  const char **columns;
+  char **columns;
   int count, size, i;
   PT_NODE *lhs, *att;
 
@@ -4560,7 +4576,7 @@ find_update_columns (int *count_ptr, PT_NODE * statement)
     }
   size = sizeof (char *) * count;
 
-  columns = (const char **) (malloc (size));
+  columns = (char **) (malloc (size));
   if (columns == NULL)
     {
       return NULL;
@@ -4574,12 +4590,12 @@ find_update_columns (int *count_ptr, PT_NODE * statement)
 	{
 	  for (att = lhs->info.expr.arg1; att; att = att->next)
 	    {
-	      columns[i++] = att->info.name.original;
+	      columns[i++] = (char *) att->info.name.original;
 	    }
 	}
       else
 	{
-	  columns[i++] = lhs->info.name.original;
+	  columns[i++] = (char *) lhs->info.name.original;
 	}
     }
 
@@ -4604,8 +4620,8 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *node;
   DB_OBJECT *class_obj;
-  const char **columns;
-  int count;
+  char **columns;
+  int count = 0;
   int err;
 
   if (PRM_BLOCK_NOWHERE_STATEMENT
@@ -4629,7 +4645,8 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   columns = find_update_columns (&count, statement);
-  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, class_obj, columns, count,
+  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, class_obj,
+		       (const char **) columns, count,
 		       do_func, parser, statement);
   if (columns)
     {
@@ -6120,9 +6137,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id,
       /* if error and a savepoint was created, rollback to savepoint.
        * No need to rollback if the TM aborted the transaction itself.
        */
-      if ((error < NO_ERROR) && savepoint_name && (error
-						   !=
-						   ER_LK_UNILATERALLY_ABORTED))
+      if ((error < NO_ERROR) && savepoint_name
+	  && (error != ER_LK_UNILATERALLY_ABORTED))
 	{
 	  (void) tran_abort_upto_savepoint (savepoint_name);
 	}
@@ -6456,7 +6472,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
   XASL_NODE *xasl = NULL;
   int size, count = 0;
   char *stream = NULL;
-  int query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *cl_name_node;
 
@@ -6817,10 +6833,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = atof (hint_arg->info.name.original);
+	      waitsecs = (float) atof (hint_arg->info.name.original);
 	      if (waitsecs >= -1)
 		{
-		  old_waitsecs = TM_TRAN_WAITSECS ();
+		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
 		  (void) tran_reset_wait_times (waitsecs);
 		}
 	    }
@@ -7001,7 +7017,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *select_names, *select_values, *const_names, *const_values;
   int no_vals, no_consts;
   XASL_ID *xasl_id;
-  const char *qstr;
+  const char *qstr = NULL;
 
   for (err = NO_ERROR; statement && (err >= NO_ERROR); statement
        = statement->next)
@@ -7433,10 +7449,10 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = atof (hint_arg->info.name.original);
+	      waitsecs = (float) atof (hint_arg->info.name.original);
 	      if (waitsecs >= -1)
 		{
-		  old_waitsecs = TM_TRAN_WAITSECS ();
+		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
 		  (void) tran_reset_wait_times (waitsecs);
 		}
 	    }
@@ -7686,7 +7702,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
   int count = 0;		/* how many objects were deleted? */
   const char *savepoint_name = NULL;
   int flush_to_server = -1;
-  DB_OBJECT *mop;
+  DB_OBJECT *mop = NULL;
 
   /* if the list file contains more than 1 object we need to savepoint
      the statement to guarantee statement atomicity. */
@@ -7805,7 +7821,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, const PT_NODE * from,
   DB_OBJECT *class_obj;
   int size, count = 0;
   char *stream = NULL;
-  int query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
 
   /* mark the beginning of another level of xasl packing */
@@ -7957,10 +7973,10 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = atof (hint_arg->info.name.original);
+	  waitsecs = (float) atof (hint_arg->info.name.original);
 	  if (waitsecs >= -1)
 	    {
-	      old_waitsecs = TM_TRAN_WAITSECS ();
+	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
 	      (void) tran_reset_wait_times (waitsecs);
 	    }
 	}
@@ -8406,10 +8422,10 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
-	      waitsecs = atof (hint_arg->info.name.original);
+	      waitsecs = (float) atof (hint_arg->info.name.original);
 	      if (waitsecs >= -1)
 		{
-		  old_waitsecs = TM_TRAN_WAITSECS ();
+		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
 		  (void) tran_reset_wait_times (waitsecs);
 		}
 	    }
@@ -8659,7 +8675,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   XASL_NODE *xasl = NULL;
   int size, count = 0;
   char *stream = NULL;
-  int query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   int i;
 
@@ -9132,10 +9148,10 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT
 	  && PT_IS_HINT_NODE (hint_arg))
 	{
-	  waitsecs = atof (hint_arg->info.name.original);
+	  waitsecs = (float) atof (hint_arg->info.name.original);
 	  if (waitsecs >= -1)
 	    {
-	      old_waitsecs = TM_TRAN_WAITSECS ();
+	      old_waitsecs = (float) TM_TRAN_WAITSECS ();
 	      (void) tran_reset_wait_times (waitsecs);
 	    }
 	}
@@ -10562,7 +10578,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   int save;
   int size;
   char *stream = NULL;
-  int query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
   int async_flag;
 
@@ -10882,7 +10898,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= KEEP_PLAN_CACHE;
     }
-  if (statement->si_timestamp == 1 || statement->si_tran_id == 1)
+  if (statement->si_datetime == 1 || statement->si_tran_id == 1)
     {
       statement->info.query.reexecute = 1;
       statement->info.query.do_not_cache = 1;

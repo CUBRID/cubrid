@@ -78,11 +78,12 @@
 #include "transform.h"
 #include "trigger_manager.h"
 #include "jsp_cl.h"
+#include "client_support.h"
 
 #if !defined(SA_MODE)
 #include "network.h"
-#include "network_interface_cl.h"
 #endif /* !SA_MODE */
+#include "network_interface_cl.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -95,8 +96,6 @@
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
-
-extern char *cuserid (char *string);
 
 #define BOOT_FORMAT_MAX_LENGTH 500
 
@@ -136,8 +135,8 @@ static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
 static char boot_Host_name[MAXHOSTNAMELEN] = "";
 
-static int boot_client (const int tran_index, const int lock_wait,
-			const TRAN_ISOLATION tran_isolation);
+static int boot_client (int tran_index, int lock_wait,
+			TRAN_ISOLATION tran_isolation);
 static void boot_shutdown_client_at_exit (void);
 #if !defined(SA_MODE)
 static int boot_client_initialize_css (DB_INFO * db);
@@ -189,10 +188,9 @@ static int catcls_vclass_install (void);
  * Note: macros that find if the cubrid client is restarted
  */
 static int
-boot_client (const int tran_index, const int lock_wait,
-	     const TRAN_ISOLATION tran_isolation)
+boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 {
-  tran_cache_tran_settings (tran_index, lock_wait, tran_isolation);
+  tran_cache_tran_settings (tran_index, (float) lock_wait, tran_isolation);
   if (boot_Set_client_at_exit)
     {
       return NO_ERROR;
@@ -271,18 +269,18 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   char log_path_buf[PATH_MAX];
   char db_host_buf[MAXHOSTNAMELEN + 1];
   char login_name_buf[L_cuserid + 1];
-  char host_name_buf[MAXHOSTNAMELEN];
   OID rootclass_oid;		/* Oid of root class              */
   HFID rootclass_hfid;		/* Heap for classes               */
   int tran_index;		/* Assigned transaction index     */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
   int tran_lock_waitsecs;	/* Default lock waiting           */
   unsigned int length;
-  bool print_server_version;
   int error_code = NO_ERROR;
   DB_INFO *db;
   const char *hosts[2];
+#if !defined (SA_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
+#endif
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -343,7 +341,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
   if (db_path_info->db_path == NULL)
     {
-      db_path_info->db_path = (const char *) getcwd (db_path_buf, PATH_MAX);
+      db_path_info->db_path = getcwd (db_path_buf, PATH_MAX);
       if (db_path_info->db_path == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -406,7 +404,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
       client_credential->db_user = au_user_name_dup ();
       if (client_credential->db_user == NULL)
 	{
-	  client_credential->db_user = boot_Client_no_user_string;
+	  client_credential->db_user = (char *) boot_Client_no_user_string;
 	}
     }
   /* Get the login name, host, and process identifier */
@@ -418,7 +416,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	}
       else
 	{
-	  client_credential->login_name = boot_Client_id_unknown_string;
+	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
 	}
     }
 
@@ -582,10 +580,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   int tran_lock_waitsecs;	/* Default lock waiting           */
   TRAN_STATE transtate;
   char login_name_buf[L_cuserid];
-  char host_name_buf[MAXHOSTNAMELEN];
   int error_code;
   DB_INFO *db = NULL;
-  char format[BOOT_FORMAT_MAX_LENGTH];
 #if !defined(WINDOWS)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
@@ -692,11 +688,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       client_credential->db_user = au_user_name_dup ();
       if (client_credential->db_user == NULL)
 	{
-	  client_credential->db_user = boot_Client_no_user_string;
+	  client_credential->db_user = (char *) boot_Client_no_user_string;
 	}
       if (client_credential->db_user[0] == '\0')
 	{
-	  client_credential->db_user = AU_PUBLIC_USER_NAME;
+	  client_credential->db_user = (char *) AU_PUBLIC_USER_NAME;
 	}
     }
   /* Get the login name, host, and process identifier */
@@ -708,7 +704,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       else
 	{
-	  client_credential->login_name = boot_Client_id_unknown_string;
+	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
 	}
     }
   if (client_credential->host_name == NULL)
@@ -899,7 +895,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       if (tran_lock_waitsecs != TRAN_LOCK_INFINITE_WAIT)
 	{
-	  (void) tran_reset_wait_times (tran_lock_waitsecs);
+	  (void) tran_reset_wait_times ((float) tran_lock_waitsecs);
 	}
     }
 
@@ -1068,7 +1064,7 @@ boot_donot_shutdown_client_at_exit (void)
  *       aborted as a consequence of the termination of server.
  */
 void
-boot_server_die_or_changed ()
+boot_server_die_or_changed (void)
 {
   /*
    * If the clinet is restarted, abort the active transaction in the client and
@@ -2296,33 +2292,37 @@ boot_define_partition (MOP class_mop)
 static int
 boot_add_data_type (MOP class_mop)
 {
-  DB_OBJECT *obj[21];
+  DB_OBJECT *obj;
   DB_VALUE val;
-  int i, j;
-  const char *names[27] = {
+  int i;
+
+  const char *names[DB_TYPE_LAST] = {
     "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
     "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
-    "TIMESTAMP", "DATE", "MONETARY", NULL, NULL,
-    NULL, NULL, "SHORT", NULL, NULL,
-    NULL, "NUMERIC", "BIT", "VARBIT", "CHAR",
-    "NCHAR", "VARNCHAR"
+    "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */ , NULL /* SUB */ ,
+    NULL /* POINTER */ , NULL /* ERROR */ , "SHORT", NULL /* VOBJ */ ,
+      NULL /* OID */ ,
+    NULL /* VALUE */ , "NUMERIC", "BIT", "VARBIT", "CHAR",
+    "NCHAR", "VARNCHAR", NULL /* RESULTSET */ , NULL /* MIDXKEY */ ,
+      NULL /* TABLE */ ,
+    "BIGINT", "DATETIME"
   };
 
-  for (i = 0, j = 0; i < 27; i++)
+  for (i = 0; i < DB_TYPE_LAST; i++)
     {
 
       if (names[i] != NULL)
 	{
-	  if ((obj[j] = db_create_internal (class_mop)) == NULL)
+	  if ((obj = db_create_internal (class_mop)) == NULL)
 	    {
 	      return er_errid ();
 	    }
 
 	  DB_MAKE_INTEGER (&val, i + 1);
-	  db_put_internal (obj[j], "type_id", &val);
+	  db_put_internal (obj, "type_id", &val);
 
 	  DB_MAKE_VARCHAR (&val, 9, (char *) names[i], strlen (names[i]));
-	  db_put_internal (obj[j++], "type_name", &val);
+	  db_put_internal (obj, "type_name", &val);
 	}
     }
 

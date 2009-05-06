@@ -33,6 +33,10 @@
 #if defined(WINDOWS)
 #include <tchar.h>
 #include <float.h>
+#include <io.h>
+#include <conio.h>
+#else
+#include <curses.h>
 #endif
 
 #include "porting.h"
@@ -700,7 +704,7 @@ lock_region (int fd, int cmd, long offset, long size)
  *   becomes 'wchar_t' and not 'char'.  If so, we assume that 'path' is
  *   already a wide character type.
  */
-long
+int
 free_space (const char *path)
 {
   ULARGE_INTEGER freebytes_user, total_bytes, freebytes_system;
@@ -729,7 +733,7 @@ free_space (const char *path)
     }
   else
     {
-      return ((unsigned long) (freebytes_user.QuadPart / IO_PAGESIZE));
+      return ((int) (freebytes_user.QuadPart / IO_PAGESIZE));
     }
 }
 
@@ -763,31 +767,16 @@ strdup (const char *str)
 int
 vasprintf (char **ptr, const char *format, va_list ap)
 {
-  int ret = -1;
-  int alloc_size = 1024;
+  int len;
 
-  while (ret < 0)
+  len = _vscprintf_p (format, ap) + 1;
+  *ptr = (char *) malloc (len * sizeof (char));
+  if (!*ptr)
     {
-      *ptr = (char *) malloc (alloc_size);
-      if (!*ptr)
-	{
-	  return -1;
-	}
-      ret = vsnprintf (*ptr, alloc_size - 1, format, ap);
-      if (ret < 0)
-	{
-	  /* ON WINDOWS,
-	   * vsnprintf returns -1, if buffer does not have enough room.
-	   * So, we increase buffer size repeatedly.
-	   */
-	  free (*ptr);
-	  alloc_size *= 2;
-	}
+      return -1;
     }
 
-  *((*ptr) + (alloc_size - 1)) = '\0';
-
-  return ret;
+  return _vsprintf_p (*ptr, len, format, ap);
 }
 #endif /* !HAVE_VASPRINTF */
 
@@ -853,7 +842,7 @@ dirname_r (const char *path, char *pathbuf, size_t buflen)
       while (endp > path && *endp == PATH_SEPARATOR);
     }
 
-  len = endp - path + 1;
+  len = (int)(endp - path) + 1;
   if (len + 1 > PATH_MAX)
     {
       return (errno = ENAMETOOLONG);
@@ -919,7 +908,7 @@ basename_r (const char *path, char *pathbuf, size_t buflen)
   while (startp > path && *(startp - 1) != PATH_SEPARATOR)
     startp--;
 
-  len = endp - startp + 1;
+  len = (int)(endp - startp) + 1;
   if (len + 1 > PATH_MAX)
     {
       return (errno = ENAMETOOLONG);
@@ -1101,7 +1090,6 @@ strsep (char **stringp, const char *delim)
   return token;
 }
 #endif
-#endif
 
 /*
  * getpass() - get a password
@@ -1111,7 +1099,7 @@ strsep (char **stringp, const char *delim)
 char *
 getpass (const char *prompt)
 {
-  int pwlen = 0;
+  size_t pwlen = 0;
   int c;
   static char password_buffer[80];
 
@@ -1134,3 +1122,4 @@ getpass (const char *prompt)
   password_buffer[pwlen] = '\0';
   return password_buffer;
 }
+#endif /* WINDOWS */

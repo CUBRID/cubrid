@@ -72,7 +72,7 @@ extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos,
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_glo_new (char *class_name, char *filename, T_NET_BUF * net_buf);
 extern int ux_glo_save (DB_OBJECT * obj, char *filename, T_NET_BUF * net_buf);
-extern int ux_glo_load (int sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf);
+extern int ux_glo_load (SOCKET sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf);
 extern int
 ux_cursor (int srv_h_id, int offset, char origin, T_NET_BUF * net_buf);
 extern void ux_database_shutdown (void);
@@ -112,7 +112,7 @@ extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos,
 			     int argc, void **argv, T_NET_BUF * net_buf);
 
 extern void db_err_msg_set (T_NET_BUF * net_buf, int err_code,
-			    char *file, int line);
+			    const char *file, int line);
 
 extern int ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf);
 

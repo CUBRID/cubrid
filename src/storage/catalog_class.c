@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -42,9 +42,7 @@
 #include "system_parameter.h"
 #include "class_object.h"
 #include "critical_section.h"
-#if !defined(SERVER_MODE)
 #include "xserver_interface.h"
-#endif /* SERVER_MODE */
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "numeric_opfunc.h"
@@ -250,26 +248,26 @@ struct valcnv_buffer
 
 static int valcnv_Max_set_elements = 10;
 
-static  int valcnv_convert_value_to_string (DB_VALUE * value);
+static int valcnv_convert_value_to_string (DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_append_bytes (VALCNV_BUFFER * old_string,
-                                           const char *new_tail,
-                                           const size_t new_tail_length);
+					   const char *new_tail,
+					   const size_t new_tail_length);
 static VALCNV_BUFFER *valcnv_append_string (VALCNV_BUFFER * old_string,
-                                            const char *new_tail);
+					    const char *new_tail);
 static VALCNV_BUFFER *valcnv_convert_float_to_string (VALCNV_BUFFER * buf,
-                                                      const float value);
+						      const float value);
 static VALCNV_BUFFER *valcnv_convert_double_to_string (VALCNV_BUFFER * buf,
-                                                       const double value);
+						       const double value);
 static VALCNV_BUFFER *valcnv_convert_bit_to_string (VALCNV_BUFFER * buf,
-                                                    const DB_VALUE * value);
+						    const DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_convert_set_to_string (VALCNV_BUFFER * buf,
-                                                    DB_SET * set);
+						    DB_SET * set);
 static VALCNV_BUFFER *valcnv_convert_money_to_string (const double value);
 static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf,
-                                                     const DB_VALUE * value);
+						     const DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf,
-                                                         const DB_VALUE *
-                                                         value);
+							 const DB_VALUE *
+							 value);
 
 /*
  * ct_alloc_entry () -
@@ -1937,7 +1935,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 {
   int seq_size;
   DB_VALUE keys, fk_val;
-  DB_SEQ *key_seq_p;
+  DB_SEQ *key_seq_p = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
@@ -1979,6 +1977,13 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
       if (DB_VALUE_TYPE (&keys) == DB_TYPE_SEQUENCE)
 	{
 	  key_seq_p = DB_GET_SEQUENCE (&keys);
+	}
+      else
+	{
+	  assert (0);
+	  error = ER_SM_INVALID_PROPERTY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto error;
 	}
 
       /* drop btid from {btid, [key_attr, asc_desc]+, {fk_info}} */
@@ -2237,7 +2242,7 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
   DB_VALUE vals[DIM (property_vars)];
   int n_property = DIM (property_vars);
-  OR_VALUE *subset_p;
+  OR_VALUE *subset_p = NULL;
   int error = NO_ERROR;
   int i, idx;
 
@@ -2710,10 +2715,9 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   vars = or_get_var_table (buf_p, n_variable, catcls_unpack_allocator);
   if (vars == NULL)
     {
-      int msize = size * sizeof (OR_VARINFO);
-
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      n_variable * sizeof (OR_VARINFO));
       goto error;
     }
 
@@ -4069,7 +4073,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
  */
 static VALCNV_BUFFER *
 valcnv_append_bytes (VALCNV_BUFFER * buffer_p, const char *new_tail_p,
-                     const size_t new_tail_length)
+		     const size_t new_tail_length)
 {
   size_t old_length;
 
@@ -4081,9 +4085,9 @@ valcnv_append_bytes (VALCNV_BUFFER * buffer_p, const char *new_tail_p,
     {
       buffer_p = (VALCNV_BUFFER *) malloc (sizeof (VALCNV_BUFFER));
       if (buffer_p == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
 
       buffer_p->length = 0;
       buffer_p->bytes = NULL;
@@ -4183,7 +4187,7 @@ valcnv_convert_double_to_string (VALCNV_BUFFER * buffer_p, const double value)
  */
 static VALCNV_BUFFER *
 valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p,
-                              const DB_VALUE * value_p)
+			      const DB_VALUE * value_p)
 {
   unsigned char *bit_string_p = (unsigned char *) DB_GET_STRING (value_p);
   int nibble_len, nibbles, count;
@@ -4198,9 +4202,9 @@ valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p,
       tbuf[2] = '\0';
       buffer_p = valcnv_append_string (buffer_p, tbuf);
       if (buffer_p == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
     }
 
   if (nibbles < nibble_len)
@@ -4209,9 +4213,9 @@ valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p,
       tbuf[1] = '\0';
       buffer_p = valcnv_append_string (buffer_p, tbuf);
       if (buffer_p == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
     }
 
   return buffer_p;
@@ -4256,29 +4260,29 @@ valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
     {
       err = set_get_element (set_p, i, &value);
       if (err < 0)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
 
       buffer_p = valcnv_convert_db_value_to_string (buffer_p, &value);
       pr_clear_value (&value);
       if (i < size - 1)
-        {
-          buffer_p = valcnv_append_string (buffer_p, ", ");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-        }
+	{
+	  buffer_p = valcnv_append_string (buffer_p, ", ");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	}
     }
 
   if (i < size)
     {
       buffer_p = valcnv_append_string (buffer_p, "...");
       if (buffer_p == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
     }
 
   buffer_p = valcnv_append_string (buffer_p, "}");
@@ -4300,7 +4304,7 @@ valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
 static VALCNV_BUFFER *
 valcnv_convert_money_to_string (const double value)
 {
-  char cbuf[LDBL_MAX_10_EXP + 20];      /* 20 == floating fudge factor */
+  char cbuf[LDBL_MAX_10_EXP + 20];	/* 20 == floating fudge factor */
 
   sprintf (cbuf, "%.2f", value);
 
@@ -4327,7 +4331,7 @@ valcnv_convert_money_to_string (const double value)
  */
 static VALCNV_BUFFER *
 valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
-                               const DB_VALUE * value_p)
+			       const DB_VALUE * value_p)
 {
   OID *oid_p;
   DB_SET *set_p;
@@ -4351,257 +4355,273 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
   else
     {
       switch (DB_VALUE_TYPE (value_p))
-        {
-        case DB_TYPE_INTEGER:
-          sprintf (line, "%d", DB_GET_INTEGER (value_p));
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+	{
+	case DB_TYPE_INTEGER:
+	  sprintf (line, "%d", DB_GET_INTEGER (value_p));
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        case DB_TYPE_SHORT:
-          sprintf (line, "%d", (int) DB_GET_SHORT (value_p));
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+	case DB_TYPE_BIGINT:
+	  sprintf (line, "%lld", (long long) DB_GET_BIGINT (value_p));
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        case DB_TYPE_FLOAT:
-          buffer_p =
-            valcnv_convert_float_to_string (buffer_p, DB_GET_FLOAT (value_p));
-          break;
+	case DB_TYPE_SHORT:
+	  sprintf (line, "%d", (int) DB_GET_SHORT (value_p));
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        case DB_TYPE_DOUBLE:
-          buffer_p =
-            valcnv_convert_double_to_string (buffer_p,
-                                             DB_GET_DOUBLE (value_p));
-          break;
+	case DB_TYPE_FLOAT:
+	  buffer_p =
+	    valcnv_convert_float_to_string (buffer_p, DB_GET_FLOAT (value_p));
+	  break;
 
-        case DB_TYPE_NUMERIC:
-          buffer_p =
-            valcnv_append_string (buffer_p,
-                                  numeric_db_value_print ((DB_VALUE *)
-                                                          value_p));
-          break;
+	case DB_TYPE_DOUBLE:
+	  buffer_p =
+	    valcnv_convert_double_to_string (buffer_p,
+					     DB_GET_DOUBLE (value_p));
+	  break;
 
-        case DB_TYPE_BIT:
-        case DB_TYPE_VARBIT:
-          buffer_p = valcnv_convert_bit_to_string (buffer_p, value_p);
-          break;
+	case DB_TYPE_NUMERIC:
+	  buffer_p =
+	    valcnv_append_string (buffer_p,
+				  numeric_db_value_print ((DB_VALUE *)
+							  value_p));
+	  break;
 
-        case DB_TYPE_CHAR:
-        case DB_TYPE_NCHAR:
-        case DB_TYPE_VARCHAR:
-        case DB_TYPE_VARNCHAR:
-          src_p = DB_GET_STRING (value_p);
-          end_p = src_p + DB_GET_STRING_SIZE (value_p);
-          while (src_p < end_p)
-            {
-              for (p = src_p; p < end_p && *p != '\''; p++)
-                {
-                  ;
-                }
+	case DB_TYPE_BIT:
+	case DB_TYPE_VARBIT:
+	  buffer_p = valcnv_convert_bit_to_string (buffer_p, value_p);
+	  break;
 
-              if (p < end_p)
-                {
-                  len = p - src_p + 1;
-                  buffer_p = valcnv_append_bytes (buffer_p, src_p, len);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  src_p = DB_GET_STRING (value_p);
+	  end_p = src_p + DB_GET_STRING_SIZE (value_p);
+	  while (src_p < end_p)
+	    {
+	      for (p = src_p; p < end_p && *p != '\''; p++)
+		{
+		  ;
+		}
 
-                  buffer_p = valcnv_append_string (buffer_p, "'");
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
-                }
-              else
-                {
-                  buffer_p =
-                    valcnv_append_bytes (buffer_p, src_p, end_p - src_p);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
-                }
+	      if (p < end_p)
+		{
+		  len = p - src_p + 1;
+		  buffer_p = valcnv_append_bytes (buffer_p, src_p, len);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-              src_p = p + 1;
-            }
-          break;
+		  buffer_p = valcnv_append_string (buffer_p, "'");
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
+		}
+	      else
+		{
+		  buffer_p =
+		    valcnv_append_bytes (buffer_p, src_p, end_p - src_p);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
+		}
 
-        case DB_TYPE_OBJECT:
-        case DB_TYPE_OID:
-          oid_p = (OID *) DB_GET_OID (value_p);
+	      src_p = p + 1;
+	    }
+	  break;
 
-          sprintf (line, "%d", (int) oid_p->volid);
-          buffer_p = valcnv_append_string (buffer_p, line);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_OBJECT:
+	case DB_TYPE_OID:
+	  oid_p = (OID *) DB_GET_OID (value_p);
 
-          buffer_p = valcnv_append_string (buffer_p, "|");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  sprintf (line, "%d", (int) oid_p->volid);
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          sprintf (line, "%d", (int) oid_p->pageid);
-          buffer_p = valcnv_append_string (buffer_p, line);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_append_string (buffer_p, "|");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "|");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  sprintf (line, "%d", (int) oid_p->pageid);
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          sprintf (line, "%d", (int) oid_p->slotid);
-          buffer_p = valcnv_append_string (buffer_p, line);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_append_string (buffer_p, "|");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          break;
+	  sprintf (line, "%d", (int) oid_p->slotid);
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-        case DB_TYPE_SET:
-        case DB_TYPE_MULTI_SET:
-        case DB_TYPE_SEQUENCE:
-          set_p = DB_GET_SET (value_p);
-          if (set_p == NULL)
-            {
-              buffer_p = valcnv_append_string (buffer_p, "NULL");
-            }
-          else
-            {
-              return valcnv_convert_set_to_string (buffer_p, set_p);
-            }
+	  break;
 
-          break;
+	case DB_TYPE_SET:
+	case DB_TYPE_MULTI_SET:
+	case DB_TYPE_SEQUENCE:
+	  set_p = DB_GET_SET (value_p);
+	  if (set_p == NULL)
+	    {
+	      buffer_p = valcnv_append_string (buffer_p, "NULL");
+	    }
+	  else
+	    {
+	      return valcnv_convert_set_to_string (buffer_p, set_p);
+	    }
 
-        case DB_TYPE_ELO:
-          elo_p = DB_GET_ELO (value_p);
-          if (elo_p == NULL)
-            {
-              buffer_p = valcnv_append_string (buffer_p, "NULL");
-            }
-          else
-            {
-              if (elo_p->pathname != NULL)
-                {
-                  buffer_p = valcnv_append_string (buffer_p, elo_p->pathname);
-                }
-              else if (elo_p->type == ELO_LO)
-                {
-                  sprintf (line, "%d", (int) elo_p->loid.vfid.volid);
-                  buffer_p = valcnv_append_string (buffer_p, line);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+	  break;
 
-                  buffer_p = valcnv_append_string (buffer_p, "|");
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+	case DB_TYPE_ELO:
+	  elo_p = DB_GET_ELO (value_p);
+	  if (elo_p == NULL)
+	    {
+	      buffer_p = valcnv_append_string (buffer_p, "NULL");
+	    }
+	  else
+	    {
+	      if (elo_p->pathname != NULL)
+		{
+		  buffer_p = valcnv_append_string (buffer_p, elo_p->pathname);
+		}
+	      else if (elo_p->type == ELO_LO)
+		{
+		  sprintf (line, "%d", (int) elo_p->loid.vfid.volid);
+		  buffer_p = valcnv_append_string (buffer_p, line);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-                  sprintf (line, "%d", (int) elo_p->loid.vfid.fileid);
-                  buffer_p = valcnv_append_string (buffer_p, line);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+		  buffer_p = valcnv_append_string (buffer_p, "|");
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-                  buffer_p = valcnv_append_string (buffer_p, "|");
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+		  sprintf (line, "%d", (int) elo_p->loid.vfid.fileid);
+		  buffer_p = valcnv_append_string (buffer_p, line);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-                  sprintf (line, "%d", (int) elo_p->loid.vpid.volid);
-                  buffer_p = valcnv_append_string (buffer_p, line);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+		  buffer_p = valcnv_append_string (buffer_p, "|");
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-                  buffer_p = valcnv_append_string (buffer_p, "|");
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
+		  sprintf (line, "%d", (int) elo_p->loid.vpid.volid);
+		  buffer_p = valcnv_append_string (buffer_p, line);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-                  sprintf (line, "%d", (int) elo_p->loid.vpid.pageid);
-                  buffer_p = valcnv_append_string (buffer_p, line);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
-                }
-              else
-                {
-                  sprintf (line, "%lx", (unsigned long) elo_p);
-                  buffer_p = valcnv_append_string (buffer_p, line);
-                  if (buffer_p == NULL)
-                    {
-                      return NULL;
-                    }
-                }
-            }
-          break;
+		  buffer_p = valcnv_append_string (buffer_p, "|");
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
 
-        case DB_TYPE_TIME:
-          err = db_time_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
-                                   DB_GET_TIME (value_p));
-          if (err == 0)
-            {
-              return NULL;
-            }
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+		  sprintf (line, "%d", (int) elo_p->loid.vpid.pageid);
+		  buffer_p = valcnv_append_string (buffer_p, line);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
+		}
+	      else
+		{
+		  sprintf (line, "%p", elo_p);
+		  buffer_p = valcnv_append_string (buffer_p, line);
+		  if (buffer_p == NULL)
+		    {
+		      return NULL;
+		    }
+		}
+	    }
+	  break;
 
-        case DB_TYPE_TIMESTAMP:
-          err = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
-                                        DB_GET_TIMESTAMP (value_p));
-          if (err == 0)
-            {
-              return NULL;
-            }
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+	case DB_TYPE_TIME:
+	  err = db_time_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
+				   DB_GET_TIME (value_p));
+	  if (err == 0)
+	    {
+	      return NULL;
+	    }
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        case DB_TYPE_DATE:
-          err = db_date_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
-                                   DB_GET_DATE (value_p));
-          if (err == 0)
-            {
-              return NULL;
-            }
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+	case DB_TYPE_TIMESTAMP:
+	  err = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
+					DB_GET_TIMESTAMP (value_p));
+	  if (err == 0)
+	    {
+	      return NULL;
+	    }
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        case DB_TYPE_MONETARY:
-          money_p = DB_GET_MONETARY (value_p);
-          OR_MOVE_DOUBLE (&money_p->amount, &amount);
-          money_string_p = valcnv_convert_money_to_string (amount);
+	case DB_TYPE_DATETIME:
+	  err = db_datetime_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
+				       DB_GET_DATETIME (value_p));
+	  if (err == 0)
+	    {
+	      return NULL;
+	    }
 
-          currency_symbol_p = lang_currency_symbol (money_p->type);
-          strncpy (line, currency_symbol_p, strlen (currency_symbol_p));
-          strncpy (line + strlen (currency_symbol_p),
-                   (char *) money_string_p->bytes, money_string_p->length);
-          line[strlen (currency_symbol_p) + money_string_p->length] = '\0';
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-          free_and_init (money_string_p->bytes);
-          free_and_init (money_string_p);
-          buffer_p = valcnv_append_string (buffer_p, line);
-          break;
+	case DB_TYPE_DATE:
+	  err = db_date_to_string (line, VALCNV_TOO_BIG_TO_MATTER,
+				   DB_GET_DATE (value_p));
+	  if (err == 0)
+	    {
+	      return NULL;
+	    }
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
 
-        default:
-          break;
-        }
+	case DB_TYPE_MONETARY:
+	  money_p = DB_GET_MONETARY (value_p);
+	  OR_MOVE_DOUBLE (&money_p->amount, &amount);
+	  money_string_p = valcnv_convert_money_to_string (amount);
+
+	  currency_symbol_p = lang_currency_symbol (money_p->type);
+	  strncpy (line, currency_symbol_p, strlen (currency_symbol_p));
+	  strncpy (line + strlen (currency_symbol_p),
+		   (char *) money_string_p->bytes, money_string_p->length);
+	  line[strlen (currency_symbol_p) + money_string_p->length] = '\0';
+
+	  free_and_init (money_string_p->bytes);
+	  free_and_init (money_string_p);
+	  buffer_p = valcnv_append_string (buffer_p, line);
+	  break;
+
+	default:
+	  break;
+	}
     }
 
   return buffer_p;
@@ -4617,7 +4637,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
  */
 static VALCNV_BUFFER *
 valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
-                                   const DB_VALUE * value_p)
+				   const DB_VALUE * value_p)
 {
   if (DB_IS_NULL (value_p))
     {
@@ -4626,158 +4646,178 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
   else
     {
       switch (DB_VALUE_TYPE (value_p))
-        {
-        case DB_TYPE_CHAR:
-        case DB_TYPE_VARCHAR:
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_DATE:
-          buffer_p = valcnv_append_string (buffer_p, "date '");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_DATE:
+	  buffer_p = valcnv_append_string (buffer_p, "date '");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_TIME:
-          buffer_p = valcnv_append_string (buffer_p, "time '");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_TIME:
+	  buffer_p = valcnv_append_string (buffer_p, "time '");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_TIMESTAMP:
-          buffer_p = valcnv_append_string (buffer_p, "timestamp '");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_TIMESTAMP:
+	  buffer_p = valcnv_append_string (buffer_p, "timestamp '");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_NCHAR:
-        case DB_TYPE_VARNCHAR:
-          buffer_p = valcnv_append_string (buffer_p, "N'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_DATETIME:
+	  buffer_p = valcnv_append_string (buffer_p, "datetime '");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_BIT:
-        case DB_TYPE_VARBIT:
-          buffer_p = valcnv_append_string (buffer_p, "X'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  buffer_p = valcnv_append_string (buffer_p, "N'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        case DB_TYPE_ELO:
-          buffer_p = valcnv_append_string (buffer_p, "ELO'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	case DB_TYPE_BIT:
+	case DB_TYPE_VARBIT:
+	  buffer_p = valcnv_append_string (buffer_p, "X'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
 
-          buffer_p = valcnv_append_string (buffer_p, "'");
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
 
-        default:
-          buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-          if (buffer_p == NULL)
-            {
-              return NULL;
-            }
-          break;
-        }
+	case DB_TYPE_ELO:
+	  buffer_p = valcnv_append_string (buffer_p, "ELO'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  buffer_p = valcnv_append_string (buffer_p, "'");
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
+
+	default:
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  if (buffer_p == NULL)
+	    {
+	      return NULL;
+	    }
+	  break;
+	}
     }
 
   return buffer_p;
@@ -4803,12 +4843,12 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
       buf_p = &buffer;
       buf_p = valcnv_convert_db_value_to_string (buf_p, value_p);
       if (buf_p == NULL)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       DB_MAKE_VARCHAR (&src_value, DB_MAX_STRING_LENGTH,
-                       (char *) buf_p->bytes, buf_p->length);
+		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length));
 
       pr_clear_value (value_p);
       (*(tp_String.setval)) (value_p, &src_value, true);

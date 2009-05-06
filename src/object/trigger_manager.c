@@ -1033,7 +1033,7 @@ trigger_to_object (TR_TRIGGER * trigger)
   if (dbt_put_internal (obt_p, TR_ATT_STATUS, &value))
     goto error;
 
-  db_make_float (&value, trigger->priority);
+  db_make_float (&value, (float) trigger->priority);
 
   if (dbt_put_internal (obt_p, TR_ATT_PRIORITY, &value))
     goto error;
@@ -1142,6 +1142,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   int save;
   MOBJ obj;
   SM_CLASS *class_;
+  char *tmp;
 
   AU_DISABLE (save);
 
@@ -1188,7 +1189,11 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
     {
-      trigger->name = strdup (DB_GET_STRING (&value));
+      tmp = DB_GET_STRING (&value);
+      if (tmp)
+	{
+	  trigger->name = strdup (tmp);
+	}
     }
   db_value_clear (&value);
 
@@ -1248,7 +1253,11 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
     {
-      trigger->attribute = strdup (DB_GET_STRING (&value));
+      tmp = DB_GET_STRING (&value);
+      if (tmp)
+	{
+	  trigger->attribute = strdup (tmp);
+	}
     }
 
   db_value_clear (&value);
@@ -1285,7 +1294,11 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
 	{
-	  trigger->condition->source = strdup (DB_GET_STRING (&value));
+	  tmp = DB_GET_STRING (&value);
+	  if (tmp)
+	    {
+	      trigger->condition->source = strdup (tmp);
+	    }
 	}
       db_value_clear (&value);
     }
@@ -1321,7 +1334,11 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
 	{
-	  trigger->action->source = strdup (DB_GET_STRING (&value));
+	  tmp = DB_GET_STRING (&value);
+	  if (tmp)
+	    {
+	      trigger->action->source = strdup (tmp);
+	    }
 	}
       db_value_clear (&value);
     }
@@ -4179,6 +4196,9 @@ value_as_boolean (DB_VALUE * value)
     case DB_TYPE_INTEGER:
       status = (DB_GET_INT (value) == 0) ? false : true;
       break;
+    case DB_TYPE_BIGINT:
+      status = (DB_GET_BIGINT (value) = 0) ? false : true;
+      break;
     case DB_TYPE_FLOAT:
       status = (DB_GET_FLOAT (value) == 0) ? false : true;
       break;
@@ -4190,6 +4210,10 @@ value_as_boolean (DB_VALUE * value)
       break;
     case DB_TYPE_UTIME:
       status = (*DB_GET_UTIME (value) == 0) ? false : true;
+      break;
+    case DB_TYPE_DATETIME:
+      status = (DB_GET_DATETIME (value)->date == 0
+		&& DB_GET_DATETIME (value)->time == 0) ? false : true;
       break;
     case DB_TYPE_DATE:
       status = (*DB_GET_DATE (value) == 0) ? false : true;
@@ -6291,6 +6315,7 @@ static char *
 get_user_name (DB_OBJECT * user)
 {
   DB_VALUE value;
+  char *tmp;
 
   if (db_get (user, "name", &value))
     {				/* error */
@@ -6305,7 +6330,11 @@ get_user_name (DB_OBJECT * user)
     }
   else
     {
-      strncpy (namebuf, DB_GET_STRING (&value), MAX_USER_NAME);
+      tmp = DB_GET_STRING (&value);
+      if (tmp)
+	{
+	  strncpy (namebuf, tmp, MAX_USER_NAME);
+	}
       namebuf[MAX_USER_NAME - 1] = '\0';
     }
   db_value_clear (&value);

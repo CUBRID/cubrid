@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
  *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version. 
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License 
  *  along with this program; if not, write to the Free Software 
@@ -24,10 +24,10 @@
 
 #ident "$Id$"
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
-#endif
+#endif /* WINDOWS */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,17 +37,18 @@
 #include <signal.h>
 #include <time.h>
 
-#ifdef WIN32
+#if defined(WINDOWS)
 #include <direct.h>
 #include <process.h>
-#else
+#include <io.h>
+#else /* WINDOWS */
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#endif
+#endif /* WINDOWS */
 
 #include "cas_common.h"
 #include "broker_shm.h"
@@ -86,19 +87,21 @@ static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
 			 int, T_SHM_APPL_SERVER *, T_SHM_BROKER *);
 static void as_inactivate (int, char *br_name, int as_index);
 static char **make_env (char *env_file, int *env_num);
-static char *get_appl_server_name (int appl_server_type, char **env,
-				   int env_num);
-#ifndef WIN32
-static int get_cubrid_version (void);
-#endif
+static const char *get_appl_server_name (int appl_server_type, char **env,
+					 int env_num);
+static int broker_create_dir (const char *new_dir);
 
-#ifdef WIN32
+#if !defined(WINDOWS)
+static int get_cubrid_version (void);
+#endif /* !WINDOWS */
+
+#if defined(WINDOWS)
 static int admin_get_host_ip (unsigned char *ip_addr);
-#endif
+#endif /* WINDOWS */
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
-#ifndef WIN32
+#if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
 #endif
 
@@ -107,7 +110,7 @@ extern int admin_clt_sock_fd;	/* in admin_d.c */
 extern int admin_srv_sock_fd;	/* in admin_d.c */
 #endif
 
-#ifdef WIN32
+#if defined(WINDOWS)
 void
 unix_style_path (char *path)
 {
@@ -118,12 +121,12 @@ unix_style_path (char *path)
 	*p = '/';
     }
 }
-#endif
+#endif /* WINDOWS */
 
-int
-broker_create_dir (char *new_dir)
+static int
+broker_create_dir (const char *new_dir)
 {
-  char *p, path[1024];
+  char *p, path[PATH_MAX];
 
   if (new_dir == NULL)
     return -1;
@@ -131,22 +134,22 @@ broker_create_dir (char *new_dir)
   strcpy (path, new_dir);
   trim (path);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   unix_style_path (path);
-#endif
+#endif /* WINDOWS */
 
   p = path;
-#ifdef WIN32
+#if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
   else if (strlen (path) > 3 && path[2] == '/')
     p = path + 3;
-#else
+#else /* WINDOWS */
   if (path[0] == '/')
     {
       p = path + 1;
     }
-#endif
+#endif /* WINDOWS */
 
   while (p != NULL)
     {
@@ -188,14 +191,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
   T_SHM_BROKER *shm_br;
   int shm_size, i;
   int res = 0;
-#ifdef WIN32
+#if defined(WINDOWS)
   unsigned char ip_addr[4];
-#endif
+#endif /* WINDOWS */
 
-#ifdef WIN32
+#if defined(WINDOWS)
   if (admin_get_host_ip (ip_addr) < 0)
     return -1;
-#endif
+#endif /* WINDOWS */
 
   chdir ("..");
   broker_create_dir (CUBRID_VAR_DIR);
@@ -204,10 +207,10 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
   broker_create_dir (CUBRID_ASPID_DIR);
   broker_create_dir (CUBRID_LOG_DIR);
   broker_create_dir (CUBRID_ERR_DIR);
-#ifndef WIN32
+#if !defined(WINDOWS)
   broker_create_dir (CUBRID_LOG_DIR "/" SQL_LOG2_DIR);
   broker_create_dir (CUBRID_SOCK_DIR);
-#endif
+#endif /* !WINDOWS */
 
   if (br_num <= 0)
     {
@@ -235,12 +238,12 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
       return -1;
     }
 
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_br->magic = uw_shm_get_magic_number ();
   memcpy (shm_br->my_ip_addr, ip_addr, 4);
-#else
+#else /* WINDOWS */
   shm_br->owner_uid = getuid ();
-#endif
+#endif /* WINDOWS */
 
   shm_br->num_broker = br_num;
   /* create appl server shared memory */
@@ -275,7 +278,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
     {
       uw_shm_destroy (master_shm_id);
     }
-#ifdef WIN32
+#if defined(WINDOWS)
   else
     {
       char shm_id_env_str[128];
@@ -284,7 +287,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
       putenv (shm_id_env_str);
       run_child (NAME_UC_SHM);
     }
-#endif
+#endif /* WINDOWS */
 
 
   return res;
@@ -296,8 +299,8 @@ admin_stop_cmd (int master_shm_id)
   T_SHM_BROKER *shm_br;
   int i;
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
+					 SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
       SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
@@ -305,13 +308,13 @@ admin_stop_cmd (int master_shm_id)
       return -1;
     }
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
       strcpy (admin_err_msg, "Cannot stop CUBRID Broker. (Not owner)\n");
       return -1;
     }
-#endif
+#endif /* WINDOWS */
   for (i = 0; i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].service_flag == ON)
@@ -319,9 +322,9 @@ admin_stop_cmd (int master_shm_id)
     }
 
   shm_br->magic = 0;
-#ifdef WIN32
+#if defined(WINDOWS)
   uw_shm_detach (shm_br);
-#endif
+#endif /* WINDOWS */
   uw_shm_destroy (master_shm_id);
 
   return 0;
@@ -422,9 +425,9 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
   char appl_server_shm_key_str[32];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
   char buf[PATH_MAX];
-#ifndef WIN32
+#if !defined(WINDOWS)
   char argv0[64];
-#endif
+#endif /* !WINDOWS */
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
@@ -492,10 +495,10 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
   while ((shm_appl->as_info[as_index].mutex_flag[SHM_MUTEX_BROKER] == TRUE)
 	 && (shm_appl->as_info[as_index].mutex_turn == SHM_MUTEX_BROKER))
     {				/* no-op */
-#ifdef WIN32
+#if defined(WINDOWS)
       int a;
       a = 0;
-#endif
+#endif /* WINDOWS */
     }
 
   shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY;
@@ -512,19 +515,19 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
 
   shm_appl->as_info[as_index].service_ready_flag = FALSE;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if ((pid = fork ()) != 0)
     {
     }
   else
     {
-#ifdef V3_ADMIN_D
+#if defined(V3_ADMIN_D)
       if (admin_clt_sock_fd > 0)
 	CLOSE_SOCKET (admin_clt_sock_fd);
       if (admin_srv_sock_fd > 0)
 	CLOSE_SOCKET (admin_srv_sock_fd);
-#endif
-#endif
+#endif /* V3_ADMIN_D */
+#endif /* !WINDOWS */
 
       if (env != NULL)
 	{
@@ -549,21 +552,21 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
 	       ERROR_LOG_ENV_STR, shm_br->br_info[br_index].error_log_file);
       putenv (error_log_env_str);
 
-#ifndef WIN32
+#if !defined(WINDOWS)
       sprintf (argv0, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name,
 	       as_index + 1);
       uw_shm_detach (shm_br);
       uw_shm_detach (shm_appl);
-#endif
+#endif /* !WINDOWS */
 
-#ifdef WIN32
+#if defined(WINDOWS)
       pid = run_child (appl_name);
-#else
+#else /* WINDOWS */
       if (execle (appl_name, argv0, NULL, environ) < 0)
 	perror ("execle");
       exit (0);
     }
-#endif
+#endif /* WINDOWS */
 
   SERVICE_READY_WAIT (shm_appl->as_info[as_index].service_ready_flag);
 
@@ -737,13 +740,13 @@ admin_broker_off_cmd (int master_shm_id, char *broker_name)
       return -1;
     }
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
       strcpy (admin_err_msg, "Cannot stop broker. (Not owner)");
       return -1;
     }
-#endif
+#endif /* !WINDOWS */
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -1480,7 +1483,7 @@ admin_init_env ()
 {
   int i, j;
   char *p;
-  char *clt_envs[] = { SID_ENV_STR,
+  const char *clt_envs[] = { SID_ENV_STR,
     PATH_INFO_ENV_STR,
     REQUEST_METHOD_ENV_STR,
     CONTENT_LENGTH_ENV_STR,
@@ -1498,21 +1501,21 @@ admin_init_env ()
       p = strchr (environ[i], '=');
       if (p == NULL)
 	{
-	  environ[i] = "DUMMY_ENV=VISION_THREE";
+	  environ[i] = (char *) "DUMMY_ENV=VISION_THREE";
 	  continue;
 	}
       for (j = 0; clt_envs[j] != NULL; j++)
 	{
 	  if (strncmp (environ[i], clt_envs[j], strlen (clt_envs[j])) == 0)
 	    {
-	      environ[i] = "DUMMY_ENV=VISION_THREE";
+	      environ[i] = (char *) "DUMMY_ENV=VISION_THREE";
 	      break;
 	    }
 	}
     }
 }
 
-#ifdef WIN32
+#if defined(WINDOWS)
 static int
 admin_get_host_ip (unsigned char *ip_addr)
 {
@@ -1533,11 +1536,11 @@ admin_get_host_ip (unsigned char *ip_addr)
 
   return 0;
 }
-#endif
+#endif /* WINDOWS */
 
 static int
-  br_activate
-  (T_BROKER_INFO * br_info, int master_shm_id, T_SHM_BROKER * shm_br)
+br_activate (T_BROKER_INFO * br_info, int master_shm_id,
+	     T_SHM_BROKER * shm_br)
 {
   int shm_size, pid, i;
   T_SHM_APPL_SERVER *shm_appl;
@@ -1548,7 +1551,7 @@ static int
   char master_shm_key_str[32];
   char appl_server_shm_key_str[32];
   char error_log_lock_file[128];
-  char *broker_exe_name;
+  const char *broker_exe_name;
   char err_flag = FALSE;
   int broker_check_loop_count = 30;
 
@@ -1574,11 +1577,11 @@ static int
   strcpy (shm_appl->log_dir, br_info->log_dir);
   strcpy (shm_appl->err_log_dir, br_info->err_log_dir);
 
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_appl->use_pdh_flag = FALSE;
   br_info->pdh_workset = 0;
   br_info->pdh_pct_cpu = 0;
-#endif
+#endif /* WINDOWS */
 
   env = make_env (br_info->source_env, &env_num);
 
@@ -1587,7 +1590,7 @@ static int
 	   APPL_SERVER_NAME_MAX_SIZE);
   shm_appl->appl_server_name[APPL_SERVER_NAME_MAX_SIZE - 1] = '\0';
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if ((pid = fork ()) < 0)
     {
       strcpy (admin_err_msg, "fork error");
@@ -1595,19 +1598,19 @@ static int
       uw_shm_destroy (br_info->appl_server_shm_id);
       return -1;
     }
-#endif
+#endif /* WINDOWS */
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (pid == 0)
     {
 
-#ifdef V3_ADMIN_D
+#if defined(V3_ADMIN_D)
       if (admin_clt_sock_fd > 0)
 	CLOSE_SOCKET (admin_clt_sock_fd);
       if (admin_srv_sock_fd > 0)
 	CLOSE_SOCKET (admin_srv_sock_fd);
-#endif
-#endif
+#endif /* V3_ADMIN_D */
+#endif /* WINDOWS */
 
       if (env != NULL)
 	{
@@ -1631,13 +1634,13 @@ static int
       else
 	broker_exe_name = NAME_BROKER;
 
-#ifdef WIN32
+#if defined(WINDOWS)
       if (((br_info->appl_server == APPL_SERVER_CAS)
 	   || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
 	   || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
 	  && br_info->appl_server_port < 0)
 	broker_exe_name = NAME_CAS_BROKER2;
-#endif
+#endif /* WINDOWS */
 
       sprintf (appl_name_str, "%s=%s", APPL_NAME_ENV_STR, broker_exe_name);
       putenv (appl_name_str);
@@ -1646,14 +1649,14 @@ static int
 	       ERROR_LOG_LOCK_FILE_ENV_STR, br_info->name);
       putenv (error_log_lock_file);
 
-#ifndef WIN32
+#if !defined(WINDOWS)
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
-#endif
+#endif /* !WINDOWS */
 
-#ifdef WIN32
+#if defined(WINDOWS)
       pid = run_child (broker_exe_name);
-#else
+#else /* WINDOWS */
       if (execle (broker_exe_name, broker_exe_name, NULL, environ) < 0)
 	{
 	  perror (broker_exe_name);
@@ -1661,7 +1664,7 @@ static int
 	}
       exit (0);
     }
-#endif
+#endif /* WINDOWS */
 
   SLEEP_MILISEC (0, 200);
 
@@ -1674,9 +1677,9 @@ static int
   shm_appl->appl_server_max_size = br_info->appl_server_max_size;
   shm_appl->session_timeout = br_info->session_timeout;
   shm_appl->sql_log2 = br_info->sql_log2;
-#ifdef WIN32
+#if defined(WINDOWS)
   shm_appl->as_port = br_info->appl_server_port;
-#endif
+#endif /* WINDOWS */
   shm_appl->max_string_length = br_info->max_string_length;
   shm_appl->stripped_column_name = br_info->stripped_column_name;
   shm_appl->keep_connection = br_info->keep_connection;
@@ -1836,15 +1839,15 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   char error_log_lock_file[128];
   int i;
   char port_name[AS_PORT_STR_SIZE];
-#ifndef WIN32
+#if !defined(WINDOWS)
   char process_name[64];
-#endif
+#endif /* !WINDOWS */
 
   get_cubrid_file (FID_SOCK_DIR, port_name);
   sprintf (port_name, "%s/%s.%d", port_name, br_info->name, as_index);
-#ifndef WIN32
+#if !defined(WINDOWS)
   unlink (port_name);
-#endif
+#endif /* !WINDOWS */
 
   /* mutex variable initialize */
   as_info->mutex_flag[SHM_MUTEX_BROKER] = FALSE;
@@ -1860,22 +1863,22 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   as_info->clt_req_path_info[0] = '\0';
   as_info->clt_ip_addr[0] = '\0';
 
-#ifdef WIN32
+#if defined(WINDOWS)
   as_info->pdh_pid = 0;
   as_info->pdh_workset = 0;
   as_info->pdh_pct_cpu = 0;
-#endif
+#endif /* WINDOWS */
 
   as_info->service_ready_flag = FALSE;
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if ((pid = fork ()) < 0)
     {
       perror ("fork");
     }
-#endif
+#endif /* !WINDOWS */
 
-#ifndef WIN32
+#if !defined(WINDOWS)
   if (pid == 0)
     {
 
@@ -1885,7 +1888,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       if (admin_srv_sock_fd > 0)
 	CLOSE_SOCKET (admin_srv_sock_fd);
 #endif
-#endif
+#endif /* !WINDOWS */
 
       if (env != NULL)
 	{
@@ -1919,20 +1922,20 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 	putenv ("PUREOPTIONS=-program-name=cas");
 #endif
 
-#ifndef WIN32
+#if !defined(WINDOWS)
       sprintf (process_name, "%s_%s_%d", br_info->name, appl_name, as_index);
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
-#endif
+#endif /* !WINDOWS */
 
-#ifdef WIN32
+#if defined(WINDOWS)
       pid = run_child (appl_name);
-#else
+#else /* WINDOWS */
       if (execle (appl_name, process_name, NULL, environ) < 0)
 	perror (appl_name);
       exit (0);
     }
-#endif
+#endif /* WINDOWS */
 
   SERVICE_READY_WAIT (as_info->service_ready_flag);
 
@@ -2007,18 +2010,16 @@ make_env (char *env_file, int *env_num)
   return env;
 }
 
-
-static char *
+static const char *
 get_appl_server_name (int appl_server_type, char **env, int env_num)
 {
-  char *appl_name;
-#ifndef WIN32
+#if !defined(WINDOWS)
   int dbms_version;
-#endif
+#endif /* !WINDOWS */
 
   if (env != NULL)
     {
-      char *p = "UC_APPL_SERVER_EXE_NAME=";
+      const char *p = "UC_APPL_SERVER_EXE_NAME=";
       int i;
       for (i = 0; i < env_num; i++)
 	{
@@ -2037,7 +2038,7 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
   return APPL_SERVER_CAS_NAME;
 }
 
-#ifndef WIN32
+#if !defined(WINDOWS)
 static int
 get_cubrid_version ()
 {
@@ -2084,4 +2085,4 @@ get_cubrid_version ()
 
   return version;
 }
-#endif
+#endif /* !WINDOWS */

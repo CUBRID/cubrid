@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -30,7 +30,9 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#if !defined(WINDOWS)
+#if defined(WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -72,11 +74,12 @@ static int esm_pad_overflow (DB_OBJECT * dest_obj, const int fd,
 static void esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
 			     DB_VALUE * return_argument_p);
 static int esm_compare_glo_pathname (DB_OBJECT * holder_p, DB_ELO * glo_p);
-static int update_position (DB_OBJECT * glo_object_p, const int position);
+static DB_BIGINT update_position (DB_OBJECT * glo_object_p,
+				  DB_BIGINT position);
 static int destroy_glo_and_holder_and_name (DB_OBJECT * esm_glo_object_p,
 					    DB_OBJECT * holder_p);
 static int get_write_lock (DB_OBJECT * glo_instance_p);
-static int get_position (DB_OBJECT * glo_object_p);
+static DB_BIGINT get_position (DB_OBJECT * glo_object_p);
 static void esm_search (DB_OBJECT * esm_glo_object_p,
 			DB_VALUE * return_argument_p,
 			DB_VALUE * search_for_object_p, int search_type,
@@ -264,16 +267,15 @@ end:
  *  position(in) :
  */
 
-static int
-update_position (DB_OBJECT * glo_object_p, const int position)
+static DB_BIGINT
+update_position (DB_OBJECT * glo_object_p, DB_BIGINT position)
 {
   /* we must reject negative positions here, or
    * they will wreak havoc on code downstream.
    */
   if (glo_object_p && position >= 0)
     {
-      if (ws_put_prop (glo_object_p, PROP_GLO_POSITION, (void *) position) <
-	  0)
+      if (ws_put_prop (glo_object_p, PROP_GLO_POSITION, position) < 0)
 	{
 	  return -1;
 	}
@@ -393,14 +395,14 @@ end:
  *  glo_object_p(in) : the glo object
  */
 
-static int
+static DB_BIGINT
 get_position (DB_OBJECT * glo_object_p)
 {
-  int position = 0;
+  DB_BIGINT position = 0;
 
   if (glo_object_p)
     {
-      ws_get_prop (glo_object_p, PROP_GLO_POSITION, (void **) &position);
+      ws_get_prop (glo_object_p, PROP_GLO_POSITION, &position);
     }
 
   return (position);
@@ -420,8 +422,10 @@ void
 esm_Glo_read (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	      const DB_VALUE * units_p, const DB_VALUE * data_buffer_p)
 {
-  int return_value, unit_size, position;
-  int no_of_units, length, offset;
+  int return_value, unit_size;
+  DB_BIGINT position;
+  int no_of_units;
+  FSIZE_T length, offset;
 
   DB_ELO *glo_p;
   char *buffer;
@@ -462,11 +466,11 @@ esm_Glo_read (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = (no_of_units * unit_size) / BASE_BYTE;
-  offset = ((int) unit_size * position) / (int) BASE_BYTE;
+  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
+  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
 
-  return_value =
-    elo_read_from (glo_p, offset, length, buffer, esm_glo_object_p);
+  return_value = elo_read_from (glo_p, offset, length, buffer,
+				esm_glo_object_p);
 
   if (return_value >= 0)
     {
@@ -523,9 +527,8 @@ esm_Glo_print_read (DB_OBJECT * esm_glo_object_p,
 
   buffer = (char *) malloc (length);
   db_make_varchar (&db_buffer, DB_MAX_VARCHAR_PRECISION, buffer, length);
-  error =
-    db_send (esm_glo_object_p, "read_data", return_argument_p,
-	     argument_length, &db_buffer);
+  error = db_send (esm_glo_object_p, "read_data", return_argument_p,
+		   argument_length, &db_buffer);
   if (error == 0)
     {
       fprintf (stdout, "\n***START PRINT\n");
@@ -571,8 +574,10 @@ void
 esm_Glo_write (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	       DB_VALUE * unit_p, DB_VALUE * data_buffer_p)
 {
-  int return_value, unit_size, position;
-  int no_of_units, length, offset;
+  int return_value, unit_size;
+  DB_BIGINT position;
+  int no_of_units;
+  FSIZE_T length, offset;
 
   DB_ELO *glo_p;
   char *buffer;
@@ -618,11 +623,11 @@ esm_Glo_write (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = (no_of_units * unit_size) / BASE_BYTE;
-  offset = ((int) unit_size * position) / (int) BASE_BYTE;
+  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
+  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
 
-  return_value =
-    elo_write_to (glo_p, offset, length, buffer, esm_glo_object_p);
+  return_value = elo_write_to (glo_p, offset, length, buffer,
+			       esm_glo_object_p);
 
   if (return_value >= 0)
     {
@@ -661,8 +666,10 @@ void
 esm_Glo_insert (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 		DB_VALUE * unit_p, DB_VALUE * data_buffer_p)
 {
-  int return_value, unit_size, position;
-  int no_of_units, length, offset;
+  int return_value, unit_size;
+  int no_of_units;
+  DB_BIGINT position;
+  FSIZE_T length, offset;
   DB_ELO *glo_p;
   char *buffer;
   DB_VALUE value;
@@ -706,11 +713,11 @@ esm_Glo_insert (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = (no_of_units * unit_size) / BASE_BYTE;
-  offset = ((int) unit_size * position) / (int) BASE_BYTE;
+  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
+  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
 
-  return_value =
-    elo_insert_into (glo_p, offset, length, buffer, esm_glo_object_p);
+  return_value = elo_insert_into (glo_p, offset, length, buffer,
+				  esm_glo_object_p);
 
   if (return_value >= 0)
     {
@@ -749,8 +756,9 @@ void
 esm_Glo_delete (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 		DB_VALUE * unit_p)
 {
-  int return_value, unit_size, position, no_of_units;
-  int length, offset;
+  int return_value, unit_size, no_of_units;
+  DB_BIGINT position;
+  FSIZE_T length, offset;
   DB_ELO *glo_p;
   DB_VALUE value;
 
@@ -786,8 +794,8 @@ esm_Glo_delete (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = (no_of_units * unit_size) / BASE_BYTE;
-  offset = ((int) unit_size * position) / (int) BASE_BYTE;
+  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
+  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
   return_value =
     (int) elo_delete_from (glo_p, offset, length, esm_glo_object_p);
 
@@ -814,13 +822,16 @@ void
 esm_Glo_seek (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	      DB_VALUE * location_p)
 {
-  int return_value, unit_size;
+  DB_BIGINT return_value;
+  int unit_size;
   DB_VALUE value;
   DB_ELO *glo_p;
 
   db_make_int (return_argument_p, -1);	/* error return value */
 
-  if ((location_p == NULL) || (DB_VALUE_TYPE (location_p) != DB_TYPE_INTEGER))
+  if ((location_p == NULL)
+      || !((DB_VALUE_TYPE (location_p) == DB_TYPE_INTEGER)
+	   || (DB_VALUE_TYPE (location_p) == DB_TYPE_BIGINT)))
     {
       esm_set_error (INVALID_INTEGER_INPUT_ARGUMENT);
       return;
@@ -835,14 +846,15 @@ esm_Glo_seek (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
       esm_set_error (UNABLE_TO_FIND_GLO_STRUCTURE);
       return;
     }
-  return_value = DB_GET_INTEGER (location_p);
-  return_value = ((int) unit_size * return_value) / (int) BASE_BYTE;
+  return_value = DB_GET_BIGINT (location_p);
+  return_value =
+    ((DB_BIGINT) unit_size * return_value) / (DB_BIGINT) BASE_BYTE;
 
   /* guard against negative glo position */
   if (return_value >= 0
       && update_position (esm_glo_object_p, return_value) >= 0)
     {
-      db_make_int (return_argument_p, return_value);
+      db_make_bigint (return_argument_p, return_value);
       return;
     }
   else
@@ -862,7 +874,9 @@ esm_Glo_seek (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 void
 esm_Glo_truncate (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
-  int position, offset, unit_size, return_value;
+  int unit_size;
+  DB_BIGINT position, return_value;
+  FSIZE_T offset;
   DB_ELO *glo_p;
 
   if (get_write_lock (esm_glo_object_p) != NO_ERROR)
@@ -882,12 +896,12 @@ esm_Glo_truncate (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, return_argument_p);
   unit_size = DB_GET_INTEGER (return_argument_p);
-  offset = ((int) unit_size * position) / (int) BASE_BYTE;
-  return_value = elo_truncate (glo_p, offset, esm_glo_object_p);
+  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
+  return_value = (DB_BIGINT) elo_truncate (glo_p, offset, esm_glo_object_p);
 
   if (return_value >= 0)
     {
-      db_make_int (return_argument_p, return_value);
+      db_make_bigint (return_argument_p, return_value);
     }
   else
     {
@@ -1105,7 +1119,8 @@ esm_Glo_init (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 void
 esm_Glo_size (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
-  int total_size, unit_size;
+  DB_BIGINT total_size;
+  int unit_size;
   DB_ELO *glo_p;
 
   glo_p = esm_get_glo_from_holder_for_read (esm_glo_object_p);
@@ -1120,7 +1135,7 @@ esm_Glo_size (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
   unit_size = DB_GET_INTEGER (return_argument_p);
   total_size = (elo_get_size (glo_p, esm_glo_object_p) * 8) / unit_size;
 
-  db_make_int (return_argument_p, total_size);
+  db_make_bigint (return_argument_p, total_size);
 }
 
 /*
@@ -1479,9 +1494,8 @@ esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
 			       buffer, network_pagesize);
 	      while (true)
 		{
-		  if (db_send
-		      (source, GLO_METHOD_READ, &value3, &value2,
-		       &value1) != 0)
+		  if (db_send (source, GLO_METHOD_READ, &value3, &value2,
+			       &value1) != 0)
 		    {
 		      break;
 		    }
@@ -1495,9 +1509,8 @@ esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
 		    {
 		      break;
 		    }
-		  if (db_send
-		      (dest_obj, GLO_METHOD_WRITE, &value4, &value3,
-		       &value1) != 0)
+		  if (db_send (dest_obj, GLO_METHOD_WRITE, &value4, &value3,
+			       &value1) != 0)
 		    {
 		      break;
 		    }
@@ -1639,9 +1652,8 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	  db_make_varchar (&value3, DB_MAX_VARCHAR_PRECISION,
 			   buffer, network_pagesize);
 
-	  while (db_send
-		 (esm_glo_object_p, GLO_METHOD_READ, &value1, &value2,
-		  &value3) == 0)
+	  while (db_send (esm_glo_object_p, GLO_METHOD_READ, &value1, &value2,
+			  &value3) == 0)
 	    {
 	      length = DB_GET_INTEGER (&value1);
 	      if (DB_VALUE_TYPE (&value1) == DB_TYPE_INTEGER && length > 0)
@@ -1900,10 +1912,10 @@ esm_Glo_copy_from (DB_OBJECT * esm_glo_object_p,
 void
 esm_Glo_position (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
-  int position;
+  DB_BIGINT position;
 
   position = get_position (esm_glo_object_p);
-  db_make_int (return_argument_p, position);
+  db_make_bigint (return_argument_p, position);
 }
 
 /*

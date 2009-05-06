@@ -26,4 +26,6 @@
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
 
+#define strlen(s) ((int) strlen(s))
+
 #endif // !defined(AFX_STDAFX_H__06E7ED48_B145_47FE_95B2_16CFC6188960__INCLUDED_)

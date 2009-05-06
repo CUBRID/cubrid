@@ -1,36 +1,36 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
 
 /*
- * cci_query_execute.h - 
+ * cci_query_execute.h -
  */
 
 #ifndef	_CCI_QUERY_EXECUTE_H_
@@ -60,91 +60,129 @@
 #define BIND_PTR_STATIC		0
 #define BIND_PTR_DYNAMIC	1
 
-#define SIZE_INT	sizeof(int)
-#define SIZE_DOUBLE	sizeof(double)
-#define SIZE_FLOAT	sizeof(float)
-#define SIZE_DATE	6
-#define SIZE_TIME	6
-#define SIZE_TIMESTAMP	12
-#define SIZE_OBJECT	8
+#define NET_STR_TO_BIGINT(BIGINT_VALUE, PTR)                            \
+        do {                                                            \
+          INT64           macro_var_tmp_value;                          \
+          memcpy((char*) &macro_var_tmp_value, PTR, SIZE_BIGINT);       \
+          macro_var_tmp_value = ntohi64(macro_var_tmp_value);           \
+          BIGINT_VALUE = macro_var_tmp_value;                           \
+        } while (0)
 
-#define NET_STR_TO_INT(INT_VALUE, PTR)		\
-	do {					\
-	  int		macro_var_tmp_value;		\
-	  memcpy((char*) &macro_var_tmp_value, PTR, 4);	\
+#define NET_STR_TO_INT(INT_VALUE, PTR)		                        \
+	do {					                        \
+	  int		macro_var_tmp_value;		                \
+	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_INT);	        \
 	  macro_var_tmp_value = ntohl(macro_var_tmp_value);		\
-	  INT_VALUE = macro_var_tmp_value;		\
+	  INT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
-#define NET_STR_TO_SHORT(SHORT_VALUE, PTR)	\
-	do {					\
-	  short		macro_var_tmp_value;		\
-	  memcpy((char*) &macro_var_tmp_value, PTR, 2);	\
+#define NET_STR_TO_SHORT(SHORT_VALUE, PTR)	                        \
+	do {					                        \
+	  short		macro_var_tmp_value;		                \
+	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_SHORT);        \
 	  macro_var_tmp_value = ntohs(macro_var_tmp_value);		\
-	  SHORT_VALUE = macro_var_tmp_value;		\
+	  SHORT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
-#define NET_STR_TO_FLOAT(FLOAT_VALUE, PTR)	\
-	do {					\
-	  float		macro_var_tmp_value;		\
-	  memcpy((char*) &macro_var_tmp_value, PTR, 4);	\
-	  macro_var_tmp_value = ntohf(macro_var_tmp_value);		\
-	  FLOAT_VALUE = macro_var_tmp_value;		\
+#define NET_STR_TO_FLOAT(FLOAT_VALUE, PTR)	                        \
+	do {					                        \
+	  float		macro_var_tmp_value;		                \
+	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_FLOAT);        \
+	  macro_var_tmp_value = ntohf(macro_var_tmp_value);	        \
+	  FLOAT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
-#define NET_STR_TO_DOUBLE(DOUBLE_VALUE, PTR)	\
-	do {					\
-	  double	macro_var_tmp_value;		\
-	  memcpy((char*) &macro_var_tmp_value, PTR, 8);	\
-	  macro_var_tmp_value = ntohd(macro_var_tmp_value);		\
-	  DOUBLE_VALUE = macro_var_tmp_value;		\
+#define NET_STR_TO_DOUBLE(DOUBLE_VALUE, PTR)	                        \
+	do {					                        \
+	  double	macro_var_tmp_value;		                \
+	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_DOUBLE);       \
+	  macro_var_tmp_value = ntohd(macro_var_tmp_value);             \
+	  DOUBLE_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
-#define NET_STR_TO_DATE(DATE_VAL, PTR)		\
-	do {					\
-	  short		macro_var_yr, macro_var_mon, macro_var_day;		\
-	  NET_STR_TO_SHORT(macro_var_yr, PTR);		\
-	  NET_STR_TO_SHORT(macro_var_mon, PTR + 2);	\
-	  NET_STR_TO_SHORT(macro_var_day, PTR + 4);	\
-	  (DATE_VAL).yr = macro_var_yr;			\
-	  (DATE_VAL).mon = macro_var_mon;			\
-	  (DATE_VAL).day = macro_var_day;			\
+#define NET_STR_TO_DATE(DATE_VAL, PTR)		                        \
+	do {					                        \
+	  short		macro_var_yr, macro_var_mon, macro_var_day;	\
+	  int           pos = 0;                                        \
+	  NET_STR_TO_SHORT(macro_var_yr, PTR + pos);		        \
+	  pos += SIZE_SHORT;                                            \
+	  NET_STR_TO_SHORT(macro_var_mon, PTR + pos);	                \
+	  pos += SIZE_SHORT;                                            \
+          NET_STR_TO_SHORT(macro_var_day, PTR + pos);	                \
+	  (DATE_VAL).yr = macro_var_yr;			                \
+	  (DATE_VAL).mon = macro_var_mon;			        \
+	  (DATE_VAL).day = macro_var_day;			        \
 	} while (0)
 
-#define NET_STR_TO_TIME(TIME_VAL, PTR)		\
-	do {					\
-	  short		macro_var_hh, macro_var_mm, macro_var_ss;	\
-	  NET_STR_TO_SHORT(macro_var_hh, PTR);		\
-	  NET_STR_TO_SHORT(macro_var_mm, PTR + 2);	\
-	  NET_STR_TO_SHORT(macro_var_ss, PTR + 4);	\
-	  (TIME_VAL).hh = macro_var_hh;			\
-	  (TIME_VAL).mm = macro_var_mm;			\
-	  (TIME_VAL).ss = macro_var_ss;			\
+#define NET_STR_TO_TIME(TIME_VAL, PTR)		                        \
+	do {					                        \
+	  short	macro_var_hh, macro_var_mm, macro_var_ss;	        \
+          int           pos = 0;                                        \
+	  NET_STR_TO_SHORT(macro_var_hh, PTR + pos);                    \
+          pos += SIZE_SHORT;                                            \
+	  NET_STR_TO_SHORT(macro_var_mm, PTR + pos);                    \
+          pos += SIZE_SHORT;                                            \
+	  NET_STR_TO_SHORT(macro_var_ss, PTR + pos);                    \
+	  (TIME_VAL).hh = macro_var_hh;			                \
+	  (TIME_VAL).mm = macro_var_mm;			                \
+	  (TIME_VAL).ss = macro_var_ss;			                \
 	} while (0)
 
-#define NET_STR_TO_TIMESTAMP(TS_VAL, PTR)	\
-	do {					\
-	  NET_STR_TO_DATE(TS_VAL, PTR);		\
-	  NET_STR_TO_TIME(TS_VAL, PTR + 6);	\
+#define NET_STR_TO_MTIME(TIME_VAL, PTR)                                 \
+        do {                                                            \
+          short macro_var_hh, macro_var_mm, macro_var_ss, macro_var_ms; \
+          int           pos = 0;                                        \
+          NET_STR_TO_SHORT(macro_var_hh, PTR + pos);                    \
+          pos += SIZE_SHORT;                                            \
+          NET_STR_TO_SHORT(macro_var_mm, PTR + pos);                    \
+          pos += SIZE_SHORT;                                            \
+          NET_STR_TO_SHORT(macro_var_ss, PTR + pos);                    \
+          pos += SIZE_SHORT;                                            \
+          NET_STR_TO_SHORT(macro_var_ms, PTR + pos);                    \
+          (TIME_VAL).hh = macro_var_hh;                                 \
+          (TIME_VAL).mm = macro_var_mm;                                 \
+          (TIME_VAL).ss = macro_var_ss;                                 \
+          (TIME_VAL).ms = macro_var_ms;                                 \
+        } while (0)
+
+#define NET_STR_TO_TIMESTAMP(TS_VAL, PTR)	        \
+	do {					        \
+	  NET_STR_TO_DATE(TS_VAL, PTR);		        \
+	  NET_STR_TO_TIME(TS_VAL, PTR + SIZE_DATE);	\
 	} while (0)
 
-#define NET_STR_TO_OBJECT(OBJ_VAL, PTR)		\
-	do {					\
-	  int		macro_var_pageid;			\
-	  short 	macro_var_volid, macro_var_slotid;		\
-	  NET_STR_TO_INT(macro_var_pageid, PTR);		\
-	  NET_STR_TO_SHORT(macro_var_slotid, PTR + 4);	\
-	  NET_STR_TO_SHORT(macro_var_volid, PTR + 6);	\
-	  (OBJ_VAL).pageid = macro_var_pageid;		\
-	  (OBJ_VAL).slotid = macro_var_slotid;		\
-	  (OBJ_VAL).volid = macro_var_volid;		\
+#define NET_STR_TO_DATETIME(TS_VAL, PTR)                \
+        do {                                            \
+          NET_STR_TO_DATE(TS_VAL, PTR);                 \
+          NET_STR_TO_MTIME(TS_VAL, PTR + SIZE_DATE);    \
+        } while (0)
+
+#define NET_STR_TO_OBJECT(OBJ_VAL, PTR)		                \
+	do {					                \
+	  int		macro_var_pageid;		        \
+	  short 	macro_var_volid, macro_var_slotid;	\
+          int           pos = 0;                                \
+	  NET_STR_TO_INT(macro_var_pageid, PTR + pos);		\
+          pos += SIZE_INT;                                      \
+	  NET_STR_TO_SHORT(macro_var_slotid, PTR + pos);	\
+          pos += SIZE_SHORT;                                    \
+	  NET_STR_TO_SHORT(macro_var_volid, PTR + pos);	        \
+	  (OBJ_VAL).pageid = macro_var_pageid;		        \
+	  (OBJ_VAL).slotid = macro_var_slotid;		        \
+	  (OBJ_VAL).volid = macro_var_volid;		        \
 	} while (0)
 
 #define ADD_ARG_INT(BUF, VALUE)			\
 	do {					\
-	  net_buf_cp_int(BUF, 4);		\
+	  net_buf_cp_int(BUF, SIZE_INT);	\
 	  net_buf_cp_int(BUF, VALUE);		\
 	} while (0)
+
+#define ADD_ARG_BIGINT(BUF, VALUE)              \
+        do {                                    \
+          net_buf_cp_int(BUF, SIZE_BIGINT);     \
+          net_buf_cp_bigint(BUF, VALUE);        \
+        } while (0)
 
 #ifdef UNICODE_DATA
 #define ADD_ARG_STR(BUF, STR, SIZE)				\
@@ -171,26 +209,27 @@
 
 #define ADD_ARG_FLOAT(BUF, VALUE)		\
 	do {					\
-	  net_buf_cp_int(BUF, 4);		\
+	  net_buf_cp_int(BUF, SIZE_FLOAT);      \
 	  net_buf_cp_float(BUF, VALUE);		\
 	} while (0)
 
 #define ADD_ARG_DOUBLE(BUF, VALUE)		\
 	do {					\
-	  net_buf_cp_int(BUF, 8);		\
+	  net_buf_cp_int(BUF, SIZE_DOUBLE);	\
 	  net_buf_cp_double(BUF, VALUE);	\
 	} while (0)
 
-#define ADD_ARG_TIMESTAMP(BUF, VALUE_P)		\
+#define ADD_ARG_DATETIME(BUF, VALUE_P)		\
 	do {					\
 	  T_CCI_DATE	*macro_var_date_p = (T_CCI_DATE*) (VALUE_P);	\
-	  net_buf_cp_int(BUF, SIZE_TIMESTAMP);	\
+	  net_buf_cp_int(BUF, SIZE_DATETIME);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->yr);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->mon);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->day);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->hh);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->mm);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->ss);	\
+          net_buf_cp_short(BUF, macro_var_date_p->ms);  \
 	} while (0)
 
 #define ADD_ARG_OBJECT(BUF, OID_P)			\
@@ -204,7 +243,7 @@
 
 #define ADD_ARG_CACHE_TIME(BUF, SEC, USEC)	\
 	do {					\
-	  net_buf_cp_int(BUF, 8);		\
+	  net_buf_cp_int(BUF, SIZE_INT*2);	\
 	  net_buf_cp_int(BUF, SEC);		\
 	  net_buf_cp_int(BUF, USEC);		\
 	} while (0)
@@ -219,7 +258,7 @@
 
 extern int qe_con_close (T_CON_HANDLE * con_handle);
 extern int qe_prepare (T_REQ_HANDLE * req_handle,
-		       int sock_fd,
+		       SOCKET sock_fd,
 		       char *sql_stmt,
 		       char flag, T_CCI_ERROR * err_buf, int reuse);
 extern void qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value);
@@ -228,7 +267,7 @@ extern int qe_bind_param (T_REQ_HANDLE * req_handle,
 			  T_CCI_A_TYPE a_type,
 			  void *value, T_CCI_U_TYPE u_type, char flag);
 extern int qe_execute (T_REQ_HANDLE * req_handle,
-		       int sock_fd,
+		       SOCKET sock_fd,
 		       char flag, int max_col_size, T_CCI_ERROR * err_buf);
 extern int qe_end_tran (T_CON_HANDLE * con_handle,
 			char type, T_CCI_ERROR * err_buf);
@@ -238,12 +277,12 @@ extern int qe_get_db_parameter (T_CON_HANDLE * con_handle,
 extern int qe_set_db_parameter (T_CON_HANDLE * con_handle,
 				T_CCI_DB_PARAM param_name,
 				void *value, T_CCI_ERROR * err_buf);
-extern int qe_close_req_handle (T_REQ_HANDLE * req_handle, int sock_fd);
+extern int qe_close_req_handle (T_REQ_HANDLE * req_handle, SOCKET sock_fd);
 extern int qe_cursor (T_REQ_HANDLE * req_handle,
-		      int sock_fd,
+		      SOCKET sock_fd,
 		      int offset, char origin, T_CCI_ERROR * err_buf);
 extern int qe_fetch (T_REQ_HANDLE * req_handle,
-		     int sock_fd,
+		     SOCKET sock_fd,
 		     char flag, int result_set_index, T_CCI_ERROR * err_buf);
 extern int qe_get_data (T_REQ_HANDLE * req_handle,
 			int col_no, int a_type, void *value, int *indicator);
@@ -256,19 +295,19 @@ extern int qe_glo_save (T_CON_HANDLE * con_handle,
 extern int qe_glo_load (T_CON_HANDLE * con_handle,
 			char *oid_str, int out_fd, T_CCI_ERROR * err_buf);
 extern int qe_schema_info (T_REQ_HANDLE * req_handle,
-			   int sock_fd,
+			   SOCKET sock_fd,
 			   int type,
 			   char *class_name,
 			   char *attr_name, char flag, T_CCI_ERROR * err_buf);
 extern int qe_oid_get (T_REQ_HANDLE * req_handle,
-		       int sock_fd,
+		       SOCKET sock_fd,
 		       char *oid_str,
 		       char **attr_name, T_CCI_ERROR * err_buf);
-extern int qe_oid_put (int sock_fd,
+extern int qe_oid_put (SOCKET sock_fd,
 		       char *oid_str,
 		       char **attr_name,
 		       char **new_val, T_CCI_ERROR * err_buf);
-extern int qe_oid_put2 (int sock_fd,
+extern int qe_oid_put2 (SOCKET sock_fd,
 			char *oid_str,
 			char **attr_name,
 			void **new_val, int *a_type, T_CCI_ERROR * err_buf);
@@ -279,43 +318,40 @@ extern int qe_get_class_num_objs (T_CON_HANDLE * con_handle,
 				  char flag,
 				  int *num_objs,
 				  int *num_pages, T_CCI_ERROR * err_buf);
-extern int qe_oid_cmd (int sock_fd,
+extern int qe_oid_cmd (SOCKET sock_fd,
 		       char cmd,
 		       char *oid_str,
 		       char *out_buf,
 		       int out_buf_size, T_CCI_ERROR * err_buf);
 extern int qe_col_get (T_REQ_HANDLE * req_handle,
-		       int sock_fd,
+		       SOCKET sock_fd,
 		       char *oid_str,
-		       char *col_attr,
+		       const char *col_attr,
 		       int *col_size, int *col_type, T_CCI_ERROR * err_buf);
-extern int qe_col_size (int sock_fd,
+extern int qe_col_size (SOCKET sock_fd,
 			char *oid_str,
-			char *col_attr, int *col_size, T_CCI_ERROR * err_buf);
-extern int qe_col_set_add_drop (int sock_fd,
-				char col_cmd,
-				char *oid_str,
-				char *col_attr,
-				char *value, T_CCI_ERROR * err_buf);
-extern int qe_col_seq_op (int sock_fd,
-			  char col_cmd,
-			  char *oid_str,
-			  char *col_attr,
-			  int index, char *value, T_CCI_ERROR * err_buf);
+			const char *col_attr, int *col_size,
+			T_CCI_ERROR * err_buf);
+extern int qe_col_set_add_drop (SOCKET sock_fd, char col_cmd, char *oid_str,
+				const char *col_attr, char *value,
+				T_CCI_ERROR * err_buf);
+extern int qe_col_seq_op (SOCKET sock_fd, char col_cmd, char *oid_str,
+			  const char *col_attr, int index, const char *value,
+			  T_CCI_ERROR * err_buf);
 
 extern int qe_next_result (T_REQ_HANDLE * req_handle,
-			   char flag, int sock_fd, T_CCI_ERROR * err_buf);
+			   char flag, SOCKET sock_fd, T_CCI_ERROR * err_buf);
 extern int qe_execute_array (T_REQ_HANDLE * req_handle,
-			     int sock_fd,
+			     SOCKET sock_fd,
 			     T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf);
 extern void qe_query_result_free (int num_q, T_CCI_QUERY_RESULT * qr);
 extern int qe_cursor_update (T_REQ_HANDLE * req_handle,
-			     int sock_fd,
+			     SOCKET sock_fd,
 			     int cursor_pos,
 			     int index,
 			     T_CCI_A_TYPE a_type,
 			     void *value, T_CCI_ERROR * err_buf);
-extern int qe_execute_batch (int sock_fd,
+extern int qe_execute_batch (SOCKET sock_fd,
 			     int num_query,
 			     char **sql_stmt,
 			     T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf);
@@ -326,6 +362,8 @@ extern int qe_get_data_str (T_VALUE_BUF * conv_val_buf,
 			    T_CCI_U_TYPE u_type,
 			    char *col_value_p,
 			    int col_val_size, void *value, int *indicator);
+extern int qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p,
+				 void *value);
 extern int qe_get_data_int (T_CCI_U_TYPE u_type,
 			    char *col_value_p, void *value);
 extern int qe_get_data_float (T_CCI_U_TYPE u_type,
@@ -336,18 +374,18 @@ extern int qe_get_data_date (T_CCI_U_TYPE u_type,
 			     char *col_value_p, void *value);
 extern int qe_get_data_bit (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
-extern int qe_get_attr_type_str (int sock_fd,
+extern int qe_get_attr_type_str (SOCKET sock_fd,
 				 char *class_name,
 				 char *attr_name,
 				 char *buf,
 				 int buf_size, T_CCI_ERROR * err_buf);
 extern int qe_get_query_info (T_REQ_HANDLE * req_handle,
-			      int sock_fd, char log_type, char **out_buf);
-extern int qe_savepoint_cmd (int sock_fd,
+			      SOCKET sock_fd, char log_type, char **out_buf);
+extern int qe_savepoint_cmd (SOCKET sock_fd,
 			     char cmd,
-			     char *savepoint_name, T_CCI_ERROR * err_buf);
-extern int qe_get_param_info (T_REQ_HANDLE * req_handle,
-			      int sock_fd,
+			     const char *savepoint_name,
+			     T_CCI_ERROR * err_buf);
+extern int qe_get_param_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
 			      T_CCI_PARAM_INFO ** param,
 			      T_CCI_ERROR * err_buf);
 extern void qe_param_info_free (T_CCI_PARAM_INFO * param);

@@ -117,6 +117,7 @@ public class MainRegistry {
 	/* server config */
 	public static String CubridConf = new String("");
 	public static String BrokerConf = new String("");
+	public static boolean isMultibyteSupport = false; // true is intl_mbs_support=yes of cubrid.conf 
 	
 	/* diag data */
 	public static ArrayList diagSiteDiagDataList = new ArrayList();

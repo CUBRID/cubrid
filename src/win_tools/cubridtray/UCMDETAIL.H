@@ -61,7 +61,7 @@ protected:
 	afx_msg void OnUcmdDrop();
 	afx_msg void OnUcmdEnd();
 	afx_msg void OnClose();
-	afx_msg void OnTimer(UINT nIDEvent);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnUcmdRestart();
 	afx_msg void OnClickUcmdList(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnDblclkUcmdList(NMHDR* pNMHDR, LRESULT* pResult);
