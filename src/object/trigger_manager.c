@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -2878,7 +2878,7 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING
 		      && !DB_IS_NULL (&value)
 		      && DB_GET_STRING (&value) != NULL
-		      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value),
+		      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value),
 						name) == 0)
 		    {
 		      found = i;
@@ -3047,7 +3047,7 @@ trigger_table_drop (const char *name)
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING
 		      && !DB_IS_NULL (&value)
 		      && DB_GET_STRING (&value) != NULL
-		      && COMPARE_TRIGGER_NAMES (DB_GET_STRING (&value),
+		      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value),
 						name) == 0)
 		    {
 		      found = i;

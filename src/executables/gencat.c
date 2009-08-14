@@ -98,11 +98,15 @@ up-to-date.  Many thanks.
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
 
 #if defined(WINDOWS)
 #include <io.h>
 #include <winsock2.h>
-#include "getopt.h"
 #include "porting.h"
 #define int32_t     int
 #define err(fd, ...)    do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
@@ -892,6 +896,10 @@ MCWriteCat (int fd)
     + (nmsgs * sizeof (struct _nls_msg_hdr)) + string_size;
 
   msgcat = xmalloc (msgcat_size);
+  if (msgcat == NULL)
+    {
+      return;
+    }
   memset (msgcat, '\0', msgcat_size);
 
   /* fill in msg catalog header */
@@ -947,6 +955,7 @@ MCWriteCat (int fd)
 
   /* write out catalog.  XXX: should this be done in small chunks? */
   write (fd, msgcat, msgcat_size);
+  free (msgcat);
 }
 
 void

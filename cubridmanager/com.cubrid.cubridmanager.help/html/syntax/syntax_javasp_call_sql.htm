@@ -1,0 +1,110 @@
+﻿
+<html>
+<head>
+<title>SQL 문에서 호출</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\nJava 저장 함수/프로시저 호출\nSQL 문에서 호출");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_call_basic.htm\">Java 저장 함수/프로시저 호출<\/a> &nbsp;&gt;&nbsp; SQL 문에서 호출<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SQL 문에서 호출</h4>
+<p>다음과 같이 SQL 문에서 Java 저장 함수를 호출하여 사용할 수 있다.</p>
+<p class="code">select Hello() from db_root;<br />
+select sp_int(99) from db_root;</p>
+<p>Java 저장 함수/프로시저를 호출할 때 IN/OUT의 데이터 타입에 호스트 변수를 사용할 수 있으며, 사용 예는 다음과 같다.</p>
+<p class="code">SELECT 'Hi' INTO :out_data FROM db_root;<br />
+CALL test_out(:out_data);<br />
+SELECT :out_data FROM db_root;</p>
+<p>첫 번째 문장은 파라미터 변수를 이용하여 out 모드의 Java 저장 프로시저를 호출하는 예이고, 두 번째 문장은 할당된 호스트 변수 out_data를 조회하는 질의문이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

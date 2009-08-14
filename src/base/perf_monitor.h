@@ -81,6 +81,7 @@ struct t_diag_monitor_cas_value
 {
   INT64 reqs_in_interval;
   INT64 transactions_in_interval;
+  INT64 query_in_interval;
   int active_sessions;
 };
 

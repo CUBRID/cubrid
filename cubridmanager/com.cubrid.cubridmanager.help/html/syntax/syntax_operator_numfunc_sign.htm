@@ -1,0 +1,115 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>SIGN 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n수치 연산 함수\nSIGN 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_numfunc_rand.htm\">수치 연산 함수<\/a> &nbsp;&gt;&nbsp; SIGN 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SIGN 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">SIGN</span> 함수는 숫자 값의 부호를 반환한다. 양수이면 1을, 음수이면 -1을, 0이면 0을 반환한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">SIGN</span>(<span class="var">number_operand</span>)</p>
+<ul>
+<li><span class="var">number_operand</span> : 부호를 반환할 수를 지정한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 -15.03의 부호를 반환하는 예제이다.</p>
+<p class="code">SELECT SIGN(-15.03) FROM db_root;&#160;</p>
+<p>결과값: -1</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -69,12 +69,12 @@ pp_new_cursor (char *name, char *static_stmt, int length,
 
   cursor = es_ht_alloc_new_symbol (sizeof (CURSOR));
 
-  cursor->name = strdup (name);
+  cursor->name = (unsigned char*)strdup (name);
   cursor->cid = next_cid++;
   cursor->level = pp_nesting_level;
   cursor->next = NULL;
   cursor->host_refs = host_refs;
-  cursor->static_stmt = static_stmt ? strdup (static_stmt) : NULL;
+  cursor->static_stmt = (unsigned char*)(static_stmt ? strdup (static_stmt) : NULL);
   cursor->stmtLength = length;
   cursor->dynamic_stmt = dynamic_stmt;
 
@@ -122,7 +122,7 @@ pp_lookup_cursor (char *name)
 {
   CURSOR dummy;
 
-  dummy.name = name;
+  dummy.name = (unsigned char*)name;
   return pp_cursor_table->find_symbol (pp_cursor_table, &dummy);
 
 }
@@ -272,7 +272,7 @@ pp_new_stmt (char *name)
   STMT *stmt;
   STMT dummy;
 
-  dummy.name = name;
+  dummy.name = (unsigned char*)name;
   stmt = pp_stmt_table->find_symbol (pp_stmt_table, &dummy);
   if (stmt != NULL)
     {
@@ -281,7 +281,7 @@ pp_new_stmt (char *name)
 
   stmt = es_ht_alloc_new_symbol (sizeof (STMT));
 
-  stmt->name = strdup (name);
+  stmt->name = (unsigned char*)strdup (name);
   stmt->sid = sid++;
 
   pp_stmt_table->add_symbol (pp_stmt_table, stmt);

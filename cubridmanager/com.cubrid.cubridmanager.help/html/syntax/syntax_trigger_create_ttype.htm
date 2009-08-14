@@ -1,0 +1,116 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>트리거 타입</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트리거(TRIGGER)\n트리거 생성\n트리거 타입");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거(TRIGGER)<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거 생성<\/a> &nbsp;&gt;&nbsp; 트리거 타입<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>트리거 타입</h4>
+<h6>사용자 트리거(User Trigger)</h6>
+<ul>
+<li>데이터베이스의 특정 사용자와 관련된 트리거를 사용자 트리거(user trigger)라고 한다.</li>
+<li>사용자 트리거는 이벤트 대상이 없으며 트리거의 소유자(트리거를 생성한 사용자)에 의해서만&#160;실행된다.</li>
+<li>사용자 트리거를 정의하는 이벤트 타입은 <span class="keyword">COMMIT</span>과 <span class="keyword">ROLLBACK</span>이 있다.&#160;&#160;</li>
+</ul>
+<h6>테이블&#160;트리거(Table Trigger)</h6>
+<ul>
+<li>특정 테이블을 이벤트 대상으로 가지는 트리거를 테이블&#160;트리거(클래스 트리거)라 한다.</li>
+<li>테이블&#160;트리거는 대상 테이블에 <span class="keyword">SELECT</span> 권한을 가지는 모든 사용자가 볼 수 있다.</li>
+<li>테이블&#160;트리거를 정의하는 이벤트 타입은 인스턴스 이벤트와 문장 이벤트가 있다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -180,7 +180,7 @@ make_mergelist_proc (QO_ENV * env,
 		     BITSET * rght_exprs, PT_NODE * rght_elist)
 {
   XASL_NODE *merge = NULL;
-  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PARSER_CONTEXT *parser = NULL;
   QFILE_LIST_MERGE_INFO *ls_merge;
   PT_NODE *outer_attr, *inner_attr;
   int i, left_epos, rght_epos, cnt, seg_idx, ncols;
@@ -197,12 +197,19 @@ make_mergelist_proc (QO_ENV * env,
   bitset_init (&merge_terms, env);
   bitset_init (&term_segs, env);
 
+  if (env == NULL || plan == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  parser = QO_ENV_PARSER (env);
+
   merge =
     ptqo_to_merge_list_proc (parser, left, rght,
 			     plan->plan_un.join.join_type);
 
-  if (env == NULL || plan == NULL || merge == NULL ||
-      left == NULL || left_list == NULL || rght == NULL || rght_list == NULL)
+  if (merge == NULL || left == NULL || left_list == NULL || rght == NULL
+      || rght_list == NULL)
     {
       goto exit_on_error;
     }
@@ -232,12 +239,32 @@ make_mergelist_proc (QO_ENV * env,
   ncols = ls_merge->ls_column_cnt = bitset_cardinality (&merge_terms);
   ls_merge->ls_outer_column =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (ls_merge->ls_outer_column == NULL)
+    {
+      goto exit_on_error;
+    }
+
   ls_merge->ls_outer_unique =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (ls_merge->ls_outer_unique == NULL)
+    {
+      goto exit_on_error;
+    }
+
   ls_merge->ls_inner_column =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+
+  if (ls_merge->ls_inner_column == NULL)
+    {
+      goto exit_on_error;
+    }
+
   ls_merge->ls_inner_unique =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (ls_merge->ls_inner_unique == NULL)
+    {
+      goto exit_on_error;
+    }
 
   left_order = left->orderby_list = make_sort_list_after_eqclass (env, ncols);
   rght_order = rght->orderby_list = make_sort_list_after_eqclass (env, ncols);
@@ -256,7 +283,7 @@ make_mergelist_proc (QO_ENV * env,
 	  ls_merge->single_fetch = QPROC_SINGLE_OUTER;
 	}
 
-      if (BITSET_MEMBER (*left_exprs, i))
+      if (BITSET_MEMBER (*left_exprs, i) && left_elist != NULL)
 	{
 	  /* Then we added an "extra" column for the expression to the
 	   * left_elist.  We want to treat that expression
@@ -290,7 +317,7 @@ make_mergelist_proc (QO_ENV * env,
 	}
       ls_merge->ls_outer_unique[cnt] = false;	/* currently, unused */
 
-      if (BITSET_MEMBER (*rght_exprs, i))
+      if (BITSET_MEMBER (*rght_exprs, i) && rght_elist != NULL)
 	{
 	  /* This situation is exactly analogous to the one above,
 	   * except that we're concerned with the right (inner) side
@@ -319,12 +346,26 @@ make_mergelist_proc (QO_ENV * env,
 	  ls_merge->ls_inner_column[cnt] =
 	    pt_find_attribute (parser, inner_attr, rght_list);
 	}
+
       ls_merge->ls_inner_unique[cnt] = false;	/* currently, unused */
 
+      if (left_order == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_QO_FAILED_ASSERTION, 0);
+	  goto exit_on_error;
+	}
       left_order->s_order = S_ASC;
       left_order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
       left_order->pos_descr.dom = pt_xasl_node_to_domain (parser, outer_attr);
       left_order = left_order->next;
+
+      if (rght_order == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_QO_FAILED_ASSERTION, 0);
+	  goto exit_on_error;
+	}
 
       rght_order->s_order = S_ASC;
       rght_order->pos_descr.pos_no = ls_merge->ls_inner_column[cnt];
@@ -342,7 +383,16 @@ make_mergelist_proc (QO_ENV * env,
   nlen = ls_merge->ls_pos_cnt = left_nlen + rght_nlen;
   ls_merge->ls_outer_inner_list =
     (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  if (ls_merge->ls_outer_inner_list == NULL)
+    {
+      goto exit_on_error;
+    }
+
   ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  if (ls_merge->ls_pos_list == NULL)
+    {
+      goto exit_on_error;
+    }
 
   /* these could be sorted out arbitrily. This could make it
    * easier to avoid the wrapper buildlist_proc, when no expressions,
@@ -384,6 +434,8 @@ make_mergelist_proc (QO_ENV * env,
 	  poslist = (int *) malloc (left_nlen * sizeof (int));
 	  if (poslist == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
 	      goto exit_on_error;
 	    }
 
@@ -397,10 +449,16 @@ make_mergelist_proc (QO_ENV * env,
       merge = ptqo_to_list_scan_proc (parser, merge, SCAN_PROC,
 				      left, left_list, NULL, poslist);
       /* dealloc */
-      if (poslist)
+      if (poslist != NULL)
 	{
 	  free_and_init (poslist);
 	}
+
+      if (merge == NULL)
+	{
+	  goto exit_on_error;
+	}
+
       merge->proc.mergelist.outer_spec_list = merge->spec_list;
       merge->proc.mergelist.outer_val_list = merge->val_list;
 
@@ -418,6 +476,8 @@ make_mergelist_proc (QO_ENV * env,
 	  poslist = (int *) malloc (rght_nlen * sizeof (int));
 	  if (poslist == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
 	      goto exit_on_error;
 	    }
 
@@ -435,6 +495,12 @@ make_mergelist_proc (QO_ENV * env,
 	{
 	  free_and_init (poslist);
 	}
+
+      if (merge == NULL)
+	{
+	  goto exit_on_error;
+	}
+
       merge->proc.mergelist.inner_spec_list = merge->spec_list;
       merge->proc.mergelist.inner_val_list = merge->val_list;
 
@@ -1187,10 +1253,15 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan,
 		     PT_NODE ** predp, QO_XASL_INDEX_INFO * qo_index_infop)
 {
   /* initialize output parameter */
-  if (key_predp)
-    *key_predp = NULL;
-  if (predp)
-    *predp = NULL;
+  if (key_predp != NULL)
+    {
+      *key_predp = NULL;
+    }
+
+  if (predp != NULL)
+    {
+      *predp = NULL;
+    }
 
   if (plan->plan_type == QO_PLANTYPE_FOLLOW)
     {
@@ -1222,7 +1293,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan,
   while (0);
 
   /* if key filter(predicates) is not required */
-  if (predp && (!key_predp || !qo_index_infop))
+  if (predp != NULL && (key_predp == NULL || qo_index_infop == NULL))
     {
       *predp = make_pred_from_bitset (env, &(plan->sarged_terms),
 				      bitset_has_path (env,
@@ -1233,14 +1304,23 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan,
     }
 
   /* make predicate list for key filter */
-  *key_predp =
-    make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms),
-			   is_always_true);
+  if (key_predp != NULL)
+    {
+      *key_predp =
+	make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms),
+			       is_always_true);
+    }
+
   /* make predicate list for data filter */
-  *predp = make_pred_from_bitset (env, &(plan->sarged_terms),
-				  bitset_has_path (env,
-						   &(plan->sarged_terms)) ?
-				  path_access_term : is_normal_access_term);
+  if (predp != NULL)
+    {
+      *predp = make_pred_from_bitset (env, &(plan->sarged_terms),
+				      bitset_has_path (env,
+						       &(plan->
+							 sarged_terms)) ?
+				      path_access_term :
+				      is_normal_access_term);
+    }
 }				/* make_pred_from_plan() */
 
 /*
@@ -1316,7 +1396,7 @@ make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
   namelistp = &namelist;
 
   for (i = bitset_iterate (&((plan->info)->projected_segs), &bi);
-       i != -1; i = bitset_next_member (&bi))
+       namelistp != NULL && i != -1; i = bitset_next_member (&bi))
     {
       QO_SEGMENT *seg;
       PT_NODE *name;
@@ -1357,7 +1437,7 @@ make_sort_list_after_eqclass (QO_ENV * env, int column_cnt)
 	{			/* the first time */
 	  list = single;
 	}
-      else
+      else if (single != NULL)
 	{			/* insert into the head of list */
 	  single->next = list;
 	  list = single;
@@ -1415,23 +1495,25 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
       || merge->proc.mergelist.inner_xasl == NULL
       || merge->proc.mergelist.ls_merge.ls_column_cnt <= 0)
     {
-      er_set (ER_WARNING_SEVERITY, __FILE__, __LINE__, ER_QO_FAILED_ASSERTION,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
       xasl = NULL;
     }
 
-  ncols = merge->proc.mergelist.ls_merge.ls_column_cnt;
-  for (i = 0; i < ncols; i++)
+  if (merge != NULL)
     {
-      if (merge->proc.mergelist.ls_merge.ls_outer_column[i] < 0
-	  || merge->proc.mergelist.ls_merge.ls_inner_column[i] < 0)
+      ncols = merge->proc.mergelist.ls_merge.ls_column_cnt;
+      for (i = 0; i < ncols; i++)
 	{
-	  er_set (ER_WARNING_SEVERITY, __FILE__, __LINE__,
-		  ER_QO_FAILED_ASSERTION, 0);
-	  xasl = NULL;
-	  break;
-	}
-    }				/* for (i = ...) */
+	  if (merge->proc.mergelist.ls_merge.ls_outer_column[i] < 0
+	      || merge->proc.mergelist.ls_merge.ls_inner_column[i] < 0)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_QO_FAILED_ASSERTION, 0);
+	      xasl = NULL;
+	      break;
+	    }
+	}			/* for (i = ...) */
+    }
 
   return xasl;
 }
@@ -1479,7 +1561,7 @@ gen_outer (QO_ENV * env,
 	   BITSET * subqueries,
 	   XASL_NODE * inner_scans, XASL_NODE * fetches, XASL_NODE * xasl)
 {
-  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PARSER_CONTEXT *parser;
   XASL_NODE *scan, *listfile, *merge, *fetch;
   QO_PLAN *outer, *inner;
   JOIN_TYPE join_type = NO_JOIN;
@@ -1491,9 +1573,16 @@ gen_outer (QO_ENV * env,
   BITSET predset;
   BITSET taj_terms;
 
-  if (env == NULL || parser == NULL || plan == NULL || xasl == NULL)
-    return NULL;
+  if (env == NULL)
+    {
+      return NULL;
+    }
+  parser = QO_ENV_PARSER (env);
 
+  if (parser == NULL || plan == NULL || xasl == NULL)
+    {
+      return NULL;
+    }
   bitset_init (&new_subqueries, env);
   bitset_init (&fake_subqueries, env);
   bitset_init (&predset, env);
@@ -1744,15 +1833,19 @@ gen_outer (QO_ENV * env,
 		      {
 			left = pt_left_part (pt_expr);
 			rght = pt_right_part (pt_expr);
-			if (pt_expr->info.expr.op == PT_RANGE)
-			  rght = rght->info.expr.arg1;
+			if (pt_expr->info.expr.op == PT_RANGE && rght != NULL)
+			  {
+			    rght = rght->info.expr.arg1;
+			  }
 		      }
 		    else
 		      {
 			rght = pt_left_part (pt_expr);
 			left = pt_right_part (pt_expr);
-			if (pt_expr->info.expr.op == PT_RANGE)
-			  left = left->info.expr.arg1;
+			if (pt_expr->info.expr.op == PT_RANGE && left != NULL)
+			  {
+			    left = left->info.expr.arg1;
+			  }
 		      }
 
 		    if (pt_is_expr_node (left) || pt_is_function (left))
@@ -1903,6 +1996,9 @@ gen_outer (QO_ENV * env,
 		seg_pos_list = (int *) malloc (seg_nlen * sizeof (int));
 		if (seg_pos_list == NULL)
 		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    seg_nlen * sizeof (int));
 		    xasl = NULL;	/* cause error */
 
 		    if (left_list)
@@ -2176,7 +2272,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
   PARSER_CONTEXT *parser;
   PT_NODE *select;
 
-  if (xasl)
+  if (xasl != NULL)
     {
       parser = QO_ENV_PARSER (env);
       select = QO_ENV_PT_TREE (env);
@@ -2192,10 +2288,12 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 	  select->info.query.q.select.qo_summary = summary;
 	}
       else
-	xasl = NULL;
+	{
+	  xasl = NULL;
+	}
 
       /* save info for derived table size estimation */
-      if (plan)
+      if (plan != NULL && xasl != NULL)
 	{
 	  xasl->projected_size = (plan->info)->projected_size;
 	  xasl->cardinality = (plan->info)->cardinality;
@@ -2259,8 +2357,7 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
   if (xasl == NULL)
     {
       int level;
-      er_set (ER_WARNING_SEVERITY, __FILE__, __LINE__, ER_QO_FAILED_ASSERTION,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (PLAN_DUMP_ENABLED (level))
 	{
@@ -2346,12 +2443,22 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
   /* allocate QO_XASL_INDEX_INFO structure */
   index_infop = (QO_XASL_INDEX_INFO *) malloc (sizeof (QO_XASL_INDEX_INFO));
-  if (!index_infop)
-    goto error;
+  if (index_infop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_XASL_INDEX_INFO));
+      goto error;
+    }
+
   index_infop->nterms = nterms;
   index_infop->term_exprs = (PT_NODE **) malloc (nterms * sizeof (PT_NODE *));
-  if (!index_infop->term_exprs)
-    goto error;
+  if (index_infop->term_exprs == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      nterms * sizeof (PT_NODE *));
+      goto error;
+    }
+
   index_infop->ni_entry = ni_entryp;
 
   /* Make 'term_expr[]' array from the given index terms in order of the
@@ -2372,6 +2479,14 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	{
 	  for (j = 0; j < nsegs; j++)
 	    {
+	      if (i >=
+		  sizeof (termp->index_seg) / sizeof (termp->index_seg[0]))
+		{
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			  ER_QO_FAILED_ASSERTION, 0);
+		  goto error;
+		}
+
 	      if ((index_entryp->seg_idxs[j]) ==
 		  QO_SEG_IDX (termp->index_seg[i]))
 		{
@@ -2380,7 +2495,15 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 		}
 	    }
 	}
+
       /* always, pos != -1 and 0 < pos < nsegs */
+      if (pos < 0)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_QO_FAILED_ASSERTION, 0);
+	  goto error;
+	}
+
       index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
 
     }				/* for (t = bitset_iterate(...); ...) */

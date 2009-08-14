@@ -250,6 +250,11 @@ process_admin (int argc, char **argv)
   int status;
 
   copy_argv = (char **) malloc (sizeof (char *) * (argc + 1));
+  if (copy_argv == NULL)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
   memcpy (copy_argv, argv, sizeof (char *) * argc);
   copy_argv[0] = argv[0];
   copy_argv[argc] = 0;
@@ -283,7 +288,8 @@ main (int argc, char *argv[])
 	}
     }
 
-  if (argc < 2)
+  /* validate the number of arguments to avoid klocwork's error message */
+  if (argc < 2 || argc > 1024)
     {
       util_type = -1;
       goto usage;
@@ -292,9 +298,13 @@ main (int argc, char *argv[])
   util_type = parse_arg (us_Service_map, (char *) argv[1]);
   if (util_type == ER_GENERIC_ERROR)
     {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME,
-		     argv[1]);
-      goto error;
+      util_type = parse_arg (us_Service_map, (char *) argv[2]);
+      if (util_type == ER_GENERIC_ERROR)
+	{
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME,
+			 argv[1]);
+	  goto error;
+	}
     }
 
   if (util_type == ADMIN)
@@ -316,9 +326,13 @@ main (int argc, char *argv[])
   command_type = parse_arg (us_Command_map, (char *) argv[2]);
   if (command_type == ER_GENERIC_ERROR)
     {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD,
-		     argv[2]);
-      goto error;
+      command_type = parse_arg (us_Command_map, (char *) argv[1]);
+      if (command_type == ER_GENERIC_ERROR)
+	{
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD,
+			 argv[2]);
+	  goto error;
+	}
     }
   else
     {
@@ -364,13 +378,23 @@ main (int argc, char *argv[])
       status = process_manager (command_type);
       break;
     case REPL_SERVER:
+#if defined (WINDOWS)
+      print_message (stderr, MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED);
+      return EXIT_FAILURE;
+#else /* WINDOWS */
       status = process_repl_server (command_type, (char *) argv[3],
-				    (char *) argv[4], argc,
-				    (const char **) argv);
+                                    (char *) argv[4], argc,
+                                    (const char **) argv);
+#endif /* !WINDOWS */
       break;
     case REPL_AGENT:
+#if defined (WINDOWS)
+      print_message (stderr, MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED);
+      return EXIT_FAILURE;
+#else /* WINDOWS */
       status = process_repl_agent (command_type, (char *) argv[3],
-				   (char *) argv[4]);
+                                   (char *) argv[4]);
+#endif /* !WINDOWs */
       break;
     default:
       goto usage;
@@ -748,13 +772,13 @@ check_server (const char *type, const char *server_name)
   while (fgets (buf, 4096, input) != NULL)
     {
       token = strtok_r (buf, delim, &save_ptr);
-      if (strcmp (token, type) != 0)
+      if (token == NULL || strcmp (token, type) != 0)
 	{
 	  continue;
 	}
 
       token = strtok_r (NULL, delim, &save_ptr);
-      if (strcmp (token, server_name) == 0)
+      if (token != NULL && strcmp (token, server_name) == 0)
 	{
 	  pclose (input);
 	  return true;
@@ -1010,6 +1034,11 @@ process_broker (int command_type, int argc, const char **argv)
 	if (is_broker_running ())
 	  {
 	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
+	    if (args == NULL)
+	      {
+		return ER_GENERIC_ERROR;
+	      }
+
 	    args[0] = PRINT_BROKER_NAME " " PRINT_CMD_STATUS;
 	    for (i = 0; i < argc; i++)
 	      {
@@ -1018,6 +1047,8 @@ process_broker (int command_type, int argc, const char **argv)
 	    args[argc + 1] = NULL;
 	    status =
 	      proc_execute (UTIL_MONITOR_NAME, args, true, false, NULL);
+
+	    free (args);
 	  }
 	else
 	  {

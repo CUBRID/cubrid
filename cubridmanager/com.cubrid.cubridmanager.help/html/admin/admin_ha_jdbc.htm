@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>HA 관련 JDBC 환경 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\nHA 관련 JDBC 환경 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; HA 관련 JDBC 환경 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>HA 관련 JDBC 환경 설정</h3>
+<h5>기본 환경</h5>
+<ul>
+<li>JDK 1.5 이상</li>
+<li>CUBRID 2008 R2.0 이상</li>
+<li>CUBRID JDBC Driver 2008 R2.0 이상</li>
+</ul>
+<h5>Connection</h5>
+<h6>구문</h6>
+<p class="syntaxp">&lt;<span class="var">url</span>&gt; <span class="keyword">:= jdbc:CUBRID:</span>&lt;<span class="var">host</span>&gt;:&lt;<span class="var">dbname</span>&gt;:&lt;<span class="var">username</span>&gt;:&lt;<span class="var">password</span>&gt; [-&lt;<span class="var">properties</span>&gt;]</p>
+<p class="syntaxp">&lt;<span class="var">properties</span>&gt; := &lt;<span class="var">property</span>&gt; [&amp;&lt;<span class="var">property</span>&gt;]</p>
+<p class="syntaxp">&lt;<span class="var">property</span>&gt; := … | <span class="keyword">althosts</span>=&lt;<span class="var">alternative_hosts</span>&gt; | <span class="keyword">rctime</span>=&lt;<span class="var">time</span>&gt;</p>
+<p class="syntaxp">&lt;<span class="var">alternative_hosts</span>&gt; := &lt;<span class="var">host</span>&gt;:&lt;<span class="var">port</span>&gt; [,&lt;<span class="var">host</span>&gt;:&lt;<span class="var">port</span>&gt;]</p>
+<p class="syntaxp">&lt;<span class="var">host</span>&gt; := <span class="var">HOSTNAME</span> | <span class="var">IP_ADDR</span></p>
+<p class="syntaxp">&lt;<span class="var">time</span>&gt; := <span class="var">SECOND</span></p>
+<h6>설명</h6>
+<p>JDBC에서 HA 기능을 사용하려면, 기존의 JDBC의 connection 방법에 아래 키워드를 추가한다.</p>
+<ul>
+<li><span class="keyword">althosts</span> : 기본으로 지정한 브로커에 연결할 수 없는 경우, 그 다음으로 연결을 시도(failover)할 브로커 정보를 나타낸다. failover할 브로커를 여러 개 지정할 수 있고, <span class="keyword">alhosts</span>에 나열한 순서대로 연결을 시도한다.</li>
+<li><span class="keyword">rctime</span> : 장애가 발생했던 브로커에 failback을 시도하는 주기이다. 이 값은 active 브로커에 장애가 발생하여 standby 브로커로 failover한 경우에 사용된다. 장애 발생 후 <span class="keyword">althosts</span>에 명시한 브로커로 접속하여(failover) 트랜잭션을 종료한 후, <span class="keyword">rctime</span>만큼 시간이 경과할 때마다 기존의 active 브로커에 연결을 시도한다(failback). 이 값이 설정되어 있지 않으면, 600초로 설정된다.</li>
+</ul>
+<h6>예</h6>
+<p>아래 예는 기본 브로커가 Broker_b1이며, Broker_b1에 장애가 발생하면 Broker_b2, Broker_b3의 순서로 연결을 시도한다. 또한, 브로커의 failover한 경우에는, failback을 600초 간격으로 시도한다.</p>
+<p class="code">URL=jdbc:CUBRID:Broker_b1:31000:nbd:nbd:nbd:-althosts=Broker_b2:31000,Broker_b3:31000:&amp;rctime=600</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

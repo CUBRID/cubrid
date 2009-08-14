@@ -1,0 +1,149 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>SELECT문</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID SQL 구문\nSQL 문 목록\nSELECT 문");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">CUBRID SQL 구문<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">SQL 문 목록<\/a> &nbsp;&gt;&nbsp; SELECT 문<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SELECT 문</h4>
+<h5>&lt;<span class="var">query state</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">query expression</span>&gt;<br />
+[ <span class="keyword">ORDER BY</span> &lt;<span class="var">sort specification comma list</span>&gt; ]</p>
+<h5>&lt;<span class="var">query expression</span>&gt;</h5>
+<p class="syntax">{ &lt;<span class="var">query term</span>&gt; [ &lt;<span class="var">table operator</span>&gt; [ &lt;<span class="var">qualifier</span>&gt; ] &lt;<span class="var">query term</span>&gt; ]...</p>
+<h5>&lt;<span class="var">query term</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">query specification</span>&gt;<br />
+| &lt;<span class="var">subquery</span>&gt;</p>
+<h5>&lt;<span class="var">query specification</span>&gt;</h5>
+<p class="syntax"><span class="keyword">SELECT</span> [ &lt;<span class="var">qualifier</span>&gt; ] &lt;<span class="var">select list</span>&gt; [ { <span class="keyword">TO</span> | <span class="keyword">INTO</span> } &lt;<span class="var">variable comma list</span>&gt; ]<br />
+<span class="keyword">FROM</span> &lt;<span class="var">extended table specification comma list</span>&gt;<br />
+[ <span class="keyword">WHERE</span> &lt;<span class="var">search condition</span>&gt; ]<br />
+[ <span class="keyword">GROUP BY</span> &lt;<span class="var">path expression comma list</span>&gt; ]<br />
+[ <span class="keyword">HAVING</span> &lt;<span class="var">search conditio</span>n&gt; ]<br />
+[ &lt;<span class="var">using index clause</span>&gt; ]</p>
+<h5>&lt;<span class="var">subquery</span>&gt;</h5>
+<p class="syntax">(&lt;<span class="var">query statement</span>&gt;)</p>
+<h5>&lt;<span class="var">table operator</span>&gt;</h5>
+<p class="syntax"><span class="keyword">UNION</span><br />
+| { <span class="keyword">DIFFERENCE</span> | <span class="keyword">EXCEPT</span> }<br />
+| <span class="keyword">INTERSECTION</span></p>
+<h5>&lt;<span class="var">qualifier</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ALL</span><br />
+| <span class="keyword">DISTINCT</span><br />
+| <span class="keyword">UNIQUE</span></p>
+<h5>&lt;<span class="var">select list</span>&gt;</h5>
+<p class="syntax">*<br />
+| &lt;<span class="var">aliased expression comma list</span>&gt;<br />
+| &lt;<span class="var">aliased counter expression comma list</span>&gt;<br />
+<span class="var">counter expression</span> : <span class="keyword">INCR</span>(<span class="var">path expression</span>)</p>
+<h5>&lt;<span class="var">aliased expression comma list</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">aliased expression</span>&gt; [ { , &lt;<span class="var">aliased expression</span>&gt; }... ]</p>
+<h5>&lt;<span class="var">aliased expression</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">expression</span>&gt; [ [ <span class="keyword">AS</span> ] &lt;<span class="var">alias name</span>&gt; ]</p>
+<h5>&lt;<span class="var">sort specification comma list</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">sort specification</span>&gt; [ { , &lt;<span class="var">sort specification</span>&gt; }... ]</p>
+<h5>&lt;<span class="var">sort specification</span>&gt;</h5>
+<p class="syntax">{ &lt;<span class="var">path expression</span>&gt; | &lt;<span class="var">unsigned integer literal</span>&gt; | &lt;<span class="var">alias</span>&gt; } [ <span class="keyword">ASC</span> | <span class="keyword">DESC</span> ]</p>
+<h5>&lt;<span class="var">using index clause</span>&gt;</h5>
+<p class="syntax"><span class="keyword">USING INDEX</span> { &lt;<span class="var">index name comma list</span>&gt; | <span class="keyword">NONE</span> }</p>
+<h5>예제</h5>
+<p class="code">SELECT * FROM resort;</p>
+<p class="code">SELECT lodging FROM location WHERE country = 'Jamaica';</p>
+<p class="code">SELECT country, AVG(cost) FROM hotel<br />
+WHERE allows_children = 'yes' AND<br />
+number_of_pools &gt; 0<br />
+GROUP BY country HAVING AVG(cost) &lt;= $150.00;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

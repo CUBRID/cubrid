@@ -1,0 +1,256 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>스키마 변경 규칙</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n테이블 조작\n클래스 충돌 해결\n스키마 변경 규칙");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_create_syntax.htm\">테이블 조작<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_conflict_intro.htm\">클래스 충돌 해결<\/a> &nbsp;&gt;&nbsp; 스키마 변경 규칙<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>스키마 변경 규칙</h4>
+<p>스키마 불변성에서 항상 유지되어야 하는 스키마의 특성들에 대해 언급하였다. 스키마를 변경하는 방법은 몇 가지가 존재하며 이 방법들은 스키마 불변성을 유지해야 한다. 예를 들어, 수퍼클래스를 하나만 가지는 클래스에서 그 수퍼클래스와의 관계를 제거한다고 가정하자. 수퍼클래스와의 관계가 삭제되면 그 클래스는 object 클래스의 직속 서브클래스가 되거나 만약 사용자가 그 클래스는 적어도 하나의 수퍼클래스를 가져야 한다고 명시했다면 그 삭제는 거부될 것이다. 이러한 선택은 임의적인 측면이 있지만, 스키마를 변경하는 방법 중 하나를 선택하기 위한 몇 가지 규칙을 가지는 것은 사용자나 데이터베이스 설계자에게 분명 유용할 것이다.</p>
+<p>충돌 해결 규칙(conflict-resolution rules), 도메인 변경 규칙(domain-change rule), 클래스 계층 규칙(class-hierarchy rule)의 세 가지 형태 규칙이 적용된다.</p>
+<p>일곱 개의 충돌 해결 규칙은 상속 불변성을 강화한다. 대부분의 스키마 변경 규칙은 이름 충돌 때문에 필요하다. 도메인 변경 규칙은 상속 불변성의 도메인 해결을 강화한다. 클래스 계층 규칙은 클래스 계층 불변성을 강화한다.</p>
+<h6>충돌 해결 규칙</h6>
+<ul>
+<li><span class="keyword">규칙 1</span> : 클래스 C의 속성(메소드) 이름이 수퍼클래스 S의 속성 이름과 충돌이 발생한다면(이름이 같다면), 클래스 C의 속성이 사용된다. S의 속성은 상속되지 않는다.</li>
+<li class="desc">어떤 클래스가 하나 이상의 수퍼클래스를 가지는 경우, 속성들이 의미적으로 같은지, 어떤 속성을 상속받을 것인지를 결정하기 위해 각 수퍼클래스가 가지는 속성(메소드)들의 세가지 측면이 고려되어야 한다. 속성(메소드)의 세 가지 측면은 이름, 도메인, 출처이다. 아래 표는 세 가지 측면에서 두 수퍼클래스에서 발생할 수 있는 여덟 가지 조합이다. 사례 1의 경우(두 개의 서로 다른 수퍼클래스의 속성이 이름, 도메인, 출처가 모두 같은 경우), 두 속성은 동일하므로 서브클래스는 둘 중 하나만 상속받아야 한다. 사례 8의 경우(두 개의 서로 다른 수퍼클래스의 속성이 이름, 도메인, 출처가 모두 다른 경우), 두 속성은 완전히 다른 속성이므로 모두 상속받아야 한다.</li>
+<li class="desc">
+<table border="1">
+<tr>
+<th width="60">
+<p>사례</p>
+</th>
+<th width="80">
+<p>이름</p>
+</th>
+<th width="80">
+<p>도메인</p>
+</th>
+<th width="80">
+<p>출처</p>
+</th>
+</tr>
+<tr>
+<td width="60">1</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+</tr>
+<tr>
+<td width="60">2</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+</tr>
+<tr>
+<td width="60">3</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+</tr>
+<tr>
+<td width="60">4</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+</tr>
+<tr>
+<td width="60">5</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+</tr>
+<tr>
+<td width="60">6</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+</tr>
+<tr>
+<td width="60">7</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>같음</p>
+</td>
+</tr>
+<tr>
+<td width="60">8</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+<td width="80">
+<p>다름</p>
+</td>
+</tr>
+</table>
+</li>
+</ul>
+<ul>
+<li class="desc">8개의 사례 중 5개(1, 5, 6, 7, 8)는 명확한 의미를 가지고 있다. 상속 불변성은 이러한 경우의 충돌을 해결하기 위한 가이드 라인이다. 나머지 사례(2, 3, 4)의 경우, 충돌을 자동으로 해결하는 것은 매우 어렵다. 규칙 2, 규칙 3이 이러한 충돌의 해결 방안이 될 수 있다.</li>
+</ul>
+<ul>
+<li><span class="keyword">규칙 2</span> : 두 개 이상의 수퍼클래스가 출처는 다르지만 같은 이름과 도메인의 속성(메소드)을 가질 때, 사용자가 충돌 해결 구문을 사용할 경우 하나 이상의 속성(메소드)을 상속할 수 있다. 충돌 해결 구문을 사용하지 않는다면 시스템은 임의의 어느 한 속성을 선택하여 상속할 것이다.</li>
+<li class="desc">이 규칙은 위 표의 사례 2 형태의 충돌을 해결하기 위한 가이드 라인이다.</li>
+<li><span class="keyword">규칙 3</span> : 두 개 이상의 수퍼클래스가 출처와 도메인은 다르지만 이름이 같은 속성(메소드)을 가질 때, 더 상세한 도메인(상속 계층 구조의 하위에 있는)을 가지는 속성(메소드)이 상속될 것이다. 도메인들 사이에 상속 관계가 없으면 스키마 변경은 허용되지 않는다.</li>
+<li class="desc">이 규칙은 사례 3, 4 형태의 충돌을 해결하기 위한 가이드 라인이다. 규칙 3과 규칙 4가 충돌하는 경우, 규칙 3이 규칙 4보다 우선한다.</li>
+<li><span class="keyword">규칙 4</span> : 사용자는 사례 3, 4의 경우를 제외한 어떠한 변경도 가능하다. 뿐만 아니라, 서브클래스에 대한 충돌 해결이 수퍼클래스에 대한 변경을 초래할 수 없다.</li>
+<li class="desc">규칙 4의 철학은 "상속은 서브클래스가 수퍼클래스로부터 부여 받은 권리로 서브클래스의 변경이 수퍼클래스에 영향을 줄 수 없다"라는 것이다. 규칙 4는 클래스 C와 수퍼클래스들 사이에 발생하는 충돌을 해결하기 위해 수퍼클래스의 포함된 속성(메소드)의 이름을 변경할 수 없다는 것을 의미한다. 규칙 4의 예외는 스키마 변경이 사례 3, 4의 충돌을 유발하는 경우이다.</li>
+<li>예를 들어, 클래스 A가 클래스 B의 수퍼클래스고, 클래스 B가 타입이 <span class="keyword">DATE</span>인 playing_date라는 속성을 가진다고 가정하자. 클래스 A에 <span class="keyword">STRING</span> 타입의 playing_date라는 이름의 속성을 추가하면, 클래스 B의 playing_date 속성과 충돌이 발생할 것이다. 이것이 사례 4의 경우다. 이 충돌을 해결하는 정확한 방법은 사용자가 클래스 B가 클래스 A의 playing_date 속성을 상속하도록 명시하는 것이다. 메소드가 속성을 참조한다면, 클래스 B의 사용자는 올바른 playing_date 속성을 참조하도록 메소드를 적절히 변경할 필요가 있다. 클래스 A의 스키마 변경이 허용되지 않는 이유는 클래스 B의 사용자가 스키마 변경으로 인해 발행하는 충돌을 해결하기 위해 명시적인 구문을 기술하지 않으면, 스키마가 일관되지 않은 상태가 되기 때문이다.</li>
+<li class="desc"><img src="images/syntax_table_schemachange_rule4.png" width="291" height="165" border="0" alt="" /></li>
+<li><span class="keyword">규칙 5</span> : 수퍼클래스의 스키마를 변경함으로써 충돌이 발생하면, 그 변경이 규칙들을 위반하지 않는 한 원래의 해결 방법이 유지된다. 그러나 스키마 변경이 원래의 해결 방법을 무효화한다면 시스템은 다른 해결 방법을 적용할 것이다.</li>
+<li class="desc">규칙 5는 충돌이 없는 클래스에 충돌을 유발하거나, 이전의 충돌을 해결하는 방법을 무효화하는 상황을 책임지는 규칙이다.</li>
+<li class="desc">이러한 경우는 수퍼클래스에 속성(메소드)이 추가되거나 수퍼클래스로부터 상속받은 속성(메소드)이 삭제될 때, 속성(메소드)의 이름 또는 도메인이 변경되거나, 수퍼클래스가 삭제되는 상황이다. 규칙 5는 규칙 4의 철학과 일치한다. 즉, 사용자는 그 클래스를 상속한 서브클래스가 상속받은 속성(메소드)에 어떠한 영향을 미칠지 신경 쓰지 않고 자유롭게 클래스를 변경할 수 있다.</li>
+<li class="desc">클래스 C의 수퍼클래스의 스키마 변경할 때, 이전에 다른 클래스와 충돌이 발생하여 그 클래스의 속성을 상속하기로 결정했었다면 클래스 C의 속성(메소드) 손실을 초래할 수 있다. 이 경우, 이전에 충돌했던 속성(메소드) 중 하나를 대신 상속 받아야 한다.</li>
+<li class="desc">수퍼클래스의 스키마 변경은 속성(메소드)과 클래스 C의 (지역적으로 선언되거나 상속받은) 속성(메소드)의&#160;충돌을 일으킬 수 있다. 이 경우, 시스템은 규칙 2나 규칙 3을 적용하여 충돌을 자동으로 해결시키고 사용자에게 알릴 수도 있다.</li>
+<li class="desc">수퍼클래스와의 관계를 추가하거나 삭제함으로써 새로운 충돌이 발생하는 상황은 규칙 5를 적용할 수 없다. 클래스에 대한 수퍼클래스 추가/삭제는 클래스 내에서 제어되어야 한다. 즉, 사용자가 명시적인 해결 방법을 제시해야 한다.</li>
+<li><span class="keyword">규칙 6</span> : 속성이나 메소드의 변경은 충돌이 발생하지 않는 서브클래스들에게만 전파된다.</li>
+<li class="desc">이 규칙은 규칙 5와 상속 불변성의 적용을 제한한다. 규칙 2, 규칙 3을 적용하여 충돌을 탐지하고 해결할 수 있다.</li>
+<li><span class="keyword">규칙 7</span> : 클래스 R의 속성이 클래스 C를 도메인으로 사용해도&#160;클래스 C를 삭제할 수 있다. 이 경우, 클래스 C를 도메인으로 사용하는 속성의 도메인이 object로 변경 될 수 있다.</li>
+</ul>
+<h6>도메인 변경 규칙</h6>
+<ul>
+<li><span class="keyword">규칙 8</span> : 클래스 C의 한 속성의 도메인이 D에서 D의 수퍼클래스로 변경되었다면 새로운 도메인은 클래스 C가 속성을 상속받은 수퍼클래스의 대응하는 도메인보다 더 일반적이지 않다. 다음 예는 이 규칙의 원리를 설명한다.</li>
+<li class="desc">데이터베이스에 player라는 속성을 가지는 game 클래스와 game을 상속한 female_game 클래스가 존재한다고 가정하자. game의 player 속성의 도메인은 athlete 클래스이지만 female_game의 player 속성의 도메인은 athlete의 서브클래스인 female_athlete 클래스로 변경되었다. 다음 그림이 이러한 관계를 보여주고 있다. 그러나 female_game의 player 속성의 도메인은 female_athlete의 수퍼클래스인 athlete로 다시 변경될 수 있다.</li>
+<li class="desc"><img src="images/syntax_table_schemachange_rule8.png" width="270" height="195" border="0" alt="" /></li>
+</ul>
+<h6>클래스 계층 규칙</h6>
+<ul>
+<li><span class="keyword">규칙 9</span> : 수퍼클래스가 없는 클래스는 object의 직속 서브클래스가 된다. 클래스 계층 규칙은 수퍼클래스가 없는 클래스의 특성을 정의한다. 수퍼클래스 없이 클래스를 생성한다면 object를 수퍼클래스가 갖게 된다. 만약 클래스 C의 고유한 수퍼클래스인 S를 삭제하면 클래스 C는 object의 직속 서브클래스가 된다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

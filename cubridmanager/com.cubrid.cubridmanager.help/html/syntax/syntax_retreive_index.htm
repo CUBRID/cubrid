@@ -1,0 +1,149 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>USING INDEX</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 조회\nUSING INDEX 절");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_select.htm\">데이터 조회<\/a> &nbsp;&gt;&nbsp; USING INDEX 절<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>USING INDEX 절</h3>
+<h6>설명</h6>
+<p><span class="keyword">USING INDEX</span> 절은 질의에서 인덱스를 지정할 수 있도록 해서 질의처리기가 적절한 인덱스를 선택할 수 있게 한다.<br />
+<span class="keyword">USING INDEX</span> 절은 <span class="keyword">SELECT</span>, <span class="keyword">DELETE</span>, <span class="keyword">UPDATE</span> 문의 <span class="keyword">WHERE</span> 절 다음에 지정되어야 한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">SELECT</span> . . . <span class="keyword">FROM</span> . . . <span class="keyword">WHERE</span> . . .<br />
+[<span class="keyword">USING INDEX</span> { <span class="keyword">NONE</span> | <span class="var">index_spec</span> [ {, <span class="var">index_spec</span> } ...] } ] [ ; ]<br />
+<span class="keyword">DELETE</span> <span class="keyword">FROM</span> . . . <span class="keyword">WHERE</span> . . .<br />
+[<span class="keyword">USING INDEX</span> { <span class="keyword">NONE</span> | <span class="var">index_spec</span> [ {, <span class="var">index_spec</span> } ...] } ] [ ; ]<br />
+<span class="keyword">UPDATE</span> . . . <span class="keyword">SET</span> . . . <span class="keyword">WHERE</span> . . .<br />
+[<span class="keyword">USING INDEX</span> { <span class="keyword">NONE</span> | <span class="var">index_spec</span> [ {, <span class="var">index_spec</span> } ...] } ] [ ; ]&#160;<br />
+<span class="var">index_spec</span> :<br />
+&#160;[<span class="var">table_name</span>.]<span class="var">index_name</span> [(+)]</p>
+<ul>
+<li><span class="keyword">NONE</span> : <span class="keyword">NONE</span>을 지정한 경우 순차 스캔이 지정된다.</li>
+<li>(+) : 인덱스 이름 뒤에 (+)가 지정된다면 지정된 인덱스를 사용하는 인덱스 스캔이 지정된다.</li>
+</ul>
+<p><span class="keyword">USING INDEX</span> 절은 강제로 순차 스캔 또는 인덱스 스캔이 사용되게 하거나, 나쁜 성능을 발생시키지 않는 인덱스가 포함되도록 한다.</p>
+<p>만약 <span class="keyword">USING INDEX</span> 절에 인덱스 이름의 리스트가 지정된다면 질의 최적화기는 지정된 인덱스만을 대상으로 질의 실행 비용을 계산하고, 나열된 인덱스의 인덱스 스캔 비용과 순차 스캔 비용을 비교하여 최적의 실행 계획을 만든다(CUBRID는 실행 계획을 선택하는데 비용 기반의 질의 최적화를 수행한다).</p>
+<p><span class="keyword">USING INDEX</span>는 원하는 <span class="keyword">ORDER BY</span> 없이 원하는 순서로 결과를 얻고자 할 때 유용하게 사용될 수 있다. CUBRID는 인덱스 스캔을 하면 인덱스에 저장된 순서로 결과가 생성되는데, 한 테이블에 여러 인덱스가 있을 경우 특정 인덱스의 순서로 질의 결과를 얻고자 할 때 <span class="keyword">USING INDEX</span>를 사용할 수 있다.</p>
+<h6>예제</h6>
+<p>다음은 <span class="keyword">athlete</span> 테이블의 생성문에&#160;맞추어 인덱스를 생성한 예제이다.</p>
+<p class="code">CREATE TABLE athlete (<br />
+&#160;&#160; code&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SMALLINT&#160;&#160;&#160; NOT NULL PRIMARY KEY,<br />
+&#160;&#160; name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; VARCHAR(40) NOT NULL,<br />
+&#160;&#160; gender&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CHAR(1)&#160;&#160;&#160;&#160; ,<br />
+&#160;&#160; nation_code&#160;&#160;&#160;&#160;&#160; CHAR(3)&#160;&#160;&#160;&#160; ,<br />
+&#160;&#160; event&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; VARCHAR(30) ,<br />
+&#160;&#160; );<br /></p>
+<p class="code">CREATE UNIQUE INDEX athlete_idx ON athlete(code,&#160;nation_code);<br />
+CREATE INDEX char_idx ON athlete(gender, nation_code);</p>
+<p>다음 질의에 대해서 질의 최적화기는 <span class="keyword">athlete_idx</span> 인덱스를 사용하는 인덱스 스캔을 선택할 수 있다.</p>
+<p class="code">SELECT * FROM athlete WHERE gender='M' AND nation_code='USA';</p>
+<p>다음 질의에서와 같이 <span class="keyword">USING INDEX</span> <span class="keyword">char_idx</span>를 지정하면 질의 최적화기는 <span class="keyword">USING INDEX</span>에서 지정한 인덱스만을 대상으로 인덱스 스캔 비용을 산출한다.</p>
+<p>인덱스 스캔 비용이 순차 스캔 비용보다 작을 경우 인덱스 스캔을 하게 된다.</p>
+<p class="code">SELECT * FROM athlete WHERE gender='M' AND nation_code='USA'<br />
+USING INDEX char_idx;</p>
+<p>만약 <span class="keyword">char_idx</span>&#160;인덱스를 사용하는 인덱스 스캔을 강제로 지정할 경우에는 다음과 같이 인덱스 이름 뒤에 (+)를 지정한다.</p>
+<p class="code">SELECT * FROM athlete WHERE gender='M' AND nation_code='USA'<br />
+USING INDEX char_idx(+);</p>
+<p>만약 순차 스캔을 선택하도록 할 경우 다음과 같이 <span class="keyword">USING INDEX</span> 절에서 <span class="keyword">NONE</span>을 지정한다.</p>
+<p class="code">SELECT * FROM athlete WHERE gender='M' AND nation_code='USA'<br />
+USING INDEX NONE;</p>
+<p>만약 다음과 같이 <span class="keyword">USING INDEX</span> 절에서 두 개 이상의 인덱스를 지정한 경우 질의 최적화기는 지정된 인덱스 중 적절한 하나를 선택한다.</p>
+<p class="code">SELECT * FROM athlete WHERE gender='M' AND nation_code='USA'<br />
+USING INDEX char_idx, athlete_idx;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

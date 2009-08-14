@@ -1,0 +1,143 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>RPAD 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n스트링  함수와 연산자\nRPAD 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_strfunc_concat.htm\">스트링  함수와 연산자<\/a> &nbsp;&gt;&nbsp; RPAD 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>RPAD 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">RPAD</span> 함수는 문자열이 일정 길이가 될때까지 오른쪽에서부터 특정 문자를 덧붙인다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">RPAD</span>( <span class="var">char1</span>, <span class="var">n</span>, [, <span class="var">char2</span> ] )&#160;<br />
+<br />
+<span class="var">char1</span> :<br />
+character string<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">n</span> :<br />
+integer<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">char2</span> :<br />
+character string<br />
+<span class="keyword">NULL</span></p>
+<p><span class="keyword">RPAD</span> 함수는 <span class="var">char1</span>의 전체 길이가 <span class="var">n</span>이 될 때까지 <span class="var">char1</span>의 오른쪽 끝에서부터 <span class="var">char2</span>를 덧붙인다.</p>
+<ul>
+<li><span class="var">char1</span> : 덧붙이는 대상 문자열을 지정한다. <span class="var">char1</span>의 길이가 <span class="var">n</span>보다 크면, <span class="var">char1</span>을 길이 <span class="var">n</span>으로 잘라내어 반환한다. <span class="var">char1</span>이 더블-바이트 문자 세트(한국어 등)의 첫 번째 바이트에서 절단될 경우에 더블-바이트 문자 세트의 첫 번째 바이트를 제거하고 공백문자 하나를 덧붙인다. 값이&#160;<span class="keyword">NULL</span>이면 결과는 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">n</span> : 전체 길이를 지정한다. 값이&#160;<span class="keyword">NULL</span>이면 결과는 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">char2</span> : 덧붙일 문자열을 지정한다. 하나의 공백문자(' ')가 <span class="var">char2</span>의 디폴트 값으로 사용된다. 값이&#160;<span class="keyword">NULL</span>이면 결과는 <span class="keyword">NULL</span>이 반환된다.&#160;&#160;</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 문자열이&#160;6자리가 될 때까지 문자 X를 오른쪽에 덧붙이는 예제이다.</li>
+</ul>
+<p class="code">SELECT RPAD('123', 6, 'X') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: '123XXX'</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 문자열을&#160;4자리로 잘라내어 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT RPAD('123456', 4, 'X') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: '1234'</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>CUBRID 매니저 클라이언트 실행</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\nCUBRID 매니저 실행\nCUBRID 매니저 클라이언트 실행");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_execute_setting.htm\">CUBRID 매니저 실행<\/a> &nbsp;&gt;&nbsp; CUBRID 매니저 클라이언트 실행<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CUBRID 매니저 클라이언트 실행</h3>
+<p>CUBRID 매니저는 서버와 클라이언트로 구성되며, &#160;CUBRID 매니저 서버가 실행 중일 때에만 CUBRID 매니저 클라이언트를 실행할 수 있다.</p>
+<p>CUBRID 매니저 클라이언트는 Java 응용 프로그램으로 JRE 혹은 JDK 버전 1.5 이상에서만 실행되며, 낮은 버전에서 실행할 경우 "지원하지 않는 JRE 버전입니다. CUBRID 매니저를 사용하기 위해서는 JRE 1.5 이상 버전을 사용해야 합니다."라는 오류 메시지가 출력된다.</p>
+<h6>Windows 환경에서 실행</h6>
+<ul>
+<li>[시작] &gt; [모든 프로그램] &gt; [CUBRID] &gt; [CUBRID Magnger Client]를 선택한다.</li>
+<li class="desc"><img src="images/manager_execute_client.jpg" alt="" /></li>
+<li>CUBRID 서비스 트레이를 클릭하고 [Tools] &gt; [CUBRID Manager]를 선택한다.</li>
+<li class="desc"><img src="images/manager_execute_client_tray.jpg" alt="" /></li>
+</ul>
+<h6>Linux 환경에서 실행</h6>
+<p>셸에서 다음 중 하나의 명령을 입력하여 CUBRID 매니저 클라이언트를 실행할 수 있다.</p>
+<ul>
+<li><span class="codep">%cd $CUBRID/cubridmanager</span></li>
+<li><span class="codep">%./cubridmanager</span></li>
+</ul>
+<h6>CUBRID 매니저 클라이언트 로그</h6>
+<p>CUBRID 매니저 클라이언트를 수행 중에 발생한 오류 로그는 <span class="keyword">$CUBRID/cubridmanager/logs</span>에 <span class="keyword">cubridmanager.log</span>라는 파일로 생성된다. 사용자는 CUBRID 매니저 개선 및 오류 분석 시 해당 오류 로그와 현상을 CUBRID 매니저 개발 사이트 이슈로 등록하여 CUBRID 매니저 개선 활동에 참여할 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

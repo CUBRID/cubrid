@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -110,7 +110,7 @@ uw_get_os_error_code (void)
 const char *
 uw_get_error_message (int error_code, int os_error_code)
 {
-  static char err_msg_buf[1024];
+  static char err_msg_buf[2048];
   char *p;
   char err_msg[1024];
 
@@ -128,8 +128,8 @@ uw_get_error_message (int error_code, int os_error_code)
       return (err_msg_buf);
     }
   get_error_msg (error_code, err_msg);
-  sprintf (err_msg_buf, "%s (OS error code = %d, %s)",
-	   err_msg, os_error_code, p);
+  snprintf (err_msg_buf, sizeof (err_msg_buf) - 1,
+	    "%s (OS error code = %d, %s)", err_msg, os_error_code, p);
   return (err_msg_buf);
 }
 

@@ -524,17 +524,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	  hash = mht_1str_pseudo_key (db_pull_numeric (val), -1);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  hash = mht_1str_pseudo_key (db_get_string (val), -1);
+	  hash = mht_1str_pseudo_key (db_pull_string (val), -1);
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_pull_bit (val, &t_n), -1);
 	  break;
 	case DB_TYPE_TIME:
 	  hash = (unsigned int) *(db_get_time (val));
@@ -580,13 +580,13 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = GET_PTR_FOR_HASH (db_get_object (val));
 	  break;
 	case DB_TYPE_OID:
-	  hash = (unsigned int) OID_PSEUDO_KEY (db_get_oid (val));
+	  hash = (unsigned int) OID_PSEUDO_KEY (db_pull_oid (val));
 	  break;
 	case DB_TYPE_MIDXKEY:
 	  db_make_null (&t_val);
 	  {
 	    DB_MIDXKEY *midxkey;
-	    midxkey = db_get_midxkey (val);
+	    midxkey = db_pull_midxkey (val);
 	    if (set_midxkey_get_element_nocopy (midxkey, 0, &t_val,
 						NULL, NULL) == NO_ERROR)
 	      {
@@ -921,14 +921,13 @@ mht_rehash (MHT_TABLE * ht)
   new_hvector = (HENTRY_PTR *) malloc (size);
   if (new_hvector == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* Initialize all entries */
-  for (hvector = new_hvector, i = 0; i < est_size; i++)
-    {
-      *hvector++ = NULL;
-    }
+  memset (new_hvector, 0x00, size);
 
   /* Now rehash the current entries onto the vector of hash entries table */
   for (ht->ncollisions = 0, hvector = ht->table, i = 0; i < ht->size;

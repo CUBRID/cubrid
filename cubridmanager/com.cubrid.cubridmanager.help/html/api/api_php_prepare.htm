@@ -1,0 +1,134 @@
+﻿
+<html>
+<head>
+<title>cubrid_prepare</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="cubrid_prepare" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_prepare");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_prepare<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_prepare</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_prepare</span> 함수는 주어진 커넥션 핸들에 프리 컴파일된 SQL 문을 나타내는 API 이다. SQL 문은, 프리 컴파일되어 <span class="keyword">cubrid_prepare</span>에 포함된다. 이것은 이 문장을 여러 차례 효율적으로 실행하는 목적으로 사용할 수 있고, Long Data를 처리하는데 효율적으로 사용할 수 있다. SQL 문은 단 하나만 올 수 있으며, 파라미터는 SQL 문의 적합한 위치에 MARK(?) 를 삽입할 수 있다. 파라미터는 <span class="keyword">INSERT</span> 문장의 <span class="keyword">VALUES</span> 절이나 SQL 문의 <span class="keyword">WHERE</span> 절에서 값을 대입하고자 할 위치에 추가한다. MARK(?) 에 값을 대입하는 것은 <span class="keyword"><a href="api_php_bind.htm">cubrid_bind</a></span>에 의해서만 할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_prepare</span> (int <span class="var">conn_handle</span>,string <span class="var">prepare_stmt</span> [, int <span class="var">option</span>])</p>
+<ul>
+<li><span class="var">conn_handle</span>&#160;: 연결 핸들</li>
+<li><span class="var">prepare_stm</span> : prepare 질의문</li>
+<li><span class="var">option</span>&#160;: OID 반환 옵션 CUBRID_INCLUDE_OID</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : 요청 핸들(request handle)</li>
+<li>실패 : false</li>
+</ul>
+<h6>예제</h6>
+<p class="code">if ($con) {<br />
+$sql = "insert into tbl values ( ?,?,?)";<br />
+&#160;$req = cubrid_prepare( $con, $sql, CUBRID_INCLUDE_OID );<br />
+&#160;$i = 0;<br />
+&#160;while ( $i &lt; 2 ) {<br />
+&#160;$res = cubrid_bind( $req, 1, "1", "NUMBER");<br />
+&#160;$res = cubrid_bind( $req, 2, "2");<br />
+&#160;$res = cubrid_bind( $req, 3, "04:22:34 PM 08/07/2007");<br />
+&#160;$res = cubrid_execute( $req ); &#160;<br />
+$i = $i + 1;<br />
+}}</p>
+<h6>관련 항목</h6>
+<ul>
+<li><a href="api_php_execute.htm"><span class="keyword">cubrid_execute</span></a></li>
+<li class="keyword"><a href="api_php_bind.htm">cubrid_bind</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

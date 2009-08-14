@@ -1,0 +1,117 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>BIGINT</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="INTEGER" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n수치형 데이터  타입\nBIGINT");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_num_def.htm\">수치형 데이터  타입<\/a> &nbsp;&gt;&nbsp; BIGINT<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>BIGINT</h4>
+<h6>설명</h6>
+<p><span class="keyword">BIGINT</span> 데이터 타입은 정확한 수치형 타입이다. 정밀도는 19이고 스케일은 0이다. <span class="keyword">BIGINT</span> 타입은 8바이트(64비트) 정수를 저장하며, 지원하는 범위는 -9,223,372,036,854,775,808에서 9,223,372,036,854,775,807이다.</p>
+<p class="syntax"><span class="keyword">BIGINT</span></p>
+<h6>참고 사항</h6>
+<ul>
+<li>만약, 소수점 아래 숫자가 있는 값을&#160;<span class="keyword">BIGINT</span>에 지정하면 소수점 뒤의 숫자는 모두 절삭된다.</li>
+<li>정밀도와 표현할 수 있는 범위를 기준으로는 다음과 같이 정렬할 수 있다.<br />
+SMALLINT ⊂ INTEGER ⊂ BIGINT ⊂ NUMERIC</li>
+</ul>
+<h6>예제</h6>
+<p class="code">INTEGER에 8934를 지정하면 8934가 저장됨.<br />
+INTEGER에 7823467를 지정하면 7823467이 저장됨.<br />
+INTEGER에 89.8를 지정하면 89가 저장됨(소수점 뒤의 수치는 모두 절삭됨).<br />
+INTEGER에 3458901122를 지정하면 오류가 발생함(표현 가능 범위를 초과하면 오류 발생).</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>SUBSETEQ 연산자</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n포함 연산자\nSUBSETEQ 연산자");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_contain_contain.htm\">포함 연산자<\/a> &nbsp;&gt;&nbsp; SUBSETEQ 연산자<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SUBSETEQ 연산자</h4>
+<h6>설명</h6>
+<p><span class="keyword">SUBSETEQ</span> 연산자는 한 컬렉션이 다른 컬렉션의 부분집합이거나 혹은 같은지 알려준다. 첫 번째 컬렉션이 비교되는 컬렉션보다 작거나 같다고 간주된다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="var">collection_operand</span> <span class="keyword">SUBSETEQ</span> <span class="var">collection_operand</span></p>
+<p><span class="var">collection_operand</span>는 항상 하나의 컬렉션 값이 되어야 한다. 첫 번째 <span class="var">collection_operand</span>가 생성하는 컬렉션이 두 번째 <span class="var">collection_operand</span>의 값과 비교된다.첫 번째 컬렉션의 모든 원소들이 <span class="keyword">SUBSETEQ</span> 연산자의 오른쪽에 위치하는 컬렉션에 모두 속하거나 같아야 한다.</p>
+<h6>예제</h6>
+<p>다음 질의는 상수 리스트 집합 값에 지정된 sports 중 하나 또는 그 이상을 제공하는 city_name을 검색한다. 이 경우에 sports 속성에 할당된 집합은 비교 집합의 모든 원소를 포함하거나, 공집합을 포함하여 비교 집합의 부분집합을 포함한다. 질의 결과의 첫 번째 인스턴스는 비교되는 두 집합이 같고, 두 번째 인스턴스의 sports 값은 공집합이다.</p>
+<p class="code">csql&gt; select city_name, sports from city where sports subseteq {'soccer','basketball'};<br />
+csql&gt; ;x<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+&#160;&#160;city_name &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;sports<br />
+============================================<br />
+&#160;&#160;'Suwon' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'basketball', 'soccer'}<br />
+&#160;&#160;'Cheonan' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{}<br />
+&#160;&#160;'Anyang' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'soccer'}</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

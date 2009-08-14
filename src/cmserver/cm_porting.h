@@ -36,6 +36,8 @@
 #if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/socket.h>
+#else
+#include <direct.h>
 #endif
 
 /*
@@ -64,12 +66,20 @@
 #define getpid()		_getpid()
 #define O_RDONLY		_O_RDONLY
 #define strcasecmp(str1, str2)	_stricmp(str1, str2)
+#define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
 #define snprintf		_snprintf
 
 #define R_OK			4
 #define W_OK			2
 #define F_OK			0
 #define X_OK			F_OK
+
+/*
+* MAXHOSTNAMELEN definition
+* This is defined in sys/param.h on the linux.
+*/
+#define MAXHOSTNAMELEN 64
+
 #endif
 
 #if defined(WINDOWS)

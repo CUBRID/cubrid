@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 삭제</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 관리\n데이터베이스 삭제");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_server_command.htm\">데이터베이스 관리<\/a> &nbsp;&gt;&nbsp; 데이터베이스 삭제<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 삭제</h3>
+<p><span class="keyword">cubrid deletedb</span>는 데이터베이스를 삭제하는 유틸리티이다. 데이터베이스가 몇 개의 상호 의존적 파일들로 만들어지기 때문에, 데이터베이스를 제거하기 위해 운영체제 파일 삭제 명령이 아닌 <span class="keyword">cubrid deletedb</span> 유틸리티를 사용해야 한다. <span class="keyword">cubrid deletedb</span> 유틸리티는 데이터베이스 위치 파일(<span class="keyword">databases.txt</span>)에 지정된 데이터베이스에 대한 정보도 같이 삭제한다. <span class="keyword">cubrid deletedb</span> 유틸리티는 오프라인 상에서 즉, 아무도 데이터베이스를 사용하지 않는 상태에서 독자 실행 모드로 사용해야 한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid</span> <span class="keyword">deletedb</span>&#160;<span class="var">options</span> <span class="var">database_name</span><br />
+<span class="var">options</span>&#160;: [{<span class="keyword">-o</span>|<span class="keyword">--output-file</span>=} <span class="var">file</span>] &#160;[<span class="keyword">-d</span>|<span class="keyword">--delete-backup</span>]</p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">deletedb</span> :&#160;데이터베이스 및 관련 데이터, 로그, 백업 파일을 전부 삭제하기 위한 명령으로, 데이터베이스 서버가 구동 정지 상태인 경우에만 정상적으로 수행된다.</li>
+<li><span class="var">options</span>&#160;:&#160;<span class="keyword">-o</span> 옵션과 <span class="keyword">-d</span> 옵션이 제공된다.</li>
+<li><span class="var">database_name</span> : 데이터베이스가 생성될 디렉토리 경로명을 포함하지 않고, 삭제하고자 하는 데이터베이스의 이름을 지정한다.</li>
+</ul>
+<h6>옵션</h6>
+<ul>
+<li class="title">출력 메시지 저장(<span class="keyword">-o</span> 또는 <span class="keyword">--output-file</span>)</li>
+</ul>
+<p class="code">cubrid deletedb -o deleted_db.out testdb</p>
+<p class="definition">-<span class="keyword">o</span> 옵션을 이용하여 testdb를 삭제하면서 출력 메시지를 인수로 지정한 파일에 기록하는 명령이다. <span class="keyword">cubrid</span> <span class="keyword">deletedb</span> 유틸리티를 사용하면&#160;데이터베이스 위치 정보 파일(<span class="keyword">databases.txt</span>)에 기록된 데이터베이스 정보가 함께 삭제된다. 만약, 존재하지 않는 데이터베이스를 삭제하는 명령을 입력하면 다음과 같은 메시지가 출력된다.</p>
+<p class="code">cubrid deletedb testdb<br />
+Database "testdb" is unknown, or the file "databases.txt" cannot be accessed.</p>
+<ul>
+<li class="title">백업 파일도 함께 삭제(<span class="keyword">-d</span> 또는 <span class="keyword">--delete-backup</span>)</li>
+</ul>
+<p class="code">cubrid deletedb -d testdb</p>
+<p class="definition">-<span class="keyword">d</span> 옵션을 이용하면 testdb를 삭제하면서 testdb의 백업 볼륨 및 백업 정보 파일도 함께 삭제할 수 있다. 만약, -<span class="keyword">d</span> 옵션을 지정하지 않으면 백업 볼륨 및 백업 정보 파일은 삭제되지 않는다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

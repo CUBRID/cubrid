@@ -29,8 +29,9 @@
 
 #include "config.h"
 
-
-typedef struct sockaddr_in SOCKADDR_IN;
+#if !defined (WINDOWS)
+#include <sys/socket.h>
+#endif /* !WINDOWS */
 
 extern unsigned int css_gethostid (void);
 extern int css_fd_down (SOCKET fd);
@@ -47,18 +48,19 @@ extern SOCKET css_open_new_socket_from_master (SOCKET fd,
 extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd,
 			     unsigned short rid);
 extern void css_shutdown_socket (SOCKET fd);
-extern int css_read_broadcast_information (SOCKET fd, char *byte);
-extern bool css_broadcast_to_client (SOCKET client_fd, char data);
 extern int css_open_server_connection_socket (void);
 extern void css_close_server_connection_socket (void);
 extern SOCKET css_server_accept (SOCKET sockfd);
 extern int css_get_max_socket_fds (void);
 
-#if !defined (WINDOWS)
 extern int css_tcp_client_open_with_timeout (const char *host, int port,
 					     int timeout);
+#if !defined (WINDOWS)
 extern int css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout);
 extern bool css_peer_alive (SOCKET sd, int timeout);
 #endif /* !WINDOWS */
+
+extern int css_get_peer_name (SOCKET sockfd, char *hostname, size_t len);
+extern int css_get_sock_name (SOCKET sockfd, char *hostname, size_t len);
 
 #endif /* _TCP_H_ */

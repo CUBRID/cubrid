@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -33,7 +33,7 @@
 
 #include "cm_nameval.h"
 
-#define DBMT_ERROR_MSG_SIZE	1024
+#define DBMT_ERROR_MSG_SIZE	(PATH_MAX)
 
 #define INIT_CUBRID_ERROR_FILE(PTR)		\
 	do {					\
@@ -180,7 +180,6 @@ typedef enum
   TS_GETFILE,
   TS_GETAUTOEXECQUERY,
   TS_SETAUTOEXECQUERY,
-#ifdef DIAG_DEVEL
   TS_GETDIAGINFO,
   TS_GET_DIAGDATA,
   TS_ADDSTATUSTEMPLATE,
@@ -203,7 +202,6 @@ typedef enum
   TS_UPDATEACTIVITYLOG,
   TS_REMOVEACTIVITYLOG,
   TS_GETACTIVITYLOG,
-#endif
 #endif
 #if 0
   TS2_BROKERALARMMSG,
@@ -381,7 +379,6 @@ int ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error);
-#ifdef DIAG_DEVEL
 int ts_get_diaginfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_diagdata (nvplist * req, nvplist * res, char *diag_error);
 int ts_addstatustemplate (nvplist * req, nvplist * res, char *diag_error);
@@ -412,7 +409,6 @@ int ts_removeactivitylog (nvplist * cli_request, nvplist * cli_response,
 			  char *diag_error);
 int ts_getactivitylog (nvplist * cli_request, nvplist * cli_response,
 		       char *diag_error);
-#endif
 #endif
 int ts_get_ldb_class_att (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsDBMTUserLogin (nvplist * req, nvplist * res, char *_dbmt_error);

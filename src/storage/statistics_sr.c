@@ -493,7 +493,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
   else
     {
-      /* cannot get estimates from the heap, use oness from the catalog */
+      /* cannot get estimates from the heap, use ones from the catalog */
 
       OR_PUT_INT (buf_p, cls_info_p->tot_objects);
       buf_p += OR_INT_SIZE;
@@ -1103,6 +1103,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 		   bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
 	  fprintf (fpp, "        Cardinality: %d (", bt_statsp->keys);
 
+	  prefix = "";
 	  for (k = 0; k < bt_statsp->key_size; k++)
 	    {
 	      fprintf (fpp, "%s%d", prefix, bt_statsp->pkeys[k]);

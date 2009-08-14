@@ -1,0 +1,121 @@
+﻿
+<html>
+<head>
+<title>cubrid_col_get</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_col_get");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_col_get<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_col_get</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_col_get</span> 함수는 주어진 컬렉션 타입(set, multiset, sequence) 속성의 원소 내용을 배열형식으로 얻는데 사용된다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_col_get</span>(int <span class="var">conn_handle</span>, string <span class="var">oid</span>, string <span class="var">attr_name</span>)</p>
+<ul>
+<li><span class="var">conn_handle</span> : 연결 핸들</li>
+<li>oid : 원하는 인스턴스의 OID</li>
+<li><span class="var">attr_name</span> : 인스턴스로부터 읽기를 원하는 속성 이름</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : 원하는 원소들이 들어있는 배열(0 : 기본 수치 배열)</li>
+<li>실패 : false. 속성이 빈 컬렉션이나 <span class="keyword">NULL</span>인 경우와 오류를 구별하기 위해서 오류가 발생하면 경고 메시지를 출력하고, <span class="keyword">cubrid_error_code</span>를 통해 오류를 확인할 수 있다.</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$elem_array = cubrid_col_get ($con, $oid, "tel");<br />
+while (list ($key, $val) = each ($elem_array)) {<br />
+&#160;&#160;&#160;echo "tel: $val\n";<br />
+}</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

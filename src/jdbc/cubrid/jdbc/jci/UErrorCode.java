@@ -39,7 +39,7 @@ package cubrid.jdbc.jci;
 import java.util.Hashtable;
 
 /*
- * JCI에서 발생할 수 있는 Error code와 message를 define해 놓은 class이다.
+ * Error codes and messages in JCI
  */
 
 abstract public class UErrorCode
@@ -71,67 +71,36 @@ abstract public class UErrorCode
 
   /* CAS Error Code */
 
-  /* Database연결 실패 */
   public static final int CAS_ER_DBMS = -1000;
-  /* Oid/set : 잘못된 cmd */
   public static final int CAS_ER_INTERNAL = -1001;
-  /* cas : 사용가능한 메모리 부족 */
   public static final int CAS_ER_NO_MORE_MEMORY = -1002;
-  /* 클라이언트에서 적절한 데이터가 전송되지 않음 */
   public static final int CAS_ER_COMMUNICATION = -1003;
-  /* Argument가 적절히 전송되지 않았음. (내부에러) */
   public static final int CAS_ER_ARGS = -1004;
-  /* Tran type이 적절하지 않음 */
   public static final int CAS_ER_TRAN_TYPE = -1005;
-  /* 주어진 핸들이 유효하지 않음 (내부에러) */
   public static final int CAS_ER_SRV_HANDLE = -1006;
-  /* Bind 될 개수와 전송된 데이터 개수가 일치하지않음 */
   public static final int CAS_ER_NUM_BIND = -1007;
-  /* U_type을 알 수 없음 */
   public static final int CAS_ER_UNKNOWN_U_TYPE = -1008;
-  /* DB_VALUE를 만들수 없음 */
   public static final int CAS_ER_DB_VALUE = -1009;
-  /* 데이터를 변환할 수 없음 */
   public static final int CAS_ER_TYPE_CONVERSION = -1010;
-  /* Get_db_parameter, set_db_parameter : 적절하지 않은 parameter name */
   public static final int CAS_ER_PARAM_NAME = -1011;
-  /* Cursor가 유효하지 않은 위치에 대한 연산 */
   public static final int CAS_ER_NO_MORE_DATA = -1012;
-  /* 유효하지 않은 object */
   public static final int CAS_ER_OBJECT = -1013;
-  /* 파일을 열 수 없음. (glo ..) */
   public static final int CAS_ER_OPEN_FILE = -1014;
-  /* Schema type을 알 수 없음 */
   public static final int CAS_ER_SCHEMA_TYPE = -1015;
-  /* 클라이언트와 서버의 버전이 유효하지 않음 */
   public static final int CAS_ER_VERSION = -1016;
-  /* Cas를 할당할 수 없음 */
   public static final int CAS_ER_FREE_SERVER = -1017;
-  /* 접근 허용되지 않은 클라이언트 */
   public static final int CAS_ER_NOT_AUTHORIZED_CLIENT = -1018;
-  /* Query cancel 실패 (cci 에서 사용되지 않음) */
   public static final int CAS_ER_QUERY_CANCEL = -1019;
-  /* Collection 명령어(col_get, , …): attribute가 collection 타입이 아님 */
   public static final int CAS_ER_NOT_COLLECTION = -1020;
-  /* 지원할 수 없는 set domain */
   public static final int CAS_ER_COLLECTION_DOMAIN = -1021;
-  /* multiple statement에서 더이상 result가 존재하지 않을 때 */
   public static final int CAS_ER_NO_MORE_RESULT_SET = -1022;
   public static final int CAS_ER_INVALID_CALL_STMT = -1023;
   public static final int CAS_ER_STMT_POOLING = -1024;
-  /*
-   * Cas 구현되지 않았음.(현재상태 : set data tye에 대해 클라이언트에서 서버로
-   * 데이터 전송하는 경우)
-   */
   public static final int CAS_ER_NOT_IMPLEMENTED = -1100;
-
   public static final int CAS_ER_IS = -1200;
 
   private static Hashtable messageString, CASMessageString;
 
-  /*
-   * error code에 해당하는 message를 return해주는 method이다.
-   */
   public static String codeToMessage(int index)
   {
     if (messageString == null)
@@ -146,10 +115,6 @@ abstract public class UErrorCode
     return (String) CASMessageString.get(new Integer(index));
   }
 
-  /*
-   * error code와 그에 해당하는 error message를 match시켜 놓는 method이다.
-   */
-
   private static void setMessageHash()
   {
     messageString = new Hashtable(24);
@@ -158,7 +123,7 @@ abstract public class UErrorCode
     messageString.put(new Integer(ER_NO_ERROR), "No Error");
     messageString.put(new Integer(ER_DBMS), "Server error");
     messageString.put(new Integer(ER_COMMUNICATION),
-        "Cannot communicate with server");
+        "Cannot communicate with the broker");
     messageString.put(new Integer(ER_NO_MORE_DATA), "Invalid cursor position");
     messageString.put(new Integer(ER_TYPE_CONVERSION), "Type conversion error");
     messageString.put(new Integer(ER_BIND_INDEX),
@@ -173,7 +138,7 @@ abstract public class UErrorCode
     messageString.put(new Integer(ER_SCHEMA_TYPE),
         "Internal error: Illegal schema type");
     messageString.put(new Integer(ER_FILE), "File access failed");
-    messageString.put(new Integer(ER_CONNECTION), "Cannot connect to server");
+    messageString.put(new Integer(ER_CONNECTION), "Cannot connect to a broker");
     messageString.put(new Integer(ER_ISO_TYPE),
         "Unknown transaction isolation level");
     messageString.put(new Integer(ER_ILLEGAL_REQUEST),
@@ -185,7 +150,7 @@ abstract public class UErrorCode
     messageString.put(new Integer(ER_ILLEGAL_FLAG),
         "Internal error: Invalid argument");
     messageString.put(new Integer(ER_ILLEGAL_DATA_SIZE),
-        "The size of data received from server is different from the expected");
+        "Cannot communicate with the broker or received invalid packet");
     messageString.put(new Integer(ER_NOT_OBJECT),
         "Index's Column is Not Object");
     messageString.put(new Integer(ER_NO_MORE_RESULT), "No More Result");

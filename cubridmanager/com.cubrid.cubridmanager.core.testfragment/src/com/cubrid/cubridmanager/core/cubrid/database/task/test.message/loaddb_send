@@ -1,0 +1,13 @@
+task:loaddb
+token:8ec1ab8a91333c7823f86d595ccdf412f23ae179b1fcf013b9796bef95f4fcc17926f07dd201b6aa
+dbname:testdb2
+checkoption:both
+period:none
+user:dba
+estimated:none
+oiduse:yes
+nolog:no
+schema:C:\CUBRID\DATABA~1\demodb/demodb_schema
+object:C:\CUBRID\DATABA~1\demodb/demodb_objects
+index:none
+

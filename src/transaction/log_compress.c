@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include "log_compress.h"
+#include "error_manager.h"
 
 /*
  * log_zip - compress(zip) log data into LOG_ZIP
@@ -53,9 +54,16 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   if (buf_size > log_zip->buf_size)
     {
       if (log_zip->log_data)
-	free_and_init (log_zip->log_data);
+	{
+	  free_and_init (log_zip->log_data);
+	}
 
       log_zip->log_data = (unsigned char *) malloc (buf_size);
+      if (log_zip->log_data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	}
       log_zip->buf_size = buf_size;
     }
 
@@ -79,7 +87,9 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
       /* if the compressed data length >= orginal length,
        * then it means that compression is failed */
       if (log_zip->data_length < length)
-	return true;
+	{
+	  return true;
+	}
     }
   return false;
 }
@@ -114,11 +124,19 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
   if (buf_size > log_unzip->buf_size)
     {
       if (log_unzip->log_data)
-	free_and_init (log_unzip->log_data);
+	{
+	  free_and_init (log_unzip->log_data);
+	}
 
       log_unzip->log_data = (unsigned char *) malloc (buf_size);
+      if (log_unzip->log_data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, buf_size);
+	}
       log_unzip->buf_size = buf_size;
     }
+
   if (log_unzip->log_data == NULL)
     {
       log_unzip->data_length = 0;
@@ -136,7 +154,9 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
       /* if the uncompressed data length != original length,
        * then it means that uncompression is failed */
       if (unzip_len == (lzo_uint) org_len)
-	return true;
+	{
+	  return true;
+	}
     }
   return false;
 }
@@ -187,16 +207,22 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
   LOG_ZIP_SIZE_T buf_size = 0;
 
   buf_size = LOG_ZIP_BUF_SIZE (size);
-
-  if ((log_zip = (LOG_ZIP *) malloc (sizeof (LOG_ZIP))) == NULL)
+  log_zip = (LOG_ZIP *) malloc (sizeof (LOG_ZIP));
+  if (log_zip == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (LOG_ZIP));
+
       return NULL;
     }
   log_zip->data_length = 0;
 
-  if ((log_zip->log_data = (lzo_bytep) malloc ((size_t) buf_size)) == NULL)
+  log_zip->log_data = (lzo_bytep) malloc ((size_t) buf_size);
+  if (log_zip->log_data == NULL)
     {
       free_and_init (log_zip);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, buf_size);
       return NULL;
     }
   log_zip->buf_size = buf_size;
@@ -204,16 +230,20 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
   if (is_zip)
     {
       /* lzo method is best speed : LZO1X_1_MEM_COMPRESS */
-      if ((log_zip->wrkmem =
-	   (lzo_bytep) malloc (LZO1X_1_MEM_COMPRESS)) == NULL)
+      log_zip->wrkmem = (lzo_bytep) malloc (LZO1X_1_MEM_COMPRESS);
+      if (log_zip->wrkmem == NULL)
 	{
 	  free_and_init (log_zip->log_data);
 	  free_and_init (log_zip);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, LZO1X_1_MEM_COMPRESS);
 	  return NULL;
 	}
     }
   else
-    log_zip->wrkmem = NULL;
+    {
+      log_zip->wrkmem = NULL;
+    }
 
   return log_zip;
 }

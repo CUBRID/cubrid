@@ -261,10 +261,24 @@ co_report (FILE * file, CO_SEVERITY severity)
 	    }
 	}
 
-      /* Print next message line. */
-      strncpy (line, message, intl_mbs_nth (message, line_length) - message);
-      line[line_length] = '\0';
-      fprintf (file, "%s\n%-*s", line, REPORT_LINE_INDENT, "");
+      if (message != NULL)
+	{
+	  int len;
+	  const char* cptr = intl_mbs_nth(message, line_length);
+	  if (cptr == NULL)
+	    {
+	      len = intl_mbs_len(message);
+	    }
+	  else 
+	    {
+	      len = cptr - message;
+	    }
+	
+	  /* Print next message line. */
+	  strncpy (line, message, len);
+	  line[len] = '\0';
+	  fprintf (file, "%s\n%-*s", line, REPORT_LINE_INDENT, "");
+	}
     }
 
   /* Print last line with code label. */
@@ -344,7 +358,7 @@ co_message (void)
 	    }
 
 	  /* Replace conversion spec with formatted parameter string. */
-	  length = strlen (parameter);
+	  length = (parameter != NULL) ? strlen (parameter) : 0;
 	  adj_ar_replace (co_Current_message, parameter, length, start, end);
 
 	  if (type != FORMAT_LITERAL)

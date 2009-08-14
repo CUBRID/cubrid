@@ -301,7 +301,6 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_get_autoexec_query), FSVR_SA_CS},
   {"setautoexecquery", TS_SETAUTOEXECQUERY, 1,
    DEF_TASK_FUNC (ts_set_autoexec_query), FSVR_SA_CS},
-#ifdef DIAG_DEVEL
   {"getdiaginfo", TS_GETDIAGINFO, 0, DEF_TASK_FUNC (ts_get_diaginfo),
    FSVR_NONE},
   {"getdiagdata", TS_GET_DIAGDATA, 0, DEF_TASK_FUNC (ts_get_diagdata),
@@ -314,16 +313,6 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_removestatustemplate), FSVR_NONE},
   {"getstatustemplate", TS_GETSTATUSTEMPLATE, 0,
    DEF_TASK_FUNC (ts_getstatustemplate), FSVR_NONE},
-#if 0				/* ACTIVITY_PROFILE */
-  {"addactivitytemplate", TS_ADDACTIVITYTEMPLATE, 0,
-   DEF_TASK_FUNC (ts_addactivitytemplate), FSVR_NONE},
-  {"updateactivitytemplate", TS_UPDATEACTIVITYTEMPLATE, 0,
-   DEF_TASK_FUNC (ts_updateactivitytemplate), FSVR_NONE},
-  {"removeactivitytemplate", TS_REMOVEACTIVITYTEMPLATE, 0,
-   DEF_TASK_FUNC (ts_removeactivitytemplate), FSVR_NONE},
-  {"getactivitytemplate", TS_GETACTIVITYTEMPLATE, 0,
-   DEF_TASK_FUNC (ts_getactivitytemplate), FSVR_NONE},
-#endif
   {"getcaslogfilelist", TS_GETCASLOGFILELIST, 0,
    DEF_TASK_FUNC (ts_getcaslogfilelist), FSVR_NONE},
   {"analyzecaslog", TS_ANALYZECASLOG, 0, DEF_TASK_FUNC (ts_analyzecaslog),
@@ -334,17 +323,6 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_removecasrunnertmpfile), FSVR_NONE},
   {"getcaslogtopresult", TS_GETCASLOGTOPRESULT, 0,
    DEF_TASK_FUNC (ts_getcaslogtopresult), FSVR_NONE},
-#if 0				/* ACTIVITY_PROFILE */
-  {"addactivitylog", TS_ADDACTIVITYLOG, 0, DEF_TASK_FUNC (ts_addactivitylog),
-   FSVR_NONE},
-  {"updateactivitylog", TS_UPDATEACTIVITYLOG, 0,
-   DEF_TASK_FUNC (ts_updateactivitylog), FSVR_NONE},
-  {"removeactivitylog", TS_REMOVEACTIVITYLOG, 0,
-   DEF_TASK_FUNC (ts_removeactivitylog), FSVR_NONE},
-  {"getactivitylog", TS_GETACTIVITYLOG, 0, DEF_TASK_FUNC (ts_getactivitylog),
-   FSVR_NONE},
-#endif
-#endif
 #if 0
   {"broker_alarmmsg", TS2_BROKERALARMMSG, 0,
    DEF_TASK_FUNC (ts2_broker_alarm_msg)},
@@ -388,8 +366,16 @@ char *
 time_to_str (time_t t, const char *fmt, char *buf, int type)
 {
   struct tm ltm;
+  struct tm *tm_p;
 
-  ltm = *localtime (&t);
+  tm_p = localtime (&t);
+  if (tm_p == NULL)
+    {
+      *buf = '\0';
+      return buf;
+    }
+  ltm = *tm_p;
+
   if (type == TIME_STR_FMT_DATE)
     sprintf (buf, fmt, ltm.tm_year + 1900, ltm.tm_mon + 1, ltm.tm_mday);
   else if (type == TIME_STR_FMT_TIME)
@@ -572,6 +558,8 @@ ut_receive_request (SOCKET fd, nvplist * req)
 
   while ((rc = read_from_socket (fd, &c, 1)) == 1)
     {
+      char *dstbuf;
+
       if (c == '\n')
 	{
 	  /* if null string, stop parsing */
@@ -581,11 +569,15 @@ ut_receive_request (SOCKET fd, nvplist * req)
 	      return 1;
 	    }
 
-	  p = strchr (dst_buffer (linebuf), ':');
-	  if (p)
+	  dstbuf = dst_buffer (linebuf);
+	  if (dstbuf != NULL)
 	    {
-	      *p = '\0';
-	      p++;
+	      p = strchr (dstbuf, ':');
+	      if (p)
+		{
+		  *p = '\0';
+		  p++;
+		}
 	    }
 	  nv_add_nvp (req, dst_buffer (linebuf), p);
 	  dst_reset (linebuf);
@@ -608,7 +600,7 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
   FILE *res_file;
   char *file_name[10];
   char buf[1024];
-  int file_num;
+  int file_num = -1;
   long *file_size = NULL;
   int index, file_send_flag;
   int *del_flag = NULL;
@@ -626,7 +618,7 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
 #endif
 
   memset (buf, '\0', sizeof (buf));
-
+  memset (file_name, 0, sizeof (file_name));
 
   file_send_flag = 1;
   /* point to file whether transfer or no */
@@ -639,7 +631,9 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
 	{
 	  fgets (buf, 1024, res_file);
 	  if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-	    return;
+	    {
+	      goto finalize;
+	    }
 
 	  if (strncmp (buf, "status:failure", 14) == 0)
 	    file_send_flag = 0;
@@ -647,37 +641,74 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
 
 	  if (strncmp (buf, "file_num", 8) == 0)
 	    {
+	      FREE_MEM (file_size);
+	      FREE_MEM (del_flag);
 	      file_num = atoi (buf + 9);
+	      if (file_num <= 0 || file_num >= INT_MAX)
+		{
+		  file_num = -1;
+		  goto finalize;
+		}
+
 	      file_size = (long *) malloc (sizeof (long) * file_num);
+	      if (file_size == NULL)
+		{
+		  goto finalize;
+		}
+	      memset (file_size, 0, sizeof (long) * file_num);
+
 	      del_flag = (int *) malloc (sizeof (int) * file_num);
+	      if (del_flag == NULL)
+		{
+		  goto finalize;
+		}
+	      memset (del_flag, 0, sizeof (int) * file_num);
 	    }
 
 	  if (strncmp (buf, "open:file", 9) == 0)
 	    {
 	      fgets (buf, 1024, res_file);	/* filename */
 	      if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-		return;
+		{
+		  goto finalize;
+		}
 
 	      file_name[index] = strdup (buf + 9);
 	      *(file_name[index] + strlen (file_name[index]) - 1) = '\0';
 
 	      fgets (buf, 1024, res_file);	/* filestatus */
 	      if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-		return;
+		{
+		  goto finalize;
+		}
 
 	      fgets (buf, 1024, res_file);	/* file size */
 	      if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-		return;
+		{
+		  goto finalize;
+		}
+	      if (file_size == NULL)
+		{
+		  goto finalize;
+		}
 	      file_size[index] = atoi (buf + 9);
 
 	      fgets (buf, 1024, res_file);	/* delflag */
 	      if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-		return;
+		{
+		  goto finalize;
+		}
 
+	      if (del_flag == NULL)
+		{
+		  goto finalize;
+		}
 	      del_flag[index] = (*(buf + 8) == 'y') ? 1 : 0;
 	      fgets (buf, 1024, res_file);	/* close:file */
 	      if (write_to_socket (sock_fd, buf, strlen (buf)) < 0)
-		return;
+		{
+		  goto finalize;
+		}
 
 	      index++;
 	      if (file_num == index)
@@ -740,9 +771,7 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
 	  total_send = send_file_to_client (sock_fd, file_name[index], NULL);
 #endif
 
-
-
-	  if (total_send != file_size[index])
+	  if ((file_size == NULL) || (total_send != file_size[index]))
 	    {
 #ifdef	_DEBUG_
 	      fprintf (log_file,
@@ -757,10 +786,13 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
 	}
     }
 
+finalize:
   for (index = 0; index < file_num; index++)
     {
-      if (del_flag[index] == 1)
-	unlink (file_name[index]);
+      if ((del_flag != NULL) && (del_flag[index] == 1))
+	{
+	  unlink (file_name[index]);
+	}
       /* remove compress file */
 
       FREE_MEM (file_name[index]);
@@ -1415,13 +1447,16 @@ get_db_server_pid (char *dbname)
   char srv_lock_file[1024];
   FILE *fp;
   int pid = -1;
+  size_t file_len;
 
   if (uRetrieveDBLogDirectory (dbname, srv_lock_file) != ERR_NO_ERROR)
     {
       return -1;
     }
-  sprintf (srv_lock_file + strlen (srv_lock_file), "/%s%s", dbname,
-	   CUBRID_SERVER_LOCK_EXT);
+  file_len = strlen (srv_lock_file);
+  snprintf (srv_lock_file + file_len,
+	    sizeof (srv_lock_file) - file_len - 1, "/%s%s", dbname,
+	    CUBRID_SERVER_LOCK_EXT);
   if ((fp = fopen (srv_lock_file, "r")) != NULL)
     {
       if (fscanf (fp, "%*s %d", &pid) < 1)
@@ -1870,7 +1905,7 @@ file_copy (char *src_file, char *dest_file)
 {
   char strbuf[1024];
   int src_fd, dest_fd;
-  int read_size, write_size;
+  size_t read_size, write_size;
 
   if ((src_fd = open (src_file, O_RDONLY)) == -1)
     return -1;
@@ -1892,7 +1927,8 @@ file_copy (char *src_file, char *dest_file)
 
   while ((read_size = read (src_fd, strbuf, sizeof (strbuf))) > 0)
     {
-      if ((write_size = write (dest_fd, strbuf, read_size)) < read_size)
+      if (read_size > sizeof (strbuf)
+	  || (write_size = write (dest_fd, strbuf, read_size)) < read_size)
 	{
 	  close (src_fd);
 	  close (dest_fd);
@@ -1964,8 +2000,9 @@ is_cmserver_process (int pid, const char *module_name)
   char buf[1024], cur_pid[10], prog_name[32];
   FILE *fRes;
 
-  sprintf (cmjs_pid, "%d", pid);
-  sprintf (result_file, "%s/DBMT_js.%d", sco.dbmt_tmp_dir, (int) getpid ());
+  snprintf (cmjs_pid, sizeof (cmjs_pid) - 1, "%d", pid);
+  snprintf (result_file, sizeof (result_file) - 1, "%s/DBMT_js.%d",
+	    sco.dbmt_tmp_dir, (int) getpid ());
   argv[argc++] = "/bin/ps";
   argv[argc++] = "-e";
   argv[argc] = NULL;
@@ -1980,7 +2017,7 @@ is_cmserver_process (int pid, const char *module_name)
     {
       while (fgets (buf, 1024, fRes))
 	{
-	  if (sscanf (buf, "%s %*s %*s %s", cur_pid, prog_name) != 2)
+	  if (sscanf (buf, "%9s %*s %*s %31s", cur_pid, prog_name) != 2)
 	    {
 	      continue;
 	    }

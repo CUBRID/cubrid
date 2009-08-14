@@ -1,0 +1,108 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>단위 잠금</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트랜잭션 관리\n잠금 프로토콜\n단위 잠금");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_intro.htm\">트랜잭션 관리<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_lock_intro.htm\">잠금 프로토콜<\/a> &nbsp;&gt;&nbsp; 단위 잠금<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>단위 잠금</h4>
+<p>CUBRID는 잠금의 개수를 줄이기 위해서 단위 잠금(granularity locking) 프로토콜을 사용한다. 단위 잠금 프로토콜에서는 데이터베이스가 잠금 가능한 단위의 계층으로 모델화되는데, 큰&#160;단위의 잠금은 보다 미세한&#160;단위의 잠금을 내포하고 있다.</p>
+<p>예를 들어, 데이터베이스가 여러 클래스로 구성되어 있고 각각의 클래스는 여러 인스턴스로 구성되었다고 가정하자. 데이터베이스가 잠기면 모든 클래스와&#160;인스턴스가 묵시적으로 잠긴 것으로 간주된다. 이러한 큰&#160;단위의 잠금은 하나의 잠금만 관리되면 되기 때문에 적은 오버헤드를 일으킨다. 그러나 동시 수행인 트랜잭션이 거의 충돌하기 때문에 동시성이 낮아지는 결과를 가져온다. 미세한 단위로 잠그는 것은 동시성을 향상시키지만 더 많은 잠금을 관리해야 하기 때문에 오버헤드가 많다. CUBRID는 수행되는 연산에 기초하여 잠금의 단위를 선택한다. 예를 들어 한 트랜잭션이 클래스의 모든 인스턴스를 검색하는 경우 각각의 인스턴스를 잠그는 것 보다는 전체 클래스를 잠그게 된다. 클래스의 적은 인스턴스에만 접근하는 경우에는 인스턴스를 개별적으로 잠근다.</p>
+<p>잠그는 단위가 겹칠 경우, 보다 세밀한 단위 잠금의 영향을 전파함으로써 충돌을 방지한다. 즉, 클래스의 인스턴스에 공유 잠금이 요구되면 클래스에는&#160;의도 공유 잠금(intention shared lock)이 설정되고, 클래스의 인스턴스에 배타 잠금이 요구되면 클래스에는 의도 배타 잠금(intention exclusive lock)이 설정된다.&#160;클래스에 대한&#160;의도 공유 잠금은 클래스의 인스턴스를 공유 잠금할 수 있다는 것을 나타낸다. 클래스에 대한 의도 배타 잠금은 클래스의 인스턴스에 대해&#160;공유, 배타 잠금이 가능함을 나타낸다. 즉,&#160;만약 클래스의 의도 공유 잠금이 한 트랜잭션에서 허용되면 다른 트랜잭션은 그 클래스에 대한 배타 잠금을 획득(예를 들어 새로운 속성을 추가하기 위해)할 수 없음을 의미한다. 그러나 두 번째 트랜잭션은 그 클래스에 대한 공유 잠금을 얻을 수는 있다. 만약 클래스에 대한 의도 배타 잠금이 한 트랜잭션에서 허용되면 다른 트랜잭션에서는 그 클래스에 대한 공유 잠금을 획득할 수 없다(예를 들어 그 클래스의 인스턴스에 대한 질의는 클래스의 인스턴스가 현재 갱신 중이기 때문에 수행될 수 없다).</p>
+<p>잠금 에스컬레이션이라고 불리는 기법은 관리되는 잠금의 수를 제한하기 위해 사용한다. 만약 트랜잭션이 주어진 단위에서 특정&#160;개수 이상의 잠금(이 수는 시스템 파라미터 <span class="keyword">lock_escalation</span>을 통해 갱신할 수 있다)을 가지고 있으면 시스템은 다음 상위&#160;수준의 단위에서 잠금을 요청하기 시작한다. 이것은 요구하는 잠금의 단위 수준을 상승하게 한다. CUBRID는 어떤 트랜잭션도 더 높은 단위의 잠금을 가지고 있지 않을 때 잠금 에스컬레이션을 수행한다. 이것은 잠금 변환에 따른 교착 상태를 피하기 위해서이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -170,7 +170,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   unsigned char inbuf[2048];
   unsigned char padchar;
 
-  inlen = strlen (line);
+  inlen = strnlen (line, sizeof (inbuf));
   strncpy (inbuf, line, inlen);
 
   /* Insert PKCS style padding */

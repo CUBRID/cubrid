@@ -267,9 +267,6 @@ static int disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr);
 
 static int disk_rv_alloctable_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 				      DISK_ALLOCTABLE_MODE mode);
-static int disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p,
-					      LOG_RCV * rcv,
-					      DISK_ALLOCTABLE_MODE mode);
 static void disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 static char *
@@ -828,7 +825,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       break;
 
     default:
-      break;
+      return ER_FAILED;
     }
 
   for (i = start_at; i < end_at; i++)
@@ -1172,7 +1169,6 @@ disk_goodvol_find (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	    {
 	      break;
 	    }
-	  ;
 	}
       else if (disk_cache_goodvol_enter (thread_p, INF_WAIT) == false)
 	{
@@ -1830,18 +1826,28 @@ disk_vhdr_set_next_vol_fullname (DISK_VAR_HEADER * vhdr,
   int length_diff;
   int length_to_move;
   int ret = NO_ERROR;
+  int next_vol_fullname_size;
 
   if (next_vol_fullname == NULL)
     {
-      next_vol_fullname = "\0";
+      next_vol_fullname = "";
+      next_vol_fullname_size = 1;
+    }
+  else
+    {
+      next_vol_fullname_size = strlen (next_vol_fullname) + 1;
+      if (next_vol_fullname_size > PATH_MAX)
+	{
+	  next_vol_fullname_size = PATH_MAX;
+	}
     }
 
   length_diff = vhdr->offset_to_vol_remarks;
 
-  length_to_move = (int) strlen (vhdr->var_fields + length_diff) + 1;
+  length_to_move = strlen (vhdr->var_fields + length_diff) + 1;
 
   /* Difference in length between new name and old name */
-  length_diff = (((int) strlen (next_vol_fullname) + 1) -
+  length_diff = (next_vol_fullname_size -
 		 (vhdr->offset_to_vol_remarks -
 		  vhdr->offset_to_next_vol_fullname));
 
@@ -1855,9 +1861,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VAR_HEADER * vhdr,
     }
 
   (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr),
-		 next_vol_fullname,
-		 MIN ((ssize_t) strlen (next_vol_fullname) + 1,
-		      DB_MAX_PATH_LENGTH));
+		 next_vol_fullname, next_vol_fullname_size);
 
   return ret;
 }
@@ -4361,8 +4365,11 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   VPID vpid;
   LOG_DATA_ADDR addr;
   int retry = 0;
+  int ret = NO_ERROR;
 
   addr.vfid = NULL;
+  addr.pgptr = NULL;
+
 
   /* Sector zero is never deallocated. It is always assigned to the system */
   if (sectid == DISK_SECTOR_WITH_ALL_PAGES)
@@ -4402,13 +4409,13 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 	  retry++;
 	  break;
 	default:
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
       if (retry > 10)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_PAGE_LATCH_ABORTED, 2, vpid.volid, vpid.pageid);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
@@ -4424,7 +4431,7 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
       if (nsects <= 0)
 	{
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
@@ -4446,7 +4453,7 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       nsects = vhdr->total_sects - sectid;
       if (nsects <= 0)
 	{
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
@@ -4454,22 +4461,32 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   nsects =
     disk_id_dealloc (thread_p, volid, vhdr->sect_alloctb_page1, sectid,
 		     nsects, DISK_SECTOR);
-  if (nsects > 0)
+  if (nsects <= 0)
     {
+      goto exit_on_error;
+    }
 
-      /* To sync volume header and page bitmap, use RVDK_IDDEALLOC_WITH_VOLHEADER.
-         See disk_id_dealloc() function */
+  /* To sync volume header and page bitmap, use RVDK_IDDEALLOC_WITH_VOLHEADER.
+     See disk_id_dealloc() function */
+  pgbuf_unfix (thread_p, addr.pgptr);
+  addr.pgptr = NULL;
 
+  return ret;
+
+exit_on_error:
+
+  if (addr.pgptr)
+    {
       pgbuf_unfix (thread_p, addr.pgptr);
       addr.pgptr = NULL;
-      return NO_ERROR;
     }
-  else
+
+  if (ret == NO_ERROR)
     {
-      pgbuf_unfix (thread_p, addr.pgptr);
-      addr.pgptr = NULL;
-      return ER_FAILED;
+      ret = ER_FAILED;
     }
+
+  return ret;
 }
 
 /*
@@ -4625,7 +4642,7 @@ disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
   LOG_DATA_ADDR addr;
   INT32 nfound = -1;		/* Number of units actually deallocated */
   DISK_RECV_MTAB_BITS_WITH recv;
-  int retry = 0;
+  int retry;
 
   addr.vfid = NULL;
 
@@ -4635,6 +4652,7 @@ disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
        ndealloc > 0; vpid.pageid++)
     {
 
+      retry = 0;
       while ((addr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
 				      PGBUF_LATCH_WRITE,
 				      PGBUF_UNCONDITIONAL_LATCH)) == NULL)
@@ -5952,17 +5970,17 @@ disk_rv_dump_alloctable (FILE * fp, int length_ignore, void *data)
   fprintf (fp, "Start_bit = %u, Num_bits = %d\n", mtb->start_bit, mtb->num);
 }
 
+
 /*
- * disk_rv_alloctable_with_volheader () - Redo (undo) update of allocation
- *                                          table for allocation (deallocation)
- *                                          of IDS (pageid, sectid) with
- *                                          volume_header
+ * disk_rv_alloctable_bitmap_only () - Redo (undo) update of allocation
+ *                                     table for allocation (deallocation)
+ *                                     of IDS (pageid, sectid) only for bitmap page
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
 static int
-disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
-				   DISK_ALLOCTABLE_MODE mode)
+disk_rv_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+				DISK_ALLOCTABLE_MODE mode)
 {
   DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
   unsigned char *at_chptr;	/* Pointer to character of Sector or page
@@ -5970,11 +5988,104 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   INT32 num = 0;		/* Number of allocated bits */
   unsigned int bit, i;
 
+  mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
+
+  assert (mtb != NULL);
+  assert (mtb->num > 0);
+
+  /* Set mtb->num of bits starting at mtb->start_bit of byte rcv->offset */
+  bit = mtb->start_bit;
+  num = 0;
+
+  at_chptr = (unsigned char *) rcv->pgptr + rcv->offset;
+  for (; num < mtb->num; at_chptr++)
+    {
+      for (i = bit; i < CHAR_BIT && num < mtb->num; i++, num++)
+	{
+	  if (mode == DISK_ALLOCTABLE_SET)
+	    {
+	      disk_bit_set (at_chptr, i);
+	    }
+	  else
+	    {
+	      disk_bit_clear (at_chptr, i);
+	    }
+	}
+      bit = 0;
+    }
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_rv_alloctable_vhdr_only () - Redo (undo) update of allocation
+ *                                   table for allocation (deallocation)
+ *                                   of IDS (pageid, sectid) only for volume header
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+static int
+disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+			      DISK_ALLOCTABLE_MODE mode)
+{
+  DISK_RECV_MTAB_BITS_WITH *mtb;	/* Recovery structure of bits */
   DISK_VAR_HEADER *vhdr;
-  PAGE_PTR vhdr_pgptr = NULL;
-  VPID vhdr_vpid;
-  VPID page_vpid;
   INT32 delta = 0;
+
+  vhdr = (DISK_VAR_HEADER *) rcv->pgptr;
+  mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
+
+  assert (mtb != NULL);
+  assert (mtb->num > 0);
+
+  if (mode == DISK_ALLOCTABLE_SET)
+    {
+      delta = -(mtb->num);
+    }
+  else
+    {
+      delta = mtb->num;
+    }
+
+  if (mtb->deallid_type == DISK_SECTOR)
+    {
+      vhdr->free_sects += delta;
+    }
+  else
+    {
+      vhdr->free_pages += delta;
+      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose, delta,
+				 false);
+    }
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+
+/*
+ * disk_rv_alloctable_with_volheader () - Redo (undo) update of allocation
+ *                                          table for allocation (deallocation)
+ *                                          of IDS (pageid, sectid) with
+ *                                          volume_header
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+*/
+int
+disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
+				   LOG_LSA * ref_lsa)
+{
+  LOG_RCV vhdr_rcv = *rcv;
+  VPID vhdr_vpid, page_vpid;
+
+  LOG_DATA_ADDR page_addr, vhdr_addr;
+
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length > 0);
+  assert (rcv->data != NULL);
 
   /* Find the volume header */
   vhdr_vpid.volid = pgbuf_get_volume_id (rcv->pgptr);
@@ -5986,10 +6097,10 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   pgbuf_unfix (thread_p, rcv->pgptr);
   rcv->pgptr = NULL;
 
-  vhdr_pgptr =
+  vhdr_rcv.pgptr =
     pgbuf_fix_with_retry (thread_p, &vhdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			  10);
-  if (vhdr_pgptr == NULL)
+  if (vhdr_rcv.pgptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (vhdr_vpid.volid));
@@ -6005,92 +6116,94 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (page_vpid.volid));
 
-      pgbuf_unfix (thread_p, vhdr_pgptr);
-      vhdr_pgptr = NULL;
-
+      pgbuf_unfix (thread_p, vhdr_rcv.pgptr);
       return ER_FAILED;
     }
 
-  vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
+  disk_rv_alloctable_bitmap_only (thread_p, rcv, DISK_ALLOCTABLE_CLEAR);
+  disk_rv_alloctable_vhdr_only (thread_p, &vhdr_rcv, DISK_ALLOCTABLE_CLEAR);
 
-  mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
-
-  /* Set mtb->num of bits starting at mtb->start_bit of byte rcv->offset */
-  bit = mtb->start_bit;
-  num = 0;
-
-  for (at_chptr = (unsigned char *) rcv->pgptr + rcv->offset; num < mtb->num;
-       at_chptr++)
+  if (ref_lsa != NULL)
     {
-      for (i = bit; i < CHAR_BIT && num < mtb->num; i++, num++)
-	{
-	  if (mode == DISK_ALLOCTABLE_SET)
-	    {
-	      if (disk_bit_is_cleared (at_chptr, i))
-		{
-		  disk_bit_set (at_chptr, i);
-		  delta--;
-		}
-	    }
-	  else
-	    {
-	      if (disk_bit_is_set (at_chptr, i))
-		{
-		  disk_bit_clear (at_chptr, i);
-		  delta++;
-		}
-	    }
-	}
-      bit = 0;
-    }
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+      /*
+       * append below two log for synchronization between
+       * volume header and bitmap page
+       */
+      page_addr.offset = rcv->offset;
+      page_addr.pgptr = rcv->pgptr;
+      log_append_run_postpone (thread_p,
+			       RVDK_IDDEALLOC_BITMAP_ONLY,
+			       &page_addr,
+			       &page_vpid, rcv->length, rcv->data, ref_lsa);
 
-  if (mtb->deallid_type == DISK_SECTOR)
-    {
-      vhdr->free_sects += delta;
-    }
-  else
-    {
-      vhdr->free_pages += delta;
-      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose, delta,
-				 false);
+      vhdr_addr.offset = 0;
+      vhdr_addr.pgptr = vhdr_rcv.pgptr;
+      log_append_run_postpone (thread_p,
+			       RVDK_IDDEALLOC_VHDR_ONLY,
+			       &vhdr_addr,
+			       &vhdr_vpid, rcv->length, rcv->data, ref_lsa);
     }
 
-  pgbuf_set_dirty (thread_p, vhdr_pgptr, DONT_FREE);
-  pgbuf_unfix (thread_p, vhdr_pgptr);
-  vhdr_pgptr = NULL;
+  pgbuf_unfix (thread_p, vhdr_rcv.pgptr);
 
   return NO_ERROR;
 }
 
+
 /*
- * disk_rv_set_alloctable_with_vhdr () - Redo (undo) update of allocation
+ * disk_rv_set_alloctable_vhdr_only () - Redo (undo) update of allocation
  *                                          table for allocation (deallocation)
- *                                          of IDS (pageid, sectid) with
- *                                          volume_header
+ *                                          of IDS (pageid, sectid) in volume header
  *   return:
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_set_alloctable_with_vhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_set_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  return disk_rv_alloctable_with_volheader (thread_p, rcv,
-					    DISK_ALLOCTABLE_SET);
+  return disk_rv_alloctable_vhdr_only (thread_p, rcv, DISK_ALLOCTABLE_SET);
 }
 
 /*
- * disk_rv_clear_alloctable_with_vhdr () - Redo (Undo) update of allocation
+ * disk_rv_clear_alloctable_vhdr_only () - Redo (Undo) update of allocation
  *                                            table for deallocation
  *                                            (allocation) of IDS (pageid,
- *                                            sectid) with volume_header
+ *                                            sectid) in volume_header
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_clear_alloctable_with_vhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_clear_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  return disk_rv_alloctable_with_volheader (thread_p, rcv,
-					    DISK_ALLOCTABLE_CLEAR);
+  return disk_rv_alloctable_vhdr_only (thread_p, rcv, DISK_ALLOCTABLE_CLEAR);
+}
+
+/*
+ * disk_rv_set_alloctable_bitmap_only () - Redo (undo) update of allocation
+ *                                          table for allocation (deallocation)
+ *                                          of IDS (pageid, sectid) in
+ *                                          bitmap
+ *   return:
+ *   rcv(in): Recovery structure
+ */
+int
+disk_rv_set_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return disk_rv_alloctable_bitmap_only (thread_p, rcv, DISK_ALLOCTABLE_SET);
+}
+
+/*
+ * disk_rv_clear_alloctable_bitmap_only () - Redo (Undo) update of allocation
+ *                                            table for deallocation
+ *                                            (allocation) of IDS (pageid,
+ *                                            sectid) in bitmap
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+int
+disk_rv_clear_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return disk_rv_alloctable_bitmap_only (thread_p, rcv,
+					 DISK_ALLOCTABLE_CLEAR);
 }
 
 /*

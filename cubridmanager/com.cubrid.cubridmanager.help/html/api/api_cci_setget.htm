@@ -1,0 +1,184 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>cci_set_get</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body lang="KO" xml:lang="KO"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nCCI API\ncci_set_get");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI API<\/a> &nbsp;&gt;&nbsp; cci_set_get<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cci_set_get</h3>
+<h6>설명</h6>
+<p><span class="keyword"><a href="api_cci_getdata.htm">cci_get_data</a></span>()에 대해 <span class="keyword">CCI_A_TYPE_SET</span>에 의해 가져온 set에 대해 <span class="var">index</span> 번째의 데이터를 가져온다. <span class="var">a_type</span>에 대한 <span class="var">value</span>의 타입은&#160;다음과 같다.</p>
+<table border="1">
+<tr>
+<th width="130">
+<p align="center"><span class="var">a_type</span></p>
+</th>
+<th width="110">
+<p><span class="var">value</span> 타입</p>
+</th>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_STR</p>
+</td>
+<td width="110">
+<p>char**</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_INT</p>
+</td>
+<td width="110">
+<p>int*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_FLOAT</p>
+</td>
+<td width="110">
+<p>float*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_DOUBLE</p>
+</td>
+<td width="110">
+<p>double*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_BIT</p>
+</td>
+<td class="keyword" width="110">
+<p>T_CCI_BIT*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_DATE</p>
+</td>
+<td class="keyword" width="110">
+<p>T_CCI_DATE</p>
+</td>
+</tr>
+<tr>
+<td width="130" class="keyword">
+<p>CCI_A_TYPE_BIGINT</p>
+</td>
+<td width="110">
+<p>int64_t</p>
+<p>(Windows는 __int64)</p>
+</td>
+</tr>
+</table>
+<h6>구문</h6>
+<p class="syntax">int<span class="keyword">cci_set_get</span>(<span class="keyword">T_CCI_SET</span> <span class="var">set</span>, int <span class="var">index</span>, <span class="keyword">T_CCI_A_TYPE</span> <span class="var">a_type</span>, void *<span class="var">value</span>, int *<span class="var">indicator</span>)</p>
+<ul>
+<li><span class="var">set</span>&#160;: (IN) cci set 포인터</li>
+<li><span class="var">index</span>&#160;: (IN) set 인덱스&#160;(base : 1)</li>
+<li><span class="var">a_type</span>&#160;: (IN) 타입</li>
+<li><span class="var">value</span>&#160;: (OUT) 결과 버퍼</li>
+<li><span class="var">indicator</span>&#160;: (OUT) null 표시(indicator)</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>에러 코드</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

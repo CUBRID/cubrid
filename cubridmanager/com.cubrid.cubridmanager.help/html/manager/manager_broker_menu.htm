@@ -1,0 +1,119 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>브로커 메뉴</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n브로커\n브로커 메뉴");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_broker_architecture.htm\">브로커<\/a> &nbsp;&gt;&nbsp; 브로커 메뉴<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>브로커 메뉴</h3>
+<p>탐색 트리에서 [브로커]를 마우스 오른쪽 버튼 클릭하면, 브로커 전체에 대한 기능을 수행할 수 있다. [상태 보기], [브로커 시작], [브로커 정지], [속성], [새로고침]으로 구성되어 있다.</p>
+<p>브로커가 시작되어 있으면 탐색 트리에서 <img src="images/icon_brokerrun.png" border="0" align="middle" alt="" /> 아이콘으로 표시되고 정지 상태이면 <img src="images/icon_brokerstop.png" border="0" align="middle" alt="" /> 아이콘으로 표시된다.</p>
+<p><img src="images/manager_broker_menu_context.jpg" border="0" alt="" /></p>
+<h6>상태 보기</h6>
+<p>[상태 보기]는 다음 명령어와 같은 기능을 수행한다.</p>
+<p class="codep">cubrid broker status</p>
+<p>자동으로 새로운 정보를 보려면,&#160;[속성]의 [새로고침 설정]에서 [켜기]를 선택하고 새로 고침 간격을 설정한다.</p>
+<p><img src="images/manager_broker_menu_status.jpg" border="0" alt="" /></p>
+<h6>브로커 시작/정지</h6>
+<p>브로커 전체를 시작/정지하는 기능으로 <span class="keyword">$CUBRID/conf/cubrid_broker.conf</span> 파일의 브로커 구성 정보를 기반으로 시작 및 정지를 수행한다.</p>
+<h6>속성</h6>
+<p>브로커의 속성을 편집하려면 탐색 트리에서 호스트를 마우스 오른쪽 버튼 클릭하여 [속성]을 선택하고 [브로커 변수 설정]을 클릭하거나, [브로커]를 마우스 오른쪽 버튼 클릭하고 [속성]을 선택한다.</p>
+<p><img src="images/manager_broker_menu_configure.jpg" border="0" alt="" /></p>
+<p><span class="keyword">$CUBRID/conf/cubrid_broker.conf</span> 파일내의 모든 구성 정보를 GUI로 추가, 편집, 삭제할 수 있다. 각 매개 변수에 대한 자세한 설명은 <a href="../pm/pm_broker_setting.htm">브로커 설정</a>을 참조한다.</p>
+<p><img src="images/manager_broker_menu_variable.jpg" border="0" alt="" /></p>
+<p>브로커에서 설정하는 모든 값은 입력 또는 편집 시 바로 유효성 검사를 수행하여 사용자의&#160;실수를 최소화한다.</p>
+<p><img src="images/manager_broker_menu_error.jpg" border="0" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

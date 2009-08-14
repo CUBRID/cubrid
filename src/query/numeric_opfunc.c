@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -376,6 +376,8 @@ numeric_init_pow_of_10 (void)
 static DB_C_NUMERIC
 numeric_get_pow_of_10 (int exp)
 {
+  assert (exp < (int) sizeof (powers_of_10));
+
 #if !defined(SERVER_MODE)
   /*  If this is the first time to call this routine, initialize  */
   if (!initialized_10)
@@ -2085,6 +2087,11 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
   unsigned int i;
   char *ptr;
 
+  if (scale >= (int) (sizeof (powers_of_10) / sizeof (powers_of_10[0])))
+    {
+      return ER_NUM_OVERFLOW;
+    }
+
   if (scale > 0)
     {
       numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
@@ -2373,7 +2380,7 @@ numeric_internal_double_to_num (double adouble,
 				DB_C_NUMERIC num, int *prec, int *scale)
 {
   char dbl_string[TWICE_NUM_MAX_PREC + 2];
-  char num_string[TWICE_NUM_MAX_PREC + 1];
+  char num_string[TWICE_NUM_MAX_PREC + 2];
   int i, len;
 
   /* Assert that hard coded values for DB_MAX_NUMERIC_PRECISION are correct */
@@ -2407,7 +2414,8 @@ numeric_internal_double_to_num (double adouble,
   /* Remove the decimal point, track the prec & scale */
   *prec = 0;
   *scale = 0;
-  for (i = 0, len = strlen (dbl_string); i < len; i++)
+  for (i = 0, len = MIN (strlen (dbl_string), (int) sizeof (num_string));
+       i < len; i++)
     {
       if (dbl_string[i] == '.')
 	{
@@ -2978,6 +2986,11 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	temp_str = numeric_db_value_print (src);
 	size = strlen (temp_str);
 	return_string = (char *) db_private_alloc (NULL, size + 1);
+	if (return_string == NULL)
+	  {
+	    return er_errid ();
+	  }
+
 	strcpy (return_string, temp_str);
 	DB_MAKE_CHAR (dest, size, return_string, size);
 	dest->need_clear = true;
@@ -2993,6 +3006,11 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	temp_str = numeric_db_value_print (src);
 	size = strlen (temp_str);
 	return_string = (char *) db_private_alloc (NULL, size + 1);
+	if (return_string == NULL)
+	  {
+	    return er_errid ();
+	  }
+
 	strcpy (return_string, temp_str);
 	DB_MAKE_VARCHAR (dest, size, return_string, size);
 	dest->need_clear = true;
@@ -3008,6 +3026,11 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	temp_str = numeric_db_value_print (src);
 	size = strlen (temp_str);
 	return_string = (char *) db_private_alloc (NULL, size + 1);
+	if (return_string == NULL)
+	  {
+	    return er_errid ();
+	  }
+
 	strcpy (return_string, temp_str);
 	DB_MAKE_NCHAR (dest, size, return_string, size);
 	dest->need_clear = true;
@@ -3023,6 +3046,11 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	temp_str = numeric_db_value_print (src);
 	size = strlen (temp_str);
 	return_string = (char *) db_private_alloc (NULL, size + 1);
+	if (return_string == NULL)
+	  {
+	    return er_errid ();
+	  }
+
 	strcpy (return_string, temp_str);
 	DB_MAKE_VARNCHAR (dest, size, return_string, size);
 	dest->need_clear = true;
@@ -3124,12 +3152,6 @@ exit_on_error:
 char *
 numeric_db_value_print (DB_VALUE * val)
 {
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *th_entry;
-  char *buf;
-#else /* SERVER_MODE */
-  static char buf[81];
-#endif /* SERVER_MODE */
   char temp[80];
   int nbuf;
   int temp_size;
@@ -3138,15 +3160,35 @@ numeric_db_value_print (DB_VALUE * val)
   int scale = db_value_scale (val);
 
 #if defined(SERVER_MODE)
-  th_entry = thread_get_thread_entry_info ();
-  buf = th_entry->qp_num_buf;
+  THREAD_ENTRY *th_entry;
+  char *buf;
+#else /* SERVER_MODE */
+  static char buf[sizeof (temp) + 2];
 #endif /* SERVER_MODE */
 
+
+#if defined(SERVER_MODE)
+  th_entry = thread_get_thread_entry_info ();
+  buf = th_entry->qp_num_buf;
+  if (buf == NULL)
+    {
+      return NULL;
+    }
+
+#endif /* SERVER_MODE */
+
+  if (DB_IS_NULL (val))
+    {
+      buf[0] = '\0';
+      return buf;
+    }
+
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str (DB_GET_NUMERIC (val), temp);
+  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (val), temp);
+
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
-  temp_size = strlen (temp);
+  temp_size = strnlen (temp, sizeof (temp));
   for (i = 0; i < temp_size; i++)
     {
       /* Add the negative sign */
@@ -3196,12 +3238,12 @@ numeric_db_value_print (DB_VALUE * val)
 bool
 numeric_db_value_is_zero (const DB_VALUE * arg)
 {
-  if (!arg || DB_IS_NULL (arg))	/* NULL values are not 0 */
+  if (arg == NULL || DB_IS_NULL (arg))	/* NULL values are not 0 */
     {
       return false;
     }
   else
     {
-      return (numeric_is_zero ((DB_C_NUMERIC) DB_GET_NUMERIC (arg)));
+      return (numeric_is_zero ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg)));
     }
 }

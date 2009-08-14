@@ -1,0 +1,212 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CCI 예제</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nCCI를 이용한 프로그램 작성\nCCI 예제 프로그램");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_app_cci_library.htm\">CCI를 이용한 프로그램 작성<\/a> &nbsp;&gt;&nbsp; CCI 예제 프로그램<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CCI 예제</h4>
+<h6>예제 설명</h6>
+<p>예제 프로그램은 CUBRID 설치 과정에서 기본적으로 배포되는 <span class="keyword">demodb</span> DB를 활용하여 CCI를 사용하는 응용 프로그램을 간단하게 작성한 것이다. 예제를 통하여 CAS와 연결하기, 질의 준비, 질의 수행, 응답 처리, 연결 끊기 등의 과정을 따라한다. 예제는 Linux 기반의 동적 링크를 적용하는 방법으로 작성되었다.</p>
+<p>다음은 예제에서 사용하는 <span class="keyword">demodb</span> 데이터베이스의 <span class="keyword">olympic</span> 클래스(테이블)의 스키마 정보이다.</p>
+<p><img src="images/gs_app_cci_sample_table.png" width="560" height="450" border="0" alt="" /></p>
+<h6>준비</h6>
+<p>예제 프로그램을 수행하기 전에 반드시 확인해야 할 사항은 <span class="keyword">demodb</span> 데이터베이스와 브로커의 가동 여부이다. <span class="keyword">demodb</span> 데이터베이스와 브로커는 CUBRID 매니저를 통해 시작할 수 있다. 다음은 <span class="keyword">demodb</span> 데이터베이스가 가동 중인 상황을 CUBRID 매니저에서 확인한 것이다.</p>
+<p><img src="images/gs_app_cci_sample_db.png" width="560" height="361" border="0" alt="" /></p>
+<p>다음은 브로커가 가동 중인 상태를 CUBRID 매니저를 통해서 확인한 것이다.</p>
+<p><img src="images/gs_app_cci_sample_broker.png" width="560" height="167" border="0" alt="" /></p>
+<h6>빌드</h6>
+<p>프로그램 소스와 Makefile이 준비된 상태에서 make를 수행하면 test라는 실행 파일이 생성된다. 정적 라이브러리를 사용하면 추가로 파일을 배포할 필요가 없고 속도가 빠르다. 하지만, 프로그램의 크기와 메모리 사용량이 커지는 단점이 있다. 동적 라이브러리를 사용하면 성능상의 오버헤드는 있지만, 메모리와 프로그램 크기에 있어 최적화를 이룰 수 있다.</p>
+<p>다음은 Linux에서 make를 사용하지 않고 동적인 라이브러리를 사용하여 테스트 프로그램을 빌드하는 명령 행의 예제이다.</p>
+<p class="code">cc -o test test.c -I$CUBRID/include -L$CUBRID/lib -lnsl -lcascci</p>
+<p></p>
+<h6>예제 코드</h6>
+<p class="code">#include &lt;stdio.h&gt;<br />
+#include &lt;cas_cci.h&gt;<br />
+char *cci_client_name = "test";<br />
+int main (int argc, char *argv[])<br />
+{<br />
+&#160;&#160;&#160; int con = 0, req = 0, res, ind, i, col_count;<br />
+&#160;&#160;&#160; T_CCI_ERROR error;<br />
+&#160;&#160;&#160; T_CCI_COL_INFO *res_col_info;<br />
+&#160;&#160;&#160; T_CCI_SQLX_CMD cmd_type;<br />
+&#160;&#160;&#160; char *buffer, db_ver[16];;<br />
+&#160;&#160;&#160; printf("Program started!\n");<br />
+&#160;&#160;&#160; if ((con=cci_connect("localhost", 30000, "demodb", "PUBLIC", ""))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_connect fail\n", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; return -1;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;<br />
+&#160;&#160;&#160; if ((res=cci_get_db_version(con, db_ver, sizeof(db_ver)))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_get_db_version fail\n", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; printf("DB Version is %s\n",db_ver);<br />
+&#160;&#160;&#160; if ((req=cci_prepare(con, "select * from event", 0,&amp;error))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_prepare fail(%d)\n", __FILE__, __LINE__,error.err_code);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; printf("Prepare ok!(%d)\n",req);<br />
+&#160;&#160;&#160; res_col_info = cci_get_result_info(req, &amp;cmd_type, &amp;col_count);<br />
+&#160;&#160;&#160; if (!res_col_info) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_get_result_info fail\n", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;<br />
+&#160;&#160;&#160; printf("Result column information\n"<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; "========================================\n");<br />
+&#160;&#160;&#160; for (i=1; i&lt;=col_count; i++) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf("name:%s&#160; type:%d(precision:%d scale:%d)\n",<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CCI_GET_RESULT_INFO_NAME(res_col_info, i),<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CCI_GET_RESULT_INFO_TYPE(res_col_info, i),<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CCI_GET_RESULT_INFO_PRECISION(res_col_info, i),<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CCI_GET_RESULT_INFO_SCALE(res_col_info, i));<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; printf("========================================\n");<br />
+&#160;&#160;&#160; if ((res=cci_execute(req, 0, 0, &amp;error))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_execute fail(%d)\n", __FILE__, __LINE__,error.err_code);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; if ((res=cci_fetch_size(req, 100))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_fetch_size fail\n", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;<br />
+&#160;&#160;&#160; while (1) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; res = cci_cursor(req, 1, CCI_CURSOR_CURRENT, &amp;error);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; if (res == CCI_ER_NO_MORE_DATA) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf("Query END!\n");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; break;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; if (res&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_cursor fail(%d)\n", __FILE__, __LINE__,error.err_code);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; if ((res=cci_fetch(req, &amp;error))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_fetch fail(%d)\n", __FILE__, __LINE__,error.err_code);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; for (i=1; i&lt;=col_count; i++) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; if ((res=cci_get_data(req, i, CCI_A_TYPE_STR, &amp;buffer, &amp;ind))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_get_data fail\n", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf("%s \t|", buffer);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; }<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf("\n");<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; if ((res=cci_close_req_handle(req))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_close_req_handle fail", __FILE__, __LINE__);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; if ((res=cci_disconnect(con, &amp;error))&lt;0) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; printf( "%s(%d): cci_disconnect fail(%d)", __FILE__, __LINE__,error.err_code);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; goto handle_error;<br />
+&#160;&#160;&#160; }<br />
+&#160;&#160;&#160; printf("Program ended!\n");<br />
+&#160;&#160;&#160; return 0;<br />
+&#160;&#160;&#160;<br />
+handle_error:<br />
+&#160;&#160;&#160; if (req &gt; 0)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; cci_close_req_handle(req);<br />
+&#160;&#160;&#160; if (con &gt; 0)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; cci_disconnect(con, &amp;error);<br />
+&#160;&#160;&#160; printf("Program failed!\n");<br />
+&#160;&#160;&#160; return -1;<br />
+}</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

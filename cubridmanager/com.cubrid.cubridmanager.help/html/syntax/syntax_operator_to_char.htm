@@ -1,0 +1,812 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>TO_CHAR 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n데이터 타입 변환 함수\nTO_CHAR 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_to_char.htm\">데이터 타입 변환 함수<\/a> &nbsp;&gt;&nbsp; TO_CHAR 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>TO_CHAR 함수</h4>
+<ul>
+<li><a href="#date">날짜 타입(DATE, TIME, TIMESTAMP, DATETIME)</a></li>
+<li><a href="#numeric">숫자 타입(NUMERIC)</a></li>
+</ul>
+<h5><a name="date" id="date"></a>날짜 타입(DATE, TIME, TIMESTAMP, DATETIME)</h5>
+<h6>설명</h6>
+<p><span class="keyword">TO_CHAR</span> 함수는 날짜-시간 타입(<span class="keyword">DATE</span>, <span class="keyword">TIME</span>, <span class="keyword">TIMESTAMP</span>, <span class="keyword">DATETIME</span>)을 "<a href="#table_date">날짜-시간</a>" 포맷에 맞는 <span class="keyword">VARCHAR</span> 타입으로 변환한다. 날짜-시간 포맷이 생략되었을 때에 <span class="keyword">DATE</span> 타입이면 'MM/DD/YYYY' 포맷이, <span class="keyword">TIME</span> 타입이면 'HH:MI:SS' 포맷이, <span class="keyword">TIMESTAMP</span> 타입이면 'HH:MI:SS AM MM/DD/YYYY' 포맷이, <span class="keyword">DATETIME</span> 타입이면 'HH:MI:SS.FF AM MM/DD/YYYY' 포맷이&#160;적용된다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">TO_CHAR</span>( <span class="var">date_time_argument</span> [, <span class="var">format_argument</span>[, <span class="var">date_lang_string_literal</span> ]] )<br />
+<br />
+<span class="var">date_time_argument</span> :<br />
+<span class="var">date<br />
+time<br />
+timestamp<br /></span><span class="var">datetime</span><br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">format_argument</span> :<br />
+character strings (<a href="#table_date">날짜 포맷</a> 표&#160;참조)<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">date_lang_string_literal</span> : (<a href="#table_var">date_lang_string_literal</a> 표&#160;참조)<br />
+'en_US'<br />
+'ko_KR'</p>
+<ul>
+<li><span class="var">date_time_argument</span> : <span class="keyword">VARCHAR</span> 타입으로 변경할 날짜-시간 타입 값을 지정한다. 값이 <span class="keyword">NULL</span>인 경우에는 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">format_argument</span> : 반환할 값의 양식을 지정한다. 값이 <span class="keyword">NULL</span>인 경우에는 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">date_lang_string_literal</span> : 반환값에 적용할 언어를 지정한다(<a href="syntax_operator_to_char.htm#table_var">date_lang_string_literal</a> 표&#160;참조). 디폴트 값은 'en_US'이다. <span class="keyword">CUBRID_DATE_LANG</span> 환경 변수를 지정하여 수정할 수 있다.</li>
+</ul>
+<p class="caption-table"><a name="table_date" id="table_date"></a>날짜 포맷</p>
+<table border="1">
+<tr>
+<th>
+<p>포맷 구성 요소</p>
+</th>
+<th>
+<p>의미</p>
+</th>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">CC</span></p>
+</td>
+<td>
+<p>세기</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">YYYY</span>, <span class="keyword">YY</span></p>
+</td>
+<td>
+<p>4자리 연도, 2자리 연도</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Q</span></p>
+</td>
+<td>
+<p>분기(1, 2, 3, 4; 1월~3월 = 1)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MM</span></p>
+</td>
+<td>
+<p>월(01-12; 1월 = 01)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MONTH</span></p>
+</td>
+<td>
+<p>월 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MON</span></p>
+</td>
+<td>
+<p>축약된 월 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DD</span></p>
+</td>
+<td>
+<p>날(1-31)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DAY</span></p>
+</td>
+<td>
+<p>요일 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DY</span></p>
+</td>
+<td>
+<p>축약된 요일 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">D</span> 또는 <span class="keyword">d</span></p>
+</td>
+<td>
+<p>요일(1-7)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">AM</span> 또는 <span class="keyword">PM</span></p>
+</td>
+<td>
+<p>오전/오후</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">A.M.</span> 또는 <span class="keyword">P.M.</span></p>
+</td>
+<td>
+<p>마침표가 포함된 오전/오후</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">HH</span> 또는 <span class="keyword">HH12</span></p>
+</td>
+<td>
+<p>시(0-11)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">HH24</span></p>
+</td>
+<td>
+<p>시(0-23)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MI</span></p>
+</td>
+<td>
+<p>분(0-59)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">SS</span></p>
+</td>
+<td>
+<p>초(0-59)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">FF</p>
+</td>
+<td>
+<p>밀리초(0-999)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>- / , . ; : "텍스트"</p>
+</td>
+<td>
+<p>구두점과 인용구는 그대로 결과에 표현됨</p>
+</td>
+</tr>
+</table>
+<p class="caption-table"><a name="table_var" id="table_var"></a>date_lang_string_literal 예</p>
+<table border="1">
+<tr>
+<th rowspan="2">
+<p>포맷 구성 요소</p>
+</th>
+<th colspan="2">
+<p>Date_lang_string_literal</p>
+</th>
+</tr>
+<tr>
+<th>
+<p>'en_US'</p>
+</th>
+<th>
+<p>'ko_KR'</p>
+</th>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MONTH</span></p>
+</td>
+<td>
+<p>JANUARY</p>
+</td>
+<td>
+<p>1월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MON</span></p>
+</td>
+<td>
+<p>JAN</p>
+</td>
+<td>
+<p>1</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DAY</span></p>
+</td>
+<td>
+<p>MONDAY</p>
+</td>
+<td>
+<p>월요일</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DY</span></p>
+</td>
+<td>
+<p>MON</p>
+</td>
+<td>
+<p>월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Month</span></p>
+</td>
+<td>
+<p>January</p>
+</td>
+<td>
+<p>1월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Mon</span></p>
+</td>
+<td>
+<p>Jan</p>
+</td>
+<td>
+<p>1</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Day</span></p>
+</td>
+<td>
+<p>Monday</p>
+</td>
+<td>
+<p>월요일</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Dy</span></p>
+</td>
+<td>
+<p>Mon</p>
+</td>
+<td>
+<p>월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">month</span></p>
+</td>
+<td>
+<p>january</p>
+</td>
+<td>
+<p>1월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">mon</span></p>
+</td>
+<td>
+<p>jan</p>
+</td>
+<td>
+<p>1</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">day</span></p>
+</td>
+<td>
+<p>monday</p>
+</td>
+<td>
+<p>월요일</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Dy</span></p>
+</td>
+<td>
+<p>mon</p>
+</td>
+<td>
+<p>월</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">AM</span></p>
+</td>
+<td>
+<p>AM</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Am</span></p>
+</td>
+<td>
+<p>Am</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">am</span></p>
+</td>
+<td>
+<p>am</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">A.M.</span></p>
+</td>
+<td>
+<p>A.M.</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">A.m.</span></p>
+</td>
+<td>
+<p>A.m.</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">a.m.</span></p>
+</td>
+<td>
+<p>a.m.</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">PM</span></p>
+</td>
+<td>
+<p>AM</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">Pm</span></p>
+</td>
+<td>
+<p>Am</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">pm</span></p>
+</td>
+<td>
+<p>am</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">P.M.</span></p>
+</td>
+<td>
+<p>A.M.</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">P.m.</span></p>
+</td>
+<td>
+<p>A.m.</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">p.m.</span></p>
+</td>
+<td>
+<p>a.m</p>
+</td>
+<td>
+<p>오전</p>
+</td>
+</tr>
+</table>
+<p>반환값 포맷의 자릿수는 다음과 같다.</p>
+<table border="1">
+<tr>
+<th>
+<p>포맷 구성 요소</p>
+</th>
+<th>
+<p>자릿수</p>
+</th>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MONTH(Month, month)</span></p>
+</td>
+<td>
+<p>9 (ko_KR의 경우 4)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">MON(Mon, mon)</span></p>
+</td>
+<td>
+<p>3 (ko_KR의 경우 2</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DAY(Day, day)</span></p>
+</td>
+<td>
+<p>9 (ko_KR의 경우 6)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">DY(Dy, dy)</span></p>
+</td>
+<td>
+<p>3 (ko_KR의 경우 2)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><span class="keyword">HH12, HH24</span></p>
+</td>
+<td>
+<p>2</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>"텍스트"</p>
+</td>
+<td>
+<p>텍스트의 길이</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>나머지 포맷</p>
+</td>
+<td>
+<p>포맷의 길이와 같음</p>
+</td>
+</tr>
+</table>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 <span class="keyword">DATE</span> 타입에서 날짜만 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(DATE '12/25/1999', 'dd') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 25</li>
+</ul>
+<ul>
+<li class="title">예제&#160;2</li>
+<li class="desc">다음은 <span class="keyword">TIME</span> 타입에서 시만 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(TIME '10:20:30 AM', 'HH24') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 10</li>
+</ul>
+<ul>
+<li class="title">예제&#160;3</li>
+<li class="desc">다음은 <span class="keyword">TIMESTAMP</span> 타입에서 월 이름,&#160;축약된 월 이름, 연도를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(TIMESTAMP '10:20:30 AM 12/25/1999', 'MONTH MON yyyy') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: DECEMBER&#160;DEC 1999</li>
+</ul>
+<ul>
+<li class="title">예제 4</li>
+<li class="desc">다음은 <span class="keyword">TIMESTAMP</span>에서 요일을 숫자로 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(TIMESTAMP '10:20:30 AM 12/25/1999', 'D') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 7</li>
+</ul>
+<ul>
+<li class="title">예제 5</li>
+</ul>
+<ul>
+<li class="desc">다음은 <span class="keyword">DATETIME</span>에서 초와 밀리초를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(DATETIME'10:12:13 6/5/2009','ss ff') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 13 000</li>
+</ul>
+<h5><a name="numeric" id="numeric"></a>숫자 타입(NUMERIC)</h5>
+<h6>설명</h6>
+<p><span class="keyword">TO_CHAR</span> 함수는 <span class="keyword">NUMERIC</span> 타입을 <a href="#table_num">숫자 포맷</a>에&#160;맞는 <span class="keyword">VARCHAR</span> 타입으로 변환한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">TO_CHAR</span>(<span class="var">numeric_argument</span>[, <span class="var">format_argument</span> ])<br />
+<br />
+<span class="var">numeric_argument</span> :<br />
+<span class="var">numeric(decimal)<br />
+integer<br />
+smallint<br />
+bigint<br />
+float(real)<br />
+double</span><span class="keyword"><br />
+NULL</span><br />
+<br />
+<span class="var">format_argument</span> :<br />
+character strings (<a href="#table_num">숫자 포맷</a> 표 참조)<span class="keyword"><br />
+NULL</span></p>
+<ul>
+<li><span class="var">numeric_argument</span> : <span class="keyword">VARCHAR</span> 타입으로 변환할 숫자값을 지정한다. 값이 <span class="keyword">NULL</span>이면 결과로 <span class="keyword">NULL</span>이 반환된다.</li>
+<li>
+<p><span class="var">format_argument</span> : 반환할 값의 양식을 지정한다.&#160;생략되면,&#160;숫자 타입값에 따라서 기본 포맷을 따른다. 값이 <span class="keyword">NULL</span>이면 결과로 <span class="keyword">NULL</span>이 반환된다.</p>
+</li>
+</ul>
+<p class="caption-table"><a name="table_num" id="table_num"></a>숫자 포맷</p>
+<table border="1">
+<tr>
+<th>
+<p>포맷 구성 요소</p>
+</th>
+<th>
+<p>예제</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td class="keyword">
+<p>9</p>
+</td>
+<td>
+<p>9999</p>
+</td>
+<td>
+<p>"9"의 개수가 반환될 유효숫자 자릿수를 나타낸다. 숫자 앞쪽의 0에 대해서는 공백이 반환된다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>0</p>
+</td>
+<td>
+<p>0999</p>
+</td>
+<td>
+<p>숫자 앞쪽의 0에 대해서 공백이 아니라 0을 반환한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>S</p>
+</td>
+<td>
+<p>S9999</p>
+</td>
+<td>
+<p>지정된 위치에 양수에 대해서는 "+", 음수에 대해서는 "-"를 반환한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>C</p>
+</td>
+<td>
+<p>C9999</p>
+</td>
+<td>
+<p>지정된 위치에 ISO 통화 기호를 반환한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>,</p>
+</td>
+<td>
+<p>9,999</p>
+</td>
+<td>
+<p>지정된 위치에 쉼표(",")를 반환한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>.</p>
+</td>
+<td>
+<p>9.999</p>
+</td>
+<td>
+<p>지정된 위치에 숫자의 정수 부분과 소수 부분을 구분하는 마침표(".")를 반환한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>EEEE</p>
+</td>
+<td>
+<p>9.99EEEE</p>
+</td>
+<td>
+<p>과학적 기수법(scientific notation)을 반환한다.</p>
+</td>
+</tr>
+</table>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 숫자를 사인 부호와 4자리의 <span class="keyword">VARCHAR</span> 타입으로 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(1234,'S9999') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: +1234</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 과학적 기수법으로 표기된 숫자를 <span class="keyword">VARCHAR</span> 타입으로 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_CHAR(1.234E-4) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 0.0001234</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

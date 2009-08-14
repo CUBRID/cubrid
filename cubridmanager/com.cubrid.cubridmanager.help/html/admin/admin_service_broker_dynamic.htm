@@ -1,0 +1,120 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>브로커 파라미터의 동적 변경</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID 제어\n브로커\n브로커 파라미터의 동적 변경");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_conf_command.htm\">CUBRID 제어<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_broker_all.htm\">브로커<\/a> &nbsp;&gt;&nbsp; 브로커 파라미터의 동적 변경<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>브로커 파라미터의 동적 변경</h4>
+<p>브로커 구동과 관련된 파라미터는 브로커 환경 설정 파일(cubrid_broker.conf)에서 설정할 수 있다. 자세한 내용은 "성능 관리 안내서"의 "<a href="../pm/pm_broker_one.htm">브로커별 파라미터</a>"를 참조한다. 그 밖에, broker_changer 유틸리티를 이용하여 구동 중에만 한시적으로 일부 브로커 파라미터를 동적으로 변경할 수 있으며,&#160;동적으로 변경할 수 있는 브로커 파라미터는 다음과 같다.</p>
+<ul>
+<li>ACCESS_LOG</li>
+<li>APPL_SERVER_MAX_SIZE</li>
+<li>KEEP_CONNECTION</li>
+<li>LOG_BACKUP</li>
+<li>SQL_LOG</li>
+<li>SQL_LOG_MAX_SIZE</li>
+<li>STATEMENT_POOLING</li>
+<li>TIME_TO_KILL</li>
+</ul>
+<h6>구문</h6>
+<p>브로커 구동 중에 브로커 파라미터를 변경하기 위한 <span class="keyword">broker_changer</span> 유틸리티의 구문은 다음과 같다.&#160;<span class="var">broker_name</span>에는 구동 중인 브로커 이름을 입력하면 되고&#160;<span class="var">parameter</span> 는 동적으로 변경할 수 있는 브로커 파라미터에 한정된다. 변경하고자 하는 파라미터에 따라&#160;<span class="var">value</span>가 지정되어야 한다.</p>
+<p class="syntax"><span class="keyword">broker_changer</span>&#160; <span class="var">broker_name</span> &#160;<span class="var">parameters</span> &#160;<span class="var">value</span></p>
+<h6>예제</h6>
+<p>구동 중인 브로커에서 SQL 로그가 기록되도록 SQL_LOG 파라미터를 ON으로 설정하기 위하여 다음과 같이 입력한다. 이와 같은 파라미터의 동적 변경은 브로커 구동 중일 때만 한시적으로 효력이 있다.</p>
+<p class="code">%&#160;broker_changer query_editor sql_log on<br />
+OK</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

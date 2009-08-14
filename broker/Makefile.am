@@ -42,8 +42,8 @@ QATOOLS_DIR = $(SRC)/qatools
 
 INCLUDES = @SRC_INC@ @EXT_INC@
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER
-AM_LDFLAGS = -lcurses @CS_LIB@ @CCI_LIB@
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@
+BROKER_CAS_LIBS = -lcurses @CS_LIB@ @CCI_LIB@
 
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
 	broker_monitor broker_changer \
@@ -61,6 +61,7 @@ cub_broker_SOURCES = \
 	$(BROKER_DIR)/broker_access_list.c \
 	$(BROKER_DIR)/broker_send_fd.c \
 	$(BROKER_DIR)/broker_filename.c
+cub_broker_LDFLAGS=$(BROKER_CAS_LIBS)
 
 broker_monitor_SOURCES = \
 	$(BROKER_DIR)/broker_monitor.c \
@@ -72,6 +73,7 @@ broker_monitor_SOURCES = \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_process_info.c \
 	$(BROKER_DIR)/broker_filename.c
+broker_monitor_LDFLAGS=$(BROKER_CAS_LIBS)
 
 broker_changer_SOURCES = \
 	$(BROKER_DIR)/broker_changer.c \
@@ -83,6 +85,7 @@ broker_changer_SOURCES = \
 	$(BROKER_DIR)/broker_util.c \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_filename.c
+broker_changer_LDFLAGS=$(BROKER_CAS_LIBS)
 
 cubrid_broker_SOURCES = \
 	$(BROKER_DIR)/broker_config.c \
@@ -94,6 +97,7 @@ cubrid_broker_SOURCES = \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_filename.c
+cubrid_broker_LDFLAGS=$(BROKER_CAS_LIBS)
 
 cub_cas_SOURCES = \
 	$(BROKER_DIR)/cas.c \
@@ -113,16 +117,20 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_error.c
+cub_cas_CFLAGS = $(CFLAGS) -DCAS_CUBRID
+cub_cas_LDFLAGS = $(BROKER_CAS_LIBS)
 
 broker_log_converter_SOURCES = \
 	$(BROKER_DIR)/broker_log_converter.c \
 	$(BROKER_DIR)/broker_log_util.c \
-	$(BROKER_DIR)/log_top_string.c
+	$(BROKER_DIR)/log_top_string.c 
+broker_log_converter_LDFLAGS = $(BROKER_CAS_LIBS)
 
 broker_log_runner_SOURCES = \
 	$(BROKER_DIR)/cas_runner.c \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c
+broker_log_runner_LDFLAGS = $(BROKER_CAS_LIBS)
 
 broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_top.c \
@@ -132,3 +140,5 @@ broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c \
 	$(BROKER_DIR)/broker_log_top_tran.c
+broker_log_top_LDFLAGS = $(BROKER_CAS_LIBS)
+

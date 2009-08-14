@@ -17,7 +17,7 @@
 #define	MSG_START_UNICAS			10
 #define	MSG_START_UNICAS_ERROR		11
 #define	MSG_RESTART_UNICAS			12
-#define	MSG_RESTART_UNICAS_ERROR	13 
+#define	MSG_RESTART_UNICAS_ERROR	13
 #define	MSG_STOP_UNICAS				14
 #define	MSG_STOP_UNICAS_ERROR		15
 #define MSG_UC_CANT_MONITOR			16
@@ -184,7 +184,6 @@
 #define	WN_VAS_OK						146
 #define	WN_VAS_CANCEL					147
 
-/* 새로 추가된 메시지 */
 #define MSG_STOP_SERVICE            148
 
 /* variable of unicas conf */
@@ -215,7 +214,6 @@
 #define	LOG_BACKUP			"log_backup"
 #define	SOURCE_ENV			"source_env"
 #define	SQL_LOG				"sql_log"
-#define	SQL_LOG_TIME		"sql_log_time"
 #define	TIME_TO_KILL		"time_to_kill"
 #define	SESSION_TIMEOUT		"session_timeout"
 #define	JOB_QUEUE_SIZE		"job_queue_size"

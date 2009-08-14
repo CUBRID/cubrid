@@ -1,0 +1,116 @@
+﻿
+<html>
+<head>
+<title>CCI_GET_RESULT_INFO_PRECISION</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nCCI API\nCCI_GET_RESULT_INFO_IS_NON_NULL");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI API<\/a> &nbsp;&gt;&nbsp; CCI_GET_RESULT_INFO_IS_NON_NULL<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CCI_GET_RESULT_INFO_<span lang="ES" xml:lang="ES">IS_NON_NULL</span></h3>
+<h6>설명</h6>
+<p>prepare된 <span class="keyword">SELECT</span> 문의 <span class="var">index</span> 번째 컬럼이 nullable인지에 대한 값을 가져오는&#160;매크로이다. 파라미터의 <span class="var">res_info</span>가 <span class="keyword">NULL</span>인지 <span class="var">index</span>가 유효한지에 대한 검사는 하지 않는다.</p>
+<h6>구문</h6>
+<p class="syntax">#define <span class="keyword">CCI_GET_RESULT_INFO_IS_NON_NULL</span>(<span class="keyword">T_CCI_COL_INFO</span>* <span class="var">res_info</span>, int <span class="var">index</span>)</p>
+<ul>
+<li><span class="var">res_info</span> : (IN) <span class="keyword"><a href="api_cci_getresultinfo.htm">cci_get_result_info</a></span>에 의한 컬럼&#160;정보 포인터</li>
+<li><span class="var">index</span> : (IN) 컬럼 인덱스</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>0 : nullable</li>
+<li>1 : non <span class="keyword">NULL</span></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

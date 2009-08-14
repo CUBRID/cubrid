@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="com.cubrid.cubridmanager.plugin.feature"
+      label="CUBRID Manager Plug-in Feature"
+      version="8.2.0"
+      provider-name="Search Solution Corporation"
+      plugin="com.cubrid.cubridmanager.plugin">
+
+   <description url="http://www.cubrid.com/">
+      [Enter Feature Description here.]
+   </description>
+
+   <copyright url="http://www.cubrid.com/">
+      [Enter Copyright Description here.]
+   </copyright>
+
+   <license url="http://www.cubrid.com/">
+      Copyright (C) 2009 Search Solution Corporation. All rights reserved
+by Search Solution.
+   </license>
+
+   <requires>
+      <import plugin="org.eclipse.core.runtime"/>
+      <import plugin="org.eclipse.ui"/>
+      <import plugin="org.eclipse.help"/>
+      <import plugin="org.apache.lucene"/>
+      <import plugin="org.eclipse.help.appserver"/>
+      <import plugin="org.eclipse.help.webapp"/>
+      <import plugin="org.eclipse.help.base"/>
+      <import plugin="org.eclipse.help.ui"/>
+      <import plugin="org.eclipse.tomcat"/>
+      <import plugin="org.eclipse.ui.forms"/>
+      <import plugin="org.eclipse.jface.text"/>
+   </requires>
+
+   <plugin
+         id="com.cubrid.cubridmanager.core"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="com.cubrid.cubridmanager.help"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="com.cubrid.cubridmanager.plugin"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="com.cubrid.cubridmanager.ui"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="org.apache.log4j"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+</feature>

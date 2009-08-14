@@ -798,9 +798,9 @@
 #define ER_EV_WRITE_HANDLER                         -661
 #define ER_EV_INIT                                  -662
 #define ER_EV_TRUNC                                 -663
-#define ER_EV_SERVER_STARTED                        -664
+#define ER_EV_STARTED                               -664
 #define ER_EV_BROKEN_PIPE                           -665
-#define ER_EV_OFF                                   -666
+#define ER_EV_STOPPED                               -666
 
 #define ER_CPLUS_NO_CLASS_MATCH                     -667
 #define ER_CPLUS_UNKNOWN_DOMAIN                     -668
@@ -817,7 +817,7 @@
 
 #define ER_CFG_READ_DATABASES                       -675
 #define ER_CFG_FIND_DATABASE                        -676
-#define ER_BO_HOSTS_CONNECT                         -677
+#define ER_BO_CONNECT_FAILED                         -677
 #define ER_BO_CLIENT_INIT_INTERNAL                  -678
 
 #define ER_CPLUS_TRANSACTION_BEGUN_TWICE            -679
@@ -1197,9 +1197,20 @@
 #define  ER_INTERFACE_BROKER                        -963
 #define  ER_INTERFACE_RESULTSET_CLOSED              -964
 #define  ER_SM_INDEX_ATTR_DUPLICATED                -965
-#define  ER_ONLY_IN_CLIENT                          -966
 
-#define ER_LAST_ERROR                               -967
+#define ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG          -966
+#define ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG           -967
+#define ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG         -968
+
+#define ER_NET_DIFFERENT_BIT_PLATFORM               -969
+
+#define ER_CSS_SERVER_HA_MODE_CHANGE                -970
+
+#define ER_BO_CONNECTED_TO                          -971
+#define ER_BO_CLIENT_CONNECTED                      -972
+#define ER_BO_SERVER_STATUS                         -973
+
+#define ER_LAST_ERROR                               -974
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -2680,6 +2691,9 @@ extern int db_auth_logout (void);
 extern int db_login (const char *name, const char *password);
 extern int db_restart (const char *program,
 		       int print_version, const char *volume);
+extern int db_restart_ex (const char *program, const char *db_name,
+			  const char *db_user, const char *db_password,
+			  int client_type);
 extern int db_shutdown (void);
 extern int db_commit_transaction (void);
 extern int db_abort_transaction (void);

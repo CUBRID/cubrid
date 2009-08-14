@@ -1,0 +1,114 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>복제 사용 시나리오</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 개념\n복제 사용 시나리오");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">복제 개념<\/a> &nbsp;&gt;&nbsp; 복제 사용 시나리오<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>복제 사용 시나리오</h4>
+<h6>부하 분산을 통한 성능 향상</h6>
+<p>복제는 하나의 데이터베이스 서버로 응용의 성능 요구 사항을 만족하기 힘들 때, 특히, 읽기 연산을 여러 데이터베이스 서버에 분산시킴으로써 전체 시스템의 성능을 향상시키는 데 활용할 수 있다. CUBRID 복제의 경우, 마스터는 읽기/쓰기 연산을 모두 허용하나, 슬레이브는 읽기 연산만 허용하기 때문에, CUBRID 복제를 이용한 성능 향상 효과는 쓰기 연산은 제한적이고 읽기 연산이 많은 응용에서 탁월하다고 할 수 있다. 인터넷 서비스에 사용되고 있는 블로그, 게시판, 뉴스 등 많은 응용이 이러한 범주에 든다고 할 수 있다. 아래 그림은 부하 분산을 통해 성능 향상 효과를 얻기 위한 웹 서비스 구조를 보인 것이다.</p>
+<p><img src="images/image002.jpg" height="162" width="350" alt="" /></p>
+<p class="caption">부하 분산을 통한 성능 향상</p>
+<p>위와 같은 복제 환경을 구축하기 위해서는 배포 데이터베이스를 설정한 후 슬레이브 데이터베이스를 추가하면 된다.</p>
+<h6>장애 대비 가용성 향상</h6>
+<p>CUBRID 데이터베이스를 복제를 이용하여 슬레이브를 설정하여 두면, 마스터에 장애가 발생하였을 때, 슬레이브를 마스터로 교체하여 장애에 효과적으로 대응할 수 있다. 장애의 종류에 따라, 마스터 데이터베이스의 백업을 이용한 복구 기능으로 충분할 수도 있으나, 만약, 마스터 호스트 자체의 장애가 발생할 경우에는 마스터 호스트의 이중화(HA: high-availability라고도 부름)나 복제를 통하여 대처할 수 있다. 예를 들어, 앞의 성능 향상 예에서 마스터 데이터베이스가 운영되고 있는 호스트에 장애가 발생하면 슬레이브 데이터베이스 중 하나를 마스터로 교체하고, 응용에서도 쓰기 연산이 새로운 마스터로 전달될 수 있도록 설정하면 된다.</p>
+<p>슬레이브를 마스터로 교체하는 작업은 그리 단순하지는 않다. 특히, 슬레이브와 마스터의 복제 설정 상태에 따라 슬레이브로 하여금 마스터 역할을 모두 수행하게 하는 것은 매우 복잡한 절차가 필요할 수도 있다. 슬레이브를 마스터로 교체하는 상세한 절차는 이 장에서 차후에 설명한다.</p>
+<h6>분리 작업을 통한 유연성 향상</h6>
+<p>CUBRID 복제를 이용하면 별도의 호스트에 마스터와 같은 내용을 갖는 데이터베이스를 확보할 수 있기 때문에 마스터 데이터베이스가 운영되는 환경에 영향을 주지 않고 여러 가지 추가적인 업무를 수행할 수 있어, 데이터베이스 사용의 유연성이 향상된다. 예를 들어, 마스터 데이터베이스가 24x7 온라인 업무에 사용되고 있고, 어느 시간 대에도 백업, 분석 등 온라인 업무에 영향을 줄 만한 배치 연산을 수행할 수 없을 경우, 아래 그림과 같이 슬레이브를 만들어, 마스터에 영향을 주지 않고 배치 연산을 수행할 수 있다.</p>
+<p><img src="images/image003.jpg" height="149" width="294" alt="" /></p>
+<p class="caption">분리 작업을 통한 유연성 향상</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

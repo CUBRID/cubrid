@@ -188,18 +188,28 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
   char *p, *q;
   int hh, mm, ss;
 
+  if (str == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
   p = str;
   q = strchr (p, ':');
   if (q == NULL)
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
   hh = atoi (p);
   p = q + 1;
 
   q = strchr (p, ':');
   if (q == NULL)
-    return CCI_ER_TYPE_CONVERSION;
-  mm = atoi (p);
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
+  mm = atoi (p);
   ss = atoi (q + 1);
 
   memset (value, 0, sizeof (T_CCI_DATE));
@@ -215,12 +225,18 @@ ut_str_to_mtime (char *str, T_CCI_DATE * value)
   char *p, *q;
   int hh, mm, ss, ms;
 
+  if (str == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
   p = str;
   q = strchr (p, ':');
   if (q == NULL)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
+
   hh = atoi (p);
   p = q + 1;
 

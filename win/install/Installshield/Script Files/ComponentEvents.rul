@@ -39,24 +39,28 @@ function CUBRID_Installed()
 	STRING	PROGRAM, Service_Path;
 	STRING  TARGET_PATH, TARGET_DIR;
 	STRING  szDBPath, svResult, szCaption;
-	STRING  ordblist_src, ordblist_target;
-	STRING  SCH_FILE, OBJ_FILE;
+	STRING  SCH_FILE, OBJ_FILE, dbtxt;
 	int     nResult;
 begin
 	RefreshEnvironment();
 
 	Delay(3);
-/*
-	if (cp_old_dbtxt = TRUE) then
-		ordblist_src = TARGETDIR^"databases\\databases.txt";
-		ordblist_target = TARGETDIR^"Databases\\databases.txt";
-		LongPathToQuote(ordblist_src, TRUE);
-		LongPathToQuote(ordblist_target, TRUE);
+     
+    dbtxt = TARGETDIR^"databases\\databases.txt";
+	LongPathToQuote(dbtxt, TRUE);
+	nResult  = Is (FILE_EXISTS, dbtxt);
 
-		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + ordblist_target, WAIT) ;
-		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c copy " + ordblist_src + " " + ordblist_target, WAIT) ;
-	endif;
-*/	
+    if (nResult = FALSE) then
+        LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c echo on > " + dbtxt, WAIT) ;
+    endif;
+
+    // mkdir conf files
+    makeconf(TARGETDIR^"conf\\cubrid_broker.conf");
+    makeconf(TARGETDIR^"conf\\cubrid.conf");
+    makeconf(TARGETDIR^"conf\\cm.conf");
+    makeconf(TARGETDIR^"conf\\cmdb.pass");
+    makeconf(TARGETDIR^"conf\\cm.pass");
+    
 	// Register CUBRID Service	
 	
 	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";

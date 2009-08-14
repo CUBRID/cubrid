@@ -1,0 +1,905 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>cubrid.conf 설정 파일과 기본 제공 파라미터</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("성능 튜닝\n데이터베이스 서버 설정\ncubrid.conf 설정 파일과 기본 제공 파라미터");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"pm.htm\">성능 튜닝<\/a> &nbsp;&gt;&nbsp; <a href=\"pm_server_general.htm\">데이터베이스 서버 설정<\/a> &nbsp;&gt;&nbsp; cubrid.conf 설정 파일과 기본 제공 파라미터<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid.conf 설정 파일과 기본 제공 파라미터</h3>
+<p>CUBRID는 데이터베이스 서버, 브로커, CUBRID 매니저로 구성된다. 각 구성 요소를 수행하기 위한 설정 파일 이름은 다음과 같고, 모두 <span class="keyword">$CUBRID/conf</span> 디렉터리에 위치한다.</p>
+<ul>
+<li>데이터베이스 서버 설정 파일 : <span class="keyword">cubrid.conf</span></li>
+<li>브로커 설정 파일 : <span class="keyword">cubrid_broker.conf</span></li>
+<li>CUBRID 매니저 서버 설정 파일 : <span class="keyword">cm.conf</span></li>
+</ul>
+<p><span class="keyword">cubrid.conf</span> 파일은 CUBRID 데이터베이스 서버에 대한 시스템 파라미터를 지정하는 설정 파일로 데이터베이스 시스템의 전체적인 성능과 동작을 결정한다. <span class="keyword">cubrid.conf</span> 파일은 시스템 설치에 필요한 몇 가지 중요한 파라미터가 디폴트로 설정된 상태로 제공된다.</p>
+<h6>데이터베이스 서버 시스템 파라미터</h6>
+<p>다음은 <span class="keyword">cubrid.conf</span> 설정 파일에 사용 가능한 데이터베이스 서버 시스템 파라미터이다. <span class="keyword">적용 구분</span>의 <span class="keyword">클라이언트 파라미터</span>, <span class="keyword">서버 파라미터</span>의 의미는 <a href="pm_server_general.htm">데이터베이스 서버 설정이 미치는 범위</a>를 참조한다.</p>
+<table border="1">
+<tr>
+<th width="230">
+<p>파라미터 이름</p>
+</th>
+<th width="170">
+<p>적용 구분</p>
+</th>
+<th>
+<p>타입</p>
+</th>
+<th>
+<p>디폴트 값</p>
+</th>
+</tr>
+<tr>
+<td width="230">
+<p>cubrid_port_id</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>1523</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>db_hosts</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>max_clients</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>50</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>block_ddl_statement</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>block_nowhere_statement</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>intl_mbs_support</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>oracle_style_empty_string</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>data_buffer_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>25000</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>dont_reuse_heap_file</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>index_scan_oid_buffer_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>4</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>sort_buffer_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>16</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>temp_file_memory_size_in_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>4</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>thread_stack_size</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>102400</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>garbage_collection</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>temp_file_max_size_in_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>-1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>temp_volume_path</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>unfill_factor</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>float</p>
+</td>
+<td>
+<p>0.1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>volume_extension_path</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>call_stack_dump_activation_list</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>call_stack_dump_deactivation_list</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>call_stack_dump_on_error</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>error_log</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>cub_client.err, cub_server.err</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>auto_restart_server</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>yes</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>deadlock_detection_interval_in_secs</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>file_lock</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>yes</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>isolation_level</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>3</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>lock_escalation</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>100000</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>lock_timeout_in_secs</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>-1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>lock_timeout_message_type</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>0</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>pthread_scope_process</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>yes</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>backup_volume_max_size_bytes</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>-1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>checkpoint_interval_in_mins</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>720</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>log_buffer_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>50</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>media_failure_support</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>yes</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>insert_execution_mode</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>max_plan_cache_entries</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>1000</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>max_query_cache_entries</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>-1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>query_cache_mode</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>0</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>query_cache_size_in_pages</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>-1</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>replication</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>index scan_in_oid_order</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>single_byte_compare</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>compactdb_page_reclaim_only</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>0</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>compat_numeric_division_scale</p>
+</td>
+<td width="170">
+<p>클라이언트/서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>csql_history_num</p>
+</td>
+<td width="170">
+<p>클라이언트 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>50</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>java_stored_procedure</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>async_commit</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>bool</p>
+</td>
+<td>
+<p>no</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>group_commit_interval_in_msecs</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>0</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>index_unfill_factor</p>
+</td>
+<td width="170">
+<p>서버 파라미터</p>
+</td>
+<td>
+<p>float</p>
+</td>
+<td>
+<p>0.20</p>
+</td>
+</tr>
+</table>
+<h6>파라미터의 섹션별 분류</h6>
+<p><span class="keyword">cubrid.conf</span>에 지정된 파라미터는 다음과 같이 세 가지 섹션으로 제공된다.</p>
+<ul>
+<li>CUBRID 서비스를 시작할 때 사용 : [service] 섹션</li>
+<li>전체 데이터베이스에 공통으로 적용 : [common] 섹션</li>
+<li>각 데이터베이스에 개별적으로 적용 : [@&lt;<span class="var">database</span>&gt;] 섹션</li>
+</ul>
+<p>여기서 &lt;<span class="var">database</span>&gt;는 파라미터를 개별적으로 적용할 데이터베이스 이름이며, [common]에 설정된 파라미터가 [@&lt;<span class="var">database</span>&gt;]에 설정된 파라미터와 동일한 경우 [@&lt;<span class="var">database</span>&gt;]에 설정된 파라미터가 최종 적용된다.</p>
+<h6>기본 제공 파라미터</h6>
+<p>CUBRID 설치 시 생성되는 기본 데이터베이스 환경 설정 파일(<span class="keyword">cubrid.conf</span>)에는 데이터베이스 서버 파라미터 중 반드시 변경해야 할 일부 파라미터가 기본적으로 포함된다. 디폴트로 포함되지 않는 파라미터의 설정값을 변경하기 원할 경우 직접 추가/편집해서 사용하면 된다.</p>
+<p>다음은 <span class="keyword">cubrid.conf</span> 파일 내용이다.</p>
+<p class="code"># Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.<br />
+#<br />
+# $Id$<br />
+#<br />
+# cubrid.conf#<br />
+&#160;<br />
+# For complete information on parameters, see the CUBRID<br />
+# Database Administration Guide chapter on System Parameters<br />
+&#160;<br />
+# Service section - a section for 'cubrid service' command<br />
+[service]<br />
+&#160;<br />
+# The list of processes to be started automatically by 'cubrid service start' command<br />
+# Any combinations are available with server, broker and manager.<br />
+service=server,broker,manager<br />
+&#160;<br />
+# The list of database servers in all by 'cubrid service start' command.<br />
+# This property is effective only when the above 'service' property contains 'server' keyword.<br />
+#server=foo,bar<br />
+&#160;<br />
+# Common section - properties for all databases<br />
+# This section will be applied before other database specific sections.<br />
+[common]<br />
+&#160;<br />
+# Number of data buffer pages<br />
+# data_buffer_pages (25,000 pages) * DB page size (4KB) = 100M<br />
+data_buffer_pages=25000<br />
+&#160;<br />
+# Number of sort buffer pages<br />
+# sort_buffer_pages (16 pages) * DB page size (4KB) * number of threads<br />
+sort_buffer_pages=16<br />
+&#160;<br />
+# Number of log buffer pages.<br />
+# log_buffer_pages (50 pages) * DB page size (4KB) = 200KB<br />
+log_buffer_pages=50<br />
+&#160;<br />
+# Maximum number of locks acquired on individual instances of a<br />
+# class before the locks on the instances are escalated to a class lock<br />
+lock_escalation=100000<br />
+&#160;<br />
+# Minimal amount of time to wait for a lock (seconds).<br />
+# A negative value, indicates to wait indefinitely until the lock is<br />
+# granted or until the transaction is rolled back as a result of a deadlock.<br />
+# A value of 0, indicates not to wait for a lock.<br />
+lock_timeout_in_secs=-1<br />
+&#160;<br />
+# Interval between attempts at deadlock detection (seconds).<br />
+# An approximate interval to attempt to run the deadlock detector.<br />
+deadlock_detection_interval_in_secs=1<br />
+&#160;<br />
+# Checkpoint when the specified time has passed (minutes).<br />
+# Checkpoint will be done also when log has grown by specified pages.<br />
+checkpoint_interval_in_mins=720<br />
+&#160;<br />
+# Transaction isolation level.<br />
+# Six levels of isolation are provided, represented by:<br />
+# "TRAN_SERIALIZABLE"<br />
+# "TRAN_REP_CLASS_REP_INSTANCE"<br />
+# "TRAN_REP_CLASS_COMMIT_INSTANCE"<br />
+# "TRAN_REP_CLASS_UNCOMMIT_INSTANCE"<br />
+# "TRAN_COMMIT_CLASS_COMMIT_INSTANCE"<br />
+# "TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE"<br />
+# For other aliases, or for more information on the levels, see the<br />
+# System Parameters chapter in the Database Administration Guide.<br />
+isolation_level="TRAN_REP_CLASS_UNCOMMIT_INSTANCE"<br />
+&#160;<br />
+# TCP port id for the CUBRID programs (used by all clients).<br />
+cubrid_port_id=1523<br />
+&#160;<br />
+# The maximum number of concurrent client connections the server will accept.<br />
+# This value also means the total # of concurrent transactions.<br />
+max_clients=50<br />
+&#160;<br />
+# Restart the server process automatically<br />
+auto_restart_server=yes<br />
+&#160;<br />
+# Become a master server for replication.<br />
+replication=no<br />
+&#160;<br />
+# Enable Java Stored Procedure<br />
+java_stored_procedure=no</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

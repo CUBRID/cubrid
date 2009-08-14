@@ -1,0 +1,131 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>권한 해지</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n접근 권한 부여 구문\n권한 해지");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_access_dbuser.htm\">접근 권한 부여 구문<\/a> &nbsp;&gt;&nbsp; 권한 해지<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>권한 해지</h3>
+<h6>설명</h6>
+<p><span class="keyword">REVOKE</span> 문을 사용하여 권한을 해지할 수 있다. 사용자에게 부여된 권한은 언제든지 해지가 가능하다. 한 사용자에게 두 종류 이상의 권한을 부여했다면 권한 중 일부 또는 전부를 해지할 수 있다. 또한 하나의 <span class="keyword">GRANT</span> 문으로 여러 사용자에게 여러 테이블에 대한 권한을 부여한 경우라도 일부 사용자와 일부 테이블에 대해 선택적인 권한 해지가 가능하다.</p>
+<p>권한을 부여한 사용자에게서 권한(<span class="keyword">WITH GRANT OPTION</span>)을 해지하면, 권한을 해지당한 사용자로부터 권한을 받은 사용자도 권한을 해지당한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">REVOKE</span> <span class="var">operation</span> [ { , <span class="var">operation</span> }_ ] <span class="keyword">ON</span> <span class="var">table_name</span> [ { , <span class="var">class_name</span> }_ ]<br />
+<span class="keyword">FROM</span> <span class="var">user</span> [ { , <span class="var">user</span> }_ ] [ ; ]</p>
+<ul>
+<li><span class="var">operation</span> : 권한을 부여할 때 부여할 수 있는 연산의 종류이다(자세한 내용은 "<a href="syntax_access_authority.htm">권한 부여</a>"의 <span class="keyword">구문 설명</span> 참조).</li>
+<li><span class="var">table_name</span>&#160;: 권한을 부여할&#160;테이블 혹은 가상 테이블의 이름을 지정한다.</li>
+<li><span class="var">user</span>&#160;: 권한을 부여할 사용자나 그룹의 이름을 지정한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 Fred, John 사용자에게 nation, athlete 두 테이블에 대해 <span class="keyword">SELECT</span>, <span class="keyword">INSERT</span>, <span class="keyword">UPDATE</span>, <span class="keyword">DELETE</span> 권한을 부여하는 예제이다.</li>
+</ul>
+<p class="code">GRANT SELECT, INSERT, UPDATE, DELETE ON nation, athlete TO Fred, John;</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 예제 1에서&#160;Fred에게 부여된 모든 권한은 남겨두고, John에게는 조회 권한만을&#160;부여하기 위해&#160;<span class="keyword">REVOKE</span> 문장을 수행하는 예제이다. 만약 John이 다른 사용자에게 권한을 부여했다면&#160;권한받은 사용자 또한&#160;조회만&#160;가능하다.</li>
+</ul>
+<p class="code">REVOKE INSERT, UPDATE, DELETE ON nation, athlete FROM John;</p>
+<ul>
+<li class="title">예제 3</li>
+<li class="desc">다음은 예제 1에서 Fred에게 부여한 모든 권한을 해지하기 위해 <span class="keyword">REVOKE</span> 문을 수행하는 예제이다. 이 문장이 수행되면 Fred는 nation, athlete 테이블에 대한 어떠한 연산도 허용되지 않는다.</li>
+</ul>
+<p class="code">REVOKE ALL PRIVILEGES ON&#160;nation, athlete FROM Fred;&#160;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

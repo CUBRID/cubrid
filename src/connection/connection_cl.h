@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -28,27 +28,17 @@
 #ident "$Id$"
 
 #include "connection_defs.h"
+#include "connection_support.h"
 
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
-
-extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
-
-extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
-			 int timeout);
-extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
-extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
 
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id,
 						     const char *server_name,
 						     int name_length);
 
 extern CSS_CONN_ENTRY *css_find_exception_conn (void);
-extern void css_read_remaining_bytes (SOCKET fd, int len);
-extern int css_receive_oob (CSS_CONN_ENTRY * conn, char **buffer,
-			    int *buffer_size);
-
 extern int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id,
 			      char **buffer, int *buffer_size);
 
@@ -63,59 +53,11 @@ extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 			     char **buffer, int *size);
 extern int css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 				int *request, int *arg_buffer_size);
-extern int css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-			  const char *buffer, int buffer_size);
-extern int css_send_oob (CSS_CONN_ENTRY * conn, char data, const char *buffer,
-			 int buffer_size);
-extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
-			   const char *buffer, int buffer_size);
 extern int css_send_close_request (CSS_CONN_ENTRY * conn);
-
-extern int css_send_request (CSS_CONN_ENTRY * conn, int request,
-			     unsigned short *rid, const char *arg_buffer,
-			     int arg_buffer_size);
-extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn,
-					      int request,
-					      unsigned short *rid,
-					      const char *arg_buffer,
-					      int arg_buffer_size,
-					      char *data_buffer,
-					      int data_buffer_size);
-extern int css_send_oob_request_with_data_buffer (CSS_CONN_ENTRY * conn,
-						  char byte,
-						  int request,
-						  unsigned short *request_id,
-						  char *arg_buffer,
-						  int arg_size);
-extern int css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn,
-					int request,
-					unsigned short *request_id,
-					char *arg_buffer,
-					int arg_size,
-					char *data_buffer,
-					int data_size,
-					char *reply_buffer, int reply_size);
-extern int css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn,
-					int request,
-					unsigned short *request_id,
-					char *arg_buffer,
-					int arg_size,
-					char *data1_buffer,
-					int data1_size,
-					char *data2_buffer,
-					int data2_size,
-					char *reply_buffer, int reply_size);
-extern int
-css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request,
-				unsigned short *request_id, char *arg_buffer,
-				int arg_size, char *data_buffer,
-				FSIZE_T data_size, char *reply_buffer,
-				int reply_size);
 
 extern int css_test_for_open_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
-extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
 
 extern char *css_return_data_buffer (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id,

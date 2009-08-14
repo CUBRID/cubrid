@@ -78,7 +78,8 @@
 
 #define SIZE_SHORT      ((int) sizeof(short))
 #define SIZE_INT        ((int) sizeof(int))
-#define SIZE_BIGINT     ((int) sizeof(INT64))
+#define SIZE_INT64      ((int) sizeof(INT64))
+#define SIZE_BIGINT     SIZE_INT64
 #define SIZE_DOUBLE     ((int) sizeof(double))
 #define SIZE_FLOAT      ((int) sizeof(float))
 #define SIZE_DATE       6

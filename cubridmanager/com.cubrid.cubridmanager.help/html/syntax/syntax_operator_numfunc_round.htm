@@ -1,0 +1,146 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>ROUND 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n수치 연산 함수\nROUND 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_numfunc_rand.htm\">수치 연산 함수<\/a> &nbsp;&gt;&nbsp; ROUND 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>ROUND 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">ROUND</span> 함수는&#160;숫자를 지정한 자리수로&#160;반올림한 값을&#160;반환하며,&#160;반환 값의 타입은 인자의 타입과 같다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">ROUND</span>( <span class="var">number_operand</span>, <span class="var">integer</span> )</p>
+<ul>
+<li><span class="var">number_operand</span> : &#160;반올림할 숫자를 나타낸다.</li>
+<li><span class="var">integer</span> :&#160;반올림하여 나타낼 소수점 자릿수를 나타낸다. 값이&#160;음수이면 소수점을 기준으로 왼쪽에서 반올림한다.</li>
+<li>반환 값의 타입은 <span class="var">number_operand</span>와 같은 타입이다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 15.456을 반올림하여 소수점 둘째 자리까지 표현하는 예제이다.</li>
+</ul>
+<p class="code">SELECT ROUND(15.456, 2) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 15.460</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 15.456을 반올림하여 소수점 첫째 자리까지 표현하는 예제이다.</li>
+</ul>
+<p class="code">SELECT ROUND(15.456, 1) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 15.500</li>
+</ul>
+<ul>
+<li class="title">예제 3</li>
+<li class="desc">다음은 소수점 아래에서 반올림하여 정수부만 표현하는 예제이다.</li>
+</ul>
+<p class="code">SELECT ROUND(15.456, 0) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 15.000</li>
+</ul>
+<ul>
+<li class="title">예제 4</li>
+<li class="desc">다음은 15.456을 반올림하여&#160;정수부 첫째 자리에서 반올림한 값을 표현하는 예제이다.</li>
+</ul>
+<p class="code">SELECT ROUND(15.456, -1) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 20.000</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

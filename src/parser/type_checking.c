@@ -608,6 +608,12 @@ always_false:
      from the "next" chain if we reuse the incoming node). */
   parser_free_tree (parser, where);
   where = parser_new_node (parser, PT_VALUE);
+  if (where == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   where->line_number = line;
   where->column_number = column;
   where->type_enum = PT_TYPE_LOGICAL;
@@ -1097,6 +1103,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
       if (!parser->error_msgs)
 	{
 	  node = pt_fold_const_expr (parser, node, arg);
+	}
+
+      if (node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "pt_eval_type");
+	  return NULL;
 	}
 
       arg2 = node->info.expr.arg2;
@@ -1620,19 +1632,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	       * DON'T set common_type here, or you'll surely screw up
 	       * the next case when you least expect it.
 	       */
-	      if (PT_IS_PARAMETERIZED_TYPE (arg1_type)
-		  && PT_IS_PARAMETERIZED_TYPE (common_type))
-		{
-		  data_type = NULL;
-		}
-	      else if (PT_IS_COLLECTION_TYPE (common_type))
-		{
-		  data_type = arg1->data_type;
-		}
-	      else
-		{
-		  data_type = arg2->data_type;
-		}
+	      data_type =
+		(PT_IS_NUMERIC_TYPE (common_type)
+		 || PT_IS_STRING_TYPE (common_type))
+		? NULL
+		: (PT_IS_COLLECTION_TYPE (common_type))
+		? arg1->data_type : arg2->data_type;
 
 	      pt_coerce_value (parser, arg1, arg1, common_type, data_type);
 	      arg1_type = arg1->type_enum;
@@ -1641,19 +1646,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (arg2 && arg2_type != common_type)
 	    {
 	      /* Same warning as above... */
-	      if (PT_IS_PARAMETERIZED_TYPE (arg2_type)
-		  && PT_IS_PARAMETERIZED_TYPE (common_type))
-		{
-		  data_type = NULL;
-		}
-	      else if (PT_IS_COLLECTION_TYPE (common_type))
-		{
-		  data_type = arg2->data_type;
-		}
-	      else
-		{
-		  data_type = arg1->data_type;
-		}
+	      data_type =
+		(PT_IS_NUMERIC_TYPE (common_type)
+		 || PT_IS_STRING_TYPE (common_type))
+		? NULL
+		: (PT_IS_COLLECTION_TYPE (common_type))
+		? arg2->data_type : arg1->data_type;
 
 	      pt_coerce_value (parser, arg2, arg2, common_type, data_type);
 	      arg2_type = arg2->type_enum;
@@ -2766,7 +2764,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  arg3 = arg2->info.expr.arg2;
 	  arg2 = arg2->info.expr.arg1;
-	  if (arg3->node_type != PT_VALUE)
+	  if ((arg3->node_type != PT_VALUE)
+	      && (arg3->node_type != PT_HOST_VAR))
 	    {
 	      PT_ERRORm (parser, arg3, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_WANT_ESC_LIT_STRING);
@@ -4763,8 +4762,14 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	{
 	  dt->info.data_type.precision = MAX (arg1_prec, arg2_prec);
 	  dt->info.data_type.dec_precision = 0;
-	  dt->info.data_type.units = ((arg1->type_enum == common_type)
-				      ? arg1_units : arg2_units);
+	  if (arg1 && arg1->type_enum == common_type)
+	    {
+	      dt->info.data_type.units = arg1_units;
+	    }
+	  else
+	    {
+	      dt->info.data_type.units = arg2_units;
+	    }
 	}
       break;
 
@@ -7491,7 +7496,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
 
 		/* add an argument, oid of instance to do increment */
-		if (opd1->node_type == PT_NAME)
+		if (opd1 != NULL && opd1->node_type == PT_NAME)
 		  {
 		    if (!(opd2 = pt_name (parser, "")))
 		      {
@@ -7568,7 +7573,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		    attr_name = opd1->info.name.original;
 		    expr->info.expr.arg2 = opd2;
 		  }
-		else if (opd1->node_type == PT_DOT_)
+		else if (opd1 != NULL && opd1->node_type == PT_DOT_)
 		  {
 		    PT_NODE *arg2, *arg1 = opd1->info.dot.arg1;
 
@@ -7637,7 +7642,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  /* use the caching variant of this function ! */
 	  domain = pt_xasl_node_to_domain (parser, expr);
 
-	  if (QSTR_IS_ANY_CHAR_OR_BIT (domain->type->id))
+	  if (domain && QSTR_IS_ANY_CHAR_OR_BIT (domain->type->id))
 	    {
 	      if (opd1 && opd1->node_type == PT_VALUE
 		  && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))
@@ -7722,9 +7727,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
        * optimize the tree and screen out the arguments for a possible
        * call of pt_evaluate_db_val_expr.
        */
-      if ((op == PT_CASE || op == PT_DECODE) && opd3->node_type == PT_VALUE)
+      if ((op == PT_CASE || op == PT_DECODE) && opd3
+	  && opd3->node_type == PT_VALUE)
 	{
-	  if (DB_GET_INT (arg3))
+	  if (arg3 && DB_GET_INT (arg3))
 	    {
 	      opd2 = NULL;
 	    }
@@ -7735,7 +7741,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      opd2 = NULL;
 	    }
 
-	  if (opd1->node_type != PT_VALUE)
+	  if (opd1 && opd1->node_type != PT_VALUE)
 	    {
 	      if (expr->info.expr.arg2 == opd1
 		  && (opd1->info.expr.op == PT_CASE
@@ -7929,12 +7935,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  /* i.e., op == PT_OR */
 		  db_value = pt_value_to_db (parser, result);	/* opd1 */
 		  other = expr->or_next;	/* opd2 */
-		  if (DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+		  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
 		    {
 		      result = other;
 		    }
 		  else
-		    if (DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
+		    if (db_value
+			&& DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
 			&& DB_GET_INTEGER (db_value) == 1)
 		    {
 		      parser_free_tree (parser, result->or_next);
@@ -7975,11 +7982,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      /* i.e., op == PT_OR */
 	      db_value = pt_value_to_db (parser, result);	/* opd1 */
 	      other = result->or_next;	/* opd2 */
-	      if (DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
 		{
 		  result = other;
 		}
-	      else if (DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
+	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
 		       && DB_GET_INTEGER (db_value) == 1)
 		{
 		  parser_free_tree (parser, result->or_next);
@@ -8757,6 +8764,12 @@ end:
   if (always_false)
     {
       result = parser_new_node (parser, PT_VALUE);
+      if (result == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       result->type_enum = PT_TYPE_LOGICAL;
       result->info.value.data_value.i = false;
       result->info.value.location = expr->info.expr.location;
@@ -8765,6 +8778,12 @@ end:
   else if (always_true)
     {
       result = parser_new_node (parser, PT_VALUE);
+      if (result == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       result->type_enum = PT_TYPE_LOGICAL;
       result->info.value.data_value.i = true;
       result->info.value.location = expr->info.expr.location;

@@ -1,0 +1,697 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>배포 데이터베이스 스키마</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 내부 구현\n배포 데이터베이스 스키마");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_implementation_rules.htm\">복제 내부 구현<\/a> &nbsp;&gt;&nbsp; 배포 데이터베이스 스키마<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>배포 데이터베이스 스키마</h4>
+<p>배포 데이터베이스는 복제에 필요한 메타 데이터를 관리하기 위한 데이터베이스이다. 마스터 및 슬레이브 데이터베이스 정보, 추적 정보, 복제 파라미터, 슬레이브 데이터베이스를 자동으로 마스터 데이터베이스로 교체하는 기능 제공을 위한 정보로 구성된다.</p>
+<h6>클래스 이름: db_info</h6>
+<p>db_info는 master_info 및 slave_info의 수퍼 클래스로서 공통으로 필요한 항목을 관리한다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="130">
+<p>속성 이름</p>
+</th>
+<th width="80">
+<p>타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+<th width="170">
+<p>비고</p>
+</th>
+</tr>
+<tr>
+<td width="130">
+<p>dbid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>데이터베이스 고유 식별자</p>
+</td>
+<td width="170">
+<p>기본키</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>dbname</p>
+</td>
+<td width="80">
+<p>varchar(126)</p>
+</td>
+<td>
+<p>데이터베이스 이름</p>
+</td>
+<td width="170">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>master_ip</p>
+</td>
+<td width="80">
+<p>varchar(50)</p>
+</td>
+<td>
+<p>데이터베이스 서버의 IP 주소</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>portnum</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 서버의 TCP 포트 번호</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+</table>
+<h6>클래스 이름: master_info</h6>
+<p>master_info 클래스에서는 복제하려고 하는 원본 데이터베이스의 데이터베이스 이름, 복제 서버에 접속하기 위한 IP 주소 및 TCP 포트 번호, 복제 로그 파일의 디렉터리 경로 등의 정보를 관리한다. <span class="keyword">repl_make_distdb</span> 유틸리티를 수행하여 이 값을 지정한다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="130">
+<p>속성 이름</p>
+</th>
+<th width="80">
+<p>타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+<th width="170">
+<p>비고</p>
+</th>
+</tr>
+<tr>
+<td width="130">
+<p>dbid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>데이터베이스 고유 식별자</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>dbname</p>
+</td>
+<td width="80">
+<p>varchar(126)</p>
+</td>
+<td>
+<p>데이터베이스 이름</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>master_ip</p>
+</td>
+<td width="80">
+<p>varchar(50)</p>
+</td>
+<td>
+<p>복제 서버의 IP 주소</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>portnum</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>cubrid.conf의 cubrid_port_id 사용</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>copylog_path</p>
+</td>
+<td width="80">
+<p>varchar(256)</p>
+</td>
+<td>
+<p>복제 로그를 저장할 파일 경로</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>size_of_log_buffer</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>repl_agent가 트랜잭션 로그를 임시로 저장하는 버퍼의 수를 지정.<br />
+한 버퍼의 크기는 데이터베이스 페이지 크기와 동일.</p>
+</td>
+<td width="170">
+<p>디폴트 값 : 500</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>size_of_cache_buffer</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>repl_agent가 복제 로그를 임시로 저장하는 버퍼의 수를 지정.<br />
+한 버퍼의 크기는 데이터베이스 페이지 크기와 동일.</p>
+</td>
+<td width="170">
+<p>디폴트 값 : 100</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>size_of_copylog</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 로그의 페이지 수를 정의.<br />
+만약 지정된 페이지 수 이상인 경우 이미 처리 완료된 페이지는 truncate됨.</p>
+</td>
+<td width="170">
+<p>디폴트 값 : 5000</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>start_pageid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 로그의 첫 페이지 번호</p>
+</td>
+<td rowspan="3" width="170">
+<p>사용 안 함</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>first_pageid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>활성 복제 로그의 첫 페이지 번호</p>
+</td>
+</tr>
+<tr>
+<td width="130">
+<p>last_pageid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 로그의 마지막 페이지 번호</p>
+</td>
+</tr>
+</table>
+<h6>클래스 이름: slave_info</h6>
+<p>slave_info 클래스에서는 복제 대상 슬레이브 데이터베이스의 데이터베이스 이름, 복제 계정 및 암호 등을 관리한다. <span class="keyword">repl_make_slavedb</span> 유틸리티를 수행하여 이 값을 지정한다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="120">
+<p>속성 이름</p>
+</th>
+<th width="80">
+<p>타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+<th width="170">
+<p>비고</p>
+</th>
+</tr>
+<tr>
+<td width="120">
+<p>dbid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>데이터베이스 고유 식별자</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>dbname</p>
+</td>
+<td width="80">
+<p>varchar(126)</p>
+</td>
+<td>
+<p>데이터베이스 이름</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>master_ip</p>
+</td>
+<td width="80">
+<p>varchar(50)</p>
+</td>
+<td>
+<p>데이터베이스 서버의 IP 주소</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>portnum</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 서버의 TCP 포트 번호</p>
+</td>
+<td width="170">
+<p>db_info 상속</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>userid</p>
+</td>
+<td width="80">
+<p>varchar(32)</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스의 복제 계정</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>passwd</p>
+</td>
+<td width="80">
+<p>varchar(32)</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스의 복제 계정 암호</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>trails</p>
+</td>
+<td width="80">
+<p>set_of(trail_info)</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스에 반영된 최종 로그 번호</p>
+</td>
+<td width="170">
+<p><span class="keyword">repl_make_slavedb</span> 유틸리티 수행 시 초기화됨</p>
+</td>
+</tr>
+</table>
+<h6>클래스 이름: trail_info</h6>
+<p>trail_info 클래스에서는 복제할 마스터와 슬레이브 관계 정보 및 복제를 시작할 로그 번호 등을 관리한다. <span class="keyword">repl_make_slavedb</span> 유틸리티를 수행하여 이 값을 지정한다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="120">
+<p>속성 이름</p>
+</th>
+<th width="80">
+<p>타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+<th width="170">
+<p>비고</p>
+</th>
+</tr>
+<tr>
+<td width="120">
+<p>master_dbid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>마스터 데이터베이스의 식별자</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>slave_dbid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스의 식별자</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>final_pageid</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스에 최종으로 반영된 로그 페이지 번호</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>final_offset</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>슬레이브 데이터베이스에 최종으로 반영된 로그 페이지 위치</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>all_repl</p>
+</td>
+<td width="80">
+<p>char(1)</p>
+</td>
+<td>
+<p>모든 클래스의 복제 여부.</p>
+<ul>
+<li>Y 또는 y : 설정</li>
+<li>N 또는 n : 설정 안 함</li>
+</ul>
+</td>
+<td width="170">
+<p>현재는 for_recovery와 같은 방식으로 동작. 추후 구분 예정.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>repl_count</p>
+</td>
+<td width="80">
+<p>number(15,0)</p>
+</td>
+<td>
+<p>복제한 트랜잭션 개수</p>
+</td>
+<td width="170">
+<p>갱신된 정보는 <span class="keyword">repl_check_sync</span> 명령어를 통해 확인할 수 있음.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>status</p>
+</td>
+<td width="80">
+<p>char(1)</p>
+</td>
+<td>
+<p>현재 repl_agent의 상태 정보.</p>
+<ul>
+<li>F : 복제를 구성하고 에이전트를 한번도 실행하지 않은 상태</li>
+<li>A : 복제 실행 중</li>
+<li>I : idle 상태</li>
+</ul>
+</td>
+<td width="170">
+<p>갱신된 정보는 <span class="keyword">repl_check_sync</span> 명령어를 통해 확인할 수 있음.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>error_msg</p>
+</td>
+<td width="80">
+<p>string</p>
+</td>
+<td>
+<p>사용 안 함</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>stop_time</p>
+</td>
+<td width="80">
+<p>timestamp</p>
+</td>
+<td>
+<p>사용 안 함</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>perf_poll_interval</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>복제 지연 시간 측정을 설정하는 파라미터(단위 : 초).</p>
+<ul>
+<li>허용 범위 : 10초에서 60초</li>
+</ul>
+</td>
+<td width="170">
+<p>디폴트 값 : 10</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>log_apply_interval</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>사용 안 함</p>
+</td>
+<td width="170">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>for_recovery</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>마스터 데이터베이스에 장애 발생 시 마스터 데이터베이스로 대체할 목적으로 복제를 구성할 경우 설정한다. 이 값이 y이면 index_replication 값도 y로 설정되며 마스터의 모든 클래스가 복제된다.</p>
+<ul>
+<li>Y 또는 y : 설정</li>
+<li>N 또는 n : 설정 안 함</li>
+</ul>
+</td>
+<td width="170">
+<p>현재는 all_repl과 같은 방식으로 동작.</p>
+<p>디폴트 값 : n</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>index_replication</p>
+</td>
+<td width="80">
+<p>char(1)</p>
+</td>
+<td>
+<p>인덱스를 자동으로 복제하고자 할 때 설정.</p>
+<ul>
+<li>Y 또는 y : 설정</li>
+<li>N 또는 n : 설정 안 함</li>
+</ul>
+</td>
+<td width="170">
+<p>디폴트 값 : n</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>restart_interval</p>
+</td>
+<td width="80">
+<p>integer</p>
+</td>
+<td>
+<p>repl_agent가 배포 데이터베이스에 접속하여 정보를 반영하는 간격(단위: 초).</p>
+</td>
+<td width="170">
+<p>디폴트 값 : 100</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

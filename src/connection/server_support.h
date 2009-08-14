@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,10 +53,12 @@ extern unsigned int
 css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				   char *reply, int reply_size,
 				   char *buffer, int buffer_size);
+#if 0
 extern unsigned int
 css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
 					 int reply_size, char *buffer,
-					 FSIZE_T buffer_size);
+					 INT64 buffer_size);
+#endif
 extern unsigned int
 css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 				     char *reply, int reply_size,
@@ -89,6 +91,7 @@ extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 
 extern void css_set_ha_num_of_hosts (int num);
+extern int css_get_ha_num_of_hosts (void);
 extern HA_SERVER_STATE css_ha_server_state (void);
 extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p,
 						 int whence);

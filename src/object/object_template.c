@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -929,7 +929,7 @@ obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att)
       assign->is_auto_increment = 0;
 
       template_ptr->assignments[att->order] = assign;
-      if (ATT_IS_UNIQUE (att))
+      if (classobj_has_unique_constraint (att->constraints))
 	{
 	  template_ptr->uniques_were_modified = 1;
 	}
@@ -963,9 +963,8 @@ obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att)
 static void
 obt_free_assignment (OBJ_TEMPASSIGN * assign)
 {
-  DB_VALUE *value;
+  DB_VALUE *value = NULL;
   SETREF *setref;
-  SETOBJ *set;
   int i, set_size;
 
   if (assign != NULL)
@@ -987,15 +986,15 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 		   && DB_GET_SET (assign->variable) != NULL)
 	    {
 	      /* must go through and free any elements that may be template pointers */
-	      setref = DB_GET_SET (assign->variable);
-	      set = setref->set;
-	      if (set != NULL)
+	      setref = DB_PULL_SET (assign->variable);
+	      if (setref->set != NULL)
 		{
-		  set_size = setobj_size (set);
+		  set_size = setobj_size (setref->set);
 		  for (i = 0; i < set_size; i++)
 		    {
-		      setobj_get_element_ptr (set, i, &value);
-		      if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+		      setobj_get_element_ptr (setref->set, i, &value);
+		      if (value != NULL
+			  && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 			{
 			  obt_free_template ((OBJ_TEMPLATE *)
 					     DB_GET_POINTER (value));
@@ -1206,59 +1205,60 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 	   * first populate with the transformed default values of the
 	   * virtual class
 	   */
-	  FOR_ATTRIBUTES (template_ptr->class_->attributes, att)
-	  {
+	  for (att = template_ptr->class_->attributes; att != NULL;
+	       att = (SM_ATTRIBUTE *) att->header.next)
+	    {
 
-	    /* only update the attribute if it is updatable */
-	    if (mq_is_updatable_attribute (template_ptr->classobj,
-					   att->header.name,
-					   template_ptr->base_classobj))
-	      {
-		if (mq_update_attribute
-		    (template_ptr->classobj, att->header.name,
-		     template_ptr->base_classobj, &att->value, &base_value,
-		     &base_name, DB_AUTH_INSERT))
-		  {
-		    return er_errid ();
-		  }
+	      /* only update the attribute if it is updatable */
+	      if (mq_is_updatable_attribute (template_ptr->classobj,
+					     att->header.name,
+					     template_ptr->base_classobj))
+		{
+		  if (mq_update_attribute
+		      (template_ptr->classobj, att->header.name,
+		       template_ptr->base_classobj, &att->value, &base_value,
+		       &base_name, DB_AUTH_INSERT))
+		    {
+		      return er_errid ();
+		    }
 
-		/* find the associated attribute definition in the base class */
-		if (obt_find_attribute
-		    (template_ptr, 1, base_name, &base_att))
-		  {
-		    return er_errid ();
-		  }
+		  /* find the associated attribute definition in the base class */
+		  if (obt_find_attribute
+		      (template_ptr, 1, base_name, &base_att))
+		    {
+		      return er_errid ();
+		    }
 
-		exists = template_ptr->assignments[base_att->order];
-		/*
-		 * if the tranformed virtual default is non-NULL we use it,
-		 * if the underlying base default is non-NULL, we let the virtual
-		 * default override it to NULL
-		 */
+		  exists = template_ptr->assignments[base_att->order];
+		  /*
+		   * if the tranformed virtual default is non-NULL we use it,
+		   * if the underlying base default is non-NULL, we let the virtual
+		   * default override it to NULL
+		   */
 
-		if (exists == NULL
-		    && (!DB_IS_NULL (&base_value)
-			|| !DB_IS_NULL (&base_att->value)))
-		  {
-		    /* who owns base_value ? */
-		    a = obt_make_assignment (template_ptr, base_att);
-		    if (a == NULL)
-		      {
-			goto memory_error;
-		      }
-		    a->is_default = 1;
-		    a->variable = pr_make_ext_value ();
-		    if (a->variable == NULL)
-		      {
-			goto memory_error;
-		      }
-		    if (pr_clone_value (&base_value, a->variable))
-		      {
-			goto memory_error;
-		      }
-		  }
-	      }
-	  }
+		  if (exists == NULL
+		      && (!DB_IS_NULL (&base_value)
+			  || !DB_IS_NULL (&base_att->value)))
+		    {
+		      /* who owns base_value ? */
+		      a = obt_make_assignment (template_ptr, base_att);
+		      if (a == NULL)
+			{
+			  goto memory_error;
+			}
+		      a->is_default = 1;
+		      a->variable = pr_make_ext_value ();
+		      if (a->variable == NULL)
+			{
+			  goto memory_error;
+			}
+		      if (pr_clone_value (&base_value, a->variable))
+			{
+			  goto memory_error;
+			}
+		    }
+		}
+	    }
 
 	  /*
 	   * change the class pointer to reference the base class rather
@@ -1272,39 +1272,40 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
        * assignments if the virtual class has already supplied
        * a value for these.
        */
-      FOR_ATTRIBUTES (class_->attributes, att)
-      {
-	/*
-	 * can assume that the type is compatible and does not need
-	 * to be coerced
-	 */
+      for (att = class_->attributes; att != NULL;
+	   att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  /*
+	   * can assume that the type is compatible and does not need
+	   * to be coerced
+	   */
 
-	if (DB_VALUE_TYPE (&att->value) != DB_TYPE_NULL)
-	  {
+	  if (DB_VALUE_TYPE (&att->value) != DB_TYPE_NULL)
+	    {
 
-	    exists = template_ptr->assignments[att->order];
+	      exists = template_ptr->assignments[att->order];
 
-	    if (exists == NULL)
-	      {
-		a = obt_make_assignment (template_ptr, att);
-		if (a == NULL)
-		  {
-		    goto memory_error;
-		  }
-		a->is_default = 1;
-		a->variable = pr_make_ext_value ();
-		if (a->variable == NULL)
-		  {
-		    goto memory_error;
-		  }
-		/* would be nice if we could avoid copying here */
-		if (pr_clone_value (&att->value, a->variable))
-		  {
-		    goto memory_error;
-		  }
-	      }
-	  }
-      }
+	      if (exists == NULL)
+		{
+		  a = obt_make_assignment (template_ptr, att);
+		  if (a == NULL)
+		    {
+		      goto memory_error;
+		    }
+		  a->is_default = 1;
+		  a->variable = pr_make_ext_value ();
+		  if (a->variable == NULL)
+		    {
+		      goto memory_error;
+		    }
+		  /* would be nice if we could avoid copying here */
+		  if (pr_clone_value (&att->value, a->variable))
+		    {
+		      goto memory_error;
+		    }
+		}
+	    }
+	}
     }
 
   return (NO_ERROR);
@@ -1589,6 +1590,12 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
   const char *base_name;
   DB_AUTH auth;
 
+  if (value == NULL)
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
   if (!base_assignment && template_ptr->base_class != NULL)
     {
       DB_MAKE_NULL (&dummy_value);
@@ -1687,11 +1694,10 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
 	  return er_errid ();
 	}
 
-      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+      if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error =
-	    obt_assign_obt (template_ptr, att, 0,
-			    (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0,
+				  (OBJ_TEMPLATE *) DB_GET_POINTER (value));
 	}
       else
 	{
@@ -1762,11 +1768,10 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 	  return er_errid ();
 	}
 
-      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+      if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error =
-	    obt_assign_obt (template_ptr, att, 0,
-			    (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0,
+				  (OBJ_TEMPLATE *) DB_GET_POINTER (value));
 	}
       else
 	{
@@ -1972,7 +1977,7 @@ static int
 obt_convert_set_templates (SETREF * setref, int check_uniques)
 {
   int error = NO_ERROR;
-  DB_VALUE *value;
+  DB_VALUE *value = NULL;
   OBJ_TEMPLATE *template_ptr;
   int i, set_size;
   SETOBJ *set;
@@ -1986,14 +1991,14 @@ obt_convert_set_templates (SETREF * setref, int check_uniques)
 	  for (i = 0; i < set_size && error == NO_ERROR; i++)
 	    {
 	      setobj_get_element_ptr (set, i, &value);
-	      if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+	      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 		{
 		  /* apply the template for this element */
 		  template_ptr = (OBJ_TEMPLATE *) DB_GET_POINTER (value);
-		  error =
-		    obt_apply_assignments (template_ptr, check_uniques, 1);
+		  error = obt_apply_assignments (template_ptr,
+						 check_uniques, 1);
 		  /* 1 means do eager flushing of (set-nested) proxy objects */
-		  if (error == NO_ERROR)
+		  if (error == NO_ERROR && template_ptr != NULL)
 		    {
 		      DB_MAKE_OBJECT (value, template_ptr->object);
 		      obt_free_template (template_ptr);
@@ -2023,7 +2028,7 @@ static int
 obt_final_check_set (SETREF * setref, int *has_uniques)
 {
   int error = NO_ERROR;
-  DB_VALUE *value;
+  DB_VALUE *value = NULL;
   OBJ_TEMPLATE *template_ptr;
   SETOBJ *set;
   int i, set_size;
@@ -2037,7 +2042,7 @@ obt_final_check_set (SETREF * setref, int *has_uniques)
 	  for (i = 0; i < set_size && error == NO_ERROR; i++)
 	    {
 	      setobj_get_element_ptr (set, i, &value);
-	      if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+	      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 		{
 		  template_ptr = (OBJ_TEMPLATE *) DB_GET_POINTER (value);
 		  error = obt_final_check (template_ptr, 1, has_uniques);
@@ -2323,7 +2328,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   DB_TRIGGER_EVENT event;
   SM_CLASS *class_;
   DB_OBJECT *object = NULL;
-  MOBJ mobj;
+  MOBJ mobj = NULL;
   char *mem;
   int i;
 

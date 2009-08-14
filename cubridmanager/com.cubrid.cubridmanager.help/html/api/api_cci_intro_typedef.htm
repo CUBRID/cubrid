@@ -1,0 +1,932 @@
+﻿
+<html>
+<head>
+<title>C Type Definition</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nCCI API\nCCI 개요\nC Type Definition");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI 개요<\/a> &nbsp;&gt;&nbsp; C Type Definition<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>C Type Definition</h4>
+<table border="1" width="80%">
+<tr>
+<th width="150">
+<p>이름</p>
+</th>
+<th width="50">
+<p>타입</p>
+</th>
+<th width="230">
+<p>멤버</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td rowspan="2" width="150" class="keyword">
+<p>T_CCI_ERROR</p>
+</td>
+<td rowspan="2" width="50">
+<p>struct</p>
+</td>
+<td width="230">
+<p>char err_msg[1024]</p>
+</td>
+<td rowspan="2">
+<p>데이터베이스 에러 정보 표현</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>int err_code</p>
+</td>
+</tr>
+<tr>
+<td rowspan="2" width="150" class="keyword">
+<p>T_CCI_BIT</p>
+</td>
+<td rowspan="2" width="50">
+<p>struct</p>
+</td>
+<td width="230">
+<p>int size</p>
+</td>
+<td rowspan="2">
+<p>bit 타입&#160;표현</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>char *buf</p>
+</td>
+</tr>
+<tr>
+<td rowspan="7" width="150" class="keyword">
+<p>T_CCI_DATE</p>
+</td>
+<td rowspan="7" width="50">
+<p>struct</p>
+</td>
+<td width="230">
+<p>short yr</p>
+</td>
+<td rowspan="7">
+<p>timestamp, date, time 타입&#160;표현 &#160;</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short mon</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short day</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short hh</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short mm</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short ss</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short ms</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword">
+<p>T_CCI_SET</p>
+</td>
+<td width="50">
+<p>void*</p>
+</td>
+<td width="230">
+<p>&#160;</p>
+</td>
+<td>
+<p>set 타입&#160;표현</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword" rowspan="7">
+<p>T_CCI_COL_INFO</p>
+</td>
+<td width="50" rowspan="7">
+<p>struct</p>
+</td>
+<td width="230">
+<p><span class="keyword">T_CCI_U_TYPE</span> type</p>
+</td>
+<td rowspan="7">
+<p><span class="keyword">SELECT</span> 문에 대한 컬럼 정보 표현</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>char is_non_null</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>short scale</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>int precision</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>char *col_name</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>char *real_attr</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="4">
+<p>char *class_name</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword" rowspan="4">
+<p>T_CCI_QUERY_RESULT</p>
+</td>
+<td width="50" rowspan="4">
+<p>struct</p>
+</td>
+<td width="230">
+<p>int result_count</p>
+</td>
+<td rowspan="4">
+<p>batch 실행에 대한 결과</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="9">
+<p>int stmt_type</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="9">
+<p>char *err_msg</p>
+</td>
+</tr>
+<tr>
+<td width="230" height="9">
+<p>char oid[32]</p>
+</td>
+</tr>
+<tr>
+<td rowspan="4" width="150" class="keyword">
+<p>T_CCI_PARAM_INFO</p>
+</td>
+<td rowspan="4" width="50">
+<p>struct</p>
+</td>
+<td width="230">
+<p><span class="keyword">T_CCI_PARAM_MODE</span> mode</p>
+</td>
+<td rowspan="4">
+<p>input 파라미터에 대한 정보 표현</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p><span class="keyword">T_CCI_U_TYPE</span> type</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>short scale</p>
+</td>
+</tr>
+<tr>
+<td width="230">
+<p>int precision</p>
+</td>
+</tr>
+<tr>
+<td rowspan="23" width="150" class="keyword">
+<p>T_CCI_U_TYPE</p>
+</td>
+<td rowspan="23" width="50">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_UNKNOWN</p>
+</td>
+<td rowspan="23">
+<p>데이터베이스 타입&#160;정보</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_NULL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_CHAR</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_STRING</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_NCHAR</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_VARNCHAR</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_BIT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_VARBIT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_NUMERIC</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_INT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_SHORT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_MONETARY</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p class="keyword">CCI_U_TYPE_FLOAT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_DOUBLE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_DATE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_TIME</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_TIMESTAMP</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_SET</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_MULTISET</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_SEQUENCE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_OBJECT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_BIGINT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_U_TYPE_DATETIME</p>
+</td>
+</tr>
+<tr>
+<td rowspan="8" width="150" class="keyword">
+<p>T_CCI_A_TYPE</p>
+</td>
+<td rowspan="8" width="50">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_STR</p>
+</td>
+<td rowspan="8">
+<p>API에서 사용되는 타입&#160;정보 표현&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_INT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_FLOAT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_DOUBLE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_BIT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_DATE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_SET</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_A_TYPE_BIGINT</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword" rowspan="4">
+<p>T_CCI_DB_PARAM</p>
+</td>
+<td width="50" rowspan="4">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CCI_PARAM_ISOLATION_LEVEL</p>
+</td>
+<td rowspan="4">
+<p>데이터베이스 파라미터 이름</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_LOCK_TIMEOUT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_MAX_STRING_LENGTH</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_AUTO_COMMIT</p>
+</td>
+</tr>
+<tr>
+<td rowspan="16" width="150" class="keyword">
+<p>T_CCI_SCH_TYPE</p>
+</td>
+<td rowspan="16" width="50">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CCI_SCH_CLASS</p>
+</td>
+<td rowspan="16">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_VCLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_QUERY_SPEC</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_ATTRIBUTE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_CLASS_ATTRIBUTE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_METHOD</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_CLASS_METHOD</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_METHOD_FILE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_SUPERCLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_SUBCLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_CONSTRAIT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_CLASS_PRIVILEGE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_ATTR_PRIVILEGE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_DIRECT_SUPER_CLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_SCH_PRIMARY_KEY</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword" rowspan="45">
+<p>T_CCI_CUBRID_STMT</p>
+</td>
+<td width="50" rowspan="45">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ALTER_CLASS</p>
+</td>
+<td rowspan="45">&#160;</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ALTER_SERIAL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_COMMIT_WORK</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_REGISTER_DATABASE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CREATE_CLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CREATE_INDEX</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CREATE_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CREATE_SERIAL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_DATABASE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_CLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_INDEX</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_LABEL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_SERIAL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_EVALUATE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_RENAME_CLASS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ROLLBACK_WORK</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GRANT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_REVOKE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_STATISTICS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_INSERT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SELECT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_UPDATE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DELETE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CALL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_ISO_LVL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_TIMEOUT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_OPT_LVL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SET_OPT_LVL</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SCOPE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SET_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SAVEPOINT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_PREPARE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ATTACH</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_USE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_REMOVE_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_RENAME_TRIGGER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ON_LDB</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_LDB</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_SET_LDB</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_GET_STATS</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_CREATE_USER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_DROP_USER</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CUBRID_STMT_ALTER_USER</p>
+</td>
+</tr>
+<tr>
+<td rowspan="3" width="150" class="keyword">
+<p>T_CCI_CURSOR_POS</p>
+</td>
+<td rowspan="3" width="50">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CCI_CURSOR_FIRST</p>
+</td>
+<td rowspan="3">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_CURSOR_CURRENT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_CURSOR_LAST</p>
+</td>
+</tr>
+<tr>
+<td width="150" class="keyword" rowspan="6">
+<p>T_CCI_TRAN_ISOLATION</p>
+</td>
+<td width="50" rowspan="6">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE</p>
+</td>
+<td rowspan="6">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>TRAN_COMMIT_CLASS_COMMIT_INSTANCE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>TRAN_REP_CLASS_UNCOMMIT_INSTANCE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>TRAN_REP_CLASS_COMMIT_INSTANCE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>TRAN_REP_CLASS_REP_INSTANCE</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>TRAN_SERIALIZABLE</p>
+</td>
+</tr>
+<tr>
+<td rowspan="4" width="150" class="keyword">
+<p>T_CCI_PARAM_MODE</p>
+</td>
+<td rowspan="4" width="50">
+<p>enum</p>
+</td>
+<td width="230" class="keyword">
+<p>CCI_PARAM_MODE_UNKNOWN</p>
+</td>
+<td rowspan="4">
+<p></p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_MODE_IN</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_MODE_OUT</p>
+</td>
+</tr>
+<tr>
+<td width="230" class="keyword">
+<p>CCI_PARAM_MODE_INOUT</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

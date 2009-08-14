@@ -32,7 +32,6 @@ public:		// common
 	bool		m_log_backup;	// LOG_BACKUP
 	CString		m_source_env;	// SOURCE_ENV
 	bool		m_sql_log;		// SQL_LOG
-	CString		m_sql_log_time;	// SQL_LOG_TIME
 	CString		m_time_to_kill;	// TIME_TO_KILL
 	CString		m_session_timeout;	// SESSION_TIMEOUT
 	CString		m_job_queue_size;	// JOB_QUEUE_SIZE

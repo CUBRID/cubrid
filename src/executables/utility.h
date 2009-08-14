@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -97,7 +97,8 @@ typedef enum
   MSGCAT_UTIL_GENERIC_MISS_ARGUMENT = 22,
   MSGCAT_UTIL_GENERIC_CUBRID_USAGE = 23,
   MSGCAT_UTIL_GENERIC_ARGS_OVER = 30,
-  MSGCAT_UTIL_GENERIC_MISS_DBNAME = 31
+  MSGCAT_UTIL_GENERIC_MISS_DBNAME = 31,
+  MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED = 32
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -358,7 +359,9 @@ typedef enum
   REPL_AGENT_TOO_MANY_MASTERS = 39,
   REPL_AGENT_INVALID_TRAIL_INFO = 40,
   REPL_AGENT_NEED_MORE_WS = 41,
-  REPL_AGENT_CANT_READ_STATUS_LOG = 42
+  REPL_AGENT_CANT_READ_STATUS_LOG = 42,
+  REPL_AGENT_RESTART_MESSAGE = 51,
+  REPL_AGENT_RECORD_TYPE_ERROR = 52
 } MSGCAT_REPL_AGENT_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COMPACTDB */
@@ -477,6 +480,9 @@ typedef enum
 typedef enum
 {
   PARAMDUMP_MSG_BAD_OUTPUT = 11,
+  PARAMDUMP_MSG_CLIENT_PARAMETER = 21,
+  PARAMDUMP_MSG_SERVER_PARAMETER = 22,
+  PARAMDUMP_MSG_STANDALONE_PARAMETER = 23,
   PARAMDUMP_MSG_USAGE = 60
 } MSGCAT_PARAMDUMP_MSG;
 
@@ -488,6 +494,7 @@ typedef enum
   CHANGEMODE_MSG_DBA_PASSWORD = 21,
   CHANGEMODE_MSG_SERVER_MODE = 22,
   CHANGEMODE_MSG_SERVER_MODE_CHANGED = 23,
+  CHANGEMODE_MSG_NOT_HA_MODE = 24,
   CHANGEMODE_MSG_NOT_IN_STANDALONE = 59,
   CHANGEMODE_MSG_USAGE = 60
 } MSGCAT_CHANGEMODE_MSG;
@@ -497,6 +504,7 @@ typedef enum
 {
   COPYLOGDB_MSG_BAD_MODE = 11,
   COPYLOGDB_MSG_DBA_PASSWORD = 21,
+  COPYLOGDB_MSG_NOT_HA_MODE = 22,
   COPYLOGDB_MSG_NOT_IN_STANDALONE = 59,
   COPYLOGDB_MSG_USAGE = 60
 } MSGCAT_COPYLOGDB_MSG;
@@ -505,6 +513,7 @@ typedef enum
 typedef enum
 {
   APPLYLOGDB_MSG_DBA_PASSWORD = 21,
+  APPLYLOGDB_MSG_NOT_HA_MODE = 22,
   APPLYLOGDB_MSG_NOT_IN_STANDALONE = 59,
   APPLYLOGDB_MSG_USAGE = 60
 } MSGCAT_APPLYLOGDB_MSG;
@@ -629,6 +638,7 @@ typedef struct
 #define PRINT_REPL_SERVER_NAME  "cubrid replication server"
 #define PRINT_REPL_AGENT_NAME   "cubrid replication agent"
 
+#define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
@@ -960,10 +970,14 @@ typedef struct
 #define CSQL_COMMAND_L                          "command"
 #define CSQL_LINE_OUTPUT_S                      'l'
 #define CSQL_LINE_OUTPUT_L                      "line-output"
+#define CSQL_READ_ONLY_S                        'r'
+#define CSQL_READ_ONLY_L                        "read-only"
 #define CSQL_NO_AUTO_COMMIT_S                   12010
 #define CSQL_NO_AUTO_COMMIT_L                   "no-auto-commit"
 #define CSQL_NO_PAGER_S                         12011
 #define CSQL_NO_PAGER_L                         "no-pager"
+#define CSQL_SYSADM_S                           12012
+#define CSQL_SYSADM_L                           "sysadm"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"
@@ -981,10 +995,14 @@ typedef struct
 #define COMMDB_SHUTDOWN_ALL_L                   "shutdown-all"
 #define COMMDB_HOST_S                           'h'
 #define COMMDB_HOST_L                           "host"
+#define COMMDB_SERVER_MODE_S                    'c'
+#define COMMDB_SERVER_MODE_L           		"server-mode"
 
 /* paramdump option list */
-#define PARAMDUMP_OUTPUT_FILE_S                        'o'
+#define PARAMDUMP_OUTPUT_FILE_S                 'o'
 #define PARAMDUMP_OUTPUT_FILE_L                 "output-file"
+#define PARAMDUMP_BOTH_S                        'b'
+#define PARAMDUMP_BOTH_L                        "both"
 #define PARAMDUMP_SA_MODE_S                     'S'
 #define PARAMDUMP_SA_MODE_L                     "SA-mode"
 #define PARAMDUMP_CS_MODE_S                     'C'
@@ -997,24 +1015,20 @@ typedef struct
 #define CHANGEMODE_WAIT_L                       "wait"
 #define CHANGEMODE_FORCE_S                      'f'
 #define CHANGEMODE_FORCE_L                      "force"
-#define CHANGEMODE_DBA_PASSWORD_S               'p'
-#define CHANGEMODE_DBA_PASSWORD_L               "dba-password"
 
 /* copylogdb option list */
 #define COPYLOG_LOG_PATH_S                      'L'
 #define COPYLOG_LOG_PATH_L                      "log-path"
 #define COPYLOG_MODE_S                          'm'
 #define COPYLOG_MODE_L                          "mode"
-#define COPYLOG_DBA_PASSWORD_S                  'p'
-#define COPYLOG_DBA_PASSWORD_L                  "dba-password"
 
 /* applylogdb option list */
 #define APPLYLOG_LOG_PATH_S                     'L'
 #define APPLYLOG_LOG_PATH_L                     "log-path"
-#define APPLYLOG_DBA_PASSWORD_S                 'p'
-#define APPLYLOG_DBA_PASSWORD_L                 "dba-password"
 #define APPLYLOG_TEST_LOG_S                     't'
 #define APPLYLOG_TEST_LOG_L                     "test-log"
+#define APPLYLOG_MAX_MEM_SIZE_S			12401
+#define APPLYLOG_MAX_MEM_SIZE_L			"max-mem-size"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
@@ -1057,6 +1071,8 @@ extern int utility_keyword_value (UTIL_KEYWORD * keywords,
 				  int *keyval_p, char **keystr_p);
 extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
 				   char **keystr_p);
+
+extern int utility_localtime (const time_t * ts, struct tm *result);
 
 /* admin utility main functions */
 typedef struct

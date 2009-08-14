@@ -188,6 +188,7 @@
 #include "language_support.h"
 #include "message_catalog.h"
 #include "memory_alloc.h"
+#include "error_manager.h"
 #include "loader.h"
 
 /*#define PARSER_DEBUG*/
@@ -197,19 +198,33 @@
 #define DBG_PRINT(s)
 #endif
 
-extern int in_instance_line;
+#define FREE_STRING(s) \
+do { \
+  if ((s)->need_free_val) free_and_init ((s)->val); \
+  if ((s)->need_free_self) free_and_init ((s)); \
+} while (0)
+
+#define CONSTANT_POOL_SIZE (1024)
+
+extern bool loader_In_instance_line;
 extern FILE *loader_yyin;
+
 extern int loader_yylex(void);
 extern void loader_yyerror(char* s);
-
+extern void loader_reset_string_pool (void);
+extern void loader_initialize_lexer (void);
 extern void do_loader_parse(FILE *fp);
 
-static STRING_LIST *append_string_list(STRING_LIST *list, char *str);
-static CLASS_COMMAND_SPEC *make_class_command_spec(int qualifier, STRING_LIST *attr_list, CONSTRUCTOR_SPEC *ctor_spec);
-static CONSTANT* make_constant(int type, void *val);
-static CONSTANT_LIST *append_constant_list(CONSTANT_LIST *list, CONSTANT *cons);
-static void process_constant(CONSTANT *c);
-static void process_constant_list(CONSTANT_LIST *cons);
+static LDR_CONSTANT constant_Pool[CONSTANT_POOL_SIZE];
+static int constant_Pool_idx = 0;
+
+static LDR_STRING *loader_append_string_list(LDR_STRING *head, LDR_STRING *str);
+static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec(int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
+static LDR_CONSTANT* loader_make_constant(int type, void *val);
+static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
+static void loader_process_constants (LDR_CONSTANT *c);
+static void loader_process_object_ref (LDR_OBJECT_REF * ref, int type);
+
 
 
 /* Enabling traces.  */
@@ -232,19 +247,17 @@ static void process_constant_list(CONSTANT_LIST *cons);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 62 "../../src/executables/loader_grammar.y"
+#line 77 "../../src/executables/loader_grammar.y"
 {
 	int 	intval;
-	char	*cptr;
-	STRING_LIST	*strlist;
-	CLASS_COMMAND_SPEC *cmd_spec;
-	CONSTRUCTOR_SPEC *ctor_spec;
-	CONSTANT *constant;
-	CONSTANT_LIST *const_list;
-	OBJECT_REF *obj_ref;	
+	LDR_STRING	*string;
+	LDR_CLASS_COMMAND_SPEC *cmd_spec;
+	LDR_CONSTRUCTOR_SPEC *ctor_spec;
+	LDR_CONSTANT *constant;
+	LDR_OBJECT_REF *obj_ref;
 }
 /* Line 193 of yacc.c.  */
-#line 248 "../../src/executables/loader_grammar.c"
+#line 261 "../../src/executables/loader_grammar.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -257,7 +270,7 @@ typedef union YYSTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 261 "../../src/executables/loader_grammar.c"
+#line 274 "../../src/executables/loader_grammar.c"
 
 #ifdef short
 # undef short
@@ -470,9 +483,9 @@ union yyalloc
 #endif
 
 /* YYFINAL -- State number of the termination state.  */
-#define YYFINAL  79
+#define YYFINAL  3
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   258
+#define YYLAST   263
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  49
@@ -531,7 +544,7 @@ static const yytype_uint8 yytranslate[] =
    YYRHS.  */
 static const yytype_uint8 yyprhs[] =
 {
-       0,     0,     3,     5,     7,    10,    11,    15,    17,    19,
+       0,     0,     3,     4,     7,     9,    12,    15,    17,    19,
       21,    23,    25,    29,    33,    35,    38,    41,    45,    47,
       49,    51,    54,    58,    60,    63,    67,    69,    73,    76,
       80,    82,    85,    89,    91,    93,    96,    98,   100,   102,
@@ -546,8 +559,8 @@ static const yytype_uint8 yyprhs[] =
 /* YYRHS -- A `-1'-separated list of the rules' RHS.  */
 static const yytype_int8 yyrhs[] =
 {
-      50,     0,    -1,    51,    -1,    52,    -1,    51,    52,    -1,
-      -1,    54,    53,     3,    -1,     3,    -1,    55,    -1,    67,
+      50,     0,    -1,    -1,    51,    52,    -1,    53,    -1,    52,
+      53,    -1,    54,     3,    -1,     3,    -1,    55,    -1,    67,
       -1,    57,    -1,    56,    -1,    13,    40,    27,    -1,    14,
       40,    58,    -1,    60,    -1,    60,    63,    -1,    59,    60,
       -1,    59,    60,    63,    -1,     5,    -1,     6,    -1,     7,
@@ -576,16 +589,16 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   157,   157,   164,   166,   170,   170,   172,   176,   178,
-     186,   188,   192,   205,   264,   270,   276,   282,   290,   292,
-     294,   298,   303,   310,   316,   322,   330,   333,   346,   351,
-     358,   364,   370,   378,   382,   387,   393,   401,   405,   411,
-     419,   420,   421,   422,   423,   424,   425,   426,   427,   428,
-     429,   430,   431,   432,   433,   434,   435,   436,   451,   452,
-     453,   454,   455,   459,   466,   473,   480,   487,   494,   501,
-     508,   515,   520,   527,   532,   540,   552,   566,   570,   575,
-     582,   588,   594,   600,   606,   614,   620,   622,   624,   626,
-     630,   630,   630,   630,   633
+       0,   170,   170,   170,   181,   186,   193,   199,   206,   213,
+     223,   228,   235,   248,   307,   313,   319,   325,   333,   339,
+     345,   353,   358,   365,   371,   377,   385,   392,   411,   416,
+     423,   429,   435,   443,   450,   455,   461,   469,   476,   482,
+     490,   491,   492,   493,   494,   495,   496,   497,   498,   499,
+     500,   501,   502,   503,   504,   505,   506,   507,   522,   523,
+     524,   525,   526,   530,   537,   544,   551,   558,   565,   572,
+     579,   586,   591,   598,   603,   611,   630,   651,   658,   663,
+     670,   676,   682,   688,   694,   702,   709,   711,   713,   715,
+     719,   719,   719,   719,   722
 };
 #endif
 
@@ -603,7 +616,7 @@ static const char *const yytname[] =
   "TIME_LIT2", "TIME_LIT1", "DATE_LIT2", "YEN_SYMBOL", "WON_SYMBOL",
   "BACKSLASH", "DOLLAR_SYMBOL", "IDENTIFIER", "Quote", "DQuote", "NQuote",
   "BQuote", "XQuote", "SQS_String_Body", "DQS_String_Body", "COMMA",
-  "$accept", "loader_start", "loader_lines", "line", "@1", "one_line",
+  "$accept", "loader_start", "@1", "loader_lines", "line", "one_line",
   "command_line", "id_command", "class_command", "class_commamd_spec",
   "attribute_list_qualifier", "attribute_list", "attribute_names",
   "attribute_name", "constructor_spec", "constructor_argument_list",
@@ -632,7 +645,7 @@ static const yytype_uint16 yytoknum[] =
 /* YYR1[YYN] -- Symbol number of symbol that rule YYN derives.  */
 static const yytype_uint8 yyr1[] =
 {
-       0,    49,    50,    51,    51,    53,    52,    52,    54,    54,
+       0,    49,    51,    50,    52,    52,    53,    53,    54,    54,
       55,    55,    56,    57,    58,    58,    58,    58,    59,    59,
       59,    60,    60,    61,    61,    61,    62,    63,    64,    64,
       65,    65,    65,    66,    67,    67,    67,    68,    69,    69,
@@ -647,7 +660,7 @@ static const yytype_uint8 yyr1[] =
 /* YYR2[YYN] -- Number of symbols composing right hand side of rule YYN.  */
 static const yytype_uint8 yyr2[] =
 {
-       0,     2,     1,     1,     2,     0,     3,     1,     1,     1,
+       0,     2,     0,     2,     1,     2,     2,     1,     1,     1,
        1,     1,     3,     3,     1,     2,     2,     3,     1,     1,
        1,     2,     3,     1,     2,     3,     1,     3,     2,     3,
        1,     2,     3,     1,     1,     2,     1,     1,     1,     2,
@@ -664,17 +677,17 @@ static const yytype_uint8 yyr2[] =
    means the default is an error.  */
 static const yytype_uint8 yydefact[] =
 {
-       0,     7,    49,     0,     0,     0,     0,     0,     0,     0,
-      86,    87,    88,    89,     0,     0,    57,    56,    37,    50,
-      51,    52,    53,    54,    55,    58,    91,    92,    93,    90,
-       0,     0,     0,     0,     0,     0,     2,     3,     5,     8,
-      11,    10,     9,    34,    36,    38,    40,    42,    41,    44,
-      45,    46,    47,    48,    43,    60,    61,    62,     0,     0,
-      59,     0,     0,     0,     0,     0,     0,     0,    75,    76,
-      73,    78,    80,     0,    63,    65,    64,    71,    72,     1,
-       4,     0,    35,    39,     0,    94,    66,    67,    69,    68,
-      70,    12,    18,    19,    20,     0,    13,     0,    14,     0,
-      74,     0,    79,     0,    81,     6,    85,    21,    26,     0,
+       2,     0,     0,     1,     7,    49,     0,     0,     0,     0,
+       0,     0,     0,    86,    87,    88,    89,     0,     0,    57,
+      56,    37,    50,    51,    52,    53,    54,    55,    58,    91,
+      92,    93,    90,     0,     0,     0,     0,     0,     3,     4,
+       0,     8,    11,    10,     9,    34,    36,    38,    40,    42,
+      41,    44,    45,    46,    47,    48,    43,    60,    61,    62,
+       0,     0,    59,     0,     0,     0,     0,     0,     0,     0,
+      75,    76,    73,    78,    80,     0,    63,    65,    64,    71,
+      72,     5,     6,    35,    39,     0,    94,    66,    67,    69,
+      68,    70,    12,    18,    19,    20,     0,    13,     0,    14,
+       0,    74,     0,    79,     0,    81,    85,    21,    26,     0,
       23,    16,     0,    15,    77,    83,     0,    82,    22,     0,
       24,    17,     0,    84,    25,     0,    27,    28,    33,     0,
       30,    29,     0,    31,    32
@@ -683,40 +696,40 @@ static const yytype_uint8 yydefact[] =
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int16 yydefgoto[] =
 {
-      -1,    35,    36,    37,    81,    38,    39,    40,    41,    96,
-      97,    98,   109,   110,   113,   126,   129,   130,    42,    43,
-      44,    45,    46,    47,    48,    49,    50,    51,    52,    53,
-      54,    55,    70,   100,    56,    73,    57,    58,    59,    60
+      -1,     1,     2,    38,    39,    40,    41,    42,    43,    97,
+      98,    99,   109,   110,   113,   126,   129,   130,    44,    45,
+      46,    47,    48,    49,    50,    51,    52,    53,    54,    55,
+      56,    57,    72,   101,    58,    75,    59,    60,    61,    62
 };
 
 /* YYPACT[STATE-NUM] -- Index in YYTABLE of the portion describing
    STATE-NUM.  */
-#define YYPACT_NINF -127
+#define YYPACT_NINF -105
 static const yytype_int16 yypact[] =
 {
-      86,  -127,  -127,   -33,   -27,   -16,     7,    13,   -14,    15,
-    -127,  -127,  -127,  -127,   -25,   171,  -127,  -127,  -127,  -127,
-    -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,
-      11,    12,    14,    19,    20,    61,    86,  -127,  -127,  -127,
-    -127,  -127,  -127,   213,   213,  -127,  -127,  -127,  -127,  -127,
-    -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,    27,    46,
-    -127,    25,    28,    29,    30,    31,    51,    45,  -127,  -127,
-      52,  -127,  -127,     1,  -127,  -127,  -127,  -127,  -127,  -127,
-    -127,    76,   213,  -127,    34,  -127,  -127,  -127,  -127,  -127,
-    -127,  -127,  -127,  -127,  -127,   -24,  -127,    57,    67,    56,
-    -127,   213,  -127,   129,  -127,  -127,  -127,  -127,  -127,    16,
-    -127,    67,    44,  -127,  -127,  -127,   213,  -127,  -127,    47,
-    -127,  -127,    68,  -127,  -127,   -18,  -127,  -127,  -127,    22,
-    -127,  -127,    53,  -127,  -127
+    -105,     2,    91,  -105,  -105,  -105,   -34,   -28,   -17,   -16,
+      11,    14,    18,  -105,  -105,  -105,  -105,   -26,   176,  -105,
+    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
+    -105,  -105,  -105,    13,    17,    20,    24,    25,    91,  -105,
+      57,  -105,  -105,  -105,  -105,   218,   218,  -105,  -105,  -105,
+    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
+      26,    46,  -105,    27,    28,    29,    30,    31,    51,    44,
+    -105,  -105,    58,  -105,  -105,     0,  -105,  -105,  -105,  -105,
+    -105,  -105,  -105,   218,  -105,    34,  -105,  -105,  -105,  -105,
+    -105,  -105,  -105,  -105,  -105,  -105,   -19,  -105,    59,    66,
+      55,  -105,   218,  -105,   134,  -105,  -105,  -105,  -105,    15,
+    -105,    66,    45,  -105,  -105,  -105,   218,  -105,  -105,    47,
+    -105,  -105,    64,  -105,  -105,    22,  -105,  -105,  -105,    21,
+    -105,  -105,    49,  -105,  -105
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-    -127,  -127,  -127,    49,  -127,  -127,  -127,  -127,  -127,  -127,
-    -127,    -6,  -127,   -56,    -4,  -127,  -127,  -126,  -127,  -127,
-      66,   -15,  -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,
-    -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127,  -127
+    -105,  -105,  -105,  -105,    52,  -105,  -105,  -105,  -105,  -105,
+    -105,    -7,  -105,  -104,   -15,  -105,  -105,   -76,  -105,  -105,
+      48,   -18,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
+    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]].  What to do in state STATE-NUM.  If
@@ -726,79 +739,81 @@ static const yytype_int8 yypgoto[] =
 #define YYTABLE_NINF -1
 static const yytype_uint8 yytable[] =
 {
-      72,   107,    68,   133,   101,     2,   134,   127,    61,     3,
-       4,     5,     6,     7,    62,    69,   108,    10,    11,    12,
-      13,    14,   128,    15,   102,    63,    66,    16,    17,    83,
-      19,    20,    21,    22,    23,    24,    25,    26,    27,    28,
-      29,   118,    30,    31,    32,    33,    34,   131,    64,   103,
-      92,    93,    94,   120,    65,    67,   108,    74,   104,    75,
-      76,    79,   128,   124,   119,    77,    78,    83,    84,    95,
-     132,    86,    85,    99,    87,    88,    89,    90,    91,   105,
-     106,    95,   112,   114,   122,    80,   115,   108,   117,     1,
-       2,   111,   125,   128,     3,     4,     5,     6,     7,     8,
-       9,   123,    10,    11,    12,    13,    14,   121,    15,    82,
-       0,     0,    16,    17,    18,    19,    20,    21,    22,    23,
-      24,    25,    26,    27,    28,    29,     0,    30,    31,    32,
-      33,    34,   116,     2,     0,     0,     0,     3,     4,     5,
-       6,     7,     0,     0,     0,    10,    11,    12,    13,    14,
-       0,    15,     0,     0,     0,    16,    17,     0,    19,    20,
-      21,    22,    23,    24,    25,    26,    27,    28,    29,     0,
-      30,    31,    32,    33,    34,     2,     0,     0,     0,     3,
-       4,     5,     6,     7,     0,     0,     0,    10,    11,    12,
-      13,    14,     0,    15,    71,     0,     0,    16,    17,     0,
-      19,    20,    21,    22,    23,    24,    25,    26,    27,    28,
-      29,     0,    30,    31,    32,    33,    34,     2,     0,     0,
-       0,     3,     4,     5,     6,     7,     0,     0,     0,    10,
-      11,    12,    13,    14,     0,    15,     0,     0,     0,    16,
-      17,     0,    19,    20,    21,    22,    23,    24,    25,    26,
-      27,    28,    29,     0,    30,    31,    32,    33,    34
+      74,    70,     3,   102,     5,   120,   107,    63,     6,     7,
+       8,     9,    10,    64,    71,   124,    13,    14,    15,    16,
+      17,   108,    18,   103,    65,    66,    19,    20,    84,    22,
+      23,    24,    25,    26,    27,    28,    29,    30,    31,    32,
+     118,    33,    34,    35,    36,    37,   131,   127,   104,    93,
+      94,    95,    67,   133,    68,   108,   134,   105,    69,    76,
+      82,   128,   128,   119,    77,    84,    78,    85,    96,   132,
+      79,    80,    86,    87,    88,    89,    90,    91,    92,   100,
+     106,   112,   114,    96,   115,   122,   117,   108,   125,   128,
+      81,   111,     0,    83,     4,     5,   121,     0,   123,     6,
+       7,     8,     9,    10,    11,    12,     0,    13,    14,    15,
+      16,    17,     0,    18,     0,     0,     0,    19,    20,    21,
+      22,    23,    24,    25,    26,    27,    28,    29,    30,    31,
+      32,     0,    33,    34,    35,    36,    37,   116,     5,     0,
+       0,     0,     6,     7,     8,     9,    10,     0,     0,     0,
+      13,    14,    15,    16,    17,     0,    18,     0,     0,     0,
+      19,    20,     0,    22,    23,    24,    25,    26,    27,    28,
+      29,    30,    31,    32,     0,    33,    34,    35,    36,    37,
+       5,     0,     0,     0,     6,     7,     8,     9,    10,     0,
+       0,     0,    13,    14,    15,    16,    17,     0,    18,    73,
+       0,     0,    19,    20,     0,    22,    23,    24,    25,    26,
+      27,    28,    29,    30,    31,    32,     0,    33,    34,    35,
+      36,    37,     5,     0,     0,     0,     6,     7,     8,     9,
+      10,     0,     0,     0,    13,    14,    15,    16,    17,     0,
+      18,     0,     0,     0,    19,    20,     0,    22,    23,    24,
+      25,    26,    27,    28,    29,    30,    31,    32,     0,    33,
+      34,    35,    36,    37
 };
 
 static const yytype_int16 yycheck[] =
 {
-      15,    25,    27,   129,     3,     4,   132,    25,    41,     8,
-       9,    10,    11,    12,    41,    40,    40,    16,    17,    18,
-      19,    20,    40,    22,    23,    41,    40,    26,    27,    44,
+      18,    27,     0,     3,     4,   109,    25,    41,     8,     9,
+      10,    11,    12,    41,    40,   119,    16,    17,    18,    19,
+      20,    40,    22,    23,    41,    41,    26,    27,    46,    29,
+      30,    31,    32,    33,    34,    35,    36,    37,    38,    39,
+      25,    41,    42,    43,    44,    45,    25,    25,    48,     5,
+       6,     7,    41,   129,    40,    40,   132,    75,    40,    46,
+       3,    40,    40,    48,    47,    83,    46,    41,    24,    48,
+      46,    46,    26,    46,    46,    46,    46,    46,    27,    21,
+      46,    15,    27,    24,   102,    40,   104,    40,    24,    40,
+      38,    98,    -1,    45,     3,     4,   111,    -1,   116,     8,
+       9,    10,    11,    12,    13,    14,    -1,    16,    17,    18,
+      19,    20,    -1,    22,    -1,    -1,    -1,    26,    27,    28,
       29,    30,    31,    32,    33,    34,    35,    36,    37,    38,
-      39,    25,    41,    42,    43,    44,    45,    25,    41,    48,
-       5,     6,     7,   109,    41,    40,    40,    46,    73,    47,
-      46,     0,    40,   119,    48,    46,    46,    82,    41,    24,
-      48,    46,    26,    21,    46,    46,    46,    46,    27,     3,
-      46,    24,    15,    27,    40,    36,   101,    40,   103,     3,
-       4,    97,    24,    40,     8,     9,    10,    11,    12,    13,
-      14,   116,    16,    17,    18,    19,    20,   111,    22,    43,
-      -1,    -1,    26,    27,    28,    29,    30,    31,    32,    33,
+      39,    -1,    41,    42,    43,    44,    45,     3,     4,    -1,
+      -1,    -1,     8,     9,    10,    11,    12,    -1,    -1,    -1,
+      16,    17,    18,    19,    20,    -1,    22,    -1,    -1,    -1,
+      26,    27,    -1,    29,    30,    31,    32,    33,    34,    35,
+      36,    37,    38,    39,    -1,    41,    42,    43,    44,    45,
+       4,    -1,    -1,    -1,     8,     9,    10,    11,    12,    -1,
+      -1,    -1,    16,    17,    18,    19,    20,    -1,    22,    23,
+      -1,    -1,    26,    27,    -1,    29,    30,    31,    32,    33,
       34,    35,    36,    37,    38,    39,    -1,    41,    42,    43,
-      44,    45,     3,     4,    -1,    -1,    -1,     8,     9,    10,
-      11,    12,    -1,    -1,    -1,    16,    17,    18,    19,    20,
-      -1,    22,    -1,    -1,    -1,    26,    27,    -1,    29,    30,
-      31,    32,    33,    34,    35,    36,    37,    38,    39,    -1,
-      41,    42,    43,    44,    45,     4,    -1,    -1,    -1,     8,
-       9,    10,    11,    12,    -1,    -1,    -1,    16,    17,    18,
-      19,    20,    -1,    22,    23,    -1,    -1,    26,    27,    -1,
-      29,    30,    31,    32,    33,    34,    35,    36,    37,    38,
-      39,    -1,    41,    42,    43,    44,    45,     4,    -1,    -1,
-      -1,     8,     9,    10,    11,    12,    -1,    -1,    -1,    16,
-      17,    18,    19,    20,    -1,    22,    -1,    -1,    -1,    26,
-      27,    -1,    29,    30,    31,    32,    33,    34,    35,    36,
-      37,    38,    39,    -1,    41,    42,    43,    44,    45
+      44,    45,     4,    -1,    -1,    -1,     8,     9,    10,    11,
+      12,    -1,    -1,    -1,    16,    17,    18,    19,    20,    -1,
+      22,    -1,    -1,    -1,    26,    27,    -1,    29,    30,    31,
+      32,    33,    34,    35,    36,    37,    38,    39,    -1,    41,
+      42,    43,    44,    45
 };
 
 /* YYSTOS[STATE-NUM] -- The (internal number of the) accessing
    symbol of state STATE-NUM.  */
 static const yytype_uint8 yystos[] =
 {
-       0,     3,     4,     8,     9,    10,    11,    12,    13,    14,
-      16,    17,    18,    19,    20,    22,    26,    27,    28,    29,
-      30,    31,    32,    33,    34,    35,    36,    37,    38,    39,
-      41,    42,    43,    44,    45,    50,    51,    52,    54,    55,
-      56,    57,    67,    68,    69,    70,    71,    72,    73,    74,
-      75,    76,    77,    78,    79,    80,    83,    85,    86,    87,
-      88,    41,    41,    41,    41,    41,    40,    40,    27,    40,
-      81,    23,    70,    84,    46,    47,    46,    46,    46,     0,
-      52,    53,    69,    70,    41,    26,    46,    46,    46,    46,
-      46,    27,     5,     6,     7,    24,    58,    59,    60,    21,
-      82,     3,    23,    48,    70,     3,    46,    25,    40,    61,
+       0,    50,    51,     0,     3,     4,     8,     9,    10,    11,
+      12,    13,    14,    16,    17,    18,    19,    20,    22,    26,
+      27,    28,    29,    30,    31,    32,    33,    34,    35,    36,
+      37,    38,    39,    41,    42,    43,    44,    45,    52,    53,
+      54,    55,    56,    57,    67,    68,    69,    70,    71,    72,
+      73,    74,    75,    76,    77,    78,    79,    80,    83,    85,
+      86,    87,    88,    41,    41,    41,    41,    41,    40,    40,
+      27,    40,    81,    23,    70,    84,    46,    47,    46,    46,
+      46,    53,     3,    69,    70,    41,    26,    46,    46,    46,
+      46,    46,    27,     5,     6,     7,    24,    58,    59,    60,
+      21,    82,     3,    23,    48,    70,    46,    25,    40,    61,
       62,    60,    15,    63,    27,    70,     3,    70,    25,    48,
       62,    63,    40,    70,    62,    24,    64,    25,    40,    65,
       66,    25,    48,    66,    66
@@ -1616,659 +1631,718 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 158 "../../src/executables/loader_grammar.y"
+#line 170 "../../src/executables/loader_grammar.y"
     {
-		ldr_act_finish(ldr_Current_context, 0);
-	;}
+    loader_initialize_lexer ();
+    constant_Pool_idx = 0;
+  ;}
     break;
 
   case 3:
-#line 164 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("line"); ;}
+#line 175 "../../src/executables/loader_grammar.y"
+    {
+    ldr_act_finish (ldr_Current_context, 0);
+  ;}
     break;
 
   case 4:
-#line 166 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("line_list line"); ;}
+#line 182 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("line");
+  ;}
     break;
 
   case 5:
-#line 170 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("one_line"); ;}
+#line 187 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("line_list line");
+  ;}
     break;
 
   case 6:
-#line 170 "../../src/executables/loader_grammar.y"
-    { in_instance_line = 1; ;}
+#line 194 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("one_line");
+    loader_In_instance_line = true;
+  ;}
     break;
 
   case 7:
-#line 172 "../../src/executables/loader_grammar.y"
-    { in_instance_line = 1; ;}
+#line 200 "../../src/executables/loader_grammar.y"
+    {
+    loader_In_instance_line = true;
+  ;}
     break;
 
   case 8:
-#line 176 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("command_line"); ;}
+#line 207 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("command_line");
+    loader_reset_string_pool ();
+    constant_Pool_idx = 0;
+  ;}
     break;
 
   case 9:
-#line 179 "../../src/executables/loader_grammar.y"
-    { 
-		DBG_PRINT("instance_line");
-		ldr_act_finish_line(ldr_Current_context);
-	;}
+#line 214 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("instance_line");
+    ldr_act_finish_line (ldr_Current_context);
+    loader_reset_string_pool ();
+    constant_Pool_idx = 0;
+  ;}
     break;
 
   case 10:
-#line 186 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("class_command"); ;}
+#line 224 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("class_command");
+  ;}
     break;
 
   case 11:
-#line 188 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("id_command"); ;}
+#line 229 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("id_command");
+  ;}
     break;
 
   case 12:
-#line 193 "../../src/executables/loader_grammar.y"
+#line 236 "../../src/executables/loader_grammar.y"
     {
-		skipCurrentclass = false;
-		
-		ldr_act_start_id(ldr_Current_context, (yyvsp[(2) - (3)].cptr));
-		ldr_act_set_id(ldr_Current_context, atoi((yyvsp[(3) - (3)].cptr)));
-		
-		free((yyvsp[(2) - (3)].cptr));
-		free((yyvsp[(3) - (3)].cptr));
-	;}
+    skipCurrentclass = false;
+
+    ldr_act_start_id (ldr_Current_context, (yyvsp[(2) - (3)].string)->val);
+    ldr_act_set_id (ldr_Current_context, atoi ((yyvsp[(3) - (3)].string)->val));
+
+    FREE_STRING ((yyvsp[(2) - (3)].string));
+    FREE_STRING ((yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 13:
-#line 206 "../../src/executables/loader_grammar.y"
-    { 
-		CLASS_COMMAND_SPEC *cmd_spec;
-		char *class_name;
-		STRING_LIST *attr, *save, *args;
-		
-		DBG_PRINT("class_commamd_spec");
-		
-		class_name = (yyvsp[(2) - (3)].cptr);
-		cmd_spec = (yyvsp[(3) - (3)].cmd_spec);
-		
-		ldr_act_set_skipCurrentclass (class_name, strlen(class_name));
-		ldr_act_init_context(ldr_Current_context, class_name, strlen(class_name));
-		
-		if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
-		{
-			ldr_act_restrict_attributes(ldr_Current_context, cmd_spec->qualifier);
-		}
-		
-		for(attr = cmd_spec->attr_list; attr; attr = attr->next)
-		{
-			ldr_act_add_attr(ldr_Current_context, attr->val, strlen(attr->val));
-		}
-		
-		ldr_act_check_missing_non_null_attrs(ldr_Current_context); 
-		
-		if (cmd_spec->ctor_spec)
-		{
-			ldr_act_set_constructor(ldr_Current_context, cmd_spec->ctor_spec->idname);
-			
-			for(args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
-			{
-				ldr_act_add_argument(ldr_Current_context, args->val);
-			}
-			
-			for(args = cmd_spec->ctor_spec->arg_list; args; args = save)
-			{
-				save = args->next;
-				free(args->val);
-				free(args);
-			}
+#line 249 "../../src/executables/loader_grammar.y"
+    {
+    LDR_CLASS_COMMAND_SPEC *cmd_spec;
+    LDR_STRING *class_name;
+    LDR_STRING *attr, *save, *args;
 
-			free(cmd_spec->ctor_spec->idname);
-			free(cmd_spec->ctor_spec);
-		}
+    DBG_PRINT ("class_commamd_spec");
 
-		for(attr = cmd_spec->attr_list; attr; attr = save)
-		{
-			save = attr->next;
-			free(attr->val);
-			free(attr);
-		}
-		
-		free(class_name);
-		free(cmd_spec);
-	;}
+    class_name = (yyvsp[(2) - (3)].string);
+    cmd_spec = (yyvsp[(3) - (3)].cmd_spec);
+
+    ldr_act_set_skipCurrentclass (class_name->val, class_name->size);
+    ldr_act_init_context (ldr_Current_context, class_name->val,
+                          class_name->size);
+
+    if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+      {
+        ldr_act_restrict_attributes (ldr_Current_context, cmd_spec->qualifier);
+      }
+
+    for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+      {
+        ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+      }
+
+    ldr_act_check_missing_non_null_attrs (ldr_Current_context);
+
+    if (cmd_spec->ctor_spec)
+      {
+        ldr_act_set_constructor (ldr_Current_context,
+                                 cmd_spec->ctor_spec->idname->val);
+
+        for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
+          {
+            ldr_act_add_argument (ldr_Current_context, args->val);
+          }
+
+        for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
+          {
+            save = args->next;
+            FREE_STRING (args);
+          }
+
+        FREE_STRING (cmd_spec->ctor_spec->idname);
+        free_and_init (cmd_spec->ctor_spec);
+      }
+
+    for (attr = cmd_spec->attr_list; attr; attr = save)
+      {
+        save = attr->next;
+        FREE_STRING (attr);
+      }
+
+    FREE_STRING (class_name);
+    free_and_init (cmd_spec);
+  ;}
     break;
 
   case 14:
-#line 265 "../../src/executables/loader_grammar.y"
+#line 308 "../../src/executables/loader_grammar.y"
     {
-        	DBG_PRINT("attribute_list");
-        	(yyval.cmd_spec) = make_class_command_spec(LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (1)].strlist), NULL);
-        ;}
+    DBG_PRINT ("attribute_list");
+    (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (1)].string), NULL);
+  ;}
     break;
 
   case 15:
-#line 271 "../../src/executables/loader_grammar.y"
+#line 314 "../../src/executables/loader_grammar.y"
     {
-        	DBG_PRINT("attribute_list constructor_spec");
-        	(yyval.cmd_spec) = make_class_command_spec(LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].ctor_spec));
-        ;}
+    DBG_PRINT ("attribute_list constructor_spec");
+    (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].ctor_spec));
+  ;}
     break;
 
   case 16:
-#line 277 "../../src/executables/loader_grammar.y"
+#line 320 "../../src/executables/loader_grammar.y"
     {
-        	DBG_PRINT("attribute_list_qualifier attribute_list");
-        	(yyval.cmd_spec) = make_class_command_spec((yyvsp[(1) - (2)].intval), (yyvsp[(2) - (2)].strlist), NULL);
-        ;}
+    DBG_PRINT ("attribute_list_qualifier attribute_list");
+    (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (2)].intval), (yyvsp[(2) - (2)].string), NULL);
+  ;}
     break;
 
   case 17:
-#line 283 "../../src/executables/loader_grammar.y"
+#line 326 "../../src/executables/loader_grammar.y"
     {
-        	DBG_PRINT("attribute_list_qualifier attribute_list constructor_spec");
-        	(yyval.cmd_spec) = make_class_command_spec((yyvsp[(1) - (3)].intval), (yyvsp[(2) - (3)].strlist), (yyvsp[(3) - (3)].ctor_spec));
-        ;}
+    DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
+    (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (3)].intval), (yyvsp[(2) - (3)].string), (yyvsp[(3) - (3)].ctor_spec));
+  ;}
     break;
 
   case 18:
-#line 290 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("CLASS"); (yyval.intval) = LDR_ATTRIBUTE_CLASS; ;}
+#line 334 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("CLASS");
+    (yyval.intval) = LDR_ATTRIBUTE_CLASS;
+  ;}
     break;
 
   case 19:
-#line 292 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("SHARED"); (yyval.intval) = LDR_ATTRIBUTE_SHARED; ;}
+#line 340 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("SHARED");
+    (yyval.intval) = LDR_ATTRIBUTE_SHARED;
+  ;}
     break;
 
   case 20:
-#line 294 "../../src/executables/loader_grammar.y"
-    { DBG_PRINT("DEFAULT"); (yyval.intval) = LDR_ATTRIBUTE_DEFAULT; ;}
+#line 346 "../../src/executables/loader_grammar.y"
+    {
+    DBG_PRINT ("DEFAULT");
+    (yyval.intval) = LDR_ATTRIBUTE_DEFAULT;
+  ;}
     break;
 
   case 21:
-#line 299 "../../src/executables/loader_grammar.y"
+#line 354 "../../src/executables/loader_grammar.y"
     {
-		(yyval.strlist) = NULL;
-	;}
+    (yyval.string) = NULL;
+  ;}
     break;
 
   case 22:
-#line 304 "../../src/executables/loader_grammar.y"
+#line 359 "../../src/executables/loader_grammar.y"
     {
-		(yyval.strlist) = (yyvsp[(2) - (3)].strlist); 
-	;}
+    (yyval.string) = (yyvsp[(2) - (3)].string);
+  ;}
     break;
 
   case 23:
-#line 311 "../../src/executables/loader_grammar.y"
+#line 366 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("attribute_name");
-		(yyval.strlist) = append_string_list(NULL, (yyvsp[(1) - (1)].cptr));
-	;}
+    DBG_PRINT ("attribute_name");
+    (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
+  ;}
     break;
 
   case 24:
-#line 317 "../../src/executables/loader_grammar.y"
+#line 372 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("attribute_names attribute_name");
-		(yyval.strlist) = append_string_list((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].cptr));
-	;}
+    DBG_PRINT ("attribute_names attribute_name");
+    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 25:
-#line 323 "../../src/executables/loader_grammar.y"
+#line 378 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("attribute_names COMMA attribute_name");
-		(yyval.strlist) = append_string_list((yyvsp[(1) - (3)].strlist), (yyvsp[(3) - (3)].cptr));
-	;}
+    DBG_PRINT ("attribute_names COMMA attribute_name");
+    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 26:
-#line 330 "../../src/executables/loader_grammar.y"
-    { (yyval.cptr) = (yyvsp[(1) - (1)].cptr); ;}
+#line 386 "../../src/executables/loader_grammar.y"
+    {
+    (yyval.string) = (yyvsp[(1) - (1)].string);
+  ;}
     break;
 
   case 27:
-#line 334 "../../src/executables/loader_grammar.y"
+#line 393 "../../src/executables/loader_grammar.y"
     {
-		CONSTRUCTOR_SPEC *spec;
-		
-		spec = (CONSTRUCTOR_SPEC *) malloc(sizeof(CONSTRUCTOR_SPEC));
-		spec->idname = (yyvsp[(2) - (3)].cptr);
-		spec->arg_list =  (yyvsp[(3) - (3)].strlist);
-		
-		(yyval.ctor_spec) = spec;
-	;}
+    LDR_CONSTRUCTOR_SPEC *spec;
+
+    spec = (LDR_CONSTRUCTOR_SPEC *) malloc (sizeof (LDR_CONSTRUCTOR_SPEC));
+    if (spec == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTRUCTOR_SPEC));
+	YYABORT;
+      }
+
+    spec->idname = (yyvsp[(2) - (3)].string);
+    spec->arg_list = (yyvsp[(3) - (3)].string);
+    (yyval.ctor_spec) = spec;
+  ;}
     break;
 
   case 28:
-#line 347 "../../src/executables/loader_grammar.y"
+#line 412 "../../src/executables/loader_grammar.y"
     {
-		(yyval.strlist) = NULL;
-	;}
+    (yyval.string) = NULL;
+  ;}
     break;
 
   case 29:
-#line 352 "../../src/executables/loader_grammar.y"
+#line 417 "../../src/executables/loader_grammar.y"
     {
-		(yyval.strlist) = (yyvsp[(2) - (3)].strlist);
-	;}
+    (yyval.string) = (yyvsp[(2) - (3)].string);
+  ;}
     break;
 
   case 30:
-#line 359 "../../src/executables/loader_grammar.y"
+#line 424 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("argument_name");
-		(yyval.strlist) = append_string_list(NULL, (yyvsp[(1) - (1)].cptr));
-	;}
+    DBG_PRINT ("argument_name");
+    (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
+  ;}
     break;
 
   case 31:
-#line 365 "../../src/executables/loader_grammar.y"
+#line 430 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("argument_names argument_name");
-		(yyval.strlist) = append_string_list((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].cptr));
-	;}
+    DBG_PRINT ("argument_names argument_name");
+    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 32:
-#line 371 "../../src/executables/loader_grammar.y"
+#line 436 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("argument_names COMMA argument_name");
-		(yyval.strlist) = append_string_list((yyvsp[(1) - (3)].strlist), (yyvsp[(3) - (3)].cptr));
-	;}
+    DBG_PRINT ("argument_names COMMA argument_name");
+    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 33:
-#line 378 "../../src/executables/loader_grammar.y"
-    { (yyval.cptr) = (yyvsp[(1) - (1)].cptr); ;}
+#line 444 "../../src/executables/loader_grammar.y"
+    {
+    (yyval.string) = (yyvsp[(1) - (1)].string);
+  ;}
     break;
 
   case 34:
-#line 383 "../../src/executables/loader_grammar.y"
+#line 451 "../../src/executables/loader_grammar.y"
     {
-		ldr_act_start_instance(ldr_Current_context, (yyvsp[(1) - (1)].intval));
-	;}
+    ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (1)].intval));
+  ;}
     break;
 
   case 35:
-#line 388 "../../src/executables/loader_grammar.y"
+#line 456 "../../src/executables/loader_grammar.y"
     {
-		ldr_act_start_instance(ldr_Current_context, (yyvsp[(1) - (2)].intval));
-		process_constant_list((yyvsp[(2) - (2)].const_list));
-	;}
+    ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (2)].intval));
+    loader_process_constants ((yyvsp[(2) - (2)].constant));
+  ;}
     break;
 
   case 36:
-#line 394 "../../src/executables/loader_grammar.y"
+#line 462 "../../src/executables/loader_grammar.y"
     {
-		ldr_act_start_instance(ldr_Current_context, -1);
-		process_constant_list((yyvsp[(1) - (1)].const_list));
-	;}
+    ldr_act_start_instance (ldr_Current_context, -1);
+    loader_process_constants ((yyvsp[(1) - (1)].constant));
+  ;}
     break;
 
   case 37:
-#line 401 "../../src/executables/loader_grammar.y"
-    { (yyval.intval) =  (yyvsp[(1) - (1)].intval); ;}
+#line 470 "../../src/executables/loader_grammar.y"
+    {
+    (yyval.intval) = (yyvsp[(1) - (1)].intval);
+  ;}
     break;
 
   case 38:
-#line 406 "../../src/executables/loader_grammar.y"
+#line 477 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("constant");
-		(yyval.const_list) = append_constant_list(NULL, (yyvsp[(1) - (1)].constant));
-	;}
+    DBG_PRINT ("constant");
+    (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
+  ;}
     break;
 
   case 39:
-#line 412 "../../src/executables/loader_grammar.y"
+#line 483 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("constant_list constant");
-		(yyval.const_list) = append_constant_list((yyvsp[(1) - (2)].const_list), (yyvsp[(2) - (2)].constant));
-	;}
+    DBG_PRINT ("constant_list constant");
+    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
+  ;}
     break;
 
   case 40:
-#line 419 "../../src/executables/loader_grammar.y"
+#line 490 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 41:
-#line 420 "../../src/executables/loader_grammar.y"
+#line 491 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 42:
-#line 421 "../../src/executables/loader_grammar.y"
+#line 492 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 43:
-#line 422 "../../src/executables/loader_grammar.y"
+#line 493 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 44:
-#line 423 "../../src/executables/loader_grammar.y"
+#line 494 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 45:
-#line 424 "../../src/executables/loader_grammar.y"
+#line 495 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 46:
-#line 425 "../../src/executables/loader_grammar.y"
+#line 496 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 47:
-#line 426 "../../src/executables/loader_grammar.y"
+#line 497 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 48:
-#line 427 "../../src/executables/loader_grammar.y"
+#line 498 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 49:
-#line 428 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_NULL, NULL); ;}
+#line 499 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_NULL, NULL); ;}
     break;
 
   case 50:
-#line 429 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 500 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 51:
-#line 430 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 501 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 52:
-#line 431 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 502 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 53:
-#line 432 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 503 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 54:
-#line 433 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 504 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 55:
-#line 434 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_TIME, (yyvsp[(1) - (1)].cptr)); ;}
+#line 505 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 56:
-#line 435 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_INT, (yyvsp[(1) - (1)].cptr)); ;}
+#line 506 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_INT, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 57:
-#line 437 "../../src/executables/loader_grammar.y"
+#line 508 "../../src/executables/loader_grammar.y"
     {
-        	if (strchr((yyvsp[(1) - (1)].cptr), 'F') != NULL || strchr((yyvsp[(1) - (1)].cptr), 'f') != NULL)
-		{
-			(yyval.constant) = make_constant(LDR_FLOAT, (yyvsp[(1) - (1)].cptr));
-		}
-		else if (strchr((yyvsp[(1) - (1)].cptr), 'E') != NULL || strchr((yyvsp[(1) - (1)].cptr), 'e') != NULL) 
-		{
-			(yyval.constant) = make_constant(LDR_DOUBLE, (yyvsp[(1) - (1)].cptr));
-		}
-		else
-		{
-			(yyval.constant) = make_constant(LDR_NUMERIC, (yyvsp[(1) - (1)].cptr));
-		}
-        ;}
+    if (strchr ((yyvsp[(1) - (1)].string)->val, 'F') != NULL || strchr ((yyvsp[(1) - (1)].string)->val, 'f') != NULL)
+      {
+        (yyval.constant) = loader_make_constant (LDR_FLOAT, (yyvsp[(1) - (1)].string));
+      }
+    else if (strchr ((yyvsp[(1) - (1)].string)->val, 'E') != NULL || strchr ((yyvsp[(1) - (1)].string)->val, 'e') != NULL)
+      {
+        (yyval.constant) = loader_make_constant (LDR_DOUBLE, (yyvsp[(1) - (1)].string));
+      }
+    else
+      {
+        (yyval.constant) = loader_make_constant (LDR_NUMERIC, (yyvsp[(1) - (1)].string));
+      }
+  ;}
     break;
 
   case 58:
-#line 451 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = make_constant(LDR_DATE, (yyvsp[(1) - (1)].cptr)); ;}
+#line 522 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_DATE, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 59:
-#line 452 "../../src/executables/loader_grammar.y"
+#line 523 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 60:
-#line 453 "../../src/executables/loader_grammar.y"
+#line 524 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 61:
-#line 454 "../../src/executables/loader_grammar.y"
+#line 525 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 62:
-#line 455 "../../src/executables/loader_grammar.y"
+#line 526 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
   case 63:
-#line 460 "../../src/executables/loader_grammar.y"
+#line 531 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_STR, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 64:
-#line 467 "../../src/executables/loader_grammar.y"
+#line 538 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_NSTR, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_NSTR, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 65:
-#line 474 "../../src/executables/loader_grammar.y"
+#line 545 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_STR, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 66:
-#line 481 "../../src/executables/loader_grammar.y"
+#line 552 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_DATE, (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_DATE, (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 67:
-#line 488 "../../src/executables/loader_grammar.y"
+#line 559 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_TIME, (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_TIME, (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 68:
-#line 495 "../../src/executables/loader_grammar.y"
+#line 566 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_TIMESTAMP, (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 69:
-#line 502 "../../src/executables/loader_grammar.y"
+#line 573 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_TIMESTAMP, (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 70:
-#line 509 "../../src/executables/loader_grammar.y"
+#line 580 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_DATETIME, (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_DATETIME, (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 71:
-#line 516 "../../src/executables/loader_grammar.y"
+#line 587 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_BSTR, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_BSTR, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 72:
-#line 521 "../../src/executables/loader_grammar.y"
+#line 592 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_XSTR, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_XSTR, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
   case 73:
-#line 528 "../../src/executables/loader_grammar.y"
+#line 599 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_CLASS_OID, (yyvsp[(2) - (2)].obj_ref));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_CLASS_OID, (yyvsp[(2) - (2)].obj_ref));
+  ;}
     break;
 
   case 74:
-#line 533 "../../src/executables/loader_grammar.y"
+#line 604 "../../src/executables/loader_grammar.y"
     {
-		(yyvsp[(2) - (3)].obj_ref)->instance_number = (yyvsp[(3) - (3)].cptr);
-		(yyval.constant) = make_constant(LDR_OID, (yyvsp[(2) - (3)].obj_ref));
-	;}
+    (yyvsp[(2) - (3)].obj_ref)->instance_number = (yyvsp[(3) - (3)].string);
+    (yyval.constant) = loader_make_constant (LDR_OID, (yyvsp[(2) - (3)].obj_ref));
+  ;}
     break;
 
   case 75:
-#line 541 "../../src/executables/loader_grammar.y"
+#line 612 "../../src/executables/loader_grammar.y"
     {
-		OBJECT_REF *ref;
-		
-		ref = (OBJECT_REF *) malloc(sizeof(OBJECT_REF));
-		ref->class_id = (yyvsp[(1) - (1)].cptr);
-		ref->class_name = NULL;
-		ref->instance_number = NULL;
-		
-		(yyval.obj_ref) = ref;
-	;}
+    LDR_OBJECT_REF *ref;
+
+    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
+    if (ref == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+	YYABORT;
+      }
+
+    ref->class_id = (yyvsp[(1) - (1)].string);
+    ref->class_name = NULL;
+    ref->instance_number = NULL;
+    
+    (yyval.obj_ref) = ref;
+  ;}
     break;
 
   case 76:
-#line 553 "../../src/executables/loader_grammar.y"
+#line 631 "../../src/executables/loader_grammar.y"
     {
-		OBJECT_REF *ref;
-		
-		ref = (OBJECT_REF *) malloc(sizeof(OBJECT_REF));
-		ref->class_id = NULL;
-		ref->class_name = (yyvsp[(1) - (1)].cptr);
-		ref->instance_number = NULL;
-		
-		(yyval.obj_ref) = ref;
-	;}
+    LDR_OBJECT_REF *ref;
+
+    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
+    if (ref == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+      	YYABORT;
+      }
+
+    ref->class_id = NULL;
+    ref->class_name = (yyvsp[(1) - (1)].string);
+    ref->instance_number = NULL;
+    
+    (yyval.obj_ref) = ref;
+  ;}
     break;
 
   case 77:
-#line 566 "../../src/executables/loader_grammar.y"
-    { (yyval.cptr) = (yyvsp[(2) - (2)].cptr); ;}
+#line 652 "../../src/executables/loader_grammar.y"
+    {
+    (yyval.string) = (yyvsp[(2) - (2)].string);
+  ;}
     break;
 
   case 78:
-#line 571 "../../src/executables/loader_grammar.y"
+#line 659 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_COLLECTION, NULL);
-	;}
+    (yyval.constant) = loader_make_constant (LDR_COLLECTION, NULL);
+  ;}
     break;
 
   case 79:
-#line 576 "../../src/executables/loader_grammar.y"
+#line 664 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_COLLECTION, (yyvsp[(2) - (3)].const_list));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_COLLECTION, (yyvsp[(2) - (3)].constant));
+  ;}
     break;
 
   case 80:
-#line 583 "../../src/executables/loader_grammar.y"
+#line 671 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("constant");
-		(yyval.const_list) = append_constant_list(NULL, (yyvsp[(1) - (1)].constant));
-	;}
+    DBG_PRINT ("constant");
+    (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
+  ;}
     break;
 
   case 81:
-#line 589 "../../src/executables/loader_grammar.y"
+#line 677 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("set_elements constant");
-		(yyval.const_list) = append_constant_list((yyvsp[(1) - (2)].const_list), (yyvsp[(2) - (2)].constant));
-	;}
+    DBG_PRINT ("set_elements constant");
+    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
+  ;}
     break;
 
   case 82:
-#line 595 "../../src/executables/loader_grammar.y"
+#line 683 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("set_elements COMMA constant");
-		(yyval.const_list) = append_constant_list((yyvsp[(1) - (3)].const_list), (yyvsp[(3) - (3)].constant));
-	;}
+    DBG_PRINT ("set_elements COMMA constant");
+    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
+  ;}
     break;
 
   case 83:
-#line 601 "../../src/executables/loader_grammar.y"
+#line 689 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("set_elements NL constant");
-		(yyval.const_list) = append_constant_list((yyvsp[(1) - (3)].const_list), (yyvsp[(3) - (3)].constant));
-	;}
+    DBG_PRINT ("set_elements NL constant");
+    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
+  ;}
     break;
 
   case 84:
-#line 607 "../../src/executables/loader_grammar.y"
+#line 695 "../../src/executables/loader_grammar.y"
     {
-		DBG_PRINT("set_elements COMMA NL constant");
-		(yyval.const_list) = append_constant_list((yyvsp[(1) - (4)].const_list), (yyvsp[(4) - (4)].constant));
-	;}
+    DBG_PRINT ("set_elements COMMA NL constant");
+    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (4)].constant), (yyvsp[(4) - (4)].constant));
+  ;}
     break;
 
   case 85:
-#line 615 "../../src/executables/loader_grammar.y"
+#line 703 "../../src/executables/loader_grammar.y"
     {
-		 (yyval.constant) = make_constant((yyvsp[(1) - (3)].intval), (yyvsp[(3) - (3)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant ((yyvsp[(1) - (3)].intval), (yyvsp[(3) - (3)].string));
+  ;}
     break;
 
   case 86:
-#line 620 "../../src/executables/loader_grammar.y"
+#line 709 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_ELO_INT; ;}
     break;
 
   case 87:
-#line 622 "../../src/executables/loader_grammar.y"
+#line 711 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_ELO_EXT; ;}
     break;
 
   case 88:
-#line 624 "../../src/executables/loader_grammar.y"
+#line 713 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_SYS_USER; ;}
     break;
 
   case 89:
-#line 626 "../../src/executables/loader_grammar.y"
+#line 715 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_SYS_CLASS; ;}
     break;
 
   case 94:
-#line 634 "../../src/executables/loader_grammar.y"
+#line 723 "../../src/executables/loader_grammar.y"
     {
-		(yyval.constant) = make_constant(LDR_MONETARY, (yyvsp[(2) - (2)].cptr));
-	;}
+    (yyval.constant) = loader_make_constant (LDR_MONETARY, (yyvsp[(2) - (2)].string));
+  ;}
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 2272 "../../src/executables/loader_grammar.c"
+#line 2346 "../../src/executables/loader_grammar.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -2482,90 +2556,189 @@ yyreturn:
 }
 
 
-#line 638 "../../src/executables/loader_grammar.y"
+#line 727 "../../src/executables/loader_grammar.y"
 
 
-static STRING_LIST *append_string_list(STRING_LIST *list, char *str)
+static LDR_STRING *
+loader_append_string_list (LDR_STRING * head, LDR_STRING * tail)
 {
-	STRING_LIST *item, *last, *tmp;
-	 
-	item = (STRING_LIST *) malloc(sizeof(STRING_LIST));
-	item->val = str;
-	item->next = NULL;
+  tail->next = NULL;
+  tail->last = NULL;
 
-	if (list)
-	{	
-		for (tmp = list; tmp; tmp = tmp->next)
-		{
-		 	last = tmp;
-		}
-		
-		last->next = item;
-	}
-	else
+  if (head)
+    {
+      head->last->next = tail;
+    }
+  else
+    {
+      head = tail;
+    }
+
+  head->last = tail;
+  return head;
+}
+
+static LDR_CLASS_COMMAND_SPEC *
+loader_make_class_command_spec (int qualifier, LDR_STRING * attr_list,
+			        LDR_CONSTRUCTOR_SPEC * ctor_spec)
+{
+  LDR_CLASS_COMMAND_SPEC *spec;
+
+  spec = (LDR_CLASS_COMMAND_SPEC *) malloc (sizeof (LDR_CLASS_COMMAND_SPEC));
+  if (spec == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CLASS_COMMAND_SPEC));
+      return NULL;
+    }
+
+  spec->qualifier = qualifier;
+  spec->attr_list = attr_list;
+  spec->ctor_spec = ctor_spec;
+
+  return spec;
+}
+
+static LDR_CONSTANT *
+loader_make_constant (int type, void *val)
+{
+  LDR_CONSTANT *con;
+
+  if (constant_Pool_idx < CONSTANT_POOL_SIZE)
+    {
+      con = &(constant_Pool[constant_Pool_idx]);
+      constant_Pool_idx++;
+      con->need_free = false;
+    }
+  else
+    {
+      con = (LDR_CONSTANT *) malloc (sizeof (LDR_CONSTANT));
+      if (con == NULL)
 	{
-		list = item;
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	          ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
+	  return NULL;
 	}
-	
-	return list;
+      con->need_free = true;
+    }
+
+  con->type = type;
+  con->val = val;
+
+  return con;
 }
 
-static CLASS_COMMAND_SPEC *make_class_command_spec(int qualifier, STRING_LIST *attr_list, CONSTRUCTOR_SPEC *ctor_spec)
+static LDR_CONSTANT *
+loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
 {
-	CLASS_COMMAND_SPEC *spec;
-	 
-	spec = (CLASS_COMMAND_SPEC *) malloc(sizeof(CLASS_COMMAND_SPEC));
-	spec->qualifier = qualifier;
-	spec->attr_list = attr_list;
-	spec->ctor_spec = ctor_spec; 
-	
-	return spec;
+  tail->next = NULL;
+  tail->last = NULL;
+
+  if (head)
+    {
+      head->last->next = tail;
+    }
+  else
+    {
+      head = tail;
+    }
+
+  head->last = tail;
+  return head;
 }
 
-static CONSTANT *make_constant(int type, void *val)
+static void
+loader_process_object_ref (LDR_OBJECT_REF * ref, int type)
 {
-	CONSTANT *con;
-		
-	con = (CONSTANT *) malloc(sizeof(CONSTANT));
-	con->type = type;
-	con->val = val;
-		
-	return con;
-}
+  bool ignore_class = false;
+  char *class_name;
+  DB_OBJECT *ref_class = NULL;
 
-static CONSTANT_LIST *append_constant_list(CONSTANT_LIST *list, CONSTANT *cons)
-{
-	CONSTANT_LIST *item, *last, *tmp;
-	 
-	item = (CONSTANT_LIST *) malloc(sizeof(CONSTANT_LIST));
-	item->val = cons;
-	item->next = NULL;
-	
-	if (list)
-	{	
-		for (tmp = list; tmp; tmp = tmp->next)
-		{
-		 	last = tmp;
-		}
-		
-		last->next = item;
-	}
-	else
+  if (ref->class_id && ref->class_id->val)
+    {
+      ldr_act_set_ref_class_id (ldr_Current_context,
+				atoi (ref->class_id->val));
+    }
+  else
+    {
+      ldr_act_set_ref_class (ldr_Current_context, ref->class_name->val);
+    }
+
+  if (ref->instance_number && ref->instance_number->val)
+    {
+      ldr_act_set_instance_id (ldr_Current_context,
+			       atoi (ref->instance_number->val));
+    }
+  else
+    {
+      /*ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
+    }
+
+  ref_class = ldr_act_get_ref_class (ldr_Current_context);
+  if (ref_class != NULL)
+    {
+      class_name = db_get_class_name (ref_class);
+      ignore_class = ldr_is_ignore_class (class_name, strlen (class_name));
+    }
+
+  if (type == LDR_OID)
+    {
+      (*ldr_act) (ldr_Current_context, ref->instance_number->val,
+		  (ref->instance_number == NULL
+		   && ref->instance_number->val) ? 0 : ref->
+		  instance_number->size, (ignore_class) ? LDR_NULL : LDR_OID);
+    }
+  else
+    {
+      /* right ?? */
+      if (ref->class_name)
 	{
-		list = item;
+	  (*ldr_act) (ldr_Current_context, ref->class_name->val,
+		      ref->class_name->size,
+		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
 	}
-	
-	return list;
+      else
+	{
+	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
+		      (ref->class_id == NULL
+		       && ref->class_id->val) ? 0 : ref->class_id->size,
+		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
+	}
+    }
+
+  if (ref->class_id)
+    {
+      FREE_STRING (ref->class_id);
+    }
+
+  if (ref->class_name)
+    {
+      FREE_STRING (ref->class_name);
+    }
+
+  if (ref->instance_number)
+    {
+      FREE_STRING (ref->instance_number);
+    }
+
+  free_and_init (ref);
 }
 
-static void process_constant(CONSTANT *c)
+static void
+loader_process_constants (LDR_CONSTANT * cons)
 {
-	switch (c->type)
+  LDR_CONSTANT *c, *save;
+
+  for (c = cons; c; c = save)
+    {
+      save = c->next;
+
+      switch (c->type)
 	{
 	case LDR_NULL:
-		(*ldr_act)(ldr_Current_context, NULL, 0, LDR_NULL);
-		break;
-		
+	  (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
+	  break;
+
 	case LDR_INT:
 	case LDR_FLOAT:
 	case LDR_DOUBLE:
@@ -2577,120 +2750,53 @@ static void process_constant(CONSTANT *c)
 	case LDR_DATETIME:
 	case LDR_STR:
 	case LDR_NSTR:
+	  {
+	    LDR_STRING *str = (LDR_STRING *) c->val;
+	     
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    FREE_STRING (str);
+	  }
+	  break;
+
 	case LDR_BSTR:
 	case LDR_XSTR:
 	case LDR_ELO_INT:
 	case LDR_ELO_EXT:
 	case LDR_SYS_USER:
 	case LDR_SYS_CLASS:
-		(*ldr_act)(ldr_Current_context, (char *) c->val, strlen((char *) c->val), c->type);
-		free(c->val);
-		break;
-		
+	  {
+	    LDR_STRING *str = (LDR_STRING *) c->val;
+	     
+	    (*ldr_act) (ldr_Current_context, str->val, strlen(str->val), c->type);
+	    FREE_STRING (str);
+	  }
+	  break;
+
 	case LDR_OID:
 	case LDR_CLASS_OID:
-		{
-			OBJECT_REF *ref;
-			bool ignore_class = false;
-			char * class_name;
-			DB_OBJECT *ref_class = NULL;
-			
-			ref = (OBJECT_REF *) c->val;
-			
-			if (ref->class_id)
-			{
-				ldr_act_set_ref_class_id(ldr_Current_context, atoi(ref->class_id));
-			}
-			else
-			{
-				ldr_act_set_ref_class(ldr_Current_context, ref->class_name);
-			}
-			
-			if (ref->instance_number)
-			{
-				ldr_act_set_instance_id(ldr_Current_context, atoi(ref->instance_number));
-			}
-			else
-			{
-				/*ldr_act_set_instance_id(ldr_Current_context, 0);*/ /* right?? */ 
-			}
-			
-			ref_class = ldr_act_get_ref_class(ldr_Current_context);
-			if (ref_class != NULL)
-			{
-				class_name = db_get_class_name (ref_class);
-				ignore_class =
-					ldr_is_ignore_class(class_name, strlen(class_name));
-			}
-			
-			if (c->type == LDR_OID)
-			{
-				(*ldr_act)(ldr_Current_context, ref->instance_number, strlen(ref->instance_number),
-			 	    (ignore_class) ? LDR_NULL : LDR_OID);
-			}
-			else
-			{
-				/* right ?? */
-				if (ref->class_name)
-				{
-					(*ldr_act)(ldr_Current_context, ref->class_name, strlen(ref->class_name),
-			 	    		(ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-				}
-				else
-				{
-					(*ldr_act)(ldr_Current_context, ref->class_id, strlen(ref->class_id),
-			 	    		(ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-				}
-			}
-				
-			if (ref->class_id)
-			{
-				free(ref->class_id);
-			}
-			
-			if (ref->class_name)
-			{
-				free(ref->class_name);
-			}
-			
-			if (ref->instance_number)
-			{
-				free(ref->instance_number);
-			}
-			    
-			free(ref);
-		}
-		break;
-	
-	case LDR_COLLECTION:
-		(*ldr_act)(ldr_Current_context, "{", strlen("{"), LDR_COLLECTION);
-		process_constant_list((CONSTANT_LIST *) c->val);
-		ldr_act_attr(ldr_Current_context, NULL, 0, LDR_COLLECTION);
-		
-		break;
-	
-	default:
-		break;
-	}
-	
-	free(c);
-}
+	  loader_process_object_ref ((LDR_OBJECT_REF *) c->val, c->type);
+	  break;
 
-static void process_constant_list(CONSTANT_LIST *cons)
-{
-	CONSTANT_LIST *c, *save;
-	
-	for(c = cons; c; c = save)
-	{
-		save = c->next;
-		process_constant(c->val);
-		free(c);
+	case LDR_COLLECTION:
+	  (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
+	  loader_process_constants ((LDR_CONSTANT *) c->val);
+	  ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
+	  break;
+
+	default:
+	  break;
 	}
+
+      if (c->need_free)
+	{
+	  free_and_init (c);
+	}
+    }
 }
 
 void do_loader_parse(FILE *fp)
 {
-  in_instance_line = 1;
+  loader_In_instance_line = true;
 
   loader_yyin = fp;
   loader_yyparse();
@@ -2703,5 +2809,5 @@ void do_loader_parse(FILE *fp)
 	return 0;
 }
 */
-#endif        
+#endif
 

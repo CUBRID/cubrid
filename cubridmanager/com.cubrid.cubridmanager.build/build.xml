@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE project>
+
+<project default="all" name="CubridManager">
+  <property file="build.properties"/>
+  <!--
+  	common project property
+  --> 
+  <property name="product.name" value="CUBIRD Manager"/>
+  <property name="launcher.name" value="cubridmanager"/>
+  <property name="lib.jdbc.cubrid" value="cubrid_jdbc.jar"/>
+  <property name="jdbc.file" value="../com.cubrid.cubridmanager.core/lib/cubrid_jdbc.jar"/>
+  <property name="build.dir" value="."/>
+	
+  <property name="parent.home" value=".."/>
+  <property name="basedir" value="."/>
+	
+  <property name="build.home" value="${build.dir}/build"/>
+  <property name="deploy.home" value="${build.dir}/deploy"/>
+  <property name="doc.home" value="${deploy.home}/doc"/>
+  <property name="classes.home" value="${build.dir}/classes"/>  
+	
+  <property name="product.linux.32" value="${deploy.home}/linux32"/>
+  <property name="product.linux.64" value="${deploy.home}/linux64"/>
+  <property name="product.win" value="${deploy.home}/win"/>
+  <property name="product.plugin.3.3" value="${deploy.home}/plugins/3.3"/>
+  <property name="product.plugin.3.4" value="${deploy.home}/plugins/3.4"/>
+  <property name="rcp.lib.common" value="${basedir}/lib/common"/>
+  <property name="rcp.lib.win" value="${basedir}/lib/32/win"/>
+  <property name="rcp.lib.linux.32" value="${basedir}/lib/32/linux"/>
+  <property name="rcp.lib.linux.64" value="${basedir}/lib/64/linux"/>
+  <property name="rcp.lib.international" value="${basedir}/lib/international"/>
+  <property name="manifest.help.3.4" value="${basedir}/lib/manifest_help_3.4"/>
+  <!--
+  	core project property
+  -->
+  <property name="core.project" value="com.cubrid.cubridmanager.core"/>
+  <property name="core.src.home" value="${parent.home}/${core.project}/src"/>
+  <property name="core.lib.home" value="${parent.home}/${core.project}/lib"/>
+  <property name="core.classes.home" value="${classes.home}/core"/>
+  <!--
+  	ui project property
+  -->
+  <property name="ui.project" value="com.cubrid.cubridmanager.ui"/>
+  <property name="ui.src.home" value="${parent.home}/${ui.project}/src"/>
+  <property name="ui.lib.home" value="${parent.home}/${ui.project}/lib"/>
+  <property name="ui.classes.home" value="${classes.home}/ui"/>
+  <!--
+  	help project property
+  -->
+  <property name="help.project" value="com.cubrid.cubridmanager.help"/>
+  <property name="help.src.home" value="${parent.home}/${help.project}/src"/>
+  <property name="help.classes.home" value="${classes.home}/help"/>
+  <!--
+  	app project property
+  -->
+  <property name="app.project" value="com.cubrid.cubridmanager.app"/>
+  <property name="app.src.home" value="${parent.home}/${app.project}/src"/>
+  <property name="app.classes.home" value="${classes.home}/app"/>	
+   <!--
+  	plugin project property
+   -->
+  <property name="plugin.project" value="com.cubrid.cubridmanager.plugin"/>
+  <property name="plugin.src.home" value="${parent.home}/${plugin.project}/src"/>
+  <property name="plugin.classes.home" value="${classes.home}/plugin"/>	
+
+  <!--
+   Prepare the environment
+  -->
+  <target name="prepare">
+	<echo message="jdbc=${jdbc.file}"/>
+  	<mkdir dir="${build.dir}"/>
+  	<mkdir dir="${build.home}"/>
+  	<mkdir dir="${deploy.home}"/> 	
+  	<mkdir dir="${classes.home}"/>
+  	
+  	<mkdir dir="${core.classes.home}"/>
+  	<mkdir dir="${core.classes.home}/lib"/>
+  	<mkdir dir="${ui.classes.home}"/>
+  	<mkdir dir="${ui.classes.home}/lib"/>
+	<mkdir dir="${ui.classes.home}/icons"/>
+  	<mkdir dir="${help.classes.home}"/>
+  	<mkdir dir="${help.classes.home}/html"/>
+  	<mkdir dir="${app.classes.home}"/>
+  	<mkdir dir="${app.classes.home}/icons"/>
+  	<mkdir dir="${plugin.classes.home}"/>
+  	<mkdir dir="${plugin.classes.home}/icons"/>
+
+  	<mkdir dir="${product.win}"/>
+  	<mkdir dir="${product.linux.32}"/>
+  	<mkdir dir="${product.linux.64}"/>
+  	<mkdir dir="${product.plugin.3.3}"/>
+  	<mkdir dir="${product.plugin.3.4}"/>
+  </target>	
+  <!--
+   Clean the last compiled files
+  -->	
+  <target name="clean">
+  	<delete dir="${build.home}"/>
+  	<delete dir="${deploy.home}"/> 	
+  	<delete dir="${classes.home}"/>
+  </target>		
+  <!--
+   the classpath that core project compile need
+  -->
+  <path id="core.compile.classpath">
+  	<pathelement location="${core.classes.home}"/>
+  	<fileset dir="${core.lib.home}">
+  		<include name="*.jar"/>
+  		<exclude name="${lib.jdbc.cubrid}"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.common}">
+  		<include name="*.jar"/>
+  	</fileset>	
+  	<fileset file="${jdbc.file}"/>
+  </path>
+  <!--
+   the classpath that help project compile need
+  -->
+  <path id="help.compile.classpath">
+  	<pathelement location="${help.classes.home}"/>
+  	<fileset dir="${rcp.lib.common}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.win}">
+  		<include name="*.jar"/>
+  	</fileset>
+  </path>	
+  <!--
+   the classpath that ui project compile need
+  -->
+  <path id="ui.compile.classpath">
+  	<pathelement location="${ui.classes.home}"/>
+  	<fileset dir="${ui.lib.home}">
+  		<include name="*.jar"/>
+  		<exclude name="${lib.jdbc.cubrid}"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.common}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.win}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<fileset file="${jdbc.file}"/>
+  	<pathelement location="${core.classes.home}"/>	
+  	<pathelement location="${help.classes.home}"/>
+  </path>
+  <!--
+   the classpath that plugin project compile need
+  -->
+  <path id="plugin.compile.classpath">
+  	<pathelement location="${plugin.classes.home}"/>
+  	<fileset dir="${rcp.lib.common}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.win}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<pathelement location="${core.classes.home}"/>
+  	<pathelement location="${ui.classes.home}"/>	
+  	<pathelement location="${help.classes.home}"/>
+  </path>
+  <!--
+   the classpath that app project compile need
+  -->
+  <path id="app.compile.classpath">
+  	<pathelement location="${app.classes.home}"/>
+  	<fileset dir="${rcp.lib.common}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<fileset dir="${rcp.lib.win}">
+  		<include name="*.jar"/>
+  	</fileset>
+  	<pathelement location="${core.classes.home}"/>
+  	<pathelement location="${ui.classes.home}"/>	
+  	<pathelement location="${help.classes.home}"/>
+  </path>	
+  <!--
+   compile cubrid manager related project
+  -->
+  <target name="compile" depends="prepare">
+    <javac srcdir="${core.src.home}" destdir="${core.classes.home}" encoding="EUC-KR">
+        <classpath refid="core.compile.classpath"/>
+    </javac>
+    <javac srcdir="${help.src.home}" destdir="${help.classes.home}" encoding="EUC-KR">
+        <classpath refid="help.compile.classpath"/>
+    </javac>
+    <javac srcdir="${ui.src.home}" destdir="${ui.classes.home}" encoding="EUC-KR">
+        <classpath refid="ui.compile.classpath"/>
+    </javac>
+	<javac srcdir="${app.src.home}" destdir="${app.classes.home}" encoding="EUC-KR">
+	    <classpath refid="app.compile.classpath"/>
+	</javac>
+	<javac srcdir="${plugin.src.home}" destdir="${plugin.classes.home}" encoding="EUC-KR">
+	    <classpath refid="plugin.compile.classpath"/>
+	</javac>
+  </target>	
+  <!--
+   build cubrid manager related project
+  -->
+  <target name="build" depends="compile">
+  	<!-- core build -->
+    <copy todir="${core.classes.home}">
+      	<fileset dir="${parent.home}/${core.project}">
+      		<include name="*.xml"/>
+      		<include name="*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${core.classes.home}">
+      	<fileset dir="${core.src.home}">
+      		<include name="**/*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${core.classes.home}/lib">
+        <fileset dir="${parent.home}/${core.project}/lib">
+      		<exclude name="${lib.jdbc.cubrid}"/>
+        </fileset>
+    </copy>
+    <copy tofile="${core.classes.home}/lib/${lib.jdbc.cubrid}">
+        <fileset file="${jdbc.file}"/>
+    </copy>  	
+  	<jar jarfile="${build.home}/${core.project}_${product.version}.jar" basedir="${core.classes.home}" manifest="${parent.home}/${core.project}/META-INF/MANIFEST.MF"/>
+  	<!-- help build -->
+    <copy todir="${help.classes.home}">
+      	<fileset dir="${parent.home}/${help.project}">
+      		<include name="*.xml"/>
+      		<include name="*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${help.classes.home}">
+      	<fileset dir="${help.src.home}">
+      		<include name="**/*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${help.classes.home}/html">
+     	<fileset dir="${parent.home}/${help.project}/html"/>
+    </copy>
+   	<jar jarfile="${build.home}/${help.project}_3.3_${product.version}.jar" basedir="${help.classes.home}" manifest="${parent.home}/${help.project}/META-INF/MANIFEST.MF"/>
+  	<jar jarfile="${build.home}/${help.project}_3.4_${product.version}.jar" basedir="${help.classes.home}" manifest="${manifest.help.3.4}/MANIFEST.MF"/>
+  	<!-- ui build -->
+    <copy todir="${ui.classes.home}">
+      	<fileset dir="${parent.home}/${ui.project}">
+      		<include name="*.xml"/>
+      		<include name="*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${ui.classes.home}">
+      	<fileset dir="${ui.src.home}">
+      		<include name="**/*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${ui.classes.home}/icons">
+        <fileset dir="${parent.home}/${ui.project}/icons"/>
+    </copy>
+    <copy todir="${ui.classes.home}/lib">
+        <fileset dir="${parent.home}/${ui.project}/lib">
+      		<exclude name="${lib.jdbc.cubrid}"/>
+        </fileset>
+    </copy>
+    <copy tofile="${ui.classes.home}/lib/${lib.jdbc.cubrid}">
+        <fileset file="${jdbc.file}"/>
+    </copy>  
+  	<jar jarfile="${build.home}/${ui.project}_${product.version}.jar" basedir="${ui.classes.home}" manifest="${parent.home}/${ui.project}/META-INF/MANIFEST.MF"/>  
+  	<!-- app build -->
+    <copy todir="${app.classes.home}">
+      	<fileset dir="${parent.home}/${app.project}">
+      		<include name="*.xml"/>
+      		<include name="*.properties"/>
+          	<include name="*.product"/>
+            <include name="*.bmp"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${app.classes.home}">
+      	<fileset dir="${app.src.home}">
+      		<include name="**/*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${app.classes.home}/icons">
+        <fileset dir="${parent.home}/${app.project}/icons"/>
+    </copy>
+  	<jar jarfile="${build.home}/${app.project}_${product.version}.jar" basedir="${app.classes.home}" manifest="${parent.home}/${app.project}/META-INF/MANIFEST.MF"/>  
+ 	<!-- plugin build -->
+    <copy todir="${plugin.classes.home}">
+      	<fileset dir="${parent.home}/${plugin.project}">
+      		<include name="*.xml"/>
+      		<include name="*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${plugin.classes.home}">
+      	<fileset dir="${plugin.src.home}">
+      		<include name="**/*.properties"/>
+      	</fileset>	
+    </copy>
+    <copy todir="${plugin.classes.home}/icons">
+        <fileset dir="${parent.home}/${plugin.project}/icons"/>
+    </copy>
+  	<jar jarfile="${build.home}/${plugin.project}_${product.version}.jar" basedir="${plugin.classes.home}" manifest="${parent.home}/${plugin.project}/META-INF/MANIFEST.MF"/>      
+  </target>	
+  <!--
+     Deploy CubridManager in wins
+   -->
+  <target name="deploywin" depends="build">
+	<mkdir dir="${product.win}/plugins"/>
+  	<mkdir dir="${product.win}/plugins/${help.project}_${product.version}"/>
+  	<mkdir dir="${product.win}/plugins/${help.project}_${product.version}/META-INF"/> 	
+	<mkdir dir="${product.win}/configuration"/>
+    <copy todir="${product.win}/plugins">
+        <fileset dir="${rcp.lib.common}">
+    		<exclude name=".eclipseproduct"/>
+    		<exclude name="${launcher.name}.ini"/>
+        </fileset>
+        <fileset dir="${build.home}">
+            <exclude name="${help.project}_3.4_${product.version}.jar"/>
+            <exclude name="${help.project}_3.3_${product.version}.jar"/>
+        </fileset>
+    	<fileset dir="${rcp.lib.win}">
+    		<exclude name="${launcher.name}.exe"/>  
+    		<exclude name="config.ini"/>
+    	</fileset>
+        <fileset dir="${rcp.lib.international}">
+            <include name="*.jar"/>
+        </fileset>   	
+    </copy>
+    <copy todir="${product.win}/plugins/${help.project}_${product.version}">
+        <fileset dir="${help.classes.home}">
+    		<include name="**/*.*"/>
+        </fileset> 	
+    </copy>
+    <copy todir="${product.win}/plugins/${help.project}_${product.version}/META-INF">
+        <fileset file="${parent.home}/${help.project}/META-INF/MANIFEST.MF"/>	
+    </copy>
+     <copy todir="${product.win}">
+        <fileset file="${rcp.lib.win}/${launcher.name}.exe"/>
+        <fileset file="${rcp.lib.common}/.eclipseproduct"/>
+     	<fileset file="${rcp.lib.common}/${launcher.name}.ini"/>
+    </copy>
+     <copy todir="${product.win}/configuration">
+        <fileset file="${rcp.lib.win}/config.ini"/>
+    </copy>  
+  </target>	 
+  <!--
+     Deploy CubridManager in linux 32
+   -->
+  <target name="deploylinux32" depends="build">
+	<mkdir dir="${product.linux.32}/plugins"/>
+	<mkdir dir="${product.linux.32}/plugins/${help.project}_${product.version}"/>
+	<mkdir dir="${product.linux.32}/plugins/${help.project}_${product.version}/META-INF"/> 	
+	<mkdir dir="${product.linux.32}/configuration"/>
+    <copy todir="${product.linux.32}/plugins">
+        <fileset dir="${rcp.lib.common}">
+    		<exclude name=".eclipseproduct"/>
+    		<exclude name="${launcher.name}.ini"/>
+        </fileset>
+        <fileset dir="${build.home}">
+            <exclude name="${help.project}_3.4_${product.version}.jar"/>
+            <exclude name="${help.project}_3.3_${product.version}.jar"/>        	
+        </fileset>
+    	<fileset dir="${rcp.lib.linux.32}">
+    		<exclude name="config.ini"/>
+    		<exclude name="${launcher.name}"/>   		
+    	</fileset>
+        <fileset dir="${rcp.lib.international}">
+            <include name="*.jar"/>
+        </fileset>  
+    </copy>
+    <copy todir="${product.linux.32}/plugins/${help.project}_${product.version}">
+        <fileset dir="${help.classes.home}">
+    		<include name="**/*.*"/>
+        </fileset> 	
+    </copy>
+    <copy todir="${product.linux.32}/plugins/${help.project}_${product.version}/META-INF">
+        <fileset file="${parent.home}/${help.project}/META-INF/MANIFEST.MF"/>
+    </copy>
+     <copy todir="${product.linux.32}">
+        <fileset file="${rcp.lib.linux.32}/${launcher.name}"/>
+        <fileset file="${rcp.lib.common}/.eclipseproduct"/>
+     	<fileset file="${rcp.lib.common}/${launcher.name}.ini"/>
+    </copy>
+	<chmod perm="ugo+x">
+            <fileset file="${product.linux.32}/${launcher.name}"/>
+	</chmod>
+     <copy todir="${product.linux.32}/configuration">
+        <fileset file="${rcp.lib.linux.32}/config.ini"/>
+    </copy>  
+  </target>
+  <!--
+     Deploy CubridManager in linux 64
+   -->
+  <target name="deploylinux64" depends="build">
+	<mkdir dir="${product.linux.64}/plugins"/>
+	<mkdir dir="${product.linux.64}/plugins/${help.project}_${product.version}"/>
+	<mkdir dir="${product.linux.64}/plugins/${help.project}_${product.version}/META-INF"/> 	
+	<mkdir dir="${product.linux.64}/configuration"/>
+    <copy todir="${product.linux.64}/plugins">
+        <fileset dir="${rcp.lib.common}">
+    		<exclude name=".eclipseproduct"/>
+    		<exclude name="${launcher.name}.ini"/>
+        </fileset>
+        <fileset dir="${build.home}">
+            <exclude name="${help.project}_3.4_${product.version}.jar"/>
+            <exclude name="${help.project}_3.3_${product.version}.jar"/>
+        </fileset>
+    	<fileset dir="${rcp.lib.linux.64}">
+    		<exclude name="config.ini"/>
+    		<exclude name="${launcher.name}"/>   		
+    	</fileset>
+        <fileset dir="${rcp.lib.international}">
+            <include name="*.jar"/>
+        </fileset>  
+    </copy>
+    <copy todir="${product.linux.64}/plugins/${help.project}_${product.version}">
+        <fileset dir="${help.classes.home}">
+    		<include name="**/*.*"/>
+        </fileset> 	
+    </copy>
+    <copy todir="${product.linux.64}/plugins/${help.project}_${product.version}/META-INF">
+        <fileset file="${parent.home}/${help.project}/META-INF/MANIFEST.MF"/>	
+    </copy>
+     <copy todir="${product.linux.64}">
+        <fileset file="${rcp.lib.linux.64}/${launcher.name}"/>
+        <fileset file="${rcp.lib.common}/.eclipseproduct"/>
+     	<fileset file="${rcp.lib.common}/${launcher.name}.ini"/>
+    </copy>
+	<chmod perm="ugo+x">
+            <fileset file="${product.linux.64}/${launcher.name}"/>
+	</chmod>
+     <copy todir="${product.linux.64}/configuration">
+        <fileset file="${rcp.lib.linux.64}/config.ini"/>
+    </copy>  
+  </target>	
+  <!--
+     Deploy plugin for eclipse3.3
+   -->	
+  <target name="deployplugin3.3" depends="build">
+    <copy todir="${product.plugin.3.3}">
+        <fileset dir="${rcp.lib.common}">
+        	<include name="org.apache.log4j_1.2.13.v200806030600.jar"/>
+        </fileset>
+        <fileset dir="${build.home}">
+        	<exclude name="${app.project}_${product.version}.jar"/>
+            <exclude name="${help.project}_3.4_${product.version}.jar"/>
+        </fileset>
+    </copy>
+  </target>	
+  <!--
+     Deploy plugin for eclipse3.4
+   -->	
+  <target name="deployplugin3.4" depends="build">
+    <copy todir="${product.plugin.3.4}">
+        <fileset dir="${rcp.lib.common}">
+        	<include name="org.apache.log4j_1.2.13.v200806030600.jar"/>
+        </fileset>
+        <fileset dir="${build.home}">
+        	<exclude name="${app.project}_${product.version}.jar"/>
+            <exclude name="${help.project}_3.3_${product.version}.jar"/>
+        </fileset>
+    </copy>
+  </target>
+  <!--
+     Produce javadoc
+   -->
+  <target name="javadoc" depends="prepare">
+  	<javadoc destdir="${doc.home}"  encoding="utf-8" charset="utf-8" windowtitle="${product.name}" source="1.5" 
+  		access="package" author="true" version="true">
+  		<packageset dir="${core.src.home}">
+  		   <include name="**" />
+  		</packageset>
+  		<packageset dir="${ui.src.home}">
+  		   <include name="**" />
+  		</packageset>
+  		<packageset dir="${help.src.home}">
+  		   <include name="**" />
+  		</packageset>
+  		<packageset dir="${app.src.home}">
+  		   <include name="**" />
+  		</packageset>
+  		<packageset dir="${plugin.src.home}">
+  		   <include name="**" />
+  		</packageset>
+	</javadoc>
+  </target>	
+  <target depends="clean,deploywin,deploylinux32,deploylinux64,deployplugin3.3,deployplugin3.4" name="all">
+  </target>
+</project>

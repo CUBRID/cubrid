@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -801,7 +801,7 @@ int
 dirname_r (const char *path, char *pathbuf, size_t buflen)
 {
   const char *endp;
-  int len;
+  ptrdiff_t len;
 
   if (buflen < 2)
     return (errno = ERANGE);
@@ -842,7 +842,7 @@ dirname_r (const char *path, char *pathbuf, size_t buflen)
       while (endp > path && *endp == PATH_SEPARATOR);
     }
 
-  len = (int)(endp - path) + 1;
+  len = (ptrdiff_t) (endp - path) + 1;
   if (len + 1 > PATH_MAX)
     {
       return (errno = ENAMETOOLONG);
@@ -877,7 +877,7 @@ int
 basename_r (const char *path, char *pathbuf, size_t buflen)
 {
   const char *endp, *startp;
-  int len;
+  ptrdiff_t len;
 
   if (buflen < 2)
     return (errno = ERANGE);
@@ -908,7 +908,7 @@ basename_r (const char *path, char *pathbuf, size_t buflen)
   while (startp > path && *(startp - 1) != PATH_SEPARATOR)
     startp--;
 
-  len = (int)(endp - startp) + 1;
+  len = (ptrdiff_t) (endp - startp) + 1;
   if (len + 1 > PATH_MAX)
     {
       return (errno = ENAMETOOLONG);
@@ -938,6 +938,65 @@ basename (const char *path)
   return (basename_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
 }
 #endif /* !HAVE_BASENAME */
+
+int
+utona (unsigned int u, char *s, size_t n)
+{
+  char nbuf[10], *p, *t;
+
+  if (s == NULL || n == 0)
+    {
+      return 0;
+    }
+  if (n == 1)
+    {
+      *s = '\0';
+      return 1;
+    }
+
+  p = nbuf;
+  do
+    {
+      *p++ = u % 10 + '0';
+    }
+  while ((u /= 10) > 0);
+  p--;
+
+  t = s;
+  do
+    {
+      *t++ = *p--;
+    }
+  while (p >= nbuf && --n > 1);
+  *t++ = '\0';
+
+  return (t - s);
+}
+
+int
+itona (int i, char *s, size_t n)
+{
+  if (s == NULL || n == 0)
+    {
+      return 0;
+    }
+  if (n == 1)
+    {
+      *s = '\0';
+      return 1;
+    }
+
+  if (i < 0)
+    {
+      *s++ = '-';
+      n--;
+      return utona (-i, s, n) + 1;
+    }
+  else
+    {
+      return utona (i, s, n);
+    }
+}
 
 /*
  * wrapper for cuserid() function
@@ -1122,4 +1181,32 @@ getpass (const char *prompt)
   password_buffer[pwlen] = '\0';
   return password_buffer;
 }
+#endif /* WINDOWS */
+
+
+#if defined(WINDOWS)
+
+int
+setenv (const char *name, const char *val, int overwrite)
+{
+  errno_t ret;
+
+  if (!overwrite)
+    {
+      char *ptr = getenv (name);
+      if (ptr != NULL)
+	{
+	  return -1;
+	}
+    }
+
+  ret = _putenv_s (name, val);
+  if (ret == EINVAL)
+    {
+      return -1;
+    }
+
+  return 0;
+}
+
 #endif /* WINDOWS */

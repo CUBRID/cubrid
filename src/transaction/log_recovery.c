@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -138,11 +138,11 @@ static int log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
 						     LOG_LSA * log_lsa,
 						     LOG_PAGE * log_page_p,
 						     LOG_LSA * check_point);
-static int log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
-				    LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				    LOG_LSA * lsa, bool is_media_crash,
-				    time_t * stop_at,
-				    bool * did_incom_recovery);
+static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
+				     LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				     LOG_LSA * end_redo_lsa, LOG_LSA * lsa,
+				     bool is_media_crash, time_t * stop_at,
+				     bool * did_incom_recovery);
 static int log_rv_analysis_complte_topope (THREAD_ENTRY * thread_p,
 					   int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_start_check_point (LOG_LSA * log_lsa,
@@ -182,18 +182,19 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 			int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			LOG_LSA * check_point, LOG_LSA * lsa,
 			LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-			bool is_media_crash, time_t * stop_at,
-			bool * did_incom_recovery, bool * may_use_check_point,
+			LOG_LSA * end_redo_lsa, bool is_media_crash,
+			time_t * stop_at, bool * did_incom_recovery,
+			bool * may_use_check_point,
 			bool * may_need_synch_check_point_2pc);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p,
 				   LOG_LSA * start_lsa,
 				   LOG_LSA * start_redolsa,
-				   LOG_LSA * end_redolsa, int ismedia_crash,
+				   LOG_LSA * end_redo_lsa, int ismedia_crash,
 				   time_t * stopat,
 				   bool * did_incom_recovery);
 static void log_recovery_redo (THREAD_ENTRY * thread_p,
 			       const LOG_LSA * start_redolsa,
-			       const LOG_LSA * end_redolsa, time_t * stopat);
+			       const LOG_LSA * end_redo_lsa, time_t * stopat);
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_undo (THREAD_ENTRY * thread_p);
 static void
@@ -203,7 +204,9 @@ static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 					VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
-				   LOG_LSA * end_redolsa);
+				   LOG_LSA * new_append_lsa,
+				   bool is_new_append_page,
+				   LOG_LSA * last_lsa);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -295,7 +298,12 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       area = (char *) malloc (rcv->length);
       if (area == NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rvundo_rec");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_rv_undo_record");
+	  if (rcv->pgptr != NULL)
+	    {
+	      pgbuf_unfix (thread_p, rcv->pgptr);
+	    }
 	  return;
 	}
       /* Copy the data */
@@ -312,7 +320,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	}
       else
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rvundo_rec");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_rv_undo_record");
 	}
     }
 
@@ -355,7 +364,15 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  if (log_start_system_op (thread_p) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rvundo_rec");
+				 "log_rv_undo_record");
+	      if (area != NULL)
+		{
+		  free_and_init (area);
+		}
+	      if (rcv->pgptr != NULL)
+		{
+		  pgbuf_unfix (thread_p, rcv->pgptr);
+		}
 	      return;
 	    }
 
@@ -615,6 +632,10 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length,
     {
       if (!log_unzip (undo_unzip_ptr, length, ptr))
 	{
+	  if (area != NULL)
+	    {
+	      free_and_init (area);
+	    }
 	  return false;
 	}
     }
@@ -650,7 +671,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   struct log_rec *eof;		/* End of the log record                   */
   LOG_LSA rcv_lsa;		/* Where to start the recovery             */
   LOG_LSA start_redolsa;	/* Where to start redo phase               */
-  LOG_LSA end_redolsa;		/* Where to stop the redo phase            */
+  LOG_LSA end_redo_lsa;		/* Where to stop the redo phase            */
   bool did_incom_recovery;
   int tran_index;
 
@@ -714,7 +735,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
    */
 
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
-  log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redolsa,
+  log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa,
 			 ismedia_crash, stopat, &did_incom_recovery);
 
   if (logpb_fetch_start_append_page (thread_p) == NULL)
@@ -723,10 +744,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       return;
     }
 
-  /* Read the End of file record to find out the previous address */
-  eof = (struct log_rec *) LOG_APPEND_PTR ();
-
-  LSA_COPY (&log_Gl.append.prev_lsa, &eof->back_lsa);
+  if (did_incom_recovery == false)
+    {
+      /* Read the End of file record to find out the previous address */
+      eof = (struct log_rec *) LOG_APPEND_PTR ();
+      LSA_COPY (&log_Gl.append.prev_lsa, &eof->back_lsa);
+    }
 
 #if !defined(SERVER_MODE)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
@@ -745,7 +768,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
-  log_recovery_redo (thread_p, &start_redolsa, &end_redolsa, stopat);
+  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
   boot_reset_db_parm (thread_p);
 
   /* Undo phase */
@@ -1060,22 +1083,26 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_posp), log_lsa,
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_run_postpone), log_lsa,
 				    log_page_p);
 
   run_posp = (struct log_run_postpone *) ((char *) log_page_p->area
 					  + log_lsa->offset);
 
-  if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-    {
-      /* Reset start of postpone transaction */
-      LSA_COPY (&tdes->posp_nxlsa, &run_posp->ref_lsa);
-    }
-  else
+  if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
       /* Reset start of postpone transaction for the top action */
       LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa,
 		&run_posp->ref_lsa);
+    }
+  else
+    {
+      assert (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
+	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+
+      /* Reset start of postpone transaction */
+      LSA_COPY (&tdes->posp_nxlsa, &run_posp->ref_lsa);
     }
 
   return NO_ERROR;
@@ -1120,7 +1147,7 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_compensate),
 				    log_lsa, log_page_p);
 
   compensate = (struct log_compensate *) ((char *) log_page_p->area
@@ -1169,7 +1196,8 @@ log_rv_analysis_lcompensate (THREAD_ENTRY * thread_p, int tran_id,
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*logical_comp),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_logical_compensate),
 				    log_lsa, log_page_p);
 
   logical_comp = ((struct log_logical_compensate *)
@@ -1348,7 +1376,8 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id,
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_start_postpone),
 				    log_lsa, log_page_p);
 
   start_posp =
@@ -1404,8 +1433,9 @@ log_rv_analysis_commit_with_loose_ends (THREAD_ENTRY * thread_p, int tran_id,
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_client),
-				    log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_start_client), log_lsa,
+				    log_page_p);
   start_client =
     (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->client_posp_lsa, &start_client->lsa);
@@ -1460,8 +1490,9 @@ log_rv_analysis_abort_with_loose_ends (THREAD_ENTRY * thread_p, int tran_id,
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_client),
-				    log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_start_client), log_lsa,
+				    log_page_p);
   start_client =
     (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->client_undo_lsa, &start_client->lsa);
@@ -1511,7 +1542,8 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p,
    * of top system operation
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_topope_start_postpone),
 				    log_lsa, log_page_p);
   top_start_posp =
     ((struct log_topope_start_postpone *) ((char *) log_page_p->area +
@@ -1592,7 +1624,8 @@ log_rv_analysis_commit_topope_with_loose_ends (THREAD_ENTRY * thread_p,
    * of top system operation
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_client),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_topope_start_client),
 				    log_lsa, log_page_p);
   top_start_client =
     ((struct log_topope_start_client *) ((char *) log_page_p->area +
@@ -1671,7 +1704,8 @@ log_rv_analysis_abort_topope_with_loose_ends (THREAD_ENTRY * thread_p,
    * of top system operation
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_client),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+				    sizeof (struct log_topope_start_client),
 				    log_lsa, log_page_p);
   top_start_client =
     ((struct log_topope_start_client *) ((char *) log_page_p->area +
@@ -1790,7 +1824,7 @@ log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p, int tran_id,
    * address of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_client),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_client),
 				    log_lsa, log_page_p);
   run_client =
     (struct log_run_client *) ((char *) log_page_p->area + log_lsa->offset);
@@ -1891,7 +1925,7 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
    * address of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_client),
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_client),
 				    log_lsa, log_page_p);
   run_client =
     (struct log_run_client *) ((char *) log_page_p->area + log_lsa->offset);
@@ -1909,7 +1943,7 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
 }
 
 /*
- * log_rv_analysis_complte -
+ * log_rv_analysis_complete -
  *
  * return: error code
  *
@@ -1924,10 +1958,11 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
  * Note:
  */
 static int
-log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
-			 LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			 LOG_LSA * lsa, bool is_media_crash, time_t * stop_at,
-			 bool * did_incom_recovery)
+log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
+			  LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			  LOG_LSA * end_redo_lsa, LOG_LSA * lsa,
+			  bool is_media_crash, time_t * stop_at,
+			  bool * did_incom_recovery)
 {
   struct log_donetime *donetime;
   int tran_index;
@@ -1950,8 +1985,8 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
    * the recovery at this point.
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa,
-				    log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_donetime),
+				    log_lsa, log_page_p);
 
   donetime = (struct log_donetime *) ((char *) log_page_p->area
 				      + log_lsa->offset);
@@ -1959,7 +1994,7 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
   if (stop_at != NULL && *stop_at != (time_t) - 1
       && difftime (*stop_at, last_at_time) < 0)
     {
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  fprintf (stdout,
@@ -1969,20 +2004,20 @@ log_rv_analysis_complte (THREAD_ENTRY * thread_p, int tran_id,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG,
 				   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
-		   end_redolsa->pageid, end_redolsa->offset,
-		   ctime (&last_attime));
+		   end_redo_lsa->pageid, end_redo_lsa->offset,
+		   ctime (&last_at_time));
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 	}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
       /*
        * Reset the log active and stop the recovery process at this
        * point. Before reseting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
-      log_recovery_resetlog (thread_p, lsa);
+      log_recovery_resetlog (thread_p, lsa, false, end_redo_lsa);
       *did_incom_recovery = true;
       LSA_SET_NULL (lsa);
 
@@ -2131,19 +2166,20 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*tmp_chkpt), log_lsa,
-				    log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt),
+				    log_lsa, log_page_p);
   tmp_chkpt =
     (struct log_chkpt *) ((char *) log_page_p->area + log_lsa->offset);
   chkpt = *tmp_chkpt;
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*tmp_chkpt), log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), log_lsa,
+		      log_page_p);
 
   /* Now get the data of active transactions */
 
   area = NULL;
-  size = sizeof (*chkpt_trans) * chkpt.ntrans;
+  size = sizeof (struct log_chkpt_trans) * chkpt.ntrans;
   if (log_lsa->offset + size < (int) LOGAREA_SIZE)
     {
       chkpt_trans =
@@ -2182,6 +2218,11 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 					   log_lsa);
       if (tdes == NULL)
 	{
+	  if (area != NULL)
+	    {
+	      free_and_init (area);
+	    }
+
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_recovery_analysis");
 	  return ER_FAILED;
@@ -2219,6 +2260,7 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  *may_need_synch_check_point_2pc = true;
 	}
     }
+
   if (area != NULL)
     {
       free_and_init (area);
@@ -2232,7 +2274,7 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   if (chkpt.ntops > 0)
     {
-      size = sizeof (*chkpt_topops) * chkpt.ntops;
+      size = sizeof (struct log_chkpt_topops_commit_posp) * chkpt.ntops;
       if (log_lsa->offset + size < (int) LOGAREA_SIZE)
 	{
 	  chkpt_topops = ((struct log_chkpt_topops_commit_posp *)
@@ -2265,15 +2307,26 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 					       log_lsa);
 	  if (tdes == NULL)
 	    {
+	      if (area != NULL)
+		{
+		  free_and_init (area);
+		}
+
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_recovery_analysis");
 	      return ER_FAILED;
 	    }
+
 	  if (tdes->topops.max == 0 ||
 	      (tdes->topops.last + 1) >= tdes->topops.max)
 	    {
 	      if (logtb_realloc_topops_stack (tdes, chkpt.ntops) == NULL)
 		{
+		  if (area != NULL)
+		    {
+		      free_and_init (area);
+		    }
+
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				     "log_recovery_analysis");
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2291,9 +2344,15 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 		    &chkpt_topone->client_undo_lsa);
 	}
     }
+
   if (LSA_LT (&chkpt.redo_lsa, start_redo_lsa))
     {
       LSA_COPY (start_redo_lsa, &chkpt.redo_lsa);
+    }
+
+  if (area != NULL)
+    {
+      free_and_init (area);
     }
 
   return NO_ERROR;
@@ -2633,8 +2692,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 			int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			LOG_LSA * check_point_lsa, LOG_LSA * lsa,
 			LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-			bool is_media_crash, time_t * stop_at,
-			bool * did_incom_recovery, bool * may_use_check_point,
+			LOG_LSA * end_redo_lsa, bool is_media_crash,
+			time_t * stop_at, bool * did_incom_recovery,
+			bool * may_use_check_point,
 			bool * may_need_synch_check_point_2pc)
 {
   switch (log_type)
@@ -2736,9 +2796,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 
     case LOG_COMMIT:
     case LOG_ABORT:
-      (void) log_rv_analysis_complte (thread_p, tran_id, log_lsa, log_page_p,
-				      lsa, is_media_crash, stop_at,
-				      did_incom_recovery);
+      (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p,
+				       end_redo_lsa, lsa, is_media_crash,
+				       stop_at, did_incom_recovery);
       break;
 
     case LOG_COMMIT_TOPOPE:
@@ -2832,7 +2892,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
  *
  *   start_lsa(in): Starting address for the analysis phase
  *   start_redolsa(in/out): Starting address for redo phase
- *   end_redolsa(in):
+ *   end_redo_lsa(in):
  *   ismedia_crash(in): Are we recovering from a media crash ?
  *   stopat(in/out): Where to stop the recovery process.
  *                   (It may be set as a side effectto the location of last
@@ -2850,7 +2910,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
 
 static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
-		       LOG_LSA * start_redo_lsa, LOG_LSA * end_redolsa,
+		       LOG_LSA * start_redo_lsa, LOG_LSA * end_redo_lsa,
 		       int is_media_crash, time_t * stop_at,
 		       bool * did_incom_recovery)
 {
@@ -2866,7 +2926,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   struct log_chkpt *tmp_chkpt;	/* Temp Checkpoint log record */
   struct log_chkpt chkpt;	/* Checkpoint log record     */
   struct log_chkpt_trans *chkpt_trans;
-  time_t last_attime = -1;
+  time_t last_at_time = -1;
   bool may_need_synch_check_point_2pc = false;
   bool may_use_check_point = false;
   int tran_index;
@@ -2886,11 +2946,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   LSA_COPY (&lsa, start_lsa);
 
   LSA_COPY (start_redo_lsa, &lsa);
-  LSA_COPY (end_redolsa, &lsa);
+  LSA_COPY (end_redo_lsa, &lsa);
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
-
 
   while (!LSA_ISNULL (&lsa))
     {
@@ -2902,23 +2961,31 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	    {
 	      if (stop_at != NULL)
 		{
-		  *stop_at = last_attime;
+		  *stop_at = last_at_time;
 		}
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
-		  fprintf (stdout, util_msg_get (MSG_LOG, LOG_PRINTF_STARTS));
-		  fprintf (stdout, util_msg_get (MSG_LOG,
-						 LOG_PRINTF_INCOMPLTE_MEDIA_RECOVERY),
-			   end_redolsa->pageid, end_redolsa->offset,
-			   ((last_attime == -1)
-			    ? "???...\n" : ctime (&last_attime)));
-		  fprintf (stdout, util_msg_get (MSG_LOG, LOG_PRINTF_STARTS));
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_LOG,
+					   MSGCAT_LOG_STARTS));
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_LOG,
+					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
+			   end_redo_lsa->pageid, end_redo_lsa->offset,
+			   ((last_at_time ==
+			     -1) ? "???...\n" : ctime (&last_at_time)));
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_LOG,
+					   MSGCAT_LOG_STARTS));
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 	      /* if previous log record exists,
-	       * reset tdes->tail_lsa/undo_nxlsa as previous of end_redolsa */
+	       * reset tdes->tail_lsa/undo_nxlsa as previous of end_redo_lsa */
 	      if (log_rec != NULL)
 		{
 		  LOG_TDES *last_log_tdes =
@@ -2932,7 +2999,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				&log_rec->prev_tranlsa);
 		    }
 		}
-	      log_recovery_resetlog (thread_p, end_redolsa);
+	      log_recovery_resetlog (thread_p, &lsa, true, end_redo_lsa);
 	      *did_incom_recovery = true;
 	      return;
 	    }
@@ -2983,7 +3050,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	   * Get the address of next log record to scan
 	   */
 
-	  LSA_COPY (end_redolsa, &lsa);
+	  LSA_COPY (end_redo_lsa, &lsa);
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
 	  /*
@@ -3022,12 +3089,12 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	  if (LSA_ISNULL (&lsa) && log_rtype != LOG_END_OF_LOG
 	      && *did_incom_recovery == false)
 	    {
-	      LSA_COPY (&log_Gl.hdr.append_lsa, end_redolsa);
+	      LSA_COPY (&log_Gl.hdr.append_lsa, end_redo_lsa);
 	      if (log_startof_nxrec (thread_p, &log_Gl.hdr.append_lsa, true)
 		  == NULL)
 		{
 		  /* We may destroy a record */
-		  LSA_COPY (&log_Gl.hdr.append_lsa, end_redolsa);
+		  LSA_COPY (&log_Gl.hdr.append_lsa, end_redo_lsa);
 		}
 	      else
 		{
@@ -3052,9 +3119,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa,
 				  log_page_p, &check_point_lsa, &lsa,
-				  start_lsa, start_redo_lsa,
-				  is_media_crash, stop_at,
-				  did_incom_recovery, &may_use_check_point,
+				  start_lsa, start_redo_lsa, end_redo_lsa,
+				  is_media_crash, stop_at, did_incom_recovery,
+				  &may_use_check_point,
 				  &may_need_synch_check_point_2pc);
 
 	  /*
@@ -3096,20 +3163,21 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	(struct log_rec *) ((char *) log_page_p->area + log_lsa.offset);
 
       /* Read the DATA HEADER */
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_page_p);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*tmp_chkpt),
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
+			  log_page_p);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt),
 					&log_lsa, log_page_p);
       tmp_chkpt =
 	(struct log_chkpt *) ((char *) log_page_p->area + log_lsa.offset);
       chkpt = *tmp_chkpt;
 
       /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*tmp_chkpt), &log_lsa,
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), &log_lsa,
 			  log_page_p);
 
       /* Now get the data of active transactions */
       area = NULL;
-      size = sizeof (*chkpt_trans) * chkpt.ntrans;
+      size = sizeof (struct log_chkpt_trans) * chkpt.ntrans;
       if (log_lsa.offset + size < (int) LOGAREA_SIZE)
 	{
 	  chkpt_trans =
@@ -3161,7 +3229,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
  * return: nothing
  *
  *   start_redolsa(in): Starting address for recovery redo phase
- *   end_redolsa(in):
+ *   end_redo_lsa(in):
  *   stopat(in):
  *
  * NOTE:In the redo phase, updates that are not reflected in the
@@ -3186,7 +3254,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
  */
 static void
 log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
-		   const LOG_LSA * end_redolsa, time_t * stopat)
+		   const LOG_LSA * end_redo_lsa, time_t * stopat)
 {
   LOG_LSA lsa;			/* LSA of log record to redo  */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -3259,8 +3327,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
       log_lsa.pageid = lsa.pageid;
       if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
 	{
-	  if (end_redolsa != NULL
-	      && (LSA_ISNULL (end_redolsa) || LSA_GT (&lsa, end_redolsa)))
+	  if (end_redo_lsa != NULL
+	      && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
 	      return;
 	    }
@@ -3278,8 +3346,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
-	  if (end_redolsa != NULL && !LSA_ISNULL (end_redolsa)
-	      && LSA_GT (&lsa, end_redolsa))
+	  if (end_redo_lsa != NULL && !LSA_ISNULL (end_redo_lsa)
+	      && LSA_GT (&lsa, end_redo_lsa))
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
@@ -3362,9 +3430,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo),
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+						sizeof (struct log_undoredo),
 						&log_lsa, log_pgptr);
 	      undoredo =
 		(struct log_undoredo *) ((char *) log_pgptr->area +
@@ -3405,11 +3474,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  /*
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= lsa... already updated. In this case make sure
-		   * that the redo is not far from the end_redolsa
+		   * that the redo is not far from the end_redo_lsa
 		   */
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redolsa == NULL || LSA_ISNULL (end_redolsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redolsa)))
+		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -3427,8 +3496,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      rcv.length = undoredo->rlength;
 	      rcv.offset = undoredo->data.offset;
 
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &log_lsa,
-				  log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undoredo),
+				  &log_lsa, log_pgptr);
 
 	      if (is_diff_rec)
 		{
@@ -3481,7 +3550,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      /* GET AFTER DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
@@ -3501,7 +3570,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
 		    }
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 	      if (is_diff_rec)
 		{
@@ -3530,9 +3599,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo),
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+						sizeof (struct log_redo),
 						&log_lsa, log_pgptr);
 
 	      redo =
@@ -3576,8 +3646,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redolsa == NULL || LSA_ISNULL (end_redolsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redolsa)))
+		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -3595,10 +3665,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      rcv.offset = redo->data.offset;
 
 	      /* GET AFTER DATA */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), &log_lsa,
-				  log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo),
+				  &log_lsa, log_pgptr);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
@@ -3618,7 +3688,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
 		    }
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 	      ignore_redofunc = false;
 	      if (rcvindex == RVBT_OID_TRUNCATE)
@@ -3649,10 +3719,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						sizeof (*dbout_redo),
+						sizeof (struct
+							log_dbout_redo),
 						&log_lsa, log_pgptr);
 
 	      dbout_redo = ((struct log_dbout_redo *)
@@ -3666,10 +3737,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      rcv.length = dbout_redo->length;
 
 	      /* GET AFTER DATA */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*dbout_redo), &log_lsa,
-				  log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_dbout_redo),
+				  &log_lsa, log_pgptr);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
@@ -3677,7 +3748,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex));
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].redofun, &rcv,
@@ -3688,9 +3759,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_posp),
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+						sizeof (struct
+							log_run_postpone),
 						&log_lsa, log_pgptr);
 	      run_posp =
 		(struct log_run_postpone *) ((char *) log_pgptr->area +
@@ -3733,8 +3806,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redolsa == NULL || LSA_ISNULL (end_redolsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redolsa)))
+		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -3751,12 +3824,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      rcv.length = run_posp->length;
 	      rcv.offset = run_posp->data.offset;
 
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*run_posp), &log_lsa,
-				  log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_run_postpone),
+				  &log_lsa, log_pgptr);
 	      /* GET AFTER DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
@@ -3776,7 +3849,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
 		    }
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].redofun, &rcv,
@@ -3792,10 +3865,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						sizeof (*compensate),
+						sizeof (struct
+							log_compensate),
 						&log_lsa, log_pgptr);
 	      compensate =
 		(struct log_compensate *) ((char *) log_pgptr->area +
@@ -3838,8 +3912,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr)
-		      && (end_redolsa == NULL || LSA_ISNULL (end_redolsa)
-			  || LSA_LE (rcv_page_lsaptr, end_redolsa)))
+		      && (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa)
+			  || LSA_LE (rcv_page_lsaptr, end_redo_lsa)))
 		    {
 		      /* It is already done */
 		      pgbuf_unfix (thread_p, rcv.pgptr);
@@ -3856,11 +3930,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      rcv.length = compensate->length;
 	      rcv.offset = compensate->data.offset;
 
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*compensate), &log_lsa,
-				  log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_compensate),
+				  &log_lsa, log_pgptr);
 	      /* GET COMPENSATING DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
@@ -3880,7 +3954,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
 		    }
 		}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 	      log_rv_redo_record (thread_p, &log_lsa,
 				  log_pgptr, RV_fun[rcvindex].undofun, &rcv,
@@ -3909,7 +3983,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	       */
 
 	      /* Get the DATA HEADER */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa,
 				  log_pgptr);
 
 	      if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
@@ -3950,11 +4024,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		       */
 
 		      /* Get the DATA HEADER */
-		      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec),
+		      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
 					  &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof
-							(*start_2pc),
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+							sizeof (struct
+								log_2pc_start),
 							&log_lsa, log_pgptr);
 		      start_2pc =
 			((struct log_2pc_start *) ((char *) log_pgptr->area +
@@ -3980,7 +4055,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 			  break;
 			}
 
-		      LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc),
+		      LOG_READ_ADD_ALIGN (thread_p,
+					  sizeof (struct log_2pc_start),
 					  &log_lsa, log_pgptr);
 		      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 
@@ -4058,11 +4134,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		       */
 
 		      /* Get the DATA HEADER */
-		      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec),
+		      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
 					  &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof
-							(*received_ack),
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+							sizeof (struct
+								log_2pc_particp_ack),
 							&log_lsa, log_pgptr);
 		      received_ack =
 			((struct log_2pc_particp_ack *) ((char *) log_pgptr->
@@ -4088,10 +4165,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		   * Need to read the donetime record to find out if we need to stop
 		   * the recovery at this point.
 		   */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (*donetime),
+						    sizeof (struct
+							    log_donetime),
 						    &log_lsa, log_pgptr);
 		  donetime =
 		    (struct log_donetime *) ((char *) log_pgptr->area +
@@ -4432,10 +4510,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 
 		  /* Get the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (*undoredo),
+						    sizeof (struct
+							    log_undoredo),
 						    &log_lsa, log_pgptr);
 
 		  undoredo =
@@ -4447,9 +4526,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  rcv_vpid.volid = undoredo->data.volid;
 		  rcv_vpid.pageid = undoredo->data.pageid;
 
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &log_lsa,
-				      log_pgptr);
-#if defined(LOGRV_TRACE)
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undoredo),
+				      &log_lsa, log_pgptr);
+#if !defined(NDEBUG)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
@@ -4459,7 +4538,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			       rcv_vpid.pageid, rcv.offset);
 		    }
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr,
 				      rcvindex, &rcv_vpid, &rcv, &rcv_lsa,
@@ -4503,9 +4582,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 
 		  /* Get the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo),
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+						    sizeof (struct log_undo),
 						    &log_lsa, log_pgptr);
 
 		  undo =
@@ -4517,10 +4597,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  rcv_vpid.volid = undo->data.volid;
 		  rcv_vpid.pageid = undo->data.pageid;
 
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undo),
+				      &log_lsa, log_pgptr);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
@@ -4530,7 +4610,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			       rcv_vpid.pageid, rcv.offset);
 		    }
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr,
 				      rcvindex, &rcv_vpid, &rcv, &rcv_lsa,
 				      tdes, undo_unzip_ptr);
@@ -4596,10 +4676,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   */
 
 		  /* Get the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (*compensate),
+						    sizeof (struct
+							    log_compensate),
 						    &log_lsa, log_pgptr);
 		  compensate =
 		    (struct log_compensate *) ((char *) log_pgptr->area +
@@ -4637,10 +4718,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   */
 
 		  /* Get the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (*logical_comp),
+						    sizeof (struct
+							    log_logical_compensate),
 						    &log_lsa, log_pgptr);
 		  logical_comp =
 		    ((struct log_logical_compensate *) ((char *) log_pgptr->
@@ -4681,10 +4763,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		   */
 
 		  /* Read the DATA HEADER */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
-				      log_pgptr);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec),
+				      &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-						    sizeof (*top_result),
+						    sizeof (struct
+							    log_topop_result),
 						    &log_lsa, log_pgptr);
 		  top_result =
 		    ((struct log_topop_result *) ((char *) log_pgptr->area +
@@ -4879,8 +4962,13 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 	    catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 				     MSGCAT_SET_LOG,
 				     MSGCAT_LOG_LOGINFO_REMOVE_REASON);
+	    if (catmsg == NULL)
+	      {
+		return;
+	      }
+
 	    catmsg_dup = strdup (catmsg);
-	    if (catmsg != NULL)
+	    if (catmsg_dup != NULL)
 	      {
 		error_code =
 		  logpb_dump_log_info (log_Name_info, true, catmsg_dup,
@@ -4912,8 +5000,13 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 	    catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 				     MSGCAT_SET_LOG,
 				     MSGCAT_LOG_LOGINFO_REMOVE_REASON);
+	    if (catmsg == NULL)
+	      {
+		return;
+	      }
+
 	    catmsg_dup = strdup (catmsg);
-	    if (catmsg != NULL)
+	    if (catmsg_dup != NULL)
 	      {
 		error_code =
 		  logpb_dump_log_info (log_Name_info, true, catmsg_dup,
@@ -4931,6 +5024,7 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 						  logarv_name_first, i - 1,
 						  logarv_name, info_reason);
 	      }
+
 	    if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	      {
 		return;
@@ -5022,7 +5116,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
    */
 
   /* Use the directory where the primary volume is located */
-  alloc_extpath = (char *) malloc (strlen (log_Db_fullname) + 1);
+  alloc_extpath = (char *) malloc (PATH_MAX);
   if (alloc_extpath != NULL)
     {
       ext_path = fileio_get_directory_path (alloc_extpath, log_Db_fullname);
@@ -5056,8 +5150,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	{
 	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
 	  fileio_dismount (vdes);
-	  if (difftime
-	      ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation) != 0)
+	  if (difftime ((time_t) vol_dbcreation,
+			(time_t) log_Gl.hdr.db_creation) != 0)
 	    {
 	      /* This volume does not belong to given database */
 	      ;			/* NO-OP */
@@ -5088,7 +5182,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
  * NOTE:
  */
 static void
-log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
+log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
+		       bool is_new_append_page, LOG_LSA * last_lsa)
 {
   char newappend_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_newappend_pgbuf;
@@ -5099,6 +5194,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
   int ret = NO_ERROR;
 
   assert (LOG_CS_OWN ());
+  assert (last_lsa != NULL);
 
   aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
 
@@ -5108,7 +5204,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
       logpb_invalid_all_append_pages (thread_p);
     }
 
-  if (LSA_ISNULL (new_appendlsa))
+  if (LSA_ISNULL (new_append_lsa))
     {
       log_Gl.hdr.append_lsa.pageid = 0;
       log_Gl.hdr.append_lsa.offset = 0;
@@ -5116,8 +5212,8 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
   else
     {
       if (log_Gl.append.vdes == NULL_VOLDES
-	  || (log_Gl.hdr.fpageid > new_appendlsa->pageid
-	      && new_appendlsa->offset > 0))
+	  || (log_Gl.hdr.fpageid > new_append_lsa->pageid
+	      && new_append_lsa->offset > 0))
 	{
 	  /*
 	   * We are going to rest the header of the active log to the past.
@@ -5130,13 +5226,13 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
 
 	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
 
-	  if ((logpb_fetch_page (thread_p, new_appendlsa->pageid,
+	  if ((logpb_fetch_page (thread_p, new_append_lsa->pageid,
 				 newappend_pgptr)) == NULL)
 	    {
 	      newappend_pgptr = NULL;
 	    }
 	}
-      LSA_COPY (&log_Gl.hdr.append_lsa, new_appendlsa);
+      LSA_COPY (&log_Gl.hdr.append_lsa, new_append_lsa);
     }
 
   LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
@@ -5183,19 +5279,21 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
       if (log_Gl.append.vdes == NULL_VOLDES)
 	{
 	  /* Create the log active since we do not have one */
-	  ret =
-	    disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID,
-				    &log_Gl.hdr.db_creation);
+	  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID,
+					&log_Gl.hdr.db_creation);
 	  if (ret != NO_ERROR)
 	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_recovery_resetlog");
 	      return;
 	    }
 
-	  log_Gl.append.vdes =
-	    fileio_format (thread_p, log_Db_fullname, log_Name_active,
-			   LOG_DBLOG_ACTIVE_VOLID,
-			   log_get_num_pages_for_creation (-1), false, true,
-			   false);
+	  log_Gl.append.vdes = fileio_format (thread_p, log_Db_fullname,
+					      log_Name_active,
+					      LOG_DBLOG_ACTIVE_VOLID,
+					      log_get_num_pages_for_creation
+					      (-1), false, true, false);
+
 	  if (log_Gl.append.vdes != NULL_VOLDES)
 	    {
 	      loghdr_pgptr = logpb_create_header_page (thread_p);
@@ -5256,22 +5354,35 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_appendlsa)
    * Then, free the page, same for the header page.
    */
 
-  if (logpb_fetch_start_append_page (thread_p) != NULL)
+  if (is_new_append_page == true)
     {
-      if (newappend_pgptr != NULL)
+      if (logpb_fetch_start_append_page_new (thread_p) == NULL)
 	{
-	  memcpy ((char *) log_Gl.append.log_pgptr,
-		  (char *) newappend_pgptr, IO_PAGESIZE);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_recovery_resetlog");
+	  return;
 	}
-      logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
     }
+  else
+    {
+      if (logpb_fetch_start_append_page (thread_p) != NULL)
+	{
+	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
+	    {
+	      memcpy ((char *) log_Gl.append.log_pgptr,
+		      (char *) newappend_pgptr, IO_PAGESIZE);
+	      logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
+	    }
+	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+	}
+    }
+
+  LSA_COPY (&log_Gl.append.prev_lsa, last_lsa);
 
   logpb_flush_header (thread_p);
   logpb_decache_archive_info ();
 
   return;
-
 }
 
 /*
@@ -5308,9 +5419,12 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
   struct log_chkpt *chkpt;	/* Checkpoint log record     */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record    */
   struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit   */
+  struct log_replication *repl_log;
+
   int undo_length;		/* Undo length               */
   int redo_length;		/* Redo length               */
   unsigned int nobj_locks;
+  int repl_log_length;
   size_t size;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -5365,7 +5479,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 
   /* Advance the pointer to log_rec data */
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &log_lsa, log_pgptr);
   switch (type)
     {
     case LOG_CLIENT_NAME:
@@ -5381,7 +5495,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_DIFF_UNDOREDO_DATA:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_undoredo),
 					  &log_lsa, log_pgptr);
 	undoredo =
 	  (struct log_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
@@ -5389,7 +5504,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 	undo_length = (int) GET_ZIP_LEN (undoredo->ulength);
 	redo_length = (int) GET_ZIP_LEN (undoredo->rlength);
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &log_lsa,
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undoredo), &log_lsa,
 			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
@@ -5399,14 +5514,15 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_UNDO_DATA:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &log_lsa,
-					  log_pgptr);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_undo),
+					  &log_lsa, log_pgptr);
 	undo =
 	  (struct log_undo *) ((char *) log_pgptr->area + log_lsa.offset);
 
 	undo_length = (int) GET_ZIP_LEN (undo->length);
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undo), &log_lsa,
+			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5415,13 +5531,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_POSTPONE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &log_lsa,
-					  log_pgptr);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo),
+					  &log_lsa, log_pgptr);
 	redo =
 	  (struct log_redo *) ((char *) log_pgptr->area + log_lsa.offset);
 	redo_length = (int) GET_ZIP_LEN (redo->length);
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), &log_lsa,
+			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5429,15 +5546,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_RUN_POSTPONE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_posp),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_run_postpone),
 					  &log_lsa, log_pgptr);
 	run_posp =
 	  (struct log_run_postpone *) ((char *) log_pgptr->area +
 				       log_lsa.offset);
 	redo_length = run_posp->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*run_posp), &log_lsa,
-			    log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_run_postpone),
+			    &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5445,15 +5563,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_DBEXTERN_REDO_DATA:
       {
 	/* Read the data header */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dbout_redo),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_dbout_redo),
 					  &log_lsa, log_pgptr);
 	dbout_redo =
 	  ((struct log_dbout_redo *) ((char *) log_pgptr->area +
 				      log_lsa.offset));
 	redo_length = dbout_redo->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*dbout_redo), &log_lsa,
-			    log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_dbout_redo),
+			    &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5461,15 +5580,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_COMPENSATE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_compensate),
 					  &log_lsa, log_pgptr);
 	compensate =
 	  (struct log_compensate *) ((char *) log_pgptr->area +
 				     log_lsa.offset);
 	redo_length = compensate->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*compensate), &log_lsa,
-			    log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_compensate),
+			    &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5477,9 +5597,10 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_LCOMPENSATE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT
-	  (thread_p, sizeof (struct log_logical_compensate), &log_lsa,
-	   log_pgptr);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct
+						  log_logical_compensate),
+					  &log_lsa, log_pgptr);
 
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_logical_compensate),
 			    &log_lsa, log_pgptr);
@@ -5489,13 +5610,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_CLIENT_USER_UNDO_DATA:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*client_undo),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_client),
 					  &log_lsa, log_pgptr);
 	client_undo =
 	  (struct log_client *) ((char *) log_pgptr->area + log_lsa.offset);
 	undo_length = client_undo->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*client_undo), &log_lsa,
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_client), &log_lsa,
 			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
 	break;
@@ -5504,13 +5626,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_CLIENT_USER_POSTPONE_DATA:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*client_postpone),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_client),
 					  &log_lsa, log_pgptr);
-	client_postpone = (struct log_client *) ((char *) log_pgptr->area +
-						 log_lsa.offset);
+	client_postpone =
+	  (struct log_client *) ((char *) log_pgptr->area + log_lsa.offset);
 	redo_length = client_postpone->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*client_postpone), &log_lsa,
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_client), &log_lsa,
 			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
@@ -5532,8 +5655,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_COMMIT_WITH_POSTPONE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof
-					  (struct log_start_postpone),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_start_postpone),
 					  &log_lsa, log_pgptr);
 
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_start_postpone),
@@ -5570,9 +5693,10 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT
-	  (thread_p, sizeof (struct log_topope_start_postpone), &log_lsa,
-	   log_pgptr);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct
+						  log_topope_start_postpone),
+					  &log_lsa, log_pgptr);
 
 	LOG_READ_ADD_ALIGN (thread_p,
 			    sizeof (struct log_topope_start_postpone),
@@ -5609,15 +5733,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_END_CHKPT:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*chkpt), &log_lsa,
-					  log_pgptr);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt),
+					  &log_lsa, log_pgptr);
 	chkpt =
 	  (struct log_chkpt *) ((char *) log_pgptr->area + log_lsa.offset);
 	undo_length = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
 	redo_length = (sizeof (struct log_chkpt_topops_commit_posp) *
 		       chkpt->ntops);
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), &log_lsa,
+			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
 	if (redo_length > 0)
 	  LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
@@ -5627,13 +5752,15 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_SAVEPOINT:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_savept),
 					  &log_lsa, log_pgptr);
 	savept =
 	  (struct log_savept *) ((char *) log_pgptr->area + log_lsa.offset);
 	undo_length = savept->length;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*savept), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_savept), &log_lsa,
+			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
 	break;
       }
@@ -5641,7 +5768,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_2PC_PREPARE:
       {
 	/* Get the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_2pc_prepcommit),
 					  &log_lsa, log_pgptr);
 	prepared =
 	  (struct log_2pc_prepcommit *) ((char *) log_pgptr->area +
@@ -5649,8 +5777,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 	nobj_locks = prepared->num_object_locks;
 	/* ignore npage_locks */
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), &log_lsa,
-			    log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_prepcommit),
+			    &log_lsa, log_pgptr);
 
 	if (prepared->gtrinfo_length > 0)
 	  {
@@ -5669,13 +5797,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_2PC_START:
       {
 	/* Get the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_2pc_start),
 					  &log_lsa, log_pgptr);
 	start_2pc =
 	  (struct log_2pc_start *) ((char *) log_pgptr->area +
 				    log_lsa.offset);
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc), &log_lsa,
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_start), &log_lsa,
 			    log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p,
 			    (start_2pc->particp_id_length *
@@ -5686,8 +5815,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_2PC_RECV_ACK:
       {
 	/* Get the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof
-					  (struct log_2pc_particp_ack),
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					  sizeof (struct log_2pc_particp_ack),
 					  &log_lsa, log_pgptr);
 
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_particp_ack),
@@ -5703,12 +5832,32 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
-    case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_SCHEMA:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
-    case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_END_OF_LOG:
+      break;
+
+    case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_SCHEMA:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					sizeof (struct log_replication),
+					&log_lsa, log_pgptr);
+
+      repl_log = (struct log_replication *) ((char *) log_pgptr->area
+					     + log_lsa.offset);
+      repl_log_length = (int) GET_ZIP_LEN (repl_log->length);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_replication),
+			  &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, repl_log_length, &log_lsa, log_pgptr);
+      break;
+
+    case LOG_DUMMY_HA_SERVER_STATE:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					sizeof (struct log_ha_server_state),
+					&log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_ha_server_state),
+			  &log_lsa, log_pgptr);
       break;
 
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
@@ -5726,8 +5875,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     }				/* switch */
 
   /* Make sure you point to beginning of a next record */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*log_rec), &log_lsa,
-				    log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_rec),
+				    &log_lsa, log_pgptr);
 
   LSA_COPY (lsa, &log_lsa);
 

@@ -1,0 +1,8 @@
+use_logd yes
+ucast eth0 cdnt10v1.cub
+ucast eth0 cdnt10v2.cub
+node cdnt10v1.cub cdnt10v2.cub
+crm on
+keepalive 1
+warntime 2
+deadtime 3

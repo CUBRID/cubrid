@@ -1,0 +1,129 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>HA 유틸리티</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\nHA 유틸리티");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; HA 유틸리티<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>HA 유틸리티</h3>
+<p>HA 기능을 위해 사용되는 CUBRID 유틸리티는 다음과 같다. 아래 유틸리티는 <span class="keyword">ha_mode</span> 파라미터가 <span class="keyword">on</span>으로 설정된 서버에서만 사용할 수 있다.</p>
+<ul>
+<li class="keyword">cubrid changemode</li>
+<li class="keyword">cubrid copylogdb</li>
+<li class="keyword">cubrid applylogdb</li>
+</ul>
+<h6>데이터베이스 서버의 작동 모드 출력/설정</h6>
+<p>데이터베이스 서버의 상태를 출력하거나 바꾸기 위한 <span class="keyword">cubrid changemode</span> 유틸리티 구문은 다음과 같다. 서버의 작동 모드가 바뀔 때마다 서버 에러 로그에 이력이 출력된다. <span class="keyword">-m</span> 옵션을 지정하지 않으면 현재의 작동 모드가 출력된다.</p>
+<p class="syntaxp"><span class="keyword">cubrid changemode</span> [<span class="var">option</span>] &lt;<span class="var">database_name</span>&gt;@&lt;<span class="var">hostname</span>&gt;</p>
+<p class="syntaxp"><span class="var">option</span>:</p>
+<p class="syntaxp"><span class="keyword">-m</span>, <span class="keyword">--mode=</span>&lt;<span class="var">MODE</span>&gt; : <span class="comment">변경할 모드를 지정한다. 사용할 수 있는 값은 active, standby, maintenance이다.</span></p>
+<h6>데이터베이스 서버의 트랜잭션 로그 저장</h6>
+<p>원격 데이터베이스 서버에서 생성되는 트랜잭션 로그를 지정한 경로에 저장하기 위한 <span class="keyword">cubrid copylogdb</span> 유틸리티 구문은 다음과 같다.</p>
+<p class="syntaxp"><span class="keyword">cubrid copylogdb</span> [<span class="var">option</span>] &lt;<span class="var">database_name</span>&gt;@&lt;<span class="var">hostname</span>&gt;</p>
+<p class="syntaxp"><span class="var">option</span>:</p>
+<p class="syntaxp"><span class="keyword">-L</span>, <span class="keyword">--log-path=</span>&lt;<span class="var">PATH</span>&gt;: <span class="comment">복사한 트랜잭션 로그를 저장할 파일의 경로이다.</span></p>
+<p class="syntaxp"><span class="keyword">-m</span>, <span class="keyword">--mode=</span>&lt;<span class="var">MODE</span>&gt;: <span class="comment">트랜잭션 로그 페이지를 복사해 오는 방식을 지정한다. 사용할 수 있는 값은 sync, async이다. sync로 지정하면 복사할 트랜잭션 로그 페이지를 copylogdb 프로세스가 파일에 저장할 때까지 데이터베이스 서버가 다린다. 반면에, async로 지정하면 데이터베이스 서버가 copylogdb 프로세스에 트랜잭션 로그 페이지를 전달할 때까지만 기다린다.</span></p>
+<p>트랜잭션 로그의 전송 방식은 다음과 같이 두&#160;가지 방식이 존재하며, 사용자는 운영 정책에 따라 트랜잭션 로그 전송 방식을 선택하여 사용한다.</p>
+<ul>
+<li>동기식(Synchronous) :&#160;트랜잭션 로그가 모두 전송되고 전송된 트랜잭션 로그가 디스크에 쓰여지면 커밋한다.</li>
+<li>비동기식(Asynchronous) :&#160;트랜잭션 로그가 모두 전송된 직후 커밋한다.</li>
+</ul>
+<h6>저장한 트랜잭션 로그를 데이터베이스에 반영</h6>
+<p>복사된 트랜잭션 로그 파일을 지정한 경로에서 읽어서 분석 후 로컬 데이터베이스 서버에 반영하는 <span class="keyword">cubrid applylogdb</span> 유틸리티 구문은 다음과 같다.</p>
+<p class="syntaxp"><span class="keyword">cubrid applylogdb</span> [<span class="var">option</span>] &lt;<span class="var">database_name</span>&gt;@&lt;<span class="var">hostname</span>&gt;</p>
+<p class="syntaxp"><span class="var">option</span>:</p>
+<p class="syntaxp"><span class="keyword">-L</span>, <span class="keyword">--log-path=</span>&lt;<span class="var">PATH</span>&gt;: <span class="comment">읽을 트랜잭션 로그 파일의 경로이다.</span></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

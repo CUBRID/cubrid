@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -50,10 +50,10 @@
  */
 typedef struct compatibility_rule
 {
-  float database_level;
-  float system_level;
+  float base_level;
+  float apply_level;
   REL_COMPATIBILITY compatibility;
-  REL_FIXUP_FUNCTION *functions;
+  REL_FIXUP_FUNCTION *fix_function;
 } COMPATIBILITY_RULE;
 
 /*
@@ -193,9 +193,10 @@ rel_bit_platform (void)
  *         a rule needs to be added to this table.
  *         If pair of numbers is absent from this table, the two are considered
  *         to be incompatible.
+ * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
-static COMPATIBILITY_RULE compatibility_rules[] = {
-  /* a database_level of zero indicates the end of the table */
+static COMPATIBILITY_RULE disk_compatibility_rules[] = {
+  /* a zero indicates the end of the table */
   {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
 };
 
@@ -219,9 +220,9 @@ rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 {
   COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
-  REL_FIXUP_FUNCTION *functions;
+  REL_FIXUP_FUNCTION *func;
 
-  functions = NULL;
+  func = NULL;
 
   if (disk_compatibility_level == db_level)
     {
@@ -230,21 +231,21 @@ rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
   else
     {
       compat = REL_NOT_COMPATIBLE;
-      for (rule = &compatibility_rules[0];
-	   rule->database_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
+      for (rule = &disk_compatibility_rules[0];
+	   rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
 	{
 
-	  if (rule->database_level == db_level
-	      && rule->system_level == disk_compatibility_level)
+	  if (rule->base_level == db_level
+	      && rule->apply_level == disk_compatibility_level)
 	    {
 	      compat = rule->compatibility;
-	      functions = rule->functions;
+	      func = rule->fix_function;
 	    }
 	}
     }
 
   if (fixups != NULL)
-    *fixups = functions;
+    *fixups = func;
 
   return compat;
 }
@@ -384,4 +385,88 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
     return true;
 
   return false;
+}
+
+/*
+ * network compatibility matrix
+ * {base_level (of server), apply_level (of client), compatibility, fix_func}
+ * minor and patch number of the release string is to be the value of level
+ * e.g. release 8.2.0 -> level 2.0
+ * if the major numbers are different, no network compatibility!
+ */
+static COMPATIBILITY_RULE net_compatibility_rules[] = {
+  /* zero indicates the end of the table */
+  {2.1, 2.0, REL_BACKWARD_COMPATIBLE, NULL},
+  {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
+};
+
+/*
+ * rel_is_net_compatibile - Compare the release strings from
+ *                          the server and client to determine compatibility.
+ * return: REL_COMPATIBILITY
+ *  REL_NOT_COMPATIBLE if the client and the server are not compatible
+ *  REL_FULLY_COMPATIBLE if the client and the server are compatible
+ *  REL_FORWARD_COMPATIBLE if the client is forward compatible with the server
+ *                         if the server is backward compatible with the client
+ *                         the client is older than the server
+ *  REL_BACKWARD_COMPATIBLE if the client is backward compatible with the server
+ *                          if the server is forward compatible with the client
+ *                          the client is newer than the server
+ *
+ *   client_rel_str(in): client's release string
+ *   server_rel_str(in): server's release string
+ */
+REL_COMPATIBILITY
+rel_is_net_compatibile (const char *client_rel_str,
+			const char *server_rel_str)
+{
+  COMPATIBILITY_RULE *rule;
+  REL_COMPATIBILITY compat;
+  float client_level, server_level;
+  char *str_a, *str_b;
+
+  if (client_rel_str == NULL || server_rel_str == NULL)
+    {
+      return REL_NOT_COMPATIBLE;
+    }
+
+  /* release string should be in the form of <major>.<minor>[.<patch>] */
+
+  /* check major number */
+  client_level = (float) strtol (client_rel_str, &str_a, 10);
+  server_level = (float) strtol (server_rel_str, &str_b, 10);
+  if (client_level == 0.0 || server_level == 0.0
+      || client_level != server_level)
+    {
+      return REL_NOT_COMPATIBLE;
+    }
+/* skip '.' */
+  while (*str_a && *str_a == '.')
+    {
+      str_a++;
+    }
+  while (*str_b && *str_b == '.')
+    {
+      str_b++;
+    }
+  /* check minor.patch number */
+  client_level = (float) strtod (str_a, NULL);
+  server_level = (float) strtod (str_b, NULL);
+  if (client_level == server_level)
+    {
+      return REL_FULLY_COMPATIBLE;
+    }
+
+  compat = REL_NOT_COMPATIBLE;
+  for (rule = &net_compatibility_rules[0];
+       rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
+    {
+      if (rule->base_level == client_level
+	  && rule->apply_level == server_level)
+	{
+	  compat = rule->compatibility;
+	}
+    }
+
+  return compat;
 }

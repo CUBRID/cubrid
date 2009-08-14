@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?pde version="3.1"?>
+
+<product name="CUBRID Manager" id="com.cubrid.cubridmanager.app.product" application="com.cubrid.cubridmanager.app.application" useFeatures="false">
+
+   <aboutInfo>
+      <image path="/com.cubrid.cubridmanager.app/icons/cubridmanager16.gif"/>
+   </aboutInfo>
+
+   <configIni use="default"/>
+
+   <launcherArgs>
+      <vmArgs>-Xms40m 
+-Xmx512m</vmArgs>
+      <vmArgsMac>-XstartOnFirstThread -Dorg.eclipse.swt.internal.carbon.smallFonts</vmArgsMac>
+   </launcherArgs>
+
+   <windowImages i16="/com.cubrid.cubridmanager.app/icons/cubridmanager16.gif" i32="/com.cubrid.cubridmanager.app/icons/cubridmanager32.gif" i48="/com.cubrid.cubridmanager.app/icons/cubridmanager48.gif" i64="/com.cubrid.cubridmanager.app/icons/cubridmanager64.gif"/>
+
+   <splash
+      location="com.cubrid.cubridmanager.app" />
+   <launcher name="cubridmanager">
+      <solaris/>
+      <win useIco="true">
+         <ico path="/com.cubrid.cubridmanager.app/icons/cubridmanager.ico"/>
+         <bmp
+            winSmallHigh="/com.cubrid.cubridmanager.app/icons/cubridmanager_32_16.bmp"
+            winSmallLow="/com.cubrid.cubridmanager.app/icons/cubridmanager_8_16.bmp"
+            winMediumHigh="/com.cubrid.cubridmanager.app/icons/cubridmanager_32_32.bmp"
+            winMediumLow="/com.cubrid.cubridmanager.app/icons/cubridmanager_8_32.bmp"
+            winLargeHigh="/com.cubrid.cubridmanager.app/icons/cubridmanager_32_48.bmp"
+            winLargeLow="/com.cubrid.cubridmanager.app/icons/cubridmanager_8_48.bmp"/>
+      </win>
+   </launcher>
+
+
+   <vm>
+   </vm>
+
+   <plugins>
+      <plugin id="com.cubrid.cubridmanager.app"/>
+      <plugin id="com.cubrid.cubridmanager.core"/>
+      <plugin id="com.cubrid.cubridmanager.help"/>
+      <plugin id="com.cubrid.cubridmanager.ui"/>
+      <plugin id="com.ibm.icu"/>
+      <plugin id="javax.servlet"/>
+      <plugin id="javax.servlet.jsp"/>
+      <plugin id="org.apache.commons.el"/>
+      <plugin id="org.apache.commons.logging"/>
+      <plugin id="org.apache.jasper"/>
+      <plugin id="org.apache.log4j"/>
+      <plugin id="org.apache.lucene"/>
+      <plugin id="org.apache.lucene.analysis"/>
+      <plugin id="org.eclipse.core.commands"/>
+      <plugin id="org.eclipse.core.commands.nl_ko"/>
+      <plugin id="org.eclipse.core.contenttype"/>
+      <plugin id="org.eclipse.core.contenttype.nl_ko"/>
+      <plugin id="org.eclipse.core.databinding"/>
+      <plugin id="org.eclipse.core.databinding.nl_ko"/>
+      <plugin id="org.eclipse.core.expressions"/>
+      <plugin id="org.eclipse.core.expressions.nl_ko"/>
+      <plugin id="org.eclipse.core.jobs"/>
+      <plugin id="org.eclipse.core.jobs.nl_ko"/>
+      <plugin id="org.eclipse.core.runtime"/>
+      <plugin id="org.eclipse.core.runtime.compatibility.registry" fragment="true"/>
+      <plugin id="org.eclipse.core.runtime.nl_ko"/>
+      <plugin id="org.eclipse.equinox.app"/>
+      <plugin id="org.eclipse.equinox.app.nl_ko"/>
+      <plugin id="org.eclipse.equinox.common"/>
+      <plugin id="org.eclipse.equinox.common.nl_ko"/>
+      <plugin id="org.eclipse.equinox.http.jetty"/>
+      <plugin id="org.eclipse.equinox.http.jetty.nl_ko"/>
+      <plugin id="org.eclipse.equinox.http.registry"/>
+      <plugin id="org.eclipse.equinox.http.registry.nl_ko"/>
+      <plugin id="org.eclipse.equinox.http.servlet"/>
+      <plugin id="org.eclipse.equinox.http.servlet.nl_ko"/>
+      <plugin id="org.eclipse.equinox.jsp.jasper"/>
+      <plugin id="org.eclipse.equinox.jsp.jasper.nl_ko"/>
+      <plugin id="org.eclipse.equinox.jsp.jasper.registry"/>
+      <plugin id="org.eclipse.equinox.jsp.jasper.registry.nl_ko"/>
+      <plugin id="org.eclipse.equinox.preferences"/>
+      <plugin id="org.eclipse.equinox.preferences.nl_ko"/>
+      <plugin id="org.eclipse.equinox.registry"/>
+      <plugin id="org.eclipse.equinox.registry.nl_ko"/>
+      <plugin id="org.eclipse.help"/>
+      <plugin id="org.eclipse.help.appserver"/>
+      <plugin id="org.eclipse.help.appserver.nl_ko"/>
+      <plugin id="org.eclipse.help.base"/>
+      <plugin id="org.eclipse.help.base.nl_ko"/>
+      <plugin id="org.eclipse.help.nl_ko"/>
+      <plugin id="org.eclipse.help.ui"/>
+      <plugin id="org.eclipse.help.ui.nl_ko"/>
+      <plugin id="org.eclipse.help.webapp"/>
+      <plugin id="org.eclipse.help.webapp.nl_ko"/>
+      <plugin id="org.eclipse.jface"/>
+      <plugin id="org.eclipse.jface.databinding"/>
+      <plugin id="org.eclipse.jface.databinding.nl_ko"/>
+      <plugin id="org.eclipse.jface.nl_ko"/>
+      <plugin id="org.eclipse.jface.text"/>
+      <plugin id="org.eclipse.osgi"/>
+      <plugin id="org.eclipse.osgi.nl_ko"/>
+      <plugin id="org.eclipse.osgi.services"/>
+      <plugin id="org.eclipse.osgi.services.nl_ko"/>
+      <plugin id="org.eclipse.swt"/>
+      <plugin id="org.eclipse.swt.nl_ko"/>
+      <plugin id="org.eclipse.swt.win32.win32.x86" fragment="true"/>
+      <plugin id="org.eclipse.text"/>
+      <plugin id="org.eclipse.tomcat"/>
+      <plugin id="org.eclipse.tomcat.nl_ko"/>
+      <plugin id="org.eclipse.ui"/>
+      <plugin id="org.eclipse.ui.forms"/>
+      <plugin id="org.eclipse.ui.forms.nl_ko"/>
+      <plugin id="org.eclipse.ui.nl_ko"/>
+      <plugin id="org.eclipse.ui.workbench"/>
+      <plugin id="org.eclipse.ui.workbench.nl_ko"/>
+      <plugin id="org.junit"/>
+      <plugin id="org.mortbay.jetty"/>
+   </plugins>
+
+   <features>
+      <feature id="org.eclipse.rcp" version="3.3.3.r33x_r20080129-8y8eE9UEUWI6qujeED0xT7bc"/>
+      <feature id="com.cubrid.cubridmanager.app.feature" version="8.2.0"/>
+   </features>
+
+</product>

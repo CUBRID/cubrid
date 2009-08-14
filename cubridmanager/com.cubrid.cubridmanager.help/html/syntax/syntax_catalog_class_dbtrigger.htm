@@ -1,0 +1,273 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>db_trigger</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 클래스\ndb_trigger");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_class_class.htm\">시스템 카탈로그 클래스<\/a> &nbsp;&gt;&nbsp; db_trigger<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>db_trigger</h4>
+<table border="1" width="80%">
+<thead>
+<tr>
+<th width="150">
+<p>속성명</p>
+</th>
+<th width="150">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width="150">
+<p>owner</p>
+</td>
+<td width="150">
+<p>db_user</p>
+</td>
+<td>
+<p>트리거 소유자</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>name</p>
+</td>
+<td width="150">
+<p>VARCHAR(1073741823)</p>
+</td>
+<td>
+<p>트리거명</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>status</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>INACTIVE이면 1, ACTIVE이면 2. 기본 값은 2</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>priority</p>
+</td>
+<td width="150">
+<p>DOUBLE</p>
+</td>
+<td>
+<p>트리거간의 수행순서에 대한 우선순위. 기본 값은 0</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>event</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>UPDATE는 0, UPDATE STATEMENT는 1, DELETE는 2, DELETE STATEMENT는 3, INSERT는 4, INSERT STATEMENT는 5, COMMIT는 8, ROLLBACK은 9 로 설정</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>target_class</p>
+</td>
+<td width="150">
+<p>object</p>
+</td>
+<td>
+<p>트리거 대상(target)인 클래스에 대한 클래스 객체</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>target_attribute</p>
+</td>
+<td width="150">
+<p>VARCHAR(1073741823)</p>
+</td>
+<td>
+<p>트리거 대상 속성명. 대상 속성이 명시되지 않으면 <span class="keyword">NULL</span>을 설정</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>target_class_attribute</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>대상 속성에 대해, 인스턴스 속성이면 0, 클래스 속성이면 1. 기본 값은 0</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>condition_type</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>INSERT, UPDATE, DELETE, CALL, EVALUATE 중 하나이면 1, REJECT이면 2, INVALIDATE_TRANSACTION이면 3, PRINT이면 4</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>condition</p>
+</td>
+<td width="150">
+<p>VARCHAR(1073741823)</p>
+</td>
+<td>
+<p>IF문에 명시된 action 발생 조건</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>condition_time</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>BEFORE는 1, AFTER는 2, DEFERRED는 3으로 설정</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>action_type</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>INSERT, UPDATE, DELETE, CALL, EVALUATE 중 하나이면 1, REJECT이면 2, INVALIDATE_TRANSACTION이면 3, PRINT이면 4</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>action_definition</p>
+</td>
+<td width="150">
+<p>VARCHAR(1073741823)</p>
+</td>
+<td>
+<p>triggering되는 수행문</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>action_time</p>
+</td>
+<td width="150">
+<p>INTEGER</p>
+</td>
+<td>
+<p>BEFORE는 1, AFTER는 2, DEFERRED는 3으로 설정</p>
+</td>
+</tr>
+</tbody>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

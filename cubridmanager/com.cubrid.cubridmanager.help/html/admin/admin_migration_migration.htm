@@ -1,0 +1,142 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 마이그레이션</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 마이그레이션\n데이터베이스 마이그레이션");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_migration_migration.htm\">데이터베이스 마이그레이션<\/a> &nbsp;&gt;&nbsp; 데이터베이스 마이그레이션<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 마이그레이션</h3>
+<p>신규 버전의 CUBRID 데이터베이스를 사용하기 위해서는 기존 버전의 CUBRID 데이터베이스를 신규 버전의 CUBRID 데이터베이스로 이전하는 작업을 진행해야 할 경우가 있다. 이때 CUBRID에서 제공하는 텍스트 파일로 내보내기와 텍스트 파일에서 가져오기 기능을 활용할 수 있다. <span class="keyword">cubrid unloaddb</span> 및 <span class="keyword">cubrid loaddb</span> 유틸리티를 이용하는 마이그레이션 절차를 설명한다.</p>
+<h6>권장 시나리오 및 절차</h6>
+<p>기존 버전의 CUBRID가 운영 중인 상태에서 적용할 수 있는 마이그레이션 시나리오를 설명한다. 데이터베이스 마이그레이션을 위해서는 <span class="keyword">cubrid unloaddb</span>와 <span class="keyword">cubrid loaddb</span> 유틸리티를 사용한다. 자세한 내용은 "<a href="admin_migration_unload.htm">데이터베이스 내보내기(unload)</a>" 및 "<a href="admin_migration_load.htm">데이터베이스 가져오기(load)</a>"를 참조한다.</p>
+<ol>
+<li class="NumberTitle">기존 데이터베이스 백업
+<ol>
+<li class="desc"><span class="keyword">cubrid backupdb</span> 유틸리티를 이용하여 기존 버전의 데이터베이스 백업을 수행한다. 그 이유는 데이터베이스 언로드/로드 작업 중 발생 가능한 장애에 대비하기 위함이다. 데이터베이스 백업에 관한 자세한 내용은 "<a href="admin_br_syntax.htm">CUBRID 백업 및 복구 유틸리티 사용법(구문)</a>"을 참조한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">기존 데이터베이스 언로드
+<ol>
+<li class="desc"><span class="keyword">cubrid unloaddb</span> 유틸리티를 이용하여 기존&#160;버전의 CUBRID에서 생성된 데이터베이스를 언로드한다. 데이터베이스 언로드에 관한 자세한 내용은 "<a href="admin_migration_unload.htm">데이터베이스 내보내기(unload)</a>"를 참조한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">기존 CUBRID의 환경 설정 파일 보관
+<ol>
+<li class="desc"><span class="keyword">CUBRID/conf</span> 디렉터리 아래의 <span class="keyword">cubrid.conf</span>, <span class="keyword">cubrid_broker.conf</span>, <span class="keyword">cm.conf</span> 등의 환경 설정 파일을 보관한다. 이는 기존 CUBRID 데이터베이스 환경에 적용된 파라미터 설정값을 신규 CUBRID 데이터베이스 환경에서 편리하게 적용할 수 있기 때문이다.</li>
+</ol>
+</li>
+<li class="NumberTitle">신규 버전의 CUBRID 설치
+<ol>
+<li class="desc">기존 버전의 CUBRID에서 생성된 데이터의 백업 및 언로드 작업이 완료되었으므로, 기존 버전의 CUBRID 및 데이터베이스를 삭제하고 신규 버전의 CUBRID를 설치한다. CUBRID 설치에 대한 자세한 내용은 "CUBRID 시작"의 "<a href="../gs/gs_install_linux.htm">설치 방법</a>"을 참조한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">신규 CUBRID의 환경&#160;설정
+<ol>
+<li class="desc"><span class="keyword">기존 CUBRID의 환경 설정 파일 보관하기</span>에서 보관한 기존 데이터베이스의 환경 설정 파일을 참고하여 신규 버전의 CUBRID 환경을 설정할 수 있다. 환경 설정에 대한 자세한 내용은 "CUBRID 시작"의 "<a href="../gs/gs_install_windows.htm">설치 방법</a>"을 참조한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">신규 데이터베이스 로드
+<ol>
+<li class="desc"><span class="keyword">cubrid createdb</span> 유틸리티를 이용하여 데이터베이스를 생성하고, <span class="keyword">cubrid loaddb</span> 유틸리티를 이용하여 언로드한 데이터를 해당 데이터베이스에 로드한다.&#160;데이터베이스 생성에 대한 자세한 내용은 "관리자 안내서"의 "<a href="admin_db_create_create.htm">데이터베이스 생성</a>"을 참조하고, 데이터베이스 로드에 대한 자세한 내용은 "<a href="admin_migration_load.htm">데이터베이스 가져오기(load)</a>"를 참조한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">신규 데이터베이스 백업
+<ol>
+<li class="desc">신규 데이터베이스에 데이터 로딩이 완료되면, <span class="keyword">cubrid backupdb</span> 유틸리티를 이용하여 신규 버전의 CUBRID 환경에서 생성된 데이터베이스를 백업한다. 그 이유는 기존 버전의 CUBRID 환경에서 백업한 데이터를 신규 버전의 CUBRID 환경에서 복구할 수 없기 때문이다. 데이터베이스 백업에 대한 자세한 내용은 "<a href="admin_br_syntax.htm">CUBRID 백업 및 복구 유틸리티 사용법(구문)</a>"를 참조한다.</li>
+</ol>
+</li>
+</ol>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

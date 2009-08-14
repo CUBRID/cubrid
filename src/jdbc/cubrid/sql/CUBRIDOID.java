@@ -623,7 +623,7 @@ public class CUBRIDOID
       pos += real_read_len;
       length -= real_read_len;
       buf_offset += real_read_len;
-      total_read_len = real_read_len;
+      total_read_len += real_read_len;
 
       if (real_read_len < read_len)
         break;

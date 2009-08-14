@@ -56,9 +56,9 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 extern int
 xboot_register_client (THREAD_ENTRY * thread_p,
 		       const BOOT_CLIENT_CREDENTIAL * client_credential,
-		       OID * rootclass_oid, HFID * rootclass_hfid,
 		       int client_lock_wait, TRAN_ISOLATION client_isolation,
-		       TRAN_STATE * tran_state, PGLENGTH * current_pagesize);
+		       TRAN_STATE * tran_state,
+		       BOOT_SERVER_CREDENTIAL * server_credential);
 extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 FILEIO_BACKUP_LEVEL backup_level,
@@ -200,26 +200,23 @@ extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);
 
 
 extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid,
-				  FSIZE_T length, char *buffer,
-				  FSIZE_T est_lo_len, OID * oid);
+				  int length, char *buffer,
+				  int est_lo_len, OID * oid);
 extern int xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid);
-extern FSIZE_T xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid,
-				  FSIZE_T offset, FSIZE_T length,
-				  char *buffer);
-extern FSIZE_T xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid,
-				   FSIZE_T offset, FSIZE_T length,
-				   char *buffer);
-extern FSIZE_T xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid,
-				    FSIZE_T offset, FSIZE_T length,
-				    char *buffer);
-extern FSIZE_T xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid,
-				    FSIZE_T offset, FSIZE_T length);
-extern FSIZE_T xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid,
-				    FSIZE_T length, char *buffer);
-extern FSIZE_T xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
-				      FSIZE_T offset);
+extern int xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid,
+			      INT64 offset, int length, char *buffer);
+extern int xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid,
+			       INT64 offset, int length, char *buffer);
+extern int xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid,
+				INT64 offset, int length, char *buffer);
+extern INT64 xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid,
+				  INT64 offset, INT64 length);
+extern int xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid,
+				int length, char *buffer);
+extern INT64 xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid,
+				    INT64 offset);
 extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern FSIZE_T xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
+extern INT64 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
 
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlog_append_client_undo (THREAD_ENTRY * thread_p,
@@ -263,9 +260,9 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				TP_DOMAIN * key_type, OID * class_oids,
 				int n_classes, int n_attrs, int *attr_ids,
 				HFID * hfids, int unique_flag,
-				int reverse_flag, OID * fk_refcls_oid,
-				BTID * fk_refcls_pk_btid, int cache_attr_id,
-				const char *fk_name);
+				int reverse_flag, int last_key_desc,
+				OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
+				int cache_attr_id, const char *fk_name);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 					DB_VALUE * key, OID * class_oid,

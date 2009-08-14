@@ -140,19 +140,17 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 62 "../../src/executables/loader_grammar.y"
+#line 77 "../../src/executables/loader_grammar.y"
 {
 	int 	intval;
-	char	*cptr;
-	STRING_LIST	*strlist;
-	CLASS_COMMAND_SPEC *cmd_spec;
-	CONSTRUCTOR_SPEC *ctor_spec;
-	CONSTANT *constant;
-	CONSTANT_LIST *const_list;
-	OBJECT_REF *obj_ref;	
+	LDR_STRING	*string;
+	LDR_CLASS_COMMAND_SPEC *cmd_spec;
+	LDR_CONSTRUCTOR_SPEC *ctor_spec;
+	LDR_CONSTANT *constant;
+	LDR_OBJECT_REF *obj_ref;
 }
 /* Line 1529 of yacc.c.  */
-#line 156 "../../src/executables/loader_grammar.h"
+#line 154 "../../src/executables/loader_grammar.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

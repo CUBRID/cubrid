@@ -28,8 +28,8 @@
 			<Tool
 				Name="VCNMakeTool"
 				BuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				ReBuildCommandLine="nmake install_client clean&#x0D;&#x0A;nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				CleanCommandLine="nmake install_client clean"
+				ReBuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
+				CleanCommandLine="nmake clean SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
 				Output=""
 				PreprocessorDefinitions="WIN32;_DEBUG"
 				IncludeSearchPath=""
@@ -48,7 +48,7 @@
 			<Tool
 				Name="VCNMakeTool"
 				BuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				ReBuildCommandLine="nmake install_client clean&#x0D;&#x0A;nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
+				ReBuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
 				CleanCommandLine="nmake install_client clean"
 				Output=""
 				PreprocessorDefinitions="WIN32;_DEBUG"
@@ -68,8 +68,8 @@
 			<Tool
 				Name="VCNMakeTool"
 				BuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				ReBuildCommandLine="nmake install_client clean&#x0D;&#x0A;nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				CleanCommandLine=""
+				ReBuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
+				CleanCommandLine="nmake clean SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
 				Output=""
 				PreprocessorDefinitions="WIN32;NDEBUG"
 				IncludeSearchPath=""
@@ -88,8 +88,8 @@
 			<Tool
 				Name="VCNMakeTool"
 				BuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				ReBuildCommandLine="nmake install_client clean&#x0D;&#x0A;nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
-				CleanCommandLine=""
+				ReBuildCommandLine="nmake install_client SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
+				CleanCommandLine="nmake clean SRC_DIR=$(OutDir) DEST_DIR=$(ProjectDir)CUBRID_$(ConfigurationName)_$(PlatformName)"
 				Output=""
 				PreprocessorDefinitions="WIN32;NDEBUG"
 				IncludeSearchPath=""

@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include <time.h>
-
+#include "cm_config.h"
 #include "cm_dstring.h"
 
 #define NV_ADD_DATE		0
@@ -68,6 +68,7 @@ void nv_destroy (nvplist * ref);
 int nv_writeto (nvplist * ref, char *filename);
 void nv_reset_nvp (nvplist * ref);
 int nv_add_nvp (nvplist * ref, const char *name, const char *value);
+int nv_add_nvp_int64 (nvplist * ref, const char *name, INT64 value);
 int nv_add_nvp_int (nvplist * ref, const char *name, int value);
 int nv_add_nvp_time (nvplist * ref, const char *name, time_t t,
 		     const char *fmt, int flat);

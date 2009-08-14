@@ -1,0 +1,238 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CUBRID 유틸리티</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID 유틸리티");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; CUBRID 유틸리티<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>CUBRID 유틸리티</h2>
+<p>CUBRID 유틸리티는 CUBRID 서비스를 통합 관리할 수 있는 기능을 제공하며, CUBRID 서비스 프로세스를 관리하는 서비스 관리 유틸리티와, 데이터베이스를 관리하는 데이터베이스 관리 유틸리티로 구분된다.</p>
+<p>서비스 관리 유틸리티는 다음과 같다.</p>
+<ul>
+<li>서비스 유틸리티: 마스터 프로세스를 구동 및 관리한다.
+<ul>
+<li>cubrid service</li>
+</ul>
+</li>
+<li>서버 유틸리티: 서버 프로세스를 구동 및 관리한다.
+<ul>
+<li>cubrid server</li>
+</ul>
+</li>
+<li>브로커 유틸리티: 브로커 프로세스 및 응용서버(CAS) 프로세스를 구동 및 관리한다.
+<ul>
+<li>cubrid broker</li>
+</ul>
+</li>
+<li>매니저 유틸리티: 매니저 서버 프로세스를 구동 및 관리한다.
+<ul>
+<li>cubrid manager</li>
+</ul>
+</li>
+<li>복제 유틸리티: 복제 프로세스를 구동 및 관리한다.
+<ul>
+<li>cubrid repl_server</li>
+<li>cubrid repl_agent</li>
+</ul>
+</li>
+</ul>
+<p>자세한 설명은 "<a href="admin_service_conf_register.htm">CUBRID 서비스</a>"를 참조한다.</p>
+<p>데이터베이스 관리 유틸리티는 다음과 같다.</p>
+<ul>
+<li>데이터베이스 생성/볼륨 추가/삭제 유틸리티
+<ul>
+<li>cubrid createdb</li>
+<li>cubrid addvoldb</li>
+<li>cubrid deletedb</li>
+</ul>
+</li>
+<li>데이터베이스 이름 변경/호스트 변경/복사/설치 유틸리티
+<ul>
+<li>cubrid renamedb</li>
+<li>cubrid alterdbhost</li>
+<li>cubrid copydb</li>
+<li>cubrid installdb</li>
+</ul>
+</li>
+<li>데이터베이스 공간 확인/공간 정리 유틸리티
+<ul>
+<li>cubrid spacedb</li>
+<li>cubrid compactdb</li>
+</ul>
+</li>
+<li>데이터베이스 질의 계획 확인/최적화 유틸리티
+<ul>
+<li>cubrid plandump</li>
+<li>cubrid optimizedb</li>
+</ul>
+</li>
+<li>데이터베이스 잠금 확인/트랜잭션 제거/일관성 확인 유틸리티
+<ul>
+<li>cubrid lockdb</li>
+<li>cubrid killtran</li>
+<li>cubrid checkdb</li>
+</ul>
+</li>
+<li>데이터베이스 진단/로그 재생성 유틸리티
+<ul>
+<li>cubrid diagdb</li>
+<li>cubrid emergency_patchlog</li>
+<li>cubrid paramdump</li>
+</ul>
+</li>
+<li>데이터베이스 적재 유틸리티
+<ul>
+<li>cubrid loaddb</li>
+<li>cubrid unloaddb</li>
+</ul>
+</li>
+<li>데이터베이스 백업/복구 유틸리티
+<ul>
+<li>cubrid backupdb</li>
+<li>cubrid restoredb</li>
+</ul>
+</li>
+<li>HA 유틸리티
+<ul>
+<li>cubrid changemode</li>
+<li>cubrid copylogdb</li>
+<li>cubrid applylogdb</li>
+</ul>
+</li>
+</ul>
+<p>자세한 설명은 "<a href="admin_service_server_command.htm">데이터베이스 관리</a>"를 참조한다.</p>
+<p>프롬프트에서 cubrid를 입력하면 다음과 같은 구문 안내문이 출력된다.</p>
+<p class="code">%&#160;cubrid<br />
+cubrid service utility, version 8.2.0<br />
+usage: cubrid &lt;utility-name&gt; [args]<br />
+Type 'cubrid &lt;utility-name&gt;' for help on a specific utility.<br />
+<br />
+Available service's utilities:<br />
+&#160;&#160;&#160; service<br />
+&#160;&#160;&#160; server<br />
+&#160;&#160;&#160; broker<br />
+&#160;&#160;&#160; manager<br />
+&#160;&#160;&#160; repl_server<br />
+&#160;&#160;&#160; repl_agent<br />
+<br />
+Available administrator's utilities:<br />
+&#160;&#160;&#160; addvoldb<br />
+&#160;&#160;&#160; alterdbhost<br />
+&#160;&#160;&#160; backupdb<br />
+&#160;&#160;&#160; checkdb<br />
+&#160;&#160;&#160; compactdb<br />
+&#160;&#160;&#160; copydb<br />
+&#160;&#160;&#160;&#160;createdb<br />
+&#160;&#160;&#160; deletedb<br />
+&#160;&#160;&#160; diagdb<br />
+&#160;&#160;&#160; emergency_patchlog<br />
+&#160;&#160;&#160; installdb<br />
+&#160;&#160;&#160; killtran&#160;&#160;<br />
+&#160;&#160;&#160; loaddb<br />
+&#160;&#160;&#160; lockdb<br />
+&#160;&#160;&#160; optimizedb<br />
+&#160;&#160;&#160; renamedb<br />
+&#160;&#160;&#160; restoredb<br />
+&#160;&#160;&#160; spacedb<br />
+&#160;&#160;&#160; unloaddb<br />
+&#160;&#160;&#160;&#160;paramdump<br />
+&#160;&#160;&#160;&#160;changemode<br />
+&#160;&#160;&#160;&#160;copylogdb<br />
+&#160;&#160;&#160;&#160;applylogdb<br />
+<br />
+cubrid is a tool for DBMS.<br />
+For additional information, see http://www.cubrid.com</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

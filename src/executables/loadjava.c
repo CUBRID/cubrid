@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -109,64 +109,66 @@ filecopy (const char *fn_src, const char *fn_dst)
   if (fh_src == NULL)
     {
       fprintf (stderr, "'%s' cannot open.\n", fn_src);
-      retval = errno;
+      return errno;
     }
 
-  if (!retval)
+  if (!Force_overwrite)
     {
-      if (!Force_overwrite)
+      fh_dst = fopen (fn_dst, "r");
+      if (fh_dst != NULL)
 	{
-	  fh_dst = fopen (fn_dst, "r");
-	  if (fh_dst)
+	  fclose (fh_dst);
+	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", fn_dst);
+	  c = getchar ();
+	  if (c != 'Y' && c != 'y')
 	    {
-	      fclose (fh_dst);
-	      fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", fn_dst);
-	      c = getchar ();
-	      if (c != 'Y' && c != 'y')
-		{
-		  fprintf (stdout, "loadjava is cancled\n");
-		  return 0;
-		}
+	      fprintf (stdout, "loadjava is cancled\n");
+	      return 0;
 	    }
 	}
-      fh_dst = fopen (fn_dst, "w+b");
+    }
+  fh_dst = fopen (fn_dst, "w+b");
 
-      if (fh_dst == NULL)
+  if (fh_dst == NULL)
+    {
+      fprintf (stderr, "'%s' cannot open.\n", fn_dst);
+      retval = errno;
+    }
+  else
+    {
+      while (retval == 0)
 	{
-	  fprintf (stderr, "'%s' cannot open.\n", fn_dst);
-	  retval = errno;
-	}
-      else
-	{
-	  while (!retval)
+	  bytesr = fread (buff, 1, COPY_BUFFER_SIZE, fh_src);
+	  if (bytesr < 1 || bytesr > COPY_BUFFER_SIZE)
 	    {
-	      bytesr = fread (buff, 1, COPY_BUFFER_SIZE, fh_src);
-	      if (bytesr < 1)
+	      if (feof (fh_src))
 		{
-		  if (feof (fh_src))
-		    break;
-		  else
-		    retval = ferror (fh_src);
+		  break;
 		}
 	      else
 		{
-		  if (fwrite (buff, 1, bytesr, fh_dst) != bytesr)
-		    {
-		      retval = ferror (fh_dst);
-		      break;
-		    }
+		  retval = ferror (fh_src);
+		}
+	    }
+	  else
+	    {
+	      if (fwrite (buff, 1, bytesr, fh_dst) != bytesr)
+		{
+		  retval = ferror (fh_dst);
+		  break;
 		}
 	    }
 	}
-
-      if (fh_dst)
-	fclose (fh_dst);
-
     }
 
+  if (fh_dst)
+    {
+      fclose (fh_dst);
+    }
   if (fh_src)
-    fclose (fh_src);
-
+    {
+      fclose (fh_src);
+    }
   return retval;
 }
 

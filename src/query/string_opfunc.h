@@ -144,7 +144,7 @@ extern int db_string_pad (const MISC_OPERAND pad_operand,
 			  DB_VALUE * padded_string);
 extern int db_string_like (const DB_VALUE * src_string,
 			   const DB_VALUE * pattern,
-			   const unsigned char esc_char, int *result);
+			   const DB_VALUE * esc_char, int *result);
 extern int db_string_replace (const DB_VALUE * src_string,
 			      const DB_VALUE * srch_string,
 			      const DB_VALUE * repl_string,

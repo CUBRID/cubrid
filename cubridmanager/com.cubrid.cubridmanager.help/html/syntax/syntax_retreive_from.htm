@@ -1,0 +1,192 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>FROM</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 조회\nFROM 절");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_select.htm\">데이터 조회<\/a> &nbsp;&gt;&nbsp; FROM 절<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>FROM 절</h3>
+<ul>
+<li><a href="#basic">일반</a></li>
+<li><a href="#derived">유도 테이블</a></li>
+<li><a href="#subquery">부질의 유도 테이블</a></li>
+</ul>
+<h5><a name="basic" id="basic"></a>일반</h5>
+<h6>설명</h6>
+<p><span class="keyword">FROM</span> 절은 질의에서 데이터를 조회하고자 하는 테이블을 지정한다. 조회할 수 있는&#160;경로는 다음과 같다.</p>
+<p>• 개별 테이블</p>
+<p>• 부질의</p>
+<p>• 유도 테이블</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">FROM</span> <span class="var">from_specification</span><br />
+<br />
+<span class="var">from_specification</span> :<br />
+<span class="var">table_spec</span> [ {, <span class="var">table_spec</span> | <span class="var">outerjoin_table_spec</span> }...]<br />
+<br />
+<span class="var">table_spec</span> :<br />
+<span class="var">single_table_spec</span> [ <span class="var">correlation</span> ] [ WITH (<span class="var">lock_hint</span> [ {, <span class="var">lock_hint</span> } ] ) ]<br />
+( <span class="var">single _table_spec</span> [ {, <span class="var">single_table_spec</span>}...] )<br />
+<span class="keyword">CLASS</span> <span class="var">table_name</span> [ <span class="var">correlation</span> ]<br />
+<span class="var">subquery</span> <span class="var">correlation</span><br />
+<span class="keyword">TABLE</span> (<span class="var">expression</span>) <span class="var">correlation</span><br />
+<br />
+<span class="var">outerjoin_table_spec</span> :<br />
+{ <span class="keyword">LEFT</span> | <span class="keyword">RIGHT</span> } [<span class="keyword">OUTER</span> ] <span class="keyword">JOIN</span> <span class="var">table_spec</span> <span class="keyword">ON</span> <span class="var">search_condition</span><br />
+<br />
+<span class="var">single_table_spec</span> :<br />
+[ <span class="keyword">ONLY</span> ] <span class="var">table_name</span><br />
+<span class="keyword">ALL</span> <span class="var">table_name</span> [ ( <span class="keyword">EXCEPT</span> <span class="var">table_spec</span> ) ]<br />
+<br />
+<span class="var">correlation</span> :<br />
+[ <span class="keyword">AS</span> ] <span class="var">identifier</span><br />
+<br />
+<span class="var">lock_hint</span> :<br />
+<span class="keyword">READ</span> <span class="keyword">UNCOMMITTED</span></p>
+<h6>구문 설명</h6>
+<ul>
+<li><span class="var">table_spec</span> : 테이블로부터&#160;클래스 속성을 조회하기 위해서는 키워드 <span class="keyword">CLASS</span>가 <span class="keyword">FROM</span> 절의 테이블 이름 앞에 사용되어야 한다.<br />
+부질의와 유도 테이블도 <span class="keyword">FROM</span> 절에 사용될 수 있다. 부질의 유도 테이블에 대한 설명은 <a href="#subquery">부질의 유도 테이블</a>을 참고한다.</li>
+<li><span class="var">lock_hint</span> : 해당 테이블에 대한 격리 수준(isolation level)을&#160;<span class="keyword">READ</span> <span class="keyword">UNCOMMITTED</span> 수준으로 설정할 수 있다. <span class="keyword">READ UNCOMMITTED</span>은 오손 읽기(dirty read)가 발생할 수 있는 격리 수준으로서, CUBRID 트랜잭션의 격리 수준에 관한 자세한 설명은 <a href="syntax_tran_isolation_intro.htm">트랜잭션 격리 수준</a>을 참고한다.</li>
+</ul>
+<h5><a name="derived" id="derived"></a>유도 테이블</h5>
+<p>질의문에서 <span class="keyword">FROM</span> 절의 테이블 명세 부분에 부질의가 사용될 수 있다. 이런 형태의 부질의는 부질의 결과가 테이블로 취급되는 유도 테이블(derived table)을 만든다. 유도 테이블을 만드는 부질의가 사용될 때 반드시 상관 명세가 사용되어야 한다.<br />
+또한 유도 테이블은 집합 값을 갖는 속성의 개별 원소를 접근하는데 사용된다. 이 경우 집합 값의 한 원소는 유도 테이블에서 하나의 인스턴스로 생성된다.</p>
+<h5><a name="subquery" id="subquery"></a>부질의 유도 테이블</h5>
+<h6>설명</h6>
+<p>유도 테이블의 각 인스턴스는 <span class="keyword">FROM</span> 절에 주어진 부질의의 결과로부터 만들어진다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">FROM</span> (<span class="var">subquery</span>) [ <span class="keyword">AS</span> ] <span class="var">derived_table_name</span> [( <span class="var">column_name</span> [ {, <span class="var">column_name</span> }_ ] )]</p>
+<p>부질의로부터 생성되는 유도 테이블은 임의의 개수의 컬럼과 인스턴스를 가질 수 있다.</p>
+<p>단, <span class="var">column_name</span> 파라미터의 개수와 <span class="var">subquery</span>에서 만들어지는 컬럼의 개수는 일치해야 한다.</p>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 한국이 획득한 금메달 개수와 일본이 획득한 은메달 개수를 더한 값을 조회하는 예제이다. 이 예제는 유도 테이블을 이용하여 부질의의 중간 결과를 모으고 하나의 결과로 처리하는 방법을 보여준다. 이 질의는 <span class="keyword">nation_code</span> 컬럼이 'KOR'인 <span class="keyword">gold</span>값과 <span class="keyword">nation_code</span> 컬럼이 'JPN'인 <span class="keyword">silver</span> 값의 전체 합을 반환한다.</li>
+</ul>
+<p class="code">SELECT SUM(n) FROM (SELECT gold FROM participant WHERE nation_code='KOR'<br />
+UNION ALL SELECT silver FROM participant WHERE nation_code='JPN') AS t(n);<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160; sum(n)<br />
+========<br />
+&#160;&#160;&#160;&#160;&#160; 82<br />
+1 rows selected.</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">부질의 유도 테이블은 외부 질의와 연관되어 있을 때 유용하게 사용할 수 있다. 예를 들어 <span class="keyword">WHERE</span> 절에서 사용된 부질의의 <span class="keyword">FROM</span> 절에 유도 테이블이 사용될&#160;수 있다.</li>
+<li class="desc">다음은 은메달 및 동메달을 하나 이상 획득한 경우, 해당 은메달과 동메달의 합의 평균보다 많은 수의 금메달을 획득한 <span class="keyword">nation_code</span>, <span class="keyword">host_year</span>, <span class="keyword">gold</span> 필드를 보여주는 쿼리 예제이다. 이 예제에서는 질의(외부 <span class="keyword">SELECT</span> 절)와 부질의(내부 <span class="keyword">SELECT</span> 절)가 <span class="keyword">nation_code</span> 속성으로 연결되어 있다.</li>
+</ul>
+<p class="code">SELECT nation_code, host_year, gold<br />
+FROM participant p<br />
+WHERE gold &gt; ( SELECT AVG(s)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;FROM ( SELECT silver + bronze<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;FROM participant<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;WHERE nation_code = p.nation_code<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;AND silver &gt; 0<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;AND bronze &gt; 0<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;) AS t(s));<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+<br />
+&#160;&#160;nation_code &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;host_year &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;gold<br />
+=========================================<br />
+&#160;&#160;'JPN' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2004 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;16<br />
+&#160;&#160;'CHN' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2004 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;32<br />
+&#160;&#160;'DEN' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;1996 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;4<br />
+&#160;&#160;'ESP' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;1992 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;13&#160; &#160;&#160;<br />
+<br />
+4 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

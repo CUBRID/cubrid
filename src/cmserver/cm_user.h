@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -31,20 +31,28 @@
 
 #define MALLOC_USER_INFO(USER_INFO, NUM_USER)				\
     do {								\
-      if (NUM_USER == 1)						\
-	USER_INFO = (T_DBMT_USER_INFO *) malloc(sizeof(T_DBMT_USER_INFO));			\
-      else								\
-	USER_INFO = (T_DBMT_USER_INFO *) realloc(USER_INFO, sizeof(T_DBMT_USER_INFO) * (NUM_USER)); \
-      memset(&(USER_INFO[NUM_USER - 1]), 0, sizeof(T_DBMT_USER_INFO));	\
-    } while (0)
+      if ((NUM_USER) > 0)	{					\
+        if ((NUM_USER) == 1)  {                                   \
+          if (USER_INFO != NULL) free(USER_INFO);               \
+          USER_INFO = (T_DBMT_USER_INFO *) malloc(sizeof(T_DBMT_USER_INFO));                    \
+        } else {                                                        \
+          USER_INFO = (T_DBMT_USER_INFO *) realloc(USER_INFO, sizeof(T_DBMT_USER_INFO) * (NUM_USER)); \
+        }                                                               \
+        memset(&(USER_INFO[NUM_USER - 1]), 0, sizeof(T_DBMT_USER_INFO));        \
+      }                                                                 \
+    } while(0)
 
 #define MALLOC_USER_DBINFO(DBINFO, NUM_INFO)				\
     do {								\
-      if ((NUM_INFO) == 1)						\
-	DBINFO = (T_DBMT_USER_DBINFO *) malloc(sizeof(T_DBMT_USER_DBINFO));			\
-      else								\
-	DBINFO = (T_DBMT_USER_DBINFO *) realloc(DBINFO, sizeof(T_DBMT_USER_DBINFO) * (NUM_INFO)); \
-      memset(&(DBINFO[(NUM_INFO) - 1]), 0, sizeof(T_DBMT_USER_DBINFO));	\
+      if ((NUM_INFO) > 0) {                                             \
+        if ((NUM_INFO) == 1) {						\
+          if (DBINFO != NULL) free(DBINFO);                     	\
+          DBINFO = (T_DBMT_USER_DBINFO *) malloc(sizeof(T_DBMT_USER_DBINFO));				\
+        } else {                                                        \
+          DBINFO = (T_DBMT_USER_DBINFO *) realloc(DBINFO, sizeof(T_DBMT_USER_DBINFO) * (NUM_INFO)); 	\
+        }                                                               \
+        memset(&(DBINFO[(NUM_INFO) - 1]), 0, sizeof(T_DBMT_USER_DBINFO));				\
+      }                                                                 \
     } while (0)
 
 typedef struct
@@ -52,13 +60,14 @@ typedef struct
   char dbname[DBMT_USER_NAME_LEN];
   char auth[16];
   char uid[32];
-  char passwd[48];
+  char passwd[80];
+  char broker_address[260];
 } T_DBMT_USER_DBINFO;
 
 typedef struct
 {
   char user_name[DBMT_USER_NAME_LEN];
-  char user_passwd[48];
+  char user_passwd[80];
   int num_dbinfo;
   T_DBMT_USER_DBINFO *dbinfo;
 } T_DBMT_USER_INFO;
@@ -76,7 +85,7 @@ int dbmt_user_write_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error);
 void dbmt_user_db_auth_str (T_DBMT_USER_DBINFO * dbinfo, char *buf);
 void dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, const char *dbname,
 			   const char *auth, const char *uid,
-			   const char *passwd);
+			   const char *passwd, const char *broker_address);
 void dbmt_user_set_userinfo (T_DBMT_USER_INFO * usrinfo, char *user_name,
 			     char *user_passwd, int num_dbinfo,
 			     T_DBMT_USER_DBINFO * dbinfo);

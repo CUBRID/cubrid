@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<title>Java 저장 함수/프로시저 사용을 위한 환경 설정</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\nJava 저장 함수/프로시저 사용을 위한 환경 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; Java 저장 함수/프로시저 사용을 위한 환경 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>Java 저장 함수/프로시저 사용을 위한 환경 설정</h3>
+<p>CUBRID에서 Java 저장 함수/프로시저를 사용하기 위해서는 CUBRID 서버가 설치되는 환경에 Java가 설치되어 있어야 한다. CUBRID는 기본적으로 SUN의 Java 가상 머신을 찾아서 실행한다. CUBRID의 Java 저장 함수와 프로시저가 실행 가능한 Java 가상 머신은 JNI 버전 1.4 이상을 구현한 것이어야 한다. SUN의 경우 JDK1.4 이상이다.</p>
+<h6>Windows 환경</h6>
+<p>CUBRID는 Windows&#160; 환경에서 <span class="keyword">jvm.dll</span> 파일을 로딩하여 Java 가상 머신을 실행시킨다. CUBRID는 먼저 시스템의 <span class="keyword">PATH</span> 환경 변수에서 <span class="keyword">jvm.dll</span>을 찾아 로딩한다. 만약 찾지 못하면 시스템 레지스트리에 등록된 Java 런타임 정보를 이용한다. 아래는 <span class="keyword">PATH</span> 환경 변수에 <span class="keyword">jvm.dll</span> 파일이 있는 경로를 추가하는 예이다.</p>
+<p class="code">set JAVA_HOME=C:\jdk1.5.0<br />
+set PATH=%PATH%;%JAVA_HOME%\jre\bin\client</p>
+<p>SUN의 Java 가상 머신을 사용하지 않고 다른 벤더의 구현을 사용하려면 해당 벤더의 설치에서 <span class="keyword">jvm.dll</span> 파일의 경로를 <span class="keyword">PATH</span>에 추가해 주어야 한다.</p>
+<h6>Linux/Unix 환경</h6>
+<p>CUBRID는 Lunix/Unix&#160;환경에서 <span class="keyword">libjvm.so</span> 파일을 로딩하여 Java 가상 머신을 실행시킨다. CUBRID는 먼저 <span class="keyword">LD_LIBRARY_PATH</span> 환경 변수에서 <span class="keyword">libjvm.so</span> 파일을 찾아 로딩한다. 만약 찾지 못하면 <span class="keyword">JAVA_HOME</span> 환경 변수를 이용하여 찾는다. 아래는 환경 설정 파일(예 : <span class="keyword">.profile</span>, <span class="keyword">.cshrc</span>, <span class="keyword">.bashrc</span>, <span class="keyword">.bash_profile</span> 등)에 환경 변수를 설정하는 예이다. 리눅스의 경우 glibc 2.3.4이상만 지원된다.</p>
+<ul>
+<li>bash 경우</li>
+</ul>
+<p class="code">JAVA_HOME=/home/cubrid/jdk1.5.0_10 ;export JAVA_HOME<br />
+PATH=.:$JAVA_HOME/bin:$PATH ;export PATH<br />
+LANG=korean ;export LANG<br />
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$JAVA_HOME/jre/lib/i386:$JAVA_HOME/jre/lib/i386/client ;export LD_LIBRARY_PATH</p>
+<ul>
+<li>csh의 경우</li>
+</ul>
+<p class="code">setenv JAVA_HOME $HOME/jdk1.5.0_10<br />
+setenv LD_LIBRARY_PATH $HOME/jdk1.5.0_10/jre/lib/i386: $HOME/jdk1.5.0_10/jre/lib/i386/client:$LD_LIBRARY_PATH<br />
+set path=($path $JAVA_HOME/bin .)</p>
+<p>SUN의 Java 가상 머신을 사용하지 않고 다른 벤더의 구현을 사용하려면 Library Path에 해당 벤더의 설치에서 Java VM(<span class="keyword">libjvm.so</span>)이 있는 경로를 추가해 주어야 한다.</p>
+<p><span class="keyword">libjvm.so</span> 파일의 경로는 플랫폼마다 다를 수 있다. 예를 들어 SUN Sparc 머신에서는 <span class="keyword">$JAVA_HOME/jre/lib/sparc</span> 디렉터리이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

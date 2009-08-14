@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #endif
+#include <assert.h>
 
 #include "cas_common.h"
 #include "cas_log.h"
@@ -47,19 +48,22 @@
 
 #include "broker_env_def.h"
 #include "broker_filename.h"
+#include "broker_util.h"
 #include "dbi.h"
 
 #include "cas_db_inc.h"
 
-#define MAKE_SQL_LOG_FILENAME(FILENAME, BR_NAME, AS_INDEX)	\
-	do {							\
-	  get_cubrid_file(FID_SQL_LOG_DIR, FILENAME);		\
-	  sprintf(FILENAME, "%s%s_%d.sql.log", FILENAME, BR_NAME, (AS_INDEX) + 1); \
-	} while (0)
 
-static void sql_log_rename (int run_time, time_t cur_time, char *br_name,
+static char *make_sql_log_filename (char *filename_buf,
+				    size_t buf_size, const char *br_name,
+				    int as_index);
+static void cas_log_backup (void);
+static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
-static void sql_log_backup (char *br_name, int as_index);
+static void cas_log_write_internal (unsigned int seq_num, const char *fmt,
+				    va_list ap);
+static void cas_log_write2_internal (const char *fmt, va_list ap);
+
 static FILE *sql_log_open (char *log_file_name);
 static void cas_log_error_handler (unsigned int eid);
 
@@ -68,6 +72,8 @@ static int error_file_offset;
 static char cas_log_error_flag;
 #endif
 static FILE *log_fp = NULL;
+static char log_filepath[PATH_MAX];
+static long saved_log_fpos = 0;
 
 static FILE *log_fp_qp, *log_fp_qh;
 static int saved_fd1;
@@ -82,258 +88,413 @@ struct cas_error_log_handle_context_s
 
 static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 
-void
-cas_log_init (T_TIMEVAL * start_time)
+static char *
+make_sql_log_filename (char *filename_buf,
+		       size_t buf_size, const char *br_name, int as_index)
 {
-#ifdef CAS_ERROR_LOG
-  error_file_offset = -1;
-  cas_log_error_flag = 0;
-#endif
-  TIMEVAL_MAKE (start_time);
+  char dirname[PATH_MAX];
+
+  assert (filename_buf != NULL);
+
+  get_cubrid_file (FID_SQL_LOG_DIR, dirname);
+  snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name,
+	    (as_index) + 1);
+  return filename_buf;
 }
+
 
 void
 cas_log_open (char *br_name, int as_index)
 {
 #ifndef LIBCAS_FOR_JSP
-  char sql_log_file[PATH_MAX];
 
-  if (sql_log_mode)
+  if (log_fp != NULL)
     {
-      MAKE_SQL_LOG_FILENAME (sql_log_file, br_name, as_index);
-      log_fp = fopen (sql_log_file,
-		      (sql_log_mode & SQL_LOG_MODE_APPEND) ? "a" : "w");
+      cas_log_close (false);
+    }
+
+  if (shm_appl->sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      if (br_name != NULL)
+	{
+	  make_sql_log_filename (log_filepath, PATH_MAX, br_name, as_index);
+	}
+
+      /* note: in "a+" mode, output is alwarys appended */
+      log_fp = fopen (log_filepath, "r+");
+      if (log_fp != NULL)
+	{
+	  fseek (log_fp, 0, SEEK_END);
+	  saved_log_fpos = ftell (log_fp);
+	}
+      else
+	{
+	  log_fp = fopen (log_filepath, "w");
+	  saved_log_fpos = 0;
+	}
     }
   else
     {
       log_fp = NULL;
+      saved_log_fpos = 0;
     }
-  shm_appl->as_info[shm_as_index].cas_log_reset = 0;
-#endif
+  as_info->cas_log_reset = 0;
+#endif /* LIBCAS_FOR_JSP */
 }
 
 void
 cas_log_reset (char *br_name, int as_index)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (shm_appl->as_info[shm_as_index].cas_log_reset)
+  if (as_info->cas_log_reset)
     {
       if (log_fp != NULL)
 	{
-	  fclose (log_fp);
-	  log_fp = NULL;
+	  cas_log_close (true);
 	}
-
-      if (shm_appl->as_info[shm_as_index].
-	  cas_log_reset & CAS_LOG_RESET_REMOVE)
+      if ((as_info->cas_log_reset & CAS_LOG_RESET_REMOVE) != 0)
 	{
-	  char sql_log_filename[PATH_MAX];
-	  MAKE_SQL_LOG_FILENAME (sql_log_filename, br_name, as_index);
-	  unlink (sql_log_filename);
+	  unlink (log_filepath);
 	}
 
       cas_log_open (br_name, as_index);
     }
-
-#endif
+#endif /* LIBCAS_FOR_JSP */
 }
 
 void
-cas_log_end (T_TIMEVAL * start_time, char *br_name, int as_index,
-	     int sql_log_time, char *sql_log2_file, int sql_log_max_size,
-	     int close_flag)
+cas_log_close (bool flag)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp)
+  if (log_fp != NULL)
     {
-      T_TIMEVAL cur_time;
-      int run_time_sec = -1, run_time_msec;
-      int log_file_size = 0;
-
-      if (sql_log2_file != NULL && sql_log2_file[0] != '\0')
+      if (flag)
 	{
-	  fprintf (log_fp, "%s\n", sql_log2_file);
+	  fseek (log_fp, saved_log_fpos, SEEK_SET);
+	  cas_log_write_internal (0, "END OF LOG\n\n", "");
+	  ftruncate (fileno (log_fp), saved_log_fpos);
 	}
-
-      if (start_time != NULL)
-	{
-	  TIMEVAL_MAKE (&cur_time);
-	  ut_timeval_diff (start_time, &cur_time, &run_time_sec,
-			   &run_time_msec);
-
-	  fprintf (log_fp, "*** %d.%03d\n\n", run_time_sec, run_time_msec);
-	  log_file_size = ftell (log_fp);
-	}
-
-      if (sql_log_mode & SQL_LOG_MODE_APPEND)
-	{
-	  log_file_size /= 1000;
-	  if ((sql_log_max_size > 0) && (log_file_size > sql_log_max_size))
-	    {
-	      fclose (log_fp);
-	      log_fp = NULL;
-	      sql_log_backup (br_name, as_index);
-	    }
-	}
-      else
-	{
-	  fclose (log_fp);
-	  log_fp = NULL;
-	  if (run_time_sec >= sql_log_time)
-	    {
-	      sql_log_rename (run_time_sec, TIMEVAL_GET_SEC (&cur_time),
-			      br_name, as_index);
-	    }
-	}
-
-      if (close_flag == TRUE)
-	{
-	  if (log_fp != NULL)
-	    {
-	      fclose (log_fp);
-	      log_fp = NULL;
-	    }
-	}
-      else
-	{
-	  if (log_fp == NULL)
-	    {
-	      sql_log_mode = shm_appl->sql_log_mode;
-	      if (!(sql_log_mode & SQL_LOG_MODE_ON))
-		{
-		  sql_log_mode = SQL_LOG_MODE_OFF;
-		}
-	      cas_log_open (br_name, as_index);
-	    }
-	  else
-	    {
-	      fflush (log_fp);
-	      if (!(shm_appl->sql_log_mode & SQL_LOG_MODE_ON))
-		{
-		  sql_log_mode = SQL_LOG_MODE_OFF;
-		  fclose (log_fp);
-		  log_fp = NULL;
-		}
-	    }
-	  TIMEVAL_MAKE (start_time);
-	}
+      fclose (log_fp);
+      log_fp = NULL;
+      saved_log_fpos = 0;
     }
-  else
-    {
-      if (close_flag == FALSE)
-	{
-	  sql_log_mode = shm_appl->sql_log_mode;
-	  if (!(sql_log_mode & SQL_LOG_MODE_ON))
-	    {
-	      sql_log_mode = SQL_LOG_MODE_OFF;
-	    }
-	  cas_log_open (br_name, as_index);
-	}
-    }
-#endif
+#endif /* LIBCAS_FOR_JSP */
+}
+
+static void
+cas_log_backup (void)
+{
+  char backup_filepath[PATH_MAX];
+
+  assert (log_filepath[0] != '\0');
+
+  snprintf (backup_filepath, PATH_MAX, "%s.bak", log_filepath);
+
+  unlink (backup_filepath);
+  rename (log_filepath, backup_filepath);
+}
+
+static void
+cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
+{
+  char new_filepath[PATH_MAX];
+  struct tm tmp_tm;
+
+  assert (log_filepath[0] != '\0');
+
+  localtime_r (&cur_time, &tmp_tm);
+  tmp_tm.tm_year += 1900;
+
+  snprintf (new_filepath, PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d",
+	    log_filepath, tmp_tm.tm_mon + 1, tmp_tm.tm_mday, tmp_tm.tm_hour,
+	    tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
+  rename (log_filepath, new_filepath);
 }
 
 void
-cas_log_write (unsigned int seq_num, char print_new_line, const char *fmt,
-	       ...)
+cas_log_end (int mode, int run_time_sec, int run_time_msec)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp)
+  if (log_fp != NULL)
+    {
+      long log_file_size = 0;
+      bool abandon = false;
+
+      /* 'mode' will be either ALL, ERROR, or TIMEOUT */
+      switch (mode)
+	{
+	case SQL_LOG_MODE_ALL:
+	  /* if mode == ALL, write log regardless sql_log_mode */
+	  break;
+	case SQL_LOG_MODE_ERROR:
+	  /* if mode == ERROR, write log if sql_log_mode == ALL || ERROR || NOTICE */
+	  if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE ||
+	      shm_appl->sql_log_mode == SQL_LOG_MODE_TIMEOUT)
+	    {
+	      abandon = true;
+	    }
+	  break;
+	case SQL_LOG_MODE_TIMEOUT:
+	  /* if mode == TIMEOUT, write log if sql_log_mode == ALL || TIMEOUT || NOTICE */
+	  if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE ||
+	      shm_appl->sql_log_mode == SQL_LOG_MODE_ERROR)
+	    {
+	      abandon = true;
+	    }
+	  /* if mode == TIMEOUT and sql_log_mode == TIMEOUT || NOTICE, check if it timed out */
+	  else if (shm_appl->sql_log_mode == SQL_LOG_MODE_TIMEOUT ||
+		   shm_appl->sql_log_mode == SQL_LOG_MODE_NOTICE)
+	    {
+	      /* check timeout */
+	      if (run_time_sec < shm_appl->long_transaction_time)
+		{
+		  abandon = true;
+		}
+	    }
+	  break;
+	  /* if mode == NONE, write log if sql_log_mode == ALL */
+	case SQL_LOG_MODE_NONE:
+	  if (shm_appl->sql_log_mode != SQL_LOG_MODE_ALL)
+	    {
+	      abandon = true;
+	    }
+	  break;
+	case SQL_LOG_MODE_NOTICE:
+	default:
+	  /* mode NOTICE or others are unexpected values; do not write log */
+	  abandon = true;
+	  break;
+	}
+
+      if (abandon)
+	{
+	  fseek (log_fp, saved_log_fpos, SEEK_SET);
+	}
+      else
+	{
+	  if (run_time_sec >= 0 && run_time_msec >= 0)
+	    {
+	      fprintf (log_fp, "*** %d.%03d\n\n", run_time_sec,
+		       run_time_msec);
+	    }
+	  fflush (log_fp);
+	  saved_log_fpos = ftell (log_fp);
+
+	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
+	    {
+	      cas_log_close (true);
+	      cas_log_backup ();
+	      cas_log_open (NULL, 0);
+	    }
+	}
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+static void
+cas_log_write_internal (unsigned int seq_num, const char *fmt, va_list ap)
+{
+  char buf[LINE_MAX], *p;
+  int len, n;
+
+  p = buf;
+  len = LINE_MAX;
+  n = ut_time_string (p);
+  len -= n;
+  p += n;
+  if (len > 0)
+    {
+      n = snprintf (p, len, " (%u) ", seq_num);
+      len -= n;
+      p += n;
+      if (len > 0)
+	{
+	  n = vsnprintf (p, len, fmt, ap);
+	  len -= n;
+	  p += n;
+	}
+    }
+  fwrite (buf, (p - buf), 1, log_fp);
+}
+
+void
+cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
+		    ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp != NULL)
     {
       va_list ap;
-      time_t t;
-      struct tm lt;
-      T_TIMEVAL tv;
 
-      TIMEVAL_MAKE (&tv);
-      t = TIMEVAL_GET_SEC (&tv);
-      lt = *localtime (&t);
-
+      if (unit_start)
+	{
+	  saved_log_fpos = ftell (log_fp);
+	}
       va_start (ap, fmt);
-      fprintf (log_fp, "%02d/%02d %02d:%02d:%02d.%03d (%u) ",
-	       lt.tm_mon + 1, lt.tm_mday,
-	       lt.tm_hour, lt.tm_min, lt.tm_sec, TIMEVAL_GET_MSEC (&tv),
-	       seq_num);
-      vfprintf (log_fp, fmt, ap);
-      if (print_new_line)
-	fprintf (log_fp, "\n");
-      fflush (log_fp);
+      cas_log_write_internal (seq_num, fmt, ap);
       va_end (ap);
     }
-#endif
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp != NULL)
+    {
+      va_list ap;
+
+      if (unit_start)
+	{
+	  saved_log_fpos = ftell (log_fp);
+	}
+      va_start (ap, fmt);
+      cas_log_write_internal (seq_num, fmt, ap);
+      va_end (ap);
+      fputc ('\n', log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
+		       ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp != NULL)
+    {
+      va_list ap;
+
+      if (unit_start)
+	{
+	  saved_log_fpos = ftell (log_fp);
+	}
+      va_start (ap, fmt);
+      cas_log_write_internal (seq_num, fmt, ap);
+      va_end (ap);
+      fputc ('\n', log_fp);
+      cas_log_end (SQL_LOG_MODE_ALL, -1, -1);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+static void
+cas_log_write2_internal (const char *fmt, va_list ap)
+{
+  char buf[LINE_MAX], *p;
+  int len, n;
+
+  p = buf;
+  len = LINE_MAX;
+  n = vsnprintf (p, len, fmt, ap);
+  len -= n;
+  p += n;
+  fwrite (buf, (p - buf), 1, log_fp);
+}
+
+void
+cas_log_write2_nonl (const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp != NULL)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write2_internal (fmt, ap);
+      va_end (ap);
+    }
+#endif /* LIBCAS_FOR_JSP */
 }
 
 void
 cas_log_write2 (const char *fmt, ...)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp)
+  if (log_fp != NULL)
     {
       va_list ap;
 
       va_start (ap, fmt);
-      vfprintf (log_fp, fmt, ap);
+      cas_log_write2_internal (fmt, ap);
       va_end (ap);
+      fputc ('\n', log_fp);
     }
-#endif
+#endif /* LIBCAS_FOR_JSP */
 }
 
 void
-cas_log_write_query_string (char *query, char print_new_line)
+cas_log_write_value_string (char *value, int size)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp)
+  if (log_fp != NULL)
     {
-      if (shm_appl->sql_log_single_line)
-	{
-	  char *buf;
-	  ALLOC_COPY (buf, query);
-	  if (buf)
-	    {
-	      char *p;
-	      for (p = buf; *p; p++)
-		{
-		  if (*p == '\n' || *p == '\r')
-		    *p = ' ';
-		}
+      fwrite (value, size, 1, log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
 
-	      cas_log_write2 ("%s%s", buf, print_new_line ? "\n" : "");
-	      FREE_MEM (buf);
+void
+cas_log_write_query_string (char *query, int size)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (log_fp != NULL)
+    {
+      char *s;
+
+      for (s = query; *s; s++)
+	{
+	  if (*s == '\n' || *s == '\r')
+	    {
+	      fputc (' ', log_fp);
+	    }
+	  else
+	    {
+	      fputc (*s, log_fp);
 	    }
 	}
-      else
-	{
-	  cas_log_write2 ("%s%s", query, print_new_line ? "\n" : "");
-	}
+      fputc ('\n', log_fp);
     }
-#endif
+#endif /* LIBCAS_FOR_JSP */
 }
 
 #if !defined (NDEBUG)
 void
 cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
+#if 0
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp)
+  if (log_fp != NULL)
     {
+      char buf[LINE_MAX], *p;
+      int len, n;
       va_list ap;
-      time_t t;
-      struct tm lt;
-      T_TIMEVAL tv;
-
-      TIMEVAL_MAKE (&tv);
-      t = TIMEVAL_GET_SEC (&tv);
-      lt = *localtime (&t);
 
       va_start (ap, fmt);
-      fprintf (log_fp, "%02d/%02d %02d:%02d:%02d.%03d (debug) ",
-	       lt.tm_mon + 1, lt.tm_mday,
-	       lt.tm_hour, lt.tm_min, lt.tm_sec, TIMEVAL_GET_MSEC (&tv));
-      vfprintf (log_fp, fmt, ap);
-      fprintf (log_fp, "\n");
-      fflush (log_fp);
+      p = buf;
+      len = LINE_MAX;
+      n = ut_time_string (p);
+      len -= n;
+      p += n;
+      if (len > 0)
+	{
+	  n = snprintf (p, len, " (debug) file %s line %d ",
+			file_name, line_no);
+	  len -= n;
+	  p += n;
+	  if (len > 0)
+	    {
+	      n = vsnprintf (p, len, fmt, ap);
+	      len -= n;
+	      p += n;
+	    }
+	}
+      fwrite (buf, (p - buf), 1, log_fp);
+      fputc ('\n', log_fp);
       va_end (ap);
     }
+#endif /* LIBCAS_FOR_JSP */
 #endif
 }
 #endif
@@ -352,7 +513,7 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
   char *lastcmd = "";
   char *ip_str;
 
-  ct1 = *localtime (&t);
+  localtime_r (&t, &ct1);
   ct1.tm_year += 1900;
 
   fp = sql_log_open (err_log_file);
@@ -379,12 +540,12 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
   fclose (fp);
 
   cas_log_error_flag = 1;
-#endif
+#endif /* LIBCAS_FOR_JSP */
 }
 #endif
 
 int
-cas_access_log (T_TIMEVAL * start_time, int as_index, int client_ip_addr)
+cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr)
 {
 #ifndef LIBCAS_FOR_JSP
   FILE *fp;
@@ -396,14 +557,20 @@ cas_access_log (T_TIMEVAL * start_time, int as_index, int client_ip_addr)
   time_t t1, t2;
   char *p;
   char err_str[4];
-  T_TIMEVAL end;
+  struct timeval end_time;
 
-  TIMEVAL_MAKE (&end);
+  gettimeofday (&end_time, NULL);
 
-  t1 = TIMEVAL_GET_SEC (start_time);
-  t2 = TIMEVAL_GET_SEC (&end);
-  ct1 = *localtime (&t1);
-  ct2 = *localtime (&t2);
+  t1 = start_time->tv_sec;
+  t2 = end_time.tv_sec;
+#if defined (WINDOWS)
+  if (localtime_s (&ct1, &t1) != 0 || localtime_s (&ct2, &t2) != 0)
+#else /* !WINDOWS */
+  if (localtime_r (&t1, &ct1) == NULL || localtime_r (&t2, &ct2) == NULL)
+#endif /* !WINDOWS */
+    {
+      return -1;
+    }
   ct1.tm_year += 1900;
   ct2.tm_year += 1900;
 
@@ -432,25 +599,34 @@ cas_access_log (T_TIMEVAL * start_time, int as_index, int client_ip_addr)
 #endif
     sprintf (err_str, "-");
 
-  fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ %02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
-	   as_index + 1, clt_ip, clt_appl, script,
-	   TIMEVAL_GET_SEC (start_time), TIMEVAL_GET_MSEC (start_time),
-	   TIMEVAL_GET_SEC (&end), TIMEVAL_GET_MSEC (&end), ct1.tm_year,
-	   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min, ct1.tm_sec,
-	   ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour, ct2.tm_min,
-	   ct2.tm_sec,
 #ifdef CAS_ERROR_LOG
+  fprintf (fp,
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+	   as_index + 1, clt_ip, clt_appl, script,
+	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+	   ct2.tm_min, ct2.tm_sec,
 	   (int) getpid (), err_str, error_file_offset);
 #else
-	   (int) getpid (), err_str, -1);
+  fprintf (fp,
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+	   as_index + 1, clt_ip, clt_appl, script,
+	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+	   ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1);
 #endif
 
   fclose (fp);
-  return ((TIMEVAL_GET_SEC (&end)) - (TIMEVAL_GET_SEC (start_time)));
-#else
+  return (end_time.tv_sec - start_time->tv_sec);
+#else /* LIBCAS_FOR_JSP */
   return 0;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 }
 
 int
@@ -480,9 +656,9 @@ cas_log_query_info_init (int id)
   dup2 (fileno (log_fp_qp), 1);
 #endif
   return 0;
-#else
+#else /* LIBCAS_FOR_JSP */
   return 0;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 }
 
 void
@@ -513,13 +689,14 @@ cas_log_query_plan_file (int id)
 {
 #ifndef LIBCAS_FOR_JSP
   static char plan_file_name[PATH_MAX];
-  get_cubrid_file (FID_CAS_TMP_DIR, plan_file_name);
-  sprintf (plan_file_name, "%s/%d.%d.plan", plan_file_name, (int) getpid (),
-	   id);
+  char dirname[PATH_MAX];
+  get_cubrid_file (FID_CAS_TMP_DIR, dirname);
+  snprintf (plan_file_name, PATH_MAX - 1, "%s/%d.%d.plan", dirname,
+	    (int) getpid (), id);
   return plan_file_name;
-#else
+#else /* LIBCAS_FOR_JSP */
   return NULL;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 }
 
 char *
@@ -527,46 +704,16 @@ cas_log_query_histo_file (int id)
 {
 #ifndef LIBCAS_FOR_JSP
   static char histo_file_name[PATH_MAX];
-  get_cubrid_file (FID_CAS_TMP_DIR, histo_file_name);
-  sprintf (histo_file_name, "%s/%d.%d.histo", histo_file_name,
-	   (int) getpid (), id);
+  char dirname[PATH_MAX];
+  get_cubrid_file (FID_CAS_TMP_DIR, dirname);
+  snprintf (histo_file_name, PATH_MAX - 1, "%s/%d.%d.histo", dirname,
+	    (int) getpid (), id);
   return (histo_file_name);
-#else
+#else /* LIBCAS_FOR_JSP */
   return NULL;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 }
 
-
-static void
-sql_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
-{
-  char src_log[PATH_MAX], dest_log[PATH_MAX];
-  struct tm tmp_tm;
-
-  get_cubrid_file (FID_SQL_LOG_DIR, src_log);
-  sprintf (src_log, "%s%s_%d.sql.log", src_log, br_name, as_index + 1);
-  tmp_tm = *localtime (&cur_time);
-  tmp_tm.tm_year += 1900;
-  get_cubrid_file (FID_SQL_LOG_DIR, dest_log);
-  sprintf (dest_log, "%s%02d%02d%02d%02d%02d.%d.%s_%d", dest_log,
-	   tmp_tm.tm_mon + 1, tmp_tm.tm_mday,
-	   tmp_tm.tm_hour, tmp_tm.tm_min, tmp_tm.tm_sec,
-	   run_time, br_name, as_index + 1);
-  rename (src_log, dest_log);
-}
-
-static void
-sql_log_backup (char *br_name, int as_index)
-{
-  char src_filename[PATH_MAX];
-  char dest_filename[PATH_MAX];
-
-  MAKE_SQL_LOG_FILENAME (src_filename, br_name, as_index);
-  sprintf (dest_filename, "%s.bak", src_filename);
-
-  unlink (dest_filename);
-  rename (src_filename, dest_filename);
-}
 
 static FILE *
 sql_log_open (char *log_file_name)
@@ -614,7 +761,6 @@ sql_log_open (char *log_file_name)
     }
   return fp;
 }
-
 
 static void
 cas_log_error_handler (unsigned int eid)

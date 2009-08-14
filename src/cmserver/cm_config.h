@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -28,9 +28,7 @@
 #ident "$Id$"
 
 #include <stdio.h>
-#ifdef DIAG_DEVEL
 #include "perf_monitor.h"
-#endif
 
 #define MAX_INSTALLED_DB 20
 #define MAX_UNICAS_PROC 40
@@ -84,14 +82,11 @@ typedef enum
   FID_LOCK_SVR_LOG,
   FID_LOCK_DBMT_PASS,
   FID_UC_AUTO_RESTART_LOG,
-  FID_PSERVER_PID_LOCK
-#ifdef DIAG_DEVEL
-    ,
+  FID_PSERVER_PID_LOCK,
   FID_DIAG_ACTIVITY_LOG,
   FID_DIAG_STATUS_TEMPLATE,
   FID_DIAG_ACTIVITY_TEMPLATE,
   FID_DIAG_SERVER_PID,
-#endif
 } T_DBMT_FILE_ID;
 
 typedef struct
@@ -123,9 +118,7 @@ typedef struct
   int iAutoStart_UniCAS;
 
   int hmtab1, hmtab2, hmtab3, hmtab4;
-#ifdef DIAG_DEVEL
   DIAG_SYS_CONFIG diag_config;
-#endif
 } sys_config;
 
 void sys_config_init (void);

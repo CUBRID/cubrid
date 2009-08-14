@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -81,6 +81,8 @@
 #define COMM_CHAR_SERVER_KILL_LOWER      's'
 #define COMM_CHAR_REPL_SERVER_KILL_CAPS  'K'
 #define COMM_CHAR_REPL_AGENT_KILL_LOWER  'k'
+#define COMM_CHAR_SERVER_HA_MODE_CAPS    'C'
+#define COMM_CHAR_SERVER_HA_MODE_LOWER   'c'
 
 typedef enum
 {
@@ -113,11 +115,13 @@ static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
 static int process_server_info_pid (CSS_CONN_ENTRY * conn,
 				    const char *hostname, const char *server,
 				    int server_type);
+static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
+
 static bool start_info (CSS_CONN_ENTRY * conn);
 static void process_batch_command (CSS_CONN_ENTRY * conn);
 
-static const char *commdb_Arg_host_name = NULL;
-static const char *commdb_Arg_server_name = NULL;
+static char *commdb_Arg_host_name = NULL;
+static char *commdb_Arg_server_name = NULL;
 static int commdb_Arg_halt_shutdown = false;
 static int commdb_Arg_shutdown_time = 0;
 static int commdb_Arg_kill_all = false;
@@ -125,8 +129,10 @@ static int commdb_Arg_print_info = false;
 static int commdb_Arg_print_driver_info = false;
 static int commdb_Arg_print_repl_info = false;
 static int commdb_Arg_print_all_info = false;
-static const char *commdb_Arg_repl_server_name = NULL;
-static const char *commdb_Arg_repl_agent_name = NULL;
+static char *commdb_Arg_repl_server_name = NULL;
+static char *commdb_Arg_repl_agent_name = NULL;
+static int commdb_Arg_ha_mode_server_info = false;
+static char *commdb_Arg_ha_mode_server_name = NULL;
 
 /*
  * send_request_no_args() - send request without argument
@@ -325,7 +331,7 @@ static int
 return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   int size;
-  int *buffer;
+  int *buffer = NULL;
 
   if (css_receive_data (conn, request_id, (char **) &buffer, &size)
       == NO_ERRORS)
@@ -336,6 +342,10 @@ return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  free_and_init (buffer);
 	  return (size);
 	}
+    }
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
     }
   return (0);
 }
@@ -490,7 +500,7 @@ process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes)
 static void
 process_repl_kill (CSS_CONN_ENTRY * conn, char *slave_name, int pid)
 {
-  char *reply_buffer;
+  char *reply_buffer = NULL;
   int size = 0;
   unsigned short rid;
 
@@ -500,12 +510,15 @@ process_repl_kill (CSS_CONN_ENTRY * conn, char *slave_name, int pid)
   if (size)
     {
       printf ("\n%s\n", reply_buffer);
-      free_and_init (reply_buffer);
 
       if (pid > 0)
 	{
 	  master_util_wait_proc_terminate (pid);
 	}
+    }
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
     }
 }
 
@@ -522,7 +535,7 @@ process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes,
 		    int pid)
 {
   int net_minutes;
-  char *reply_buffer;
+  char *reply_buffer = NULL;
   int size = 0;
   unsigned short rid;
 
@@ -534,14 +547,46 @@ process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes,
   if (size)
     {
       printf ("\n%s\n", reply_buffer);
-      free_and_init (reply_buffer);
 
       if (pid > 0)
 	{
 	  master_util_wait_proc_terminate (pid);
 	}
     }
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
 }
+
+/*
+ * process_ha_server_mode() - process ha server mode
+ *   return:  none
+ *   conn(in): connection info
+ *   server_name(in): target process name
+ */
+static void
+process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+  unsigned short rid;
+
+  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE,
+			      server_name, strlen (server_name) + 1);
+  return_string (conn, rid, &reply_buffer, &size);
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
 
 /*
  * process_server_info_pid() - find process id from server status
@@ -656,9 +701,12 @@ start_info (CSS_CONN_ENTRY * conn)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING12));
-      if (fgets (input_buffer, sizeof (input_buffer), stdin) == NULL)
-	return false;
-      sscanf (input_buffer, "%d", &minutes);
+      if (scanf ("%d", &minutes) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       process_master_shutdown (conn, minutes);
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING13),
@@ -675,17 +723,23 @@ start_info (CSS_CONN_ENTRY * conn)
       || (*input_buffer == COMM_CHAR_SERVER_KILL_LOWER))
     {
       int pid;
-      char buffer2[512];
 
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (fgets (input_buffer, sizeof (input_buffer), stdin) == NULL)
-	return false;
+      if (scanf ("%511s", input_buffer) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
-	return false;
-      sscanf (buffer2, "%d", &minutes);
+      if (scanf ("%d", &minutes) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       pid = process_server_info_pid (conn, host_name, input_buffer,
 				     COMM_SERVER);
       process_slave_kill (conn, input_buffer, minutes, pid);
@@ -694,18 +748,24 @@ start_info (CSS_CONN_ENTRY * conn)
   if (*input_buffer == COMM_CHAR_REPL_SERVER_KILL_CAPS)
     {
       int pid;
-      char buffer2[512];
 
       input_buffer[0] = '+';
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (fgets (input_buffer + 1, sizeof (input_buffer) - 1, stdin) == NULL)
-	return false;
+      if (scanf ("%511s", input_buffer + 1) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
-	return false;
-      sscanf (buffer2, "%d", &minutes);
+      if (scanf ("%d", &minutes) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       pid = process_server_info_pid (conn, host_name, input_buffer,
 				     COMM_REPL_SERVER);
       process_repl_kill (conn, input_buffer, pid);
@@ -714,23 +774,45 @@ start_info (CSS_CONN_ENTRY * conn)
   if (*input_buffer == COMM_CHAR_REPL_AGENT_KILL_LOWER)
     {
       int pid;
-      char buffer2[512];
 
       input_buffer[0] = '&';
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (fgets (input_buffer + 1, sizeof (input_buffer) - 1, stdin) == NULL)
-	return false;
+      if (scanf ("%511s", input_buffer + 1) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (fgets (buffer2, sizeof (buffer2), stdin) == NULL)
-	return false;
-      sscanf (buffer2, "%d", &minutes);
+      if (scanf ("%d", &minutes) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
       pid = process_server_info_pid (conn, host_name, input_buffer,
 				     COMM_REPL_AGENT);
       process_repl_kill (conn, input_buffer, pid);
       return true;
     }
+  if ((*input_buffer == COMM_CHAR_SERVER_HA_MODE_CAPS)
+      || (*input_buffer == COMM_CHAR_SERVER_HA_MODE_LOWER))
+    {
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
+			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING4),
+	      "Name of server to check HA mode :");
+      if (scanf ("%511s", input_buffer) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
+      process_ha_server_mode (conn, input_buffer);
+      return true;
+    }
+
   printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			  MSGCAT_UTIL_SET_COMMDB,
 			  COMMDB_STRING8), input_buffer);
@@ -760,9 +842,9 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     {
       char repl_name[DB_MAX_IDENTIFIER_LENGTH];
 
-      repl_name[0] = '+';
-      memcpy (repl_name + 1, commdb_Arg_repl_server_name,
-	      strlen (commdb_Arg_repl_server_name) + 1);
+      snprintf (repl_name, DB_MAX_IDENTIFIER_LENGTH - 1, "+%s",
+		commdb_Arg_repl_server_name);
+
       pid = process_server_info_pid (conn, hostname,
 				     (char *) commdb_Arg_repl_server_name,
 				     COMM_REPL_SERVER);
@@ -772,12 +854,12 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     {
       char repl_name[DB_MAX_IDENTIFIER_LENGTH];
 
-      repl_name[0] = '&';
-      memcpy (repl_name + 1, commdb_Arg_repl_agent_name,
-	      strlen (commdb_Arg_repl_agent_name) + 1);
-      pid = process_server_info_pid (conn, hostname,
-				     (char *) commdb_Arg_repl_agent_name,
-				     COMM_REPL_AGENT);
+      snprintf (repl_name, sizeof (repl_name), "&%s",
+		commdb_Arg_repl_agent_name);
+      pid =
+	process_server_info_pid (conn, hostname,
+				 (char *) commdb_Arg_repl_agent_name,
+				 COMM_REPL_AGENT);
       process_repl_kill (conn, repl_name, pid);
     }
   if (commdb_Arg_kill_all)
@@ -792,6 +874,8 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     process_status_query (hostname, conn, COMM_REPL_SERVER, NULL);
   if (commdb_Arg_print_all_info)
     process_status_query (hostname, conn, COMM_ALL, NULL);
+  if (commdb_Arg_ha_mode_server_info)
+    process_ha_server_mode (conn, (char *) commdb_Arg_ha_mode_server_name);
 }
 
 /*
@@ -815,6 +899,7 @@ main (int argc, char **argv)
     {COMMDB_SHUTDOWN_REPL_SERVER_L, 1, 0, COMMDB_SHUTDOWN_REPL_SERVER_S},
     {COMMDB_SHUTDOWN_REPL_AGENT_L, 1, 0, COMMDB_SHUTDOWN_REPL_AGENT_S},
     {COMMDB_SHUTDOWN_ALL_L, 0, 0, COMMDB_SHUTDOWN_ALL_S},
+    {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
     {0, 0, 0, 0}
   };
@@ -873,16 +958,40 @@ main (int argc, char **argv)
 	  commdb_Arg_kill_all = true;
 	  break;
 	case 'S':
+	  if (commdb_Arg_server_name != NULL)
+	    {
+	      free (commdb_Arg_server_name);
+	    }
 	  commdb_Arg_server_name = strdup (optarg);
 	  break;
 	case 'K':
+	  if (commdb_Arg_repl_server_name != NULL)
+	    {
+	      free (commdb_Arg_repl_server_name);
+	    }
 	  commdb_Arg_repl_server_name = strdup (optarg);
 	  break;
 	case 'k':
+	  if (commdb_Arg_repl_agent_name != NULL)
+	    {
+	      free (commdb_Arg_repl_agent_name);
+	    }
 	  commdb_Arg_repl_agent_name = strdup (optarg);
 	  break;
 	case 'h':
+	  if (commdb_Arg_host_name != NULL)
+	    {
+	      free (commdb_Arg_host_name);
+	    }
 	  commdb_Arg_host_name = strdup (optarg);
+	  break;
+	case 'c':
+	  if (commdb_Arg_ha_mode_server_name != NULL)
+	    {
+	      free (commdb_Arg_ha_mode_server_name);
+	    }
+	  commdb_Arg_ha_mode_server_name = strdup (optarg);
+	  commdb_Arg_ha_mode_server_info = true;
 	  break;
 	default:
 	  goto usage;
@@ -931,7 +1040,11 @@ main (int argc, char **argv)
     }
   else
     {
-      commdb_Arg_host_name = hostname;
+      if (commdb_Arg_host_name != NULL)
+	{
+	  free (commdb_Arg_host_name);
+	}
+      commdb_Arg_host_name = strdup (hostname);
       /* command mode */
       process_batch_command (conn);
     }
@@ -941,11 +1054,30 @@ error:
   css_windows_shutdown ();
 #endif /* WINDOWS */
   msgcat_final ();
-  return status;
+  goto end;
 
 usage:
   printf (msgcat_message
 	  (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
   msgcat_final ();
-  return EXIT_FAILURE;
+  status = EXIT_FAILURE;
+
+end:
+  if (commdb_Arg_server_name != NULL)
+    {
+      free_and_init (commdb_Arg_server_name);
+    }
+  if (commdb_Arg_repl_server_name != NULL)
+    {
+      free_and_init (commdb_Arg_repl_server_name);
+    }
+  if (commdb_Arg_repl_agent_name != NULL)
+    {
+      free_and_init (commdb_Arg_repl_agent_name);
+    }
+  if (commdb_Arg_host_name != NULL)
+    {
+      free_and_init (commdb_Arg_host_name);
+    }
+  return status;
 }

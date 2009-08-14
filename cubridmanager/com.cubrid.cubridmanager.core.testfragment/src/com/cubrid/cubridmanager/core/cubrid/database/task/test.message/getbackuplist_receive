@@ -1,0 +1,7 @@
+task:getbackuplist
+status:success
+note:none
+level0:C:\CUBRID\databases\testdb\backup\testdb_backup_lv0
+level1:C:\CUBRID\databases\testdb\backup\testdb_backup_lv1
+level2:none
+

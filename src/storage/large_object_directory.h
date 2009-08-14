@@ -104,8 +104,8 @@ typedef struct largeobjmgr_dirheader LARGEOBJMGR_DIRHEADER;
 struct largeobjmgr_dirheader
 {
   LOID loid;			/* LOM identifier */
-  FSIZE_T tot_length;		/* Total large object length          */
-  FSIZE_T pg_tot_length;	/* Total length of data represented by
+  INT64 tot_length;		/* Total large object length          */
+  INT64 pg_tot_length;		/* Total length of data represented by
 				 * this page
 				 */
   int index_level;		/* Directory level:
@@ -128,7 +128,7 @@ typedef struct largeobjmgr_dirmap_entry LARGEOBJMGR_DIRMAP_ENTRY;
 struct largeobjmgr_dirmap_entry
 {
   VPID vpid;			/* Directory page identifier */
-  FSIZE_T length;		/* Length represented by this index item */
+  INT64 length;			/* Length represented by this index item */
 };				/* Directory Index Entry Structure */
 
 
@@ -176,8 +176,8 @@ struct largeobjmgr_dirstate
 				 * onto directory pages.
 				 */
   SCAN_POSITION pos;		/* Directory state position */
-  FSIZE_T tot_length;		/* Current total length of large object */
-  FSIZE_T lo_offset;		/* Current large object offset */
+  INT64 tot_length;		/* Current total length of large object */
+  INT64 lo_offset;		/* Current large object offset */
   VPID goodvpid_fordata;	/* A hint for a data page with space.
 				 * Usually the last allocated data page.
 				 */
@@ -190,7 +190,7 @@ struct largeobjmgr_dirstate_pos
 {
   int opr_mode;			/* LOM operation mode */
   SCAN_POSITION pos;		/* Directory state position */
-  int lo_offset;		/* Current large object offset */
+  INT64 lo_offset;		/* Current large object offset */
   VPID firstdir_vpid;		/* Index page identifier */
   int firstdir_idx;		/* Index page entry index */
   VPID curdir_vpid;		/* Directory page identifier */
@@ -216,12 +216,12 @@ extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  LOID * loid);
 extern bool largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid);
 extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid,
-				       FSIZE_T offset, int opr_mode,
+				       INT64 offset, int opr_mode,
 				       LARGEOBJMGR_DIRSTATE * ds);
 extern void largeobjmgr_dir_close (THREAD_ENTRY * thread_p,
 				   LARGEOBJMGR_DIRSTATE * ds);
-extern FSIZE_T largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p,
-					     LOID * loid);
+extern INT64 largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p,
+					   LOID * loid);
 extern SCAN_CODE largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
 						 LARGEOBJMGR_DIRSTATE * ds);
 extern void largeobjmgr_dir_get_pos (LARGEOBJMGR_DIRSTATE * ds,

@@ -1,25 +1,71 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ *
+ *   This program is free software; you can redistribute it and/or modify 
+ *   it under the terms of the GNU General Public License as published by 
+ *   the Free Software Foundation; either version 2 of the License, or 
+ *   (at your option) any later version. 
+ *
+ *  This program is distributed in the hope that it will be useful, 
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ *  GNU General Public License for more details. 
+ *
+ *  You should have received a copy of the GNU General Public License 
+ *  along with this program; if not, write to the Free Software 
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *
+ */
+
+/* 
+ * Following is Doug Lea's memory allocator with USE_MALLOC_INSTEAD 
+ * feature amendment
+ *
+ * USE_MALLOC_INSTEAD
+ * When this feature is enabled, uses system malloc/free instead of mmap/munmap.
+ * 
+ * ENABLE_SEPARATE_MMAP_EVENT_TRACE
+ * Fix the problem that mmaped (malloced when USE_MALLOC_INSTEAD is 1)
+ * memory region (which is returned by mmap_alloc function) is not
+ * automatically freed when destroy_mspace is called.
+ * 
+ */
+
 #include <stdlib.h>
 #include <stddef.h>
 
 #include "customheaps.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 /* -------------------------------------------------------------------------- */
 /* DL MALLOC ADAPTATION AND MODIFICATION LAYER */
 /* -------------------------------------------------------------------------- */
-/* 
- * use malloc/free instead of mmap/munmap 
+/*
+ * use malloc/free instead of mmap/munmap
  */
 
- #define USE_MALLOC_INSTEAD 1
+#define USE_MALLOC_INSTEAD 1
+#define MOCK_LEA_HEAP_ID ((UINTPTR)(-1))
 #define system_malloc my_malloc
 #define system_free my_free
 
+/*
+ * my_malloc - system_malloc hook function 
+ *    return: memory allocated
+ *    sz(in): request memory size
+ */
 static void *
 my_malloc (size_t sz)
 {
   return malloc (sz);
 }
 
+/*
+ * my_free -  system_free hook function
+ *    return: memory allocated
+ *    p(in):
+ */
 static int
 my_free (void *p)
 {
@@ -27,13 +73,13 @@ my_free (void *p)
   return 0;
 }
 
-/* 
- * override  default DEFAULT_GRANULARITY 
+/*
+ * override  default DEFAULT_GRANULARITY
  */
 #define DEFAULT_GRANULARITY (32U*1024U)
 
-/* 
- * prevent mremap use 
+/*
+ * prevent mremap use
  */
 #if !defined(WINDOWS)
 #if defined(linux)
@@ -41,15 +87,15 @@ my_free (void *p)
 #endif
 #endif
 
-/* 
- * use mspace only 
+/*
+ * use mspace only
  */
 #define ONLY_MSPACES 1
 
-/* 
- * Fix the problem that mmaped (malloced when USE_MALLOC_INSTEAD is 1) 
- * memory region (which is returned by mmap_alloc function) is not 
- * automatically freed when destroy_mspace is called. 
+/*
+ * Fix the problem that mmaped (malloced when USE_MALLOC_INSTEAD is 1)
+ * memory region (which is returned by mmap_alloc function) is not
+ * automatically freed when destroy_mspace is called.
  */
 typedef struct mmap_trace_h_s MMAP_TRACE_H;
 struct mmap_trace_h_s
@@ -109,11 +155,19 @@ struct hl_mspace_s
    +-----------+ <-- m
    |  mstate   |
    | ......... |
-                 
+
  */
 #define mspace2hlmspace(m) \
   (HL_MSPACE *)((char *)mem2chunk(m) - ((sizeof (HL_MSPACE) + 7U) & ~7U))
 
+/*
+ * mmap_called - ENABLE_SEPARATE_MMAP_EVENT_TRACE hook function called after
+ *               large chunk allocated
+ *    return: void
+ *    m(in): lea heap mspace pointer
+ *    ptr(in): allocated chunk
+ *    h(in): embedded trace header
+ */
 static void
 mmap_called (void *m, void *ptr, MMAP_TRACE_H * h)
 {
@@ -122,6 +176,14 @@ mmap_called (void *m, void *ptr, MMAP_TRACE_H * h)
   MMAP_TRACE_H_ADD (h, &hms->header);
 }
 
+/*
+ * munmap_is_to_be_called - ENABLE_SEPARATE_MMAP_EVENT_TRACE hook function 
+ *                          called before large chunk is to be freed.
+ *    return: void
+ *    m(in): lea heap mspace pointer
+ *    ptr(in): memory chunk
+ *    h(in): embedded trace header
+ */
 static void
 munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h)
 {
@@ -133,32 +195,48 @@ munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h)
 /* EXPORTED FUNCTIONS */
 #define LEA_HEAP_BASE_SIZE (64U*1024U)
 
+/*
+ * hl_register_lea_heap - register new lea heap instance
+ *    return: heap handle
+ */
 UINTPTR
 hl_register_lea_heap (void)
 {
-  HL_MSPACE *hms;
-
-  hms = malloc (LEA_HEAP_BASE_SIZE);
-  if (hms == NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      return 0;
+      return MOCK_LEA_HEAP_ID;
     }
-
-  hms->base = (char *) hms + ((sizeof (*hms) + 7U) & ~7U);
-  hms->base_size =
-    LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
-  MMAP_TRACE_H_INIT (&hms->header, NULL);
-
-  hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
-  if (hms->ms == NULL)
+  else
     {
-      free (hms);
-      return 0;
-    }
+      HL_MSPACE *hms;
 
-  return ((UINTPTR) hms);
+      hms = malloc (LEA_HEAP_BASE_SIZE);
+      if (hms == NULL)
+	{
+	  return 0;
+	}
+
+      hms->base = (char *) hms + ((sizeof (*hms) + 7U) & ~7U);
+      hms->base_size =
+	LEA_HEAP_BASE_SIZE - (size_t) ((char *) hms->base - (char *) hms);
+      MMAP_TRACE_H_INIT (&hms->header, NULL);
+
+      hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+      if (hms->ms == NULL)
+	{
+	  free (hms);
+	  return 0;
+	}
+
+      return ((UINTPTR) hms);
+    }
 }
 
+/*
+ * destroy_mspace_internal - see unregister_leap_heap 
+ *    return: void
+ *    hms(in): leap heap mspace pointer
+ */
 static void
 destroy_mspace_internal (HL_MSPACE * hms)
 {
@@ -174,62 +252,142 @@ destroy_mspace_internal (HL_MSPACE * hms)
 }
 
 
+/*
+ * hl_clear_lea_heap - clears lea heap
+ *    return: void
+ *    heap_id(in): lea heap handle
+ */
 void
 hl_clear_lea_heap (UINTPTR heap_id)
 {
-  HL_MSPACE *hms = (HL_MSPACE *) heap_id;
-
-  if (hms != NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      destroy_mspace_internal (hms);
-      hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
-      assert (hms->ms != NULL);
+      assert (heap_id == MOCK_LEA_HEAP_ID);
+    }
+  else
+    {
+      HL_MSPACE *hms = (HL_MSPACE *) heap_id;
+
+      if (hms != NULL)
+	{
+	  destroy_mspace_internal (hms);
+	  hms->ms = create_mspace_with_base (hms->base, hms->base_size, 0);
+	  assert (hms->ms != NULL);
+	}
     }
 }
 
+/*
+ * hl_unregister_lea_heap - destoyes lea heap
+ *    return: void
+ *    heap_id(in): lea heap handle
+ */
 void
 hl_unregister_lea_heap (UINTPTR heap_id)
 {
-  HL_MSPACE *hms = (HL_MSPACE *) heap_id;
-
-  if (hms != NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      destroy_mspace_internal (hms);
-      free (hms);
+      assert (heap_id == MOCK_LEA_HEAP_ID);
+    }
+  else
+    {
+      HL_MSPACE *hms = (HL_MSPACE *) heap_id;
+
+      if (hms != NULL)
+	{
+	  destroy_mspace_internal (hms);
+	  free (hms);
+	}
     }
 }
 
+/*
+ * hl_lea_alloc - alloc
+ *    return: pointer to allocated memory
+ *    heap_id(in): lea heap handle
+ *    sz(in): requested size
+ */
 void *
 hl_lea_alloc (UINTPTR heap_id, size_t sz)
 {
-  HL_MSPACE *hms = (HL_MSPACE *) heap_id;
-
-  if (hms != NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      return mspace_malloc (hms->ms, sz);
+      return malloc (sz);
     }
-  return NULL;
+  else
+    {
+      HL_MSPACE *hms = (HL_MSPACE *) heap_id;
+      void *p;
+
+      if (hms != NULL)
+	{
+	  p = mspace_malloc (hms->ms, sz);
+	  if (p == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
+	    }
+
+	  return p;
+	}
+      return NULL;
+    }
 }
 
+/*
+ * hl_lea_realloc - realloc
+ *    return: pointer to re-allocated memory
+ *    heap_id(in): lea heap handle
+ *    ptr(in): pointer to memory block allocated before
+ *    sz(in): requested size
+ */
 void *
 hl_lea_realloc (UINTPTR heap_id, void *ptr, size_t sz)
 {
-  HL_MSPACE *hms = (HL_MSPACE *) heap_id;
-
-  if (hms != NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      return mspace_realloc (hms->ms, ptr, sz);
+      return realloc (ptr, sz);
     }
-  return NULL;
+  else
+    {
+      HL_MSPACE *hms = (HL_MSPACE *) heap_id;
+      void *p;
+
+      if (hms != NULL)
+	{
+	  p = mspace_realloc (hms->ms, ptr, sz);
+	  if (p == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sz);
+	    }
+
+	  return p;
+	}
+      return NULL;
+    }
 }
 
+/*
+ * hl_lea_free - free
+ *    return: void
+ *    heap_id(in): lea heap handle
+ *    ptr(in): pointer to memory block allocated before
+ */
 void
 hl_lea_free (UINTPTR heap_id, void *ptr)
 {
-  HL_MSPACE *hms = (HL_MSPACE *) heap_id;
-
-  if (hms != NULL)
+  if (PRM_USE_SYSTEM_MALLOC)
     {
-      mspace_free (hms->ms, ptr);
+      free (ptr);
+    }
+  else
+    {
+      HL_MSPACE *hms = (HL_MSPACE *) heap_id;
+
+      if (hms != NULL)
+	{
+	  mspace_free (hms->ms, ptr);
+	}
     }
 }

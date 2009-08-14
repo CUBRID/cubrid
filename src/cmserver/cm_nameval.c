@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -68,19 +68,22 @@ nv_locate (nvplist * ref, const char *marker, int *index, int *ilen)
   for (i = 0; i < ref->nvplist_leng; ++i)
     {
       nbuf = dst_buffer (ref->nvpairs[i]->name);
-      if (nbuf != NULL && strcmp ("open", nbuf) == 0)
+      if (nbuf != NULL)
 	{
-	  vbuf = dst_buffer (ref->nvpairs[i]->value);
-	  if (vbuf != NULL && strcmp (vbuf, marker) == 0)
+	  if (strcmp ("open", nbuf) == 0)
 	    {
-	      *index = i + 1;
+	      vbuf = dst_buffer (ref->nvpairs[i]->value);
+	      if (vbuf != NULL && strcmp (vbuf, marker) == 0)
+		{
+		  *index = i + 1;
+		}
 	    }
-	}
-      else if ((*index != -1) && (strcmp ("close", nbuf) == 0))
-	{
-	  vbuf = dst_buffer (ref->nvpairs[i]->value);
-	  if (vbuf != NULL && strcmp (vbuf, marker) == 0)
-	    break;
+	  else if ((*index != -1) && (strcmp ("close", nbuf) == 0))
+	    {
+	      vbuf = dst_buffer (ref->nvpairs[i]->value);
+	      if (vbuf != NULL && strcmp (vbuf, marker) == 0)
+		break;
+	    }
 	}
       if (*index != -1)
 	(*ilen)++;
@@ -119,10 +122,16 @@ nv_add_nvp (nvplist * ref, const char *name, const char *value)
 
   /* check parameters */
   if ((ref == NULL) || (name == NULL))
-    return -1;
+    {
+      return -1;
+    }
 
   /* build name-value pair */
   nv = (nvpair *) malloc (sizeof (nvpair));
+  if (nv == NULL)
+    {
+      return -1;
+    }
   nv->name = dst_create ();
   nv->value = dst_create ();
   dst_append (nv->name, name, (name == NULL) ? 0 : strlen (name));
@@ -148,6 +157,15 @@ nv_add_nvp_int (nvplist * ref, const char *name, int value)
   return (nv_add_nvp (ref, name, strbuf));
 }
 
+
+int
+nv_add_nvp_int64 (nvplist * ref, const char *name, INT64 value)
+{
+  char strbuf[32];
+  sprintf (strbuf, "%lld", value);
+  return (nv_add_nvp (ref, name, strbuf));
+}
+
 int
 nv_add_nvp_float (nvplist * ref, const char *name, float value,
 		  const char *fmt)
@@ -162,8 +180,15 @@ nv_add_nvp_time (nvplist * ref, const char *name, time_t t, const char *fmt,
 		 int type)
 {
   char strbuf[64];
-  time_to_str (t, fmt, strbuf, type);
-  return (nv_add_nvp (ref, name, strbuf));
+  if (t == 0)
+    {
+      return (nv_add_nvp (ref, name, ""));
+    }
+  else
+    {
+      time_to_str (t, fmt, strbuf, type);
+      return (nv_add_nvp (ref, name, strbuf));
+    }
 }
 
 /*
@@ -245,6 +270,11 @@ nv_destroy (nvplist * ref)
 {
   int i;
 
+  if (ref == NULL)
+    {
+      return;
+    }
+
   for (i = 0; i < ref->nvplist_size; ++i)
     {
       if (ref->nvpairs[i] != NULL)
@@ -304,16 +334,23 @@ nv_readfrom (nvplist * ref, char *filename)
   int fd;
 
   if (stat (filename, &statbuf) != 0 || statbuf.st_size <= 0)
-    return ERR_STAT;
+    {
+      return ERR_STAT;
+    }
 
   buf = (char *) malloc (statbuf.st_size + 1);
   if (buf == NULL)
-    return ERR_MEM_ALLOC;
+    {
+      return ERR_MEM_ALLOC;
+    }
   memset (buf, 0, statbuf.st_size + 1);
 
   fd = open (filename, O_RDONLY);
   if (fd < 0)
-    return ERR_TMPFILE_OPEN_FAIL;
+    {
+      free (buf);
+      return ERR_TMPFILE_OPEN_FAIL;
+    }
 
   remain_read = statbuf.st_size;
   p = buf;
@@ -388,12 +425,16 @@ _nv_search (nvplist * ref, const char *name)
   int i;
   for (i = 0; i < ref->nvplist_size; ++i)
     {
-      if ((ref->nvpairs[i] != NULL) &&
-	  ((int) strlen (name) == dst_length (ref->nvpairs[i]->name)) &&
-	  (!strncmp
-	   (name, dst_buffer (ref->nvpairs[i]->name), strlen (name))))
+      if (ref->nvpairs[i] != NULL)
 	{
-	  return ref->nvpairs[i];
+	  char *dstbuf = dst_buffer (ref->nvpairs[i]->name);
+
+	  if (((int) strlen (name) == dst_length (ref->nvpairs[i]->name)) &&
+	      (dstbuf != NULL) &&
+	      (strncmp (name, dstbuf, strlen (name)) == 0))
+	    {
+	      return ref->nvpairs[i];
+	    }
 	}
     }
 
@@ -410,8 +451,16 @@ nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm,
 	 const char *dm, const char *em)
 {
   if ((ref == NULL) || (defsize < 1))
-    return -1;
+    {
+      return -1;
+    }
+
   ref->nvpairs = (nvpair **) malloc (sizeof (nvpair) * defsize);
+  if (ref->nvpairs == NULL)
+    {
+      return -1;
+    }
+
   memset (ref->nvpairs, 0, sizeof (nvpair *) * defsize);
   ref->nvplist_size = defsize;
   ref->nvplist_leng = 0;

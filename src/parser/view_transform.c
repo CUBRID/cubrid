@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -234,6 +234,8 @@ static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree,
 				      void *arg, int *continue_walk);
 static bool pt_sargable_term (PARSER_CONTEXT * parser, PT_NODE * term,
 			      FIND_ID_INFO * infop);
+static int pt_check_copypush_subquery (PARSER_CONTEXT * parser,
+				       PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec,
 			       PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -469,6 +471,9 @@ static void mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead,
 
 
 static DB_OBJECT **mq_fetch_real_classes (DB_OBJECT * vclass);
+
+static const char *get_authorization_name (DB_AUTH auth);
+
 
 
 /*
@@ -1118,6 +1123,13 @@ mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat,
 	{
 	  temp = (DB_OBJECT **) parser_alloc
 	    (parser, (*max + MAX_STACK_OBJECTS) * sizeof (DB_OBJECT *));
+
+	  if (temp == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_alloc");
+	      return false;
+	    }
+
 	  memcpy (temp, *classes, *max * sizeof (DB_OBJECT *));
 	  /* don't keep dangling pointers */
 	  memset (*classes, 0, *max * sizeof (DB_OBJECT *));
@@ -1257,6 +1269,7 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
   if (!query_spec_from)
     {
       PT_INTERNAL_ERROR (parser, "translate");
+      return NULL;
     }
 
   if (statement->node_type != PT_SELECT)
@@ -1907,7 +1920,7 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 	    {			/* authorization fails */
 	      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME,
 			   MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-			   db_auth_name[what_for],
+			   get_authorization_name (what_for),
 			   db_get_class_name (entity->info.name.db_object));
 	      return error;
 	    }
@@ -1926,7 +1939,7 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 }
 
 /*
- * mq_check_subqueries_for_prepare () - 
+ * mq_check_subqueries_for_prepare () -
  *   return:
  *   parser(in):
  *   node(in):
@@ -2030,7 +2043,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME,
 				   MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-				   db_auth_name[what_for],
+				   get_authorization_name (what_for),
 				   db_get_class_name
 				   (my_class->info.name.db_object));
 		      return NULL;
@@ -2052,10 +2065,10 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 			 (DB_AUTH) what_for);
 		    }
 
-		  if (subquery)
+		  if (subquery != NULL)
 		    {
 
-		      if (parser->error_msgs)
+		      if (parser->error_msgs || tree == NULL)
 			{
 			  /* an error was discovered parsing the sub query. */
 			  return NULL;
@@ -2078,9 +2091,9 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 			       parser_print_tree_list (parser, substituted));
 #endif /* CUBRID_DEBUG */
 
-		      if (substituted)
+		      if (substituted != NULL)
 			{
-			  if (tree_union)
+			  if (tree_union != NULL)
 			    {
 			      if (what_for == DB_AUTH_SELECT)
 				{
@@ -2132,7 +2145,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  /* at least some of the classes were virtual
 	     were any "real" classes members of the class spec? */
 	  real_part = NULL;
-	  if (real_classes)
+	  if (real_classes != NULL)
 	    {
 	      real_flat_classes =
 		parser_copy_tree_list (parser, real_classes);
@@ -2158,9 +2171,9 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 
 	  /* if the class spec had mixed real and virtual parts,
 	     recombine them. */
-	  if (real_part)
+	  if (real_part != NULL)
 	    {
-	      if (tree_union)
+	      if (tree_union != NULL)
 		{
 		  tree = mq_union_bump_correlation (parser,
 						    real_part, tree_union);
@@ -2172,13 +2185,14 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  tree = real_part;
 		}
 	    }
-	  else if (tree_union)
+	  else if (tree_union != NULL)
 	    {
 	      tree = tree_union;
 	    }
 	  else
 	    {
-	      if (tree->node_type != PT_SELECT
+	      if (tree
+		  && tree->node_type != PT_SELECT
 		  && tree->node_type != PT_UNION
 		  && tree->node_type != PT_DIFFERENCE
 		  && tree->node_type != PT_INTERSECTION)
@@ -2680,6 +2694,58 @@ pt_sargable_term (PARSER_CONTEXT * parser, PT_NODE * term,
 }
 
 /*
+ * pt_check_copypush_subquery () - check derived subquery to push sargable term
+ *                                 into the derived subquery
+ *   return:
+ *   parser(in):
+ *   query(in):
+ *
+ * Note:
+ *  assumes cnf conversion is done
+ */
+static int
+pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  int copy_cnt;
+
+  if (query == NULL)
+    {
+      return 0;
+    }
+
+  /* init */
+  copy_cnt = 0;
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      if (pt_has_aggregate (parser, query))
+	{
+	  if (query->info.query.q.select.group_by == NULL)
+	    {
+	      copy_cnt++;	/* found not-pushable query */
+	    }
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      copy_cnt += pt_check_copypush_subquery (parser,
+					      query->info.query.q.union_.
+					      arg1);
+      copy_cnt +=
+	pt_check_copypush_subquery (parser, query->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }				/* switch (query->node_type) */
+
+  return copy_cnt;
+}
+
+/*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
  *   parser(in):
@@ -2697,7 +2763,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query,
 {
   PT_NODE *push_term_list;
 
-  if (!query || !term_list)
+  if (query == NULL || term_list == NULL)
     {
       return;
     }
@@ -2720,10 +2786,13 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query,
       /* copy and put it in query's search condition */
       if (pt_has_aggregate (parser, query))
 	{
-	  /* push into HAVING clause */
-	  query->info.query.q.select.having =
-	    parser_append_node (push_term_list,
-				query->info.query.q.select.having);
+	  if (query->info.query.q.select.group_by)
+	    {
+	      /* push into HAVING clause */
+	      query->info.query.q.select.having =
+		parser_append_node (push_term_list,
+				    query->info.query.q.select.having);
+	    }
 	}
       else
 	{
@@ -2765,7 +2834,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
 				   PT_NODE * new_query, FIND_ID_INFO * infop)
 {
   PT_NODE *term, *new_term, *push_term_list;
-  int push_cnt, push_correlated_cnt;
+  int push_cnt, push_correlated_cnt, copy_cnt;
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
@@ -2775,6 +2844,8 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
   push_term_list = NULL;
   push_cnt = 0;
   push_correlated_cnt = 0;
+
+  copy_cnt = -1;
 
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
@@ -2821,7 +2892,16 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
 		}
 	      else
 		{
-		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+		  if (copy_cnt == -1)	/* very the first time */
+		    {
+		      copy_cnt =
+			pt_check_copypush_subquery (parser, new_query);
+		    }
+
+		  if (copy_cnt == 0)	/* not found not-pushable query */
+		    {
+		      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+		    }
 		}
 
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
@@ -2914,6 +2994,12 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
   FIND_ID_INFO info;
   PT_NODE *col;
 
+  if (new_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   /* mark as a derived vclass spec query */
   new_query->info.query.vspec_as_derived = 1;
 
@@ -2922,9 +3008,9 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 
   for (col = new_query->info.query.q.select.list; col; col = col->next)
     {
-      if (IS_HIDDEN_COLUMN (col))
+      if (col->is_hidden_column)
 	{
-	  SET_AS_NORMAL_COLUMN (col);
+	  col->is_hidden_column = 0;
 	}
     }
 
@@ -2960,6 +3046,11 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
     }
 
   new_spec = parser_copy_tree (parser, spec);
+  if (new_spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
 
   new_query->info.query.q.select.from = new_spec;
   new_query->info.query.is_subquery = PT_IS_SUBQUERY;
@@ -3033,6 +3124,12 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   /* create new subquery as derived */
   derived = parser_new_node (parser, PT_SELECT);
 
+  if (derived == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   /* move hint, from, where, group_by, using_index part over */
   derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint;
   agg_sel->info.query.q.select.hint = PT_HINT_NONE;
@@ -3094,9 +3191,21 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 
   /* set derived range variable */
   range = parser_copy_tree (parser, info.from->info.spec.range_var);
+  if (range == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
+
 
   /* construct new spec */
   spec = parser_new_node (parser, PT_SPEC);
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   spec->info.spec.derived_table = derived;
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
   spec->info.spec.range_var = range;
@@ -3336,6 +3445,12 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		      else
 			{
 			  val = parser_new_node (parser, PT_VALUE);
+			  if (val == NULL)
+			    {
+			      PT_INTERNAL_ERROR (parser, "allocate new node");
+			      return NULL;
+			    }
+
 			  val->type_enum = PT_TYPE_NULL;
 			}
 		      val->next = val_next;
@@ -3580,11 +3695,16 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  select_statement->info.query.q.select.from = from =
 	    mq_rewrite_vclass_spec_as_derived
 	    (parser, select_statement, from, NULL);
+	  if (from == NULL)
+	    {
+	      return NULL;
+	    }
 	}
       else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
+
       while (from->next)
 	{
 	  if (mq_is_union_translation (parser, from->next))
@@ -3636,20 +3756,31 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       void *void_arg, int *continue_walk)
 {
   if (statement == NULL)
-    return statement;
+    {
+      return NULL;
+    }
 
   switch (statement->node_type)
     {
     case PT_SELECT:
       if (statement->info.query.is_subquery == PT_IS_SUBQUERY
 	  && statement->info.query.oids_included == 1)
-	/* if we do not check this condition, it could be infinite loop
-	   because 'mq_push_paths()' is to be re-applied to the subquery
-	   of 'spec->derived_table', which was generated by
-	   'mq_rewrite_vclass_spec_as_derived()' */
-	;
+	{
+	  /* if we do not check this condition, it could be infinite loop
+	     because 'mq_push_paths()' is to be re-applied to the subquery
+	     of 'spec->derived_table', which was generated by
+	     'mq_rewrite_vclass_spec_as_derived()' */
+	}
       else
-	statement = mq_check_rewrite_select (parser, statement);
+	{
+	  statement = mq_check_rewrite_select (parser, statement);
+	  if (statement == NULL)
+	    {
+	      break;
+	    }
+	}
+
+
       mq_push_paths_select (parser, statement,
 			    statement->info.query.q.select.from);
       break;
@@ -3678,9 +3809,12 @@ mq_translate_local (PARSER_CONTEXT * parser,
 {
   int line, column;
   PT_NODE *next;
+  PT_NODE *indexp, *spec;
 
   if (statement == NULL)
-    return statement;
+    {
+      return statement;
+    }
 
   next = statement->next;
   statement->next = NULL;
@@ -3757,6 +3891,50 @@ mq_translate_local (PARSER_CONTEXT * parser,
        * tells us it's not a good idea.)
        */
       parser_append_node (next, statement);
+    }
+
+  /* resolving using index */
+  indexp = NULL;
+  spec = NULL;
+  if (!pt_has_error (parser) && statement)
+    {
+      switch (statement->node_type)
+	{
+	case PT_SELECT:
+	  {
+	    indexp = statement->info.query.q.select.using_index;
+	    spec = statement->info.query.q.select.from;
+	  }
+	  break;
+
+	case PT_UPDATE:
+	  {
+	    indexp = statement->info.update.using_index;
+	    spec = statement->info.update.spec;
+	  }
+	  break;
+
+	case PT_DELETE:
+	  {
+	    indexp = statement->info.delete_.using_index;
+	    spec = statement->info.delete_.spec;
+	  }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  if (indexp != NULL && spec != NULL)
+    {
+      for (; indexp; indexp = indexp->next)
+	{
+	  if (pt_resolve_using_index (parser, indexp, spec) == NULL)
+	    {
+	      return NULL;
+	    }
+	}
     }
 
   return statement;
@@ -4282,6 +4460,13 @@ mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * expr)
   inverted = pt_invert (parser, expr, attr);
 
   result = parser_new_node (parser, PT_EXPR);
+
+  if (result == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   result->info.expr.op = PT_ASSIGN;
   if (inverted)
     {
@@ -4329,6 +4514,10 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements,
 	  column_next = (*column)->next;
 	  attr_next = attr->next;
 	  *column = mq_invert_assign (parser, attr, *column);
+	  if (*column == NULL)
+	    {
+	      break;
+	    }
 	  (*column)->next = column_next;
 	  column = &((*column)->next);
 	  attr = attr_next;
@@ -4463,7 +4652,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
   DB_OBJECT *me = db_get_user ();
   DB_OBJECT *owner = db_get_owner (class_object);
 
-  if (!parser)
+  if (parser == NULL)
     {
       return NULL;
     }
@@ -4473,6 +4662,12 @@ mq_virtual_queries (DB_OBJECT * class_object)
   parser->view_cache = (VIEW_CACHE_INFO *)
     parser_alloc (parser, sizeof (VIEW_CACHE_INFO));
   symbols = parser->view_cache;
+
+  if (symbols == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_alloc");
+      return NULL;
+    }
 
   if (owner != me)
     {
@@ -4560,6 +4755,12 @@ mq_virtual_queries (DB_OBJECT * class_object)
 		{
 		  PT_NODE *virt_class =
 		    parser_copy_tree (parser, symbols->attrs);
+		  if (virt_class == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  virt_class->info.name.db_object = class_object;
 
 		  mq_set_non_updatable_oid
@@ -4938,7 +5139,7 @@ const char *
 mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version)
 {
   const char *generatedname;
-  char temp[10];
+  char temp[20];
 
   (*version)++;
 
@@ -5737,13 +5938,27 @@ mq_substitute_path (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* prune other columns and copy   */
   column = parser_copy_tree (parser, query_spec_column);
+  if (column == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
 
   if (column->node_type == PT_NAME)
     {
       if (column->info.name.meta_class == PT_SHARED)
 	{
-	  PT_NODE *new_spec = mq_new_spec
-	    (parser, db_get_class_name (column->info.name.db_object));
+	  PT_NODE *new_spec = mq_new_spec (parser,
+					   db_get_class_name (column->info.
+							      name.
+							      db_object));
+
+	  if (new_spec == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "mq_new_spec");
+	      return NULL;
+	    }
+
 	  path_info->new_specs =
 	    parser_append_node (new_spec, path_info->new_specs);
 	  column->info.name.spec_id = new_spec->info.spec.id;
@@ -5844,6 +6059,11 @@ mq_substitute_path_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  parser_free_tree (parser, node);
 
 	  node = parser_copy_tree (parser, info->lambda_expr);
+	  if (node == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      return NULL;
+	    }
 	  node->next = next;
 	}
 
@@ -6098,6 +6318,11 @@ mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *query_spec;
   PT_MISC_TYPE path_type;	/* 0, or PT_PATH_INNER */
 
+  if (root_spec == NULL)
+    {
+      return NULL;
+    }
+
   prev_ptr = &root_spec->info.spec.path_entities;
   path_spec = *prev_ptr;
 
@@ -6349,6 +6574,12 @@ mq_generate_unique (PARSER_CONTEXT * parser, PT_NODE * name_list)
   PT_NODE *new_name = parser_copy_tree (parser, name_list);
   PT_NODE *temp = name_list;
 
+  if (new_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
+
   while (ambiguous)
     {
       new_name->info.name.original = mq_generate_name (parser, "a", &i);
@@ -6504,7 +6735,7 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 		      PT_NODE * subquery, int *idx, PT_NODE ** spec_ptr,
 		      PT_NODE ** attr_list_ptr)
 {
-  PT_NODE *range, *spec, *as_attr_list, *col, *tmp;
+  PT_NODE *range, *spec, *as_attr_list, *col, *next, *tmp;
 
   /* remove unnecessary ORDER BY clause.
      if select list has orderby_num(), can not remove ORDER BY clause
@@ -6526,17 +6757,15 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  parser_free_tree (parser, subquery->info.query.order_by);
 	  subquery->info.query.order_by = NULL;
 
-	  col = pt_get_select_list (parser, subquery);
-	  if (col)
+	  for (col = pt_get_select_list (parser, subquery);
+	       col && col->next; col = next)
 	    {
-	      for (tmp = col; tmp->next; tmp = tmp->next)
+	      next = col->next;
+	      if (next->is_hidden_column)
 		{
-		  if (IS_HIDDEN_COLUMN (tmp->next))
-		    {
-		      parser_free_tree (parser, tmp->next);
-		      tmp->next = NULL;
-		      break;
-		    }
+		  parser_free_tree (parser, next);
+		  col->next = NULL;
+		  break;
 		}
 	    }
 	}
@@ -6547,6 +6776,13 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* construct new spec */
   spec = parser_new_node (parser, PT_SPEC);
+
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   spec->info.spec.derived_table = subquery;
   spec->info.spec.derived_table = mq_reset_ids_in_statement (parser,
 							     spec->info.spec.
@@ -6576,10 +6812,10 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
       tmp->type_enum = col->type_enum;
       tmp->data_type = parser_copy_tree (parser, col->data_type);
       /* keep out hidden columns from derived select list */
-      if (subquery->info.query.order_by && IS_HIDDEN_COLUMN (col))
+      if (subquery->info.query.order_by && col->is_hidden_column)
 	{
-	  SET_AS_NORMAL_COLUMN (col);	/* change to normal */
-	  SET_AS_NORMAL_COLUMN (tmp);	/* change to normal */
+	  col->is_hidden_column = 0;
+	  tmp->is_hidden_column = 0;
 	  spec->info.spec.as_attr_list =
 	    parser_append_node (tmp, spec->info.spec.as_attr_list);
 	}
@@ -6648,6 +6884,11 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE **value, *value_next;
   PT_NODE **lhs, **rhs, *lhs_next, *rhs_next;
   const char *newresolved = class_->info.name.resolved;
+
+  if (statement == NULL)
+    {
+      return NULL;
+    }
 
   switch (statement->node_type)
     {
@@ -7064,7 +7305,18 @@ mq_push_arg2 (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * dot_arg2)
 				     name->info.name.spec_id);
 	    }
 
+	  if (spec == NULL)
+	    {
+	      break;
+	    }
+
 	  dot = parser_copy_tree (parser, dot_arg2);
+	  if (dot == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      return NULL;
+	    }
+
 	  dot->info.dot.arg1 = query->info.query.q.select.list;
 	  query->info.query.q.select.list = dot;
 	  new_spec = pt_insert_entity (parser, dot, spec, NULL);
@@ -7116,6 +7368,12 @@ mq_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg,
     {
       spec_frame =
 	(PT_EXTRA_SPECS_FRAME *) malloc (sizeof (PT_EXTRA_SPECS_FRAME));
+
+      if (spec_frame == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "malloc");
+	  return NULL;
+	}
       spec_frame->next = lambda_arg->spec_frames;
       spec_frame->extra_specs = NULL;
       lambda_arg->spec_frames = spec_frame;
@@ -7227,6 +7485,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		{
 		  result->line_number = node->line_number;
 		  result->column_number = node->column_number;
+		  result->is_hidden_column = node->is_hidden_column;
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
@@ -7520,6 +7779,11 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *spec;
 
+  if (statement == NULL)
+    {
+      return NULL;
+    }
+
   switch (statement->node_type)
     {
     case PT_SELECT:
@@ -7635,6 +7899,12 @@ mq_push_dot_in_query (PARSER_CONTEXT * parser, PT_NODE * query, int i,
 	      root = pt_find_entity (parser, query->info.query.q.select.from,
 				     col->info.name.spec_id);
 	      new_col = parser_copy_tree (parser, name);
+	      if (new_col == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return;
+		}
+
 	      new_col->info.name.spec_id = col->info.name.spec_id;
 	      new_col->info.name.resolved = col->info.name.resolved;
 	      root = pt_find_entity (parser, query->info.query.q.select.from,
@@ -7643,14 +7913,39 @@ mq_push_dot_in_query (PARSER_CONTEXT * parser, PT_NODE * query, int i,
 	  else
 	    {
 	      new_col = parser_new_node (parser, PT_DOT_);
+
+	      if (new_col == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return;
+		}
+
 	      new_col->info.dot.arg1 = parser_copy_tree (parser, col);
+	      if (new_col->info.dot.arg1 == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return;
+		}
+
 	      new_col->info.dot.arg2 = parser_copy_tree (parser, name);
+	      if (new_col->info.dot.arg2 == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return;
+		}
+
 	      new_col->info.dot.arg2->info.name.spec_id = 0;
 	      new_col->info.dot.arg2->info.name.resolved = NULL;
 	      new_col->type_enum = name->type_enum;
 	      new_col->data_type =
 		parser_copy_tree_list (parser, name->data_type);
 	      root = NULL;
+
+	      if (col == NULL)
+		{
+		  return;
+		}
+
 	      if (col->node_type == PT_NAME)
 		{
 		  root =
@@ -7782,19 +8077,22 @@ mq_push_path (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 	       *     with generated name.
 	       */
 	      new_col = mq_generate_unique (parser, cols);
-	      parser_free_tree (parser, new_col->data_type);
-	      new_col->data_type =
-		parser_copy_tree_list (parser, refs->data_type);
-	      new_col->type_enum = refs->type_enum;
-	      parser_append_node (new_col, cols);
+	      if (new_col != NULL)
+		{
+		  parser_free_tree (parser, new_col->data_type);
+		  new_col->data_type =
+		    parser_copy_tree_list (parser, refs->data_type);
+		  new_col->type_enum = refs->type_enum;
+		  parser_append_node (new_col, cols);
 
-	      mq_push_dot_in_query (parser, spec->info.spec.derived_table,
-				    i, refs);
+		  mq_push_dot_in_query (parser, spec->info.spec.derived_table,
+					i, refs);
 
-	      /* not mq_lambda ... */
-	      statement = pt_lambda (parser, statement, refs, new_col);
+		  /* not mq_lambda ... */
+		  statement = pt_lambda (parser, statement, refs, new_col);
 
-	      path = pt_lambda (parser, path, refs, new_col);
+		  path = pt_lambda (parser, path, refs, new_col);
+		}
 	    }
 
 	  refs = refs->next;
@@ -7828,11 +8126,25 @@ PT_NODE *
 mq_derived_path (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * path)
 {
   PT_NODE *join;
-  PT_NODE *new_spec = parser_new_node (parser, PT_SPEC);
-  PT_NODE *query = parser_new_node (parser, PT_SELECT);
+  PT_NODE *new_spec;
+  PT_NODE *query;
   PT_NODE *temp;
   PT_NODE *sub_paths;
   PT_NODE *new_sub_path;
+
+  new_spec = parser_new_node (parser, PT_SPEC);
+  if (new_spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  query = parser_new_node (parser, PT_SELECT);
+  if (query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
 
   path->info.spec.range_var->info.name.resolved = NULL;
   if (path->info.spec.entity_name)
@@ -7922,7 +8234,7 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser,
 	{
 	  PT_ERRORmf2 (parser, class_, MSGCAT_SET_PARSER_RUNTIME,
 		       MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-		       db_auth_name[what_for],
+		       get_authorization_name (what_for),
 		       db_get_class_name (class_->info.name.db_object));
 	  return NULL;
 	}
@@ -8228,9 +8540,13 @@ mq_is_updatable (DB_OBJECT * class_object)
   PT_NODE class_;
   PT_NODE *subquery;
   /* static */ PARSER_CONTEXT *parser = NULL;
-  if (!parser)
+  if (parser == NULL)
     {
       parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  return false;
+	}
     }
 
   class_.node_type = PT_NAME;
@@ -8302,14 +8618,21 @@ bool
 mq_is_updatable_attribute (DB_OBJECT * vclass_object, const char *attr_name,
 			   DB_OBJECT * real_class_object)
 {
-  PARSER_CONTEXT *parser = parser_create_parser ();
-  bool rc = mq_is_updatable_att (parser, vclass_object, attr_name,
-				 real_class_object);
+  PARSER_CONTEXT *parser;
+  bool rc;
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return false;
+    }
+
+  rc = mq_is_updatable_att (parser, vclass_object, attr_name,
+			    real_class_object);
 
   parser_free_parser (parser);
   return rc;
 }
-
 
 /*
  * mq_evaluate_expression() -
@@ -8432,15 +8755,18 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name,
 
   AU_DISABLE (save);
 
-  if (!parser)
+  if (parser == NULL)
     {
       parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  AU_ENABLE (save);
+	  return er_errid ();
+	}
     }
 
-  if (parser)
-    {
-      parser->au_save = save;
-    }
+
+  parser->au_save = save;
 
   attr.node_type = PT_NAME;
   parser_init_node (&attr);
@@ -8551,9 +8877,13 @@ mq_update_attribute_local (DB_OBJECT * vclass_object, const char *attr_name,
   PT_NODE *expr;
   PT_NODE *value;
   int error = NO_ERROR;
-  if (!parser)
+  if (parser == NULL)
     {
       parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  return er_errid ();
+	}
     }
 
   attr.node_type = PT_NAME;
@@ -8579,28 +8909,32 @@ mq_update_attribute_local (DB_OBJECT * vclass_object, const char *attr_name,
       error = ER_GENERIC_ERROR;
     }
 
-  if (error == NO_ERROR)
+  if (error == NO_ERROR && virtual_value != NULL)
     {
       (*real_name) = expr->info.expr.arg1->info.name.original;
       value_holder = (PT_NODE *) expr->etc;
       value = pt_dbval_to_value (parser, virtual_value);
-      value_holder->info.value.data_value = value->info.value.data_value;
-      value_holder->info.value.db_value = *virtual_value;
-      value_holder->info.value.db_value_is_initialized = true;
-      pt_evaluate_tree (parser, expr->info.expr.arg2, real_value);
-      parser_free_tree (parser, value);
-      DB_MAKE_NULL (&value_holder->info.value.db_value);
-      value_holder->info.value.db_value_is_initialized = false;
-      /*
-       * This is a bit of a kludge since there is no way to clean up
-       * the data_value portion of the info structure.  The value_holder
-       * node now points into the parse tree, but has been allocated by
-       * a different parser (mq_fetch_expression_for_real_class_update).
-       * We need to set this pointer to NULL so we won't try to free
-       * it when cleaning up the parse tree.  Setting the "set" pointer
-       * should be safe for the union.
-       */
-      value_holder->info.value.data_value.set = NULL;
+
+      if (value)
+	{
+	  value_holder->info.value.data_value = value->info.value.data_value;
+	  value_holder->info.value.db_value = *virtual_value;
+	  value_holder->info.value.db_value_is_initialized = true;
+	  pt_evaluate_tree (parser, expr->info.expr.arg2, real_value);
+	  parser_free_tree (parser, value);
+	  DB_MAKE_NULL (&value_holder->info.value.db_value);
+	  value_holder->info.value.db_value_is_initialized = false;
+	  /*
+	   * This is a bit of a kludge since there is no way to clean up
+	   * the data_value portion of the info structure.  The value_holder
+	   * node now points into the parse tree, but has been allocated by
+	   * a different parser (mq_fetch_expression_for_real_class_update).
+	   * We need to set this pointer to NULL so we won't try to free
+	   * it when cleaning up the parse tree.  Setting the "set" pointer
+	   * should be safe for the union.
+	   */
+	  value_holder->info.value.data_value.set = NULL;
+	}
     }
   else if (!parser->error_msgs)
     {
@@ -8660,10 +8994,15 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object,
   PT_NODE vclass;
   PT_NODE *subquery, *flat = NULL;
 
-  if (!parser)
+  if (parser == NULL)
     {
       parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  return NULL;
+	}
     }
+
   vclass.node_type = PT_NAME;
 
   parser_init_node (&vclass);
@@ -8739,9 +9078,13 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
   PT_NODE *statement = NULL;
   char *buffer;
 
-  if (!parser)
+  if (parser == NULL)
     {
       parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  return er_errid ();
+	}
     }
 
   buffer = pt_append_string (parser, NULL, "select ");
@@ -8815,6 +9158,11 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
 
   /* create a new parser context */
   parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return -1;
+    }
+
   emsg[0] = 0;
 
   /* compose a "select exprs from target_class" */
@@ -9000,4 +9348,39 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where,
     }
 
   return NO_ERROR;
+}
+
+
+static const char *
+get_authorization_name (DB_AUTH auth)
+{
+  switch (auth)
+    {
+    case DB_AUTH_NONE:
+      return "";
+
+    case DB_AUTH_SELECT:
+      return "Select";
+
+    case DB_AUTH_INSERT:
+      return "Insert";
+
+    case DB_AUTH_UPDATE:
+      return "Update";
+
+    case DB_AUTH_DELETE:
+      return "Delete";
+
+    case DB_AUTH_ALTER:
+      return "Alter";
+
+    case DB_AUTH_INDEX:
+      return "Index";
+
+    case DB_AUTH_EXECUTE:
+      return "Execute";
+
+    default:
+      return "";
+    }
 }

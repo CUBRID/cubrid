@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -81,7 +81,8 @@ struct spage_slot
 
 extern int spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
-extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, TRANID tranid);
+extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p,
+				     void *first_save_entry);
 extern int spage_slot_size (void);
 extern int spage_header_size (void);
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
@@ -139,12 +140,9 @@ extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p,
 					   PAGE_PTR pgptr);
-extern int spage_count_pages (PAGE_PTR pgptr,
-			      const PGSLOTID dont_count_slotid);
-extern int spage_count_records (PAGE_PTR pgptr,
-				const PGSLOTID dont_count_slotid);
-extern int spage_sum_length_of_records (PAGE_PTR pgptr,
-					const PGSLOTID dont_count_slotid);
+extern void spage_collect_statistics (PAGE_PTR pgptr,
+				     int *npages, int *nrecords,
+				     int *rec_length);
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				   PGSLOTID slotid);

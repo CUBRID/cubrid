@@ -39,11 +39,16 @@
 #include <pthread.h>
 #include <unistd.h>
 #endif
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
 
 #include "cas_common.h"
+#include "porting.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
-#include "broker_getopt.h"
 
 #define PRINT_CCI_ERROR(ERRCODE, CCI_ERROR)	\
 	do {					\
@@ -101,6 +106,12 @@
 	} while(0)
 #endif
 
+#define STRDUP(TARGET, SOURCE) \
+        do {                                          \
+          if(TARGET != NULL) free(TARGET);    \
+          TARGET = strdup (SOURCE);            \
+        } while(0)
+
 #define SERVER_HANDLE_ALLOC_SIZE        (MAX_SERVER_H_ID + 1)
 
 typedef struct t_bind_info T_BIND_INFO;
@@ -136,7 +147,7 @@ static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info);
 static int process_endtran (int con_h, int *req_h);
 static int process_close_req (char *linebuf, int *req_h);
 static void print_result (int cci_res, int req_id, FILE * fp);
-static double diff_time (T_TIMEVAL * begin, T_TIMEVAL * end);
+static double diff_time (struct timeval * begin, struct timeval * end);
 static void free_node (T_NODE_INFO * node);
 static int make_node_info (T_NODE_INFO * node, char *node_name,
 			   char *info_str);
@@ -157,7 +168,7 @@ static int repeat_count = 1;
 static char *exec_script_file;
 static int batch_mode = 0;
 static char *result_file = NULL;
-static char *cas_err_file = (char *) "cas_error";
+static char *cas_err_file = NULL;
 static int fork_delay = 0;
 static char *node_name = NULL;
 static int think_time = 0;
@@ -184,7 +195,7 @@ main (int argc, char *argv[])
   double avg;
   double stddev;
   double min, max;
-  char *cm_out_msg_fname;
+  char *cm_out_msg_fname = NULL;
   FILE *cm_out_msg_fp = NULL;
 
 #if !defined(WINDOWS)
@@ -199,7 +210,8 @@ main (int argc, char *argv[])
   if (get_args (argc, argv) < 0)
     return -1;
 
-  if ((cm_out_msg_fname = getenv ("CUBRID_MANAGER_OUT_MSG_FILE")) != NULL)
+  cm_out_msg_fname = getenv ("CUBRID_MANAGER_OUT_MSG_FILE");
+  if (cm_out_msg_fname != NULL)
     {
       cubrid_manager_run = 1;
     }
@@ -276,6 +288,7 @@ main (int argc, char *argv[])
     (double *) malloc (sizeof (double) * num_thread * repeat_count);
   if (run_time_exec == NULL)
     {
+      FREE_MEM (thr_id);
       fprintf (stderr, "malloc error\n");
       return -1;
     }
@@ -289,6 +302,7 @@ main (int argc, char *argv[])
       con_handle = (int *) malloc (sizeof (int) * num_thread);
       if (con_handle == NULL)
 	{
+	  FREE_MEM (thr_id);
 	  fprintf (stderr, "malloc error\n");
 	  return -1;
 	}
@@ -302,6 +316,7 @@ main (int argc, char *argv[])
 	{
 	  cci_disconnect (con_handle[i], &cci_error);
 	}
+      FREE_MEM (con_handle);
     }
 
   for (i = 0; i < num_thread; i++)
@@ -318,6 +333,7 @@ main (int argc, char *argv[])
       if (pthread_create (&thr_id[i], NULL, thr_main, (void *) &i) < 0)
 #endif
 	{
+	  FREE_MEM (thr_id);
 	  perror ("Error:cannot create thread");
 	  return -1;
 	}
@@ -338,37 +354,49 @@ main (int argc, char *argv[])
 #endif
     }
 
-  if (cubrid_manager_run)
+  if (cm_out_msg_fname != NULL)
     {
       cm_out_msg_fp = fopen (cm_out_msg_fname, "w");
-      if (cm_out_msg_fp == NULL)
-	cm_out_msg_fp = stdout;
+    }
+
+  if (cm_out_msg_fp == NULL)
+    {
+      cm_out_msg_fp = stdout;
     }
 
   fclose (cas_error_fp);
   if (cas_error_flag)
     {
       FILE *err_fp;
-      if (cubrid_manager_run)
-	err_fp = cm_out_msg_fp;
+      if (cm_out_msg_fname != NULL)
+	{
+	  err_fp = cm_out_msg_fp;
+	}
       else
-	err_fp = stderr;
+	{
+	  err_fp = stderr;
+	}
       err_str = "ERR";
       fprintf (err_fp, "\n");
       fprintf (err_fp, "********************************\n");
       if (!cubrid_manager_run)
-	fprintf (err_fp, "cas error : %s\n", cas_err_file);
-
+	{
+	  fprintf (err_fp, "cas error : %s\n", cas_err_file);
+	}
       if (!batch_mode)
 	{
 	  char buf[1024];
 	  FILE *fp;
-	  int readlen;
+	  size_t readlen;
 	  fp = fopen (cas_err_file, "r");
 	  if (fp != NULL)
 	    {
 	      while ((readlen = fread (buf, 1, sizeof (buf), fp)) > 0)
 		{
+		  if (readlen > sizeof (buf))
+		    {
+		      readlen = sizeof (buf);
+		    }
 		  fwrite (buf, 1, readlen, err_fp);
 		}
 	      fclose (fp);
@@ -398,7 +426,7 @@ main (int argc, char *argv[])
       fprintf (stdout, "%.6f %.6f %s\n", avg, stddev, err_str);
     }
 
-  if (cubrid_manager_run)
+  if (cm_out_msg_fname != NULL)
     {
       fflush (cm_out_msg_fp);
       if (cm_out_msg_fp != stdout)
@@ -682,6 +710,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 
       if (linebuf[0] == 'Q')
 	{
+	  FREE_MEM (sql_stmt);
 	  sql_stmt = make_sql_stmt (linebuf + 2);
 	  if (sql_stmt == NULL)
 	    {
@@ -697,7 +726,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
       else if (linebuf[0] == 'P')
 	{
 	  int req_id, prepare_flag;
-	  T_TIMEVAL begin, end;
+	  struct timeval begin, end;
 
 	  if (sscanf (linebuf + 2, "%d %d", &req_id, &prepare_flag) < 2)
 	    {
@@ -705,10 +734,17 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	      FREE_MEM (sql_stmt);
 	      goto end_cas_runner;
 	    }
-	  TIMEVAL_MAKE (&begin);
+	  if (req_id < 0 || req_id >= SERVER_HANDLE_ALLOC_SIZE)
+	    {
+	      fprintf (stderr, "request id error : %d (valid range 0-%d)\n",
+		       req_id, SERVER_HANDLE_ALLOC_SIZE - 1);
+	      FREE_MEM (sql_stmt);
+	      goto end_cas_runner;
+	    }
+	  gettimeofday (&begin, NULL);
 	  req_h[req_id] =
 	    cci_prepare (con_h, sql_stmt, prepare_flag, &cci_error);
-	  TIMEVAL_MAKE (&end);
+	  gettimeofday (&end, NULL);
 	  prepare_time += diff_time (&begin, &end);
 
 	  if (req_h[req_id] < 0)
@@ -782,6 +818,7 @@ end_cas_runner:
 #ifdef DUP_RUN
   FREE_MEM (dup_req_h);
 #endif
+  FREE_MEM (sql_stmt);
 
   if (ret_exec_time)
     *ret_exec_time = exec_time;
@@ -799,6 +836,12 @@ read_conf (void)
   const char *conf_file;
   int num_token;
   char *p;
+
+  /* set initial error file name */
+  if (cas_err_file == NULL)
+    {
+      cas_err_file = strdup ("cas_error");
+    }
 
   conf_file = getenv (CAS_RUNNER_CONF_ENV);
   if (conf_file == NULL)
@@ -820,45 +863,72 @@ read_conf (void)
 
       p = strchr (read_buf, '#');
       if (p)
-	*p = '\0';
-
-      num_token = sscanf (read_buf, "%s %s %s", buf1, buf2, buf3);
+	{
+	  *p = '\0';
+	}
+      num_token = sscanf (read_buf, "%1023s %1023s %1023s", buf1, buf2, buf3);
       if (num_token < 2)
-	continue;
+	{
+	  continue;
+	}
 
       if (num_token == 3)
 	{
 	  if (strcasecmp (buf1, "node") == 0)
 	    {
 	      if (num_node >= MAX_NODE_INFO)
-		goto error;
+		{
+		  goto error;
+		}
 	      if (make_node_info (&node_table[num_node], buf2, buf3) < 0)
-		continue;
+		{
+		  continue;
+		}
 	      num_node++;
 	    }
 	}
       else
 	{
 	  if (strcasecmp (buf1, "CAS_IP") == 0)
-	    cas_ip = strdup (buf2);
+	    {
+	      STRDUP (cas_ip, buf2);
+	    }
 	  else if (strcasecmp (buf1, "CAS_PORT") == 0)
-	    cas_port = atoi (buf2);
+	    {
+	      cas_port = atoi (buf2);
+	    }
 	  else if (strcasecmp (buf1, "DBNAME") == 0)
-	    dbname = strdup (buf2);
+	    {
+	      STRDUP (dbname, buf2);
+	    }
 	  else if (strcasecmp (buf1, "NUM_THREAD") == 0)
-	    num_thread = atoi (buf2);
+	    {
+	      num_thread = atoi (buf2);
+	    }
 	  else if (strcasecmp (buf1, "DBUSER") == 0)
-	    dbuser = strdup (buf2);
+	    {
+	      STRDUP (dbuser, buf2);
+	    }
 	  else if (strcasecmp (buf1, "DBPASSWD") == 0)
-	    dbpasswd = strdup (buf2);
+	    {
+	      STRDUP (dbpasswd, buf2);
+	    }
 	  else if (strcasecmp (buf1, "REPEAT") == 0)
-	    repeat_count = atoi (buf2);
+	    {
+	      repeat_count = atoi (buf2);
+	    }
 	  else if (strcasecmp (buf1, "RESULT_FILE") == 0)
-	    result_file = strdup (buf2);
+	    {
+	      STRDUP (result_file, buf2);
+	    }
 	  else if (strcasecmp (buf1, "CAS_ERROR_FILE") == 0)
-	    cas_err_file = strdup (buf2);
+	    {
+	      STRDUP (cas_err_file, buf2);
+	    }
 	  else if (strcasecmp (buf1, "FORK_DELAY") == 0)
-	    fork_delay = atoi (buf2);
+	    {
+	      fork_delay = atoi (buf2);
+	    }
 	  else if (strcasecmp (buf1, "IGNORE_SERVER_ERROR") == 0)
 	    {
 	      int ign_err = atoi (buf2);
@@ -919,12 +989,18 @@ process_execute (char *linebuf, int *req_h, int num_bind,
 {
   int req_id, exec_flag;
   T_CCI_ERROR cci_error;
-  T_TIMEVAL begin, end;
+  struct timeval begin, end;
   double exec_time = 0;
 
   if (sscanf (linebuf + 2, "%d %d", &req_id, &exec_flag) < 2)
     {
       fprintf (stderr, "file format error : %s\n", linebuf);
+      return -1;
+    }
+  if (req_id < 0 || req_id >= SERVER_HANDLE_ALLOC_SIZE)
+    {
+      fprintf (stderr, "request id error : %d (valid range 0-%d)\n", req_id,
+	       SERVER_HANDLE_ALLOC_SIZE - 1);
       return -1;
     }
 
@@ -958,9 +1034,9 @@ process_execute (char *linebuf, int *req_h, int num_bind,
       if (dump_query_plan)
 	exec_flag |= CCI_EXEC_QUERY_INFO;
 
-      TIMEVAL_MAKE (&begin);
+      gettimeofday (&begin, NULL);
       res = cci_execute (req_h[req_id], exec_flag, 0, &cci_error);
-      TIMEVAL_MAKE (&end);
+      gettimeofday (&end, NULL);
       exec_time = diff_time (&begin, &end);
       if (!batch_mode && !cubrid_manager_run)
 	{
@@ -988,6 +1064,11 @@ process_close_req (char *linebuf, int *req_h)
   int req_id, res;
 
   req_id = atoi (linebuf + 2);
+  if (req_id < 0 || req_id >= SERVER_HANDLE_ALLOC_SIZE)
+    {
+      PRINT_CCI_ERROR (CCI_ER_REQ_HANDLE, NULL);
+      return 0;
+    }
   if (req_h[req_id] > 0)
     {
       res = cci_close_req_handle (req_h[req_id]);
@@ -1110,12 +1191,12 @@ print_result (int cci_res, int req_id, FILE * fp)
 }
 
 static double
-diff_time (T_TIMEVAL * begin, T_TIMEVAL * end)
+diff_time (struct timeval * begin, struct timeval * end)
 {
   double sec, usec;
 
-  sec = TIMEVAL_GET_SEC (end) - TIMEVAL_GET_SEC (begin);
-  usec = (TIMEVAL_GET_MSEC (end) - TIMEVAL_GET_MSEC (begin)) / 1000.0;
+  sec = (end->tv_sec - begin->tv_sec);
+  usec = (end->tv_usec - begin->tv_usec) / 1000000;
   return (sec + usec);
 }
 
@@ -1289,10 +1370,15 @@ make_sql_stmt (char *src)
     {
       trim (tmp);
       query_len = strlen (tmp);
-      if (tmp[query_len - 1] != ';')
-	tmp[query_len++] = ';';
-      tmp[query_len++] = '\n';
-      tmp[query_len] = '\0';
+      if (query_len > 0)
+	{
+	  if (tmp[query_len - 1] != ';')
+	    {
+	      tmp[query_len++] = ';';
+	    }
+	  tmp[query_len++] = '\n';
+	  tmp[query_len] = '\0';
+	}
     }
 
   if (num_replica == 1)
@@ -1307,6 +1393,7 @@ make_sql_stmt (char *src)
       if (query == NULL)
 	{
 	  fprintf (stderr, "malloc error\n");
+	  FREE_MEM (tmp);
 	  return NULL;
 	}
       for (i = 0; i < num_replica; i++)

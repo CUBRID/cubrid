@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -34,6 +34,7 @@
 #else
 #include <sys/time.h>
 #endif
+#include <assert.h>
 
 #include "cas_common.h"
 #include "cas_util.h"
@@ -42,6 +43,8 @@ char *
 ut_uchar2ipstr (unsigned char *ip_addr)
 {
   static char ip_str[32];
+
+  assert (ip_addr != NULL);
 
   sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
 	   (unsigned char) ip_addr[1],
@@ -98,20 +101,35 @@ ut_tolower (char *str)
 }
 
 void
-ut_timeval_diff (T_TIMEVAL * start, T_TIMEVAL * end, int *res_sec,
+ut_timeval_diff (struct timeval * start, struct timeval * end, int *res_sec,
 		 int *res_msec)
 {
   int sec, msec;
 
-  sec = TIMEVAL_GET_SEC (end) - TIMEVAL_GET_SEC (start);
-  msec = TIMEVAL_GET_MSEC (end) - TIMEVAL_GET_MSEC (start);
+  assert (start != NULL && end != NULL && res_sec != NULL
+	  && res_msec != NULL);
 
+  sec = end->tv_sec - start->tv_sec;
+  msec = (end->tv_usec / 1000) - (start->tv_usec / 1000);
   if (msec < 0)
     {
       msec += 1000;
       sec--;
     }
-
   *res_sec = sec;
   *res_msec = msec;
+}
+
+int
+ut_check_timeout (struct timeval * start_time, int timeout_sec, int *res_sec,
+		  int *res_msec)
+{
+  struct timeval cur_time;
+
+  assert (start_time != NULL && res_sec != NULL && res_msec != NULL);
+
+  gettimeofday (&cur_time, NULL);
+  ut_timeval_diff (start_time, &cur_time, res_sec, res_msec);
+
+  return (*res_sec >= timeout_sec) ? *res_sec : -1;
 }

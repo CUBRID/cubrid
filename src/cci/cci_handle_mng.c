@@ -66,20 +66,31 @@
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
 
-#define CON_HANDLE_ID_FACTOR	1000000
+#define CON_HANDLE_ID_FACTOR            1000000
 
-#define MAX_CON_HANDLE		1024
+#define MAX_CON_HANDLE                  1024
 
-#define REQ_HANDLE_ALLOC_SIZE	256
+#define REQ_HANDLE_ALLOC_SIZE           256
+
+#define CCI_MAX_CONNECTION_POOL         256
 
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
 
+static int conn_pool[CCI_MAX_CONNECTION_POOL];
+static int num_conn_pool = 0;
+
+
 /************************************************************************
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
+static int compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
+			      char *dbuser, char *dbpasswd,
+			      T_CON_HANDLE * con_handle);
+static void hm_clear_stmt_pool (T_STMT_POOL * stmt_pool);
+static void hm_move_stmt_node_to_tail (T_STMT_POOL * stmt_pool, int index);
 static int init_con_handle (T_CON_HANDLE * con_handle,
 			    char *ip_str,
 			    int port,
@@ -108,6 +119,236 @@ static T_CON_HANDLE *con_handle_table[MAX_CON_HANDLE];
 /************************************************************************
  * IMPLEMENTATION OF PUBLIC FUNCTIONS	 				*
  ************************************************************************/
+static int
+compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
+		   char *dbuser, char *dbpasswd, T_CON_HANDLE * con_handle)
+{
+  if (memcmp (ip_addr, con_handle->ip_addr, 4) != 0 ||
+      port != con_handle->port ||
+      strcmp (dbname, con_handle->db_name) != 0 ||
+      strcmp (dbuser, con_handle->db_user) != 0 ||
+      strcmp (dbpasswd, con_handle->db_passwd) != 0)
+    {
+      return 0;
+    }
+
+  return 1;
+}
+
+static void
+hm_clear_stmt_pool (T_STMT_POOL * stmt_pool)
+{
+  memset (stmt_pool, 0, sizeof (T_STMT_POOL));
+}
+
+int
+hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
+		      char *dbuser, char *dbpasswd)
+{
+  int con = -1;
+  int i;
+
+  for (i = 0; i < num_conn_pool; i++)
+    {
+      if (compare_conn_info (ip_addr, port, dbname, dbuser, dbpasswd,
+			     con_handle_table[conn_pool[i] - 1]))
+	{
+	  con = conn_pool[i];
+	  conn_pool[i] = conn_pool[--num_conn_pool];
+	  break;
+	}
+    }
+
+  return con;
+}
+
+int
+hm_put_con_to_pool (int con)
+{
+  if (num_conn_pool >= sizeof (conn_pool) / sizeof (int))
+    {
+      return -1;
+    }
+  conn_pool[num_conn_pool++] = con;
+  return 0;
+}
+
+static void
+hm_move_stmt_node_to_tail (T_STMT_POOL * stmt_pool, int index)
+{
+  int next_index;
+  T_STMT_POOL_NODE *stmt_list = stmt_pool->stmt_list;
+
+  next_index = stmt_list[index].next;
+
+  if (index == stmt_pool->tail_index)
+    {
+    }
+  else if (index == stmt_pool->head_index)
+    {
+      stmt_pool->head_index = next_index;
+      stmt_list[stmt_pool->tail_index].next = index;
+      stmt_pool->tail_index = index;
+      stmt_list[stmt_pool->tail_index].next = -1;
+    }
+  else
+    {
+      T_STMT_POOL_NODE tmp;
+
+      tmp = stmt_list[index];
+      tmp.next = -1;
+      stmt_list[index] = stmt_list[next_index];
+      if (stmt_list[next_index].next == -1)
+	{
+	  stmt_list[index].next = next_index;
+	}
+      else
+	{
+	  stmt_list[stmt_pool->tail_index].next = next_index;
+	}
+      stmt_pool->tail_index = next_index;
+      stmt_list[stmt_pool->tail_index] = tmp;
+    }
+}
+
+void
+hm_make_stmt_pool_node (T_STMT_POOL_NODE * node, char *sql, int req_handle)
+{
+  node->available = false;
+  node->next = -1;
+  node->req_handle = req_handle;
+  node->sql = sql;
+}
+
+bool
+hm_mark_stmt_pool_node_available (T_STMT_POOL * stmt_pool, int req_handle)
+{
+  int i;
+
+  for (i = 0; i < stmt_pool->cur_pool_entries; i++)
+    {
+      if (stmt_pool->stmt_list[i].req_handle == req_handle)
+	{
+	  stmt_pool->stmt_list[i].available = true;
+	  return true;
+	}
+    }
+  return false;
+}
+
+void
+hm_mark_all_stmt_pool_node_available (T_STMT_POOL * stmt_pool)
+{
+  int i;
+
+  for (i = 0; i < stmt_pool->cur_pool_entries; i++)
+    {
+      stmt_pool->stmt_list[i].available = true;
+    }
+}
+
+int
+hm_add_stmt_node_to_pool (T_STMT_POOL * stmt_pool, T_STMT_POOL_NODE * node)
+{
+  int i;
+  int victim_request_id;
+  T_STMT_POOL_NODE *stmt_list = stmt_pool->stmt_list;
+
+  if (stmt_list == NULL)
+    {
+      stmt_pool->max_pool_entries = 100;
+      stmt_list =
+	(T_STMT_POOL_NODE *) MALLOC (sizeof (T_STMT_POOL_NODE) *
+				     stmt_pool->max_pool_entries);
+      if (stmt_list == NULL)
+	{
+	  return -1;
+	}
+      stmt_pool->stmt_list = stmt_list;
+      stmt_pool->cur_pool_entries = 0;
+    }
+
+  if (stmt_pool->cur_pool_entries == stmt_pool->max_pool_entries)
+    {
+      for (i = stmt_pool->head_index; i != stmt_pool->tail_index;
+	   i = stmt_list[i].next)
+	{
+	  if (stmt_list[i].available == true)
+	    {
+	      victim_request_id = stmt_list[i].req_handle;
+
+	      node->next = stmt_list[i].next;
+	      stmt_list[i] = *node;
+	      hm_move_stmt_node_to_tail (stmt_pool, i);
+	      return victim_request_id % CON_HANDLE_ID_FACTOR;
+	    }
+	}
+      return 0;
+    }
+  else
+    {
+      int new_index = stmt_pool->cur_pool_entries;
+      node->next = -1;
+
+      if (stmt_pool->cur_pool_entries == 0)
+	{
+	  stmt_list[0] = *node;
+	  stmt_pool->head_index = 0;
+	  stmt_pool->tail_index = 0;
+	}
+      else
+	{
+	  stmt_list[new_index] = *node;
+	  stmt_list[stmt_pool->tail_index].next = new_index;
+	  stmt_pool->tail_index = new_index;
+	}
+
+      stmt_pool->cur_pool_entries++;
+    }
+  return 0;
+}
+
+int
+hm_get_req_handle_from_pool (T_CON_HANDLE * con_handle, char *sql)
+{
+  int i;
+  T_STMT_POOL *stmt_pool = &con_handle->stmt_pool;
+  int req_handle;
+
+  if (stmt_pool->stmt_list == NULL)
+    {
+      return -1;
+    }
+
+  for (i = 0; i < stmt_pool->cur_pool_entries; i++)
+    {
+      if (strcmp (sql, stmt_pool->stmt_list[i].sql) == 0)
+	{
+	  req_handle = stmt_pool->stmt_list[i].req_handle;
+	  stmt_pool->stmt_list[i].available = false;
+	  hm_move_stmt_node_to_tail (stmt_pool, i);
+	  return req_handle;
+	}
+    }
+  return -1;
+}
+
+int
+hm_ip_str_to_addr (char *ip_str, unsigned char *ip_addr)
+{
+  if (is_ip_str (ip_str))
+    {
+      ipstr2uchar (ip_str, ip_addr);
+    }
+  else
+    {
+      if (hostname2uchar (ip_str, ip_addr) < 0)
+	{
+	  return CCI_ER_HOSTNAME;
+	}
+    }
+  return 0;
+}
 
 void
 hm_con_handle_table_init ()
@@ -161,6 +402,13 @@ hm_con_handle_free (int con_id)
   if (con_handle == NULL)
     return CCI_ER_CON_HANDLE;
 
+  if (con_handle->stmt_pool.stmt_list != NULL)
+    {
+      FREE (con_handle->stmt_pool.stmt_list);
+      con_handle->stmt_pool.stmt_list = NULL;
+      con_handle->stmt_pool.cur_pool_entries = 0;
+    }
+
   con_handle_content_free (con_handle);
   FREE_MEM (con_handle);
   con_handle_table[con_id - 1] = NULL;
@@ -208,7 +456,9 @@ T_CON_HANDLE *
 hm_find_con_handle (int con_handle_id)
 {
   if (con_handle_id < 1 || con_handle_id > MAX_CON_HANDLE)
-    return NULL;
+    {
+      return NULL;
+    }
 
   return (con_handle_table[con_handle_id - 1]);
 }
@@ -222,17 +472,28 @@ hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
   T_REQ_HANDLE *req_handle;
 
   if (req_handle_id < 1)
-    return NULL;
+    {
+      return NULL;
+    }
 
   con_id = req_handle_id / CON_HANDLE_ID_FACTOR;
   req_id = req_handle_id % CON_HANDLE_ID_FACTOR;
 
+  if (con_id < 1 || req_id < 1)
+    {
+      return NULL;
+    }
+
   con_handle = con_handle_table[con_id - 1];
   if (con_handle == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   if (req_id > con_handle->max_req_handle)
-    return NULL;
+    {
+      return NULL;
+    }
 
   req_handle = con_handle->req_handle_table[req_id - 1];
 
@@ -409,6 +670,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->is_first = 1;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->tran_status = CCI_TRAN_STATUS_START;
+  con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
 
   con_handle->max_req_handle = REQ_HANDLE_ALLOC_SIZE;
   con_handle->req_handle_table = (T_REQ_HANDLE **)
@@ -419,6 +681,12 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
 	  0, sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
   con_handle->req_handle_count = 0;
   memset (con_handle->broker_info, 0, BROKER_INFO_SIZE);
+  hm_clear_stmt_pool (&con_handle->stmt_pool);
+
+  con_handle->cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+  con_handle->cas_info[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
+  con_handle->cas_info[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
+  con_handle->cas_info[CAS_INFO_RESERVED_3] = CAS_INFO_RESERVED_DEFAULT;
 
   return 0;
 }

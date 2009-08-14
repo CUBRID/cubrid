@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -24,38 +24,57 @@
 #ifndef _BOOT_H_
 #define _BOOT_H_
 
+#include "porting.h"
+#include "storage_common.h"
+
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 enum boot_client_type
 {
-  BOOT_CLIENT_TYPE_NA = -1,
   BOOT_CLIENT_SYSTEM_INTERNAL = 0,
   BOOT_CLIENT_DEFAULT = 1,
   BOOT_CLIENT_CSQL = 2,
-  BOOT_CLIENT_BROKER = 3,
-  BOOT_CLIENT_ADMIN_UTILITY = 4,
-  BOOT_CLIENT_LOG_REPLICATOR = 5
+  BOOT_CLIENT_READ_ONLY_CSQL = 3,
+  BOOT_CLIENT_BROKER = 4,
+  BOOT_CLIENT_READ_ONLY_BROKER = 5,
+  BOOT_CLIENT_SLAVE_ONLY_BROKER = 6,
+  BOOT_CLIENT_ADMIN_UTILITY = 7,
+  BOOT_CLIENT_ADMIN_CSQL = 8,
+  BOOT_CLIENT_LOG_COPIER = 9,
+  BOOT_CLIENT_LOG_APPLIER = 10
 };
+
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_DEFAULT \
          || (client_type) == BOOT_CLIENT_CSQL \
-         || (client_type) == BOOT_CLIENT_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
+         || (client_type) == BOOT_CLIENT_BROKER \
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER)
 
-#define BOOT_SPECIAL_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
-         || (client_type) == BOOT_CLIENT_LOG_REPLICATOR)
+#define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
+        ((client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
+	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+
+#define BOOT_ADMIN_CLIENT_TYPE(client_type) \
+	((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
+	 || (client_type) == BOOT_CLIENT_ADMIN_CSQL)
+
+#define BOOT_LOG_REPLICATOR_TYPE(client_type) \
+	((client_Type) == BOOT_CLIENT_LOG_COPIER \
+	 || (client_type) == BOOT_CLIENT_LOG_APPLIER)
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
 {
-  enum boot_client_type client_type;
-  char *client_info;	/* DB_MAX_IDENTIFIER_LENGTH */
+  BOOT_CLIENT_TYPE client_type;
+  char *client_info;		/* DB_MAX_IDENTIFIER_LENGTH */
   char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
   char *db_user;		/* DB_MAX_USER_LENGTH */
-  char *db_password;	/* DB_MAX_PASSWORD_LENGTH */
-  char *program_name;	/* PATH_MAX */
-  char *login_name;	/* L_cuserid */
-  char *host_name;	/* MAXHOSTNAMELEN */
+  char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
+  char *program_name;		/* PATH_MAX */
+  char *login_name;		/* L_cuserid */
+  char *host_name;		/* MAXHOSTNAMELEN */
   int process_id;
 };
 
@@ -68,5 +87,21 @@ struct boot_db_path_info
   char *db_host;
   char *db_comments;
 };
+
+typedef struct boot_server_credential BOOT_SERVER_CREDENTIAL;
+struct boot_server_credential
+{
+  char *db_full_name;		/* PATH_MAX */
+  char *host_name;		/* MAXHOSTNAMELEN */
+  int process_id;
+  OID root_class_oid;
+  HFID root_class_hfid;
+  PGLENGTH page_size;
+  float disk_compatibility;
+  int ha_server_state;		/*  HA_SERVER_STATE */
+};
+
+
+extern char boot_Host_name[MAXHOSTNAMELEN];
 
 #endif /* _BOOT_H_ */

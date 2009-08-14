@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -245,7 +245,12 @@ repl_svr_check_socket_input (int *count_input_fd, fd_set * fd_var)
 	  (*count_input_fd)--;
 	  if (conn_p->agentid == -1)
 	    {
-	      repl_handle_new_connection ();
+	      error = repl_handle_new_connection ();
+	      if (error != NO_ERROR)
+		{
+		  REPL_ERR_LOG (REPL_FILE_SVR_SOCK, error);
+		  repl_error_flush (err_Log_fp, 1);
+		}
 	    }
 	  else if (conn_p->fd > 0)
 	    {
@@ -253,8 +258,9 @@ repl_svr_check_socket_input (int *count_input_fd, fd_set * fd_var)
 	      repl_req = (REPL_REQUEST *) malloc (sizeof (REPL_REQUEST));
 	      if (repl_req == NULL)
 		{
-		  REPL_ERR_LOG (REPL_FILE_SERVER, REPL_SERVER_MEMORY_ERROR);
-		  break;
+		  REPL_ERR_LOG (REPL_FILE_SVR_SOCK, REPL_SERVER_MEMORY_ERROR);
+		  repl_error_flush (err_Log_fp, 1);
+		  return REPL_SERVER_MEMORY_ERROR;
 		}
 
 	      error = repl_handle_new_request (conn_p->fd, repl_req->req_buf);
@@ -273,14 +279,17 @@ repl_svr_check_socket_input (int *count_input_fd, fd_set * fd_var)
 					    (void *) repl_req);
 	      if (error != NO_ERROR)
 		{
+		  REPL_ERR_LOG (REPL_FILE_SVR_SOCK, error);
+		  repl_error_flush (err_Log_fp, 1);
+		  repl_svr_remove_conn (conn_p->fd);
 		  free_and_init (repl_req);
-		  break;
+		  continue;
 		}
 	    }
 	}
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 /*
@@ -318,12 +327,14 @@ repl_handle_new_connection (void)
 
       if (repl_set_socket_tcp_nodelay (new_fd) != NO_ERROR)
 	{
+	  close (new_fd);
 	  REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
 	}
 
       conn_p = repl_svr_get_new_repl_connection ();
       if (conn_p == NULL)
 	{
+	  close (new_fd);
 	  return REPL_SERVER_SOCK_ERROR;
 	}
       conn_p->fd = new_fd;
@@ -333,6 +344,7 @@ repl_handle_new_connection (void)
 					    REPL_DEF_LOG_PAGE_SIZE);
       if (error != NO_ERROR)
 	{
+	  close (new_fd);
 	  repl_svr_clear_repl_connection (conn_p);
 	  return REPL_SERVER_SOCK_ERROR;
 	}
@@ -340,6 +352,7 @@ repl_handle_new_connection (void)
       error = repl_svr_add_repl_connection (conn_p);
       if (error != NO_ERROR)
 	{
+	  close (new_fd);
 	  repl_svr_clear_repl_connection (conn_p);
 	  return REPL_SERVER_SOCK_ERROR;
 	}
@@ -379,21 +392,32 @@ repl_handle_new_request (int fd, char *req_bufp)
 {
   int remain_len = COMM_REQ_BUF_SIZE;
   int read_count;
+  int error = NO_ERROR;
 
   while (remain_len > 0)
     {
       read_count = recv (fd, req_bufp, remain_len, 0);
-      if (read_count <= 0)
+      if (read_count == -1 || read_count == 0)
 	{
-	  close (fd);
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+
+	  if (read_count == -1)
+	    {
+	      REPL_ERR_LOG (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
+	      repl_error_flush (err_Log_fp, true);
+	    }
+
 	  repl_svr_remove_conn (fd);
-	  REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
+	  return REPL_SERVER_SOCK_ERROR;
 	}
       req_bufp += read_count;
       remain_len -= read_count;
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 static int
@@ -536,7 +560,11 @@ repl_svr_sock_get_request (void)
       error = repl_svr_select_error ();
       break;
     default:
-      repl_svr_check_socket_input (&rc, &read_fds);
+      error = repl_svr_check_socket_input (&rc, &read_fds);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
       error = repl_svr_check_socket_exception (&exception_fds);
       break;
     }
@@ -563,7 +591,7 @@ repl_svr_sock_send_result (int agent_fd, int result)
   int error = NO_ERROR;
   char resp_buf[COMM_RESP_BUF_SIZE];
 
-  sprintf (resp_buf, "%d %d", result, repl_Log.pgsize);
+  snprintf (resp_buf, sizeof (resp_buf), "%d %d", result, repl_Log.pgsize);
   error = repl_svr_send_data (agent_fd, resp_buf, COMM_RESP_BUF_SIZE);
   if (error != NO_ERROR)
     REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_SOCK_ERROR);
@@ -588,6 +616,11 @@ repl_svr_sock_send_logpage (int agent_fd, int result, bool in_archive,
 			    SIMPLE_BUF * buf)
 {
   int error = NO_ERROR;
+
+  if (buf == NULL)
+    {
+      REPL_ERR_RETURN (REPL_FILE_SVR_SOCK, REPL_SERVER_INVALID_ARGUMENT);
+    }
 
   sprintf (buf->result, "%d %d", result, in_archive ? 1 : 0);
   error = repl_svr_send_data (agent_fd, buf->data, buf->length);

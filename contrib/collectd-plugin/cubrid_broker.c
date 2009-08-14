@@ -24,6 +24,7 @@
 #include "plugin.h"
 
 /* cubrid broker include files */
+#include "cubrid_broker.h"
 #include "broker_config.h"
 #include "broker_shm.h"
 #include "cas_common.h"
@@ -54,7 +55,7 @@ static int cubrid_broker_init(void)
   int i;
   char err_msg[1024], admin_log_file[512];
 
-  if (broker_config_read(br_info, &num_broker, &master_shm_id,
+  if (broker_config_read(NULL, br_info, &num_broker, &master_shm_id,
 			 admin_log_file, 0, err_msg)  < 0)
   {
     ERROR("cubrid_broker: %s", err_msg);
@@ -114,7 +115,7 @@ static int cubrid_broker_read(void)
     }
     for (j=0 ; j < shm_br->br_info[i].appl_server_max_num ; j++) {
       total_trs += shm_appl->as_info[j].num_transactions_processed;
-      total_qps += shm_appl->as_info[j].num_query_processed;
+      total_qps += shm_appl->as_info[j].num_queries_processed;
  
       if (shm_appl->as_info[j].service_flag == SERVICE_ON) {
         cas_status[TOTAL].gauge++;

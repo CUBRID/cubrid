@@ -62,27 +62,19 @@ enum
 
 #if defined(WINDOWS)
 #define PATHSLASH       '\\'
-
-#define COMPOSE_FULL_NAME(buf, path, name)  \
-  do { \
-    strcpy(buf, path); \
-    if (path[strlen(path) - 1] != PATHSLASH) { \
-      strcat(buf, "\\"); \
-    } \
-    strcat(buf, name); \
-  } while (0);
 #else /* WINDOWS */
 #define PATHSLASH       '/'
-
-#define COMPOSE_FULL_NAME(buf, path, name) \
-  do { \
-    strcpy(buf, path); \
-    if (path[strlen(path) - 1] != PATHSLASH) { \
-      strcat(buf, "/"); \
-    } \
-    strcat(buf, name); \
-  } while (0);
 #endif /* WINDOWS */
+
+#define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
+  do { \
+    int len = strlen(path); \
+    if (len > 0 && path[len - 1] != PATHSLASH) { \
+      snprintf(buf, buf_size - 1, "%s%c%s", path, PATHSLASH, name); \
+    } else { \
+      snprintf(buf, buf_size - 1, "%s%s", path, name); \
+    } \
+  } while (0);
 
 /* Type definitions related to disk information	*/
 
@@ -289,20 +281,20 @@ typedef enum
 {
   /* Don't change the initialization since they reflect the elements of
      lock_Conv and lock_Comp */
-  NULL_LOCK = 0,		/* NULL LOCK */
-  IS_LOCK = 1,			/* Intention Shared lock */
-  NS_LOCK = 2,			/* Next Key Shared lock */
-  S_LOCK = 3,			/* Shared lock */
-  IX_LOCK = 4,			/* Intention exclusive lock */
-  SIX_LOCK = 5,			/* Shared and intention exclusive lock */
-  U_LOCK = 6,			/* Update lock */
-  NX_LOCK = 7,			/* Next Key Exclusive lock */
-  X_LOCK = 8,			/* Exclusive lock */
-  INCON_NON_TWO_PHASE_LOCK = -2,	/* Incompatible 2 phase lock. */
-  NA_LOCK = -3			/* N/A lock */
+  NA_LOCK = 0,			/* N/A lock */
+  INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
+  NULL_LOCK = 2,		/* NULL LOCK */
+  IS_LOCK = 3,			/* Intention Shared lock */
+  NS_LOCK = 4,			/* Next Key Shared lock */
+  S_LOCK = 5,			/* Shared lock */
+  IX_LOCK = 6,			/* Intention exclusive lock */
+  SIX_LOCK = 7,			/* Shared and intention exclusive lock */
+  U_LOCK = 8,			/* Update lock */
+  NX_LOCK = 9,			/* Next Key Exclusive lock */
+  X_LOCK = 10			/* Exclusive lock */
 } LOCK;
 
-extern LOCK lock_Conv[][9];
+extern LOCK lock_Conv[11][11];
 
 #define LOCK_TO_LOCKMODE_STRING(lock) 			\
   (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
@@ -355,7 +347,7 @@ typedef struct bo_restart_arg BO_RESTART_ARG;
 struct bo_restart_arg
 {
   bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;		/* the recovery stop time if restarting from
+  time_t stopat;			/* the recovery stop time if restarting from
 				   backup */
   const char *backuppath;	/* Pathname override for location of backup
 				   volumes */

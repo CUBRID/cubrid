@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -52,8 +52,8 @@
 #include "environment_variable.h"
 
 /* Global variables for argument parsing */
-const char *db_Name = "";	/* the target database name */
-const char *err_Log = "";	/* file path to write the log */
+char *db_Name = NULL;		/* the target database name */
+char *err_Log = NULL;		/* file path to write the log */
 int port_Num = 0;		/* the TCP port number
 				 * to listen the req. of
 				 * repl_agent
@@ -171,7 +171,7 @@ repl_process_request (void *input_orderp)
   int error = NO_ERROR;
   SIMPLE_BUF *data = NULL;
   REPL_AGENT_INFO *agent_info = NULL;
-  bool in_archive;
+  bool in_archive = false;
 
   sscanf (req->req_buf, "%d %d %d", &req_type, &agentid, &pageid);
 
@@ -374,7 +374,7 @@ repl_get_log_volume (THREAD_ENTRY * thread_p)
   if (error == NO_ERROR)
     {
       len = strlen (db->pathname) + strlen (db_Name) + 3;
-      COMPOSE_FULL_NAME (tmp_str, db->pathname, db_Name);
+      COMPOSE_FULL_NAME (tmp_str, sizeof (tmp_str), db->pathname, db_Name);
       error =
 	repl_log_iopagesize (thread_p, tmp_str, db->logpath, log_prefix);
       if (error == NO_ERROR)
@@ -394,7 +394,7 @@ repl_load_agent_list (char *file_name)
 {
   int error = NO_ERROR;
   char strLine[1024];
-  char ip[1024];
+  char ip[20];
   int portid, pageid;
   REPL_AGENT_INFO *agInfo;
 
@@ -406,7 +406,7 @@ repl_load_agent_list (char *file_name)
 		       REPL_AGENT_INTERNAL_ERROR, agent_List_fp);
   while (fgets (strLine, 1024, agent_List_fp) != NULL)
     {
-      sscanf (strLine, "%s %d %d", ip, &portid, &pageid);
+      sscanf (strLine, "%19s %d %d", ip, &portid, &pageid);
       agInfo = (REPL_AGENT_INFO *) malloc (DB_SIZEOF (REPL_AGENT_INFO));
       REPL_CHECK_ERR_NULL (REPL_FILE_SERVER,
 			   REPL_AGENT_INTERNAL_ERROR, agInfo);
@@ -501,12 +501,20 @@ main (int argc, char **argv)
       switch (option_key)
 	{
 	case 'd':
+	  if (db_Name != NULL)
+	    {
+	      free_and_init (db_Name);
+	    }
 	  db_Name = strdup (optarg);
 	  break;
 	case 'p':
 	  port_Num = atoi (optarg);
 	  break;
 	case 'e':
+	  if (err_Log != NULL)
+	    {
+	      free_and_init (err_Log);
+	    }
 	  err_Log = strdup (optarg);
 	  break;
 	case 'a':
@@ -525,7 +533,7 @@ main (int argc, char **argv)
     }
 
   /* check the argument, we have to get db_Name & port_Num here */
-  if (strlen (db_Name) < 1 || port_Num <= 0)
+  if (db_Name == NULL || strlen (db_Name) < 1 || port_Num <= 0)
     {
       msgcat_init ();
       usage_cubrid_repl_server (argv[0]);
@@ -534,10 +542,13 @@ main (int argc, char **argv)
     }
 
   /* open the error log file */
-  err_Log_fp = fopen (err_Log, "a");
-  if (err_Log_fp == NULL)
+  if (err_Log != NULL)
     {
-      err_Log_fp = stdout;
+      err_Log_fp = fopen (err_Log, "a");
+      if (err_Log_fp == NULL)
+	{
+	  err_Log_fp = stdout;
+	}
     }
 
   /* get the full name of active log file */

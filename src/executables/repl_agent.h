@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -178,7 +178,8 @@ typedef struct
 /* to maintain the replication log to be applied */
 typedef struct repl_item
 {
-  int type;
+  int log_type;
+  int item_type;
   char *class_name;
   DB_VALUE key;
   DB_OBJECT *record;
@@ -332,8 +333,8 @@ extern int repl_Master_num;
 extern int trail_File_vdes;
 extern int create_Arv;
 extern int retry_Connect;
-extern const char *dist_Dbname;
-extern const char *dist_Passwd;
+extern char *dist_Dbname;
+extern char *dist_Passwd;
 extern int perf_Commit_msec;
 extern int agent_status_port;
 
@@ -348,8 +349,8 @@ extern bool repl_ag_is_in_archive (PAGEID pageid, int m_idx);
 extern bool repl_ag_valid_page (LOG_PAGE * log_page, int m_idx);
 extern REPL_LOG_BUFFER *repl_ag_get_page_buffer (PAGEID pageid, int m_idx);
 extern void repl_ag_release_page_buffer (PAGEID pageid, int m_idx);
-extern time_t repl_ag_retrieve_eot_time (LOG_PAGE * log_pgptr, LOG_LSA * lsa,
-					 int idx);
+extern int repl_ag_retrieve_eot_time (LOG_PAGE * log_pgptr, LOG_LSA * lsa,
+				      int idx, time_t * time);
 extern int repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx);
 extern int repl_ag_set_commit_log (int tranid, LOG_LSA * lsa, int idx,
 				   time_t master_time);
@@ -357,10 +358,11 @@ extern int
 repl_ag_log_perf_info (char *master_dbname, int tranid,
 		       const time_t * master_time, const time_t * slave_time);
 extern int repl_ag_apply_commit_list (LOG_LSA * lsa, int idx,
-				      time_t * old_time);
+				      time_t * old_time, bool clear_tran);
 extern void repl_ag_apply_abort (int idx, int tranid, time_t master_time,
 				 time_t * old_time);
-extern int repl_ag_apply_repl_log (int tranid, int m_idx, int *total_rows);
+extern int repl_ag_apply_repl_log (int tranid, int m_idx, int *total_rows,
+				   bool clear_tran);
 extern int repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type,
 				 int tranid, LOG_LSA * lsa, int m_idx);
 extern int repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo,
@@ -387,11 +389,11 @@ extern int repl_init_cache_log_buffer (REPL_CACHE_PB * cache_pb,
 				       int slb_cnt, int slb_size,
 				       int def_buf_size);
 extern void repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid,
-					       int idx);
+					       int idx, bool clear_tran);
 extern bool repl_ag_is_idle (SLAVE_INFO * sinfo, int idx);
 extern REPL_APPLY *repl_ag_find_apply_list (SLAVE_INFO * sinfo,
 					    int tranid, int idx);
-extern void repl_ag_clear_repl_item (REPL_APPLY * repl_list);
+extern void repl_ag_clear_repl_item (REPL_APPLY * repl_list, bool clear_tran);
 extern void repl_ag_log_dump (int log_fd, int io_pagesize);
 
 #endif /* _REPL_AGENT_H_ */

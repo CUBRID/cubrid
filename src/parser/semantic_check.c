@@ -648,6 +648,11 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
     {
       /* create a new attribute node */
       i_attr = parser_new_node (parser, PT_ATTR_DEF);
+      if (i_attr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
 
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name =
@@ -723,10 +728,13 @@ pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls)
 {
   if (!cls)
     return PT_MISC_DUMMY;
+
   if (db_is_vclass ((DB_OBJECT *) cls))
     return PT_VCLASS;
+
   if (db_is_class ((DB_OBJECT *) cls))
     return PT_CLASS;
+
   return PT_MISC_DUMMY;
 }
 
@@ -3331,9 +3339,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   char keyattr[DB_MAX_IDENTIFIER_LENGTH];
   DB_OBJECT *dom_cls;
   char *drop_name_list = NULL;
+
   /* look up the class */
   name = alter->info.alter.entity_name;
   cls_nam = name->info.name.original;
+
   db = pt_find_class (parser, name);
   if (!db)
     {
@@ -3347,6 +3357,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* attach object */
   name->info.name.db_object = db;
   pt_check_user_owns_class (parser, name);
+
   /* check that class type is what it's supposed to be */
   if (alter->info.alter.entity_type == PT_MISC_DUMMY)
     {
@@ -3365,6 +3376,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  return;
 	}
     }
+
   type = alter->info.alter.entity_type;
   if (do_is_partitioned_subclass (&is_partitioned, cls_nam, keyattr))
     {
@@ -3673,10 +3685,13 @@ attribute_name (PARSER_CONTEXT * parser, PT_NODE * att)
 {
   if (!att)
     return NULL;
+
   if (att->node_type == PT_ATTR_DEF)
     att = att->info.attr_def.attr_name;
+
   if (att->node_type != PT_NAME)
     return NULL;
+
   return att->info.name.original;
 }
 
@@ -3691,6 +3706,7 @@ is_shared_attribute (PARSER_CONTEXT * parser, PT_NODE * att)
 {
   if (!att)
     return 0;
+
   if (att->node_type == PT_ATTR_DEF)
     {
       if (att->info.attr_def.attr_type == PT_SHARED)
@@ -3701,6 +3717,7 @@ is_shared_attribute (PARSER_CONTEXT * parser, PT_NODE * att)
 
   if (att->node_type != PT_NAME)
     return 0;
+
   return (att->info.name.meta_class == PT_SHARED);
 }
 
@@ -3715,10 +3732,13 @@ static int
 pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
 {
   int cnt = 0, ret;
+
   if (expr == NULL)
     return 0;
+
   if (expr->node_type != PT_EXPR)
     return 0;
+
   switch (expr->info.expr.op)
     {
     case PT_PLUS:
@@ -3857,8 +3877,11 @@ pt_value_links_add (PARSER_CONTEXT * parser,
 		    PT_NODE * val, PT_VALUE_LINKS * ptl)
 {
   PT_VALUE_LINKS *vblk, *blks;
-  if ((vblk = (PT_VALUE_LINKS *) malloc (sizeof (PT_VALUE_LINKS))) == NULL)
+
+  vblk = (PT_VALUE_LINKS *) malloc (sizeof (PT_VALUE_LINKS));
+  if (vblk == NULL)
     goto out_of_mem;
+
   vblk->vallink = val;
   vblk->next = ptl->next;
   if (ptl->next == NULL)
@@ -3880,9 +3903,9 @@ pt_value_links_add (PARSER_CONTEXT * parser,
 	    }
 	  else if (blks->vallink != NULL)
 	    {
-	      if (db_value_compare
-		  (pt_value_to_db (parser, val),
-		   pt_value_to_db (parser, blks->vallink)) == DB_EQ)
+	      if (db_value_compare (pt_value_to_db (parser, val),
+				    pt_value_to_db (parser,
+						    blks->vallink)) == DB_EQ)
 		{
 		  free_and_init (vblk);
 		  return 1;
@@ -3893,11 +3916,10 @@ pt_value_links_add (PARSER_CONTEXT * parser,
 
   ptl->next = vblk;
   return 0;
+
 out_of_mem:
   return -2;
 }
-
-
 
 /*
  * pt_check_partition_value_coercible () -
@@ -4388,8 +4410,10 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 {
   int op, rst;
   DB_VALUE nullval;
+
   if (dest == NULL)
     return 0;
+
   if (inval == NULL)
     {
       db_make_null (&nullval);
@@ -4448,8 +4472,10 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
 {
   DB_VALUE_PLIST *tmp_vallist;
   DB_VALUE nullval, *chkval;
+
   if (ptail == NULL)
     return -1;
+
   if (val == NULL)
     {
       db_make_null (&nullval);
@@ -4460,9 +4486,10 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
       chkval = val;
     }
 
-  if ((tmp_vallist =
-       (DB_VALUE_PLIST *) malloc (sizeof (DB_VALUE_PLIST))) == NULL)
+  tmp_vallist = (DB_VALUE_PLIST *) malloc (sizeof (DB_VALUE_PLIST));
+  if (tmp_vallist == NULL)
     return -1;
+
   if (*ptail == NULL)
     {
       *ptail = tmp_vallist;
@@ -4472,8 +4499,10 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
       (*ptail)->next = tmp_vallist;
       *ptail = tmp_vallist;
     }
+
   (*ptail)->next = NULL;
   (*ptail)->val = db_value_copy (chkval);
+
   return 0;
 }
 
@@ -4488,8 +4517,10 @@ db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
 {
   DB_VALUE_PLIST *tmp;
   DB_VALUE nullval, *chkval;
+
   if (phead == NULL)
     return 0;
+
   if (val == NULL)
     {
       db_make_null (&nullval);
@@ -6673,7 +6704,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       /* There must be only one entity in the entity spec list.
          The non-ANSI optional class name does not matter!
          This is for ansi compliance on guarding updatability. */
-      if (node->info.delete_.spec->next)
+      if (node->info.delete_.spec != NULL
+	  && node->info.delete_.spec->next != NULL)
 	{
 	  PT_ERRORm (parser, node,
 		     MSGCAT_SET_PARSER_SEMANTIC,
@@ -6706,7 +6738,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	      break;
 	    }
 	}
-      else if (node->info.delete_.spec->info.spec.derived_table)
+      else if (node->info.delete_.spec != NULL
+	       && node->info.delete_.spec->info.spec.derived_table != NULL)
 	{
 	  /* There is only one thing in entity list, make sure it is
 	     not a derived table. */
@@ -6719,7 +6752,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
 
     case PT_INSERT:
-      if (top_node->cannot_prepare == 1)
+      if (top_node && top_node->cannot_prepare == 1)
 	{
 	  node->cannot_prepare = 1;
 	}
@@ -6865,14 +6898,19 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	      r = t_node->info.sort_spec.expr;
 
 	      /* for expression, set printed string */
-	      if (r->node_type == PT_EXPR)
+	      if (r != NULL && r->node_type == PT_EXPR)
 		{
+		  unsigned int save_custom;
 		  r->alias_print = NULL;	/* init */
-		  PT_NODE_PRINT_TO_ALIAS (parser, r, PT_CONVERT_RANGE);
+
+		  save_custom = parser->custom_print;
+		  parser->custom_print |= PT_CONVERT_RANGE;
+		  r->alias_print = parser_print_tree (parser, r);
+		  parser->custom_print = save_custom;
 		}
 
 	      /* check for after group by position */
-	      if (found)
+	      if (r != NULL && found != false)
 		{
 		  pos = pt_to_pos_descr (parser, r, node);
 		  if (pos.pos_no <= 0)
@@ -6883,7 +6921,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 
 	      /* set after group by position num, domain info */
-	      if (found)
+	      if (found != false)
 		{
 		  t_node->info.sort_spec.pos_descr = pos;
 		}
@@ -7153,8 +7191,11 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	}
 
       /* Link it in with a disjunct. */
-      if ((disj = parser_new_node (parser, PT_EXPR)) == NULL)
-	goto out_of_mem;
+      disj = parser_new_node (parser, PT_EXPR);
+      if (disj == NULL)
+	{
+	  goto out_of_mem;
+	}
 
       disj->line_number = pred->line_number;
       disj->column_number = pred->column_number;
@@ -7170,8 +7211,11 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  if ((new_expr = parser_new_node (parser, PT_EXPR)) == NULL)
-	    goto out_of_mem;
+	  new_expr = parser_new_node (parser, PT_EXPR);
+	  if (new_expr == NULL)
+	    {
+	      goto out_of_mem;
+	    }
 
 	  new_expr->line_number = pred->line_number;
 	  new_expr->column_number = pred->column_number;
@@ -8209,17 +8253,15 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 {
   int result_isnull = 0;
   PT_NODE *tmp;
-  PT_NODE *msgs = parser->error_msgs;
+  PT_NODE *msgs;
   SEMANTIC_CHK_INFO sc_info;
 
   assert (parser != NULL);
+  msgs = parser->error_msgs;
 
   /* find the variable and return if none */
-  if (pt_find_var (name_expr, &tmp) != 1)
-    return 0;
-
-  if (!tmp)
-    return 0;
+  if (pt_find_var (name_expr, &tmp) != 1 || tmp == NULL)
+    return NULL;
 
   /* walk through the expression, inverting as you go */
   while (name_expr)
@@ -8245,6 +8287,12 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	  if (!result_isnull)
 	    {
 	      tmp = parser_new_node (parser, PT_EXPR);
+	      if (tmp == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return NULL;
+		}
+
 	      tmp->info.expr.op = PT_UNARY_MINUS;
 	      tmp->info.expr.arg1 = result;
 	      if (tmp->info.expr.arg1->node_type == PT_EXPR)
@@ -8268,12 +8316,24 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_MINUS;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg2);
+
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8299,12 +8359,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_MINUS;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg1);
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8319,7 +8390,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      break;
 	    }
 
-	  return 0;
+	  return NULL;
 
 	case PT_MINUS:
 	  /* ( result = A-B ) <=>  ( result+B = A )
@@ -8335,12 +8406,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_PLUS;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg2);
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8366,12 +8448,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_MINUS;
 		  tmp->info.expr.arg2 = result;
 		  tmp->info.expr.arg1 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg1);
+		  if (tmp->info.expr.arg1 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8386,7 +8479,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      break;
 	    }
 
-	  return 0;
+	  return NULL;
 
 	case PT_DIVIDE:
 	  /* ( result = A/B ) <=>  ( result*B = A )
@@ -8402,12 +8495,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_TIMES;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg2);
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8433,12 +8537,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_DIVIDE;
 		  tmp->info.expr.arg2 = result;
 		  tmp->info.expr.arg1 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg1);
+		  if (tmp->info.expr.arg1 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8453,7 +8568,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      break;
 	    }
 
-	  return 0;
+	  return NULL;
 
 	case PT_TIMES:
 	  /* ( result = A*B ) <=>  ( result/A = B ) */
@@ -8468,12 +8583,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_DIVIDE;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg2);
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8499,12 +8625,23 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      else
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
 
 		  tmp->info.expr.op = PT_DIVIDE;
 		  tmp->info.expr.arg1 = result;
 		  tmp->info.expr.arg2 = parser_copy_tree (parser,
 							  name_expr->info.
 							  expr.arg1);
+		  if (tmp->info.expr.arg2 == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		      return NULL;
+		    }
+
 		  if (tmp->info.expr.arg1->node_type == PT_EXPR)
 		    {
 		      tmp->info.expr.arg1->info.expr.paren_type = 1;
@@ -8519,7 +8656,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	      break;
 	    }
 
-	  return 0;
+	  return NULL;
 
 	case PT_CAST:
 	  /* special case */
@@ -8527,7 +8664,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 	  break;
 
 	default:
-	  return 0;
+	  return NULL;
 	}
     }
 
@@ -8551,7 +8688,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
       /* if we got an error just indicate not-invertible, end return with
        * previous error state. */
       parser->error_msgs = msgs;
-      return 0;
+      return NULL;
     }
 
   return result;
@@ -8588,7 +8725,6 @@ pt_find_var (PT_NODE * p, PT_NODE ** result)
 
   return 0;
 }
-
 
 /*
  * pt_remove_from_list () -
@@ -8868,7 +9004,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	      else
 		{
 		  /* mark as a hidden column */
-		  SET_AS_HIDDEN_COLUMN (col);
+		  col->is_hidden_column = 1;
 		  parser_append_node (col, select_list);
 		}
 	    }
@@ -9686,6 +9822,7 @@ pt_check_constraint (PARSER_CONTEXT * parser,
     case PT_CONSTRAIN_UNKNOWN:
       goto warning;
 
+    case PT_CONSTRAIN_NULL:
     case PT_CONSTRAIN_NOT_NULL:
     case PT_CONSTRAIN_UNIQUE:
       break;
@@ -9758,6 +9895,12 @@ pt_find_class_of_index (PARSER_CONTEXT * parser, PT_NODE * index,
   if (class_)
     {
       node = parser_new_node (parser, PT_NAME);
+      if (node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       node->info.name.original = pt_append_string (parser, NULL,
 						   db_get_class_name
 						   (class_));

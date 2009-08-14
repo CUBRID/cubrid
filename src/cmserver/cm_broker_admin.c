@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -93,7 +93,13 @@
 #else
 #define CP_INIT_ERR_MSG()						\
 	do {								\
-	  strncpy(uca_err_msg, dlerror(), sizeof(uca_err_msg) - 1);	\
+	  char *errstr = dlerror();                                    \
+	  if(errstr != NULL) {                                         \
+	    strncpy(uca_err_msg, errstr, sizeof(uca_err_msg) - 1);	\
+	  }                                                            \
+	  else {                                                       \
+	    uca_err_msg[0] = '\0';                                     \
+	  }                                                            \
 	} while (0);
 #endif
 
@@ -147,7 +153,6 @@ typedef enum
   UC_ADM_CHANGE_CONFIG = 17,
   UC_ADM_CHANGER = 18,
   UC_ADM_VERSION = 19,
-#ifdef DIAG_DEVEL
   UC_ADM_GET_ACTIVE_SESSION_WITH_OPENED_SHM = 20,
   UC_ADM_BROKER_SHM_OPEN = 21,
   UC_ADM_GET_BR_NUM_WITH_OPENED_SHM = 22,
@@ -156,14 +161,9 @@ typedef enum
   UC_ADM_GET_AS_NUM_WITH_OPENED_SHM = 25,
   UC_ADM_GET_AS_REQS_RECEIVED_WITH_OPENED_SHM = 26,
   UC_ADM_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM = 27,
-  UC_ADM_SHM_DETACH = 28,
-#if 0				/* ACTIVITY PROFILE */
-  ,
-  UC_ADM_GET_BR_DIAGCONFIG_WITH_OPENED_SHM = 29,
-  UC_ADM_SET_BR_DIAGCONFIG_WITH_OPENED_SHM = 30
-#endif
-#endif
-  UC_ADM_DEL_CAS_LOG = 29
+  UC_ADM_GET_AS_QUERY_PROCESSED_WITH_OPENED_SHM = 28,
+  UC_ADM_SHM_DETACH = 29,
+  UC_ADM_DEL_CAS_LOG = 30
 } T_UC_ADMIN_CODE;
 
 typedef struct
@@ -193,7 +193,6 @@ T_UC_ADMIN_F uc_admin_f[] = {
   {NULL, "uc_change_config"},	/* UC_ADM_CHANGE_CONFIG */
   {NULL, "uc_changer"},		/* UC_ADM_CHANGER */
   {NULL, "uc_version"},		/* UC_ADM_VERSION */
-#ifdef DIAG_DEVEL
   {NULL, "uc_get_active_session_with_opened_shm"},
   {NULL, "uc_broker_shm_open"},
   {NULL, "uc_get_br_num_with_opened_shm"},
@@ -202,12 +201,8 @@ T_UC_ADMIN_F uc_admin_f[] = {
   {NULL, "uc_get_as_num_with_opened_shm"},
   {NULL, "uc_get_as_reqs_received_with_opened_shm"},
   {NULL, "uc_get_as_tran_processed_with_opened_shm"},
+  {NULL, "uc_get_as_query_processed_with_opened_shm"},
   {NULL, "uc_shm_detach"},
-#if 0				/* ACTIVITY PROFILE */
-  {NULL, "uc_get_br_diagconfig_with_opened_shm"},
-  {NULL, "uc_set_br_diagconfig_with_opened_shm"},
-#endif
-#endif
   {NULL, "uc_del_cas_log"},	/* UC_ADM_DEL_CAS_LOG */
   {NULL, NULL}
 };
@@ -439,7 +434,7 @@ uca_as_info_free (T_DM_UC_INFO * br_info, T_DM_UC_INFO * br_job_info)
   int i;
   T_DM_UC_AS_INFO *as_info;
 
-  if (br_info)
+  if (br_info != NULL)
     {
       as_info = br_info->info.as_info;
       for (i = 0; i < br_info->num_info; i++)
@@ -448,14 +443,15 @@ uca_as_info_free (T_DM_UC_INFO * br_info, T_DM_UC_INFO * br_job_info)
 	  FREE_MEM (as_info[i].clt_appl_name);
 	  FREE_MEM (as_info[i].request_file);
 	  FREE_MEM (as_info[i].log_msg);
+	  FREE_MEM (as_info[i].database_name);
+	  FREE_MEM (as_info[i].database_host);
 	}
       FREE_MEM (br_info->info.as_info);
       br_info->num_info = 0;
     }
-  if (br_job_info)
+  if (br_job_info != NULL)
     {
       FREE_MEM (br_job_info->info.job_info);
-      br_info->num_info = 0;
     }
 }
 
@@ -649,118 +645,6 @@ uca_cpu_time_str (int t, char *buf)
   return buf;
 }
 
-#ifdef DIAG_DEVEL
-int
-uca_get_active_session_with_opened_shm (void *shm_br, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UC_GET_ACTIVE_SESSION_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_ACTIVE_SESSION_WITH_OPENED_SHM].
-	   func_p) (shm_br, err_msg));
-}
-
-void *
-uca_broker_shm_open (char *err_msg)
-{
-  if (uca_init_flag == 0)
-    return NULL;
-  return (((T_UCA_BROKER_SHM_OPEN) uc_admin_f[UC_ADM_BROKER_SHM_OPEN].
-	   func_p) (err_msg));
-}
-
-#if 0				/* ACTIVITY PROFILE */
-int
-uca_get_br_diagconfig_with_opened_shm (void *shm_br, void *c_config,
-				       char *err_msg)
-{
-  CHECK_UCA_INIT (NULL);
-  return (((T_UCA_GET_BR_DIAGCONFIG_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_BR_DIAGCONFIG_WITH_OPENED_SHM].
-	   func_p) (shm_br, c_config, err_msg));
-}
-
-int
-uca_set_br_diagconfig_with_opened_shm (void *shm_br, void *c_config,
-				       char *err_msg)
-{
-  CHECK_UCA_INIT (NULL);
-  return (((T_UCA_SET_BR_DIAGCONFIG_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_SET_BR_DIAGCONFIG_WITH_OPENED_SHM].
-	   func_p) (shm_br, c_config, err_msg));
-}
-#endif
-
-int
-uca_get_br_num_with_opened_shm (void *shm_br, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UCA_GET_BR_NUM_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_BR_NUM_WITH_OPENED_SHM].func_p) (shm_br,
-								  err_msg));
-}
-
-int
-uca_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name,
-				 int buffer_size, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UCA_GET_BR_NAME_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_BR_NAME_WITH_OPENED_SHM].func_p) (shm_br,
-								   br_index,
-								   name,
-								   buffer_size,
-								   err_msg));
-}
-
-void *
-uca_as_shm_open (void *shm_br, int br_index, char *err_msg)
-{
-  if (uca_init_flag == 0)
-    return NULL;
-  return (((T_UCA_AS_SHM_OPEN) uc_admin_f[UC_ADM_AS_SHM_OPEN].func_p) (shm_br,
-								       br_index,
-								       err_msg));
-}
-
-int
-uca_get_as_num_with_opened_shm (void *shm_br, int br_index, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UCA_GET_AS_NUM_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_AS_NUM_WITH_OPENED_SHM].func_p) (shm_br,
-								  br_index,
-								  err_msg));
-}
-
-int
-uca_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[],
-					  int array_size, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UCA_GET_AS_REQS_RECEIVED_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_AS_REQS_RECEIVED_WITH_OPENED_SHM].
-	   func_p) (shm_as, array, array_size, err_msg));
-}
-
-int
-uca_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[],
-					   int array_size, char *err_msg)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  return (((T_UCA_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM)
-	   uc_admin_f[UC_ADM_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM].
-	   func_p) (shm_as, array, array_size, err_msg));
-}
-
-int
-uca_shm_detach (void *p)
-{
-  CHECK_UCA_INIT_WITHOUT_SET_ERROR ();
-  (((T_UCA_SHM_DETACH) uc_admin_f[UC_ADM_SHM_DETACH].func_p) (p));
-  return 1;
-}
-#endif
-
 T_DM_UC_BR_CONF *
 uca_conf_find_broker (T_DM_UC_CONF * uc_conf, char *br_name)
 {
@@ -875,6 +759,21 @@ uca_conf_write (T_DM_UC_CONF * uc_conf, char *del_broker, char *_dbmt_error)
 static void
 as_info_copy (T_DM_UC_AS_INFO * dest_info, T_AS_INFO * src_info)
 {
+  switch (src_info->service_flag)
+    {
+    case 1 /*SERVICE_ON */ :
+      dest_info->service_flag = "ON";
+      break;
+    case 0 /*SERVICE_OFF */ :
+      dest_info->service_flag = "OFF";
+      break;
+    case 2 /*SERVICE_OFF_ACK */ :
+      dest_info->service_flag = "OFF_ACK";
+      break;
+    default:
+      dest_info->service_flag = "UNKNOWN";
+    }
+
   dest_info->pid = src_info->pid;
   dest_info->num_request = src_info->num_request;
   dest_info->as_port = src_info->as_port;
@@ -897,6 +796,16 @@ as_info_copy (T_DM_UC_AS_INFO * dest_info, T_AS_INFO * src_info)
   dest_info->clt_appl_name = strdup (src_info->clt_appl_name);
   dest_info->request_file = strdup (src_info->request_file);
   dest_info->log_msg = strdup (src_info->log_msg);
+  dest_info->database_name = strdup (src_info->database_name);
+  dest_info->database_host = strdup (src_info->database_host);
+  dest_info->last_connect_time = src_info->last_connect_time;
+  dest_info->num_requests_received = src_info->num_requests_received;
+  dest_info->num_queries_processed = src_info->num_queries_processed;
+  dest_info->num_transactions_processed =
+    src_info->num_transactions_processed;
+  dest_info->num_long_queries = src_info->num_long_queries;
+  dest_info->num_long_transactions = src_info->num_long_transactions;
+  dest_info->num_error_queries = src_info->num_error_queries;
 }
 
 static void
@@ -927,14 +836,21 @@ br_info_copy (T_DM_UC_BR_INFO * dest_info, T_BR_INFO * src_info)
   dest_info->num_thr = src_info->num_thr;
   dest_info->pcpu = src_info->pcpu;
   dest_info->cpu_time = src_info->cpu_time;
+  dest_info->num_busy_count = src_info->num_busy_count;
   dest_info->num_req = src_info->num_req;
+  dest_info->num_tran = src_info->num_tran;
+  dest_info->num_query = src_info->num_query;
+  dest_info->num_long_tran = src_info->num_long_tran;
+  dest_info->num_long_query = src_info->num_long_query;
+  dest_info->num_error_query = src_info->num_error_query;
+  dest_info->long_query_time = src_info->long_query_time;
+  dest_info->long_transaction_time = src_info->long_transaction_time;
+
   sprintf (strbuf, "%d", src_info->session_timeout);
   dest_info->session_timeout = strdup (strbuf);
-  dest_info->sql_log_on_off = src_info->sql_log_on_off;
+  dest_info->keep_connection = src_info->keep_connection;
+  dest_info->sql_log_mode = src_info->sql_log_mode;
   dest_info->shm_id = src_info->shm_id;
-  dest_info->sql_log_bind_value = src_info->sql_log_bind_value;
-  dest_info->sql_log_append_mode = src_info->sql_log_append_mode;
-  dest_info->sql_log_time = src_info->sql_log_time;
   if (src_info->status == FLAG_SUSPEND)
     strcpy (dest_info->status, "SUSPENDED");
   else if (src_info->status == FLAG_ON)

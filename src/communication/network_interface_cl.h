@@ -127,7 +127,6 @@ extern int log_reset_waitsecs (int waitsecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation,
 				bool unlock_by_isolation);
 extern void log_set_interrupt (int set);
-/* AsyncCommit */
 extern void log_dump_stat (FILE * outfp);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
@@ -161,14 +160,10 @@ int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    HFID * rootclass_hfid, int client_lock_wait,
 			    TRAN_ISOLATION client_isolation);
 int boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
-			  OID * rootclass_oid, HFID * rootclass_hfid,
 			  int client_lock_wait,
 			  TRAN_ISOLATION client_isolation,
 			  TRAN_STATE * tran_state,
-			  PGLENGTH * current_pagesize,
-			  struct timeval *server_clock,
-			  struct timeval *client_clock,
-			  float *server_disk_compatibility_level);
+			  BOOT_SERVER_CREDENTIAL * server_credential);
 extern int boot_unregister_client (int tran_index);
 extern int boot_backup (const char *backup_path,
 			FILEIO_BACKUP_LEVEL backup_level,
@@ -208,21 +203,21 @@ extern int boot_copy (const char *from_dbname, const char *newdb_name,
 extern int boot_emergency_patch (const char *db_name, bool recreate_log);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state,
 					    bool force, bool wait);
-extern LOID *largeobjmgr_create (LOID * loid, FSIZE_T length, char *buffer,
-				 FSIZE_T est_lo_length, OID * oid);
+extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
+extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer,
+				 int est_lo_length, OID * oid);
 extern int largeobjmgr_destroy (LOID * loid);
-extern FSIZE_T largeobjmgr_read (LOID * loid, FSIZE_T offset, FSIZE_T length,
-				 char *buffer);
-extern FSIZE_T largeobjmgr_write (LOID * loid, FSIZE_T offset, FSIZE_T length,
-				  char *buffer);
-extern FSIZE_T largeobjmgr_insert (LOID * loid, FSIZE_T offset,
-				   FSIZE_T length, char *buffer);
-extern FSIZE_T largeobjmgr_delete (LOID * loid, FSIZE_T offset,
-				   FSIZE_T length);
-extern FSIZE_T largeobjmgr_append (LOID * loid, FSIZE_T length, char *buffer);
-extern FSIZE_T largeobjmgr_truncate (LOID * loid, FSIZE_T offset);
+extern int largeobjmgr_read (LOID * loid, INT64 offset, int length,
+			     char *buffer);
+extern int largeobjmgr_write (LOID * loid, INT64 offset, int length,
+			      char *buffer);
+extern int largeobjmgr_insert (LOID * loid, INT64 offset,
+			       int length, char *buffer);
+extern INT64 largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length);
+extern int largeobjmgr_append (LOID * loid, int length, char *buffer);
+extern INT64 largeobjmgr_truncate (LOID * loid, INT64 offset);
 extern int largeobjmgr_compress (LOID * loid);
-extern FSIZE_T largeobjmgr_length (LOID * loid);
+extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid,
 					       unsigned int timestamp,
 					       int *length_ptr);
@@ -235,15 +230,17 @@ extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type,
 extern int btree_load_index (BTID * btid, TP_DOMAIN * key_type,
 			     OID * class_oids, int n_classes, int n_attrs,
 			     int *attr_ids, HFID * hfids, int unique_flag,
-			     int reverse_flag, OID * fk_refcls_oid,
-			     BTID * fk_refcls_pk_btid, int cache_attr_id,
-			     const char *fk_name);
+			     int reverse_flag, int last_key_desc,
+			     OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
+			     int cache_attr_id, const char *fk_name);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid,
 					    HFID * hfid);
 extern BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
+extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key,
+					    OID * class_oid, OID * oid);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
 				     PAGEID pageid, char *buffer,
@@ -288,6 +285,7 @@ extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 				   char *kill_host, int kill_pid);
 
 extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p);
+extern void logtb_dump_trantable (FILE * outfp);
 
 extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 					     int *nobjs, int *npages);
@@ -295,8 +293,6 @@ extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (SERVER_INFO * server_info);
-extern int prm_server_change_parameters (const char *data);
-extern int prm_server_obtain_parameters (char *data, int len);
 extern int heap_has_instance (HFID * hfid, OID * class_oid);
 
 extern int jsp_get_server_port (void);
@@ -315,16 +311,20 @@ extern void histo_request_finished (int request, int data_received);
 extern int histo_total_interfaces (void);
 extern int histo_hit (int index);
 extern const char *histo_get_name (int index);
-extern int net_client_req_no_reply_via_oob (int request, char *argbuf,
-					    int argsize);
+extern int net_client_request_no_reply (int request, char *argbuf,
+					int argsize);
 extern int net_client_request (int request, char *argbuf, int argsize,
 			       char *replybuf, int replysize, char *databuf,
 			       int datasize, char *replydata,
 			       int replydatasize);
-extern int net_client_request_send_large_data (int request, char *argbuf, int argsize,
-				    char *replybuf, int replysize,
-				    char *databuf, FSIZE_T datasize,
-				    char *replydata, int replydatasize);
+#if 0
+extern int net_client_request_send_large_data (int request, char *argbuf,
+					       int argsize, char *replybuf,
+					       int replysize, char *databuf,
+					       INT64 datasize,
+					       char *replydata,
+					       int replydatasize);
+#endif
 extern int net_client_request_via_oob (int request, char *argbuf, int argsize,
 				       char *replybuf, int replysize,
 				       char *databuf, int datasize,
@@ -378,12 +378,13 @@ extern int net_client_request_recv_logarea (int request, char *argbuf,
 					    int argsize, char *replybuf,
 					    int replysize,
 					    LOG_COPY ** reply_log_area);
-extern int net_client_request_recv_large_data (int request, char *argbuf, int argsize,
-				    char *replybuf, int replysize,
-				    char *databuf, int datasize,
-				    char *replydata,
-				    FSIZE_T * replydatasize_ptr);
-
+#if 0
+extern int net_client_request_recv_large_data (int request, char *argbuf,
+					       int argsize, char *replybuf,
+					       int replysize, char *databuf,
+					       int datasize, char *replydata,
+					       INT64 * replydatasize_ptr);
+#endif
 extern int net_client_request_2recv_copyarea (int request, char *argbuf,
 					      int argsize, char *replybuf,
 					      int replysize, char *databuf,
@@ -406,7 +407,7 @@ extern int net_client_request_recv_stream (int request, char *argbuf,
 					   int replybuf_size, char *databuf,
 					   int datasize, FILE * outfp);
 extern int net_client_ping_server (int client_val, int *server_val);
-extern int net_client_ping_server_with_handshake (void);
+extern int net_client_ping_server_with_handshake (bool check_capabilities);
 
 /* Startup/Shutdown */
 extern void net_client_shutdown_server (void);

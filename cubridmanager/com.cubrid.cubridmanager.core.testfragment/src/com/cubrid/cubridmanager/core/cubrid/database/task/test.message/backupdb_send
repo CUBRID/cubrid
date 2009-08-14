@@ -1,0 +1,12 @@
+task:backupdb
+token:8ec1ab8a91333c7823f86d595ccdf412f23ae179b1fcf013b9796bef95f4fcc17926f07dd201b6aa
+dbname:demodb
+level:1
+volname:testdb_backup_lv1
+backupdir:C:\CUBRID\databases\testdb\backup
+removelog:n
+check:y
+mt:0
+zip:y
+safereplication:n
+

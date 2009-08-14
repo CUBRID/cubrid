@@ -1,0 +1,4 @@
+task:compactdb
+status:failure
+note:Database(activedb) is active state.
+

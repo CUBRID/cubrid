@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -75,10 +75,12 @@ enum er_exit_ask
   ER_EXIT_DEFAULT = ER_NEVER_EXIT
 };
 
+/* do not change the order of this enumeration; see er_Fnlog[] */
 enum er_severity
 {
-  ER_WARNING_SEVERITY, ER_ERROR_SEVERITY, ER_SYNTAX_ERROR_SEVERITY,
-  ER_FATAL_ERROR_SEVERITY, ER_NOTIFICATION_SEVERITY,
+  ER_FATAL_ERROR_SEVERITY, ER_ERROR_SEVERITY,
+  ER_SYNTAX_ERROR_SEVERITY, ER_WARNING_SEVERITY,
+  ER_NOTIFICATION_SEVERITY,
   ER_MAX_SEVERITY = ER_NOTIFICATION_SEVERITY
 };
 
@@ -126,23 +128,15 @@ struct er_spec
 typedef struct er_fmt ER_FMT;
 struct er_fmt
 {
-  int err_id;			/* The int associated with the msg */
-  int age;			/* Timestamp for eviction priority */
+  int err_id;                   /* The int associated with the msg */
   char *fmt;			/* A printf-style format for the msg */
   ER_SPEC *spec;		/* Pointer to real array; points to
 				   spec_buf if nspecs < DIM(spec_buf) */
   int fmt_length;		/* The strlen() of fmt */
-  int must_free;		/* TRUE iff fmt must be free_and_initd */
+  int must_free;                /* TRUE if fmt must be free_and_initd */
   int nspecs;			/* The number of format specs in fmt */
   int spec_top;			/* The capacity of spec */
   ER_SPEC spec_buf[4];		/* Array of format specs for args */
-};
-
-typedef struct er_fmt_cache ER_FMT_CACHE;
-struct er_fmt_cache
-{
-  int timestamp;
-  ER_FMT fmt[10];
 };
 
 typedef struct er_msg ER_MSG;
@@ -186,12 +180,11 @@ extern const char *er_msg (void);
 extern void er_all (int *err_id, int *severity, int *nlevels,
 		    int *line_no, const char **file_name, const char **msg);
 extern void er_print (void);
-#if defined(NDEBUG)
-#define er_log_debug(...)
-#else /* NDEBUG */
-extern void er_log_debug (const char *file_name, const int line_no,
-			  const char *fmt, ...);
-#endif /* !NDEBUG */
+
+extern void _er_log_debug (const char *file_name, const int line_no,
+			   const char *fmt, ...);
+#define er_log_debug(...) if (PRM_ER_LOG_DEBUG) _er_log_debug(__VA_ARGS__)
+
 extern void *er_get_area_error (void *buffer, int *length);
 extern int er_set_area_error (void *server_area);
 extern int er_stack_push (void);
@@ -203,9 +196,5 @@ extern void *db_default_malloc_handler (void *arg, const char *filename,
 extern int er_event_restart (void);
 extern void er_clearid (void);
 extern void er_setid (int err_id);
-
-#if !defined (CS_MODE)
-extern void er_save_dbname (const char *dbname);
-#endif /* !CS_MODE */
 
 #endif /* _ERROR_MANAGER_H_ */

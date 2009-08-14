@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -108,6 +108,8 @@ static TRAN_ISOLATION_NAME log_Isolation_names[] = {
   {TRAN_UNKNOWN_ISOLATION,
    "TRAN_UNKNOWN_ISOLATION"}
 };
+
+const int LOG_MIN_NBUFFERS = 3;
 
 /*
  * log_state_string - Translate state into string representation

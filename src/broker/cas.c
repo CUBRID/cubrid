@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -53,9 +54,7 @@
 #if !defined(WINDOWS)
 #include "broker_recv_fd.h"
 #endif
-#ifdef DIAG_DEVEL
 #include "perf_monitor.h"
-#endif
 
 #include "broker_shm.h"
 #include "broker_util.h"
@@ -75,31 +74,47 @@ LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 static void cleanup (int signo);
 static int cas_init (void);
 static void query_cancel (int signo);
-static int net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size);
+static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
+				       MSG_HEADER * client_msg_header,
+				       T_REQ_INFO * req_info);
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
-#endif /* !LIBCAS_FOR_JSP */
+#endif /* LIBCAS_FOR_JSP */
+
+void set_cas_info_size (void);
 
 #ifndef LIBCAS_FOR_JSP
+const char *program_name;
 char broker_name[32];
+int psize_at_start;
+
 int shm_as_index;
 T_SHM_APPL_SERVER *shm_appl;
-char sql_log_mode;
-T_TIMEVAL tran_start_time;
-bool is_ServerAborted = false;
-#endif
+T_APPL_SERVER_INFO *as_info;
 
+struct timeval tran_start_time;
+struct timeval query_start_time;
+int tran_timeout = 0;
+int query_timeout = 0;
+
+bool is_server_aborted = false;
+bool autocommit_deferred = false;
+#endif /* !LIBCAS_FOR_JSP */
+
+int errors_in_transaction = 0;
 char stripped_column_name;
 char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
 SOCKET new_req_sock_fd = INVALID_SOCKET;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 int cas_default_isolation_level = 0;
 int cas_default_lock_timeout = -1;
 int cas_send_result_flag = TRUE;
+int cas_info_size = CAS_INFO_SIZE;
+char prev_cas_info[CAS_INFO_SIZE];
 
 static T_SERVER_FUNC server_fn_table[] = { fn_end_tran,
   fn_prepare,
@@ -173,13 +188,13 @@ static const char *server_func_name[] = { "end_tran",
   "fn_make_out_rs",
   "fn_get_generated_keys",
 };
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 static T_REQ_INFO req_info;
 #ifndef LIBCAS_FOR_JSP
 static SOCKET srv_sock_fd;
 static int cas_req_count = 1;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
@@ -189,24 +204,29 @@ WinMain (HINSTANCE hInstance,	// handle to current instance
 	 LPSTR lpCmdLine,	// pointer to command line
 	 int nShowCmd		// show state of window
   )
-#else
+#else /* WINDOWS */
 int
 main (int argc, char *argv[])
-#endif
+#endif				/* !WINDOWS */
 {
   T_NET_BUF net_buf;
   SOCKET br_sock_fd, client_sock_fd;
   char read_buf[1024];
   int err_code;
-  char *db_name;
-  int one = 1;
+  char *db_name, *db_user, *db_passwd, *t;
+  int one = 1, db_info_size;
 #if defined(WINDOWS)
   int new_port;
 #endif
-  char *db_user, *db_passwd;
   char broker_info[BROKER_INFO_SIZE];
   int client_ip_addr;
-  char print_cas_pid = TRUE;
+  char dummy_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
+    CAS_INFO_RESERVED_DEFAULT,
+    CAS_INFO_RESERVED_DEFAULT,
+    CAS_INFO_RESERVED_DEFAULT
+  };
+
+  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 #if !defined(WINDOWS)
   signal (SIGTERM, cleanup);
@@ -217,17 +237,20 @@ main (int argc, char *argv[])
 #endif
 
 #if !defined(WINDOWS)
+  program_name = argv[0];
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
       printf ("%s\n", makestring (BUILD_NUMBER));
       return 0;
     }
+#else
+  program_name = APPL_SERVER_CAS_NAME;
 #endif
 
   memset (&req_info, 0, sizeof (req_info));
 
   memset (broker_info, 0, sizeof (broker_info));
-  BROKER_INFO_DBMS_TYPE (broker_info) = CCI_DBMS_CUBRID;
+  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_CUBRID;
 
   set_cubrid_home ();
 
@@ -255,25 +278,22 @@ main (int argc, char *argv[])
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
-    {
-      sql_log_mode = SQL_LOG_MODE_ON | SQL_LOG_MODE_APPEND;
-      cas_log_open (broker_name, shm_as_index);
-      cas_log_end (NULL, broker_name, shm_as_index, 0, NULL, 0, TRUE);
-    }
+  cas_log_open (broker_name, shm_as_index);
+  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
 
 #if defined(WINDOWS)
-  shm_appl->as_info[shm_as_index].as_port = new_port;
-  shm_appl->as_info[shm_as_index].glo_read_size = 0;
-  shm_appl->as_info[shm_as_index].glo_write_size = 0;
-  shm_appl->as_info[shm_as_index].glo_flag = 0;
+  as_info->as_port = new_port;
+  as_info->glo_read_size = 0;
+  as_info->glo_write_size = 0;
+  as_info->glo_flag = 0;
 #endif
 
-  shm_appl->as_info[shm_as_index].service_ready_flag = TRUE;
-  shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
-  shm_appl->as_info[shm_as_index].cur_keep_con = KEEP_CON_OFF;
+  as_info->service_ready_flag = TRUE;
+  as_info->con_status = CON_STATUS_IN_TRAN;
+  as_info->cur_keep_con = KEEP_CON_OFF;
+  errors_in_transaction = 0;
 #if !defined(WINDOWS)
-  shm_appl->as_info[shm_as_index].psize = getsize (getpid ());
+  psize_at_start = as_info->psize = getsize (getpid ());
 #endif
 
   stripped_column_name = shm_appl->stripped_column_name;
@@ -291,46 +311,40 @@ main (int argc, char *argv[])
 	    goto error1;
 	  }
 
+	req_info.client_version =
+	  CAS_MAKE_VER (as_info->clt_major_version,
+			as_info->clt_minor_version,
+			as_info->clt_patch_version);
+
+	set_cas_info_size ();
+
 #if defined(WINDOWS)
-	shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_BUSY;
+	as_info->uts_status = UTS_STATUS_BUSY;
 #endif
-	shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
+	as_info->con_status = CON_STATUS_IN_TRAN;
+	errors_in_transaction = 0;
 
 	net_timeout_set (NET_DEFAULT_TIMEOUT);
-	TIMEVAL_MAKE (&tran_start_time);
 	client_ip_addr = 0;
 
 #if defined(WINDOWS)
 	client_sock_fd = br_sock_fd;
 	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
 	  goto error1;
-	memcpy (&client_ip_addr, shm_appl->as_info[shm_as_index].cas_clt_ip,
-		4);
+	memcpy (&client_ip_addr, as_info->cas_clt_ip, 4);
 #else
 	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
 	net_write_stream (br_sock_fd, "OK", 2);
 	CLOSE_SOCKET (br_sock_fd);
 #endif
 
-	sql_log_mode = shm_appl->sql_log_mode;
-	if (!(sql_log_mode & SQL_LOG_MODE_ON))
-	  {
-	    sql_log_mode = SQL_LOG_MODE_OFF;
-	  }
-
 	cas_log_open (broker_name, shm_as_index);
-	shm_appl->as_info[shm_as_index].cur_sql_log2 = shm_appl->sql_log2;
-	sql_log2_init (broker_name, shm_as_index,
-		       shm_appl->as_info[shm_as_index].cur_sql_log2, FALSE);
+	as_info->cur_sql_log2 = shm_appl->sql_log2;
+	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
+		       false);
 
-	if (print_cas_pid)
-	  {
-	    cas_log_write (0, TRUE, "CAS STARTED pid %d", getpid ());
-	    print_cas_pid = FALSE;
-	  }
-	cas_log_write (0, TRUE,
-		       "IP ADDR %s",
-		       ut_uchar2ipstr ((unsigned char *) (&client_ip_addr)));
+	t = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
+	cas_log_write_and_end (0, false, "CLIENT IP %s", t);
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
 
@@ -341,95 +355,120 @@ main (int argc, char *argv[])
 
 
 	req_info.client_version =
-	  CAS_MAKE_VER (shm_appl->as_info[shm_as_index].clt_major_version,
-			shm_appl->as_info[shm_as_index].clt_minor_version,
-			shm_appl->as_info[shm_as_index].clt_patch_version);
-	cas_client_type = shm_appl->as_info[shm_as_index].cas_client_type;
+	  CAS_MAKE_VER (as_info->clt_major_version,
+			as_info->clt_minor_version,
+			as_info->clt_patch_version);
+	cas_client_type = as_info->cas_client_type;
 
-	if (net_read_stream (client_sock_fd, read_buf, SRV_CON_DB_INFO_SIZE) <
-	    0)
+	if (req_info.client_version < CAS_MAKE_VER (8, 2, 0))
 	  {
-	    NET_WRITE_ERROR_CODE (client_sock_fd, CAS_ER_COMMUNICATION);
+	    db_info_size = SRV_CON_DB_INFO_SIZE_PRIOR_8_2_0;
 	  }
 	else
 	  {
-	    char *db_err_msg = NULL;
-
+	    db_info_size = SRV_CON_DB_INFO_SIZE;
+	  }
+	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
+	  {
+	    NET_WRITE_ERROR_CODE (client_sock_fd, dummy_info,
+				  CAS_ER_COMMUNICATION);
+	  }
+	else
+	  {
+	    char *db_err_msg = NULL, *url;
 
 	    db_name = read_buf;
 
 	    db_user = db_name + SRV_CON_DBNAME_SIZE;
 	    db_passwd = db_user + SRV_CON_DBUSER_SIZE;
+	    url = db_passwd + SRV_CON_DBPASSWD_SIZE;
 	    db_name[SRV_CON_DBNAME_SIZE - 1] =
 	      db_user[SRV_CON_DBUSER_SIZE - 1] =
 	      db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 	    if (db_user[0] == '\0')
 	      strcpy (db_user, "public");
 
+	    cas_log_debug (ARG_FILE_LINE,
+			   "db_name %s db_user %s db_passwd %s url %s",
+			   db_name, db_user, db_passwd, url);
+	    if (as_info->reset_flag == TRUE)
+	      {
+		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
+		db_Connect_status = -1;	/* DB_CONNECTION_STATUS_RESET */
+		as_info->reset_flag = FALSE;
+	      }
 	    err_code =
 	      ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 	    if (err_code < 0)
 	      {
 		if (db_err_msg == NULL)
 		  {
-		    NET_WRITE_ERROR_CODE (client_sock_fd, err_code);
+		    NET_WRITE_ERROR_CODE (client_sock_fd, dummy_info,
+					  err_code);
 		  }
 		else
 		  {
-		    net_write_int (client_sock_fd, strlen (db_err_msg) + 5);
-		    net_write_int (client_sock_fd, err_code);
-		    net_write_stream (client_sock_fd, db_err_msg,
-				      strlen (db_err_msg) + 1);
+		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
+						   dummy_info, err_code,
+						   db_err_msg);
+
 		  }
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
 
 		goto error1;
 	      }
-	    cas_log_write (0, TRUE, "connect DB %s USER %s", db_name,
-			   db_user);
+	    cas_log_write (0, true, "connect db %s user %s url %s", db_name,
+			   db_user, url);
 
 	    ux_set_default_setting ();
 
-	    shm_appl->as_info[shm_as_index].auto_commit_mode = FALSE;
-	    cas_log_write (0, TRUE,
-			   "isolation level %d, lock timeout %d, auto_commit %s",
-			   cas_default_isolation_level,
-			   cas_default_lock_timeout,
-			   shm_appl->as_info[shm_as_index].
-			   auto_commit_mode ? "true" : "false");
+	    as_info->auto_commit_mode = FALSE;
+	    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
+				   "lock_timeout %d, auto_commit %s",
+				   cas_default_isolation_level,
+				   cas_default_lock_timeout,
+				   as_info->auto_commit_mode ? "true"
+				   : "false");
 
-	    shm_appl->as_info[shm_as_index].cur_keep_con = KEEP_CON_OFF;
-	    BROKER_INFO_KEEP_CONNECTION (broker_info) =
+	    as_info->cur_keep_con = KEEP_CON_OFF;
+	    broker_info[BROKER_INFO_KEEP_CONNECTION] =
 	      CAS_KEEP_CONNECTION_OFF;
 
 	    if (shm_appl->statement_pooling)
 	      {
-		BROKER_INFO_STATEMENT_POOLING (broker_info) =
+		broker_info[BROKER_INFO_STATEMENT_POOLING] =
 		  CAS_STATEMENT_POOLING_ON;
-		shm_appl->as_info[shm_as_index].cur_statement_pooling = ON;
+		as_info->cur_statement_pooling = ON;
 	      }
 	    else
 	      {
-		BROKER_INFO_STATEMENT_POOLING (broker_info) =
+		broker_info[BROKER_INFO_STATEMENT_POOLING] =
 		  CAS_STATEMENT_POOLING_OFF;
-		shm_appl->as_info[shm_as_index].cur_statement_pooling = OFF;
+		as_info->cur_statement_pooling = OFF;
 	      }
+	    broker_info[BROKER_INFO_CCI_PCONNECT] =
+	      (shm_appl->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
 
 	    do
 	      {
+		/* PID + BROKER_INFO */
 		char msgbuf[4 + BROKER_INFO_SIZE];
 		int tmpint = htonl (getpid ());
 
-		shm_appl->as_info[shm_as_index].cur_keep_con =
-		  shm_appl->keep_connection;
-		if (shm_appl->as_info[shm_as_index].cur_keep_con !=
-		    KEEP_CON_OFF)
+		as_info->cur_keep_con = shm_appl->keep_connection;
+		if (as_info->cur_keep_con != KEEP_CON_OFF)
 		  {
-		    BROKER_INFO_KEEP_CONNECTION (broker_info) =
+		    broker_info[BROKER_INFO_KEEP_CONNECTION] =
 		      CAS_KEEP_CONNECTION_ON;
 		  }
 		net_write_int (client_sock_fd, 4 + BROKER_INFO_SIZE);
+		if (cas_info_size > 0)
+		  {
+		    net_write_stream (client_sock_fd, dummy_info,
+				      cas_info_size);
+		  }
+
 		memcpy (msgbuf, &tmpint, 4);
 		memcpy (msgbuf + 4, broker_info, BROKER_INFO_SIZE);
 		net_write_stream (client_sock_fd, msgbuf,
@@ -438,6 +477,11 @@ main (int argc, char *argv[])
 	    while (0);
 
 	    req_info.need_rollback = TRUE;
+
+	    gettimeofday (&tran_start_time, NULL);
+	    gettimeofday (&query_start_time, NULL);
+	    tran_timeout = 0;
+	    query_timeout = 0;
 
 	    cas_log_error_handler_begin ();
 	    err_code = 0;
@@ -453,35 +497,22 @@ main (int argc, char *argv[])
 		signal (SIGUSR1, SIG_IGN);
 #endif
 #if defined(WINDOWS)
-		if (shm_appl->as_info[shm_as_index].glo_read_size < 0)
+		if (as_info->glo_read_size < 0)
 		  {
-		    shm_appl->as_info[shm_as_index].glo_read_size = 0;
+		    as_info->glo_read_size = 0;
 		  }
-		if (shm_appl->as_info[shm_as_index].glo_write_size < 0)
+		if (as_info->glo_write_size < 0)
 		  {
-		    shm_appl->as_info[shm_as_index].glo_write_size = 0;
+		    as_info->glo_write_size = 0;
 		  }
-		shm_appl->as_info[shm_as_index].glo_flag = 0;
+		as_info->glo_flag = 0;
 #endif
-		shm_appl->as_info[shm_as_index].last_access_time =
-		  time (NULL);
-
-#if 0
-		if (req_info.need_reconnect)
-		  {
-		    cas_log_debug (ARG_FILE_LINE, "main: need_reconnect");
-		    err_code =
-		      ux_database_connect (db_name, db_user, db_passwd, NULL);
-		    if (err_code == 0)
-		      {
-			cas_log_write (0, TRUE, "reconnect %s %s", db_name,
-				       db_user);
-		      }
-		  }
-#endif
+		as_info->last_access_time = time (NULL);
 	      }
 
-	    if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
+	    prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
+
+	    if (as_info->cur_statement_pooling)
 	      {
 		hm_srv_handle_free_all ();
 	      }
@@ -493,8 +524,15 @@ main (int argc, char *argv[])
 	      }
 	    else
 	      {
-		ux_end_tran (CCI_TRAN_ROLLBACK, FALSE);
+		ux_end_tran (CCI_TRAN_ROLLBACK, false);
 	      }
+
+	    if (as_info->reset_flag == TRUE)
+	      {
+		ux_database_shutdown ();
+		as_info->reset_flag = FALSE;
+	      }
+
 	    cas_log_error_handler_end ();
 
 	    if (shm_appl->access_log == ON)
@@ -509,30 +547,28 @@ main (int argc, char *argv[])
 
       error1:
 #if defined(WINDOWS)
-	shm_appl->as_info[shm_as_index].close_flag = 1;
+	as_info->close_flag = 1;
 #endif
 
-	cas_log_write (0, TRUE, "disconnect");
+	cas_log_write_and_end (0, true, "disconnect");
+	cas_log_write2 (sql_log2_get_filename ());
+	cas_log_write_and_end (0, false, "STATE idle");
+	cas_log_close (true);
+	sql_log2_end (true);
 
-	cas_log_end (&tran_start_time, broker_name, shm_as_index,
-		     shm_appl->sql_log_time, sql_log2_get_filename (),
-		     shm_appl->sql_log_max_size, TRUE);
-	sql_log2_end (TRUE);
-
-	if (is_ServerAborted)
+	if (is_server_aborted)
 	  {
-	    shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_RESTART;
+	    as_info->uts_status = UTS_STATUS_RESTART;
 	  }
 	else
 	  if (!
-	      (shm_appl->as_info[shm_as_index].cur_keep_con == KEEP_CON_AUTO
-	       && shm_appl->as_info[shm_as_index].con_status ==
-	       CON_STATUS_CLOSE_AND_CONNECT))
+	      (as_info->cur_keep_con == KEEP_CON_AUTO
+	       && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT))
 	  {
 	    if (restart_is_needed ())
-	      shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_RESTART;
+	      as_info->uts_status = UTS_STATUS_RESTART;
 	    else
-	      shm_appl->as_info[shm_as_index].uts_status = UTS_STATUS_IDLE;
+	      as_info->uts_status = UTS_STATUS_IDLE;
 	  }
 	cas_req_count++;
       }
@@ -545,7 +581,7 @@ main (int argc, char *argv[])
 
   return 0;
 }
-#else
+#else /* !LIBCAS_FOR_JSP */
 int
 libcas_main (SOCKET jsp_sock_fd)
 {
@@ -558,7 +594,7 @@ libcas_main (SOCKET jsp_sock_fd)
   memset (broker_info, 0, sizeof (broker_info));
 
   req_info.client_version = CAS_CUR_VERSION;
-  BROKER_INFO_DBMS_TYPE (broker_info) = CCI_DBMS_CUBRID;
+  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_CUBRID;
   client_sock_fd = jsp_sock_fd;
 
   net_buf_init (&net_buf);
@@ -600,7 +636,7 @@ libcas_srv_handle_free (int h_id)
 {
   hm_srv_handle_free (h_id);
 }
-#endif
+#endif /* LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
 static void
@@ -613,6 +649,9 @@ cleanup (int signo)
   signal (signo, SIG_IGN);
 
   ux_database_shutdown ();
+
+  cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
+  cas_log_close (true);
 
 #ifdef MEM_DEBUG
   fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
@@ -635,15 +674,16 @@ query_cancel (int signo)
 {
   signal (signo, SIG_IGN);
   db_set_interrupt (1);
-  cas_log_write (0, TRUE, "query_cancel");
+  cas_log_write (0, false, "query_cancel");
 }
-#endif /* end of ifndef LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
 
 static int
 process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 		 T_REQ_INFO * req_info)
 {
-  int msg_size;
+  MSG_HEADER client_msg_header;
+  MSG_HEADER cas_msg_header;
   char *read_msg;
   char func_code;
   int argc;
@@ -651,113 +691,153 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   int err_code;
   T_SERVER_FUNC server_fn;
 
+  init_msg_header (&client_msg_header);
+  init_msg_header (&cas_msg_header);
+
 #ifndef LIBCAS_FOR_JSP
-  if (shm_appl->as_info[shm_as_index].cur_keep_con == KEEP_CON_AUTO)
+  if (as_info->cur_keep_con == KEEP_CON_AUTO)
     {
-      err_code = net_read_int_keep_con_auto (clt_sock_fd, &msg_size);
+      err_code = net_read_int_keep_con_auto (clt_sock_fd,
+					     &client_msg_header, req_info);
     }
   else
     {
       net_timeout_set (shm_appl->session_timeout);
-      err_code = net_read_int (clt_sock_fd, &msg_size);
+      err_code = net_read_header (clt_sock_fd, &client_msg_header);
     }
-#else
+#else /* !LIBCAS_FOR_JSP */
   net_timeout_set (60);
-  err_code = net_read_int (clt_sock_fd, &msg_size);
-#endif
+  err_code = net_read_header (clt_sock_fd, &client_msg_header);
+#endif /* LIBCAS_FOR_JSP */
 
   if (err_code < 0)
     {
       const char *cas_log_msg = NULL;
-      NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    CAS_ER_COMMUNICATION);
 #ifndef LIBCAS_FOR_JSP
-      if (shm_appl->as_info[shm_as_index].con_status ==
-	  CON_STATUS_CLOSE_AND_CONNECT)
+      if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	{
-	  cas_log_msg = "CHANGE_CLIENT";
+	  cas_log_msg = "CHANGE CLIENT";
 	}
-#endif
+#endif /* !LIBCAS_FOR_JSP */
       if (cas_log_msg == NULL)
 	{
 	  if (net_timeout_flag)
 	    {
-	      cas_log_msg = "SESSION_TIMEOUT";
+	      cas_log_msg = "SESSION TIMEOUT";
 	    }
 	  else
 	    {
-	      cas_log_msg = "CONN_ERR net_read_int()";
+	      cas_log_msg = "COMMUNICATION ERROR net_read_header()";
 	    }
 	}
-      cas_log_write (0, TRUE, cas_log_msg);
+      cas_log_write_and_end (0, true, cas_log_msg);
       return -1;
     }
+
+
 
 #ifndef LIBCAS_FOR_JSP
   if (shm_appl->session_timeout < 0)
     net_timeout_set (NET_DEFAULT_TIMEOUT);
   else
     net_timeout_set (MIN (shm_appl->session_timeout, NET_DEFAULT_TIMEOUT));
-#else
+#else /* !LIBCAS_FOR_JSP */
   net_timeout_set (NET_DEFAULT_TIMEOUT);
-#endif
+#endif /* LIBCAS_FOR_JSP */
 
-  read_msg = (char *) MALLOC (msg_size);
+  read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));
+
   if (read_msg == NULL)
     {
-      NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_NO_MORE_MEMORY);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    CAS_ER_NO_MORE_MEMORY);
       return -1;
     }
-  if (net_read_stream (clt_sock_fd, read_msg, msg_size) < 0)
+  if (net_read_stream (clt_sock_fd, read_msg,
+		       *(client_msg_header.msg_body_size_ptr)) < 0)
     {
-      NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
-      cas_log_write (0, TRUE, "CONN_ERR net_read_stream()");
+      FREE_MEM (read_msg);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    CAS_ER_COMMUNICATION);
+      cas_log_write_and_end (0, true,
+			     "COMMUNICATION ERROR net_read_stream()");
       return -1;
     }
 
-  argc = net_decode_str (read_msg, msg_size, &func_code, &argv);
+  argc = net_decode_str (read_msg, *(client_msg_header.msg_body_size_ptr),
+			 &func_code, &argv);
   if (argc < 0)
     {
       FREE_MEM (read_msg);
-      NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    CAS_ER_COMMUNICATION);
       return argc;
     }
 
   if (func_code <= 0 || func_code >= CAS_FC_MAX)
     {
-      NET_WRITE_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
+      FREE_MEM (argv);
+      FREE_MEM (read_msg);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    CAS_ER_COMMUNICATION);
       return CAS_ER_COMMUNICATION;
     }
 
 #ifndef LIBCAS_FOR_JSP
-  strcpy (shm_appl->as_info[shm_as_index].log_msg,
-	  server_func_name[func_code - 1]);
+  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
 #if defined(WINDOWS)
   if (!(func_code == CAS_FC_GLO_NEW || func_code == CAS_FC_GLO_SAVE))
     {
-      shm_appl->as_info[shm_as_index].glo_read_size = 0;
+      as_info->glo_read_size = 0;
     }
-#endif
-#endif
+#endif /* WINDOWS */
+#endif /* !LIBCAS_FOR_JSP */
 
   server_fn = server_fn_table[func_code - 1];
 
 #ifndef LIBCAS_FOR_JSP
+  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
+    {
+      assert (prev_cas_info[CAS_INFO_STATUS] ==
+	      client_msg_header.info_ptr[CAS_INFO_STATUS]);
+#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
+      if (prev_cas_info[CAS_INFO_STATUS] !=
+	  client_msg_header.info_ptr[CAS_INFO_STATUS])
+	{
+	  cas_log_debug (ARG_FILE_LINE, "[%d][PREV : %d, RECV : %d], "
+			 "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
+			 "[JID : %d] \n",
+			 func_code - 1, prev_cas_info[CAS_INFO_STATUS],
+			 client_msg_header.info_ptr[CAS_INFO_STATUS],
+			 prev_cas_info[CAS_INFO_RESERVED_1],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1],
+			 prev_cas_info[CAS_INFO_RESERVED_2],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
+	}
+#endif /* end for debug */
+    }
+#endif /* !LIBCAS_FOR_JSP */
+
+#ifndef LIBCAS_FOR_JSP
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
   cas_send_result_flag = TRUE;
 
   err_code = (*server_fn) (clt_sock_fd, argc, argv, net_buf, req_info);
 #ifndef LIBCAS_FOR_JSP
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
 		 server_func_name[func_code - 1], err_code);
-  if (!ux_is_database_connected ())
+  if (as_info->reset_flag && as_info->con_status != CON_STATUS_IN_TRAN)
     {
       cas_log_debug (ARG_FILE_LINE,
-		     "process_request: !ux_is_database_connected()");
+		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       err_code = -1;
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
   if (err_code == 0 && net_buf->err_code == 0
@@ -766,65 +846,88 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
       /* no error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
 
-#ifdef DIAG_DEVEL
-      shm_appl->as_info[shm_as_index].num_transactions_processed %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_transactions_processed++;
-#endif
+      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_transactions_processed++;
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
-#ifdef DIAG_DEVEL
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
     {
-      shm_appl->as_info[shm_as_index].num_requests_received %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_requests_received++;
+      as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;
+      as_info->num_requests_received++;
     }
   else if (func_code == CAS_FC_END_TRAN)
     {
-      shm_appl->as_info[shm_as_index].num_transactions_processed %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_transactions_processed++;
+      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_transactions_processed++;
     }
-#endif
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
-  shm_appl->as_info[shm_as_index].glo_read_size = 0;
+  as_info->glo_read_size = 0;
 #endif
 
-  shm_appl->as_info[shm_as_index].log_msg[0] = '\0';
-#endif
+  as_info->log_msg[0] = '\0';
+#endif /* !LIBCAS_FOR_JSP */
 
   if (net_buf->err_code)
     {
-      int err_code;
-      NET_WRITE_ERROR_CODE (clt_sock_fd, net_buf->err_code);
+      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
+			    net_buf->err_code);
       err_code = net_buf->err_code;
-      net_buf_clear (net_buf);
-      return err_code;
+
+      goto exit_on_end;
     }
 
 #ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
   if (net_buf->post_send_file == NULL)
-    shm_appl->as_info[shm_as_index].glo_write_size = 0;
+    as_info->glo_write_size = 0;
   else
-    shm_appl->as_info[shm_as_index].glo_write_size = net_buf->post_file_size;
+    as_info->glo_write_size = net_buf->post_file_size;
 #endif
-#endif
+#endif /* !LIBCAS_FOR_JSP */
   if (cas_send_result_flag && net_buf->data != NULL)
     {
-      int data_size;
-      data_size = htonl (net_buf->data_size);
-      memcpy (net_buf->data, &data_size, NET_BUF_HEADER_SIZE);
+      *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
+
+      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr,
+	      NET_BUF_HEADER_MSG_SIZE);
+#ifndef LIBCAS_FOR_JSP
+      if (as_info->con_status == CON_STATUS_IN_TRAN)
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
+	}
+      else
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+	}
+
+#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
+      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
+      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] =
+	as_info->num_requests_received % 128;
+      prev_cas_info[CAS_INFO_STATUS] =
+	cas_msg_header.info_ptr[CAS_INFO_STATUS];
+      prev_cas_info[CAS_INFO_RESERVED_1] =
+	cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
+      prev_cas_info[CAS_INFO_RESERVED_2] =
+	cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
+#endif /* end for debug */
+
+#endif /* !LIBCAS_FOR_JSP */
+      if (cas_info_size > 0)
+	{
+	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,
+		  cas_msg_header.info_ptr, cas_info_size);
+	}
       if (net_write_stream (clt_sock_fd, net_buf->data,
 			    NET_BUF_CURR_SIZE (net_buf)) < 0)
 	{
-	  cas_log_write (0, TRUE, "CONN_ERR net_write_stream()");
+	  cas_log_write_and_end (0, true,
+				 "COMMUNICATION ERROR net_write_stream()");
 	}
     }
   if (cas_send_result_flag && net_buf->post_send_file != NULL)
@@ -835,10 +938,11 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
       unlink (net_buf->post_send_file);
       if (err_code < 0)
 	{
-	  net_buf_clear (net_buf);
-	  return err_code;
+	  goto exit_on_end;
 	}
     }
+
+exit_on_end:
   net_buf_clear (net_buf);
 
   FREE_MEM (read_msg);
@@ -854,16 +958,29 @@ cas_init ()
   char *tmp_p;
 
   if (as_get_my_as_info (broker_name, &shm_as_index) < 0)
-    return -1;
+    {
+      return -1;
+    }
 
-  if ((tmp_p = getenv (APPL_SERVER_SHM_KEY_STR)) == NULL)
-    return -1;
+  if (shm_as_index < 0)
+    {
+      return -1;
+    }
+
+  tmp_p = getenv (APPL_SERVER_SHM_KEY_STR);
+  if (tmp_p == NULL)
+    {
+      return -1;
+    }
 
   shm_appl =
     (T_SHM_APPL_SERVER *) uw_shm_open (atoi (tmp_p), SHM_APPL_SERVER,
 				       SHM_MODE_ADMIN);
   if (shm_appl == NULL)
-    return -1;
+    {
+      return -1;
+    }
+  as_info = &(shm_appl->as_info[shm_as_index]);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
@@ -873,17 +990,22 @@ cas_init ()
 
   return 0;
 }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 
 #ifndef LIBCAS_FOR_JSP
 static int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd,
+			    MSG_HEADER * client_msg_header,
+			    T_REQ_INFO * req_info)
 {
   int ret_value = 0;
+  int elapsed_sec = 0, elapsed_msec = 0;
 
-  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_IN_TRAN)
-    net_timeout_set (shm_appl->session_timeout);
+  if (as_info->con_status == CON_STATUS_IN_TRAN)
+    {
+      net_timeout_set (shm_appl->session_timeout);
+    }
   else
     {
       net_timeout_set (1);
@@ -892,31 +1014,35 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size)
 
   do
     {
-      if (shm_appl->as_info[shm_as_index].cas_log_reset)
+      if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name, shm_as_index);
 	}
 
-      if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE
-	  || (shm_appl->as_info[shm_as_index].con_status ==
-	      CON_STATUS_CLOSE_AND_CONNECT))
+      if (as_info->con_status == CON_STATUS_CLOSE
+	  || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	{
 	  break;
 	}
 
-      if (net_read_int (clt_sock_fd, msg_size) < 0)
+      if (net_read_header (clt_sock_fd, client_msg_header) < 0)
 	{
-	  if (shm_appl->as_info[shm_as_index].con_status ==
-	      CON_STATUS_IN_TRAN || !net_timeout_flag)
+	  /* if in-transaction state, return network error */
+	  if (as_info->con_status == CON_STATUS_IN_TRAN || !net_timeout_flag)
 	    {
 	      ret_value = -1;
 	      break;
 	    }
-	  if (shm_appl->as_info[shm_as_index].con_status ==
-	      CON_STATUS_OUT_TRAN && net_timeout_flag && restart_is_needed ())
+	  /* if out-of-transaction state, check whether restart is needed */
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && net_timeout_flag)
 	    {
-	      ret_value = -1;
-	      break;
+	      if (restart_is_needed ())
+		{
+		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: "
+				 "restart_is_needed()");
+		  ret_value = -1;
+		  break;
+		}
 	    }
 	}
       else
@@ -930,28 +1056,50 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, int *msg_size)
 
   CON_STATUS_LOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
 
-  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_OUT_TRAN)
+  if (as_info->con_status == CON_STATUS_OUT_TRAN)
     {
-      shm_appl->as_info[shm_as_index].num_request++;
-      TIMEVAL_MAKE (&tran_start_time);
+      as_info->num_request++;
+      gettimeofday (&tran_start_time, NULL);
     }
 
-  if (shm_appl->as_info[shm_as_index].con_status == CON_STATUS_CLOSE
-      || (shm_appl->as_info[shm_as_index].con_status ==
-	  CON_STATUS_CLOSE_AND_CONNECT))
+  if (as_info->con_status == CON_STATUS_CLOSE
+      || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {
       ret_value = -1;
     }
   else
     {
-      shm_appl->as_info[shm_as_index].con_status = CON_STATUS_IN_TRAN;
+      if (as_info->con_status != CON_STATUS_IN_TRAN)
+	{
+	  as_info->con_status = CON_STATUS_IN_TRAN;
+	  errors_in_transaction = 0;
+	}
     }
 
   CON_STATUS_UNLOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
 
   return ret_value;
 }
+#endif /* !LIBCAS_FOR_JSP */
+
+void
+set_cas_info_size (void)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (CAS_MAKE_VER (as_info->clt_major_version,
+		    as_info->clt_minor_version,
+		    as_info->clt_patch_version) <= CAS_MAKE_VER (8, 1, 5))
+#else
+  if (CAS_CUR_VERSION <= CAS_MAKE_VER (8, 1, 5))
 #endif
+    {
+      cas_info_size = 0;
+    }
+  else
+    {
+      cas_info_size = CAS_INFO_SIZE;
+    }
+}
 
 #ifndef LIBCAS_FOR_JSP
 int
@@ -960,10 +1108,9 @@ restart_is_needed (void)
 #if defined(WINDOWS)
   if (shm_appl->use_pdh_flag == TRUE)
     {
-      if ((shm_appl->as_info[shm_as_index].pid ==
-	   shm_appl->as_info[shm_as_index].pdh_pid)
-	  && (shm_appl->as_info[shm_as_index].pdh_workset >
-	      shm_appl->appl_server_max_size))
+      if ((as_info->pid ==
+	   as_info->pdh_pid)
+	  && (as_info->pdh_workset > shm_appl->appl_server_max_size))
 	{
 	  return 1;
 	}
@@ -974,17 +1121,22 @@ restart_is_needed (void)
     }
   else
     {
-      if (cas_req_count % 100 == 0)
+      if (cas_req_count % 500 == 0)
 	return 1;
       else
 	return 0;
     }
-#else
-  if (shm_appl->as_info[shm_as_index].psize > shm_appl->appl_server_max_size)
-    return 1;
+#else /* WINDOWS */
+  if (as_info->psize >
+      MAX (psize_at_start * 2, shm_appl->appl_server_max_size))
+    {
+      return 1;
+    }
   else
-    return 0;
-#endif
+    {
+      return 0;
+    }
+#endif /* !WINDOWS */
 }
 
 #if defined(WINDOWS)
@@ -1034,5 +1186,5 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
   return EXCEPTION_EXECUTE_HANDLER;
 }
-#endif
-#endif
+#endif /* WINDOWS */
+#endif /* !LIBCAS_FOR_JSP */

@@ -571,7 +571,7 @@ qfile_free_sort_list (SORT_LIST * sort_list_p)
   MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
 
   /* TODO: introduce other param rather than MAX_THREADS */
-  if (qfile_Free_sort_list_count < PRM_MAX_THREADS)
+  if (qfile_Free_sort_list_count < thread_num_worker_threads ())
     {
       p->next = qfile_Free_sort_list;
       qfile_Free_sort_list = sort_list_p;
@@ -1303,6 +1303,8 @@ qfile_finalize (void)
       qfile_Free_sort_list_total--;
       free_and_init (sort_list_p);
     }
+
+  assert (qfile_Free_sort_list_count == 0 && qfile_Free_sort_list_total == 0);
 }
 
 /*
@@ -1783,7 +1785,7 @@ qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p,
   QFILE_LIST_MERGE_INFO *merge_info_p;
   char *src_p;
   int i, tuple_value_size;
-  INT32 ls_unbound[2];
+  INT32 ls_unbound[2] = { 0, 0 };
 
   QFILE_PUT_TUPLE_VALUE_FLAG ((char *) ls_unbound, V_UNBOUND);
   QFILE_PUT_TUPLE_VALUE_LENGTH ((char *) ls_unbound, 0);
@@ -2176,7 +2178,13 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
   else
     {
       query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
+      if (query_entry_p == NULL)
+	{
+	  return ER_QPROC_UNKNOWN_QUERYID;
+	}
     }
+
+
 
 #if defined(SERVER_MODE)
   error = qmgr_get_query_error_with_entry (query_entry_p);
@@ -4304,6 +4312,7 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 			     dup_list_id_p->tfile_vfid) != NO_ERROR)
     {
       qfile_destroy_list (thread_p, dup_list_id_p);
+      qfile_free_list_id (dup_list_id_p);
       return NULL;
     }
 
@@ -5169,7 +5178,11 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
     {
       pent->s.next = n + 1;
     }
-  pent->s.next = -1;
+
+  if (pent != NULL)
+    {
+      pent->s.next = -1;
+    }
 
   csect_exit (CSECT_QPROC_LIST_CACHE);
 
@@ -5474,6 +5487,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   char str[20];
   TP_DOMAIN **d;
   time_t tmp_time;
+  struct tm *c_time_struct;
 
   if (!ent)
     {
@@ -5530,19 +5544,37 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   fprintf (fp, "  query_string = %s\n", ent->query_string);
 
   tmp_time = ent->time_created.tv_sec;
-  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
-  fprintf (fp, "  time_created = %s.%d\n", str,
-	   (int) ent->time_created.tv_usec);
+  c_time_struct = localtime (&tmp_time);
+  if (c_time_struct == NULL)
+    {
+      fprintf (fp, "  ent->time_created.tv_sec is invalid (%ld)\n",
+	       ent->time_last_used.tv_sec);
+    }
+  else
+    {
+      (void) strftime (str, sizeof (str), "%x %X", c_time_struct);
+      fprintf (fp, "  time_created = %s.%d\n", str,
+	       (int) ent->time_created.tv_usec);
+    }
 
   tmp_time = ent->time_last_used.tv_sec;
-  (void) strftime (str, sizeof (str), "%x %X", localtime (&tmp_time));
-  fprintf (fp, "  time_last_used = %s.%d\n", str,
-	   (int) ent->time_last_used.tv_usec);
+  c_time_struct = localtime (&tmp_time);
+  if (c_time_struct == NULL)
+    {
+      fprintf (fp, "  ent->time_last_used.tv_sec is invalid (%ld)\n",
+	       ent->time_last_used.tv_sec);
+    }
+  else
+    {
+      (void) strftime (str, sizeof (str), "%x %X", c_time_struct);
+      fprintf (fp, "  time_last_used = %s.%d\n", str,
+	       (int) ent->time_last_used.tv_usec);
 
-  fprintf (fp, "  ref_count = %d\n", ent->ref_count);
-  fprintf (fp, "  deletion_marker = %s\n",
-	   (ent->deletion_marker) ? "true" : "false");
-  fprintf (fp, "}\n");
+      fprintf (fp, "  ref_count = %d\n", ent->ref_count);
+      fprintf (fp, "  deletion_marker = %s\n",
+	       (ent->deletion_marker) ? "true" : "false");
+      fprintf (fp, "}\n");
+    }
 
   return true;
 }
@@ -5722,13 +5754,15 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data,
 {
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
-  int tran_index = *((int *) args);
+  int tran_index;
   int error_code = ER_FAILED;
 
-  if (!data || !args)
+  if (data == NULL || args == NULL)
     {
       return ER_FAILED;
     }
+
+  tran_index = *((int *) args);
 
   /* mark it to be deleted */
   lent->deletion_marker = true;

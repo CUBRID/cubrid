@@ -1,0 +1,16 @@
+     <resources>
+       <master_slave id="ms_cubrid_DB_1">
+         <meta_attributes id="ms_cubrid_DB_1_meta_attrs">
+           <attributes>
+             <nvpair name="clone_max" id="ms_cubrid_DB_1_metaattr_clone_max" value="3"/>
+           </attributes>
+         </meta_attributes>
+       </master_slave>
+       <master_slave id="ms_cubrid_DB_2">
+         <meta_attributes id="ms_cubrid_DB_2_meta_attrs">
+           <attributes>
+             <nvpair name="clone_max" id="ms_cubrid_DB_2_metaattr_clone_max" value="3"/>
+           </attributes>
+         </meta_attributes>
+       </master_slave>
+     </resources>

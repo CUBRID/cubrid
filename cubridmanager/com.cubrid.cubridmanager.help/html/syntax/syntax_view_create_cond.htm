@@ -1,0 +1,129 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>수정 가능한 VIEW의 생성 조건</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n가상 테이블(VIEW) \n가상 테이블 생성\n수정 가능한 VIEW의 생성 조건");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_view_create_syntax.htm\">가상 테이블(VIEW) <\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_view_create_syntax.htm\">가상 테이블 생성<\/a> &nbsp;&gt;&nbsp; 수정 가능한 VIEW의 생성 조건<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>수정 가능한 VIEW의 생성 조건</h4>
+<h6>설명</h6>
+<p>가상 테이블의 데이터를 수정하려면 가상 테이블이 수정 가능하도록 정의되어야 한다.</p>
+<p>다음의 조건을 만족한다면 해당&#160;가상 테이블은 수정 가능하다.</p>
+<ul>
+<li><span class="keyword">FROM</span> 절은 반드시 하나의&#160;테이블 또는 수정 가능한 가상 테이블만 포함해야 한다.단, <span class="keyword">FROM</span> (class_x, class_y)과 같이 괄호에 포함된 두 테이블은 하나의&#160;테이블을 표현하므로 수정 가능하다.</li>
+<li><span class="keyword">DISTINCT</span>, <span class="keyword">UNIQUE</span> 구문을 포함하지 않는다.</li>
+<li><span class="keyword">GROUP BY... HAVING</span> 구문을 포함하지 않는다.</li>
+<li><span class="keyword">SUM</span>( ), <span class="keyword">AVG</span>( )와 같은 집계 함수를 포함하지 않는다.</li>
+<li><span class="keyword">UNION</span>이 아닌 <span class="keyword">UNION ALL</span>을 사용하여 수정 가능한 질의만으로 질의를 구성한 경우 수정 가능하다. 단,&#160;테이블은 <span class="keyword">UNION ALL</span>을 구성하는 질의 중 어느 한 질의에만 존재해야 한다.</li>
+<li><span class="keyword">UNION&#160; ALL&#160;</span>구문을 사용하여 생성된 가상 테이블에 인스턴스를 입력하는 경우, 인스턴스가 입력될 테이블은 시스템이 결정한다. 인스턴스가 입력될&#160;테이블을 사용자가 제어하는 것은 불가능하므로 사용자가 제어하기 원한다면 테이블에 직접 입력하거나 입력을 위한 별도의 가상&#160;테이블을 생성해야 한다.</li>
+</ul>
+<p>위 규칙을 모두 충족하더라도 수정 가능한 가상 테이블의 각 컬럼이 수정 가능하지 않을 수 있다. 컬럼이 수정 가능 하려면 다음 규칙을 따라야 한다.</p>
+<ul>
+<li>경로 표현식은 수정 가능하지 않다.</li>
+<li>산술 연산자가 포함된 숫자 타입의 컬럼은 수정 가능하지 않다.</li>
+</ul>
+<p>가상 테이블에 정의된 컬럼이 수정 가능하더라도 <span class="keyword">FROM</span> 구문에 포함된 테이블에 대해 수정을 위한 적절한 권한이 있어야 가상 테이블을 수정할 수 있다. 또한 가상 테이블에 대한 접근 권한이 있어야 한다. 가상 테이블에 접근 권한을 부여하는 방법은 테이블에 접근 권한을 부여하는 방식과 동일하다. 권한 부여에 대한 자세한 내용은 "<a href="syntax_access_authority.htm">권한 부여</a>"을 참조한다.</p>
+<h6>예제</h6>
+<p>다음은&#160;athlete 테이블에서 수영 선수의 이름과 성별, 종목을 조회하는 수정 가능한 swimming 가상 테이블을 생성하는 예제이다.</p>
+<p class="code">CREATE VIEW swimming(<br />
+name&#160;VARCHAR(50),<br />
+gender CHAR(1),<br />
+event&#160;VARCHAR(50)<br />
+)<br />
+AS SELECT name, gender,&#160;event FROM athlete WHERE&#160;event = 'Swimming';&#160;&#160;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

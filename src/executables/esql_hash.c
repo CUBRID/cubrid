@@ -355,6 +355,11 @@ void *
 es_ht_alloc_new_symbol (int size)
 {
   BUCKET *sym = (BUCKET *) pp_malloc (size + sizeof (BUCKET));
+  if (sym == NULL)
+    {
+      return NULL;
+    }
+
   memset (sym, 0, size + sizeof (BUCKET));
   return (void *) (sym + 1);
 }

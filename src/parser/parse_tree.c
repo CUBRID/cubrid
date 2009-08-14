@@ -962,6 +962,11 @@ PARSER_VARCHAR *
 pt_append_nulstring (const PARSER_CONTEXT * parser,
 		     PARSER_VARCHAR * bstring, const char *nulstring)
 {
+  if (nulstring == NULL)
+    {
+      return bstring;
+    }
+
   return pt_append_bytes (parser, bstring, nulstring, strlen (nulstring));
 }
 
@@ -974,7 +979,12 @@ pt_append_nulstring (const PARSER_CONTEXT * parser,
 const unsigned char *
 pt_get_varchar_bytes (const PARSER_VARCHAR * string)
 {
-  return string->bytes;
+  if (string != NULL)
+    {
+      return string->bytes;
+    }
+
+  return NULL;
 }
 
 
@@ -986,7 +996,12 @@ pt_get_varchar_bytes (const PARSER_VARCHAR * string)
 int
 pt_get_varchar_length (const PARSER_VARCHAR * string)
 {
-  return string->length;
+  if (string != NULL)
+    {
+      return string->length;
+    }
+
+  return 0;
 }
 
 
@@ -1050,8 +1065,12 @@ parser_create_parser (void)
 #endif /* SERVER_MODE */
 
   parser = (PARSER_CONTEXT *) calloc (sizeof (PARSER_CONTEXT), 1);
-  if (!parser)
-    return NULL;
+  if (parser == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (PARSER_CONTEXT));
+      return NULL;
+    }
 
 #if !defined (SERVER_MODE)
   parser_init_func_vectors ();

@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * transform.h: Definitions for the transformer shared between the client and 
+ * transform.h: Definitions for the transformer shared between the client and
  *            server.
  */
 
@@ -123,7 +123,6 @@ typedef struct tf_ct_class
 #define CT_METHARG_NAME            "_db_meth_arg"
 #define CT_METHFILE_NAME           "_db_meth_file"
 #define CT_QUERYSPEC_NAME          "_db_query_spec"
-/* (below) currently, not implemented */
 #define CT_RESOLUTION_NAME         "_db_resolution"
 #define CT_INDEX_NAME              "_db_index"
 #define CT_INDEXKEY_NAME           "_db_index_key"
@@ -133,6 +132,7 @@ typedef struct tf_ct_class
 #define CT_STORED_PROC_ARGS_NAME   "_db_stored_procedure_args"
 #define CT_PARTITION_NAME          "_db_partition"
 #define CT_SERIAL_NAME             "db_serial"
+#define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"

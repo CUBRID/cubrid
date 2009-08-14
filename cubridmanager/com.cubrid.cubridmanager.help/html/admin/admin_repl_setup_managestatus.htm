@@ -1,0 +1,147 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>복제 상태 관리</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 설정\n복제 상태 관리");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_setup.htm\">복제 설정<\/a> &nbsp;&gt;&nbsp; 복제 상태 관리<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>복제 상태 관리</h4>
+<h6>복제 상태 확인</h6>
+<p>복제가 진행되고 있는지 상태를 확인하기 위해서 <span class="keyword">cubrid repl_server status</span> 나 <span class="keyword">cubrid repl_agent status</span>를 사용한다.</p>
+<ul>
+<li>복제 서버 혹은 복제 에이전트의 상태만 출력하여 확인한다.</li>
+</ul>
+<p class="code">$ cubrid repl_server status</p>
+<p class="definition">또는</p>
+<p class="code">$ cubrid repl_agent status<br />
+@ cubrid replication status<br />
+repl_agent distdb (rel 8.1, pid 22203)<br />
+repl_server masterdb (rel 8.1, pid 12341)</p>
+<ul>
+<li>CUBRID의 모든 프로세스의 상태를 출력하여 복제 부분을 확인한다.</li>
+</ul>
+<p class="code">$ cubrid service status<br />
+@ cubrid master status<br />
+++ cubrid master is running.<br />
+@ cubrid server status<br />
+Server slavedb (rel 8.1, pid 11325)<br />
+Server distdb (rel 8.1, pid 31440)<br />
+Server masterdb (rel 8.1, pid 29191)<br />
+@ cubrid broker status<br />
+&#160;&#160;NAME &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;PID &#160;PORT &#160;AS &#160;JQ &#160;&#160;&#160;&#160;&#160;REQ TPS AUTO &#160;SES SQLL CONN<br />
+===================================================================<br />
+* query_editor 12149 30300 &#160;&#160;5 &#160;&#160;0 &#160;&#160;&#160;&#160;&#160;&#160;&#160;0 --- &#160;ON &#160;&#160;OFF ON:A AUTO<br />
+* broker1 &#160;&#160;&#160;&#160;&#160;12161 33300 &#160;&#160;5 &#160;&#160;0 &#160;&#160;&#160;&#160;&#160;&#160;&#160;0 --- &#160;ON &#160;&#160;OFF ON:A AUTO<br />
+@ cubrid manager server status<br />
+++ cubrid manager server is running.<br />
+@ cubrid replication status<br />
+&#160;repl_agent distdb (rel 8.1, pid 22203)<br />
+&#160;repl_server masterdb (rel 8.1, pid 12341)</p>
+<h6>복제 성능 모니터링</h6>
+<p>복제 성능 모니터링은 별도의 유틸리티를 제공하지 않고 배포 데이터베이스 생성 시 정의한 추적 로그 생성 디렉터리에 생성되는 성능 로그 파일 형태로 지원한다.</p>
+<p>성능 로그는 트랜잭션이 마스터 데이터베이스에서 커밋된 시점부터 슬레이브 데이터베이스로 변영된 시점까지 소요된 시간을 기록하고 있다. 단, 마스터 서버와 슬레이브 서버 서로 간의 시스템 시각이 동기화된 경우에 유효하다. 서로 시간이 동기화되지 않으면 지연시간 로그에 왜곡이 발생한다. 지연 시간은 슬레이브 데이터베이스 별로 설정된 perf_poll_interval 파라미터에 의해 결정된다.</p>
+<p>다음은 배포 데이터베이스 이름이 distdb라고 가정하고 tail 명령을 통해 성능 로그를 확인해 본 예이다.</p>
+<p class="code">$ tail –f distdb.perf<br />
+--------------------------------------------------------------------------------<br />
+&#160;No. master_db_name&#160;&#160;&#160;&#160; tran_index&#160;&#160;&#160;&#160;&#160;&#160;&#160; master_time&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; slave_time&#160;&#160;&#160;&#160; delay<br />
+--------------------------------------------------------------------------------<br />
+001&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mdb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 8 2007/10/17 10:03:24 2007/10/17 10:03:24&#160; 0<br />
+002&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mdb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-1 ----/--/-- --:--:-- 2007/10/17 10:04:07&#160; 0<br />
+003&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mdb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 10 2007/10/17 10:04:07 2007/10/17 10:04:07&#160; 0<br />
+004&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mdb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 11 2007/10/17 10:04:07 2007/10/17 10:04:07&#160; 0<br />
+005&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mdb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; -1 ----/--/-- --:--:-- 2007/10/17 10:04:07&#160; 0</p>
+<p>중간에 tran_index가 -1로 출력되는 부분은 복제가 현재 시점까지 동기화되었다는 표시이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

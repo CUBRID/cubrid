@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -51,7 +51,7 @@
  * from the client when initiating a connection. They distinguish the
  * difference between an information connection and a user connection.
  */
-enum
+enum css_command_type
 {
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
@@ -61,10 +61,10 @@ enum
 };
 
 /*
- * These are the responses from the master server to a slave server
+ * These are the responses from the master to a server
  * when it is trying to connect and register itself.
  */
-enum
+enum css_master_response
 {
   SERVER_ALREADY_EXISTS = 0,
   SERVER_REQUEST_ACCEPTED = 1,
@@ -74,9 +74,9 @@ enum
 
 /*
  * These are the types of requests sent by the information client to
- * the master server.
+ * the master.
  */
-enum
+enum css_client_request
 {
   GET_START_TIME = 1,
   GET_SERVER_COUNT = 2,
@@ -101,14 +101,14 @@ enum
   GET_ALL_LIST = 21,		/* REPL: get the info. for all processes */
   GET_REPL_COUNT = 22,		/* REPL: get the # of repl processes */
   GET_ALL_COUNT = 23,		/* REPL: get the # of all processes */
-  KILL_REPL_SERVER = 24		/* REPL: kill the repl process */
+  KILL_REPL_SERVER = 24,	/* REPL: kill the repl process */
+  GET_SERVER_HA_MODE = 25	/* HA  : get server ha mode */
 };
 
 /*
- * These are the types of requests sent between the master server and
- * the slave servers.
+ * These are the types of requests sent between the master and the servers.
  */
-enum
+enum css_server_request
 {
   SERVER_START_TRACING = 1,
   SERVER_STOP_TRACING = 2,
@@ -117,14 +117,15 @@ enum
   SERVER_START_NEW_CLIENT = 5,
   SERVER_START_SHUTDOWN = 6,
   SERVER_STOP_SHUTDOWN = 7,
-  SERVER_SHUTDOWN_IMMEDIATE = 8
+  SERVER_SHUTDOWN_IMMEDIATE = 8,
+  SERVER_GET_HA_MODE = 9
 };
 
 /*
  * These are the status codes for the connection structure which represent
  * the state of the connection.
  */
-enum
+enum css_conn_status
 {
   CONN_OPEN = 1,
   CONN_CLOSED = 2,
@@ -144,21 +145,20 @@ enum
 /*
  * These are the types of "packets" that can be sent over the comm interface.
  */
-enum
+enum css_packet_type
 {
   COMMAND_TYPE = 1,
   DATA_TYPE = 2,
   ABORT_TYPE = 3,
   CLOSE_TYPE = 4,
-  OOB_TYPE = 5,
-  ERROR_TYPE = 6
+  ERROR_TYPE = 5
 };
 
 /*
  * These are the status conditions that can be returned when a client
  * is trying to get a connection.
  */
-enum
+enum css_status
 {
   SERVER_CONNECTED = 0,
   SERVER_NOT_FOUND = 1,
@@ -173,7 +173,7 @@ enum
 /*
  * These are the error values returned by the client and server interfaces
  */
-enum
+enum css_error_code
 {
   NO_ERRORS = 1,
   CONNECTION_CLOSED = 2,
@@ -189,19 +189,38 @@ enum
   SERVER_WAS_NOT_FOUND = 12,
   SERVER_ABORTED = 13,
   INTERRUPTED_READ = 14,
-  CANT_ALLOC_BUFFER = 15
+  CANT_ALLOC_BUFFER = 15,
+  OS_ERROR = 16
 };
 
 /*
  * Server's request_handler status codes.
  * Assigned to error_p in current socket queue entry.
  */
-enum
+enum css_status_code
 {
   CSS_NO_ERRORS = 0,
   CSS_UNPLANNED_SHUTDOWN = 1,
   CSS_PLANNED_SHUTDOWN = 2
 };
+
+/*
+ * HA mode
+ */
+typedef enum ha_mode HA_MODE;
+enum ha_mode
+{
+  HA_MODE_OFF = 0,
+  HA_MODE_FAIL_OVER = 1,	/* unused */
+  HA_MODE_FAIL_BACK = 2,
+  HA_MODE_LAZY_BACK = 3,	/* not implemented yet */
+  HA_MODE_ROLE_CHANGE = 4
+};
+#define HA_MODE_OFF_STR		"off"
+#define HA_MODE_FAIL_OVER_STR	"fail-over"
+#define HA_MODE_FAIL_BACK_STR	"fail-back"
+#define HA_MODE_LAZY_BACK_STR	"lazy-back"
+#define HA_MODE_ROLE_CHANGE_STR	"role-change"
 
 /*
  * HA server mode
@@ -236,13 +255,15 @@ enum ha_server_state
   HA_SERVER_STATE_TO_BE_ACTIVE = 2,
   HA_SERVER_STATE_STANDBY = 3,
   HA_SERVER_STATE_TO_BE_STANDBY = 4,
-  HA_SERVER_STATE_DEAD = 5	/* server is dead - virtual state; not exists */
+  HA_SERVER_STATE_MAINTENANCE = 5,	/* maintenance mode */
+  HA_SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
 };
 #define HA_SERVER_STATE_IDLE_STR                "idle"
 #define HA_SERVER_STATE_ACTIVE_STR              "active"
 #define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
 #define HA_SERVER_STATE_STANDBY_STR             "standby"
 #define HA_SERVER_STATE_TO_BE_STANDBY_STR       "to-be-standby"
+#define HA_SERVER_STATE_MAINTENANCE_STR         "maintenance"
 #define HA_SERVER_STATE_DEAD_STR                "dead"
 
 /*
@@ -367,9 +388,6 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  struct sockaddr_in *local_name;
-  struct sockaddr_in *foreign_name;
-
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;
@@ -382,7 +400,6 @@ struct css_conn_entry
   CSS_LIST data_wait_queue;	/* list of waiters */
   CSS_LIST abort_queue;		/* list of aborted requests         */
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
-  CSS_LIST oob_queue;		/* list of Out-Of-Band messages     */
   CSS_LIST error_queue;		/* list of (server) error messages  */
 
 #else
@@ -391,7 +408,6 @@ struct css_conn_entry
   CSS_QUEUE_ENTRY *data_queue;	/* header for unseen data packets    */
   CSS_QUEUE_ENTRY *abort_queue;	/* queue of aborted requests         */
   CSS_QUEUE_ENTRY *buffer_queue;	/* header of buffers queued for data */
-  CSS_QUEUE_ENTRY *oob_queue;	/* queue of Out-Of-Band messages     */
   CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages  */
   void *cnxn;
 #endif

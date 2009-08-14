@@ -72,6 +72,7 @@ JDBC_SRCS =	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDException.java		\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDKeyTable.java		\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnectionKey.java	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDJdbcInfoTable.java	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UStatement.java			\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UErrorCode.java			\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UAParameter.java		\
@@ -104,6 +105,7 @@ JDBC_SRCS =	\
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UResCache.java	                \
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UStatementCacheData.java        \
 		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConKey.java                	\
+		$(JDBC_SRC_DIR)/cubrid/jdbc/jci/UManageStringInCType.java                	\
 		$(JDBC_SRC_DIR)/cubrid/sql/CUBRIDOID.java
 
 

@@ -41,13 +41,13 @@ BISON = bison
 FLEX = flex
 
 INCLUDES = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@
-DEFS += @SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @OTHER_DEFS@ -DLL_K=2 -DZZCOL
+DEFS += @SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
 LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
 
-$(PARSER_DIR)/csql_grammar.c : $(PARSER_DIR)/csql_grammar.y
+$(PARSER_DIR)/csql_grammar.c $(PARSER_DIR)/csql_grammar.h : $(PARSER_DIR)/csql_grammar.y
 	$(BISON) -d -r all -o $@ $<
 
 $(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
@@ -63,15 +63,15 @@ $(EXECUTABLE_DIR)/loader_lexer.c : $(EXECUTABLE_DIR)/loader_lexer.l
 #cnvlex.c: $(COMPAT_DIR)/cnvlex.l
 #	$(LEX) $(LFLAGS) $(AM_LFLAGS) $< > $@
 
-API_SOURCES = \
-	$(SRC)/api/db_collection.c \
-	$(SRC)/api/db_object.c \
-	$(SRC)/api/api_util.c \
-	$(SRC)/api/api_value_indexer.c \
-	$(SRC)/api/db_value_table.c \
-	$(SRC)/api/api_handle.c \
-	$(SRC)/api/db_stub.c \
-	$(SRC)/api/cubrid_api.c
+#API_SOURCES = \
+#	$(SRC)/api/db_collection.c \
+#	$(SRC)/api/db_object.c \
+#	$(SRC)/api/api_util.c \
+#	$(SRC)/api/api_value_indexer.c \
+#	$(SRC)/api/db_value_table.c \
+#	$(SRC)/api/api_handle.c \
+#	$(SRC)/api/db_stub.c \
+#	$(SRC)/api/cubrid_api.c
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/csql.c \
 	$(EXECUTABLE_DIR)/csql_session.c \
@@ -143,7 +143,6 @@ CONNECTION_SOURCES = \
 	$(CONNECTION_DIR)/connection_less.c \
 	$(CONNECTION_DIR)/connection_cl.c \
 	$(CONNECTION_DIR)/connection_globals.c \
-	$(CONNECTION_DIR)/oob_handler.c \
 	$(CONNECTION_DIR)/connection_list_cl.c \
 	$(CONNECTION_DIR)/tcp.c \
 	$(CONNECTION_DIR)/client_support.c \
@@ -151,6 +150,8 @@ CONNECTION_SOURCES = \
 COMMUNICATION_SOURCES = \
 	$(COMMUNICATION_DIR)/network_interface_cl.c
 PARSER_SOURCES = \
+	$(PARSER_DIR)/csql_grammar.c \
+	$(PARSER_DIR)/csql_lexer.c \
 	$(PARSER_DIR)/parser_support.c \
 	$(PARSER_DIR)/double_byte_support.c \
 	$(PARSER_DIR)/method_transform.c \
@@ -166,8 +167,6 @@ PARSER_SOURCES = \
 	$(PARSER_DIR)/semantic_check.c \
 	$(PARSER_DIR)/type_checking.c \
 	$(PARSER_DIR)/xasl_generation.c \
-	$(PARSER_DIR)/csql_grammar.c \
-	$(PARSER_DIR)/csql_lexer.c \
 	$(PARSER_DIR)/scanner_support.c \
 	$(PARSER_DIR)/view_transform.c
 OPTIMIZER_SOURCES = \
@@ -270,7 +269,6 @@ STORAGE_SOURCES = \
 
 lib_LTLIBRARIES = libcubridsa.la
 libcubridsa_la_SOURCES = \
-	$(API_SOURCES) \
 	$(EXECUTABLE_SOURCES) \
 	$(COMPAT_SOURCES) \
 	$(BASE_SOURCES) \
@@ -284,6 +282,7 @@ libcubridsa_la_SOURCES = \
 	$(JSP_SOURCES) \
 	$(TRANSACTION_SOURCES) \
 	$(STORAGE_SOURCES)
+#	$(API_SOURCES)
 libcubridsa_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridsa_la_LIBADD = $(LIBADD_DL)
 libcubridsa_la_LINK = $(LINK)

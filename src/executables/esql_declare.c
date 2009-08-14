@@ -186,6 +186,11 @@ pp_new_type_spec (void)
 {
   LINK *p = pp_new_link ();
 
+  if (p == NULL)
+    {
+      return NULL;
+    }
+
   p->class_ = SPECIFIER;
   p->decl.s.noun = N_INT;
   p->decl.s.sclass = C_AUTO;
@@ -225,8 +230,8 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 	  char tmp[32];
 
 	  old_etype = decl_chain->etype;
-	  if (IS_VAR_TYPE (clone_start)
-	      && (old_etype == NULL || IS_ARRAY (old_etype)) == 0)
+	  if (old_etype == NULL
+	      || (IS_VAR_TYPE (clone_start) && IS_ARRAY (old_etype) == 0))
 	    {
 	      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_PSEUDO_DECL),
 			     pp_type_str (clone_start));
@@ -434,6 +439,13 @@ pp_push_name_scope (void)
       pp_name_scope_base = (SCOPE *) realloc (pp_name_scope_base,
 					      sizeof (SCOPE) * (nframes +
 								NFRAMES));
+      if (pp_name_scope_base == NULL)
+	{
+	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+	  exit (1);
+	  return;
+	}
+
       pp_name_scope_limit = pp_name_scope_base + nframes + NFRAMES;
       if (pp_current_name_scope)
 	{
@@ -590,6 +602,13 @@ pp_push_spec_scope (void)
       pp_spec_scope_base = (SPEC_STATE *) realloc (pp_spec_scope_base,
 						   sizeof (SPEC_STATE) *
 						   (nframes + NFRAMES));
+      if (pp_spec_scope_base == NULL)
+	{
+	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+	  exit (1);
+	  return;
+	}
+
       pp_spec_scope_limit = pp_spec_scope_base + nframes + NFRAMES;
       if (pp_current_spec_scope)
 	{

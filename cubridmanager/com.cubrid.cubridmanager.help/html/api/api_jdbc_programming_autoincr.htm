@@ -1,0 +1,156 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>자동 증가 특성의 컬럼 값 검색</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nJDBC API\nJDBC 프로그래밍\n자동 증가 특성의 컬럼 값 검색");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC 프로그래밍<\/a> &nbsp;&gt;&nbsp; 자동 증가 특성의 컬럼 값 검색<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>자동 증가 특성의 컬럼 값 검색</h4>
+<h6>자동 증가 특성</h6>
+<p>자동 증가 특성(<span class="keyword">AUTO_INCREMENT</span>)은 자동으로 각 행의 숫자 값을 증가 생성하는 컬럼에 대한 특성으로서, 보다 자세한 사항은 테이블 생성의 <a href="../syntax/syntax_table_create_col.htm">컬럼</a>을 참고한다. 수치형 도메인(<span class="keyword">SMALLINT</span>, <span class="keyword">INTEGER</span>, <span class="keyword">DECIMAL</span>(<span class="var">p</span>, 0), <span class="keyword">NUMERIC</span>(<span class="var">p</span>, 0))에 대해서만 정의할 수 있다.</p>
+<p>자동 증가 특성은 JDBC 프로그램에서 자동 생성된 키로 인식되고, 이 키의 검색을 사용하려면 자동 생성된 키 값을 검색할 행을 삽입할 시기를 표시해야 한다. 이를 수행하기 위하여 <span class="keyword">Connection.prepareStatement</span>, <span class="keyword">Statement.executeUpdate</span> 또는 <span class="keyword">Statement.execute</span> 메소드를 호출하여 플래그를 설정해야 한다. 이때, 실행된 명령문은 <span class="keyword">INSERT</span> 문 또는 <span class="keyword">INSERT</span> within <span class="keyword">SELECT</span> 문이어야 하며, 다른 명령문의 경우 JDBC 드라이버가 플래그를 설정하는 매개변수를 무시한다.</p>
+<h6>수행 단계</h6>
+<ol>
+<li>다음 방법 중 하나를 사용하여 자동 생성된 키를 반환하려는지 표시한다. 자동 증가 특성 컬럼을 지원하는 데이터베이스 서버의 클래스에 대해 다음의 양식을 사용하며, 각 양식은 단일 행 <span class="keyword">INSERT</span> 문에 대해서만 적용 가능하다.
+<ul>
+<li><span class="keyword">PreparedStatement.executeUpdate</span> 메소드를 사용하여 행을 삽입하려는 경우, <span class="keyword">Connection.prepareStatement</span> 메소드의 양식 중 하나를 호출하여 <span class="keyword">PreparedStatement</span> 오브젝트를 작성한다.<br />
+<span class="keyword">Connection.prepareStatement</span>(<span class="var">sql statement</span>, <span class="keyword">Statement.RETURN_GENERATED_KEYS</span>);</li>
+<li><span class="keyword">Statement.executeUpdate</span> 메소드를 사용하여 행을 삽입할 경우, 다음 <span class="keyword">Statement.executeUpdate</span> 메소드 양식 중 하나를 호출한다.<br />
+<span class="keyword">Statement.executeUpdate</span>(<span class="var">sql statement</span>, <span class="keyword">Statement.RETURN_GENERATED_KEYS</span>);</li>
+<li><span class="keyword">Statement.execute</span> 메소드를 사용하여 행을 삽입할 경우, 다음 양식 중 하나의 <span class="keyword">Statement.execute</span> 메소드를 사용한다.<br />
+<span class="keyword">Statement.execute</span>(<span class="var">sql statement</span>, <span class="keyword">Statement.RETURN_GENERATED_KEYS</span>);</li>
+</ul>
+</li>
+<li><span class="keyword">PreparedStatement.getGeneratedKeys</span> 메소드 또는 <span class="keyword">Statement.getGeneratedKeys</span> 메소드를 호출하여 자동 생성된 키 값이 포함된 <span class="keyword">ResultSet</span> 오브젝트를 검색한다.</li>
+</ol>
+<p><span class="keyword">ResultSet</span>에서 자동 생성된 키의 데이터 유형은 해당 도메인의 데이터 유형에 상관 없이 <span class="keyword">DECIMAL</span>이다.</p>
+<h6>예제</h6>
+<p>다음 예제는 자동 증가 특성이 있는 클래스를 생성하고, 데이터를 클래스에 입력하여, 자동 증가 특성 컬럼에 자동 생성된 키 값이 입력되고 해당 키값이 <span class="keyword">Statement.getGeneratedKeys</span>() 메소드를 통해 정상적으로 검색되는지를 점검하는 예제이다. 앞서 설명한 단계에 해당하는 명령문의 코멘트에 각 단계를 표시하였다.</p>
+<p class="code">import java.sql.*;<br />
+import java.math.*;<br />
+import cubrid.jdbc.driver.*;<br />
+&#160;<br />
+Connection con;<br />
+Statement stmt;<br />
+ResultSet rs;<br />
+java.math.BigDecimal iDColVar;<br />
+...<br />
+stmt = con.createStatement();&#160;&#160;&#160;&#160; // Create a Statement object<br />
+&#160;<br />
+stmt.executeUpdate(<br />
+"CREATE TABLE EMP_PHONE (EMPNO CHAR(6), PHONENO CHAR(4), "<br />
++ &#160;&#160;"IDENTCOL INTEGER AUTO_INCREMENT)"); // Create table with identity column<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+<span class="code-emphasis">stmt.execute(<br />
+"INSERT INTO EMP_PHONE (EMPNO, PHONENO) "<br />
++ &#160;&#160;"VALUES ('000010', '5555')",&#160;</span>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; // Insert a row&#160; &lt;Step 1&gt;<br />
+<span class="code-emphasis">Statement.RETURN_GENERATED_KEYS);&#160;</span>&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;// Indicate you want automatically<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+&#160;<br />
+<span class="code-emphasis">rs = stmt.getGeneratedKeys();&#160;</span>&#160;&#160; // generated keys<br />
+&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;// Retrieve the automatically&#160; &lt;Step 2&gt;<br />
+&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;// generated key value in a ResultSet.<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;// Only one row is returned.<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;// Create ResultSet for query<br />
+while (rs.next()) {<br />
+&#160; java.math.BigDecimal idColVar = rs.getBigDecimal(1);&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;// Get automatically generated key<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;// value<br />
+&#160; System.out.println("automatically generated key value = " + idColVar);<br />
+}<br />
+rs.close();&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;// Close ResultSet<br />
+stmt.close();&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; // Close Statement</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>마스터 데이터베이스 설정 및 백업</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 설정\n마스터 데이터베이스 설정 및 백업");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_setup.htm\">복제 설정<\/a> &nbsp;&gt;&nbsp; 마스터 데이터베이스 설정 및 백업<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>마스터 데이터베이스 설정 및 백업</h4>
+<p>다음 단계로는 마스터 데이터베이스의 설정을 변경하고 슬레이브 데이터베이스와 동기화를 위해 백업 볼륨을 생성해야 한다. 마스터 데이터베이스가 복제에 필요한 트랜잭션 로그를 생성하도록 하기 위해서 <span class="keyword">$CUBRID/conf/cubrid.conf</span> 파일을 수정하여 <span class="keyword">replication</span> 파라미터를 <span class="keyword">yes</span>로 변경한 후 마스터 데이터베이스 서버를 재시작한다. 이미 이 파라미터가 <span class="keyword">yes</span>로 설정되어 있다면 마스터 데이터베이스를 재시작할 필요는 없다. <span class="keyword">$CUBRID/conf/cubrid.conf</span> 파일에서 아래와 같이&#160;<span class="keyword">replication</span>을 &#160;<span class="keyword">yes</span>로 설정한다.</p>
+<p class="code">[@sample_master]<br />
+replication=yes</p>
+<p>위의 예는 <span class="keyword">replication</span> 파라미터가 sample_master 데이터베이스에만 적용되는 예이다. 위와 같이 <span class="keyword">[@</span>&lt;<span class="var">dbname</span>&gt;<span class="keyword">]</span> 밑에 파라미터를 지정하면 해당 &lt;<span class="var">dbname</span>&gt; 에만 파라미터가 적용된다.</p>
+<p>변경된 파라미터를 서버에 반영하기 위해 마스터 데이터베이스 서버를 재시작한다.</p>
+<p class="code">cubrid server stop sample_master &#160;&#160;&#160;&#160;-- 서버 중지<br />
+cubrid server start sample_master &#160;&#160;&#160;&#160;-- 서버 시작</p>
+<p>이제 현 상태의 마스터 데이터베이스와 슬레이브 데이터베이스 간 동기화 작업을 위해 마스터 데이터베이스를 백업 받는다.</p>
+<p class="code">cubrid backupdb sample_master</p>
+<p>이때 <span class="keyword">–r</span> 옵션을 사용하여 보관 로그를 삭제하게 되면 경우에 따라 복제가 시작되지 않을 수 있다. CUBRID는 온라인 복제를 지원하므로, 슬레이브 데이터베이스를 동기화 하는 동안 마스터 데이터베이스에 대량으로 쓰기가 발생하여 백업 받은 이후 변경 분이 이미 보관 로그 파일로 넘어가는 경우가 발생할 수 있는데, 이때&#160;복제 시스템은 보관 로그 파일을 읽어 이를 슬레이브에 반영한다. 따라서 슬레이브 데이터베이스에 반영되지 않은 로그가 트랜잭션 로그 보관 로그에 있는 경우를 대비하여 보관 로그를 삭제하지 않는 모드로 백업을 수행해야 한다.</p>
+<p>백업 후 다음과 같은 명령어로 마스터 데이터베이스의 백업 볼륨과 정보 파일을 확인한다.</p>
+<p class="code">ls sample_master_bk*</p>
+<p>슬레이브 데이터베이스와 동기화를 위해 백업볼륨들과 백업볼륨 정보 파일을 ftp나 파일 복사를 통해 슬레이브 호스트로 전송한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

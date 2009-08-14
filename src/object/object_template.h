@@ -45,17 +45,6 @@
    (template_ptr)->base_classobj : (template_ptr)->classobj)
 
 /*
- * ATT_IS_UNIQUE
- *
- * Note :
- *    Checks to see if an attribute has the UNIQUE integrity constraint.
- */
-#define ATT_IS_UNIQUE(att) \
-  (classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_PRIMARY_KEY, NULL) || \
-   classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_UNIQUE, NULL) || \
-   classobj_get_cached_constraint((att)->constraints, SM_CONSTRAINT_REVERSE_UNIQUE, NULL))
-
-/*
  * OBJ_TEMPASSIGN
  *
  * Note :

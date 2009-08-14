@@ -1,0 +1,121 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 로그 응급 복구</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 관리\n데이터베이스 로그 응급 복구");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_server_command.htm\">데이터베이스 관리<\/a> &nbsp;&gt;&nbsp; 데이터베이스 로그 응급 복구<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 로그 응급 복구</h3>
+<p><span class="keyword">cubrid emergency_patchlog</span> 유틸리티는 손상된 데이터베이스 로그를 수정하거나 파일을 비우고 새로 생성한다. 데이터베이스 로그 파일이 손상되어 서버가 재시작되지 않는 상황에서 응급 복구를 위해 사용될 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid</span> <span class="keyword">emergency_patchlog</span> <span class="var">options</span> <span class="var">database_name</span><br />
+<span class="var">options</span> : [ <span class="keyword">-r</span> | <span class="keyword">--recreate-log</span> ]</p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">emergency_patchlog</span> : 시스템 크래시 등으로 인해 데이터베이스의 로그 파일에 손상이 생겨 데이터베이스 재시작이 실패하는 경우 사용하는 명령어로, 로그 파일을 복구하고자 할 때 사용한다. 데이터베이스가 구동 정지 상태인 경우에만 정상적으로 수행된다.</li>
+<li><span class="var">options</span>&#160;: <span class="keyword">-r</span> 옵션이 제공되며 로그 파일을 빈 상태로 재생성하고자 할 때 사용한다. 즉, 처음에는 반드시 <span class="keyword">-r</span> 옵션이 없이 실행하며 로그 파일을 복구할 수 없는 최악의 경우에만 옵션을 사용한다.</li>
+<li><span class="var">database_name</span> : 설치하려는 데이터베이스 이름이다.</li>
+</ul>
+<h6>옵션</h6>
+<ul>
+<li class="title">기존 로그를 이용하여 복구</li>
+</ul>
+<p class="code">cubrid emergency_patchlog testdb</p>
+<ul>
+<li class="title">기존 로그를 버리고 빈 로그를 새로 생성(-r)</li>
+</ul>
+<p class="code">cubrid emergency_patchlog -r testdb</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

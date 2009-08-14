@@ -698,7 +698,9 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser, MOP partinfo)
 	}
 
       tmp = DB_GET_STRING (&pexpr);
-      ptr = strstr (tmp, "SELECT ");
+      assert (tmp != NULL);
+
+      ptr = tmp ? strstr (tmp, "SELECT ") : NULL;
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");
@@ -1635,6 +1637,7 @@ obj_print_help_class (MOP op)
 					       (parser, class_, c));
 		      if (strs[i] == NULL)
 			{
+			  info->constraints = strs;
 			  goto error_exit;
 			}
 		      i++;
@@ -2458,7 +2461,7 @@ static char **
 obj_print_read_section (FILE * fp)
 {
   char *buffer, **lines, **new_p;
-  int stop, line, eof, i;
+  int stop, line, eof, i, len;
 
   /*
    * Don't make these stack-allocated arrays!  That causes problems for
@@ -2490,9 +2493,10 @@ obj_print_read_section (FILE * fp)
 		}
 	      else
 		{
-		  if (buffer[strlen (buffer) - 1] == '\n')
+		  len = strlen (buffer);
+		  if (len > 0 && buffer[len - 1] == '\n')
 		    {
-		      buffer[strlen (buffer) - 1] = '\0';
+		      buffer[len - 1] = '\0';
 		    }
 		  lines[line] = obj_print_copy_string (buffer);
 		  line++;
@@ -2522,12 +2526,14 @@ obj_print_read_section (FILE * fp)
   new_p = (char **) malloc (sizeof (char *) * (line + 1));
   if (new_p == NULL)
     {
-      return NULL;
+      goto wrapup;
     }
+
   for (i = 0; i < line; i++)
     {
       new_p[i] = lines[i];
     }
+
   new_p[line] = NULL;
 
 wrapup:
@@ -2535,6 +2541,7 @@ wrapup:
     {
       free_and_init (lines);
     }
+
   if (buffer)
     {
       free_and_init (buffer);
@@ -2871,7 +2878,7 @@ help_class_names (const char *qualifier)
   const char *cname;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
-  char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 2];
+  char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
   DB_VALUE owner_name;
 
   requested_owner = NULL;
@@ -2909,16 +2916,28 @@ help_class_names (const char *qualifier)
 	      if (!requested_owner || requested_owner == owner)
 		{
 		  cname = db_get_class_name (m->op);
-		  buffer[0] = 0;
+		  buffer[0] = '\0';
 		  if (!requested_owner
 		      && db_get (owner, "name", &owner_name) >= 0)
 		    {
 		      tmp = DB_GET_STRING (&owner_name);
-		      strcpy (buffer, tmp);
-		      strcat (buffer, ".");
+		      if (tmp)
+			{
+			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s",
+				    tmp, cname);
+			}
+		      else
+			{
+			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s",
+				    "unknown_user", cname);
+			}
 		      db_value_clear (&owner_name);
 		    }
-		  strcat (buffer, (char *) cname);
+		  else
+		    {
+		      snprintf (buffer, sizeof (buffer) - 1, "%s", cname);
+		    }
+
 		  names[outcount++] = obj_print_copy_string (buffer);
 		}
 	    }
@@ -3258,6 +3277,11 @@ help_print_info (const char *command, FILE * fpp)
   char **names;
   int i;
 
+  if (command == NULL)
+    {
+      return;
+    }
+
   ptr = obj_print_next_token ((char *) command, buffer);
   if (fpp == NULL)
     {
@@ -3329,7 +3353,6 @@ help_print_info (const char *command, FILE * fpp)
 	  stats_dump (buffer, fpp);
 	}
     }
-  /* AsyncCommit */
   else if (MATCH_TOKEN (buffer, "logstat"))
     {
       log_dump_stat (fpp);
@@ -3341,6 +3364,10 @@ help_print_info (const char *command, FILE * fpp)
   else if (MATCH_TOKEN (buffer, "qcache"))
     {
       qmgr_dump_query_cache (fpp);
+    }
+  else if (MATCH_TOKEN (buffer, "trantable"))
+    {
+      logtb_dump_trantable (fpp);
     }
 }
 
@@ -3558,11 +3585,17 @@ static PARSER_VARCHAR *
 describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		     const DB_VALUE * value)
 {
-  unsigned char *bstring = (unsigned char *) db_get_string (value);
+  unsigned char *bstring;
   int nibble_length, nibbles, count;
   char tbuf[10];
 
   assert (parser != NULL && value != NULL);
+
+  bstring = (unsigned char *) db_get_string (value);
+  if (bstring == NULL)
+    {
+      return NULL;
+    }
 
   nibble_length = ((db_get_string_length (value) + 3) / 4);
 
@@ -3690,7 +3723,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	       * whichever comes first.  This loop is done in place of
 	       * strchr in case the string has an embedded NULL.
 	       */
-	      for (pos = src; pos < end && (*pos) != '\''; pos++)
+	      for (pos = src; pos && pos < end && (*pos) != '\''; pos++)
 		;
 
 	      /* If pos < end, then a quote was found.  If so, copy the partial
@@ -3718,6 +3751,11 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_OBJECT:
 #if !defined(SERVER_MODE)
 	  obj = db_get_object (value);
+	  if (obj == NULL)
+	    {
+	      break;
+	    }
+
 	  if (obj->is_vid)
 	    {
 	      DB_VALUE vobj;
@@ -3743,6 +3781,11 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
 	case DB_TYPE_OID:
 	  oid = (OID *) db_get_oid (value);
+	  if (oid == NULL)
+	    {
+	      break;
+	    }
+
 	  sprintf (line, "%d", (int) oid->volid);
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  buffer = pt_append_nulstring (parser, buffer, "|");
@@ -3894,13 +3937,7 @@ PARSER_VARCHAR *
 describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		const DB_VALUE * value)
 {
-  PARSER_CONTEXT *temp_parser = NULL;
-
-  if (parser == NULL)
-    {
-      temp_parser = parser_create_parser ();
-      parser = temp_parser;
-    }
+  assert (parser != NULL);
 
   if (DB_IS_NULL (value))
     {
@@ -3966,11 +4003,6 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = describe_data (parser, buffer, value);
 	  break;
 	}
-    }
-
-  if (temp_parser)
-    {
-      parser_free_parser (temp_parser);
     }
 
   return (buffer);
@@ -4051,6 +4083,11 @@ help_fprint_value (FILE * fp, const DB_VALUE * value)
   PARSER_CONTEXT *parser;
 
   parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return;
+    }
+
   buffer = describe_value (parser, NULL, value);
   fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer),
 	   pt_get_varchar_bytes (buffer));
@@ -4080,6 +4117,11 @@ help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
   PARSER_CONTEXT *parser;
 
   parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return 0;
+    }
+
   buf = pt_append_nulstring (parser, NULL, "");
   buf = describe_value (parser, buf, value);
   length = pt_get_varchar_length (buf);
@@ -4110,9 +4152,18 @@ dbg_value (const DB_VALUE * value)
 {
   PARSER_VARCHAR *buffer;
   PARSER_CONTEXT *parser;
+  char *ret;
 
   parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return 0;
+    }
+
   buffer = pt_append_nulstring (parser, NULL, "");
   buffer = describe_value (parser, buffer, value);
-  return (char *) pt_get_varchar_bytes (buffer);
+  ret = (char *) pt_get_varchar_bytes (buffer);
+  parser_free_parser (parser);
+
+  return ret;
 }

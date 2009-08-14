@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -275,6 +275,7 @@ repl_svr_init_new_agent (int agentid, int agent_fd, int agent_port_id)
   conn_p->agentid = agentid;
 
   ip = repl_svr_get_ip (conn_p->fd);
+  REPL_CHECK_ERR_NULL (REPL_FILE_SVR_TP, REPL_SERVER_SOCK_ERROR, ip);
 
   agent_info = repl_get_agent_info (ip);
   if (agent_info == NULL)
@@ -438,6 +439,7 @@ repl_svr_get_send_data_buffer (void)
       buf->data = (char *) malloc (REPL_SIMPLE_BUF_SIZE);
       if (buf->data == NULL)
 	{
+	  free_and_init (buf);
 	  REPL_ERR_LOG (REPL_FILE_SVR_TP, REPL_SERVER_MEMORY_ERROR);
 	  return NULL;
 	}
@@ -1345,8 +1347,9 @@ repl_svr_tp_add_work (void (*routine) (void *), void *arg)
       && repl_tpool->do_not_block_when_full)
     {
       REPL_ERR_LOG (REPL_FILE_SVR_TP, REPL_SERVER_REQ_QUEUE_IS_FULL);
+      repl_error_flush (err_Log_fp, 1);
       PTHREAD_MUTEX_UNLOCK (repl_tpool->queue_lock);
-      return NO_ERROR;
+      return REPL_SERVER_REQ_QUEUE_IS_FULL;
     }
 
   /* queue is full and.. have to wait.. */
@@ -1359,8 +1362,10 @@ repl_svr_tp_add_work (void (*routine) (void *), void *arg)
   /* the pool is in the process of being destroyed */
   if (repl_tpool->shutdown || repl_tpool->queue_closed)
     {
+      REPL_ERR_LOG (REPL_FILE_SVR_TP, REPL_SERVER_REQ_QUEUE_IS_FULL);
+      repl_error_flush (err_Log_fp, 1);
       PTHREAD_MUTEX_UNLOCK (repl_tpool->queue_lock);
-      return NO_ERROR;
+      return REPL_SERVER_REQ_QUEUE_IS_FULL;
     }
 
   /* allocate work structure */
@@ -1448,6 +1453,14 @@ void
 repl_svr_thread_end ()
 {
   REPL_TPOOL_WORK *cur_nodep;
+  int size_worker_thread;
+  int i;
+
+  size_worker_thread = sizeof (repl_tr_send_thread) / sizeof (pthread_t);
+  for (i = 0; i < size_worker_thread; i++)
+    {
+      PTHREAD_JOIN (repl_tr_send_thread[i]);
+    }
 
   while (repl_tpool->queue_head != NULL)
     {

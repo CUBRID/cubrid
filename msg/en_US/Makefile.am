@@ -18,7 +18,7 @@
 #
 
 
-en_USdir = ${prefix}/msg/en_US
+en_USdir = @MSG_DIR@/en_US
 en_US_DATA = cubrid.msg cubrid.cat csql.msg csql.cat utils.msg utils.cat \
 	esql.msg esql.cat syntax.txt
 

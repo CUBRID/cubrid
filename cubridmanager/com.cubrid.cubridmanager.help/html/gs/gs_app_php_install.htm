@@ -1,0 +1,124 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>PHP 모듈 설치</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nPHP를 이용한 프로그램 작성\nPHP 모듈 설치");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_app_php_install.htm\">PHP를 이용한 프로그램 작성<\/a> &nbsp;&gt;&nbsp; PHP 모듈 설치<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>PHP 모듈 설치</h4>
+<p>CUBRID 홈페이지(<a href="http://www.cubrid.com" target="_blank">http://www.cubrid.com</a>)에서 PHP 모듈을 다운로드한다.</p>
+<h5>Windows 버전 설치</h5>
+<p>PHP가 설치되어 있는 디렉터리에 CUBRID라는 디렉터리를 만든 후 다운로드한 cubrid_err.msg 파일과 cubrid_php 버전 .dll 파일을 복사한다.<br />
+다운로드한 CUBRID PHP 모듈 버전이 5.1.4라면, 다음 예제와 같이 php.ini를 편집하여 관련 설정 값을 추가한다.</p>
+<p class="code">extension_dir=C:\PHP\CUBRID<br />
+extension=cubrid_php5.1.4.dll<br />
+[CUBRID]<br />
+cubrid.err_path=C:\PHP\CUBRID</p>
+<p>설정이 완료되면 웹 서버를 재시작한다. PHP의 phpinfo() 함수를 사용하여 PHP 설정 내용을 확인했을 때 다음과 같이 CUBRID가 보이면 정상적으로 설치가 완료된 것이다.<br />
+<br />
+<img title="image007.png" src="images/gs_app_php_install.png" width="518" height="365" border="0" alt="" /></p>
+<h5>Linux 버전 설치</h5>
+<p>Linux 버전은 Windows 버전과는 달리 소스코드가 제공된다. 사용자는 CUBRID 홈페이지(<a href="http://www.cubrid.com" target="_blank">http://www.cubrid.com</a>)에서 소스코드를 다운로드한 다음 압축 파일에 포함되어 있는 INSTALL 파일 내의 설치 가이드에 따라 설치를 진행한다. Linux 버전도 다음과 같이 php.ini 파일을 편집하고 저장한 후&#160;웹 서버를 재시작한다.</p>
+<p class="code">; Directory in which the loadable extensions (modules) reside.<br />
+extension_dir = /usr/lib/php5/lib/php/ext<br />
+extension=cubrid.so<br />
+;Windows의 경우 extension=cubrid.dll<br />
+[CUBRID]<br />
+cubrid.err_path=/home/cubrid/CUBRID/msg</p>
+<p>phpinfo() 함수를 사용해서 확인한다.</p>
+<p class="code">[root@localhost]#vi test.php<br /></p>
+<p>웹 브라우저를 통해서 확인했을 때 Windows 버전과 마찬가지로 CUBRID가 보인다면 정상적으로 설치가 완료된 것이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

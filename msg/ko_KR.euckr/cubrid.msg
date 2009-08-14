@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 키워드 = '%s'    값 = %f    기본 설정 값 = %f\n
 
 $set 5 MSGCAT_SET_ERROR
+1 에러 코드 %1$d에 대한 메시지가 없습니다.
 2 내부시스템 에러: 더 이상 자세한 정보가 없습니다.
 3 가상메모리 할당 에러: %1$d 바이트의 메모리를 할당할 수 없습니다.
 4 인터럽트.
@@ -427,7 +428,7 @@ $set 5 MSGCAT_SET_ERROR
 363 master socket으로부터 recvmsg 실패
 364 서버에 새로운 요구를 전송하고 있습니다.
 365 클라이언트에 broadcast 메시지를 전송하고 있습니다.
-366 %1$s
+366 서버 오류: %1$s
 367 서버 %1$s은(는) 이미 존재합니다.
 368 %1$s에 대한 연결 시도 중 통신 에러.
 369 MOP를 더 이상 할당할 수 없습니다.
@@ -712,26 +713,26 @@ $ LOADDB
 647 백업 "%1$s"은(는) 주어진 데이터베이스에 속하지 않습니다. 
 648 백업이 현재 "%1$s" release "%2$s"와 호환되지 않습니다.
 649 주어진 precision %1$d는 유효하지 않습니다; %2$d에서 %3$d사이의 값이어야 합니다.
-650 %d 개의 스레드를 수행하기에는 스택이 너무 작습니다.
+650 'max_clients=%1$d'를 위한 충분한 스레드를 생성하지 못했습니다.
 651 %2$d 개의 스레드 각각에 정렬 버퍼 %1$d을(를) 할당할 수 없습니다.
 652 slot %3$d에 저장된 길이 %2$d의 레코드를 나누기 위해 주어진 오프셋 %1$d은(는) 잘못되었습니다.
 653 slot %4$d에 저장된 길이 %3$d의 레코드의 데이터 부분을 제거하기 위해 주어진 오프셋 %1$d나 길이 %2$d가 잘못되었습니다. 
 654 slot %4$d에 저장된 길이 %3$d의 레코드의 데이터 부분을 overwrite하기 위해 주어진 오프셋 %1$d나 길이 %2$d가 잘못되었습니다. 
-655 \n이벤트 처리 구성 파일 "%1$s"를 열 수 없습니다.\n
-656 \n경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 id/name이 빠져있습니다.\n
-657 \n경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 잘못된 이벤트 이름이 포함되어 있습니다.\n
-658 \n경고 : 파일 "%4$s"의 %5$d 라인의 이벤트 id %1$d, 에러 id가 범위 %2$d <> %3$d를 벗어났습니다.\n
-659 \n이벤트 처리 프로그램 "%1$s"을(를) 액세스할 수 없습니다.\n
-660 \n이벤트 처리 프로세스 "%1$s"를 open/connect할 수 없습니다.\n
-661 \n이벤트 처리 프로세스 "%1$s"에 write할 수 없습니다.\n
-662 \n이벤트 처리 메카니즘을 초기화할 수 없습니다.\n
-663 \n경고 :  이벤트 처리 구성 파일 "%1$s"의 %2$d 라인이 너무 길어서 단절되었습니다.\n
-664 통보 : 데이터베이스 서버 수행.
-665 \n이벤트 처리 pipe가 손상되었습니다. "%1$s"\n
-666 \n경고 : 이벤트 통보 메카니즘이 불활성화되었습니다.\n
-667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 업습니다.\n
-668 내부 에러 : Unknown domain type '%1$d'.\n
-669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.\n
+655 이벤트 처리 구성 파일 "%1$s"를 열 수 없습니다.
+656 경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 id/name이 빠져있습니다.
+657 경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 잘못된 이벤트 이름이 포함되어 있습니다.
+658 경고 : 파일 "%4$s"의 %5$d 라인의 이벤트 id %1$d, 에러 id가 범위 %2$d <> %3$d를 벗어났습니다.
+659 이벤트 처리 프로그램 "%1$s"을(를) 액세스할 수 없습니다.
+660 이벤트 처리 프로세스 "%1$s"를 open/connect할 수 없습니다.
+661 이벤트 처리 프로세스 "%1$s"에 write할 수 없습니다.
+662 이벤트 처리 메카니즘을 초기화할 수 없습니다.
+663 경고 :  이벤트 처리 구성 파일 "%1$s"의 %2$d 라인이 너무 길어서 단절되었습니다.
+664 이벤트 처리 메카니즘 시작됨.
+665 이벤트 처리 pipe가 손상되었습니다. "%1$s"
+666 이벤트 처리 메카니즘 중지됨.
+667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 업습니다.
+668 내부 에러 : Unknown domain type '%1$d'.
+669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.
 670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다.
 671 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d에서 네트워크 read/write 에러가 발생하였습니다.
 672 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d이 단절되었습니다.
@@ -805,7 +806,7 @@ $ LOADDB
 740 주소에 bind할 수 없습니다... 취소 중. 윈속 에러: %1$d.
 741 Accept 실패. 윈속 에러: %1$d.
 742 클라이언트에 broadcast 메시지를 보내고 있습니다. 윈속 에러 : %1$d.
-743 내부 에러: registering client handshake.
+743 클라이언트와 서버 사이의 handshake 실패. (peer host %s)
 744 Error in rehashing a proxy/vclass MOP.
 745 Invalid garbage collection phase.
 746 Invalid garbage collection callback.
@@ -903,7 +904,7 @@ $ LOADDB
 838 동시에 %d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%s"를 바꿀 수 없습니다.
-841 서버 시스템 파라미터는 한 클라이언트(트랜잭션)만 있을 때 변경 가능합니다.
+841 요청된 작업은 한 클라이언트(트랜잭션)만 있을 때 가능합니다.
 842 오브젝트(%1$d|%2$d|%3$d)의 락을 캐쉬할 수 없습니다.
 843 %s 함수의 잘못된 인자로 %s가 넘어왔습니다.
 844 알 수 없는 격리도(%d)가 발견되었습니다. 해당 트랜잭션 인덱스는 %d입니다.
@@ -1023,10 +1024,16 @@ $ LOADDB
 966 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$d|%7$d|%8$d 오브젝트에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %9$s 이(가) 종료할 때까지 기다리고 있었습니다.
 967 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$s 클래스에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %7$s 이(가) 종료할 때까지 기다리고 있었습니다.
 968 트랜잭션이(인덱스  %1$d, %2$s@%3$s|%4$d) %9$s 클래스의 %6$d|%7$d|%8$d 인스턴스에 대한 %5$s 락 대기 중에 데드락으로 인해 타임아웃 되었습니다. 사용자 %10$s 이(가) 종료할 때까지 기다리고 있었습니다.
-
 969 서버 플랫폼(%1$s 비트)은(는) 클라이언트 플랫폼(%2$s 비트)와(과) 다릅니다.
+970 서버의 HA 모드가 '%1$s'에서 '%2$s'로 변경되었습니다.
+971 프로그램 '%1$s' (pid %2$d)가 호스트 '%4$s' (포트 %5$d) 의 데이터베이스 서버 '%3$s'에 접속되었습니다.
+972 프로그램 '%1$s' (pid %2$d)가 호스트 '%3$s'로부터 접속되었습니다. (트랜잭션 >인텍스 %4$d)
+973 서버 상태 %1$s
+974 %2$d에서 %3$d까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
+975 현재 버전의 복제는 하나의 UPDATE 질의로 여러 레코드를 변경시키는 것이 UNIQUE 제약을 위반하는 경우 허용되지 않습니다.
+976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명 : "%5$s")
 
-970 마지막 에러
+977 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1052,6 +1059,7 @@ $set 6 MSGCAT_SET_INTERNAL
 21 Mail -s "Server가 멈추었습니다."
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d
+24 er_init: cannot install event handler "%s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 '%s'의 문법을 점검해 주십시오. %s가(이) 기대됩니다.
@@ -1065,6 +1073,59 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 9 grant/revoke 문의 update 권한 부분에 에트리뷰트"(%s)"를 지정할 수 없습니다.
 10 키워드 '%s'를 잘못 사용하였습니다. %s가(이) 기대됩니다.
 11 토큰 길이가 너무 큽니다.
+12 data type 이 잘못되었습니다.
+13 잘못된 형식의 attach 구문입니다.\n  attach_statement : ATTACH unsigned_integer
+14 잘못된 형식의 prepare 구문입니다.\n  prepare_statement :  PREPARE {to} COMMIT unsigned_integer
+15 잘못된 형식의 execute 구문입니다.\n  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 잘못된 형식의 scope 구문입니다.\n  scope_statement : SCOPE trigger_action { FROM table_spec_list }
+17 잘못된 형식의 set system parameter 구문입니다.\n  set_system : SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+18 잘못된 형식의 set transaction 구문입니다.\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
+19 잘못된 형식의 set trigger trace 구문입니다.\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 잘못된 형식의 set trigger depth 구문입니다.\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
+21 잘못된 형식의 set optimization level 구문입니다.\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
+22 잘못된 형식의 set optimization cost 구문입니다.\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
+23 잘못된 형식의 get optimization level 구문입니다.\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+24 잘못된 형식의 get optimization cost 구문입니다.\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+25 잘못된 형식의 get transaction isol 구문입니다.\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+26 잘못된 형식의 get transaction lock 구문입니다.\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
+27 잘못된 형식의 get trigger trace 구문입니다.\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 잘못된 형식의 get trigger depth 구문입니다.\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+29 잘못된 형식의 get stat 구문입니다.\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+30 잘못된 형식의 create index 구문입니다.\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
+31 잘못된 형식의 create user 구문입니다.\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
+32 잘못된 형식의 create trigger 구문입니다.\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
+33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE}
+34 잘못된 형식의 create procedure 구문입니다.\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
+35 잘못된 형식의 create function 구문입니다.\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+36 잘못된 형식의 groups 구문입니다.\n  groups spec : GROUPS identifier {, identifier}*
+37 잘못된 형식의 members 구문입니다.\n  member spec : MEMBERS identifier {, identifier}*
+38 잘못된 형식의 password 구문입니다.\n  password spec : PASSWORD 'STRING'
+39 authorized command list 가 빠졌습니다.\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+40 class spec list 가 빠졌습니다.
+41 identifier list 가 빠졌습니다.
+42 expression 이 기대됩니다.
+43 잘못된 형식의 identifier 입니다.
+44 substring 함수의 형식이 잘못되었습니다.\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
+45 trim 함수의 형식이 잘못되었습니다.\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
+46 cast 함수의 형식이 잘못되었습니다.\n  CAST ( expression AS data_type )
+47 add_months 함수는 두 인수가 필요합니다.
+48 octet_length 함수는 하나의 인수가 필요합니다.
+49 bit_length 함수는 하나의 인수가 필요합니다.
+50 lower 함수는 하나의 인수가 필요합니다.
+51 upper 함수는 하나의 인수가 필요합니다.
+52 translate 함수는 세개의 인수가 필요합니다.
+53 replace 함수는 둘이나, 세개의 인수가 필요합니다.
+54 to_number 함수의 형식이 잘못되었습니다.\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
+55 스트링 결합 연산자는 '|' 이 아니라 '||' 입니다.
+56 잘못된 형식의 alter 구문입니다.
+57 잘못된 형식의 drop 구문입니다.
+58 잘못된 형식의 create 구문입니다.
+59 잘못된 형식의 관계연산자입니다.
+60 equal 연산자는 '==' 이 아니라 '=' 입니다.
+61 not equal 연산자는 '!=' 이 아니라 '<>' 입니다.
+62 허용되지 않는 음수값입니다.
+63 reference rule 이 중복되었습니다.
+
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1177,7 +1238,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 108 프락시 '%1$s'는 이미 ldb '%3$s'의 클래스 '%2$s'를 정의하고 있습니다.
 109 CUBRID는 heterogeneous sets을 가지는 오브젝트를 지원하지 않습니다.
 110 Where 절은 논리적 타입 식이어야 합니다.
-111 Like escape 절은 문자 문자열이어야 합니다.
+111 Like escape 절은 문자 문자열 또는 호스트 변수이어야 합니다.
 112 유효하지 않은 Precision (%d), scale (%d) 값입니다.
 113 주어진 precision %1$d는 유효하지 않습니다; %2$d에서 %3$d사이의 값이어야 합니다.
 114 지정한 precision (%d)이 너무 큽니다. 최대 precision은 %d 입니다.
@@ -1260,6 +1321,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 191 Auto increment 제약 조건을 가진 속성 '%s'에 사용할 수 없는 도메인입니다.
 192 외래키 'ON CACHE OBJECT'절로 생성된 속성 '%s'에는 사용자가 직접 값을 할당할 수는 없습니다.
 193 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' (이)가 두 번 이상 나열 되었습니다.
+194 함수 %s 은(는) 정의되어 있지 않거나, 파라미터 갯수가 틀립니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
@@ -1446,7 +1508,7 @@ $set 15 MSGCAT_SET_IO
 8       Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %d bytes (%d pages)\n
+   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
 10    Database Name: %s\n\
      Volume Name: %s\n\
         Unit Num: %d\n\
@@ -1529,3 +1591,4 @@ $set 16 MSGCAT_SET_LOG
 ** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오. 
 27 입력 오류, %d와 %d 사이의 값을 선택하시오.\n
 28 복구 시점(%s)은 반드시 백업 시점(%s) 이후로 지정해야 합니다. \n
+29 COMMENT: 로그 페이지 %d 이전까지만 포함하는 아카이브 로그 %s 는 HA 유틸리티에서 더 이상 사용되지 않습니다.

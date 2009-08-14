@@ -1,0 +1,104 @@
+﻿
+<html>
+<head>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>개요</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n멀티미디어 데이터 관리\nglo 클래스\n개요");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_mm_glo_intro.htm\">멀티미디어 데이터 관리<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_mm_glo_intro.htm\">glo 클래스<\/a> &nbsp;&gt;&nbsp; 개요<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>개요</h4>
+<p>사이즈가 큰 객체를 다루기 위해서는 <span class="keyword">glo</span> (Generalized Large Object) 클래스를 사용한다. <span class="keyword">glo</span> 클래스는 CUBRID에서 멀티미디어 지원의 토대가 된다. 사용자 정의 클래스의 속성을 <span class="keyword">glo</span> 클래스(또는 그 하위 클래스)로 정의하면, 다른 유형의 비구조적 데이터를 저장할 수 있다. 비트맵, 디지털화된 오디오 데이터, 대용량 문서 데이터, 2진 데이터 등이&#160;<span class="keyword">glo</span> 클래스(또는 그 하위 클래스)의 인스턴스의 예이다.</p>
+<p><span class="keyword">glo</span> 클래스의 인스턴스는 두 가지 형식으로 분류할 수 있다. 첫 번째 형식은 CUBRID를 통해서만 데이터베이스에 저장, 접근할 수 있는 LO (Large Object)이다. 두 번째 형식은 호스트 파일 시스템에 저장하는 FBO (File Based Object)이다. 대부분의 <span class="keyword">glo</span> 인스턴스는 LO인데, 이는 CUBRID가 데이터를 관리하기에 더 편리하기 때문이다. 그러나 데이터베이스가 아닌 애플리케이션에서 데이터를 사용할 때에는, 호스트 파일 시스템이 FBO 데이터 스토리지를 관리하도록 하면 데이터를 압축하지 않아도 되는 등의 이점이 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

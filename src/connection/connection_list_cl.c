@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -63,7 +63,6 @@ static void css_queue_error_packet (CSS_CONN_ENTRY * conn,
 static void css_queue_command_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id,
 				      NET_HEADER * header, int size);
-static void css_queue_oob_packet (CSS_CONN_ENTRY * conn, NET_HEADER * header);
 static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id);
 
@@ -532,40 +531,6 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 }
 
 /*
- * css_queue_oob_packet () - read the data packet following the header packet
- *   return: void
- *   conn(in/out):
- *   header(in):
- *
- * Note: The data packet will then be queued.
- */
-static void
-css_queue_oob_packet (CSS_CONN_ENTRY * conn, NET_HEADER * header)
-{
-  char *buffer;
-  int rc;
-  int size;
-
-  size = ntohl (header->buffer_size);
-  buffer = css_return_oob_buffer (&size);
-
-  if (buffer != NULL)
-    {
-      if (css_recv_and_queue_packet (conn, 0, buffer, size,
-				     &conn->oob_queue) == false)
-	{
-	  free_and_init (buffer);
-	}
-    }
-  else
-    {
-      rc = CANT_ALLOC_BUFFER;
-      css_read_remaining_bytes (conn->fd, sizeof (int) + size);
-      /* nothing to save onto the queue! */
-    }
-}
-
-/*
  * css_process_abort_packet () - the server side of processing an aborted
  *                               request
  *   return: void
@@ -641,10 +606,6 @@ css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn,
 
     case COMMAND_TYPE:
       css_queue_command_packet (conn, request_id, header, size);
-      break;
-
-    case OOB_TYPE:
-      css_queue_oob_packet (conn, header);
       break;
 
     default:

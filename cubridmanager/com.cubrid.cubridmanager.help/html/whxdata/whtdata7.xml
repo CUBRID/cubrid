@@ -1,0 +1,11 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<item name="개요" url="syntax/syntax_method_intro.htm" />
+<item name="메소드의 타입" url="syntax/syntax_method_type.htm" />
+<book name="메소드 호출하기" >
+  <item name="개요" url="syntax/syntax_method_call_intro.htm" />
+  <item name="CALL 문" url="syntax/syntax_method_call_call.htm" />
+  <item name="EVALUATE 문" url="syntax/syntax_method_call_evaluate.htm" />
+</book>
+
+</tocdata>

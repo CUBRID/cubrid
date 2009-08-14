@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -162,7 +162,10 @@ static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
 static DB_VALUE *obj_make_key_value (DB_VALUE * key,
 				     const DB_VALUE * values[], int size);
-
+static MOP
+obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
+				  AU_FETCHMODE fetchmode,
+				  bool is_replication);
 
 /* ATTRIBUTE LOCATION */
 
@@ -653,6 +656,13 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
   int error = NO_ERROR;
   MOP mop;
 
+  if (op == NULL || att == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (value == NULL || DB_IS_NULL (value))
     {
       error = assign_null_value (op, att, mem);
@@ -742,7 +752,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	{
 	  return er_errid ();
 	}
-      if (trigstate || ATT_IS_UNIQUE (att))
+      if (trigstate || classobj_has_unique_constraint (att->constraints))
 	{
 	  /* use templates to avoid duplicating trigger code */
 	  temp = obt_edit_object (op);
@@ -1181,6 +1191,13 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   DB_VALUE setval;
   MOP owner;
 
+  if (op == NULL || att == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   /* use class/shared value if alternate source isn't provided */
   if (mem == NULL && source == NULL)
     {
@@ -1194,7 +1211,9 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
     {
       db_value_domain_init (&setval, att->domain->type->id, 0, 0);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &setval))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
       set = DB_GET_SET (&setval);
       db_value_put_null (&setval);
     }
@@ -1210,7 +1229,9 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	  set = DB_GET_SET (source);
 	  /* KLUDGE: shouldn't be doing this at this level */
 	  if (set != NULL)
-	    set->ref_count++;
+	    {
+	      set->ref_count++;
+	    }
 	}
     }
 
@@ -1221,7 +1242,9 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   if (set != NULL && set->owner != owner)
     {
       if (set_connect (set, owner, att->id, att->domain))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
     }
 
   /* convert NULL sets to DB_TYPE_NULL */
@@ -1271,6 +1294,13 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
 	       DB_VALUE * source, DB_VALUE * dest)
 {
   int error = NO_ERROR;
+
+  if (op == NULL || att == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
 
   /* use class/shared value if alternate source isn't provided */
   if (mem == NULL && source == NULL)
@@ -1848,11 +1878,12 @@ obj_alloc (SM_CLASS * class_, int bound_bit_status)
 	}
 
       /* clear the object */
-      FOR_ATTRIBUTES (class_->attributes, att)
-      {
-	mem = obj + att->offset;
-	PRIM_INITMEM (att->domain->type, mem);
-      }
+      for (att = class_->attributes; att != NULL;
+	   att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  mem = obj + att->offset;
+	  PRIM_INITMEM (att->domain->type, mem);
+	}
     }
 
   return obj;
@@ -4198,12 +4229,30 @@ notfound:
 MOP
 obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 {
+  assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
+
+  return obj_find_object_by_pkey_internal (classop, key, fetchmode, false);
+}
+
+MOP
+obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key,
+			      AU_FETCHMODE fetchmode)
+{
+  return obj_find_object_by_pkey_internal (classop, key, fetchmode, true);
+}
+
+static MOP
+obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
+				  AU_FETCHMODE fetchmode, bool is_replication)
+{
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
   MOP obj;
   OID unique_oid;
   DB_TYPE value_type;
   MOP mop;
+  BTREE_SEARCH btree_search;
+
   obj = NULL;
 
   if (classop == NULL || key == NULL)
@@ -4259,8 +4308,17 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 	}
     }
 
-  if (btree_find_unique (&cons->index, key, ws_oid (classop), &unique_oid) ==
-      BTREE_KEY_FOUND)
+  if (is_replication == true)
+    {
+      btree_search = repl_btree_find_unique (&cons->index, key,
+					     ws_oid (classop), &unique_oid);
+    }
+  else
+    {
+      btree_search = btree_find_unique (&cons->index, key, ws_oid (classop),
+					&unique_oid);
+    }
+  if (btree_search == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
     }

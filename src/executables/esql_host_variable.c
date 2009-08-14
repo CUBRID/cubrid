@@ -319,6 +319,11 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
   if (pp_host_refs == NULL)
     {
       pp_host_refs = pp_new_host_lod ();
+      if (pp_host_refs == NULL)
+	{
+	  goto bad_news;
+	}
+
       *pp_gathering = pp_host_refs;
     }
 
@@ -1271,9 +1276,12 @@ pp_addr_of (HOST_VAR * var)
     }
 
   new_link = pp_new_link ();
-  new_link->decl.d.dcl_type = D_POINTER;
-  new_link->next = var->type;
-  var->type = new_link;
+  if (new_link != NULL)
+    {
+      new_link->decl.d.dcl_type = D_POINTER;
+      new_link->next = var->type;
+      var->type = new_link;
+    }
 
   return var;
 }
@@ -1435,6 +1443,8 @@ pp_new_host_lod (void)
       lod = malloc (sizeof (HOST_LOD));
       if (lod == NULL)
 	{
+	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+	  exit (1);
 	  return NULL;
 	}
       lod->real_refs = NULL;

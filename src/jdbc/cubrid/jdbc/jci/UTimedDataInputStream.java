@@ -76,5 +76,21 @@ class UTimedDataInputStream
       }
     }
   }
-
+  public int readByte(byte[] b) throws IOException
+  {
+    while (true)
+    {
+      try
+      {
+        return stream.read(b);
+      }
+      catch (SocketTimeoutException e)
+      {
+        if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
+        {
+          throw new IOException(e.getMessage());
+        }
+      }
+    }
+  }
 }

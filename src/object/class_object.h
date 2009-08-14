@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -45,39 +45,30 @@
  *    Shorthand macros for iterating over a component, attribute, method list
  */
 
-#define FOR_COMPONENTS(list, var) \
-  for (var = (SM_COMPONENT *)list ; var != NULL ; var = var->next)
-
-#define FOR_ATTRIBUTES(list, var) \
-  for (var = list ; var != NULL ; var = (SM_ATTRIBUTE *)var->header.next)
-
-#define FOR_METHODS(list, var) \
-  for (var = list ; var != NULL ; var = (SM_METHOD *)var->header.next)
-
 #define SM_IS_ATTFLAG_AUTO_INCREMENT(c) (c == SM_ATTFLAG_AUTO_INCREMENT)
 
 #define SM_IS_ATTFLAG_UNIQUE_FAMILY(c) \
-                                    ( ((c) == SM_ATTFLAG_UNIQUE             || \
-				       (c) == SM_ATTFLAG_PRIMARY_KEY        || \
-				       (c) == SM_ATTFLAG_REVERSE_UNIQUE)       \
-                                      ? true : false )
+        (((c) == SM_ATTFLAG_UNIQUE             || \
+	  (c) == SM_ATTFLAG_PRIMARY_KEY        || \
+	  (c) == SM_ATTFLAG_REVERSE_UNIQUE)       \
+          ? true : false)
 
 #define SM_IS_ATTFLAG_INDEX_FAMILY(c) \
-                                    ( (SM_IS_ATTFLAG_UNIQUE_FAMILY(c)       || \
-				       (c) == SM_ATTFLAG_FOREIGN_KEY        || \
-                                       (c) == SM_ATTFLAG_INDEX              || \
-                                       (c) == SM_ATTFLAG_REVERSE_INDEX)        \
-                                      ? true : false )
+        ((SM_IS_ATTFLAG_UNIQUE_FAMILY(c)      || \
+	 (c) == SM_ATTFLAG_FOREIGN_KEY        || \
+         (c) == SM_ATTFLAG_INDEX              || \
+         (c) == SM_ATTFLAG_REVERSE_INDEX)        \
+         ? true : false)
 
 #define SM_IS_ATTFLAG_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((c) == SM_ATTFLAG_REVERSE_UNIQUE     || \
-                                       (c) == SM_ATTFLAG_REVERSE_INDEX)        \
-                                      ? true : false )
+        (((c) == SM_ATTFLAG_REVERSE_UNIQUE     || \
+          (c) == SM_ATTFLAG_REVERSE_INDEX)        \
+         ? true : false)
 
 #define SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY(c) \
-                                    ( (SM_IS_ATTFLAG_UNIQUE_FAMILY(c)       || \
-				       (c) == SM_ATTFLAG_FOREIGN_KEY)          \
-                                      ? true : false )
+        ((SM_IS_ATTFLAG_UNIQUE_FAMILY(c)      || \
+	 (c) == SM_ATTFLAG_FOREIGN_KEY)          \
+         ? true : false)
 
 #define SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT(c) \
 	((c) == SM_ATTFLAG_UNIQUE         ? SM_CONSTRAINT_UNIQUE : \
@@ -85,7 +76,7 @@
 	 (c) == SM_ATTFLAG_FOREIGN_KEY    ? SM_CONSTRAINT_FOREIGN_KEY : \
 	 (c) == SM_ATTFLAG_INDEX          ? SM_CONSTRAINT_INDEX : \
 	 (c) == SM_ATTFLAG_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE : \
-	                                    SM_CONSTRAINT_REVERSE_INDEX	)
+	                                    SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_MAP_CONSTRAINT_ATTFAG_TO_PROPERTY(c) \
 	((c) == SM_ATTFLAG_UNIQUE         ? SM_PROPERTY_UNIQUE: \
@@ -110,24 +101,25 @@
 	                                       SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
-                                    ( ((c) == SM_CONSTRAINT_UNIQUE          || \
-				       (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
-				       (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
-                                      ? true : false )
+        (((c) == SM_CONSTRAINT_UNIQUE          || \
+	  (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
+	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
+          ? true : false )
 
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
-                                    ( (SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
-				       (c) == SM_CONSTRAINT_FOREIGN_KEY     || \
-                                       (c) == SM_CONSTRAINT_INDEX           || \
-                                       (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
-                                      ? true : false )
+        ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
+	 (c) == SM_CONSTRAINT_FOREIGN_KEY      || \
+         (c) == SM_CONSTRAINT_INDEX            || \
+         (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
+         ? true : false )
 
 #define SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((c) == SM_CONSTRAINT_REVERSE_UNIQUE ||  \
-                                       (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
-                                      ? true : false )
+        (((c) == SM_CONSTRAINT_REVERSE_UNIQUE ||  \
+          (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
+          ? true : false )
 
-#define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) classobj_complist_search((SM_COMPONENT *)complist, name)
+#define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
+        classobj_complist_search((SM_COMPONENT *)complist, name)
 
 /*
  *    This constant defines the maximum size in bytes of a class name,
@@ -789,7 +781,6 @@ struct sm_class
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occured */
-  unsigned transaction_cache:1;	/* set if transaction cache is valid */
 
   unsigned triggers_validated:1;	/* set when trigger cache is validated */
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
@@ -952,6 +943,7 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_PARTITION "*PT"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
 
+#define SM_PROPERTY_NUM_INDEX_FAMILY         6
 
 /* Allocation areas */
 extern void classobj_area_init (void);
@@ -993,6 +985,7 @@ extern int classobj_find_prop_constraint (DB_SEQ * properties,
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 					   SM_CONSTRAINT_TYPE type,
 					   BTID * id);
+extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_decompose_property_oid (const char *buffer, int *volid,
 					    int *fileid, int *pageid);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid,

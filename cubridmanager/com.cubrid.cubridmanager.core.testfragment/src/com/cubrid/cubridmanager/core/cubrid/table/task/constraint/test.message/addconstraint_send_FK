@@ -1,0 +1,12 @@
+task:addconstraint
+token:8ec1ab8a91333c782de200b024f202ed1421b6aee180eb35f4cd8b6186f50bf27926f07dd201b6aa
+dbname:demodb
+classname:game
+refclsname:athlete
+type:FOREIGN KEY
+name:fk_game_athlete_code
+attributecount:1
+forikey:athlete_code
+refkey:code
+category:instance
+

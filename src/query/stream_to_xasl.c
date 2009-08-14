@@ -1263,6 +1263,11 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr,
       return NULL;
     }
   ints = stx_restore_int_array (thread_p, ptr, nelements);
+  if (ints == NULL)
+    {
+      return NULL;
+    }
+
   for (i = 0; i < nelements; i++)
     {
       offset = ints[i];
@@ -1275,6 +1280,7 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr,
 	  return NULL;
 	}
     }
+
   for (; i < total_nelements; ++i)
     {
       value_array[i] = NULL;
@@ -1401,6 +1407,11 @@ stx_restore_parts_array (THREAD_ENTRY * thread_p, char *ptr, int size)
     }
 
   offset_array = stx_restore_int_array (thread_p, ptr, size);
+  if (offset_array == NULL)
+    {
+      return NULL;
+    }
+
   for (i = 0; i < size; i++)
     {
       offset = offset_array[i];
@@ -1414,7 +1425,7 @@ stx_restore_parts_array (THREAD_ENTRY * thread_p, char *ptr, int size)
 	}
     }
 
-  return (parts_info_array);
+  return parts_info_array;
 }
 
 static XASL_PARTITION_INFO **
@@ -1438,6 +1449,11 @@ stx_restore_partition_array (THREAD_ENTRY * thread_p, char *ptr, int size)
     }
 
   offset_array = stx_restore_int_array (thread_p, ptr, size);
+  if (offset_array == NULL)
+    {
+      return NULL;
+    }
+
   for (i = 0; i < size; i++)
     {
       offset = offset_array[i];
@@ -1593,6 +1609,11 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ints = stx_restore_int_array (thread_p, ptr, 3 * nelements);
+  if (ints == NULL)
+    {
+      return NULL;
+    }
+
   for (i = 0, j = 0; i < nelements; i++, j++)
     {
       key_range_array[i].range = (RANGE) ints[j];
@@ -1878,6 +1899,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->spec_list = stx_restore_access_spec_type (thread_p, &ptr);
 
   xasl->merge_spec = stx_restore_access_spec_type (thread_p, &ptr);
+  if (ptr == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2597,6 +2623,8 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  ptr = or_unpack_int (ptr, &stx_build_value_proc->is_always_false);
+
   return ptr;
 }
 
@@ -2694,6 +2722,11 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
 
   merge_list_info->outer_spec_list =
     stx_restore_access_spec_type (thread_p, &ptr);
+  if (ptr == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3754,8 +3787,22 @@ stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  ptr = stx_unpack_char (ptr, &like_eval_term->esc_char);
-  ptr = or_unpack_int (ptr, &like_eval_term->esc_char_set);
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      like_eval_term->esc_char = NULL;
+    }
+  else
+    {
+      like_eval_term->esc_char =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (like_eval_term->esc_char == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
 
   return ptr;
 }

@@ -1597,6 +1597,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   index_area = (char **) (output_buffer - sizeof (char *));
   index_buff = index_area - 1;
   temp_recdes.area_size = SORT_MAXREC_LENGTH;
+  temp_recdes.length = 0;
 
   long_recdes.area_size = 0;
   long_recdes.data = NULL;
@@ -2227,7 +2228,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   compare = sort_param->cmp_fn;
   compare_arg = sort_param->cmp_arg;
 
-  for (i = 0; i < sort_param->half_files; i++)
+  for (i = 0; i < SORT_MAX_HALF_FILES; i++)
     {
       in_act_bufno[i] = 0;
       in_last_buf[i] = 0;
@@ -2607,15 +2608,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* OUTPUT A RECORD */
 
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
-	      if (min_p == NULL)
-		{
-		  /* all "smallest_elem_ptr" are NULL; so break */
-		  break;
-		}
-	      else
-		{
-		  min = min_p->rec_pos;
-		}
+	      min = min_p->rec_pos;
 
 	      /* min_p->is_duplicated == 1 then skip duplicated sort_key
 	         record */
@@ -2804,9 +2797,17 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			     finished */
 			  min_p = min_p->next;
 
-			  /* Don't try to get the next record on this input
-			     section */
-			  continue;
+			  if (min_p == NULL)
+			    {
+			      /* all "smallest_elem_ptr" are NULL; so break */
+			      break;
+			    }
+			  else
+			    {
+			      /* Don't try to get the next record on this input
+			         section */
+			      continue;
+			    }
 			}
 		    }
 
@@ -3105,7 +3106,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   compare = sort_param->cmp_fn;
   compare_arg = sort_param->cmp_arg;
 
-  for (i = 0; i < sort_param->half_files; i++)
+  for (i = 0; i < SORT_MAX_HALF_FILES; i++)
     {
       in_act_bufno[i] = 0;
       in_last_buf[i] = 0;
@@ -3470,15 +3471,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* OUTPUT A RECORD */
 
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
-	      if (min_p == NULL)
-		{
-		  /* all "smallest_elem_ptr" are NULL; so break */
-		  break;
-		}
-	      else
-		{
-		  min = min_p->rec_pos;
-		}
+	      min = min_p->rec_pos;
 
 	      if (very_last_run)
 		{
@@ -3655,9 +3648,17 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			     proceed to next minimum record. */
 			  min_p = min_p->next;
 
-			  /* Don't try to get the next record on this input
-			     section */
-			  continue;
+			  if (min_p == NULL)
+			    {
+			      /* all "smallest_elem_ptr" are NULL; so break */
+			      break;
+			    }
+			  else
+			    {
+			      /* Don't try to get the next record on this input
+			         section */
+			      continue;
+			    }
 			}
 		    }
 

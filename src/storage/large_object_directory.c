@@ -153,8 +153,8 @@ static int largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p,
 static int largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p,
 				  LARGEOBJMGR_DIRSTATE * ds);
 static PAGE_PTR largeobjmgr_dir_search (THREAD_ENTRY * thread_p,
-					PAGE_PTR first_dir_pg, FSIZE_T offset,
-					int *curdir_idx, FSIZE_T * lo_offset);
+					PAGE_PTR first_dir_pg, INT64 offset,
+					int *curdir_idx, INT64 * lo_offset);
 static void largeobjmgr_firstdir_update (THREAD_ENTRY * thread_p,
 					 LARGEOBJMGR_DIRSTATE * ds,
 					 int delta_len, int delta_slot_cnt);
@@ -341,7 +341,7 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   if (file_alloc_pages (thread_p, &ds->curdir.hdr->loid.vfid, vpid, 1,
 			vpid_ptr, largeobjmgr_initdir_newpage, ds) == NULL)
     {
-      goto exit_on_error;
+      return NULL;
     }
 
   /*
@@ -354,7 +354,7 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   if (page_ptr == NULL)
     {
       (void) file_dealloc_page (thread_p, &ds->curdir.hdr->loid.vfid, vpid);
-      goto exit_on_error;
+      return NULL;
     }
 
   /* Need undo log, for cases of unexpected rollback, but only
@@ -368,15 +368,7 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 			    &ds->curdir.hdr->loid.vfid);
     }
 
-end:
-
   return page_ptr;
-
-exit_on_error:
-
-  page_ptr = NULL;
-
-  goto end;
 }
 
 /*
@@ -420,7 +412,7 @@ largeobjmgr_dir_pgcnt (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_ptr == NULL)
 	    {
-	      goto exit_on_error;
+	      return -1;
 	    }
 	}
 
@@ -435,21 +427,7 @@ largeobjmgr_dir_pgcnt (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
       page_ptr = NULL;
     }
 
-end:
-
   return pgcnt;
-
-exit_on_error:
-
-  if (page_ptr)
-    {
-      pgbuf_unfix (thread_p, page_ptr);
-      page_ptr = NULL;
-    }
-
-  pgcnt = -1;			/* ERROR */
-
-  goto end;
 }
 
 /*
@@ -474,7 +452,6 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
   int vpid_ind;
   VPID next_vpid;
   PAGE_PTR page_ptr = NULL;
-  int ret = NO_ERROR;
 
   *dir_vpid_list = NULL;
   *dir_vpid_cnt = 0;
@@ -485,7 +462,7 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
@@ -509,7 +486,9 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
   vpid_list = (VPID *) malloc (vpid_cnt * sizeof (VPID));
   if (vpid_list == NULL)
     {
-      goto exit_on_error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      vpid_cnt * sizeof (VPID));
+      return ER_FAILED;
     }
 
   vpid_list[0] = loid->vpid;
@@ -523,7 +502,9 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
 	  vpid_list = (VPID *) realloc (vpid_list, vpid_cnt * sizeof (VPID));
 	  if (vpid_list == NULL)
 	    {
-	      goto exit_on_error;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, vpid_cnt * sizeof (VPID));
+	      return ER_FAILED;
 	    }
 	}
 
@@ -534,7 +515,8 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  free_and_init (vpid_list);
+	  return ER_FAILED;
 	}
 
       dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
@@ -546,33 +528,7 @@ largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
   *dir_vpid_list = vpid_list;
   *dir_vpid_cnt = vpid_ind;
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (page_ptr)
-    {
-      pgbuf_unfix (thread_p, page_ptr);
-      page_ptr = NULL;
-    }
-
-  if (vpid_list)
-    {
-      free_and_init (vpid_list);
-      vpid_list = NULL;
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -606,7 +562,8 @@ largeobjmgr_dir_get_prvpg (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  VPID_SET_NULL (prev_vpid);
+	  return NULL;
 	}
     }
 
@@ -626,30 +583,15 @@ largeobjmgr_dir_get_prvpg (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  VPID_SET_NULL (prev_vpid);
+	  return NULL;
 	}
 
       dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
       next_vpid = dir_hdr->next_vpid;
     }
 
-end:
-
   return page_ptr;
-
-exit_on_error:
-
-  if (page_ptr)
-    {
-      pgbuf_unfix (thread_p, page_ptr);
-      page_ptr = NULL;
-    }
-
-  /* ERROR */
-  VPID_SET_NULL (prev_vpid);
-  page_ptr = NULL;
-
-  goto end;
 }
 
 /*
@@ -671,7 +613,7 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
   LARGEOBJMGR_DIRENTRY *deleted_entries = NULL;
   int deleted_cnt;
   int n;
-  int begin_lo_offset;
+  INT64 begin_lo_offset;
   LOG_DATA_ADDR addr;
   int ret = NO_ERROR;
 
@@ -820,7 +762,9 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
 					 sizeof (LARGEOBJMGR_DIRENTRY));
       if (deleted_entries == NULL)
 	{
-	  goto exit_on_error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, deleted_cnt * sizeof (LARGEOBJMGR_DIRENTRY));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       /* set directory state to point to after last active entry */
@@ -839,7 +783,8 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
 	    {
 	      if (lo_scan == S_ERROR)
 		{
-		  goto exit_on_error;
+		  free_and_init (deleted_entries);
+		  return ER_FAILED;
 		}
 	    }
 
@@ -850,14 +795,16 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
 	  ret = largeobjmgr_delete_dir (thread_p, ds);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      free_and_init (deleted_entries);
+	      return ret;
 	    }
 	}
 
       ret = largeobjmgr_dir_put_pos (thread_p, ds, &ds_pos);
       if (ret != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  free_and_init (deleted_entries);
+	  return ret;
 	}
 
       /* insert new entries in the current directory position */
@@ -866,18 +813,18 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
 	  ret = largeobjmgr_dir_insert (thread_p, ds, deleted_entries, n);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      free_and_init (deleted_entries);
+	      return ret;
 	    }
 	}
 
       free_and_init (deleted_entries);
-      deleted_entries = NULL;
 
       /* put directory state back to beginning state */
       ret = largeobjmgr_dir_put_pos (thread_p, ds, &ds_pos);
       if (ret != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return ret;
 	}
 
       ds->curdir.idx = 0;	/* point to the page beginning entry */
@@ -885,27 +832,7 @@ largeobjmgr_dir_pgcompress (THREAD_ENTRY * thread_p,
       ds->lo_offset = begin_lo_offset;
     }
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (deleted_entries)
-    {
-      free_and_init (deleted_entries);
-      deleted_entries = NULL;
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -931,12 +858,11 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   int split_cnt;
   int split_size;
   char *spilt_ptr;
-  FSIZE_T delta;
+  int delta;
   LARGEOBJMGR_DIRENTRY *temp_entry_p;
   int mv_ent_cnt;
   int k;
   LOG_DATA_ADDR addr;
-  int ret = NO_ERROR;
 
   addr.vfid = &ds->firstdir.hdr->loid.vfid;
 
@@ -944,7 +870,7 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   page_ptr = largeobjmgr_dir_allocpage (thread_p, ds, &vpid);
   if (page_ptr == NULL)
     {
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
@@ -1153,21 +1079,7 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	}
     }
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -1232,7 +1144,7 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 				  PGBUF_UNCONDITIONAL_LATCH);
 	  if (prev_pgptr == NULL)
 	    {
-	      goto exit_on_error;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -1265,7 +1177,7 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 				       &prev_vpid);
 	  if (prev_pgptr == NULL)
 	    {
-	      goto exit_on_error;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -1299,9 +1211,8 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       if (!VPID_ISNULL (&prev_vpid))
 	{
 	  pgbuf_unfix (thread_p, prev_pgptr);
-	  prev_pgptr = NULL;
 	}
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   /*
@@ -1421,21 +1332,7 @@ largeobjmgr_dir_pgremove (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	}
     }
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -1463,7 +1360,7 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
   page_ptr = largeobjmgr_dir_allocpage (thread_p, ds, &next_vpid);
   if (page_ptr == NULL)
     {
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   if (ds->curdir.pgptr != NULL)
@@ -1504,7 +1401,7 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
       dir_pgcnt = largeobjmgr_dir_pgcnt (thread_p, ds);
       if (dir_pgcnt < 0)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       if (dir_pgcnt >= LARGEOBJMGR_DIR_PG_CNT_INDEX_CREATE_LIMIT)
@@ -1512,7 +1409,7 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 	  ret = largeobjmgr_firstdir_map_create (thread_p, ds);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      return ret;
 	    }
 	}
     }
@@ -1537,13 +1434,12 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
       else
 	{
 	  /* index page is full */
-	  ret =
-	    largeobjmgr_firstdir_map_shrink (thread_p,
-					     &ds->firstdir.hdr->loid,
-					     ds->firstdir.pgptr);
+	  ret = largeobjmgr_firstdir_map_shrink (thread_p,
+						 &ds->firstdir.hdr->loid,
+						 ds->firstdir.pgptr);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      return ret;
 	    }
 	}
 
@@ -1581,21 +1477,7 @@ largeobjmgr_dir_pgadd (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
       ds->firstdir.idxptr++;
     }
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -1732,7 +1614,7 @@ largeobjmgr_dir_pgdump (FILE * fp, PAGE_PTR curdir_pgptr)
  */
 static PAGE_PTR
 largeobjmgr_dir_search (THREAD_ENTRY * thread_p, PAGE_PTR first_dir_pg,
-			FSIZE_T offset, int *curdir_idx, FSIZE_T * lo_offset)
+			INT64 offset, int *curdir_idx, INT64 * lo_offset)
 {
   LARGEOBJMGR_DIRHEADER *dir_hdr;
   PAGE_PTR page_ptr = NULL;
@@ -1761,7 +1643,9 @@ largeobjmgr_dir_search (THREAD_ENTRY * thread_p, PAGE_PTR first_dir_pg,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  *curdir_idx = -1;
+	  *lo_offset = 0;
+	  return NULL;
 	}
 
       dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
@@ -1777,23 +1661,7 @@ largeobjmgr_dir_search (THREAD_ENTRY * thread_p, PAGE_PTR first_dir_pg,
       *curdir_idx += 1;
     }
 
-end:
-
   return page_ptr;
-
-exit_on_error:
-
-  if (page_ptr)
-    {
-      pgbuf_unfix (thread_p, page_ptr);
-      page_ptr = NULL;
-    }
-
-  /* ERROR */
-  *curdir_idx = -1;
-  *lo_offset = 0;
-
-  goto end;
 }
 
 /*
@@ -1814,7 +1682,6 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 {
   VPID next_vpid;
   int last_ind;
-  SCAN_CODE lo_scan = S_SUCCESS;
 
   switch (ds->opr_mode)
     {
@@ -1862,7 +1729,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 						PGBUF_UNCONDITIONAL_LATCH);
 		  if (ds->curdir.pgptr == NULL)
 		    {
-		      goto exit_on_error;
+		      return S_ERROR;
 		    }
 		}
 	      else
@@ -1876,7 +1743,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 		largeobjmgr_first_direntry (ds->curdir.pgptr);
 	      if (largeobjmgr_skip_empty_entries (thread_p, ds) == S_ERROR)
 		{
-		  goto exit_on_error;
+		  return S_ERROR;
 		}
 
 	      ds->pos = S_ON;
@@ -1926,7 +1793,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 		  if (largeobjmgr_skip_empty_entries (thread_p, ds)
 		      != S_SUCCESS)
 		    {
-		      goto exit_on_error;
+		      return S_ERROR;
 		    }
 		}
 	      break;
@@ -1937,7 +1804,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 	    return S_END;
 
 	  default:
-	    goto exit_on_error;
+	    return S_ERROR;
 	  }
 	break;
       }
@@ -1967,7 +1834,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 					      PGBUF_UNCONDITIONAL_LATCH);
 		if (ds->curdir.pgptr == NULL)
 		  {
-		    goto exit_on_error;
+		    return S_ERROR;
 		  }
 
 		ds->curdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->curdir.pgptr;
@@ -1990,7 +1857,7 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 		/* There is not more directory pages. Add one */
 		if (largeobjmgr_dir_pgadd (thread_p, ds) != NO_ERROR)
 		  {
-		    goto exit_on_error;
+		    return S_ERROR;
 		  }
 	      }
 	  }
@@ -1999,17 +1866,10 @@ largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
 
     default:
       /* invalid operation mode */
-      goto exit_on_error;
+      return S_ERROR;
     }
 
-end:
-
-  return lo_scan;
-
-exit_on_error:
-
-  lo_scan = S_ERROR;
-  goto end;
+  return S_SUCCESS;
 }
 
 /*
@@ -2078,14 +1938,14 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
       /* We are createting a MAP index too */
       if (file_find_nthpages (thread_p, &loid->vfid, &vpid, 0, 1) == -1)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       /* set up the header information for the index page */
@@ -2106,11 +1966,12 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
 	      (thread_p, &loid->vfid, &mapidx_ptr->vpid, dir_nthpage,
 	       1) == -1)
 	    {
-	      goto exit_on_error;
+	      pgbuf_unfix (thread_p, page_ptr);
+	      return ER_FAILED;
 	    }
 	  mapidx_ptr->length =
 	    MIN (length - data_offset, max_dir_pg_data_size);
-	  data_offset += mapidx_ptr->length;
+	  data_offset += (int) mapidx_ptr->length;
 	  dir_nthpage++;
 	}
 
@@ -2127,21 +1988,24 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
 	  mapidx_ptr--;		/* point to the last entry */
 	  for (; k < dir_pgcnt; k++)
 	    {
-	      ret =
-		largeobjmgr_firstdir_map_shrink (thread_p, loid, page_ptr);
+	      ret = largeobjmgr_firstdir_map_shrink (thread_p, loid,
+						     page_ptr);
 	      if (ret != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  pgbuf_unfix (thread_p, page_ptr);
+		  return ret;
 		}
-	      if (file_find_nthpages
-		  (thread_p, &loid->vfid, &mapidx_ptr->vpid, dir_nthpage,
-		   1) == -1)
+	      if (file_find_nthpages (thread_p, &loid->vfid,
+				      &mapidx_ptr->vpid, dir_nthpage,
+				      1) == -1)
 		{
-		  goto exit_on_error;
+		  pgbuf_unfix (thread_p, page_ptr);
+		  return ER_FAILED;
 		}
+
 	      mapidx_ptr->length =
 		MIN (length - data_offset, max_dir_pg_data_size);
-	      data_offset += mapidx_ptr->length;
+	      data_offset += (int) mapidx_ptr->length;
 	      dir_nthpage++;
 	    }
 	}
@@ -2167,16 +2031,17 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
        dir_nthpage < (mapidx_pgcnt + dir_pgcnt); dir_nthpage++)
     {
       /* fetch directory page */
-      if (file_find_nthpages (thread_p, &loid->vfid, &vpid, dir_nthpage, 1) ==
-	  -1)
+      if (file_find_nthpages (thread_p, &loid->vfid, &vpid,
+			      dir_nthpage, 1) == -1)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
+
       page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       /* set up the header information for this directory page */
@@ -2190,10 +2055,11 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
 	}
       else
 	{
-	  if (file_find_nthpages
-	      (thread_p, &loid->vfid, &vpid, dir_nthpage + 1, 1) == -1)
+	  if (file_find_nthpages (thread_p, &loid->vfid, &vpid,
+				  dir_nthpage + 1, 1) == -1)
 	    {
-	      goto exit_on_error;
+	      pgbuf_unfix (thread_p, page_ptr);
+	      return ER_FAILED;
 	    }
 	  head.next_vpid = vpid;
 	}
@@ -2203,14 +2069,15 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
       for (k = 0, ent_ptr = largeobjmgr_first_direntry (page_ptr);
 	   k < head.pg_act_idxcnt; k++, ent_ptr++)
 	{
-	  if (file_find_nthpages
-	      (thread_p, &loid->vfid, &ent_ptr->u.vpid, data_nthpage,
-	       1) == -1)
+	  if (file_find_nthpages (thread_p, &loid->vfid, &ent_ptr->u.vpid,
+				  data_nthpage, 1) == -1)
 	    {
-	      goto exit_on_error;
+	      pgbuf_unfix (thread_p, page_ptr);
+	      return ER_FAILED;
 	    }
 	  ent_ptr->slotid = 0;
-	  ent_ptr->length = MIN (length - data_offset, max_data_slot_size);
+	  ent_ptr->length =
+	    (INT16) MIN (length - data_offset, max_data_slot_size);
 	  data_offset += ent_ptr->length;
 	  data_slot_ind++;
 	  data_nthpage++;
@@ -2234,27 +2101,7 @@ largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
       page_ptr = NULL;
     }
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (page_ptr)
-    {
-      pgbuf_unfix (thread_p, page_ptr);
-      page_ptr = NULL;
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -2284,7 +2131,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   int empty_ind;
   int empty_cnt;
   bool found;
-  FSIZE_T delta;
+  int delta;
   int last_ind;
   int pg_reg_len;
   LOG_DATA_ADDR addr;
@@ -2304,7 +2151,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  ret = largeobjmgr_dir_pgsplit (thread_p, ds, ins_ent_cnt);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      return ret;
 	    }
 	}
 
@@ -2402,7 +2249,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       assert (empty_shift_cnt >= 0);
 
       /* shift the region between current entry and empty shift entry */
-      if (empty_shift_ind < ds->curdir.idx)
+      if (empty_shift_ind < ds->curdir.idx && empty_shift_ptr != NULL)
 	{
 	  /* left shift
 	     put an UNDO log for the old content of affected region */
@@ -2517,7 +2364,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       if (ds->opr_mode != LARGEOBJMGR_DIRCOMPRESS_MODE
 	  && largeobjmgr_dir_scan_next (thread_p, ds) == S_ERROR)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
 
       /* advance parameters */
@@ -2525,21 +2372,7 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
       dir_entries += empty_shift_cnt;
     }
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -2561,7 +2394,6 @@ largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   LARGEOBJMGR_DIRENTRY *last_act_ent_ptr;
   LARGEOBJMGR_RCV_STATE rcv;
   LOG_DATA_ADDR addr;
-  int ret = NO_ERROR;
 
   addr.vfid = &ds->firstdir.hdr->loid.vfid;
 
@@ -2646,28 +2478,13 @@ largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   /* deallocate directory page if page becomes empty */
   if (X == NULL && ds->curdir.hdr->pg_act_idxcnt == 0)
     {
-      ret = largeobjmgr_dir_pgremove (thread_p, ds, NULL);
-      if (ret != NO_ERROR)
+      if (largeobjmgr_dir_pgremove (thread_p, ds, NULL) != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
     }
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -2932,7 +2749,7 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
 
   do
     {
-      curdir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
+      curdir_hdr = (LARGEOBJMGR_DIRHEADER *) curdir_pgptr;
       temp_dir_head.pg_tot_length = 0;
       temp_dir_head.pg_act_idxcnt = 0;
       temp_dir_head.pg_lastact_idx = -1;
@@ -3037,13 +2854,12 @@ largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid)
  *       if no enties, with S_BEFORE position.
  */
 SCAN_CODE
-largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
+largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
 		      int opr_mode, LARGEOBJMGR_DIRSTATE * ds)
 {
   PAGE_PTR page_ptr = NULL;
-  FSIZE_T dlo_offset;
+  INT64 dlo_offset;
   int act_ind_ent_cnt;
-  SCAN_CODE lo_scan = S_SUCCESS;
 
   /* initializations */
   LARGEOBJMGR_INIT_DIRSTATE (ds);
@@ -3055,7 +2871,7 @@ largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
 				  PGBUF_UNCONDITIONAL_LATCH);
   if (ds->firstdir.pgptr == NULL)
     {
-      goto exit_on_error;
+      return S_ERROR;
     }
   ds->firstdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->firstdir.pgptr;
 
@@ -3102,7 +2918,7 @@ largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
       ds->curdir.idxptr = largeobjmgr_first_direntry (ds->curdir.pgptr);
       ds->pos = S_ON;
 
-      return lo_scan;		/* OK */
+      return S_SUCCESS;		/* OK */
     }
 
   /* If we are in append mode, reset the offset to the end of the LO */
@@ -3274,9 +3090,7 @@ largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
 
   ds->pos = S_ON;
 
-end:
-
-  return lo_scan;
+  return S_SUCCESS;
 
 exit_on_error:
 
@@ -3286,8 +3100,7 @@ exit_on_error:
       ds->firstdir.pgptr = NULL;
     }
 
-  lo_scan = S_ERROR;
-  goto end;
+  return S_ERROR;
 }
 
 /*
@@ -3322,11 +3135,11 @@ largeobjmgr_dir_close (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds)
  *   return: the length of the large object, or -1 on error
  *   loid(in): Large Object Identifier
  */
-FSIZE_T
+INT64
 largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p, LOID * loid)
 {
   PAGE_PTR pgptr = NULL;
-  FSIZE_T length;
+  INT64 length;
 
   /* fetch the root page of LO */
   pgptr = pgbuf_fix (thread_p, &loid->vpid, OLD_PAGE, PGBUF_LATCH_READ,
@@ -3355,7 +3168,6 @@ largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
 				LARGEOBJMGR_DIRSTATE * ds)
 {
   VPID next_vpid;
-  SCAN_CODE lo_scan = S_SUCCESS;
 
   /* skip empty entries on current directory page */
   while (ds->curdir.idx <= ds->curdir.hdr->pg_lastact_idx
@@ -3387,7 +3199,7 @@ largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
 				    PGBUF_UNCONDITIONAL_LATCH);
       if (ds->curdir.pgptr == NULL)
 	{
-	  goto exit_on_error;
+	  return S_ERROR;
 	}
       ds->curdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->curdir.pgptr;
 
@@ -3412,14 +3224,7 @@ largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
 	}
     }
 
-end:
-
-  return lo_scan;
-
-exit_on_error:
-
-  lo_scan = S_ERROR;
-  goto end;
+  return S_SUCCESS;
 }
 
 
@@ -3516,7 +3321,6 @@ largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p, LOID * loid,
   int mv_ent_cnt;
   char *reg_ptr;
   LOG_DATA_ADDR addr;
-  int ret = NO_ERROR;
 
   /*
    * find randomly an entry index to delete. The entry is chosen
@@ -3543,7 +3347,7 @@ largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p, LOID * loid,
 #endif /* SERVER_MODE && !WINDOWS */
 
   del_ent_ptr = largeobjmgr_dirmap_entry (page_ptr, del_ind);
-  del_length = del_ent_ptr->length;
+  del_length = (int) del_ent_ptr->length;
   mv_ent_cnt = LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT - (del_ind + 1);
   reg_ptr = (char *) ((LARGEOBJMGR_DIRMAP_ENTRY *) del_ent_ptr - 1);
 
@@ -3593,7 +3397,7 @@ largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p, LOID * loid,
   /* set index page dirty */
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -3612,13 +3416,12 @@ largeobjmgr_firstdir_map_create (THREAD_ENTRY * thread_p,
   LARGEOBJMGR_DIRMAP_ENTRY *firstdir_idxptr;
   int k;
   LOG_DATA_ADDR addr;
-  int ret = NO_ERROR;
 
   /* allocate new page for the directory */
   page_ptr = largeobjmgr_dir_allocpage (thread_p, ds, &next_vpid);
   if (page_ptr == NULL)
     {
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   /* copy first directory page content to this new page */
@@ -3661,7 +3464,7 @@ largeobjmgr_firstdir_map_create (THREAD_ENTRY * thread_p,
 
       dir_hdr = (LARGEOBJMGR_DIRHEADER *) page_ptr;
       ds->firstdir.idxptr->vpid = next_vpid;
-      ds->firstdir.idxptr->length = dir_hdr->pg_tot_length;
+      ds->firstdir.idxptr->length = (int) dir_hdr->pg_tot_length;
       next_vpid = dir_hdr->next_vpid;
       pgbuf_unfix (thread_p, page_ptr);
       page_ptr = NULL;
@@ -3693,21 +3496,7 @@ largeobjmgr_firstdir_map_create (THREAD_ENTRY * thread_p,
   /* setdirty index page */
   pgbuf_set_dirty (thread_p, ds->firstdir.pgptr, DONT_FREE);
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -3763,7 +3552,6 @@ largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 {
   VPID firstdir_vpid;
   VPID curdir_vpid;
-  int ret = NO_ERROR;
 
   /* get first and current directory page identifiers */
   if (ds->firstdir.pgptr != NULL)
@@ -3808,10 +3596,11 @@ largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  ds->firstdir.pgptr = pgbuf_fix (thread_p, &ds_pos->firstdir_vpid,
 					  OLD_PAGE, PGBUF_LATCH_WRITE,
 					  PGBUF_UNCONDITIONAL_LATCH);
-	  if (ds->firstdir.pgptr == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	}
+
+      if (ds->firstdir.pgptr == NULL)
+	{
+	  return ER_FAILED;
 	}
 
       ds->firstdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->firstdir.pgptr;
@@ -3846,10 +3635,11 @@ largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  ds->curdir.pgptr = pgbuf_fix (thread_p, &ds_pos->curdir_vpid,
 					OLD_PAGE, PGBUF_LATCH_WRITE,
 					PGBUF_UNCONDITIONAL_LATCH);
-	  if (ds->curdir.pgptr == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	}
+
+      if (ds->curdir.pgptr == NULL)
+	{
+	  return ER_FAILED;
 	}
 
       ds->curdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->curdir.pgptr;
@@ -3862,21 +3652,7 @@ largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
   ds->pos = ds_pos->pos;
   ds->lo_offset = ds_pos->lo_offset;
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -3896,9 +3672,8 @@ largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid)
   ds = &ds_info;
 
   /* open the directory with a directory compression mode */
-  lo_scan =
-    largeobjmgr_dir_open (thread_p, loid, -1, LARGEOBJMGR_DIRCOMPRESS_MODE,
-			  ds);
+  lo_scan = largeobjmgr_dir_open (thread_p, loid, -1,
+				  LARGEOBJMGR_DIRCOMPRESS_MODE, ds);
   if (lo_scan == S_ERROR)
     {
       return ER_FAILED;
@@ -3929,7 +3704,8 @@ largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid)
 	  ret = largeobjmgr_dir_pgremove (thread_p, ds, &prev_vpid);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      largeobjmgr_dir_close (thread_p, ds);
+	      return ret;
 	    }
 	}
       else
@@ -3943,7 +3719,8 @@ largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid)
 	      ret = largeobjmgr_dir_pgcompress (thread_p, ds);
 	      if (ret != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  largeobjmgr_dir_close (thread_p, ds);
+		  return ret;
 		}
 	    }
 	  /* set previous and next page identifiers */
@@ -3972,7 +3749,8 @@ largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid)
 					PGBUF_UNCONDITIONAL_LATCH);
 	  if (ds->curdir.pgptr == NULL)
 	    {
-	      goto exit_on_error;
+	      largeobjmgr_dir_close (thread_p, ds);
+	      return ER_FAILED;
 	    }
 
 	  ds->curdir.hdr = (LARGEOBJMGR_DIRHEADER *) ds->curdir.pgptr;
@@ -3991,23 +3769,8 @@ largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid)
     }
   while (!VPID_ISNULL (&next_vpid));
 
-end:
-
   largeobjmgr_dir_close (thread_p, ds);
-
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*

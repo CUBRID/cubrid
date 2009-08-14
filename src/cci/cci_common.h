@@ -45,6 +45,7 @@
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
+#include "porting.h"
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -52,14 +53,6 @@
 
 #define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
-
-#if defined(WINDOWS)
-#define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
-#else
-typedef int SOCKET;
-#define INVALID_SOCKET (-1)
-#define IS_INVALID_SOCKET(socket) ((socket) < 0)
-#endif
 
 #if defined(WINDOWS)
 #define MUTEX_INIT(MUTEX)				\
@@ -152,12 +145,12 @@ typedef int SOCKET;
 	} while (0)
 #endif
 
-#define ALLOC_N_COPY(PTR, STR, SIZE, TYPE)		\
+#define ALLOC_N_COPY(PTR, STR, SIZE, TYPE)	\
 	do {					\
-	  if ((STR) == NULL || (SIZE) == 0)	\
+	  if ((SIZE) == 0)	                \
 	    PTR = NULL;				\
 	  else {				\
-	    PTR = (TYPE) MALLOC((SIZE) + 1);		\
+	    PTR = (TYPE) MALLOC((SIZE) + 1);	\
 	    if (PTR) {				\
 	      strncpy(PTR, STR, SIZE);		\
 	      PTR[SIZE] = '\0';			\

@@ -1,0 +1,194 @@
+
+TEST Configuration 
+================
+
+ o 1:1 TEST Configuration 
+
+	- heartbeat node #1 	: cdnt10v1.cub
+	- heartbeat node #2 	: cdnt10v2.cub
+	- db 			    	: nbd
+
+ /---------------------------\		         /---------------------------\		
+ | Heartbeat node #1       	 |		         | Heartbeat node #2       	 |		
+ |      				     |               |     					 	 |
+ | /---- master/slave -----\ |  		     | /---- master/slave -----\ | 
+ | | 					   | |<- Heartbeat ->| |					   | |
+ | | cub_nbd:0(master)	   | |  		     | | cub_nbd:1(slave)	   | |
+ | | 					   | |  		     | | 					   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    					     | 		         |   					 	 |
+ | /---- group #1 ---------\ |  		     | /---- group #2 ---------\ | 
+ | | cub_nbd_0_lw_1	       | |  		     | | cub_nbd_1_lw_0		   | |
+ | | cub_nbd_0_la_1	       | |  		     | | cub_nbd_1_la_0		   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    					     |  		     |   					     |
+ \---------------------------/			     \---------------------------/		
+ 
+
+
+ o 2:2 TEST Configuration 
+
+	- heartbeat node #1 : cdnt10v1.cub
+	- heartbeat node #2 : cdnt10v2.cub
+	- db #1 		    : nbd
+	- db #2			    : mbd
+
+ /---------------------------\		         /---------------------------\		
+ | Heartbeat node #1       	 |		         | Heartbeat node #2       	 |		
+ |      				     |               |     					 	 |
+ | /-- master/slave #1 ----\ |  		     | /-- master/slave #1 ----\ | 
+ | | 					   | |<- Heartbeat ->| |					   | |
+ | | cub_nbd:0(master)	   | |  		     | | cub_nbd:1(slave)	   | |
+ | | 					   | |  		     | | 					   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    			 		     | 		         |   					 	 |
+ | /---- group #1 ---------\ |  		     | /---- group #2 ---------\ | 
+ | | cub_nbd_0_lw_1	       | |  		     | | cub_nbd_1_lw_0		   | |
+ | | cub_nbd_0_la_1	       | |  		     | | cub_nbd_1_la_0		   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    					     |  		     |   					     |
+ |    					     |  		     |   					     |
+ | /-- master/slave #2 ----\ |  		     | /-- master/slave #2 ----\ | 
+ | | 					   | |               | |					   | |
+ | | cub_mbd:0(master)	   | |  		     | | cub_mbd:1(slave)	   | |
+ | | 					   | |  		     | | 					   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    					    |  		         |   					 	 |
+ | /---- group #3 ---------\ |  		     | /---- group #4 ---------\ | 
+ | | cub_mbd_0_lw_1	       | |  		     | | cub_mbd_1_lw_0		   | |
+ | | cub_mbd_0_la_1	       | |  		     | | cub_mbd_1_la_0		   | |
+ | \-----------------------/ |  		     | \-----------------------/ |
+ |    					     |  		     |   					     |
+ \---------------------------/			     \---------------------------/		
+ 
+
+
+
+File List
+================
+
+ o config/ha-1to1.cf				- 1:1 heartbeat node and basic configuration
+ o config/ha-nton.cf				- 2:2 heartbeat node and basic configuration
+ o config/authkeys					- common heartbeat authentication key  
+ o config/logd.cf					- common heartbeat log configuration
+ o ocf/*							- heartbeat ocf(open cluster framework) files
+ o resources/crm_config-M2.xml		- crm config 
+ o resources/constraints-1to1.xml	- 1:1 constraints 
+ o resources/resources-1to1.xml		- 1:1 resources 
+ o resources/constraints-nton.xml	- 2:2 constraints 
+ o resources/resources-nton.xml		- 2:2 resources 
+
+
+
+
+How to Apply 1:1 or 2:2 Heartbeat Configuration
+===========================================
+
+  * (A) on all nodes
+  * (O) on one node
+
+
+ o 1:1 configuration
+
+	1) (A) stop heartbeat service (if started)
+
+		sh> /etc/init.d/heartbeat stop 
+
+
+	2) (A) copy common configuration and ocf files 
+		
+		sh> cp config/ha-1to1.cf /etc/ha.d/ha.cf
+		sh> cp config/authkeys /etc/ha.d
+		sh> cp config/logd.cf /etc/ha.d
+		sh> cp ocf/* /usr/lib/ocf/resource.d/heartbeat
+		sh> vi /etc/ha.d/ha.cf	
+				-> change ucast and node 
+
+
+	3) (A) start heartbeat service 
+
+		sh> /etc/init.d/heartbeat start
+
+
+	4) (O) change database and logpath value in resources-1to1.xml and resources/constraints-1to1.xml
+
+
+		- cdnt10v1.cub : NODE #1 
+		- cdnt10v2.cub : NODE #2    
+		- nbd   	   : DB #1
+
+		* replace NODE #1, NODE #2, DB #1 to your node-name and db-name
+
+
+		sh> cd resources
+		sh> sed 's/cdnt10v1.cub/NODE #1/g' constraints-1to1.xml \
+			> | sed 's/cdnt10v2.cub/NODE #2/g' \
+			> | sed 's/nbd/DB #1/g' \
+			> > constraints-1to1.TMP.xml	
+		sh> sed 's/cdnt10v1.cub/NODE #1/g' resources-1to1.xml \
+			> | sed 's/cdnt10v2.cub/NODE #2/g' \
+			> | sed 's/nbd/DB #1/g' \
+			> > resources-1to1.TMP.xml	
+
+
+	5) (O) apply constraints and resources
+
+		sh> cibadmin -o crm_config -R -x ./crm_config-M2.xml
+		sh> cibadmin -o constraints -R(or -C) -x ./constraints-1to1.TMP.xml 
+		sh> cibadmin -o resources -R(or -C) -x ./resources-1to1.TMP.xml
+
+
+
+ o 2:2 configuration 
+
+	1) (A) stop heartbeat service (if started)
+
+		sh> /etc/init.d/heartbeat stop 
+
+
+	2) (A) copy common configuration and ocf files 
+		
+		sh> cp config/ha-2to2.cf /etc/ha.d/ha.cf
+		sh> cp config/authkeys /etc/ha.d
+		sh> cp config/logd.cf /etc/ha.d
+		sh> cp ocf/* /usr/lib/ocf/resource.d/heartbeat
+		sh> vi /etc/ha.d/ha.cf	
+				-> change ucast and node 
+
+
+	3) (A) start heartbeat service at all nodes
+
+		sh> /etc/init.d/heartbeat start
+
+
+	4) (O) change database and logpath value in resources-nton.xml and resources/constraints-nton.xml
+
+
+		- cdnt10v1.cub : NODE #1 
+		- cdnt10v2.cub : NODE #2    
+		- nbd   	   : DB #1
+		- mbd   	   : DB #2
+
+		* replace NODE #1, NODE #2, DB #1 to your node-name and db-name
+
+
+		sh> cd resources
+		sh> sed 's/cdnt10v1.cub/NODE #1/g' constraints-nton.xml \
+			> | sed 's/cdnt10v2.cub/NODE #2/g' \
+			> | sed 's/nbd/DB #1/g' \
+			> | sed 's/nbd/DB #2/g' \
+			> > constraints-nton.TMP.xml	
+		sh> sed 's/cdnt10v1.cub/NODE #1/g' resources-nton.xml \
+			> | sed 's/cdnt10v2.cub/NODE #2/g' \
+			> | sed 's/nbd/DB #1/g' \
+			> | sed 's/nbd/DB #2/g' \
+			> > resources-nton.TMP.xml	
+
+
+	5) (O) apply constraints and resources 
+
+		sh> cibadmin -o crm_config -R -x ./crm_config-M2.xml
+		sh> cibadmin -o constraints -R(or -C) -x ./constraints-nton.TMP.xml 
+		sh> cibadmin -o resources -R(or -C) -x ./resources-nton.TMP.xml
+
+

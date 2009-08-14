@@ -160,7 +160,8 @@ static int set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 static SET_ITERATOR *make_iterator (void);
 static void free_iterator (SET_ITERATOR * it);
 
-static int set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals);
+static int set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals,
+				      int total);
 
 static int assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
 			     bool implicit_coercion);
@@ -842,7 +843,7 @@ col_new (long size, int settype)
       err = col_expand (col, size - 1);
       if (err)
 	{
-	  db_private_free_and_init (NULL, col);
+	  setobj_free (col);
 	  return NULL;
 	}
       col->size = 0;
@@ -856,7 +857,7 @@ col_new (long size, int settype)
 	      col->gc_kludge = ws_make_set_mop (col);
 	      if (col->gc_kludge == NULL)
 		{
-		  db_private_free_and_init (NULL, col);
+		  setobj_free (col);
 		  col = NULL;
 		}
 	    }
@@ -882,6 +883,7 @@ col_new (long size, int settype)
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_SET_INVALID_DOMAIN, 1,
 			  pr_type_name ((DB_TYPE) settype));
+		  setobj_free (col);
 		  col = NULL;
 		  break;
 		}
@@ -2279,7 +2281,7 @@ set_get_setobj (DB_COLLECTION * ref, COL ** setptr, int for_write)
 	  {
 	    error = obj_locate_attribute (ref->owner, ref->attribute,
 					  for_write, &mem, NULL);
-	    if (error == NO_ERROR)
+	    if (error == NO_ERROR && mem != NULL)
 	      {
 		/* this should be a PRIM level accessor */
 		set = *(COL **) mem;
@@ -2399,17 +2401,13 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
   COL *current, *newset;
   int pin;
 
-  if (ref == NULL)
-    {
-      return NULL;
-    }
   /* fetch set of interest */
   if (set_get_setobj (ref, &current, 0) != NO_ERROR)
     {
       return NULL;
     }
 
-  if (current == NULL)
+  if (ref == NULL || current == NULL)
     {
       /* this indicates an unbound set reference with no owner,
          shouldn't happen, probably should have better error here */
@@ -2626,7 +2624,7 @@ set_copy (DB_COLLECTION * set)
       return new_;
     }
 
-  if (srcobj != NULL)
+  if (set != NULL && srcobj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -2674,7 +2672,7 @@ set_clear (DB_COLLECTION * set)
       return error;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return error;
     }
@@ -2726,7 +2724,7 @@ set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value)
       return error;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return error;
     }
@@ -2809,7 +2807,7 @@ set_add_element (DB_COLLECTION * set, DB_VALUE * value)
   error = set_get_setobj (set, &obj, 1);
   if (error == NO_ERROR)
     {
-      if (obj != NULL)
+      if (set != NULL && obj != NULL)
 	{
 #if !defined(SERVER_MODE)
 	  pin = ws_pin (set->owner, 1);
@@ -2840,35 +2838,33 @@ set_add_element (DB_COLLECTION * set, DB_VALUE * value)
  *      return: int
  *  domains(in) :
  *  dbvals(in) :
+ *  total(in) :
  *
  */
 
 static int
-set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals)
+set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
 {
   TP_DOMAIN *dom;
-  int i, size, total = 0;
+  int i;
 
   for (dom = domains, i = 0; dom; dom = dom->next, i++)
     {
-      if (!DB_IS_NULL (&dbvals[i]))
+      if (DB_IS_NULL (&dbvals[i]))
 	{
-	  size = pr_writeval_disk_size (&dbvals[i]);
-
-	  if (dom->next)
-	    {
-	      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->next->type->id))
-		{
-		  size = DB_ALIGN (size, MAX_ALIGNMENT);
-		}
-	      else
-		{
-		  size = DB_ALIGN (size, INT_ALIGNMENT);
-		}
-	    }
-
-	  total += size;
+	  continue;
 	}
+
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
+	{
+	  total = DB_ALIGN (total, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  total = DB_ALIGN (total, INT_ALIGNMENT);
+	}
+
+      total += pr_writeval_disk_size (&dbvals[i]);
     }
 
   return total;
@@ -2892,71 +2888,61 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
   int i;
   TP_DOMAIN *dom;
   DB_MIDXKEY *midxkey;
-  int added_size = 0;
-  int old_vals_size = 0;
-  int old_bitmap_size = 0;
-  int new_bitmap_size = 0;
+  int total_size = 0;
+  int bitmap_size = 0;
   char *new_IDXbuf;
-  char *old_IDXbuf;
   char *new_valptr;		/* current value ptr in new midxkey->buf */
-  char *old_valptr;		/* current value ptr in old midxkey->buf */
   OR_BUF buf;
 
-  /* phase 1: find old_IDXbuf's start_ptr, valptr, and varptr */
+  /* phase 1: find old */
   midxkey = DB_GET_MIDXKEY (keyval);
-  old_IDXbuf = midxkey->buf;
+  if (midxkey == NULL)
+    {
+      return ER_FAILED;
+    }
 
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
     {
-      old_bitmap_size = OR_BOUND_BIT_BYTES (midxkey->ncolumns);
-      old_vals_size = midxkey->size - old_bitmap_size;
-    }
-  old_valptr = old_IDXbuf + old_bitmap_size;
-  new_bitmap_size = OR_BOUND_BIT_BYTES (midxkey->ncolumns + num_dbvals);
-
-  /* phase 2: calculate how many bytes need */
-  added_size = new_bitmap_size - old_bitmap_size;
-  if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
-    {
-      added_size = DB_ALIGN (added_size, MAX_ALIGNMENT);
+      /* bitmap is always fully sized */
+      bitmap_size = OR_BOUND_BIT_BYTES (midxkey->ncolumns);
+      total_size = midxkey->size;
     }
   else
     {
-      added_size = DB_ALIGN (added_size, INT_ALIGNMENT);
+      bitmap_size = OR_BOUND_BIT_BYTES (num_dbvals);
+      /* phase 2: calculate how many bytes need */
+      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
+	{
+	  total_size = DB_ALIGN (bitmap_size, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  total_size = DB_ALIGN (bitmap_size, INT_ALIGNMENT);
+	}
     }
 
-  added_size += set_midxkey_get_vals_size (dbvals_domain_list, dbvals);
+  /* phase 2: calculate how many bytes need */
+  total_size =
+    set_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
 
   /* phase 3: initailize new_IDXbuf */
-  new_IDXbuf = db_private_alloc (NULL, midxkey->size + added_size);
+  new_IDXbuf = db_private_alloc (NULL, total_size);
   if (new_IDXbuf == NULL)
     {
       goto error;
     }
 
-  new_valptr = new_IDXbuf + new_bitmap_size;
-  (void) init_boundbits (new_IDXbuf, new_bitmap_size);
-
-  /* phase 4: copy new_IDXbuf from old_IDXbuf */
-  /* bound bits */
-  if (old_bitmap_size)
+  /* phase 4: copy new_IDXbuf from old */
+  if (midxkey->ncolumns > 0 && midxkey->size > 0)
     {
-      memcpy (new_IDXbuf, old_IDXbuf, old_bitmap_size);
+      memcpy (new_IDXbuf, midxkey->buf, midxkey->size);
+      new_valptr = new_IDXbuf + midxkey->size;
     }
-  /* values (fixed values and offsets of variable values) */
-  if (old_vals_size)
+  else
     {
-      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
-	{
-	  new_valptr = PTR_ALIGN (new_valptr, MAX_ALIGNMENT);
-	}
-      else
-	{
-	  new_valptr = PTR_ALIGN (new_valptr, INT_ALIGNMENT);
-	}
-
-      memcpy (new_valptr, old_valptr, old_vals_size);
-      new_valptr += old_vals_size;
+      /* bound bits */
+      (void) init_boundbits (new_IDXbuf, bitmap_size);
+      new_valptr = new_IDXbuf + bitmap_size;
     }
 
   OR_BUF_INIT (buf, new_valptr, -1);
@@ -2982,6 +2968,8 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
       OR_ENABLE_BOUND_BIT (new_IDXbuf, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
 
+  assert (total_size == CAST_BUFLEN (buf.ptr - new_IDXbuf));
+
   /* phase 5: make new mulitIDX */
   if (midxkey->size > 0)
     {
@@ -3005,7 +2993,7 @@ error:
       db_private_free_and_init (NULL, midxkey->buf);
       midxkey->buf = NULL;
     }
-  return -1;
+  return ER_FAILED;
 }
 
 /* call this when you know the elements are ok */
@@ -3047,7 +3035,7 @@ set_put_element (DB_COLLECTION * set, int index, DB_VALUE * value)
       return error;
     }
 
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -3097,7 +3085,7 @@ set_insert_element (DB_COLLECTION * set, int index, DB_VALUE * value)
       return error;
     }
 
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -3144,7 +3132,7 @@ set_drop_element (DB_COLLECTION * set, DB_VALUE * value, bool match_nulls)
     {
       return error;
     }
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -3191,7 +3179,7 @@ set_drop_seq_element (DB_COLLECTION * set, int index)
     {
       return error;
     }
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -3240,7 +3228,7 @@ set_find_seq_element (DB_COLLECTION * set, DB_VALUE * value, int index)
       return (psn);
     }
 
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
@@ -3273,14 +3261,12 @@ set_cardinality (DB_COLLECTION * set)
   error = set_get_setobj (set, &obj, 0);
   if (error != NO_ERROR)
     {
-      length = -1;
-      return length;
+      return -1;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
-      length = 0;
-      return length;
+      return 0;
     }
 
 #if !defined(SERVER_MODE)
@@ -3313,14 +3299,12 @@ set_size (DB_COLLECTION * set)
   error = set_get_setobj (set, &obj, 0);
   if (error != NO_ERROR)
     {
-      length = -1;
-      return (length);
+      return -1;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
-      length = 0;
-      return (length);
+      return 0;
     }
 
 #if !defined(SERVER_MODE)
@@ -3356,7 +3340,7 @@ set_isempty (DB_COLLECTION * set)
       return isempty;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return isempty;
     }
@@ -3401,7 +3385,7 @@ set_is_all_null (DB_COLLECTION * set)
       return isallnull;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return isallnull;
     }
@@ -3440,7 +3424,7 @@ set_has_null (DB_COLLECTION * set)
       return hasnull;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return hasnull;
     }
@@ -3479,7 +3463,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
       return ismember;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return ismember;
     }
@@ -3522,7 +3506,7 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op,
       return issome;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return issome;
     }
@@ -3559,23 +3543,27 @@ set_convert_oids_to_objects (DB_COLLECTION * set)
       return error;
     }
 
-  if (obj != NULL)
+  if (set != NULL && obj != NULL)
     {
 #if !defined(SERVER_MODE)
       pin = ws_pin (set->owner, 1);
 #endif
       if (set->owner == NULL)
-	error = setobj_convert_oids_to_objects (obj);
-
+	{
+	  error = setobj_convert_oids_to_objects (obj);
+	}
 #if !defined(SERVER_MODE)
       else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
-	error = setobj_convert_oids_to_objects (obj);
+	{
+	  error = setobj_convert_oids_to_objects (obj);
+	}
 #endif
 
 #if !defined(SERVER_MODE)
       (void) ws_pin (set->owner, pin);
 #endif
     }
+
   return (error);
 }
 
@@ -3602,7 +3590,7 @@ set_get_domain (DB_COLLECTION * set)
       return domain;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return domain;
     }
@@ -3644,7 +3632,7 @@ set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2,
       return status;
     }
 
-  if (obj1 == NULL)
+  if (set1 == NULL || obj1 == NULL)
     {
       return status;
     }
@@ -3653,7 +3641,7 @@ set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2,
 #endif
   if (set_get_setobj (set2, &obj2, 0) == NO_ERROR)
     {
-      if (obj2 != NULL)
+      if (set2 != NULL && obj2 != NULL)
 	{
 #if !defined(SERVER_MODE)
 	  pin2 = ws_pin (set2->owner, 1);
@@ -3698,7 +3686,7 @@ set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion)
       return status;
     }
 
-  if (obj1 == NULL)
+  if (set1 == NULL || obj1 == NULL)
     {
       return status;
     }
@@ -3707,7 +3695,7 @@ set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion)
 #endif
   if (set_get_setobj (set2, &obj2, 0) == NO_ERROR)
     {
-      if (obj2 != NULL)
+      if (set2 != NULL && obj2 != NULL)
 	{
 #if !defined(SERVER_MODE)
 	  pin2 = ws_pin (set2->owner, 1);
@@ -3753,7 +3741,7 @@ set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
     {
       return status;
     }
-  if (obj1 == NULL)
+  if (set1 == NULL || obj1 == NULL)
     {
       return status;
     }
@@ -3762,7 +3750,7 @@ set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
 #endif
   if (set_get_setobj (set2, &obj2, 0) == NO_ERROR)
     {
-      if (obj2 != NULL)
+      if (set2 != NULL && obj2 != NULL)
 	{
 #if !defined(SERVER_MODE)
 	  pin2 = ws_pin (set2->owner, 1);
@@ -3808,7 +3796,7 @@ vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
     {
       return status;
     }
-  if (obj1 == NULL)
+  if (set1 == NULL || obj1 == NULL)
     {
       return status;
     }
@@ -3817,7 +3805,7 @@ vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
 #endif
   if (set_get_setobj (set2, &obj2, 0) == NO_ERROR)
     {
-      if (obj2 != NULL)
+      if (set2 != NULL && obj2 != NULL)
 	{
 #if !defined(SERVER_MODE)
 	  pin2 = ws_pin (set2->owner, 1);
@@ -3857,7 +3845,7 @@ set_get_type (DB_COLLECTION * set)
     {
       return stype;
     }
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return stype;
     }
@@ -3896,7 +3884,7 @@ set_check_domain (DB_COLLECTION * set, TP_DOMAIN * domain)
       status = DOMAIN_ERROR;
       return status;
     }
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       status = DOMAIN_INCOMPATIBLE;
       return status;
@@ -3936,7 +3924,7 @@ set_coerce (DB_COLLECTION * set, TP_DOMAIN * domain, bool implicit_coercion)
     {
       return new_;
     }
-  if (srcobj == NULL)
+  if (set == NULL || srcobj == NULL)
     {
       return new_;
     }
@@ -3986,7 +3974,7 @@ set_fprint (FILE * fp, DB_COLLECTION * set)
     {
       return;
     }
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return;
     }
@@ -4034,7 +4022,7 @@ set_filter (DB_COLLECTION * set)
       return error;
     }
 
-  if (obj == NULL)
+  if (set == NULL || obj == NULL)
     {
       return error;
     }
@@ -4084,14 +4072,14 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
   CHECKNULL (domain->type);
 
   error = set_get_setobj (collection1, &col1, 0);
-  if (error < 0)
+  if (error != NO_ERROR || col1 == NULL)
     {
-      return error;
+      return ER_FAILED;
     }
   error = set_get_setobj (collection2, &col2, 0);
-  if (error < 0)
+  if (error != NO_ERROR || col2 == NULL)
     {
-      return error;
+      return ER_FAILED;
     }
 
 #if !defined(SERVER_MODE)
@@ -4122,6 +4110,7 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 	  goto error_exit;
 	}
     }
+
   if (col2->coltype != DB_TYPE_SET
       && col2->coltype != DB_TYPE_MULTISET
       && (domain->type->id == DB_TYPE_SET
@@ -4306,7 +4295,7 @@ set_new_element (DB_COLLECTION * ref)
     {
       return new_;
     }
-  if (col == NULL)
+  if (ref == NULL || col == NULL)
     {
       return new_;
     }
@@ -4366,7 +4355,7 @@ set_optimize (DB_COLLECTION * ref)
 	{
 	  return error;
 	}
-      if (col == NULL)
+      if (ref == NULL || col == NULL)
 	{
 	  return error;
 	}
@@ -4450,7 +4439,7 @@ set_iterate (DB_COLLECTION * set)
      out how to pin them reliably, and more importantly, how to release
      the pin !
    */
-  if (set->owner != NULL)
+  if (set == NULL || set->owner != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return NULL;
@@ -4463,7 +4452,7 @@ set_iterate (DB_COLLECTION * set)
     }
   it->ref = set;
   error = set_get_setobj (set, &it->set, 1);
-  if (error != NO_ERROR)
+  if (error != NO_ERROR || it->set == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       free_iterator (it);
@@ -4822,7 +4811,7 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 	       * don't have to worry about pinning the nested set.
 	       */
 	      ref = DB_GET_SET (val);
-	      if (ref->set != NULL)
+	      if (ref && ref->set != NULL)
 		{
 		  error = setobj_find_temporary_oids (ref->set, oidset);
 		  if (ref->set->may_have_temporary_oids)
@@ -4985,6 +4974,11 @@ swizzle_value (DB_VALUE * val, int input)
    * values and is very important for proper comparison of VOBJ sets.
    */
   oid = db_get_oid (val);
+  if (oid == NULL)
+    {
+      return;
+    }
+
   if ((oid)->pageid == NULL_PAGEID)
     {
       db_value_put_null (val);

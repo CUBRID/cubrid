@@ -1,0 +1,153 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>상속</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n테이블 조작\n클래스 상속\n상속");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_create_syntax.htm\">테이블 조작<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_inherit_intro.htm\">클래스 상속<\/a> &nbsp;&gt;&nbsp; 상속<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>상속</h4>
+<h6>설명</h6>
+<p>CUBRID는 다중 상속을 허용한다. 다시 말해서 한 클래스는 하나 이상의 수퍼클래스로부터 속성과 메소드를 상속받을 수 있다. 그러나 상속은 수퍼클래스의 속성이나 메소드가 추가 또는 삭제될 때, 몇 가지 충돌을 발생시킨다.</p>
+<p>이러한 충돌은 다중 상속 시 하나 이상의 수퍼클래스에 이름이 같은 속성이나 메소드가 존재할 때 발생한다. 예를 들어 두 개 이상의 수퍼클래스로부터 동일한 이름과 타입을 가지는 속성을 상속받을 가능성이 있을 때에는 반드시 상속받기를 원하는 속성을 지정해야 한다. 이러한 경우 만약 상속받은 수퍼클래스가 삭제된다면 동일한 이름과 타입의 속성을 가지는 또 다른 수퍼클래스로부터 속성을 상속해야 한다. 대부분의 경우는 데이터베이스 시스템에서 자동으로 이러한 문제를 해결한다. 그러나 시스템의 해결 방법이 원하는 방법이 아니라면 사용자가 직접 상속 구문을 통해 해결할 수도 있다.</p>
+<p>하나 이상의 수퍼클래스로부터 속성을 상속할 때, 이름은 같지만 도메인이 다른 경우가 존재한다. 예를 들어, 두 개의 수퍼클래스가 도메인이 클래스인 동일한 이름의 속성을 가질 수 있다. 이 경우 서브클래스는 좀 더 상세화된 도메인, 즉, 클래스 계층 구조에서 더 하위에 존재하는 클래스를 도메인으로 가지는 속성을 자동으로 상속받게 된다. 앞의 경우와 같은 충돌이 스트링, 정수 타입과 같이 시스템이 제공하는 기본 타입간에 발생할 경우에 상속은 불가능하다. 상속 시 발생하는 충돌과 이에 대한 해결 방법은 <a href="syntax_table_conflict_intro.htm">클래스 충돌 해결</a>에서 다룬다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE</span> { <span class="keyword">CLASS</span> | <span class="keyword">TABLE</span> } <span class="var">class_name</span><br />
+[ {<span class="keyword">UNDER</span> | <span class="keyword">AS SUBCLASS OF</span> } <span class="var">super_class_name</span> [ {, <span class="var">super_class_name</span> }_ ] ]<br />
+[ <span class="keyword">CLASS ATTRIBUTE</span><br />
+( <span class="var">class_attr_definition_list</span> ) ]<br />
+[ ( <span class="var">attr_definition</span> | <span class="var">class_constraint</span><br />
+[ { , <span class="var">attr_definition</span> | <span class="var">class_constraint_definition</span> }_ ] ) ]<br />
+[ <span class="keyword">METHOD</span> <span class="var">method_definition_list</span> ] ]<br />
+[ <span class="keyword">FILE</span> <span class="var">path_name_list</span> ] ]<br />
+[ <span class="keyword">INHERIT</span> <span class="var">resolution_list</span> [ {, <span class="var">resolution_list</span> }_ ] ] [ ; ]<br />
+<br />
+<span class="var">super_class_name</span>:<br />
+[ <span class="var">user_name</span>.]<span class="var">classname</span><br />
+<br />
+<span class="var">class_attr_definition</span>:<br />
+<span class="var">attribute_name datatype</span> [ <span class="keyword">DEFAULT</span> <span class="var">value</span> ] [ <span class="keyword">NOT NULL</span> ]<br />
+<br />
+<span class="var">attr_definition</span>:<br />
+<span class="var">attribute_name datatype</span> [ { <span class="keyword">SHARED</span> [ <span class="var">value</span> ] | <span class="keyword">DEFAULT</span> <span class="var">value</span> } ] [ <span class="var">constraints</span> ]<br />
+<br />
+<span class="var">constraints</span>:<br />
+<span class="keyword">NOT NULL</span><br />
+<span class="keyword">UNIQUE</span><br />
+<br />
+<span class="var">class_constraint_definition</span>:<br />
+[ <span class="keyword">CONSTRAINT</span> <span class="var">constraint_name</span> ] <span class="keyword">UNIQUE</span><br />
+(<span class="var">attribute_name</span> [{, <span class="var">attribute_name</span>} ...])<br />
+<br />
+<span class="var">method_definition</span>:<br />
+[ <span class="keyword">CLASS</span> ] <span class="var">method_name</span> [ ( [ <span class="var">arg_type_list</span> ] ) ]<br />
+[ <span class="var">result_type</span> ] [ <span class="keyword">FUNCTION</span> <span class="var">method_implementation_name</span> ]<br />
+<br />
+<span class="var">arg_type</span>:<br />
+<span class="var">datatype</span><br />
+<br />
+<span class="var">result_type</span>:<br />
+<span class="var">datatype</span><br />
+<br />
+<span class="var">resolution_list</span>:<br />
+<span class="var">attr_mthd_name</span> <span class="keyword">OF</span> <span class="var">super_class_name</span> [ <span class="keyword">AS</span> <span class="var">alias</span> ]</p>
+<p>상속 시 주의 사항은 아래와 같다.</p>
+<ul>
+<li>클래스 이름은 데이터베이스 내에서 고유해야 한다. 클래스는 상속을 받을 수도 있고 그렇지 않을 수도 있다. 클래스 생성 시 존재하지 않는 클래스를 상속받는 클래스를 생성할 경우 에러가 발생한다.</li>
+<li>한 클래스 내에서 메소드 이름과 속성의 이름은 고유해야 한다. 이름은 공백을 포함할 수 없으며 CUBRID의 예약어와 중복될 수 없다. 알파벳, '_', '#', '%'등은 클래스 이름에 포함될 수 있으나 첫 글자가 '_' 가 될 수는 없다. 클래스 이름은 영문 255자를 넘을 수 없다. 클래스 이름은 대/소문자를 구분하지 않고 소문자로 변환되어 시스템에 저장된다.</li>
+</ul>
+<p>수퍼클래스 이름은 클래스의 소유자를 알기 쉽게 하도록 사용자 이름부터 시작될 수 있다.</p>
+<p>관계형 데이터베이스와의 호환성을 위해 <span class="keyword">CREATE</span> 구문에서 <span class="keyword">CLASS</span>라는 키워드 대신 <span class="keyword">TABLE</span>을 사용할 수 있다. 속성은 관계형 데이터베이스에서 테이블의 열(컬럼)과 동일한 개념이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

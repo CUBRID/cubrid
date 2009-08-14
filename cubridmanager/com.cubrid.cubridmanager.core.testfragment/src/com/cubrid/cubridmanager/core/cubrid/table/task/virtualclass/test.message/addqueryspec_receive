@@ -1,0 +1,22 @@
+task:addqueryspec
+status:success
+note:none
+open:classinfo
+dbname:demodb
+classname:v_code
+type:user
+owner:DBA
+virtual:view
+open:attribute
+name:aaa
+type:integer
+inherit:v_code
+indexed:n
+notnull:n
+shared:n
+unique:n
+default:
+close:attribute
+queryspec:select code as aaa from code
+close:classinfo
+

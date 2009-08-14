@@ -1,0 +1,219 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>READ COMMITTED CLASS with READ COMMITTED INSTANCES</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트랜잭션 관리\n트랜잭션 격리 수준\nREAD COMMITTED CLASS with READ COMMITTED INSTANCES");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_intro.htm\">트랜잭션 관리<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_isolation_intro.htm\">트랜잭션 격리 수준<\/a> &nbsp;&gt;&nbsp; READ COMMITTED CLASS with READ COMMITTED INSTANCES<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>READ COMMITTED CLASS with READ COMMITTED INSTANCES</h4>
+<p>이 격리 수준은 트랜잭션이 다른 트랜잭션에서 수정 중인&#160;객체(클래스 또는 인스턴스)를 읽지 못하게 한다. 그리고 트랜잭션이 읽은 클래스와 인스턴스를 다른 트랜잭션이 갱신하지 못하게 막지 않는다. 트랜잭션은 클래스와 인스턴스에 대한 읽기가 반복 불가능(non-repeatable read)할 수도 있다. 이것은 트랜잭션이 동일한 객체(클래스 또는 인스턴스)를 두 번 읽게 되면 다른 두 커밋된 값을 읽을 수 있음을 의미한다. 마찬가지로, 한 질의가 두 번 수행되면 두 수행 결과가 다를 수 있다. 결과의 차이는 질의된 클래스의 갱신과 두 질의가 수행되는 간격 사이에 커밋된 인스턴스의 삽입, 갱신, 삭제로 인한 것이다. 질의되는 클래스는 더 이상 존재하지 않을 수도 있고 속성 일부는 추가되었거나 삭제되었을 수도 있다. <span class="keyword">REPEATABLE READ CLASS</span> 격리 수준에서는 이것이 불가능한데, 그 이유는 트랜잭션이 끝까지 그 클래스의 잠금을 가지고 있기 때문이다.</p>
+<p>다음은 이 격리 수준의 규칙이다.</p>
+<ul>
+<li>트랜잭션은 다른 트랜잭션에서 수정 중인&#160;객체를 덮어쓰지 않는다.</li>
+<li>트랜잭션은 트랜잭션이 끝날 때까지 객체를 커밋하지 않는다.</li>
+<li>트랜잭션은 다른 트랜잭션에서 수정 중인&#160;객체를 읽지 않는다.</li>
+</ul>
+<p>이 격리 수준은 배타 잠금에 대하여 2단계 잠금을 한다. 클래스와 인스턴스에 대한 읽기 잠금은 읽기가 끝나면 해제된다.</p>
+<h6>예제</h6>
+<p>한 트랜잭션은 클래스에 인스턴스를 삽입, 삭제하고 클래스의 이름을 갱신하며 다른 트랜잭션은 다양한 관점에서 질의를 한다. 트랜잭션 T1은 임의의 격리 수준이며 트랜잭션 T2는 <span class="keyword">READ COMMITTED CLASS</span> with <span class="keyword">READ COMMITTED INSTANCES</span> 격리 수준이다. 이 예제에서는 participant2 클래스가 이전에 존재하지 않는 것으로 가정하고 생성한다.</p>
+<ol>
+<li>트랜잭션 T1은 participant2 클래스를 생성하고 클래스에 인스턴스를 삽입한다. 트랜잭션 T1이 커밋되자마자 CUBRID는 트랜잭션 T1이 가지고 있던 잠금을 해제한다. 트랜잭션 T2는 participant2 클래스에 질의를 한다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">SET TRANSACTION ISOLATION LEVEL READ COMMITTED CLASS, READ COMMITTED INSTANCES;<br />
+;xrun<br />
+;autocommit off<br />
+create class participant2 (host_year integer, nation_code char(3));<br />
+insert into participant2 (host_year, nation_code) values (2008, 'AUS');<br />
+commit work;<br />
+;xrun<br />
+<span class="var">1 rows inserted.</span></li>
+<li>User2 (T2):</li>
+<li class="code">SET TRANSACTION ISOLATION LEVEL READ COMMITTED CLASS, READ COMMITTED INSTANCES;<br />
+;xrun<br />
+;autocommit off<br />
+select host_year, nation_code from participant2;<br />
+;xrun<br />
+<span class="var">=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;&#160;&#160;&#160;host_year &#160;nation_code<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2008 &#160;'AUS'</span><br />
+<span class="var">1 rows selected.</span></li>
+</ol>
+</li>
+<li>트랜잭션 T1은 participant2 클래스에 또 다른 인스턴스를 삽입한다. 트랜잭션 T2가 몇 초 후 participant2 클래스에 질의를 시도하지만 트랜잭션 T2는 일시 정지한다. 그 이유는 트랜잭션 T1이 participant2 클래스의 인스턴스(새로운 인스턴스)에 대한 잠금을 가지고 있기 때문이다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">insert into participant2 (host_year, nation_code) values (2012, 'KOR');<br />
+;xrun<br />
+<span class="var">1 rows inserted.</span></li>
+<li>User2 (T2):</li>
+<li class="code">select host_year, nation_code from participant2;<br />
+;xrun</li>
+</ol>
+</li>
+<li>트랜잭션 T1이 participant2 클래스에 다른 인스턴스를 삽입하고 커밋을 하면 모든 잠금이 해제된다. 트랜잭션 T2는 다시 진행되고 새로운 인스턴스를 보게 된다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">insert into participant2 (host_year, nation_code) values (2012, 'JPN');<br />
+commit work;<br />
+;xrun<br />
+<span class="var">1 rows inserted.</span></li>
+<li>User2 (T2):</li>
+<li class="code"><span class="var">=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;&#160;&#160;&#160;host_year &#160;nation_code<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2008 &#160;'AUS'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2012 &#160;'KOR'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2012 &#160;'JPN'</span><br />
+<span class="var">3 rows selected.</span></li>
+</ol>
+</li>
+<li>트랜잭션 T1이 participant2 클래스의 첫 번째 인스턴스를 삭제한다. 트랜잭션 T2가 participant2 클래스에 질의를 시도하지만 트랜잭션 T2는 대기상태가 된다. 왜냐하면 트랜잭션 T1이 삭제된 인스턴스에 대한 잠금과 클래스에 대해 적어도 하나의 의도 배타 잠금(intention execlusive lock)을 유지하고 있기 때문이다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">delete from participant2<br />
+where host_year=2008;<br />
+;xrun<br />
+<span class="var">1 rows deleted.</span></li>
+<li>User2 (T2):</li>
+<li class="code">select * from participant2;<br />
+;xrun</li>
+</ol>
+</li>
+<li>트랜잭션 T1이 연산을 커밋하고 잠금을 해제한다. 그러면 트랜잭션 T2는 다시 진행되고 두 번째와 세 번째 <span class="keyword">INSERT</span> 문의 결과를 보게 된다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">commit work;<br />
+;xrun<br />
+<span class="var">1 command(s) successfully processed.</span></li>
+<li>User2 (T2):</li>
+<li class="code"><span class="var">=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;&#160;&#160;&#160;host_year &#160;nation_code<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2012 &#160;'KOR'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2012 &#160;'JPN'</span><br />
+<span class="var">2 rows selected.</span></li>
+</ol>
+</li>
+<li>트랜잭션 T1이 participant2 클래스의 이름을 nation_medals로 갱신하고자 하면 성공한다. 그 이유는 트랜잭션 T2가 어떤 인스턴스나 클래스(반복 불가능한 스키마)에 대한 어떤 읽기 잠금도 가지고 있지 않기 때문이다. 하지만 트랜잭션 T2가 데이터를 갱신하거나 삽입하려는 것과 같은 쓰기 연산을 수행하는 경우에는 트랜잭션 T1은 대기 상태가 된다. 트랜잭션 T2가 끝까지 쓰기 잠금을 가지고 있기 때문이다. 트랜잭션 T2가 클래스에 다시 질의를 하면 일시 정지되는데 트랜잭션 T1이 클래스의 이름을 갱신하고 있기 때문이다. 트랜잭션 T2는 단지 커밋된 갱신만 볼 수 있음을 주의해야 한다. 이 경우에 <span class="keyword">RENAME</span>은 커밋되거나 취소된다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">rename class participant2 as nation_medals;<br />
+;xrun<br />
+<span class="var">1 command(s) successfully processed.</span></li>
+<li>User2 (T2):</li>
+<li class="code">commit work;<br />
+select * from participant2;<br />
+;xrun</li>
+</ol>
+</li>
+<li>트랜잭션 T1이 연산을 커밋하고 잠금이 해제된다. 트랜잭션 T2가 질의를 다시 시도한다. 그러나 location 클래스가 place로 이름이 갱신되었기 때문에 진행되지 못한다. 대신에 트랜잭션 T2는 location 클래스가 존재하지 않는다는 구문 에러 메시지를 받게 된다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">commit work;<br />
+;xrun<br />
+<span class="var">1 command(s) successfully processed.</span></li>
+<li>User2 (T2):</li>
+<li class="code"><span class="var">In line 2, column 2,<br />
+ERROR: Unknown class "participant2".<br />
+1 command(s) successfully processed.</span></li>
+</ol>
+</li>
+</ol>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

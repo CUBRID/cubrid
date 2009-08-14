@@ -1,0 +1,48 @@
+task:setsysparam
+token:8ec1ab8a91333c7823f86d595ccdf412f23ae179b1fcf013b9796bef95f4fcc17926f07dd201b6aa
+confname:cubridconf
+confdata:
+confdata:#
+confdata:# Copyright (C) 2009 Search Solution Corporation. All rights reserved by Search Solution.
+confdata:#
+confdata:#   This program is free software; you can redistribute it and/or modify 
+confdata:#   it under the terms of the GNU General Public License as published by 
+confdata:#   the Free Software Foundation; version 2 of the License. 
+confdata:#
+confdata:#  This program is distributed in the hope that it will be useful,
+confdata:#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+confdata:#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+confdata:#  GNU General Public License for more details.
+confdata:#
+confdata:#  You should have received a copy of the GNU General Public License
+confdata:#  along with this program; if not, write to the Free Software
+confdata:#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+confdata:
+confdata:#
+confdata:# $Id$
+confdata:#
+confdata:# cubrid.conf
+confdata:#
+confdata:# For complete information on parameters, see the CUBRID
+confdata:# Database Administration Guide chapter on System Parameters
+confdata:
+confdata:# Service section - a section for 'cubrid service' command
+confdata:[service]
+confdata:
+confdata:# The list of processes to be started automatically by 'cubrid service start' command
+confdata:# Any combinations are available with server, broker and manager.
+confdata:service=server,manager,broker
+confdata:
+confdata:# The list of database servers in all by 'cubrid service start' command.
+confdata:# This property is effective only when the above 'service' property contains 'server' keyword.
+confdata:server=qiren,pang,demodb
+confdata:
+confdata:# Common section - properties for all databases
+confdata:# This section will be applied before other database specific sections.
+confdata:[common]
+confdata:
+confdata:
+confdata:# The maximum number of concurrent client connections the server will accept.
+confdata:# This value also means the total # of concurrent transactions.
+confdata:max_clients=50
+

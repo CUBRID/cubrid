@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -68,8 +68,10 @@ typedef enum
   LDR_BIGINT,
   LDR_DATETIME,
 
-  NUM_LDR_TYPES
+  LDR_TYPE_MAX = LDR_DATETIME
 } LDR_TYPE;
+
+#define NUM_LDR_TYPES   (LDR_TYPE_MAX + 1)
 
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
@@ -99,43 +101,46 @@ typedef enum ldr_interrupt_types
   LDR_STOP_AND_COMMIT_INTERRUPT
 } LDR_INTERRUPT_TYPE;
 
-typedef struct string_list
+typedef struct ldr_string LDR_STRING;
+struct ldr_string
 {
-  struct string_list *next;
+  LDR_STRING *next;
+  LDR_STRING *last;
   char *val;
-} STRING_LIST;
+  int size;
+  bool need_free_val;
+  bool need_free_self;
+};
 
-typedef struct
+typedef struct ldr_constructor_spec
 {
-  char *idname;
-  STRING_LIST *arg_list;
-} CONSTRUCTOR_SPEC;
+  LDR_STRING *idname;
+  LDR_STRING *arg_list;
+} LDR_CONSTRUCTOR_SPEC;
 
-typedef struct
+typedef struct ldr_class_command_spec
 {
   int qualifier;
-  STRING_LIST *attr_list;
-  CONSTRUCTOR_SPEC *ctor_spec;
-} CLASS_COMMAND_SPEC;
+  LDR_STRING *attr_list;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+} LDR_CLASS_COMMAND_SPEC;
 
-typedef struct
+typedef struct loader_constant LDR_CONSTANT;
+struct loader_constant
 {
-  int type;
+  LDR_CONSTANT *next;
+  LDR_CONSTANT *last;
   void *val;
-} CONSTANT;
+  int type;
+  bool need_free;
+};
 
-typedef struct constant_list
+typedef struct ldr_object_ref
 {
-  struct constant_list *next;
-  CONSTANT *val;
-} CONSTANT_LIST;
-
-typedef struct
-{
-  char *class_id;
-  char *class_name;
-  char *instance_number;
-} OBJECT_REF;
+  LDR_STRING *class_id;
+  LDR_STRING *class_name;
+  LDR_STRING *instance_number;
+} LDR_OBJECT_REF;
 
 extern char **ignoreClasslist;
 extern int ignoreClassnum;

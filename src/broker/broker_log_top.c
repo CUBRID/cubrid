@@ -31,6 +31,12 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
+
 #ifdef MT_MODE
 #include <pthread.h>
 #endif
@@ -42,7 +48,6 @@
 #include "log_top_string.h"
 #include "broker_log_top.h"
 #include "broker_log_util.h"
-#include "broker_getopt.h"
 
 #define MAX_SRV_HANDLE		3000
 #define CLIENT_MSG_BUF_SIZE	1024
@@ -91,8 +96,8 @@ T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
 static char *sql_info_file = NULL;
 static int mode_max_handle_lower_bound;
 static char mode_tran = 0;
-static char from_date[32] = "";
-static char to_date[32] = "";
+static char from_date[64] = "";
+static char to_date[64] = "";
 
 #ifdef MT_MODE
 static int num_thread = 5;
@@ -296,6 +301,13 @@ log_top (FILE * fp, char *filename)
 	  || strncmp (msg_p, "execute_all", 11) == 0
 	  || strncmp (msg_p, "execute_call", 12) == 0)
 	{
+	  int qi_idx;
+	  char *query_p;
+
+          if (strncmp (msg_p, "execute_batch", 13) == 0)
+          {
+            break;
+          }
 	  /*
 	   * execute log format:
 	   * <execute_cmd> srv_h_id <handle_id> <query_string>
@@ -309,10 +321,8 @@ log_top (FILE * fp, char *filename)
 	   * bind 1 : VARCHAR test str
 	   * execute 0 tuple 1 time 0.004
 	   */
-	  int qi_idx;
-	  char *query_p;
 	  qi_idx = log_execute (query_info_buf, linebuf, &query_p);
-	  if (qi_idx < 0)
+	  if (qi_idx < 0 || query_p == NULL)
 	    goto log_top_err;
 
 	  t_string_clear (sql_buf);

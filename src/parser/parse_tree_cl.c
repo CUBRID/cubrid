@@ -756,6 +756,11 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser,
   PT_NODE *new_node;
 
   new_node = parser_new_node (parser, old_node->node_type);
+  if (new_node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
 
   *new_node = *old_node;
 
@@ -1711,6 +1716,11 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 		 int col_no, const char *msg)
 {
   PT_NODE *node = parser_new_node (parser, PT_ZZ_ERROR_MSG);
+  if (node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return;
+    }
 
   node->info.error_msg.statement_number = stmt_no;
   node->line_number = line_no;
@@ -1895,6 +1905,7 @@ parser_init_node (PT_NODE * node)
       node->clt_cache_reusable = 0;
       node->use_plan_cache = 0;
       node->use_query_cache = 0;
+      node->is_hidden_column = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -2187,10 +2198,16 @@ pt_short_print (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   char *str;
   str = parser_print_tree (parser, node);
+  if (str == NULL)
+    {
+      return NULL;
+    }
+
   if (strlen (str) > 64)
     {
       strcpy (str + 60, "...");
     }
+
   return str;
 }
 
@@ -2206,10 +2223,16 @@ pt_short_print_l (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   char *str;
   str = parser_print_tree_list (parser, node);
+  if (str == NULL)
+    {
+      return NULL;
+    }
+
   if (strlen (str) > 64)
     {
       strcpy (str + 60, "...");
     }
+
   return str;
 }
 
@@ -2455,7 +2478,7 @@ pt_length_of_select_list (PT_NODE * list, int hidden_col)
     {				/* EXCLUDE_HIDDEN_COLUMNS */
       for (len = 0; list; list = list->next)
 	{
-	  if (IS_HIDDEN_COLUMN (list))
+	  if (list->is_hidden_column)
 	    {
 	      /* skip hidden column */
 	      continue;
@@ -3409,7 +3432,7 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      PT_NODE *derived, *from, *range_var, *spec;
 	      int i;
-	      char buf[10];
+	      char buf[20];
 
 	      /* reset single tuple mark and move to derived */
 	      node->info.query.single_tuple = 0;
@@ -3425,6 +3448,12 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 
 	      spec = parser_new_node (parser, PT_SPEC);
+	      if (spec == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return;
+		}
+
 	      spec->info.spec.derived_table = derived;
 	      spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 	      spec->info.spec.range_var = range_var;
@@ -3617,6 +3646,11 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
   PT_NODE *arg1, *arg2, *e1, *e2, *e1_next, *e2_next, *lhs, *tmp;
   bool e1_is_expr_set, e2_is_expr_set;
 
+  if (exp == NULL)
+    {
+      return NULL;
+    }
+
   arg1 = exp->info.expr.arg1;
   arg2 = exp->info.expr.arg2;
 
@@ -3674,6 +3708,12 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	{
 	  /* create new root node of predicate tree */
 	  p = parser_new_node (parser, PT_EXPR);
+	  if (p == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+
 	  p->info.expr.op = PT_EQ;
 	  p->info.expr.arg1 = e1;
 	  p->info.expr.arg2 = e2;
@@ -3737,6 +3777,11 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	    {
 	      /* create new child node */
 	      rhs = parser_new_node (parser, PT_EXPR);
+	      if (rhs == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return NULL;
+		}
 	      rhs->info.expr.op = PT_EQ;
 	      rhs->info.expr.arg1 = e1;
 	      rhs->info.expr.arg2 = e2;
@@ -3753,6 +3798,12 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 
       /* create 'and' node */
       p = parser_new_node (parser, PT_EXPR);
+      if (p == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       p->info.expr.op = PT_AND;
       p->info.expr.arg1 = lhs;
       p->info.expr.arg2 = rhs;
@@ -3770,6 +3821,11 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
     }
 
   p = pt_pop (parser);
+
+  if (p == NULL)
+    {
+      return NULL;
+    }
 
   /* bound with parentheses */
   p->info.expr.paren_type = 1;
@@ -5372,7 +5428,9 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       /* Don't print out not-null constraints */
       constraint = p->info.create_entity.constraint_list;
       while (constraint
-	     && constraint->info.constraint.type == PT_CONSTRAIN_NOT_NULL)
+	     && (constraint->info.constraint.type == PT_CONSTRAIN_NULL
+		 || constraint->info.constraint.type ==
+		 PT_CONSTRAIN_NOT_NULL))
 	{
 	  constraint = constraint->next;
 	}
@@ -5394,7 +5452,8 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      /* keep skipping NOT_NULL constraints */
 	      while (constraint
-		     && (constraint->info.constraint.type ==
+		     && (constraint->info.constraint.type == PT_CONSTRAIN_NULL
+			 || constraint->info.constraint.type ==
 			 PT_CONSTRAIN_NOT_NULL))
 		{
 		  constraint = constraint->next;
@@ -8607,7 +8666,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "coalesce(");
 	    }
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->column_number >= 0)
+	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
 	    {
 	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	      if (r2)
@@ -8695,7 +8754,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "least(");
 	    }
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->column_number >= 0)
+	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
 	    {
 	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	      if (r2)
@@ -8720,7 +8779,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "greatest(");
 	    }
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->column_number >= 0)
+	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
 	    {
 	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	      if (r2)
@@ -12723,6 +12782,7 @@ static PT_NODE *pt_apply_constraint
 {
   switch (p->info.constraint.type)
     {
+    case PT_CONSTRAIN_NULL:
     case PT_CONSTRAIN_UNKNOWN:
       break;
 
@@ -12871,6 +12931,8 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
+    case PT_CONSTRAIN_NULL:
+      break;
     case PT_CONSTRAIN_NOT_NULL:
       /*
          Print nothing here. It is a duplicate of the "NOT NULL" printed for
@@ -12987,4 +13049,167 @@ parser_init_func_vectors (void)
     {
       pt_init_print_f ();
     }
+}
+
+/*
+ *   pt_is_const_expr_node () :
+ *   return:
+ *   node (in):
+ */
+bool
+pt_is_const_expr_node (PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+    case PT_HOST_VAR:
+      return true;
+
+    case PT_NAME:
+      if (node->info.name.meta_class == PT_PARAMETER)
+	{
+	  return true;
+	}
+
+    case PT_EXPR:
+      switch (node->info.expr.op)
+	{
+	case PT_PLUS:
+	case PT_MINUS:
+	case PT_TIMES:
+	case PT_DIVIDE:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_UNARY_MINUS:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_MODULUS:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_RAND:
+	case PT_DRAND:
+	  return true;
+	case PT_FLOOR:
+	case PT_CEIL:
+	case PT_SIGN:
+	case PT_ABS:
+	case PT_CHR:
+	case PT_EXP:
+	case PT_SQRT:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_POWER:
+	case PT_ROUND:
+	case PT_TRUNC:
+	case PT_LOG:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_INSTR:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg3)) ? true : false;
+	case PT_POSITION:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_SUBSTRING:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && (node->info.expr.arg3 ?
+		      pt_is_const_expr_node (node->info.expr.
+					     arg3) : true)) ? true : false;
+	case PT_CHAR_LENGTH:
+	case PT_OCTET_LENGTH:
+	case PT_BIT_LENGTH:
+	case PT_LOWER:
+	case PT_UPPER:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_TRIM:
+	case PT_LTRIM:
+	case PT_RTRIM:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && (node->info.expr.arg2 ?
+		      pt_is_const_expr_node (node->info.expr.
+					     arg2) : true)) ? true : false;
+
+	case PT_LPAD:
+	case PT_RPAD:
+	case PT_REPLACE:
+	case PT_TRANSLATE:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && (node->info.expr.arg3 ?
+		      pt_is_const_expr_node (node->info.expr.
+					     arg3) : true)) ? true : false;
+	case PT_ADD_MONTHS:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_LAST_DAY:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_MONTHS_BETWEEN:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_SYS_DATE:
+	case PT_SYS_TIME:
+	case PT_SYS_TIMESTAMP:
+	case PT_SYS_DATETIME:
+	case PT_LOCAL_TRANSACTION_ID:
+	case PT_CURRENT_USER:
+	  return true;
+	case PT_TO_CHAR:
+	case PT_TO_DATE:
+	case PT_TO_TIME:
+	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
+	case PT_TO_NUMBER:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && (node->info.expr.arg2 ?
+		      pt_is_const_expr_node (node->info.expr.
+					     arg2) : true)) ? true : false;
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	  return true;
+	case PT_CAST:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_CASE:
+	case PT_DECODE:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_NULLIF:
+	case PT_COALESCE:
+	case PT_NVL:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	case PT_NVL2:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg3)) ? true : false;
+	case PT_EXTRACT:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_LEAST:
+	case PT_GREATEST:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.
+					    arg2)) ? true : false;
+	default:
+	  return false;
+	}
+
+    default:
+      return false;
+    }
+
+  return false;
 }

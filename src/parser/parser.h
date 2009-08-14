@@ -175,6 +175,7 @@ extern "C"
 
   extern bool pt_is_reserved_word (const char *s);
   extern bool pt_is_keyword (const char *s);
+  extern bool pt_is_const_expr_node (PT_NODE * node);
 
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_row_oid_name (PARSER_CONTEXT * parser,
@@ -333,6 +334,10 @@ extern "C"
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
 				    SEMANTIC_CHK_INFO * sc_info);
+
+  extern PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser,
+					  PT_NODE * index, PT_NODE * from);
+
   extern int pt_get_correlation_level (PT_NODE * node);
 
   extern PT_NODE *pt_get_subquery_list (PT_NODE * node);

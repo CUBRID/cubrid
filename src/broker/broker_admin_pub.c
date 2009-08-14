@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -50,6 +50,7 @@
 #include <netdb.h>
 #endif /* WINDOWS */
 
+#include "porting.h"
 #include "cas_common.h"
 #include "broker_shm.h"
 #include "broker_util.h"
@@ -103,11 +104,6 @@ char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
-#endif
-
-#ifdef V3_ADMIN_D
-extern int admin_clt_sock_fd;	/* in admin_d.c */
-extern int admin_srv_sock_fd;	/* in admin_d.c */
 #endif
 
 #if defined(WINDOWS)
@@ -243,6 +239,9 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
   memcpy (shm_br->my_ip_addr, ip_addr, 4);
 #else /* WINDOWS */
   shm_br->owner_uid = getuid ();
+
+  /* create a new session */
+  setsid ();
 #endif /* WINDOWS */
 
   shm_br->num_broker = br_num;
@@ -250,10 +249,10 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
   for (i = 0; i < br_num; i++)
     {
       shm_br->br_info[i] = br_info[i];
-      sprintf (shm_br->br_info[i].access_log_file, "%s/%s.access",
-	       br_info[i].access_log_file, br_info[i].name);
-      sprintf (shm_br->br_info[i].error_log_file, "%s/%s.error",
-	       br_info[i].error_log_file, br_info[i].name);
+      snprintf (shm_br->br_info[i].access_log_file, CONF_LOG_FILE_LEN - 1,
+		"%s/%s.access", br_info[i].access_log_file, br_info[i].name);
+      snprintf (shm_br->br_info[i].error_log_file, CONF_LOG_FILE_LEN - 1,
+		br_info[i].error_log_file, br_info[i].name);
       if (shm_br->br_info[i].service_flag == ON)
 	{
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
@@ -315,10 +314,12 @@ admin_stop_cmd (int master_shm_id)
       return -1;
     }
 #endif /* WINDOWS */
-  for (i = 0; i < shm_br->num_broker; i++)
+  for (i = 0; i < MAX_BROKER_NUM && i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].service_flag == ON)
-	br_inactivate (&(shm_br->br_info[i]));
+	{
+	  br_inactivate (&(shm_br->br_info[i]));
+	}
     }
 
   shm_br->magic = 0;
@@ -407,6 +408,7 @@ admin_add_cmd (int master_shm_id, char *broker)
 
   uw_shm_detach (shm_appl_server);
   uw_shm_detach (shm_br);
+  FREE_MEM (env);
 
   return 0;
 }
@@ -426,7 +428,7 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
   char buf[PATH_MAX];
 #if !defined(WINDOWS)
-  char argv0[64];
+  char argv0[128];
 #endif /* !WINDOWS */
 
   shm_br =
@@ -477,9 +479,7 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       return 0;
     }
 
-  if ((shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
-      || (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
-      || (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_MYSQL))
+  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
     {
       ut_kill_process (shm_appl->as_info[as_index].pid,
 		       shm_br->br_info[br_index].name, as_index);
@@ -515,20 +515,18 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
 
   shm_appl->as_info[as_index].service_ready_flag = FALSE;
 
-#if !defined(WINDOWS)
-  if ((pid = fork ()) != 0)
+#if defined(WINDOWS)
+  pid = 0;
+#else /* WINDOWS */
+  pid = fork ();
+  if (pid < 0)
     {
+      perror ("fork");
     }
-  else
-    {
-#if defined(V3_ADMIN_D)
-      if (admin_clt_sock_fd > 0)
-	CLOSE_SOCKET (admin_clt_sock_fd);
-      if (admin_srv_sock_fd > 0)
-	CLOSE_SOCKET (admin_srv_sock_fd);
-#endif /* V3_ADMIN_D */
 #endif /* !WINDOWS */
 
+  if (pid == 0)
+    {
       if (env != NULL)
 	{
 	  for (i = 0; i < env_num; i++)
@@ -553,8 +551,8 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       putenv (error_log_env_str);
 
 #if !defined(WINDOWS)
-      sprintf (argv0, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name,
-	       as_index + 1);
+      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
+		shm_br->br_info[br_index].name, appl_name, as_index + 1);
       uw_shm_detach (shm_br);
       uw_shm_detach (shm_appl);
 #endif /* !WINDOWS */
@@ -565,8 +563,8 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       if (execle (appl_name, argv0, NULL, environ) < 0)
 	perror ("execle");
       exit (0);
+#endif /* !WINDOWS */
     }
-#endif /* WINDOWS */
 
   SERVICE_READY_WAIT (shm_appl->as_info[as_index].service_ready_flag);
 
@@ -574,7 +572,7 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
   shm_appl->as_info[as_index].pid = pid;
 
   shm_appl->as_info[as_index].session_id = 0;
-  shm_appl->as_info[as_index].session_keep = FALSE;
+  shm_appl->as_info[as_index].reset_flag = FALSE;
   shm_appl->as_info[as_index].psize =
     getsize (shm_appl->as_info[as_index].pid);
   shm_appl->as_info[as_index].psize_time = time (NULL);
@@ -582,12 +580,16 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
   shm_appl->as_info[as_index].clt_appl_name[0] = '\0';
   shm_appl->as_info[as_index].clt_req_path_info[0] = '\0';
   shm_appl->as_info[as_index].clt_ip_addr[0] = '\0';
+  shm_appl->as_info[as_index].database_name[0] = '\0';
+  shm_appl->as_info[as_index].database_host[0] = '\0';
+  shm_appl->as_info[as_index].last_connect_time = 0;
 
   /* mutex exit section */
   shm_appl->as_info[as_index].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
 
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
+  FREE_MEM (env);
 
   return 0;
 
@@ -664,8 +666,6 @@ admin_drop_cmd (int master_shm_id, char *broker)
 
   (shm_br->br_info[br_index].appl_server_num)--;
   (shm_appl_server->num_appl_server)--;
-
-  shm_appl_server->as_info[as_index].session_keep = FALSE;
 
   as_inactivate (shm_appl_server->as_info[as_index].pid,
 		 shm_br->br_info[br_index].name, as_index);
@@ -910,6 +910,92 @@ admin_broker_resume_cmd (int master_shm_id, char *broker_name)
 }
 
 int
+admin_broker_reset_cmd (int master_shm_id, char *broker_name)
+{
+  int i, br_index;
+  T_SHM_BROKER *shm_br;
+  T_SHM_APPL_SERVER *shm_appl;
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      return -1;
+    }
+
+  br_index = -1;
+  for (i = 0; i < shm_br->num_broker; i++)
+    {
+      if (strcmp (shm_br->br_info[i].name, broker_name) == 0)
+	{
+	  if (shm_br->br_info[i].service_flag == OFF)
+	    {
+	      sprintf (admin_err_msg, "Broker[%s] is not running",
+		       broker_name);
+	      uw_shm_detach (shm_br);
+	      return -1;
+	    }
+	  else
+	    {
+	      br_index = i;
+	    }
+	  break;
+	}
+    }
+
+  if (br_index < 0)
+    {
+      sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
+      uw_shm_detach (shm_br);
+      return -1;
+    }
+
+  shm_appl =
+    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
+				       appl_server_shm_id, SHM_APPL_SERVER,
+				       SHM_MODE_ADMIN);
+  if (shm_appl == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      uw_shm_detach (shm_br);
+      return -1;
+    }
+
+  for (i = 0; i < shm_appl->num_appl_server; i++)
+    {
+      shm_appl->as_info[i].reset_flag = TRUE;
+    }
+
+  uw_shm_detach (shm_appl);
+  uw_shm_detach (shm_br);
+  return 0;
+}
+
+int
+admin_broker_info_cmd (int master_shm_id)
+{
+  T_SHM_BROKER *shm_br;
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      return -1;
+    }
+
+  broker_config_dump (stdout, shm_br->br_info, shm_br->num_broker,
+		      master_shm_id);
+
+  uw_shm_detach (shm_br);
+  return 0;
+}
+
+int
 admin_get_broker_status (int master_shm_id, char *broker_name)
 {
   int i, br_index;
@@ -972,8 +1058,8 @@ admin_get_broker_status (int master_shm_id, char *broker_name)
   return br_status;
 }
 
-int admin_broker_job_first_cmd
-  (int master_shm_id, char *broker_name, int job_id)
+int
+admin_broker_job_first_cmd (int master_shm_id, char *broker_name, int job_id)
 {
   int i, br_index;
   int ret_value = 0;
@@ -1097,107 +1183,84 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
   shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key,
 						SHM_APPL_SERVER,
 						SHM_MODE_ADMIN);
-
-  if ((strcasecmp (conf_name, "SQL_LOG") == 0)
-      || (strcasecmp (conf_name, "SQL_LOG_APPEND_MODE") == 0)
-      || (strcasecmp (conf_name, "SQL_LOG_BIND_VALUE") == 0))
+  if (shm_appl == NULL)
     {
-      if (shm_appl)
-	{
-	  char sql_log_mode, sql_log_mode_value;
-
-	  if (strcasecmp (conf_name, "SQL_LOG") == 0)
-	    {
-	      sql_log_mode_value = SQL_LOG_MODE_ON;
-	    }
-	  else if (strcasecmp (conf_name, "SQL_LOG_APPEND_MODE") == 0)
-	    {
-	      sql_log_mode_value = SQL_LOG_MODE_APPEND;
-	    }
-	  else
-	    {
-	      sql_log_mode_value = SQL_LOG_MODE_BIND_VALUE;
-	    }
-
-	  sql_log_mode = shm_br->br_info[br_index].sql_log_mode;
-	  CONF_GET_VALUE_SQL_LOG (sql_log_mode, conf_value,
-				  sql_log_mode_value);
-	  if (sql_log_mode < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].sql_log_mode = sql_log_mode;
-	  shm_appl->sql_log_mode = sql_log_mode;
-	}
-      else
-	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
-	  goto set_broker_conf_error;
-	}
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      goto set_broker_conf_error;
     }
-  else if (strcasecmp (conf_name, "SQL_LOG_TIME") == 0)
-    {
-      if (shm_appl)
-	{
-	  int log_time;
 
-	  CONF_GET_VALUE_POSITIVE_INT (log_time, conf_value,
-				       SQL_LOG_TIME_MAX);
-	  shm_appl->sql_log_time = log_time;
-	}
-      else
+  if (strcasecmp (conf_name, "SQL_LOG") == 0)
+    {
+      char sql_log_mode;
+
+      sql_log_mode = conf_get_value_sql_log_mode (conf_value);
+      if (sql_log_mode < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].sql_log_mode = sql_log_mode;
+      shm_appl->sql_log_mode = sql_log_mode;
     }
   else if (strcasecmp (conf_name, "SQL_LOG_MAX_SIZE") == 0)
     {
-      if (shm_appl)
-	{
-	  int sql_log_max_size;
+      int sql_log_max_size;
 
-	  CONF_GET_VALUE_POSITIVE_INT (sql_log_max_size, conf_value,
-				       DEFAULT_SQL_LOG_MAX_SIZE);
-	  if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
-	    sql_log_max_size = MAX_SQL_LOG_MAX_SIZE;
-	  shm_br->br_info[br_index].sql_log_max_size = sql_log_max_size;
-	  shm_appl->sql_log_max_size = sql_log_max_size;
-	}
-      else
+      sql_log_max_size = atoi (conf_value);
+      if (sql_log_max_size <= 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
-	  goto set_broker_conf_error;
+	  sql_log_max_size = DEFAULT_SQL_LOG_MAX_SIZE;
 	}
+      if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
+	{
+	  sql_log_max_size = MAX_SQL_LOG_MAX_SIZE;
+	}
+      shm_br->br_info[br_index].sql_log_max_size = sql_log_max_size;
+      shm_appl->sql_log_max_size = sql_log_max_size;
+    }
+  else if (strcasecmp (conf_name, "LONG_QUERY_TIME") == 0)
+    {
+      int long_query_time;
+
+      long_query_time = atoi (conf_value);
+      if (long_query_time <= 0)
+	{
+	  long_query_time = DEFAULT_LONG_QUERY_TIME;
+	}
+      shm_br->br_info[br_index].long_query_time = long_query_time;
+      shm_appl->long_query_time = long_query_time;
+    }
+  else if (strcasecmp (conf_name, "LONG_TRANSACTION_TIME") == 0)
+    {
+      int long_transaction_time;
+
+      long_transaction_time = atoi (conf_value);
+      if (long_transaction_time <= 0)
+        {
+          long_transaction_time = DEFAULT_LONG_TRANSACTION_TIME;
+        }
+      shm_br->br_info[br_index].long_transaction_time = long_transaction_time;
+      shm_appl->long_transaction_time = long_transaction_time;
     }
   else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE") == 0)
     {
-      if (shm_appl)
-	{
-	  int max_size;
+      int max_size;
 
-	  CONF_GET_VALUE_POSITIVE_INT (max_size, conf_value,
-				       DEFAULT_SERVER_MAX_SIZE);
-	  max_size *= 1024;
-	  shm_br->br_info[br_index].appl_server_max_size = max_size;
-	  shm_appl->appl_server_max_size = max_size;
-	}
-      else
+      max_size = atoi (conf_value);
+      if (max_size <= 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
-	  goto set_broker_conf_error;
+	  max_size = DEFAULT_SERVER_MAX_SIZE;
 	}
+      max_size *= 1024;
+      shm_br->br_info[br_index].appl_server_max_size = max_size;
+      shm_appl->appl_server_max_size = max_size;
     }
   else if (strcasecmp (conf_name, "LOG_BACKUP") == 0)
     {
       int log_backup;
 
-      CONF_GET_VALUE_ON_OFF (log_backup, conf_value);
+      log_backup = conf_get_value_table_on_off (conf_value);
       if (log_backup < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
@@ -1209,196 +1272,124 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
     {
       int time_to_kill;
 
-      CONF_GET_VALUE_POSITIVE_INT (time_to_kill, conf_value,
-				   DEFAULT_TIME_TO_KILL);
+      time_to_kill = atoi (conf_value);
+      if (time_to_kill <= 0)
+	{
+	  time_to_kill = DEFAULT_TIME_TO_KILL;
+	}
       shm_br->br_info[br_index].time_to_kill = time_to_kill;
     }
   else if (strcasecmp (conf_name, "ACCESS_LOG") == 0)
     {
-      if (shm_appl)
-	{
-	  int access_log_flag;
+      int access_log_flag;
 
-	  CONF_GET_VALUE_ON_OFF (access_log_flag, conf_value);
-	  if (access_log_flag < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].access_log = access_log_flag;
-	  shm_appl->access_log = access_log_flag;
-	}
-      else
+      access_log_flag = conf_get_value_table_on_off (conf_value);
+      if (access_log_flag < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].access_log = access_log_flag;
+      shm_appl->access_log = access_log_flag;
     }
   else if (strcasecmp (conf_name, "KEEP_CONNECTION") == 0)
     {
-      if (shm_appl)
-	{
-	  int keep_con;
+      int keep_con;
 
-	  keep_con = conf_get_value_keep_con (conf_value);
-	  if (keep_con < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].keep_connection = keep_con;
-	  shm_appl->keep_connection = keep_con;
-	}
-      else
+      keep_con = conf_get_value_keep_con (conf_value);
+      if (keep_con < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].keep_connection = keep_con;
+      shm_appl->keep_connection = keep_con;
     }
   else if (strcasecmp (conf_name, "CACHE_USER_INFO") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_ON_OFF (val, conf_value);
-	  if (val < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].cache_user_info = val;
-	  shm_appl->cache_user_info = val;
-	}
-      else
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].cache_user_info = val;
+      shm_appl->cache_user_info = val;
     }
   else if (strcasecmp (conf_name, "SQL_LOG2") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_INT (val, conf_value);
-	  if (val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].sql_log2 = val;
-	  shm_appl->sql_log2 = val;
+      val = atoi (conf_value);
+      if (val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].sql_log2 = val;
+      shm_appl->sql_log2 = val;
     }
   else if (strcasecmp (conf_name, "STATEMENT_POOLING") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_ON_OFF (val, conf_value);
-	  if (val < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].statement_pooling = val;
-	  shm_appl->statement_pooling = val;
-	}
-      else
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].statement_pooling = val;
+      shm_appl->statement_pooling = val;
     }
   else if (strcasecmp (conf_name, "JDBC_CACHE") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_ON_OFF (val, conf_value);
-	  if (val < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].jdbc_cache = val;
-	  shm_appl->jdbc_cache = val;
-	}
-      else
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].jdbc_cache = val;
+      shm_appl->jdbc_cache = val;
     }
   else if (strcasecmp (conf_name, "JDBC_CACHE_ONLY_HINT") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_ON_OFF (val, conf_value);
-	  if (val < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].jdbc_cache_only_hint = val;
-	  shm_appl->jdbc_cache_only_hint = val;
-	}
-      else
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].jdbc_cache_only_hint = val;
+      shm_appl->jdbc_cache_only_hint = val;
     }
   else if (strcasecmp (conf_name, "JDBC_CACHE_LIFE_TIME") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_INT (val, conf_value);
-	  shm_br->br_info[br_index].jdbc_cache_life_time = val;
-	  shm_appl->jdbc_cache_life_time = val;
-	}
-      else
-	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
-	  goto set_broker_conf_error;
-	}
+      val = atoi (conf_value);
+      shm_br->br_info[br_index].jdbc_cache_life_time = val;
+      shm_appl->jdbc_cache_life_time = val;
     }
-  else if (strcasecmp (conf_name, "SQL_LOG_SINGLE_LINE") == 0)
+  else if (strcasecmp (conf_name, "CCI_PCONNECT") == 0)
     {
-      if (shm_appl)
-	{
-	  int val;
+      int val;
 
-	  CONF_GET_VALUE_ON_OFF (val, conf_value);
-	  if (val < 0)
-	    {
-	      sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	      goto set_broker_conf_error;
-	    }
-	  shm_br->br_info[br_index].sql_log_single_line = val;
-	  shm_appl->sql_log_single_line = val;
-	}
-      else
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
 	{
-	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			    uw_get_os_error_code ());
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
+      shm_br->br_info[br_index].cci_pconnect = val;
+      shm_appl->cci_pconnect = val;
     }
   else
     {
@@ -1456,10 +1447,7 @@ admin_del_cas_log (int master_shmid, char *broker, int asid)
   asid--;
 
   if (shm_appl->as_info[asid].service_flag != SERVICE_ON
-      || ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
-	  && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
-	  && (shm_br->br_info[br_index].appl_server !=
-	      APPL_SERVER_CAS_MYSQL)))
+      || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
     {
       goto error;
     }
@@ -1591,19 +1579,25 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->appl_server_name[APPL_SERVER_NAME_MAX_SIZE - 1] = '\0';
 
 #if !defined(WINDOWS)
+  signal (SIGCHLD, SIG_IGN);
+#endif
+
+#if !defined(WINDOWS)
   if ((pid = fork ()) < 0)
     {
       strcpy (admin_err_msg, "fork error");
       uw_shm_detach (shm_appl);
       uw_shm_destroy (br_info->appl_server_shm_id);
+      FREE_MEM (env);
       return -1;
     }
 #endif /* WINDOWS */
 
+  br_info->ready_to_service = false;
 #if !defined(WINDOWS)
   if (pid == 0)
     {
-
+      signal (SIGCHLD, SIG_DFL);
 #if defined(V3_ADMIN_D)
       if (admin_clt_sock_fd > 0)
 	CLOSE_SOCKET (admin_clt_sock_fd);
@@ -1627,17 +1621,13 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	       br_info->appl_server_shm_id);
       putenv (appl_server_shm_key_str);
 
-      if ((br_info->appl_server == APPL_SERVER_CAS)
-	  || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	  || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
+      if (br_info->appl_server == APPL_SERVER_CAS)
 	broker_exe_name = NAME_CAS_BROKER;
       else
 	broker_exe_name = NAME_BROKER;
 
 #if defined(WINDOWS)
-      if (((br_info->appl_server == APPL_SERVER_CAS)
-	   || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	   || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
+      if (br_info->appl_server == APPL_SERVER_CAS
 	  && br_info->appl_server_port < 0)
 	broker_exe_name = NAME_CAS_BROKER2;
 #endif /* WINDOWS */
@@ -1672,8 +1662,9 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 
   shm_appl->num_appl_server = br_info->appl_server_num;
   shm_appl->sql_log_mode = br_info->sql_log_mode;
-  shm_appl->sql_log_time = br_info->sql_log_time;
   shm_appl->sql_log_max_size = br_info->sql_log_max_size;
+  shm_appl->long_query_time = br_info->long_query_time;
+  shm_appl->long_transaction_time = br_info->long_transaction_time;
   shm_appl->appl_server_max_size = br_info->appl_server_max_size;
   shm_appl->session_timeout = br_info->session_timeout;
   shm_appl->sql_log2 = br_info->sql_log2;
@@ -1685,7 +1676,8 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->keep_connection = br_info->keep_connection;
   shm_appl->cache_user_info = br_info->cache_user_info;
   shm_appl->statement_pooling = br_info->statement_pooling;
-  shm_appl->sql_log_single_line = br_info->sql_log_single_line;
+  shm_appl->access_mode = br_info->access_mode;
+  shm_appl->cci_pconnect = br_info->cci_pconnect;
 
   shm_appl->access_log = br_info->access_log;
 
@@ -1709,14 +1701,20 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
       shm_appl->as_info[i].mutex_turn = SHM_MUTEX_BROKER;
       shm_appl->as_info[i].num_request = 0;
-#ifdef DIAG_DEVEL
       shm_appl->as_info[i].num_requests_received = 0;
       shm_appl->as_info[i].num_transactions_processed = 0;
-      shm_appl->as_info[i].num_query_processed = 0;
-#endif
+      shm_appl->as_info[i].num_queries_processed = 0;
+      shm_appl->as_info[i].num_long_queries = 0;
+      shm_appl->as_info[i].num_long_transactions = 0;
+      shm_appl->as_info[i].num_error_queries = 0;
+      shm_appl->as_info[i].auto_commit_mode = FALSE;
+      shm_appl->as_info[i].database_name[0] = '\0';
+      shm_appl->as_info[i].database_host[0] = '\0';
+      shm_appl->as_info[i].last_connect_time = 0;
       CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
     }
 
+  br_info->ready_to_service = true;
   br_info->service_flag = ON;
 
   uw_shm_detach (shm_appl);
@@ -1752,6 +1750,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
       br_inactivate (br_info);
       memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
+      FREE_MEM (env);
       return -1;
     }
 
@@ -1763,12 +1762,15 @@ br_inactivate (T_BROKER_INFO * br_info)
 {
   T_SHM_APPL_SERVER *shm_appl;
   time_t cur_time = time (NULL);
-  struct tm *ct;
+  struct tm ct;
   int i;
   char cmd_buf[BUFSIZ];
 
-  ct = localtime (&cur_time);
-  ct->tm_year += 1900;
+  if (localtime_r (&cur_time, &ct) < 0)
+    {
+      return -1;
+    }
+  ct.tm_year += 1900;
 
   if (br_info->pid)
     {
@@ -1798,14 +1800,12 @@ br_inactivate (T_BROKER_INFO * br_info)
     {
       sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
 	       br_info->access_log_file,
-	       ct->tm_year, ct->tm_mon + 1, ct->tm_mday,
-	       ct->tm_hour, ct->tm_min);
+	       ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min);
       rename (br_info->access_log_file, cmd_buf);
 
       sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
 	       br_info->error_log_file,
-	       ct->tm_year, ct->tm_mon + 1, ct->tm_mday,
-	       ct->tm_hour, ct->tm_min);
+	       ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min);
       rename (br_info->error_log_file, cmd_buf);
     }
   else
@@ -1838,13 +1838,14 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
   char error_log_lock_file[128];
   int i;
-  char port_name[AS_PORT_STR_SIZE];
+  char port_name[AS_PORT_STR_SIZE], dirname[AS_PORT_STR_SIZE];
 #if !defined(WINDOWS)
-  char process_name[64];
+  char process_name[128];
 #endif /* !WINDOWS */
 
-  get_cubrid_file (FID_SOCK_DIR, port_name);
-  sprintf (port_name, "%s/%s.%d", port_name, br_info->name, as_index);
+  get_cubrid_file (FID_SOCK_DIR, dirname);
+  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
+	    br_info->name, as_index);
 #if !defined(WINDOWS)
   unlink (port_name);
 #endif /* !WINDOWS */
@@ -1857,8 +1858,8 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 
   as_info->num_request = 0;
   as_info->session_id = 0;
-  as_info->session_keep = FALSE;
   as_info->uts_status = UTS_STATUS_START;
+  as_info->reset_flag = FALSE;
   as_info->clt_appl_name[0] = '\0';
   as_info->clt_req_path_info[0] = '\0';
   as_info->clt_ip_addr[0] = '\0';
@@ -1871,25 +1872,18 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 
   as_info->service_ready_flag = FALSE;
 
-#if !defined(WINDOWS)
-  if ((pid = fork ()) < 0)
+#if defined(WINDOWS)
+  pid = 0;
+#else /* WINDOWS */
+  pid = fork ();
+  if (pid < 0)
     {
       perror ("fork");
     }
 #endif /* !WINDOWS */
 
-#if !defined(WINDOWS)
   if (pid == 0)
     {
-
-#ifdef V3_ADMIN_D
-      if (admin_clt_sock_fd > 0)
-	CLOSE_SOCKET (admin_clt_sock_fd);
-      if (admin_srv_sock_fd > 0)
-	CLOSE_SOCKET (admin_srv_sock_fd);
-#endif
-#endif /* !WINDOWS */
-
       if (env != NULL)
 	{
 	  for (i = 0; i < env_num; i++)
@@ -1915,15 +1909,9 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 	       ERROR_LOG_LOCK_FILE_ENV_STR, br_info->name);
       putenv (error_log_lock_file);
 
-#ifdef RUN_PURIFY
-      if ((br_info->appl_server == APPL_SERVER_CAS)
-	  || (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	  || (br_info->appl_server == APPL_SERVER_CAS_MYSQL))
-	putenv ("PUREOPTIONS=-program-name=cas");
-#endif
-
 #if !defined(WINDOWS)
-      sprintf (process_name, "%s_%s_%d", br_info->name, appl_name, as_index);
+      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
+		br_info->name, appl_name, as_index);
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
 #endif /* !WINDOWS */
@@ -1934,8 +1922,8 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       if (execle (appl_name, process_name, NULL, environ) < 0)
 	perror (appl_name);
       exit (0);
-    }
 #endif /* WINDOWS */
+    }
 
   SERVICE_READY_WAIT (as_info->service_ready_flag);
 
@@ -1979,7 +1967,7 @@ make_env (char *env_file, int *env_num)
     {
       if (read_buf[0] == '#')
 	continue;
-      read_num = sscanf (read_buf, "%s%s", col1, col2);
+      read_num = sscanf (read_buf, "%127s%127s", col1, col2);
       if (read_num != 2)
 	continue;
 
@@ -2029,12 +2017,6 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
 	    }
 	}
     }
-
-  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
-    return APPL_SERVER_CAS_ORACLE_NAME;
-  if (appl_server_type == APPL_SERVER_CAS_MYSQL)
-    return APPL_SERVER_CAS_MYSQL_NAME;
-
   return APPL_SERVER_CAS_NAME;
 }
 
@@ -2045,7 +2027,7 @@ get_cubrid_version ()
   FILE *fp;
   char res_file[16];
   char cmd[32];
-  int version;
+  int version = 0;
 
   strcpy (res_file, "ux_ver.uc_tmp");
   unlink (res_file);
@@ -2054,30 +2036,26 @@ get_cubrid_version ()
   system (cmd);
 
   fp = fopen (res_file, "r");
-  if (fp == NULL)
-    {
-      version = 0;
-    }
-  else
+  if (fp != NULL)
     {
       char buf[1024];
       char *p;
       int major, minor;
+      size_t n;
 
-      memset (buf, 0, sizeof (buf));
-      fread (buf, 1, sizeof (buf) - 1, fp);
-      p = strstr (buf, "Release");
-      if (p == NULL)
+      n = fread (buf, 1, sizeof (buf) - 1, fp);
+      if (n > 0 && n < sizeof (buf))
 	{
-	  version = 0;
-	}
-      else
-	{
-	  p += 7;
-	  if (sscanf (p, "%d%*c%d", &major, &minor) < 2)
-	    version = 0;
-	  else
-	    version = MAKE_VERSION (major, minor);
+	  buf[n] = '\0';
+	  p = strstr (buf, "Release");
+	  if (p != NULL)
+	    {
+	      p += 7;
+	      if (sscanf (p, "%d%*c%d", &major, &minor) == 2)
+		{
+		  version = MAKE_VERSION (major, minor);
+		}
+	    }
 	}
       fclose (fp);
     }

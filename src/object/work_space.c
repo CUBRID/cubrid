@@ -189,7 +189,6 @@ static int add_class_object (MOP class_mop, MOP obj);
 static void remove_class_object (MOP class_mop, MOP obj);
 static int mark_instance_deleted (MOP op, void *args);
 static void ws_clear_internal (bool clear_vmop_keys);
-static void ws_reset_class_cache (void);
 static void ws_print_oid (OID * oid);
 static int ws_describe_mop (MOP mop, void *args);
 static void ws_flush_properties (MOP op);
@@ -673,7 +672,7 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
       /* Unfortunately, we have to navigate the list when c == 0,
        * because there can be redundancies of mops which have the same oid,
        * in case of VID.
-       * Under 'Create table A -> rollback -> Create table B' scenario, 
+       * Under 'Create table A -> rollback -> Create table B' scenario,
        * the oid of the mop of table B can be same as that of table B.
        * Because the newest one is located at the head of redundancies
        * in that case, we use the first fit method.
@@ -775,7 +774,7 @@ ws_mop (OID * oid, MOP class_mop)
       c = oid_compare (oid, WS_OID (mop));
       if (c > 0)
 	{
-	  /* 'oid' is greater than the tail, 
+	  /* 'oid' is greater than the tail,
 	   * which means 'oid' does not exist in the list
 	   *
 	   * NO need to traverse the list!
@@ -3201,7 +3200,10 @@ ws_mop_compare (MOP mop1, MOP mop2)
 void
 ws_class_has_object_dependencies (MOP class_)
 {
-  class_->no_objects = 0;
+  if (class_ != NULL)
+    {
+      class_->no_objects = 0;
+    }
 }
 
 /*
@@ -3266,28 +3268,6 @@ ws_map (MAPFUNC function, void *args)
 /*
  * TRANSACTION MANAGEMENT SUPPORT
  */
-
-/*
- * ws_reset_class_cache - clear any cached state that may exist in class
- * objects on a transaction boundary.
- *    return: void
- */
-static void
-ws_reset_class_cache (void)
-{
-  DB_OBJLIST *cl;
-  SM_CLASS *class_;
-
-  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
-    {
-      /* only reset the cache if the class is in memory */
-      class_ = (SM_CLASS *) cl->op->object;
-      if (class_ != NULL)
-	{
-	  sm_reset_transaction_cache ((SM_CLASS *) cl->op->object);
-	}
-    }
-}
 
 /*
  * ws_clear_hints - clear all of the hint bits in the MOP.
@@ -3355,7 +3335,6 @@ ws_clear_all_hints (bool retain_lock)
       return;
     }
 
-  ws_reset_class_cache ();
   au_reset_authorization_caches ();
 
   mop = ws_Commit_mops;
@@ -3391,7 +3370,6 @@ ws_abort_mops (bool only_unpinned)
   MOP mop;
   MOP next;
 
-  ws_reset_class_cache ();
   au_reset_authorization_caches ();
 
   mop = ws_Commit_mops;

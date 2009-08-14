@@ -222,8 +222,8 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   int pid, ret_val, i;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char cubrid_error_log_env[512];
-  const char *argv[3];
-  struct tm start_tm;
+  const char *argv[5];
+  struct tm start_tm, *tm_p;
   time_t start_time;
 
 #ifdef HPUX
@@ -233,23 +233,34 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   cmd_start_master ();
 
   start_time = time (NULL);
-  start_tm = *localtime (&start_time);
+  tm_p = localtime (&start_time);
+  if (tm_p == NULL)
+    {
+      if (err_buf)
+	{
+	  snprintf (err_buf, err_buf_size - 1, "system error : %s %s %s",
+		    UTIL_CUBRID_NAME, PRINT_CMD_START, dbname);
+	}
+      return -1;
+    }
+  start_tm = *tm_p;
 
-  sprintf (err_log_file, "%s/%s/%s_%04d%02d%02d_%02d%02d.err",
-	   sco.szCubrid, CUBRID_ERROR_LOG_DIR, dbname,
-	   start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
-	   start_tm.tm_hour, start_tm.tm_min);
+  sprintf (err_log_file, "%s/%s/%s_%04d%02d%02d_%02d%02d.err", sco.szCubrid,
+	   CUBRID_ERROR_LOG_DIR, dbname, start_tm.tm_year + 1900,
+	   start_tm.tm_mon + 1, start_tm.tm_mday, start_tm.tm_hour,
+	   start_tm.tm_min);
   unlink (err_log_file);
   sprintf (cubrid_error_log_env, "CUBRID_ERROR_LOG=%s", err_log_file);
   putenv (cubrid_error_log_env);
 
   cmd_name[0] = '\0';
-  sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
-	   CUBRID_DIR_BIN, UTIL_CUBRID_NAME);
+  sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CUBRID);
 
   argv[0] = cmd_name;
-  argv[1] = dbname;
-  argv[2] = NULL;
+  argv[1] = PRINT_CMD_SERVER;
+  argv[2] = PRINT_CMD_START;
+  argv[3] = dbname;
+  argv[4] = NULL;
 
 #ifdef HPUX
 #ifdef HPUX_IA64
@@ -269,8 +280,8 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   if (pid < 0)
     {
       if (err_buf)
-	sprintf (err_buf, "system error : %s %s %s", UTIL_CUBRID_NAME,
-		 PRINT_CMD_START, dbname);
+	sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
+		 PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
       return -1;
     }
 
@@ -294,8 +305,8 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
 
   /* if doesn't active when check 10 times then return error. */
   if (err_buf)
-    sprintf (err_buf, "system error : %s %s %s", UTIL_CUBRID_NAME,
-	     PRINT_CMD_START, dbname);
+    sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
+	     PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
 
   return -1;
 }
@@ -347,19 +358,19 @@ cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
     memset (err_buf, 0, err_buf_size);
 
   cmd_name[0] = '\0';
-  sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
-	   CUBRID_DIR_BIN, UTIL_COMMDB_NAME);
+  sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CUBRID);
 
   argv[0] = cmd_name;
-  argv[1] = COMMDB_SERVER_STOP;
-  argv[2] = dbname;
-  argv[3] = NULL;
+  argv[1] = PRINT_CMD_SERVER;
+  argv[2] = PRINT_CMD_STOP;
+  argv[3] = dbname;
+  argv[4] = NULL;
   if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
     {				/* stop_server */
       if (err_buf)
 	{
-	  sprintf (strbuf, "Command returned error : %s %s %s",
-		   UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, dbname);
+	  sprintf (strbuf, "Command returned error : %s %s %s %s", cmd_name,
+		   PRINT_CMD_SERVER, PRINT_CMD_STOP, dbname);
 	  strncpy (err_buf, strbuf, err_buf_size - 1);
 	}
       return -1;
@@ -373,8 +384,8 @@ cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
     }
   if (err_buf)
     {
-      sprintf (strbuf, "%s server hasn't shut down after %d seconds",
-	       dbname, timeout);
+      sprintf (strbuf, "%s server hasn't shut down after %d seconds", dbname,
+	       timeout);
       strncpy (err_buf, strbuf, err_buf_size - 1);
     }
   return -1;
@@ -422,17 +433,12 @@ read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 
       ut_trim (buf);
 
-#if defined(WINDOWS)
-      if ((_strnicmp (buf, "ERROR", 5) == 0)
-	  || (_strnicmp (buf, "Â¿Â¡Â·Â¯", 4) == 0))
-#else
       if ((strncasecmp (buf, "ERROR", 5) == 0)
-	  || (strncasecmp (buf, "Â¿Â¡Â·Â¯", 4) == 0))
-#endif
+	  || (strncasecmp (buf, "¿¡·¯", 4) == 0))
 	{
-	  if (err_buf)
+	  if (err_buf != NULL)
 	    {
-	      strcpy (err_buf, buf + 6);
+	      snprintf (err_buf, err_buf_size - 1, "%s", buf + 6);
 	    }
 	  msg_size = strlen (buf + 6);
 	  break;
@@ -442,7 +448,10 @@ read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 	  memset (buf, 0, sizeof (buf));
 	  if (fgets (buf, sizeof (buf) - 1, fp) == NULL)
 	    break;
-	  strcpy (err_buf, buf);
+	  if (err_buf != NULL)
+	    {
+	      snprintf (err_buf, err_buf_size - 1, "%s", buf);
+	    }
 	  msg_size = strlen (buf);
 	  break;
 	}
@@ -539,19 +548,27 @@ read_error_file2 (char *err_file, char *err_buf, int err_buf_size,
   while (1)
     {
       char *p = NULL;
+      size_t len;
       if (fgets (buf, sizeof (buf), fp) == NULL)
-	break;
+	{
+	  break;
+	}
 
       /* start with "ERROR: " */
-      if (strlen (buf) > 7 && memcmp (buf, "ERROR: ", 7) == 0)
+      len = strlen (buf);
+      if (len > 7 && memcmp (buf, "ERROR: ", 7) == 0)
 	{
+	  /* ignore a newline character if it exists */
+	  if (buf[len - 1] == '\n')
+	    {
+	      len--;
+	    }
+	  len -= 7;
 
-	  int len = strlen (buf + 7);
-	  if (len > 0 && buf[len + 7] == '\n')
-	    len--;
-
-	  if (len >= err_buf_size)
-	    len = err_buf_size - 1;
+	  if (len >= (size_t) err_buf_size)
+	    {
+	      len = (size_t) err_buf_size - 1;
+	    }
 
 	  memcpy (err_buf, buf + 7, len);
 	  err_buf[len] = 0;
@@ -564,23 +581,30 @@ read_error_file2 (char *err_file, char *err_buf, int err_buf_size,
       p = strstr (buf, "CODE = ");
       if (p != NULL)
 	{
-	  int len = 0;
 	  if (sscanf (p, "CODE = %d", err_code) != 1)
-	    continue;
+	    {
+	      continue;
+	    }
 
 	  success = 0;
 	  found = 1;
 
 	  /* read error description */
 	  if (fgets (buf, sizeof (buf), fp) == NULL)
-	    break;
+	    {
+	      break;
+	    }
 
 	  len = strlen (buf);
-	  if (len > 0 && buf[len] == '\n')
-	    len--;
+	  if (len > 0 && buf[len - 1] == '\n')
+	    {
+	      len--;
+	    }
 
-	  if (len >= err_buf_size)
-	    len = err_buf_size - 1;
+	  if (len >= (size_t) err_buf_size)
+	    {
+	      len = (size_t) err_buf_size - 1;
+	    }
 
 	  memcpy (err_buf, buf, len);
 	  err_buf[len] = 0;
@@ -656,7 +680,7 @@ read_commdb_output (T_COMMDB_RESULT * res, char *out_file)
     {
       char *tmp_p;
 
-      if (sscanf (str_buf, "%s %s", tmp_str, db_name) < 2)
+      if (sscanf (str_buf, "%63s %63s", tmp_str, db_name) < 2)
 	continue;
       if (strcmp (tmp_str, "Server") != 0)
 	continue;
@@ -778,12 +802,10 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	}
       else
 	if ((strncmp
-	     (str_buf, "ÂµÂ¥Ã€ÃŒÅ¸ÂºÂ£Ã€Ì½Âº",
-	      strlen ("ÂµÂ¥Ã€ÃŒÅ¸ÂºÂ£Ã€Ì½Âº")) == 0)
+	     (str_buf, "µ¥ÀÌÅ¸º£ÀÌ½º",
+	      strlen ("µ¥ÀÌÅ¸º£ÀÌ½º")) == 0)
 	    ||
-	    (strncmp
-	     (str_buf, "ÂµÂ¥Ã€ÃŒÃ…ÍºÂ£Ã€Ì½Âº",
-	      strlen ("ÂµÂ¥Ã€ÃŒÃ…ÍºÂ£Ã€Ì½Âº")) == 0))
+	    (strncmp (str_buf, "µ¥ÀÌÅÍº£ÀÌ½º", strlen ("µ¥ÀÌÅÍº£ÀÌ½º")) == 0))
 	{
 	  tmp_p = strrchr (str_buf, ')');
 	  if (tmp_p == NULL)
@@ -795,7 +817,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  page_size = atoi (tmp_p + 1);
 	}
       else if (strncmp (str_buf, "Volid", 5) == 0 ||
-	       strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
+	       strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
 	{
 	  break;
 	}
@@ -809,7 +831,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  continue;
 	}
       if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
+	  strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
 	{
 	  break;
 	}
@@ -840,7 +862,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	  continue;
 	}
       if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "Â¹Ã¸È£", strlen ("Â¹Ã¸È£")) == 0)
+	  strncmp (str_buf, "¹øÈ£", strlen ("¹øÈ£")) == 0)
 	{
 	  break;
 	}
@@ -902,8 +924,10 @@ set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid, char *purpose,
   else
     {
       *p = '\0';
-      strcpy (vol_info->location, vol_name);
-      strcpy (vol_info->vol_name, p + 1);
+      snprintf (vol_info->location, sizeof (vol_info->location) - 1, "%s",
+		vol_name);
+      snprintf (vol_info->vol_name, sizeof (vol_info->vol_name) - 1, "%s",
+		p + 1);
       *p = '/';
     }
 

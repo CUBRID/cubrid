@@ -1,0 +1,476 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CUBRID 백업 및 복구 유틸리티 사용법(구문)</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 백업 및 복구\nCUBRID 백업 및 복구 유틸리티 사용법(구문)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_br_syntax.htm\">데이터베이스 백업 및 복구<\/a> &nbsp;&gt;&nbsp; CUBRID 백업 및 복구 유틸리티 사용법(구문)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CUBRID 백업 및 복구 유틸리티 사용법(구문)</h3>
+<h5><a name="backup" id="backup"></a>백업</h5>
+<p>미디어 고장과 데이터베이스 파일들의 손상으로부터 복구하기 위한 데이터베이스 백업에는 <span class="keyword">cubrid backupdb</span> 유틸리티를 사용한다. <span class="keyword">cubrid backupdb</span> 유틸리티는 모든 데이터베이스 페이지들, 제어 파일들, 데이터베이스를 백업 시와 일치된 상태로 복구하기 위해 필요한 로그 레코드들을 복사한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid backupdb</span>&#160;[ <span class="var">options</span> ] <span class="var">database_name</span><br />
+[ <span class="var">options</span> ]<br />
+<span class="keyword">-D</span> | <span class="keyword">-r</span> | <span class="keyword">-l</span> | <span class="keyword">-o</span>&#160;| <span class="keyword">-S</span> | <span class="keyword">-C</span> | <span class="keyword">-t</span> | <span class="keyword">-z</span> | <span class="keyword">-e</span> |<br />
+<span class="keyword">--destination-path</span> | <span class="keyword">--remove-archive</span> | <span class="keyword">--level</span> | <span class="keyword">--output-file</span> | <span class="keyword">--SA-mode</span> | <span class="keyword">--CS-mode</span> | <span class="keyword">--thread-count</span> | <span class="keyword">--compress</span> | <span class="keyword">--except-active-log</span> | <span class="keyword">--no-check</span></p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">backupdb</span>&#160;:&#160;지정한 데이터베이스를 백업하는 명령이며, 결합되는 옵션에 따라 온라인 백업, 오프라인 백업, 증분 백업, 압축 백업, 병렬 백업을 수행할 수 있다. 또한, 백업 권한을 가진 사용자(예: <span class="keyword">DBA</span>)만 수행할 수 있다.</li>
+<li><span class="var">options</span>&#160;:&#160;단축 옵션은 대시(-)와 결합하여 지정되어야 하고, 전체 옵션은 이중 대시(--)와 결합하여 지정되어야 한다. 대소문자 사용에 주의한다.</li>
+<li><span class="var">database_name</span> : 백업할 데이터베이스의 이름을 지정한다.</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>&#160;0 : 성공</li>
+<li>&#160;Non-zero :&#160;실패</li>
+</ul>
+<h6>옵션</h6>
+<p>다음은 <span class="keyword">cubrid&#160;backupdb</span> 유틸리티와 결합할 수 있는 옵션을 정리한 표이다. 대소문자가 구분됨을 주의한다.</p>
+<table border="1">
+<tbody>
+<tr>
+<th>
+<p>옵션</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td class="keyword">
+<p>-D</p>
+<p>--destination-path</p>
+</td>
+<td>
+<p>백업 볼륨을 생성하고자 하는 디렉터리 경로명이나 장치 이름을 지정한다.</p>
+<p>기본값은 데이터베이스가 생성되었을 때, 데이터베이스 위치 정보 파일(<span class="keyword">databases.txt</span>)에 지정된 <span class="keyword">log_path</span> 위치</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-r</p>
+<p>--remove-archive</p>
+</td>
+<td>
+<p>백업 수행한 후, 복구에 필요하지 않은 보관 로그를 삭제한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-l</p>
+<p>--level</p>
+</td>
+<td>
+<p>0, 1, 2 중에서 백업 수준을 설정한다.</p>
+<p>기본값은 전체 백업(0)이다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-o</p>
+<p>--output-file</p>
+</td>
+<td>
+<p>진행 정보를 출력할 파일 이름을 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-S</p>
+<p>--SA-mode</p>
+</td>
+<td>
+<p>독립 모드에서 백업 수행한다.</p>
+<p>기본값은 시스템 파라미터 <span class="keyword">CUBRID_MODE</span>의 설정값이다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-C</p>
+<p>--CS-mode</p>
+</td>
+<td>
+<p>클라이언트/서버 모드에서 백업 수행한다.</p>
+<p>기본값은 시스템 파라미터 <span class="keyword">CUBRID_MODE</span>의 설정값이다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-t</p>
+<p>--thread-count</p>
+</td>
+<td>
+<p>병렬 백업 시 허용되는 스레드의 최대 개수를 지정한다.</p>
+<p>기본값은 시스템의 CPU 개수이다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-z</p>
+<p>--compress</p>
+</td>
+<td>
+<p>압축 백업을 수행한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-e</p>
+<p>--except-active-log</p>
+</td>
+<td>
+<p>백업 시 활성 로그 볼륨을 포함하지 않도록 설정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>--no-check</p>
+</td>
+<td>
+<p>백업 전에 데이터베이스 일관성 점검을 수행하지 않는다.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li class="title">백업 파일이 저장될 디렉터리를 지정하여 백업 수행(-D&#160;또는&#160;--destination-path)</li>
+</ul>
+<p class="definition"><span class="keyword">-D</span> 옵션을 이용하여 지정된 디렉터리에 백업 파일이 저장되도록 하는 명령이다. demodb의 백업 파일은 /home/cubrid/backup라는 디렉터리에&#160;저장된다. <span class="keyword">-D</span> 옵션이 지정되지 않으면 백업 파일은 해당 데이터베이스의 위치 정보를 저장하는 파일인 <span class="keyword">databases.txt</span>에 명시된 디렉터리에 생성된다.</p>
+<p class="code">cubrid backupdb -D /home/cubrid/backup demodb</p>
+<p class="definition"><span class="keyword">-D</span> 옵션을 이용하여 현재 디렉터리에 백업 파일이 저장되도록 하는 구문이다. <span class="keyword">-D</span> 옵션의 인수로 "."을 입력하면 현재 디렉터리가 지정된다.</p>
+<p class="code">cubrid backupdb -D . demodb</p>
+<ul>
+<li class="title">백업 후 보관 로그를 삭제(-r 또는&#160;--remove-archive)</li>
+</ul>
+<p class="definition">데이터베이스 관련 파라미터 중 <span class="keyword">media_failure_support</span> 파라미터의 설정값이 1이고, 활성 로그(active log)가&#160;꽉 찬 경우에&#160;활성 로그를 새로운 보관 로그 파일에 기록하게&#160;된다.&#160;이런 상황에서 백업을 수행하여 백업 볼륨이 생성되면, 백업 시점 이전의 보관 로그는 추후 복구 작업에서 이용되지 않게 된다. <span class="keyword">-r</span> 옵션은 백업을 수행한 후 추후 복구&#160;작업에 더 이상 사용되지 않을 보관 로그 파일을 제거하기 위해 사용되는 옵션이다.</p>
+<p class="code">cubrid backupdb -r demodb</p>
+<p class="definition">다만, <span class="keyword">-r</span> 옵션은 백업 시점 이전의 불필요한 보관 로그만 제거하므로 복구 작업에는 영향을 끼치지 않지만, 관리자가 백업 시점 이후의 보관 로그까지 제거하는 경우 전체 복구가 불가능할 수도 있다. 따라서, 보관 로그를 제거할 때에는&#160;제거된 보관 로그가 추후 복구 작업에 필수적으로 이용되는 것인지를 반드시 검토하여야 한다.</p>
+<ul>
+<li class="title">백업 수준을 지정하여 증분 백업 수행(-l 또는&#160;--level)</li>
+</ul>
+<p class="definition"><span class="keyword">-l</span> 옵션을 이용하여 지정된 백업 수준으로 증분 백업을 수행하는 구문이다. <span class="keyword">-l</span> 옵션이 지정되지 않으면 전체 백업이 수행된다. 백업 수준에 대한 자세한 내용은 "<a href="admin_br_backuppolicy.htm#incremental">증분 백업</a>"을 참조한다.</p>
+<p class="code">cubrid backupdb -l&#160;1 demodb</p>
+<ul>
+<li class="title">지정된 파일에 백업 진행 정보&#160;저장(-o 또는&#160;--output-file)</li>
+</ul>
+<p class="definition"><span class="keyword">-o</span> 옵션을 이용하여 대상 데이터베이스의 백업에 관한 진행 정보를 info_backup이라는 파일에 기록하는 구문이다.</p>
+<p class="code">cubrid backupdb -o info_backup&#160;demodb</p>
+<p class="definition">다음은 info_backup 파일 내용의 예시로서, 스레드 개수, 압축 방법, 백업 시작 시간, 영구 볼륨의 개수, 백업 진행 정보, 백업 완료 시간 등의 정보를 확인할 수 있다.</p>
+<p class="code">[ Database(demodb) Full Backup start ]<br />
+- num-threads: 1<br />
+- compression method: NONE<br />
+- backup start time: Mon Jul 21 16:51:51 2008<br />
+- number of permanent volumes: 1<br />
+- backup progress status<br />
+-----------------------------------------------------------------------------<br />
+&#160;volume name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; | # of pages | backup progress status&#160;&#160;&#160; | done<br />
+-----------------------------------------------------------------------------<br />
+&#160;demodb_vinf&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; |&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1 | ######################### | done<br />
+&#160;demodb&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; |&#160;&#160;&#160;&#160;&#160; 25000 | ######################### | done<br />
+&#160;demodb_lginf&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; |&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1 | ######################### | done<br />
+&#160;demodb_lgat&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; |&#160;&#160;&#160;&#160;&#160; 25000 | ######################### | done<br />
+-----------------------------------------------------------------------------<br />
+# backup end time: Mon Jul 21 16:51:53 2008<br />
+[Database(demodb) Full Backup end]</p>
+<ul>
+<li class="title">독립 모드에서 백업 수행&#160;(-S&#160;또는&#160;--SA-mode)</li>
+</ul>
+<p class="definition"><span class="keyword">-S</span> 옵션에 의해 독립모드에서 백업을 수행하는 구문으로서, demodb를 오프라인 백업한다.&#160;<span class="keyword">-S</span> 옵션이 지정되지 않으면&#160;<span class="keyword">CUBRID_MODE</span> 환경 변수에 의해 설정된 모드에서 백업이 수행된다.</p>
+<p class="code">cubrid backupdb -S demodb</p>
+<ul>
+<li class="title">클라이언트/서버 모드에서 백업 수행(-C&#160;또는&#160;--CS-mode)</li>
+</ul>
+<p class="definition"><span class="keyword">-C</span> 옵션에 의해 클라이언트/서버 모드에서 백업을 수행하는 구문으로서, demodb를 온라인 백업한다. <span class="keyword">-C</span> 옵션이 지정되지 않으면 <span class="keyword">CUBRID_MODE</span> 환경 변수에 의해 설정된 모드에서 백업이 수행된다.</p>
+<p class="code">cubrid backupdb -C demodb</p>
+<ul>
+<li class="title">병렬 백업(-t 또는&#160;--thread-count)</li>
+</ul>
+<p class="definition"><span class="keyword">-t</span> 옵션을 이용하여 관리자가 임의로 스레드의 개수를 지정함으로써 병렬 백업을 수행하는 명령이다. <span class="keyword">-t</span> 옵션의 인수를 지정하지 않더라도 시스템의 CPU 개수만큼 스레드를 자동 부여하여 병렬 백업을 수행한다.</p>
+<p class="code">cubrid backupdb -t 4 demodb</p>
+<ul>
+<li class="title">압축 백업(-z 또는&#160;--compress)</li>
+</ul>
+<p class="definition"><span class="keyword">-z</span> 옵션을 이용하여 대상 데이터베이스를 압축하여 백업 파일에 저장하는 구문이다. <span class="keyword">-z</span> 옵션을 사용하면, 백업 파일의 크기 및 백업 시간을 단축시킬 수 있다.</p>
+<p class="code">cubrid backupdb -z demodb</p>
+<ul>
+<li class="title">활성 로그 볼륨 비포함 활성화(-e 또는 --except-active-log)</li>
+</ul>
+<p class="definition"><span class="keyword">-e</span> 옵션을 이용하여 대상 데이터베이스의 활성 로그(active log)를 포함하지 않고 백업을 수행하는 구문이다. 물론, <span class="keyword">-e</span> 옵션을 이용하면 백업 시간을 단축시킬 수 있겠으나, 백업 시점으로의 정상적인 복구를 위해 필요한 활성 로그가 백업 파일에 포함되지 않기 때문에&#160;복구 품질이 저하될 수 있기에 상당한 주의를 요한다.</p>
+<p class="code">cubrid backupdb -e demodb</p>
+<ul>
+<li class="title">데이터베이스 일관성 점검 비활성화(--no-check)</li>
+</ul>
+<p class="definition"><span class="keyword">--no-check</span> 옵션을 이용하여 대상 데이터베이스의 일관성을 체크하지 않고, 바로 백업을 수행하는 명령이다.</p>
+<p class="code">cubrid backupdb --no-check demodb</p>
+<h5><a name="restore" id="restore"></a>복구</h5>
+<p><span class="keyword">cubrid restoredb</span> 유틸리티는 백업이 수행된 이후에 모든 보관 및 활동 로그들에 기록된 정보들을 이용하여 데이터베이스 백업으로부터 데이터베이스를 복구한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid restoredb</span> [ <span class="var">options</span> ] <span class="var">database_name</span><br />
+[ <span class="var">options</span> ]<br />
+<span class="keyword">-d</span> | <span class="keyword">-B</span> | <span class="keyword">-l</span> | <span class="keyword">-p</span> | <span class="keyword">-o</span> | <span class="keyword">-u</span> |<br />
+<span class="keyword">--up-to-date&#160;</span>| <span class="keyword">--backup-file-path</span> | <span class="keyword">--level</span> | <span class="keyword">--partial-recovery</span> | <span class="keyword">--output-file</span> | <span class="keyword">--replication-mode</span> | <span class="keyword">--use-database-location-path</span> | <span class="keyword">--list</span></p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">restoredb</span>&#160;:&#160;지정한 데이터베이스를 복구하는 명령이며, 정상적인 복구를 위해서는 백업 파일, 활성 로그 파일, 보관 로그 파일이 준비되어야 한다. 또한, 독립 모드(standalone)에서만 수행 가능하다.</li>
+<li><span class="var">options</span>&#160;:&#160;단축 옵션은 대시(-)와 결합하여 지정되어야 하고, 전체 옵션은 이중 대시(--)와 결합하여 지정되어야 한다. 대소문자 사용에 주의한다.</li>
+<li><span class="var">database_name</span> : 복구하려는 데이터베이스의 이름을 지정한다.</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>&#160;0 : 성공</li>
+<li>&#160;Non-zero :&#160;실패</li>
+</ul>
+<h6>옵션</h6>
+<p>다음은 <span class="keyword">cubrid&#160;restoredb</span> 유틸리티와 결합할 수 있는 옵션을 정리한 표이다. 대소문자가 구분됨을 주의한다.</p>
+<table border="1">
+<tbody>
+<tr>
+<th>
+<p>옵션</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td class="keyword">
+<p>-d</p>
+<p>--up-to-date</p>
+</td>
+<td>
+<p>데이터베이스를 복구할 시간을 직접 지정하거나, <span class="keyword">backuptime</span> 키워드를 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-B</p>
+<p>--backup-file-path</p>
+</td>
+<td>
+<p>백업 파일이 위치하는 디렉터리 경로명이나 장치명을 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-l</p>
+<p>--level</p>
+</td>
+<td>
+<p>0, 1, 2 중에서 복구할 수준을 설정한다.</p>
+<p>디폴트 값은&#160;전체 복구(0)이다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-p</p>
+<p>--partial-recovery</p>
+</td>
+<td>
+<p>부분 복구를 수행한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-o</p>
+<p>--output-file</p>
+</td>
+<td>
+<p>복구 작업에 관한 진행 정보를 출력할 파일 이름을 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>-u</p>
+<p>--use-database-location-path</p>
+</td>
+<td>
+<p>데이터베이스 위치 정보 파일(<span class="keyword">databases.txt</span>)에 지정된 경로로 대상 데이터베이스를 복구한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword">
+<p>&#160;--list</p>
+</td>
+<td>
+<p>대상 데이터베이스의 백업 볼륨에 관한 정보를 화면 출력한다.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li class="title">복구 시점을 지정하여 복구 수행(-d 또는&#160;--up-to-date)</li>
+</ul>
+<p class="definition">demodb를 복구하는 명령이며, 어떠한 옵션도 지정되지 않은 경우 기본적으로 마지막 커밋 시점까지 demodb가 복구된다. 만약, 마지막 커밋 시점까지 복구하기 위해 필요한 활성 로그/보관 로그 파일이 없다면 마지막 백업 시점까지만 부분 복구된다.</p>
+<p class="code">cubrid restoredb demodb</p>
+<p class="definition"><span class="keyword">-d</span> 옵션을 이용하여 복구 날짜 및 시간을 지정하는 구문으로 demodb를 해당 시점까지 복구한다. 사용자는 dd-mm-yyyy:hh:mm:ss(예: 14-10-2008:14:10:00)의 형식으로 복구 시점을 직접 지정할 수 있다. 만약&#160;지정한 복구 시점까지 복구하기 위해 필요한 활성 로그/보관 로그 파일이 없다면 마지막 백업 시점까지만 부분 복구된다.</p>
+<p class="code">cubrid restoredb -d 14-10-2008:14:10:00 demodb</p>
+<p class="definition"><span class="keyword">-d</span> 옵션 및 <span class="keyword">backuptime</span>이라는 키워드를 이용하여 복구 시점을 지정하는 구문으로 demodb를 마지막 백업이 수행된 시점까지 복구한다.</p>
+<p class="code">cubrid restoredb -d backuptime demodb</p>
+<ul>
+<li class="title">백업 파일이 위치하는 디렉터리 경로를 지정하여 복구 수행(-B 또는 --backup-file-path)</li>
+</ul>
+<p class="definition"><span class="keyword">-B</span>&#160;옵션을 이용하여&#160;백업 파일이 위치하는 디렉터리를 지정할 수 있다. 만약, 이 옵션이 지정되지 않으면 시스템은 데이터베이스 위치 정보 파일인 <span class="keyword">databases.txt</span>에 지정된 <span class="keyword">log_path</span> 디렉터리에서 대상 데이터베이스를 백업했을 때 생성된 백업 정보 파일(<span class="keyword">dbname_bkvinf</span>)을 검색하고, 백업 정보 파일에 지정된 디렉터리 경로에서 백업 파일을 찾는다. 그러나, 백업 정보 파일이 손상되거나 백업 파일의 위치 정보가 삭제된 경우라면 시스템이 백업 파일을 찾을 수 없으므로, 관리자가 <span class="keyword">-B</span> 옵션을 이용하여 백업 파일이 위치하는 디렉터리 경로를 직접 지정하여야 한다.</p>
+<p class="code">cubrid restoredb -B /home/cubrid/backup demodb</p>
+<p class="definition">demodb의 백업 파일이 현재 디렉터리에 있는 경우, 관리자는 <span class="keyword">-B</span> 옵션을 이용하여 백업 파일이 위치하는 디렉터리를 지정할 수 있다.</p>
+<p class="code">cubrid restoredb -B . demodb</p>
+<ul>
+<li class="title">백업 수준을 지정하여 복구 수행(-l 또는 --level)</li>
+</ul>
+<p class="definition"><span class="keyword">-l</span> 옵션은&#160;대상 데이터베이스의 백업 수준(0, 1, 2)을 지정하여 복구를 수행한다. 백업 수준에 대한 자세한 내용은 "<a href="admin_br_backuppolicy.htm#incremental">증분 백업</a>"을 참조한다.</p>
+<p class="code">cubrid restoredb -l 1&#160;demodb</p>
+<ul>
+<li class="title">부분 복구 수행(-p 또는 --partial-recovery)</li>
+</ul>
+<p class="definition"><span class="keyword">-p</span> 옵션은 사용자 응답을 요청하지 않고 부분 복구를 수행하라는 명령이다.&#160;백업 시점 이후에&#160;기록된 활성 로그나 보관 로그가 완전하지 않을 때, 기본적으로 시스템은&#160;로그 파일이 필요하다는 것을 알리면서 실행 옵션을 입력하라는 요청 메시지를 출력하는데, <span class="keyword">-p</span> 옵션을 이용하면 이러한 요청 메시지의 출력 없이 직접 부분 복구를 수행할 수 있다. 따라서, <span class="keyword">-p</span> 옵션을 이용하여 복구를 수행하면 언제나 마지막 백업 시점까지 데이터가 복구된다.</p>
+<p class="code">cubrid restoredb -p demodb</p>
+<p class="definition"><span class="keyword">-p</span> 옵션이 지정되지 않은 경우,&#160;사용자에게 실행 옵션을 선택하라는 요청 메시지는 다음과 같다.</p>
+<p class="code">***********************************************************<br />
+Log Archive /home/cubrid/test/log/demodb_lgar002<br />
+&#160;is needed to continue normal execution.<br />
+&#160;&#160; Type<br />
+&#160;&#160; -&#160; 0 to quit.<br />
+&#160;&#160; -&#160; 1 to continue without present archive. (Partial recovery)<br />
+&#160;&#160; -&#160; 2 to continue after the archive is mounted/loaded.&#160;<br />
+&#160;&#160; -&#160; 3 to continue after changing location/name of archive.<br />
+***********************************************************</p>
+<ul class="definition">
+<li>옵션 0 :&#160;복구 작업을 더이상 진행하지 않을 경우, 0을 입력한다.</li>
+<li>옵션 1 :&#160;로그 파일 없이 부분 복구를 진행하려면, 1을 입력한다.</li>
+<li>옵션 2 : 복구 작업을 진행하기 위해 관리자는 현재 장치에 보관 로그를 위치시킨 후&#160;2를 입력한다.</li>
+<li>옵션 3 : 복구 작업을 계속하기 위해 관리자는&#160;로그 위치를 변경한 후 3을 입력한다.</li>
+</ul>
+<ul>
+<li class="title">지정된 파일에 복구 진행 정보 저장(-o 또는 --output-file)</li>
+</ul>
+<p class="definition"><span class="keyword">-o</span> 옵션을 이용하여 대상 데이터베이스의 복구에 관한 진행 정보를 info_restore라는 파일에 기록하는 명령이다.</p>
+<p class="code">cubrid restoredb -o info_restore demodb</p>
+<ul>
+<li class="title">데이터베이스 위치 정보 파일에 지정된 디렉터리로 데이터를 복구(-u 또는 --use-database-location-path)</li>
+</ul>
+<p class="definition"><span class="keyword">-u</span> 옵션을 이용하여 데이터베이스&#160;위치 정보 파일(<span class="keyword">databases.txt</span>)에 지정된 경로에서 대상 데이터베이스를 복구하는 구문이다. <span class="keyword">-u</span> 옵션은 A 서버에서 백업을 수행하고 B 서버에서 백업 파일을 복구하고자 할 때 사용할 수 있는 유용한 옵션이다.</p>
+<p class="code">cubrid restoredb -u demodb</p>
+<ul>
+<li class="title">대상 데이터베이스의 백업 정보 확인하기(--list)</li>
+</ul>
+<p class="definition"><span class="keyword">--list</span> 옵션을 이용하여 대상 데이터베이스의 백업 파일에 관한 정보를&#160;화면 출력하는 구문으로 복구는 수행하지 않는다.</p>
+<p class="code">cubrid restoredb --list demodb</p>
+<p class="definition">다음은 <span class="keyword">--list</span> 옵션에 의해 출력되는 백업 정보의 예로서, 복구 작업을 수행하기 이전에 대상 데이터베이스의 백업 파일이 최초 저장된 경로와 백업 수준을 검증할 수 있다.</p>
+<p class="code">*** BACKUP HEADER INFORMATION ***<br />
+Database Name: /local1/testing/demodb<br />
+&#160;DB Creation Time: Mon Oct 1 17:27:40 2008<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; Pagesize: 4096<br />
+Backup Level: 1 (INCREMENTAL LEVEL 1)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; Start_lsa: 513|3688<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; Last_lsa: 513|3688<br />
+Backup Time: Mon Oct 1 17:32:50 2008<br />
+&#160;Backup Unit Num: 0<br />
+Release: 8.1.0<br />
+&#160;&#160;&#160;&#160; Disk Version: 8<br />
+Backup Pagesize: 4096<br />
+Zip Method: 0 (NONE)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; Zip Level: 0 (NONE)<br />
+Previous Backup level: 0 Time: Mon Oct 1 17:31:40 2008<br />
+(start_lsa was -1|-1)<br />
+Database Volume name: /local1/testing/demodb_vinf<br />
+&#160;&#160;&#160;&#160; Volume Identifier: -5, Size: 308 bytes (1 pages)<br />
+Database Volume name: /local1/testing/demodb<br />
+&#160;&#160;&#160;&#160; Volume Identifier: 0, Size: 2048000 bytes (500 pages)<br />
+Database Volume name: /local1/testing/demodb_lginf<br />
+&#160;&#160;&#160;&#160; Volume Identifier: -4, Size: 165 bytes (1 pages)<br />
+Database Volume name: /local1/testing/demodb_bkvinf<br />
+&#160;&#160;&#160;&#160; Volume Identifier: -3, Size: 132 bytes (1 pages)</p>
+<p class="definition"><span class="keyword">--list</span> 옵션을 이용하여 출력된 백업 정보를 확인하면, 백업 파일이 백업 수준 1로 생성되었고, 이전 백업 수준 0의 전체 백업이 수행된 시점을 확인할 수 있다. 따라서, 예시된 데이터베이스의 복구를 위해서는 백업 수준 0인 백업 파일과 백업 수준 1인 백업 파일이&#160;준비되어야 한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

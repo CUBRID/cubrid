@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -180,6 +180,13 @@ net_server_init (void)
     sboot_change_ha_mode;
   net_Requests[NET_SERVER_BO_CHANGE_HA_MODE].name =
     "NET_SERVER_BO_CHANGE_HA_MODE";
+
+  net_Requests[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE].action_attribute =
+    CHECK_AUTHORIZATION;
+  net_Requests[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE].
+    processing_function = sboot_notify_ha_log_applier_state;
+  net_Requests[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE].name =
+    "NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE";
 
   /*
    * transaction
@@ -622,6 +629,12 @@ net_server_init (void)
   net_Requests[NET_SERVER_LOG_GETPACK_TRANTB].name =
     "NET_SERVER_LOG_GETPACK_TRANTB";
 
+  net_Requests[NET_SERVER_LOG_DUMP_TRANTB].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_DUMP_TRANTB].processing_function =
+    slogtb_dump_trantable;
+  net_Requests[NET_SERVER_LOG_DUMP_TRANTB].name =
+    "NET_SERVER_LOG_DUMP_TRANTB";
+
   /*
    * lock
    */
@@ -906,6 +919,10 @@ net_server_init (void)
   net_Requests[NET_SERVER_PRM_GET_PARAMETERS].name =
     "NET_SERVER_PRM_GET_PARAMETERS";
 
+  net_Requests[NET_SERVER_PRM_DUMP_PARAMETERS].processing_function =
+    sprm_server_dump_parameters;
+  net_Requests[NET_SERVER_PRM_DUMP_PARAMETERS].name =
+    "NET_SERVER_PRM_DUMP_PARAMETERS";
   /*
    * JSP
    */
@@ -929,6 +946,13 @@ net_server_init (void)
     srepl_log_get_append_lsa;
   net_Requests[NET_SERVER_REPL_LOG_GET_APPEND_LSA].name =
     "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
+
+  net_Requests[NET_SERVER_REPL_BTREE_FIND_UNIQUE].action_attribute =
+    IN_TRANSACTION;
+  net_Requests[NET_SERVER_REPL_BTREE_FIND_UNIQUE].processing_function =
+    srepl_btree_find_unique;
+  net_Requests[NET_SERVER_REPL_BTREE_FIND_UNIQUE].name =
+    "NET_SERVER_REPL_BTREE_FIND_UNIQUE";
 
   /*
    * log writer
@@ -1086,7 +1110,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
     {
+      int client_type;
       bool check = true;
+
       if (request == NET_SERVER_TM_SERVER_COMMIT)
 	{
 	  if (!logtb_has_updated (thread_p))
@@ -1095,7 +1121,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 	    }
 	}
       /* check if DB modification is allowed */
-      if (check && !LOG_CHECK_LOG_APPLIER (thread_p))
+      client_type = logtb_find_client_type (thread_p->tran_index);
+      if (check && BOOT_NORMAL_CLIENT_TYPE (client_type))
 	{
 	  CHECK_MODIFICATION_NO_RETURN (error_code);
 	  if (error_code != NO_ERROR)
@@ -1201,6 +1228,10 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
+      if (thread_p == NULL)
+	{
+	  return 0;
+	}
     }
 
   local_tran_index = thread_p->tran_index;
@@ -1291,7 +1322,7 @@ net_server_start (const char *server_name)
       printf ("Failed to load system parameter\n");
       return -1;
     }
-  if (thread_initialize_manager (PRM_MAX_THREADS) != NO_ERROR)
+  if (thread_initialize_manager () != NO_ERROR)
     {
       printf ("Failed to initialize thread manager\n");
       return -1;

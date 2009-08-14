@@ -1,0 +1,113 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>DATETIME</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="DATE" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n날짜/시간  데이터 타입\nDATETIME");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_date_def.htm\">날짜/시간  데이터 타입<\/a> &nbsp;&gt;&nbsp; DATETIME<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>DATETIME</h4>
+<h6>설명</h6>
+<p><span class="keyword">DATETIME</span> 타입은 연도, 월, 날짜, 시, 분, 초, 밀리초 로 이루어진 값이다. <span class="keyword">DATETIME</span> 리터럴은 문자 스트링으로 표현하는데, 키워드 <span class="keyword">DATETIME</span> 뒤에 다음과 같은 형식으로 작성한다</p>
+<p class="syntax"><span class="keyword">datetime</span> ‘<span class="var">mm</span>/<span class="var">dd</span>[/<span class="var">yyyy</span>] <span class="var">hh</span>:<span class="var">mm</span>[:<span class="var">ss</span>[.<span class="var">ff</span>]] [<span class="keyword">am</span> | <span class="keyword">pm</span>]’<br />
+<span class="keyword">datetime</span> ‘[<span class="var">yyyy</span>-]<span class="var">mm</span>-<span class="var">dd</span> <span class="var">hh</span>:<span class="var">mm</span>[:<span class="var">ss</span>[.<span class="var">ff</span>]] [<span class="keyword">am</span> | <span class="keyword">pm</span>]’</p>
+<p><span class="var">mm</span>은 월, <span class="var">dd</span>는 날짜, <span class="var">yyyy</span>는 연도, <span class="var">hh</span>는 시간, <span class="var">mm</span>은 분, <span class="var">ss</span>는 초, <span class="var">ff</span>는 밀리초를 나타낸다. 연도 부분을 생략하면 현재 연도가 자동으로 지정된다. 시간, 분, 초를 생략하면 12:00:00.000로, 밀리초 부분을 생략하면 000밀리초로 자동으로 지정된다</p>
+<h6>참고 사항</h6>
+<p>모든 항목은 정수 형태로 입력되어야 한다.</p>
+<h6>예제</h6>
+<p class="code">DATETIME'1999-10-10'는 ‘1999/10/10 12:00:00.000’으로 저장된다.<br />
+DATETIME'10-10'는 ‘2009/10/10 12:00:00.000’으로 저장된다. (연도가 생략되면 현재 연도가 자동으로 지정됨.)</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

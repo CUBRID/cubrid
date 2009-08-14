@@ -1,0 +1,14 @@
+task:getenv
+status:success
+note:none
+CUBRID:/opt/frameworks/cubrid
+CUBRID_DATABASES:/opt/frameworks/cubrid/databases
+CUBRID_DBMT:/opt/frameworks/cubrid
+CUBRIDVER:CUBRID 2008 R2.0 (8.2.0.1033)
+BROKERVER:VERSION 8.2.0.1033
+HOSTMONTAB0:OFF
+HOSTMONTAB1:OFF
+HOSTMONTAB2:OFF
+HOSTMONTAB3:OFF
+osinfo:unknown
+

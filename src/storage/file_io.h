@@ -60,7 +60,16 @@
 #define FILEIO_FIRST_BACKUP_VOL_INFO      0
 #define FILEIO_SECOND_BACKUP_VOL_INFO     1
 #define FILEIO_NUM_THREADS_AUTO           0
-#define FILEIO_MAX_BACKUP_PATH_LENGTH     PATH_MAX
+
+#if defined(WINDOWS)
+#define STR_PATHSLASH "\\"
+#else /* WINDOWS */
+#define STR_PATHSLASH "/"
+#endif /* WINDOWS */
+
+/* If the last character of path string is PATHSLASH, don't append PATHSLASH */
+#define FILEIO_PATH_SEPARATOR(path) \
+  (path[strlen(path) - 1] == PATHSLASH ? "" : STR_PATHSLASH)
 
 typedef enum
 {
@@ -126,6 +135,13 @@ typedef enum
   FILEIO_BACKUP_READ		/* access backup device for read */
 } FILEIO_BACKUP_TYPE;
 
+typedef enum
+{
+  FILEIO_LOCKF,
+  FILEIO_RUN_AWAY_LOCKF,
+  FILEIO_NOT_LOCKF
+} FILEIO_LOCKF_TYPE;
+
 /* Reserved area of FILEIO_PAGE */
 typedef struct fileio_page_reserved FILEIO_PAGE_RESERVED;
 struct fileio_page_reserved
@@ -184,14 +200,15 @@ struct fileio_backup_header
 				   NOTE: a union would be better. */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic
 					   Unix utility */
-  float db_compatibility;       /* Compatibility of the database against the
-                                   current release of CUBRID */
-  int bk_hdr_version;           /* For future compatibility checking */
+  float db_compatibility;	/* Compatibility of the database against the
+				   current release of CUBRID */
+  int bk_hdr_version;		/* For future compatibility checking */
   INT64 db_creation;		/* Database creation time */
-  INT64 at_time;		/* Time of backup */
+  INT64 start_time;		/* Time of backup start */
+  INT64 end_time;		/* Time of backup end */
   char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
-  char db_fullname[FILEIO_MAX_BACKUP_PATH_LENGTH];	/* Fullname of backed up database.
-							   Really more than one byte */
+  char db_fullname[PATH_MAX];	/* Fullname of backed up database.
+				   Really more than one byte */
   PGLENGTH db_iopagesize;	/* Size of database pages */
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following
 				 * level 0: Full backup, every database page
@@ -212,10 +229,10 @@ struct fileio_backup_header
   FILEIO_BACKUP_RECORD_INFO previnfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
 
   /* Backward chain to preceding backup volume. */
-  char db_prec_bkvolname[FILEIO_MAX_BACKUP_PATH_LENGTH];
+  char db_prec_bkvolname[PATH_MAX];
 
   /* Forward chain to next backup volume. Note not implemented yet. */
-  char db_next_bkvolname[FILEIO_MAX_BACKUP_PATH_LENGTH];
+  char db_next_bkvolname[PATH_MAX];
 
   int bkpagesize;		/* size of backup page */
   FILEIO_ZIP_METHOD zip_method;	/* compression method  */
@@ -227,9 +244,9 @@ struct fileio_backup_header
 typedef struct fileio_backup_buffer FILEIO_BACKUP_BUFFER;
 struct fileio_backup_buffer
 {
-  char loc_db_fullname[FILEIO_MAX_BACKUP_PATH_LENGTH];	/* Fullname specified in
-							   the database-loc-file */
-  char log_path[FILEIO_MAX_BACKUP_PATH_LENGTH];	/* for restore */
+  char loc_db_fullname[PATH_MAX];	/* Fullname specified in
+					   the database-loc-file */
+  char log_path[PATH_MAX];	/* for restore */
   LOG_LSA last_chkpt_lsa;	/* The chkpt_lsa of the highest level
 				 * backup volume in the restore session. */
   int vdes;			/* Open descriptor of backup device */
@@ -243,10 +260,10 @@ struct fileio_backup_buffer
 
   int dtype;			/* Set to the type (dir, file, dev) */
   int iosize;			/* Optimal I/O pagesize for backup device */
-  FSIZE_T count;		/* Number of current buffered bytes */
-  FSIZE_T voltotalio;		/* Total number of bytes that have been
+  int count;			/* Number of current buffered bytes */
+  INT64 voltotalio;		/* Total number of bytes that have been
 				   either read or written (current volume) */
-  FSIZE_T alltotalio;		/* total for all volumes */
+  INT64 alltotalio;		/* total for all volumes */
   char *buffer;			/* Pointer to the buffer */
   char *ptr;			/* Pointer to the first buffered byte when
 				 * reading and pointer to the next byte to
@@ -271,7 +288,7 @@ struct fileio_backup_db_buffer
   int vdes;			/* Open file descriptor of device name for
 				   writing purposes */
   VOLID volid;			/* Identifier of volume to backup/restore */
-  int nbytes;			/* Number of bytes of file */
+  INT64 nbytes;			/* Number of bytes of file */
   const char *vlabel;		/* Pointer to file name to backup */
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
 };
@@ -341,9 +358,11 @@ struct io_backup_session
   FILEIO_BACKUP_BUFFER bkup;	/* Buffering area for backup device  */
   FILEIO_BACKUP_DB_BUFFER dbfile;	/* Buffer area for database files */
   FILEIO_THREAD_INFO read_thread_info;	/* read-threads info */
-  FILE *verbose_fp;         /* Backupdb/Restoredb status msg */
+  FILE *verbose_fp;		/* Backupdb/Restoredb status msg */
 };
 
+extern int fileio_open (const char *vlabel, int flags, int mode);
+extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *vlabel, VOLID volid, DKNPAGES npages,
 			  bool sweep_clean, bool dolock, bool dosync);
@@ -479,8 +498,7 @@ extern int fileio_list_restore (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_LEVEL level, bool newvolpath);
 extern int fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
 					 FILEIO_BACKUP_SESSION * session,
-					 char *filename, VOLID * volid,
-					 int *vol_nbytes);
+					 char *filename, VOLID * volid);
 extern int fileio_restore_volume (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session,
 				  char *to_vlabel, char *verbose_to_vlabel,
@@ -513,7 +531,8 @@ extern int fileio_request_user_response (THREAD_ENTRY * thread_p,
 					 int range_low, int range_high,
 					 const char *secondary_prompt,
 					 int reprompt_value);
-
+extern FILEIO_LOCKF_TYPE fileio_lock_la (const char *db_fullname,
+					 const char *lock_path, int vdes);
 #if !defined(WINDOWS)
 extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);

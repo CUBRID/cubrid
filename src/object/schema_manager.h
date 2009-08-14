@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -149,7 +149,6 @@ extern int sm_coerce_object_domain (TP_DOMAIN * domain, MOP object,
 
 /* Extra cached state */
 extern int sm_clean_class (MOP classmop, SM_CLASS * class_);
-extern void sm_reset_transaction_cache (SM_CLASS * class_);
 
 /* Statistics functions */
 extern SM_CLASS *sm_get_class_with_statistics (MOP classop);

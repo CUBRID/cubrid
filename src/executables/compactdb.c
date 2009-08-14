@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -113,10 +113,12 @@ compactdb (UTIL_FUNCTION_ARG * arg)
       return ER_GENERIC_ERROR;
     }
 
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("dba", NULL))
-      || (error = db_restart (arg->argv0, true, database_name)))
+      || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
       fprintf (stderr, "%s: %s.\n\n", exec_name, db_error_string (3));
       status = error;
@@ -150,6 +152,10 @@ compactdb_start (bool verbose_flag)
    * Build class name table
    */
   class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ);
+  if (class_table == NULL)
+    {
+      return 1;
+    }
 
   if (PRM_COMPACTDB_PAGE_RECLAIM_ONLY == 1)
     {
@@ -209,23 +215,26 @@ phase2:
 
   for (i = 0; i < class_table->num; i++)
     {
-      if (!WS_MARKED_DELETED (class_table->mops[i]))
+      ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
+      if (class_ptr == NULL)
 	{
-	  ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
-	  if (verbose_flag)
-	    {
-	      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				      MSGCAT_UTIL_SET_COMPACTDB,
-				      COMPACTDB_MSG_CLASS),
-		      class_ptr->header.name);
-	    }
-	  hfid = sm_heap ((MOBJ) class_ptr);
-	  if (hfid->vfid.fileid == NULL_FILEID)
-	    {
-	      continue;
-	    }
-	  (void) heap_reclaim_addresses (NULL, hfid);
+	  continue;
 	}
+
+      if (verbose_flag)
+	{
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
+				  MSGCAT_UTIL_SET_COMPACTDB,
+				  COMPACTDB_MSG_CLASS),
+		  class_ptr->header.name);
+	}
+      hfid = sm_heap ((MOBJ) class_ptr);
+      if (hfid->vfid.fileid == NULL_FILEID)
+	{
+	  continue;
+	}
+      (void) heap_reclaim_addresses (NULL, hfid);
+
     }
 
 phase3:
@@ -273,6 +282,11 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 
   /* Get the class data */
   ws_find (class_, (MOBJ *) & class_ptr);
+  if (class_ptr == NULL)
+    {
+      return;
+    }
+
   class_oid = ws_oid (class_);
 
   if (verbose_flag)
@@ -446,11 +460,11 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_GET_OID (value);
+	    ref_oid = DB_PULL_OID (value);
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_GET_OBJECT (value));
+	    ref_oid = WS_OID (DB_PULL_OBJECT (value));
 	  }
 
 	if (OID_ISNULL (ref_oid))
@@ -692,7 +706,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        */
       success = locator_update_index (NULL, rec, &oldrec, NULL, 0,
 				      obj_oid, class_oid, SINGLE_ROW_UPDATE,
-				      (HEAP_SCANCACHE *) NULL, false, false);
+				      (HEAP_SCANCACHE *) NULL, false, false,
+				      REPL_INFO_TYPE_STMT_NORMAL);
     }
   else
     {

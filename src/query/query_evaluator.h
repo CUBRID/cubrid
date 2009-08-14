@@ -321,8 +321,7 @@ struct like_eval_term
 {
   REGU_VARIABLE *src;
   REGU_VARIABLE *pattern;
-  int esc_char_set;
-  char esc_char;
+  REGU_VARIABLE *esc_char;
 };
 
 typedef struct eval_term EVAL_TERM;

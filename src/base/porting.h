@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -55,6 +55,8 @@
 #include <sys/timeb.h>
 #include <time.h>
 #include <sys/locking.h>
+#include <windows.h>
+#include <winbase.h>
 
 #define MAP_FAILED  NULL
 
@@ -67,7 +69,9 @@
 #define log2(x)                 (log ((double) x) / log ((double) 2))
 #define realpath(path, resolved_path) \
         _fullpath(resolved_path, path, _MAX_PATH)
-#define sleep(x) Sleep(1000*x)
+
+#define sleep(sec) Sleep(1000*(sec))
+#define usleep(usec) Sleep((usec)/1000)
 
 #define mkdir(dir, mode)        _mkdir(dir)
 #define getpid()                _getpid()
@@ -86,6 +90,8 @@
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define vsnprintf           _vsprintf_p
+#define fileno		_fileno
+#define localtime_r(time, tm)   localtime_s(tm, time)
 
 #if 0
 #define O_RDONLY                _O_RDONLY
@@ -242,6 +248,12 @@ extern int free_space (const char *);
 #endif
 
 #if defined(WINDOWS)
+#define difftime64(time1, time2) _difftime64(time1, time2)
+#else /* !WINDOWS */
+#define difftime64(time1, time2) difftime(time1, time2)
+#endif /* !WINDOWS */
+
+#if defined(WINDOWS)
 #ifndef wcswcs
 #define wcswcs(ws1, ws2)     wcsstr((ws1), (ws2))
 #endif
@@ -288,6 +300,9 @@ extern char *strsep (char **stringp, const char *delim);
 extern char *getpass (const char *prompt);
 #endif
 
+extern int utona (unsigned int u, char *s, size_t n);
+extern int itona (int i, char *s, size_t n);
+
 #define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
 #define CAST_BUFLEN (int)
@@ -329,6 +344,10 @@ extern void os_send_signal (const int sig_no);
 #if defined(WINDOWS)
 #define atoll(a)	_atoi64((a))
 #define llabs(a)	_abs64((a))
+#endif
+
+#if defined(WINDOWS)
+int setenv (const char *name, const char *value, int overwrite);
 #endif
 
 #endif /* _PORTING_H_ */

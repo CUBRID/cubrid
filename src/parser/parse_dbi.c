@@ -976,7 +976,7 @@ pt_string_to_db_domain (const char *s, const char *class_name)
   if (parser)
     {
       dtp = parser_parse_string (parser, stmt);
-      if (!pt_has_error (parser))
+      if (!pt_has_error (parser) && dtp)
 	{
 	  dt = *dtp;
 	  if (dt && (dt->node_type == PT_DATA_TYPE))

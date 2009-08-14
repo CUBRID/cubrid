@@ -1,0 +1,4 @@
+task:addtrigger
+status:failure
+note: invalid use of keyword 'test', expecting { name }.
+

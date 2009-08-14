@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -24,10 +24,6 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#ifndef NLERR
-#define NLERR   (nl_catd) -1
-#endif
 
 #undef HAVE_NL_TYPES_H
 #ifdef HAVE_NL_TYPES_H
@@ -59,6 +55,7 @@
 #include "message_catalog.h"
 #include "environment_variable.h"
 #include "error_code.h"
+#include "error_manager.h"
 #include "language_support.h"
 #if defined(WINDOWS)
 #include "intl_support.h"
@@ -141,17 +138,23 @@ catopen (const char *name, int type)
   if (name == NULL || *name == '\0')
     {
       errno = EINVAL;
-      return (NLERR);
+      return NULL;
     }
 
   /* is it absolute path ? if yes, load immediately */
   if (strchr (name, '/') != NULL)
-    return (load_msgcat (name));
+    {
+      return load_msgcat (name);
+    }
 
   if (type == NL_CAT_LOCALE)
-    lang = setlocale (LC_MESSAGES, NULL);
+    {
+      lang = setlocale (LC_MESSAGES, NULL);
+    }
   else
-    lang = getenv ("LANG");
+    {
+      lang = getenv ("LANG");
+    }
 
   if (lang == NULL || *lang == '\0' || strlen (lang) > ENCODING_LEN
       || (lang[0] == '.' && (lang[1] == '\0'
@@ -161,31 +164,46 @@ catopen (const char *name, int type)
       lang = (char *) "C";
     }
 
-  if ((plang = cptr1 = strdup (lang)) == NULL)
-    return (NLERR);
-  if ((cptr = strchr (cptr1, '@')) != NULL)
-    *cptr = '\0';
+  plang = cptr1 = strdup (lang);
+  if (cptr1 == NULL)
+    {
+      return NULL;
+    }
+
+  cptr = strchr (cptr1, '@');
+  if (cptr != NULL)
+    {
+      *cptr = '\0';
+    }
+
   pter = pcode = (char *) "";
-  if ((cptr = strchr (cptr1, '_')) != NULL)
+  cptr = strchr (cptr1, '_');
+  if (cptr != NULL)
     {
       *cptr++ = '\0';
       pter = cptr1 = cptr;
     }
-  if ((cptr = strchr (cptr1, '.')) != NULL)
+
+  cptr = strchr (cptr1, '.');
+  if (cptr != NULL)
     {
       *cptr++ = '\0';
       pcode = cptr;
     }
 
-  if ((nlspath = getenv ("NLSPATH")) == NULL)
-    nlspath = (char *) DEFAULT_NLS_PATH;
+  nlspath = getenv ("NLSPATH");
+  if (nlspath == NULL)
+    {
+      nlspath = (char *) DEFAULT_NLS_PATH;
+    }
 
-  if ((base = cptr = strdup (nlspath)) == NULL)
+  base = cptr = strdup (nlspath);
+  if (cptr == NULL)
     {
       saverr = errno;
       free (plang);
       errno = saverr;
-      return (NLERR);
+      return NULL;
     }
 
   while ((nlspath = strsep (&cptr, ":")) != NULL)
@@ -219,11 +237,14 @@ catopen (const char *name, int type)
 		      /* fallthrough */
 		    default:
 		      if (pathP - path >= PATH_MAX - 1)
-			goto too_long;
+			{
+			  goto too_long;
+			}
 		      *(pathP++) = *nlspath;
 		      continue;
 		    }
 		  ++nlspath;
+
 		put_tmpptr:
 		  spcleft = PATH_MAX - (CAST_STRLEN (pathP - path)) - 1;
 		  if (strlcpy (pathP, tmpptr, spcleft) >= (size_t) spcleft)
@@ -232,14 +253,16 @@ catopen (const char *name, int type)
 		      free (plang);
 		      free (base);
 		      errno = ENAMETOOLONG;
-		      return (NLERR);
+		      return NULL;
 		    }
 		  pathP += strlen (tmpptr);
 		}
 	      else
 		{
 		  if (pathP - path >= PATH_MAX - 1)
-		    goto too_long;
+		    {
+		      goto too_long;
+		    }
 		  *(pathP++) = *nlspath;
 		}
 	    }
@@ -248,7 +271,7 @@ catopen (const char *name, int type)
 	    {
 	      free (plang);
 	      free (base);
-	      return (load_msgcat (path));
+	      return load_msgcat (path);
 	    }
 	}
       else
@@ -258,10 +281,12 @@ catopen (const char *name, int type)
 	  goto put_tmpptr;
 	}
     }
+
   free (plang);
   free (base);
   errno = ENOENT;
-  return (NLERR);
+
+  return NULL;
 }
 
 char *
@@ -272,7 +297,7 @@ catgets (nl_catd catd, int set_id, int msg_id, const char *s)
   struct nls_msg_hdr *msg_hdr;
   int l, u, i, r;
 
-  if (catd == NULL || catd == NLERR)
+  if (catd == NULL)
     {
       errno = EBADF;
       /* LINTED interface problem */
@@ -346,7 +371,7 @@ notfound:
 int
 catclose (nl_catd catd)
 {
-  if (catd == NULL || catd == NLERR)
+  if (catd == NULL)
     {
       errno = EBADF;
       return (-1);
@@ -386,12 +411,12 @@ load_msgcat (const char *path)
 			    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (file_handle == NULL)
     {
-      return NLERR;
+      return NULL;
     }
   if (stat (path, &st) != 0)
     {
       CloseHandle (file_handle);
-      return NLERR;
+      return NULL;
     }
 
   map_handle =
@@ -402,13 +427,16 @@ load_msgcat (const char *path)
       data = MapViewOfFile (map_handle, FILE_MAP_READ, 0, 0, 0);
     }
 #else
-  if ((fd = open (path, O_RDONLY)) == -1)
-    return (NLERR);
+  fd = open (path, O_RDONLY);
+  if (fd == -1)
+    {
+      return NULL;
+    }
 
   if (fstat (fd, &st) != 0)
     {
       close (fd);
-      return (NLERR);
+      return NULL;
     }
 
   data = mmap (0, (size_t) st.st_size, PROT_READ, MAP_SHARED, fd, (off_t) 0);
@@ -416,7 +444,9 @@ load_msgcat (const char *path)
 #endif
 
   if (data == MAP_FAILED)
-    return (NLERR);
+    {
+      return NULL;
+    }
 
   if (ntohl ((UINT32) ((struct nls_cat_hdr *) data)->_magic) != NLS_MAGIC)
     {
@@ -427,10 +457,11 @@ load_msgcat (const char *path)
       munmap (data, (size_t) st.st_size);
 #endif
       errno = EINVAL;
-      return (NLERR);
+      return NULL;
     }
 
-  if ((catd = malloc (sizeof (*catd))) == NULL)
+  catd = malloc (sizeof (*catd));
+  if (catd == NULL)
     {
 #if defined(WINDOWS)
       UnmapViewOfFile (data);
@@ -438,7 +469,7 @@ load_msgcat (const char *path)
 #else
       munmap (data, (size_t) st.st_size);
 #endif
-      return (NLERR);
+      return NULL;
     }
 
   catd->_data = data;
@@ -446,7 +477,7 @@ load_msgcat (const char *path)
 #if defined(WINDOWS)
   catd->map_handle = map_handle;
 #endif
-  return (catd);
+  return catd;
 }
 #endif /* !HAVE_NL_TYPES_H */
 
@@ -480,13 +511,17 @@ msgcat_init (void)
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
       if (msgcat_System[i].msg_catd == NULL)
-	msgcat_System[i].msg_catd = msgcat_open (msgcat_System[i].name);
+	{
+	  msgcat_System[i].msg_catd = msgcat_open (msgcat_System[i].name);
+	}
     }
 
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
       if (msgcat_System[i].msg_catd == NULL)
-	return ER_FAILED;
+	{
+	  return ER_FAILED;
+	}
     }
 
   return NO_ERROR;
@@ -508,7 +543,9 @@ msgcat_final (void)
       if (msgcat_System[i].msg_catd != NULL)
 	{
 	  if (msgcat_close (msgcat_System[i].msg_catd) != NO_ERROR)
-	    rc = ER_FAILED;
+	    {
+	      rc = ER_FAILED;
+	    }
 	  msgcat_System[i].msg_catd = NULL;
 	}
     }
@@ -532,13 +569,18 @@ msgcat_message (int cat_id, int set_id, int msg_id)
   static char *empty = (char *) "";
 
   if (cat_id < 0 || ((size_t) cat_id) >= MSGCAT_SYSTEM_DIM)
-    return NULL;
+    {
+      return NULL;
+    }
+
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
       msgcat_System[cat_id].msg_catd =
 	msgcat_open (msgcat_System[cat_id].name);
       if (msgcat_System[cat_id].msg_catd == NULL)
-	return NULL;
+	{
+	  return NULL;
+	}
     }
 
   msg = msgcat_gets (msgcat_System[cat_id].msg_catd, set_id, msg_id, NULL);
@@ -577,17 +619,27 @@ msgcat_open (const char *name)
   snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
 	    lang_name (), name);
   catd = catopen (path, 0);
-  if (catd == NLERR)
+  if (catd == NULL)
     {
       /* try once more as default language */
       snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
 		LANG_NAME_DEFAULT, name);
       catd = catopen (path, 0);
-      if (catd == NLERR)
-	return NULL;
+      if (catd == NULL)
+	{
+	  return NULL;
+	}
     }
 
   msg_catd = (MSG_CATD) malloc (sizeof (*msg_catd));
+  if (msg_catd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (*msg_catd));
+      catclose (catd);
+      return NULL;
+    }
+
   msg_catd->file = strdup (path);
   msg_catd->catd = (void *) catd;
 
@@ -630,7 +682,9 @@ msgcat_close (MSG_CATD msg_catd)
   free ((void *) msg_catd->file);
   free (msg_catd);
   if (catclose (catd) < 0)
-    return ER_FAILED;
+    {
+      return ER_FAILED;
+    }
 
   return NO_ERROR;
 }

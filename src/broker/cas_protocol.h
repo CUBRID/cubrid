@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -38,7 +38,12 @@
 #define SRV_CON_DBNAME_SIZE		32
 #define SRV_CON_DBUSER_SIZE		32
 #define SRV_CON_DBPASSWD_SIZE		32
-#define SRV_CON_DB_INFO_SIZE		(SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE)
+#define SRV_CON_URL_SIZE                512
+#define SRV_CON_DB_INFO_SIZE \
+        (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE + \
+         SRV_CON_URL_SIZE)
+#define SRV_CON_DB_INFO_SIZE_PRIOR_8_2_0 \
+        (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE)
 
 typedef enum
 {
@@ -52,10 +57,32 @@ typedef enum
   CAS_CLIENT_TYPE_MAX = 5
 } CAS_CLIENT_TYPE;
 
-#define BROKER_INFO_SIZE				4
-#define BROKER_INFO_DBMS_TYPE(BROKER_INFO)		((BROKER_INFO)[0])
-#define BROKER_INFO_KEEP_CONNECTION(BROKER_INFO)	((BROKER_INFO)[1])
-#define BROKER_INFO_STATEMENT_POOLING(BROKER_INFO)	((BROKER_INFO)[2])
+typedef enum
+{
+  CAS_INFO_STATUS_INACTIVE = 0,
+  CAS_INFO_STATUS_ACTIVE = 1
+} CAS_INFO_STATUS_TYPE;
+
+typedef enum
+{
+  CAS_INFO_STATUS = 0,
+  CAS_INFO_RESERVED_1 = 1,
+  CAS_INFO_RESERVED_2 = 2,
+  CAS_INFO_RESERVED_3 = 3
+} CAS_INFO_TYPE;
+
+#define CAS_INFO_SIZE			(4)
+#define CAS_INFO_RESERVED_DEFAULT	(-1)
+
+#define MSG_HEADER_INFO_SIZE        CAS_INFO_SIZE
+#define MSG_HEADER_MSG_SIZE         ((int) sizeof(int))
+#define MSG_HEADER_SIZE             (MSG_HEADER_INFO_SIZE +  MSG_HEADER_MSG_SIZE)
+
+#define BROKER_INFO_SIZE			4
+#define BROKER_INFO_DBMS_TYPE                   0
+#define BROKER_INFO_KEEP_CONNECTION             1
+#define BROKER_INFO_STATEMENT_POOLING           2
+#define BROKER_INFO_CCI_PCONNECT		3
 
 #define CAS_KEEP_CONNECTION_OFF			0
 #define CAS_KEEP_CONNECTION_ON			1
@@ -65,6 +92,9 @@ typedef enum
 
 #define CAS_STATEMENT_POOLING_OFF		0
 #define CAS_STATEMENT_POOLING_ON		1
+
+#define CCI_PCONNECT_OFF                        0
+#define CCI_PCONNECT_ON                         1
 
 #define CAS_REQ_HEADER_JDBC	"JDBC"
 #define CAS_REQ_HEADER_ODBC	"ODBC"

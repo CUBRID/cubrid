@@ -52,16 +52,16 @@ extern int ini_hassec (const char *key);
 extern int ini_seccmp (const char *key1, const char *key2);
 
 extern const char *ini_getstr (INI_TABLE * ini, const char *sec,
-			       const char *key, const char *def);
+			       const char *key, const char *def, int *lineno);
 extern int ini_getint (INI_TABLE * ini, const char *sec, const char *key,
-		       int def);
+		       int def, int *lineno);
 extern int ini_getuint (INI_TABLE * ini, const char *sec, const char *key,
-			int def);
+			int def, int *lineno);
 extern int ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key,
-			    int def, int min);
+			    int def, int min, int *lineno);
 extern int ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key,
-			    int def, int max);
+			    int def, int max, int *lineno);
 extern int ini_gethex (INI_TABLE * ini, const char *sec, const char *key,
-		       int def);
+		       int def, int *lineno);
 
 #endif /* _INI_PARSER_H_ */

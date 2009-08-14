@@ -1,0 +1,202 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CCI 라이브러리</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nCCI를 이용한 프로그램 작성\nCCI 라이브러리");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_app_cci_library.htm\">CCI를 이용한 프로그램 작성<\/a> &nbsp;&gt;&nbsp; CCI 라이브러리<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CCI 라이브러리</h4>
+<p>CCI 라이브러리는 CUBRID에서 제공되는 C 언어 인터페이스다. CCI는 브로커를 통해서 접속하므로 다른 인터페이스인 JDBC, PHP, ODBC 등과 동일하게 관리될 수 있다. 실제로 CCI는 PHP, ODBC, Python, Ruby 인터페이스를 구현하는 하부 구조로 사용되었다.</p>
+<p><img height="257" src="images/image20.jpg" width="400" border="0" alt="" /></p>
+<h5><a name="install" id="install">CCI 설치 및 구성</a></h5>
+<p>CCI는 CUBRID 설치 과정에서 Broker에 포함되어 함께 배포되므로 CUBRID 설치 외의 별도의 작업은 필요 없다.</p>
+<p><img title="image025.png" height="281" src="images/img7.gif" width="556" border="0" alt="" /></p>
+<table border="1">
+<colgroup>
+<col />
+<col />
+<col /></colgroup>
+<tbody>
+<tr>
+<th width="160">
+<p>&#160;</p>
+</th>
+<th width="120">
+<p>Windows</p>
+</th>
+<th width="140">
+<p>Unix/Linux</p>
+</th>
+</tr>
+<tr>
+<td width="160">
+<p>C 헤더파일</p>
+</td>
+<td width="120">
+<p>include/cas_cci.h</p>
+</td>
+<td width="140">
+<p>include/cas_cci.h</p>
+</td>
+</tr>
+<tr>
+<td width="160">
+<p>정적 라이브러리(32비트용)</p>
+</td>
+<td width="120">
+<p>lib/cascci.lib</p>
+</td>
+<td width="140">
+<p>lib/libcascci.a</p>
+</td>
+</tr>
+<tr>
+<td width="160">
+<p>정적 라이브러리(64비트용)</p>
+</td>
+<td width="120">
+<p>lib/cascci_x64.lib</p>
+</td>
+<td width="140">
+<p>lib64/libcascci.a</p>
+</td>
+</tr>
+<tr>
+<td width="160">
+<p>동적 라이브러리(32비트용)</p>
+</td>
+<td width="120">
+<p>lib/cascci.lib</p>
+<p>bin/cascci.dll</p>
+</td>
+<td width="140">
+<p>lib/libcascci.so</p>
+</td>
+</tr>
+<tr>
+<td width="160">
+<p>동적 라이브러리(64비트용)</p>
+</td>
+<td width="120">
+<p>llib/cascci_x64.lib</p>
+<p>bin/cascci_x64.dll</p>
+</td>
+<td width="140">
+<p>lib64/libcascci.so.8.1.0</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h5>CCI 사용</h5>
+<h6>CCI 응용 프로그램의 기본 구조</h6>
+<p>CCI를 이용하는 응용 프로그램은 기본적으로 CAS와 연결하기, 질의 준비, 질의 수행, 응답 처리, 연결 끊기의 과정을 통해 CUBRID를 이용하게 된다. 각 과정에서 CCI는 연결 핸들(Connection Handle), 질의 핸들(Query Handle), 응답 핸들(Response Handle)을 통해 응용 프로그램과 소통한다.</p>
+<p>다음은 CCI를 이용하는 응용 프로그램의 구조와 각 단계별로 사용되는 함수를 나타낸다.</p>
+<p><img title="gs4-25.jpg" src="images/image026.jpg" width="611" height="606" border="0" alt="" />&#160;</p>
+<h6>사용 방법</h6>
+<p>CCI를 이용한 응용 프로그램을 작성했다면 프로그램 특성에 따라 정적 링크 형태로 프로그램을 수행시킬 것인지, 아니면 동적으로 CCI를 호출하여 사용할 것인지를 결정하여 프로그램을 빌드한다. <a href="#install">CCI 설치 및 구성</a>의 표를 참조하여 사용할 라이브러리를 결정한다.</p>
+<p></p>
+<p>다음은 유닉스/Linux에서 동적인 라이브러리를 사용하여 링크하는 Makefile의 예제이다.</p>
+<p class="code">CC=gcc<br />
+CFLAGS = -g -Wall -I. -I$CUBRID/include<br />
+LDFLAGS = -L$CUBRID/lib -lcascci&#160;-lnsl<br />
+TEST_OBJS = test.o<br />
+EXES = test<br />
+all: $(EXES)<br />
+test: $(TEST_OBJS)<br />
+&#160;$(CC) -o $@ $(TEST_OBJS) $(LDFLAGS)</p>
+<p>아래는 Windows에서 정적 라이브러리를 적용하기 위한 설정이다.</p>
+<p><img src="images/image029.png" width="549" height="340" border="0" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

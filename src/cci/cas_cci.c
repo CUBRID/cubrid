@@ -139,8 +139,9 @@ static int glo_cmd_init (T_NET_BUF * net_buf, char glo_cmd, char *oid_str,
 static int glo_cmd_common (int con_h_id, T_NET_BUF * net_buf,
 			   char **result_msg, int *result_msg_size,
 			   T_CCI_ERROR * err_buf);
-static int glo_cmd_ex (SOCKET sock_fd, T_NET_BUF * net_buf, char **result_msg,
-		       int *result_msg_size, T_CCI_ERROR * err_buf);
+static int glo_cmd_ex (T_CON_HANDLE * con_handle, T_NET_BUF * net_buf,
+		       char **result_msg, int *result_msg_size,
+		       T_CCI_ERROR * err_buf);
 
 
 #ifdef CCI_DEBUG
@@ -254,6 +255,7 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 				char *db_user, char *dbpasswd)
 {
   int con_handle_id;
+  unsigned char ip_addr[4];
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -268,6 +270,8 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
     return CCI_ER_CONNECT;
 #endif
 
+  hm_ip_str_to_addr (ip, ip_addr);
+
   MUTEX_LOCK (con_handle_table_mutex);
 
   if (init_flag == 0)
@@ -276,7 +280,13 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
       init_flag = 1;
     }
 
-  con_handle_id = hm_con_handle_alloc (ip, port, db_name, db_user, dbpasswd);
+  con_handle_id = hm_get_con_from_pool (ip_addr, port, db_name, db_user,
+					dbpasswd);
+  if (con_handle_id < 0)
+    {
+      con_handle_id = hm_con_handle_alloc (ip, port, db_name, db_user,
+					   dbpasswd);
+    }
 
   MUTEX_UNLOCK (con_handle_table_mutex);
 
@@ -301,6 +311,7 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
+  bool close_flag = true;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_disconnect %d", con_h_id));
@@ -332,18 +343,29 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 	}
     }
 
-
-  err_code = qe_con_close (con_handle);
-  if (err_code >= 0)
+  if (con_handle->broker_info[BROKER_INFO_CCI_PCONNECT]
+      && hm_put_con_to_pool (con_h_id) >= 0)
     {
-      MUTEX_LOCK (con_handle_table_mutex);
+      close_flag = false;
       con_handle->ref_count = 0;
-      err_code = hm_con_handle_free (con_h_id);
-      MUTEX_UNLOCK (con_handle_table_mutex);
+      cci_end_tran (con_h_id, CCI_TRAN_ROLLBACK, err_buf);
+      hm_mark_all_stmt_pool_node_available (&con_handle->stmt_pool);
     }
-  else
+
+  if (close_flag)
     {
-      con_handle->ref_count = 0;
+      err_code = qe_con_close (con_handle);
+      if (err_code >= 0)
+	{
+	  MUTEX_LOCK (con_handle_table_mutex);
+	  con_handle->ref_count = 0;
+	  err_code = hm_con_handle_free (con_h_id);
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	}
+      else
+	{
+	  con_handle->ref_count = 0;
+	}
     }
 
   return err_code;
@@ -431,11 +453,15 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
 int
 cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle = NULL;
-  T_REQ_HANDLE *req_handle = NULL;
   int req_handle_id = -1;
   int err_code = 0;
-
+  int con_err_code = 0;
+  int connect_done;
+  int victim_request_id;
+  T_CON_HANDLE *con_handle = NULL;
+  T_REQ_HANDLE *req_handle = NULL;
+  T_REQ_HANDLE *victim_req_handle;
+  T_STMT_POOL_NODE node;
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_prepare %d %d %s", con_id, flag,
@@ -471,6 +497,12 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
+  req_handle_id = hm_get_req_handle_from_pool (con_handle, sql_stmt);
+  if (req_handle_id > 0)
+    {
+      goto prepare_end;
+    }
+
   if (NEED_TO_CONNECT (con_handle))
     {
       err_code = cas_connect (con_handle, err_buf);
@@ -487,16 +519,12 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
-  err_code =
-    qe_prepare (req_handle, con_handle->sock_fd, sql_stmt, flag, err_buf, 0);
+  err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
 
   if (err_code < 0)
     {
       if (con_handle->tran_status == CCI_TRAN_STATUS_START)
 	{
-	  int con_err_code = 0;
-	  int connect_done;
-
 	  con_err_code = cas_connect_with_ret (con_handle, err_buf,
 					       &connect_done);
 
@@ -512,7 +540,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	    }
 
 	  req_handle_content_free (req_handle, 0);
-	  err_code = qe_prepare (req_handle, con_handle->sock_fd, sql_stmt,
+	  err_code = qe_prepare (req_handle, con_handle, sql_stmt,
 				 flag, err_buf, 0);
 
 	  if (err_code < 0)
@@ -526,6 +554,28 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
+      CAS_STATEMENT_POOLING_ON)
+    {
+      hm_make_stmt_pool_node (&node, req_handle->sql_text, req_handle_id);
+      victim_request_id = hm_add_stmt_node_to_pool (&con_handle->stmt_pool,
+						    &node);
+      if (victim_request_id > 0)
+	{
+	  victim_req_handle =
+	    con_handle->req_handle_table[victim_request_id - 1];
+
+	  if (victim_req_handle->handle_type == HANDLE_PREPARE
+	      || victim_req_handle->handle_type == HANDLE_SCHEMA_INFO)
+	    {
+	      err_code = qe_close_req_handle (victim_req_handle, con_handle);
+	    }
+	  hm_req_handle_free (con_handle, victim_request_id,
+			      victim_req_handle);
+	}
+    }
+
+prepare_end:
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
 
@@ -842,7 +892,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 	}
     }
 
-  if (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) ==
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
       CAS_STATEMENT_POOLING_ON)
     {
 
@@ -858,7 +908,6 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       T_THREAD thrid;
       err_buf_reset (&(con_handle->thr_arg.err_buf));
       con_handle->thr_arg.req_handle = req_handle;
-      con_handle->thr_arg.sock_fd = con_handle->sock_fd;
       con_handle->thr_arg.flag = flag ^ CCI_EXEC_THREAD;
       con_handle->thr_arg.max_col_size = max_col_size;
       con_handle->thr_arg.ref_count_ptr = &(con_handle->ref_count);
@@ -867,8 +916,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       return CCI_ER_THREAD_RUNNING;
     }
 
-  err_code =
-    qe_execute (req_handle, con_handle->sock_fd, flag, max_col_size, err_buf);
+  err_code = qe_execute (req_handle, con_handle, flag, max_col_size, err_buf);
 
   if (err_code < 0 && con_handle->tran_status == CCI_TRAN_STATUS_START)
     {
@@ -888,16 +936,15 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 	  /* error is caused by connection fail */
 	  req_handle_content_free (req_handle, 1);
 	  err_code = qe_prepare (req_handle,
-				 con_handle->sock_fd,
+				 con_handle,
 				 req_handle->sql_text,
 				 req_handle->prepare_flag, err_buf, 1);
 	  if (err_code < 0)
 	    {
 	      goto execute_end;
 	    }
-	  err_code =
-	    qe_execute (req_handle, con_handle->sock_fd, flag, max_col_size,
-			err_buf);
+	  err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
+				 err_buf);
 	}
     }
 
@@ -905,22 +952,20 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
      the error, CAS_ER_STMT_POOLING, is returned.
      In this case, prepare and execute have to be executed again.
    */
-  if (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) ==
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
       CAS_STATEMENT_POOLING_ON)
     {
       while (err_code == CAS_ER_STMT_POOLING)
 	{
 	  req_handle_content_free (req_handle, 1);
-	  err_code =
-	    qe_prepare (req_handle, con_handle->sock_fd, req_handle->sql_text,
-			req_handle->prepare_flag, err_buf, 1);
+	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+				 req_handle->prepare_flag, err_buf, 1);
 	  if (err_code < 0)
 	    {
 	      goto execute_end;
 	    }
-	  err_code =
-	    qe_execute (req_handle, con_handle->sock_fd, flag, max_col_size,
-			err_buf);
+	  err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
+				 err_buf);
 	}
     }
 
@@ -1010,7 +1055,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  if (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) ==
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
       CAS_STATEMENT_POOLING_ON)
     {
 
@@ -1021,7 +1066,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  err_code = qe_execute_array (req_handle, con_handle->sock_fd, qr, err_buf);
+  err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
 
   if (err_code < 0 && con_handle->tran_status == CCI_TRAN_STATUS_START)
     {
@@ -1040,34 +1085,31 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	{
 	  req_handle_content_free (req_handle, 1);
 	  err_code = qe_prepare (req_handle,
-				 con_handle->sock_fd,
+				 con_handle,
 				 req_handle->sql_text,
 				 req_handle->prepare_flag, err_buf, 1);
 	  if (err_code < 0)
 	    {
 	      goto execute_end;
 	    }
-	  err_code =
-	    qe_execute_array (req_handle, con_handle->sock_fd, qr, err_buf);
+	  err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
 	}
     }
 
-  if (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) ==
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
       CAS_STATEMENT_POOLING_ON)
     {
 
       while (err_code == CAS_ER_STMT_POOLING)
 	{
 	  req_handle_content_free (req_handle, 1);
-	  err_code =
-	    qe_prepare (req_handle, con_handle->sock_fd, req_handle->sql_text,
-			req_handle->prepare_flag, err_buf, 1);
+	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+				 req_handle->prepare_flag, err_buf, 1);
 	  if (err_code < 0)
 	    {
 	      goto execute_end;
 	    }
-	  err_code =
-	    qe_execute_array (req_handle, con_handle->sock_fd, qr, err_buf);
+	  err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
 	}
     }
 
@@ -1230,13 +1272,19 @@ cci_close_req_handle (int req_h_id)
 	}
     }
 
+  if (hm_mark_stmt_pool_node_available (&con_handle->stmt_pool, req_h_id))
+    {
+      goto close_end;
+    }
+
   if (req_handle->handle_type == HANDLE_PREPARE
       || req_handle->handle_type == HANDLE_SCHEMA_INFO)
     {
-      err_code = qe_close_req_handle (req_handle, con_handle->sock_fd);
+      err_code = qe_close_req_handle (req_handle, con_handle);
     }
   hm_req_handle_free (con_handle, req_h_id, req_handle);
 
+close_end:
   con_handle->ref_count = 0;
 
   return err_code;
@@ -1282,9 +1330,8 @@ cci_cursor (int req_h_id, int offset, T_CCI_CURSOR_POS origin,
 	}
     }
 
-  err_code =
-    qe_cursor (req_handle, con_handle->sock_fd, offset, (char) origin,
-	       err_buf);
+  err_code = qe_cursor (req_handle, con_handle, offset, (char) origin,
+			err_buf);
 
   con_handle->ref_count = 0;
 
@@ -1441,7 +1488,7 @@ cci_schema_info (int con_h_id, T_CCI_SCH_TYPE type, char *class_name,
       req_handle_id = hm_req_handle_alloc (con_h_id, &req_handle);
       if (req_handle_id >= 0)
 	{
-	  err_code = qe_schema_info (req_handle, con_handle->sock_fd,
+	  err_code = qe_schema_info (req_handle, con_handle,
 				     (int) type, class_name, attr_name,
 				     flag, err_buf);
 	  if (err_code < 0)
@@ -1554,7 +1601,7 @@ cci_oid_get (int con_h_id, char *oid_str, char **attr_name,
       req_handle_id = hm_req_handle_alloc (con_h_id, &req_handle);
       if (req_handle_id >= 0)
 	{
-	  err_code = qe_oid_get (req_handle, con_handle->sock_fd,
+	  err_code = qe_oid_get (req_handle, con_handle,
 				 oid_str, attr_name, err_buf);
 	  if (err_code < 0)
 	    {
@@ -1613,8 +1660,7 @@ cci_oid_put (int con_h_id, char *oid_str, char **attr_name, char **new_val,
     }
 
   if (err_code >= 0)
-    err_code =
-      qe_oid_put (con_handle->sock_fd, oid_str, attr_name, new_val, err_buf);
+    err_code = qe_oid_put (con_handle, oid_str, attr_name, new_val, err_buf);
 
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
@@ -1666,9 +1712,8 @@ cci_oid_put2 (int con_h_id, char *oid_str, char **attr_name, void **new_val,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_oid_put2 (con_handle->sock_fd, oid_str, attr_name, new_val, a_type,
-		     err_buf);
+      err_code = qe_oid_put2 (con_handle, oid_str, attr_name, new_val, a_type,
+			      err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -1720,8 +1765,10 @@ cci_glo_new (int con_h_id, char *class_name, char *filename, char *oid_str,
     }
 
   if (err_code >= 0)
-    err_code =
-      qe_glo_new (con_handle, class_name, filename, oid_str, err_buf);
+    {
+      err_code = qe_glo_new (con_handle, class_name, filename,
+			     oid_str, err_buf);
+    }
 
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
@@ -1772,7 +1819,9 @@ cci_glo_save (int con_h_id, char *oid_str, char *filename,
     }
 
   if (err_code >= 0)
-    err_code = qe_glo_save (con_handle, oid_str, filename, err_buf);
+    {
+      err_code = qe_glo_save (con_handle, oid_str, filename, err_buf);
+    }
 
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
@@ -1822,7 +1871,9 @@ cci_glo_load (int con_h_id, char *oid_str, int out_fd, T_CCI_ERROR * err_buf)
     }
 
   if (err_code >= 0)
-    err_code = qe_glo_load (con_handle, oid_str, out_fd, err_buf);
+    {
+      err_code = qe_glo_load (con_handle, oid_str, out_fd, err_buf);
+    }
 
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
@@ -1980,9 +2031,8 @@ cci_oid (int con_h_id, T_CCI_OID_CMD cmd, char *oid_str,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_oid_cmd (con_handle->sock_fd, (char) cmd, oid_str, NULL, 0,
-		    err_buf);
+      err_code = qe_oid_cmd (con_handle, (char) cmd, oid_str, NULL, 0,
+			     err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2035,9 +2085,8 @@ cci_oid_get_class_name (int con_h_id, char *oid_str, char *out_buf,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_oid_cmd (con_handle->sock_fd, (char) CCI_OID_CLASS_NAME, oid_str,
-		    out_buf, out_buf_size, err_buf);
+      err_code = qe_oid_cmd (con_handle, (char) CCI_OID_CLASS_NAME, oid_str,
+			     out_buf, out_buf_size, err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2097,7 +2146,7 @@ cci_col_get (int con_h_id, char *oid_str, char *col_attr, int *col_size,
 	err_code = req_handle_id;
       else
 	{
-	  err_code = qe_col_get (req_handle, con_handle->sock_fd, oid_str,
+	  err_code = qe_col_get (req_handle, con_handle, oid_str,
 				 col_attr, col_size, col_type, err_buf);
 	  if (err_code < 0)
 	    hm_req_handle_free (con_handle, req_handle_id, req_handle);
@@ -2156,9 +2205,8 @@ cci_col_size (int con_h_id, char *oid_str, char *col_attr, int *col_size,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_col_size (con_handle->sock_fd, oid_str, col_attr, col_size,
-		     err_buf);
+      err_code = qe_col_size (con_handle, oid_str, col_attr, col_size,
+			      err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2281,9 +2329,8 @@ cci_cursor_update (int req_h_id, int cursor_pos, int index,
 	}
     }
 
-  err_code =
-    qe_cursor_update (req_handle, con_handle->sock_fd, cursor_pos, index,
-		      a_type, value, err_buf);
+  err_code = qe_cursor_update (req_handle, con_handle, cursor_pos, index,
+			       a_type, value, err_buf);
 
   con_handle->ref_count = 0;
 
@@ -2339,9 +2386,8 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_execute_batch (con_handle->sock_fd, num_query, sql_stmt, qr,
-			  err_buf);
+      err_code = qe_execute_batch (con_handle, num_query, sql_stmt, qr,
+				   err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2604,9 +2650,8 @@ cci_get_attr_type_str (int con_h_id, char *class_name, char *attr_name,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_get_attr_type_str (con_handle->sock_fd, class_name, attr_name, buf,
-			      buf_size, err_buf);
+      err_code = qe_get_attr_type_str (con_handle, class_name, attr_name, buf,
+				       buf_size, err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2713,9 +2758,8 @@ cci_savepoint (int con_h_id, T_CCI_SAVEPOINT_CMD cmd, char *savepoint_name,
     }
   else
     {
-      err_code =
-	qe_savepoint_cmd (con_handle->sock_fd, (char) cmd, savepoint_name,
-			  err_buf);
+      err_code = qe_savepoint_cmd (con_handle, (char) cmd, savepoint_name,
+				   err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -2764,8 +2808,7 @@ cci_get_param_info (int req_h_id, T_CCI_PARAM_INFO ** param,
   if (param)
     *param = NULL;
 
-  err_code =
-    qe_get_param_info (req_handle, con_handle->sock_fd, param, err_buf);
+  err_code = qe_get_param_info (req_handle, con_handle, param, err_buf);
 
   con_handle->ref_count = 0;
 
@@ -2798,19 +2841,22 @@ cci_glo_read_data (int con_h_id, char *oid_str, int start_pos, int length,
 #endif
 
   if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+    {
+      return ret_val;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_INT (&net_buf, length);
 
-  ret_val =
-    glo_cmd_common (con_h_id, &net_buf, &result_msg, &result_msg_size,
-		    err_buf);
+  ret_val = glo_cmd_common (con_h_id, &net_buf, &result_msg,
+			    &result_msg_size, err_buf);
   net_buf_clear (&net_buf);
   if (ret_val < 0)
-    return ret_val;
+    {
+      return ret_val;
+    }
 
-  if (result_msg_size - 4 < ret_val)
+  if (result_msg_size - SIZE_INT < ret_val)
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
@@ -2818,7 +2864,7 @@ cci_glo_read_data (int con_h_id, char *oid_str, int start_pos, int length,
 
   if (buf)
     {
-      memcpy (buf, result_msg + 4, ret_val);
+      memcpy (buf, result_msg + SIZE_INT, ret_val);
     }
 
   FREE_MEM (result_msg);
@@ -2837,8 +2883,11 @@ cci_glo_write_data (int con_h_id, char *oid_str, int start_pos, int length,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_write_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_BYTES (&net_buf, buf, length);
@@ -2860,8 +2909,11 @@ cci_glo_insert_data (int con_h_id, char *oid_str, int start_pos, int length,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_insert_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_BYTES (&net_buf, buf, length);
@@ -2883,8 +2935,11 @@ cci_glo_delete_data (int con_h_id, char *oid_str, int start_pos, int length,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_delete_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_INT (&net_buf, length);
@@ -2906,8 +2961,11 @@ cci_glo_truncate_data (int con_h_id, char *oid_str, int start_pos,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_truncate_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
 
@@ -2928,8 +2986,11 @@ cci_glo_append_data (int con_h_id, char *oid_str, int length, char *buf,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_append_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ADD_ARG_BYTES (&net_buf, buf, length);
 
@@ -2949,8 +3010,11 @@ cci_glo_data_size (int con_h_id, char *oid_str, T_CCI_ERROR * err_buf)
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_data_size %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ret_val = glo_cmd_common (con_h_id, &net_buf, NULL, NULL, err_buf);
   net_buf_clear (&net_buf);
@@ -2968,8 +3032,11 @@ cci_glo_compress_data (int con_h_id, char *oid_str, T_CCI_ERROR * err_buf)
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_compress_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ret_val = glo_cmd_common (con_h_id, &net_buf, NULL, NULL, err_buf);
   net_buf_clear (&net_buf);
@@ -2987,8 +3054,11 @@ cci_glo_destroy_data (int con_h_id, char *oid_str, T_CCI_ERROR * err_buf)
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_destroy_data %d", con_h_id));
 #endif
 
-  if ((ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return ret_val;
+  ret_val = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (ret_val < 0)
+    {
+      return ret_val;
+    }
 
   ret_val = glo_cmd_common (con_h_id, &net_buf, NULL, NULL, err_buf);
   net_buf_clear (&net_buf);
@@ -3010,27 +3080,31 @@ cci_glo_like_search (int con_h_id, char *oid_str, int start_pos,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_like_search %d", con_h_id));
 #endif
 
-  if ((err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return err_code;
+  err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_BYTES (&net_buf, search_str, strlen (search_str) + 1);
 
-  err_code =
-    glo_cmd_common (con_h_id, &net_buf, &result_msg, &result_msg_size,
-		    err_buf);
+  err_code = glo_cmd_common (con_h_id, &net_buf, &result_msg,
+			     &result_msg_size, err_buf);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  if (result_msg_size - 4 < 8)
+  if ((result_msg_size - SIZE_INT) < (SIZE_INT + SIZE_INT))
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_INT (*offset, result_msg + 4);
-  NET_STR_TO_INT (*cur_pos, result_msg + 8);
+  NET_STR_TO_INT (*offset, result_msg + SIZE_INT);
+  NET_STR_TO_INT (*cur_pos, result_msg + SIZE_INT + SIZE_INT);
   FREE_MEM (result_msg);
   return 0;
 }
@@ -3050,27 +3124,31 @@ cci_glo_reg_search (int con_h_id, char *oid_str, int start_pos,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_reg_search %d", con_h_id));
 #endif
 
-  if ((err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return err_code;
+  err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_BYTES (&net_buf, search_str, strlen (search_str) + 1);
 
-  err_code =
-    glo_cmd_common (con_h_id, &net_buf, &result_msg, &result_msg_size,
-		    err_buf);
+  err_code = glo_cmd_common (con_h_id, &net_buf, &result_msg,
+			     &result_msg_size, err_buf);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  if (result_msg_size - 4 < 8)
+  if ((result_msg_size - SIZE_INT) < (SIZE_INT + SIZE_INT))
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_INT (*offset, result_msg + 4);
-  NET_STR_TO_INT (*cur_pos, result_msg + 8);
+  NET_STR_TO_INT (*offset, result_msg + SIZE_INT);
+  NET_STR_TO_INT (*cur_pos, result_msg + SIZE_INT + SIZE_INT);
   FREE_MEM (result_msg);
   return 0;
 }
@@ -3090,27 +3168,31 @@ cci_glo_binary_search (int con_h_id, char *oid_str, int start_pos, int length,
   CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_binary_search %d", con_h_id));
 #endif
 
-  if ((err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf)) < 0)
-    return err_code;
+  err_code = glo_cmd_init (&net_buf, glo_cmd, oid_str, err_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
 
   ADD_ARG_INT (&net_buf, start_pos);
   ADD_ARG_BYTES (&net_buf, search_array, length);
 
-  err_code =
-    glo_cmd_common (con_h_id, &net_buf, &result_msg, &result_msg_size,
-		    err_buf);
+  err_code = glo_cmd_common (con_h_id, &net_buf, &result_msg,
+			     &result_msg_size, err_buf);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  if (result_msg_size - 4 < 8)
+  if ((result_msg_size - SIZE_INT) < (SIZE_INT + SIZE_INT))
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_INT (*offset, result_msg + 4);
-  NET_STR_TO_INT (*cur_pos, result_msg + 8);
+  NET_STR_TO_INT (*offset, result_msg + SIZE_INT);
+  NET_STR_TO_INT (*cur_pos, result_msg + SIZE_INT + SIZE_INT);
   FREE_MEM (result_msg);
   return 0;
 }
@@ -3285,7 +3367,7 @@ cci_get_dbms_type (int con_h_id)
     }
   else
     {
-      dbms_type = BROKER_INFO_DBMS_TYPE (con_handle->broker_info);
+      dbms_type = con_handle->broker_info[BROKER_INFO_DBMS_TYPE];
     }
 
   MUTEX_UNLOCK (con_handle_table_mutex);
@@ -3597,9 +3679,8 @@ col_set_add_drop (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_col_set_add_drop (con_handle->sock_fd, col_cmd, oid_str, col_attr,
-			     value, err_buf);
+      err_code = qe_col_set_add_drop (con_handle, col_cmd, oid_str, col_attr,
+				      value, err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -3648,9 +3729,8 @@ col_seq_op (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
 
   if (err_code >= 0)
     {
-      err_code =
-	qe_col_seq_op (con_handle->sock_fd, col_cmd, oid_str, col_attr, index,
-		       value, err_buf);
+      err_code = qe_col_seq_op (con_handle, col_cmd, oid_str, col_attr, index,
+				value, err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -3693,9 +3773,8 @@ fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
-  err_code =
-    qe_fetch (req_handle, con_handle->sock_fd, flag, result_set_index,
-	      err_buf);
+  err_code = qe_fetch (req_handle, con_handle, flag, result_set_index,
+		       err_buf);
 
   con_handle->ref_count = 0;
 
@@ -3718,7 +3797,7 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 
   /* req_handle_table should be managed by list too. */
   if ((*connect) &&
-      (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) ==
+      (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
        CAS_STATEMENT_POOLING_ON))
     {
 
@@ -3738,7 +3817,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 
   *connect = 0;
 
-  if (net_check_cas_request (con_handle->sock_fd) < 0)
+  if (net_check_cas_request (con_handle) < 0)
     {
       if (!IS_INVALID_SOCKET (con_handle->sock_fd))
 	{
@@ -3760,6 +3839,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 			   con_handle->db_passwd,
 			   con_handle->is_first,
 			   err_buf, con_handle->broker_info,
+			   con_handle->cas_info,
 			   &(con_handle->cas_pid), &sock_fd);
 
 
@@ -3813,8 +3893,7 @@ get_query_info (int req_h_id, char log_type, char **out_buf)
 	}
     }
 
-  err_code =
-    qe_get_query_info (req_handle, con_handle->sock_fd, log_type, out_buf);
+  err_code = qe_get_query_info (req_handle, con_handle, log_type, out_buf);
 
   con_handle->ref_count = 0;
 
@@ -3854,7 +3933,7 @@ next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
-  err_code = qe_next_result (req_handle, flag, con_handle->sock_fd, err_buf);
+  err_code = qe_next_result (req_handle, flag, con_handle, err_buf);
 
   con_handle->ref_count = 0;
 
@@ -3871,7 +3950,9 @@ glo_cmd_init (T_NET_BUF * net_buf, char glo_cmd, char *oid_str,
   err_buf_reset (err_buf);
 
   if (ut_str_to_oid (oid_str, &oid) < 0)
-    return CCI_ER_OBJECT;
+    {
+      return CCI_ER_OBJECT;
+    }
 
   net_buf_init (net_buf);
 
@@ -3921,9 +4002,8 @@ glo_cmd_common (int con_h_id, T_NET_BUF * net_buf, char **result_msg,
 
   if (err_code >= 0)
     {
-      err_code =
-	glo_cmd_ex (con_handle->sock_fd, net_buf, result_msg, result_msg_size,
-		    err_buf);
+      err_code = glo_cmd_ex (con_handle, net_buf, result_msg, result_msg_size,
+			     err_buf);
     }
 
   con_handle->ref_count = 0;
@@ -3933,7 +4013,7 @@ glo_cmd_common (int con_h_id, T_NET_BUF * net_buf, char **result_msg,
 }
 
 static int
-glo_cmd_ex (SOCKET sock_fd, T_NET_BUF * net_buf, char **result_msg,
+glo_cmd_ex (T_CON_HANDLE * con_handle, T_NET_BUF * net_buf, char **result_msg,
 	    int *result_msg_size, T_CCI_ERROR * err_buf)
 {
   int err_code;
@@ -3943,11 +4023,13 @@ glo_cmd_ex (SOCKET sock_fd, T_NET_BUF * net_buf, char **result_msg,
       return net_buf->err_code;
     }
 
-  if ((err_code =
-       net_send_msg (sock_fd, net_buf->data, net_buf->data_size)) < 0)
-    return err_code;
+  err_code = net_send_msg (con_handle, net_buf->data, net_buf->data_size);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
 
-  err_code = net_recv_msg (sock_fd, result_msg, result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, result_msg, result_msg_size, err_buf);
   return err_code;
 }
 
@@ -4187,9 +4269,10 @@ execute_thread (void *arg)
   T_EXEC_THR_ARG *exec_arg = (T_EXEC_THR_ARG *) arg;
   T_CON_HANDLE *curr_con_handle = (T_CON_HANDLE *) (exec_arg->con_handle);
 
-  exec_arg->ret_code =
-    qe_execute (exec_arg->req_handle, exec_arg->sock_fd, exec_arg->flag,
-		exec_arg->max_col_size, &(exec_arg->err_buf));
+  exec_arg->ret_code = qe_execute (exec_arg->req_handle, curr_con_handle,
+				   exec_arg->flag,
+				   exec_arg->max_col_size,
+				   &(exec_arg->err_buf));
   if (exec_arg->ret_code < 0
       && curr_con_handle->tran_status == CCI_TRAN_STATUS_START)
     {
@@ -4209,7 +4292,7 @@ execute_thread (void *arg)
 	{
 	  req_handle_content_free (exec_arg->req_handle, 1);
 	  exec_arg->ret_code = qe_prepare (exec_arg->req_handle,
-					   curr_con_handle->sock_fd,
+					   curr_con_handle,
 					   (exec_arg->req_handle)->sql_text,
 					   (exec_arg->req_handle)->
 					   prepare_flag, &(exec_arg->err_buf),
@@ -4219,30 +4302,29 @@ execute_thread (void *arg)
 	      goto execute_end;
 	    }
 	  exec_arg->ret_code = qe_execute (exec_arg->req_handle,
-					   exec_arg->sock_fd,
+					   curr_con_handle,
 					   exec_arg->flag,
 					   exec_arg->max_col_size,
 					   &(exec_arg->err_buf));
 	}
     }
-  if (BROKER_INFO_STATEMENT_POOLING (curr_con_handle->broker_info) ==
+  if (curr_con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
       CAS_STATEMENT_POOLING_ON)
     {
       while (exec_arg->ret_code == CAS_ER_STMT_POOLING)
 	{
 	  req_handle_content_free (exec_arg->req_handle, 1);
-	  exec_arg->ret_code =
-	    qe_prepare (exec_arg->req_handle,
-			curr_con_handle->sock_fd,
-			exec_arg->req_handle->sql_text,
-			exec_arg->req_handle->prepare_flag,
-			&(exec_arg->err_buf), 1);
+	  exec_arg->ret_code = qe_prepare (exec_arg->req_handle,
+					   curr_con_handle,
+					   exec_arg->req_handle->sql_text,
+					   exec_arg->req_handle->prepare_flag,
+					   &(exec_arg->err_buf), 1);
 	  if (exec_arg->ret_code < 0)
 	    {
 	      goto execute_end;
 	    }
 	  exec_arg->ret_code = qe_execute (exec_arg->req_handle,
-					   exec_arg->sock_fd,
+					   curr_con_handle,
 					   exec_arg->flag,
 					   exec_arg->max_col_size,
 					   &(exec_arg->err_buf));
@@ -4293,9 +4375,8 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   if (!req_handle->valid)
     {
       req_handle_content_free (req_handle, 1);
-      err_code =
-	qe_prepare (req_handle, con_handle->sock_fd, req_handle->sql_text,
-		    req_handle->prepare_flag, err_buf, 1);
+      err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			     req_handle->prepare_flag, err_buf, 1);
 
       if (err_code < 0 && con_handle->tran_status == CCI_TRAN_STATUS_START)
 	{
@@ -4310,7 +4391,7 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 	  if (connect_done)
 	    {
 	      err_code = qe_prepare (req_handle,
-				     con_handle->sock_fd,
+				     con_handle,
 				     req_handle->sql_text,
 				     req_handle->prepare_flag, err_buf, 1);
 	    }

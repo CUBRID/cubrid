@@ -1,0 +1,9 @@
+task:restoredb
+token:8ec1ab8a91333c7823f86d595ccdf412f23ae179b1fcf013b9796bef95f4fcc17926f07dd201b6aa
+dbname:testdb2
+date:backuptime
+level:0
+partial:n
+pathname:C:\CUBRID\databases\testdb\backup\testdb2_backup_lv0
+recoverypath:none
+

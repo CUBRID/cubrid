@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -30,11 +30,11 @@
 /* TODO: Explain main concept or logic of your code
  contained in this file if possible */
 
-#ifdef SERVER_MODE
+#if defined(SERVER_MODE)
 #include <sys/types.h>
 #if !defined(WINDOWS)
 #include <pthread.h>
-#endif /* not WINDOWS */
+#endif /* !WINDOWS */
 
 #include "thread.h"
 #include "error_manager.h"
@@ -42,18 +42,14 @@
 #include "system_parameter.h"
 #endif /* SERVER_MODE */
 
-#define MAX_NTRANS (PRM_CSS_MAX_CLIENTS + 1)
-
-#ifndef SERVER_MODE
-#define thread_get_thread_entry_info() (NULL)
-#define MAX_NTHRDS (1)
+#if !defined(SERVER_MODE)
+#define thread_get_thread_entry_info()  (NULL)
+#define thread_num_worker_threads()  (1)
+#define thread_num_total_threads()   (1)
 
 typedef void THREAD_ENTRY;
-#else /* SERVER_MODE */
-/* deadlock + checkpoint + oob + page flush + LFT */
-#define NUM_PRE_DEFINED_THREADS (5)
+#else /* !SERVER_MODE */
 
-#define MAX_NTHRDS (PRM_MAX_THREADS + NUM_PRE_DEFINED_THREADS + 1)
 #define THREAD_SET_INFO(thrd, clnt_id, r, tran_idx) \
         do { \
             (thrd)->client_id = (clnt_id); \
@@ -152,7 +148,7 @@ typedef void *CSS_THREAD_ARG;
 
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-extern DAEMON_THREAD_MONITOR css_Log_flush_thread;
+extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
 
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
@@ -160,7 +156,7 @@ extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 
 extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 
-extern int thread_initialize_manager (int nthreads);
+extern int thread_initialize_manager (void);
 extern int thread_start_workers (void);
 extern int thread_stop_active_workers (void);
 extern int thread_stop_active_daemons (void);
@@ -186,9 +182,12 @@ extern void thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
 			 CSS_THREAD_ARG arg);
 extern void thread_exit (int exit_code);
 extern void thread_sleep (int, int);
-extern void thread_get_info_threads (int *num_threads,
+extern void thread_get_info_threads (int *num_total_threads,
+				     int *num_worker_threads,
 				     int *num_free_threads,
 				     int *num_suspended_threads);
+extern int thread_num_worker_threads (void);
+extern int thread_num_total_threads (void);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern void thread_set_comm_request_id (unsigned int rid);
@@ -234,7 +233,7 @@ extern unsigned __stdcall thread_worker (void *);
 extern HANDLE css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
 extern void *thread_worker (void *);
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_IMPL_H_ */

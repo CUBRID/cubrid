@@ -1,0 +1,228 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>DB_TRIG</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 가상 클래스\nDB_TRIG");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_vclass_vclass.htm\">시스템 카탈로그 가상 클래스<\/a> &nbsp;&gt;&nbsp; DB_TRIG<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>DB_TRIG</h4>
+<p>데이터베이스 내에서 현재 사용자가 접근 권한을 가진 클래스나 그 소속 속성을 대상(target)으로 하는 트리거 정보를 보여준다.</p>
+<table border="1" width="80%">
+<thead>
+<tr>
+<th width="120">
+<p>속성명</p>
+</th>
+<th width="110">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width="120">
+<p>trigger_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>트리거명</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>target_class_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>대상이 되는 클래스</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>target_attr_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>대상이 되는 속성으로서 트리거에 명시되지 않으면 <span class="keyword">NULL</span></p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>target_attr_type</p>
+</td>
+<td width="110">
+<p>VARCHAR(8)</p>
+</td>
+<td>
+<p>대상이 속성으로 명시될 경우, 인스턴스 속성이면 ‘INSTANCE’, 클래스 속성이면</p>
+<p>‘CLASS’.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>action_type</p>
+</td>
+<td width="110">
+<p>INTEGER</p>
+</td>
+<td>
+<p>INSERT, UPDATE, DELETE, CALL, EVALUATE 중 하나이면 1, REJECT이면 2,</p>
+<p>INVALIDATE_TRANSACTION이면 3, PRINT이면 4</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>action_time</p>
+</td>
+<td width="110">
+<p>INTEGER</p>
+</td>
+<td>
+<p>BEFORE는 1, AFTER는 2, DEFERRED는 3으로 설정</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h6>예제</h6>
+<ul>
+<li>데이터베이스 내에서 현재 사용자가 접근 권한을 가진 클래스나 그 소속 속성을 대상(target)으로 하는 트리거 정보를 보여준다.</li>
+</ul>
+<p class="code">CREATE VCLASS db_trig (<br />
+trigger_name, target_class_name, target_attr_name, target_attr_type, action_type, action_time)<br />
+AS<br />
+SELECT CAST(t.name AS VARCHAR(255)), c.class_name,<br />
+&#160;&#160;&#160;&#160;&#160;&#160; &#160;CAST(t.target_attribute AS VARCHAR(255)),<br />
+&#160;&#160;&#160;&#160;&#160;&#160; &#160;CASE WHEN t.target_class_attribute = 0 THEN 'INSTANCE' ELSE 'CLASS' END,<br />
+&#160;&#160;&#160;&#160;&#160;&#160; &#160;t.action_type, t.action_time<br />
+FROM _db_class c, db_trigger t<br />
+WHERE t.target_class = c.class_of AND<br />
+&#160;&#160;&#160;&#160;&#160; &#160;&#160;(CURRENT_USER = 'DBA' OR<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; {c.owner.name} subseteq (<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SELECT set{CURRENT_USER} + coalesce(sum(set{t.g.name}), set{})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; from db_user u, table(groups) as t(g)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; where u.name = CURRENT_USER ) OR<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; {c} subseteq (<br />
+SELECT sum(set{au.class_of})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; FROM _db_auth au<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; WHERE {au.grantee.name} subseteq (<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SELECT set{CURRENT_USER} + coalesce(sum(set{t.g.name}), set{})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; from db_user u, table(groups) as t(g)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; where u.name = CURRENT_USER ) AND<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;au.auth_type = 'SELECT'));</p>
+<ul>
+<li>다음 예제에서는 클래스의 트리거 정보를 검색한다.</li>
+</ul>
+<p class="code">csql&gt; select target_class_name, trigger_name<br />
+csql&gt; from db_trig<br />
+csql&gt; order by 1;<br />
+csql&gt; ;xrun<br />
+&#160;<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+target_class_name&#160;&#160;&#160;&#160; trigger_name<br />
+============================================<br />
+&#160; 'glo'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'glo_delete_contents'</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

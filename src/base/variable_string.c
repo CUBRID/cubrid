@@ -34,6 +34,7 @@
 #include "porting.h"
 #include "variable_string.h"
 #include "error_code.h"
+#include "error_manager.h"
 
 #define FUDGE		16
 #define PREFIX_CUSHION	 8
@@ -219,20 +220,22 @@ vs_new (varstring * vstr)
   if (vstr == NULL)
     {
       vstr = (varstring *) malloc (sizeof (varstring));
-      vstr->heap_allocated = 1;
+      if (vstr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (varstring));
+	  return NULL;
+	}
     }
   else
     {
       vstr->heap_allocated = 0;
     }
 
-  if (vstr)
-    {
-      vstr->base = NULL;
-      vstr->limit = NULL;
-      vstr->start = NULL;
-      vstr->end = NULL;
-    }
+  vstr->base = NULL;
+  vstr->limit = NULL;
+  vstr->start = NULL;
+  vstr->end = NULL;
 
   return vstr;
 }
@@ -313,8 +316,13 @@ vs_prepend (varstring * vstr, const char *prefix)
       return ER_FAILED;
     }
 
+  if (prefix == NULL)
+    {
+      return NO_ERROR;
+    }
+
   n = strlen (prefix);
-  if (prefix == NULL || n == 0)
+  if (n == 0)
     {
       return NO_ERROR;
     }

@@ -1,0 +1,170 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>CREATE TRIGGER (구문)</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트리거(TRIGGER)\n트리거 생성\nCREATE TRIGGER(구문)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거(TRIGGER)<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거 생성<\/a> &nbsp;&gt;&nbsp; CREATE TRIGGER(구문)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CREATE TRIGGER (구문)</h4>
+<h6>설명</h6>
+<p>트리거는 <span class="keyword">CREATE TRIGGER</span> 구문에 트리거 대상, 실행 조건과 수행할 내용을 정의하여 생성한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE TRIGGER</span> <span class="var">trigger_name</span><br />
+[ <span class="keyword">STATUS</span> { <span class="keyword">ACTIVE</span> | <span class="keyword">INACTIVE</span> } ]<br />
+[ <span class="keyword">PRIORITY</span><span class="var">key</span> ]<br />
+<span class="var">event_time event_type</span> [ <span class="var">event_target</span> ]<br />
+[ <span class="keyword">IF</span><span class="var">condition</span> ]<br />
+<span class="keyword">EXECUTE</span> [ <span class="keyword">AFTER</span> | <span class="keyword">DEFERRED</span> ] <span class="var">action</span> [ ; ]<br />
+<br />
+<span class="var">event_time</span>:<br />
+&#160;&#160;&#160;• <span class="keyword">BEFORE</span><br />
+&#160;&#160;&#160;• <span class="keyword">AFTER</span><br />
+&#160;&#160;&#160;• <span class="keyword">DEFERRED</span><br />
+<br />
+<span class="var">event_type</span>:&#160;<br />
+&#160;&#160;&#160;• <span class="keyword">INSERT</span><br />
+&#160;&#160;&#160;• <span class="keyword">STATEMENT INSERT&#160;</span><br />
+&#160;&#160;&#160;• <span class="keyword">UPDATE</span><br />
+&#160;&#160;&#160;• <span class="keyword">STATEMENT UPDATE&#160;</span><br />
+&#160; &#160;• <span class="keyword">DELETE</span><br />
+&#160;&#160;&#160;• <span class="keyword">STATEMENT DELETE</span><br />
+&#160;&#160;&#160;• <span class="keyword">ROLLBACK</span><br />
+&#160;&#160;&#160;• <span class="keyword">COMMIT</span><br />
+<br />
+<span class="var">event_target</span>:&#160;<br />
+&#160;&#160;&#160;• <span class="keyword">ON</span><span class="var">table_name</span><br />
+&#160;&#160;&#160;• <span class="keyword">ON</span><span class="var">table_name</span> <span class="keyword">CLASS</span> <span class="var">attribute_name</span><br />
+<br />
+<span class="var">condition</span>:&#160;<br />
+&#160;&#160;&#160;• <span class="var">expression</span><br />
+<br />
+<span class="var">action</span>:&#160;<br />
+&#160;•&#160;<span class="keyword">REJECT&#160;&#160;&#160;&#160;</span><br />
+&#160;•&#160;<span class="keyword">INVALIDATE TRANSACTION&#160;</span><br />
+&#160;&#160;•&#160;&#160;<span class="keyword">PRINT</span> <span class="var">message_string</span><br />
+&#160;&#160;•&#160;&#160;<span class="keyword">INSERT</span> <span class="var">statement</span><br />
+&#160;&#160;•&#160;&#160;<span class="keyword">UPDATE</span> <span class="var">statement</span><br />
+&#160;&#160;•&#160;&#160;<span class="keyword">DELETE</span> <span class="var">statement&#160;&#160;</span></p>
+<ul>
+<li><span class="var">trigger_name&#160;</span>: 정의하려는 트리거의 이름을 지정한다.</li>
+<li>[ <span class="keyword">STATUS</span> { <span class="keyword">ACTIVE</span> | <span class="keyword">INACTIVE</span> } ] : 트리거의 상태를 정의한다(정의하지 않을 경우 디폴트 값은 <span class="keyword">ACTIVE</span>).
+<ul>
+<li><span class="keyword">ACTIVE</span> 상태인 경우 관련 이벤트가 발생할 때마다 트리거를 실행한다.</li>
+<li><span class="keyword">INACTIVE</span> 상태인 경우 관련 이벤트가 발생하여도 트리거를 실행하지 않는다. 트리거의 활성 여부는 변경할 수 있다. 자세한 내용은 "<a href="syntax_trigger_mod_alter.htm">트리거 정의 변경</a>"를 참조한다.</li>
+</ul>
+</li>
+<li>[ <span class="keyword">PRIORITY</span> <span class="var">key</span> ] : 하나의 이벤트에 대해서 다수의 트리거가 불려질 경우 실행되는 우선순위를 부여한다. <span class="var">key</span> 값은 반드시 음수가 아닌 부동 소수점 값이어야 한다. 우선순위를 정의하지 않을 경우 가장 낮은 우선순위인 0을 할당한다. 같은 우선순위를 가지는 트리거는 임의의 순서로 실행된다. 트리거의 우선순위는 변경할 수 있다. 자세한 내용은 "<a href="syntax_trigger_mod_alter.htm">트리거 정의 변경</a>"를 참조한다.</li>
+<li><span class="var">event_time</span>&#160;: 트리거의 조건 영역과 실행 영역이 실행되는&#160;시점을 지정하며 <span class="keyword">BEFORE</span>, <span class="keyword">AFTER</span>,&#160;<span class="keyword">DEFERRED</span>가 있다.&#160;자세한 내용은 "<a href="syntax_trigger_create_event.htm">이벤트 시점</a>"을 참조한다.</li>
+<li><span class="var">event_type</span> : 트리거 타입은 사용자 트리거와 테이블 트리거로 나뉜다. 자세한 내용은 "<a href="syntax_trigger_create_etype.htm">트리거 이벤트 타입</a>"을 참조한다.</li>
+<li><span class="var">event_target</span>&#160;: 이벤트 대상은 트리거가 호출되기 위한 대상을 지정할 때 쓰인다. 자세한 내용은 "<a href="syntax_trigger_create_target.htm">트리거 이벤트 대상</a>"을 참조한다.</li>
+<li><span class="var">condition</span>&#160;: 트리거의 조건영역을 지정한다.&#160;자세한 내용은 "<a href="syntax_trigger_create_cond.htm">트리거 조건 영역</a>"을 참조한다.</li>
+<li><span class="var">action</span> : 트리거의 실행영역을 지정한다.&#160;자세한 내용은 "<a href="syntax_trigger_create_action.htm">트리거 실행 영역</a>"을 참조한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 participant 테이블에&#160;인스턴스를 갱신할&#160;때 획득 메달의 개수가 0보다 작을 경우 갱신을 거절하는 트리거를 생성하는 예제이다.</p>
+<p>예로 2004년도 올림픽에 한국이 획득한 금메달의 개수를 음수로 갱신할 경우 갱신이 거절되는 것을 알 수 있다.</p>
+<p class="code">CREATE TRIGGER medal_trigger<br />
+BEFORE&#160;UPDATE ON participant<br />
+IF new.gold &lt; 0 OR new.silver &lt; 0 OR new.bronze &lt; 0<br />
+EXECUTE REJECT;</p>
+<p class="code"><br />
+csql&gt; UPDATE participant SET gold = -5 WHERE nation_code = 'KOR' AND host_year = 2004;<br />
+csql&gt; ;x<br />
+In line 1, column 1,<br />
+ERROR: The operation has been rejected by trigger "medal_trigger".</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

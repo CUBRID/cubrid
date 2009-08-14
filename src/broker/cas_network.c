@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -120,7 +120,8 @@ net_init_env (void)
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
-  strcpy (sock_addr.sun_path, port_name);
+  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path) - 1, "%s",
+	    port_name);
   sock_addr_len =
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif
@@ -217,6 +218,49 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
 }
 
 int
+net_read_header (SOCKET sock_fd, MSG_HEADER * header)
+{
+  int retval = 0;
+
+  if (cas_info_size > 0)
+    {
+      retval = net_read_stream (sock_fd, header->buf, MSG_HEADER_SIZE);
+      *(header->msg_body_size_ptr) = ntohl (*(header->msg_body_size_ptr));
+    }
+  else
+    {
+      retval = net_read_int (sock_fd, header->msg_body_size_ptr);
+    }
+
+  return retval;
+}
+
+int
+net_write_header (SOCKET sock_fd, MSG_HEADER * header)
+{
+  int retval = 0;
+
+  *(header->msg_body_size_ptr) = htonl (*(header->msg_body_size_ptr));
+  retval = net_write_stream (sock_fd, header->buf, MSG_HEADER_SIZE);
+
+  return 0;
+}
+
+void
+init_msg_header (MSG_HEADER * header)
+{
+  header->msg_body_size_ptr = (int *) (header->buf);
+  header->info_ptr = (char *) (header->buf + MSG_HEADER_MSG_SIZE);
+
+  *(header->msg_body_size_ptr) = 0;
+  header->info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+  header->info_ptr[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[CAS_INFO_RESERVED_3] = CAS_INFO_RESERVED_DEFAULT;
+}
+
+
+int
 net_write_int (SOCKET sock_fd, int value)
 {
   value = htonl (value);
@@ -302,8 +346,8 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
   while (file_size > 0)
     {
       read_len = read_from_client (sock_fd, read_buf,
-				   MIN (SSIZEOF (read_buf), file_size));
-      if (read_len <= 0)
+				   (int) MIN (SSIZEOF (read_buf), file_size));
+      if (read_len <= 0 || read_len > MIN (SSIZEOF (read_buf), file_size))
 	{
 	  return CAS_ER_COMMUNICATION;
 	}
@@ -315,7 +359,9 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
     }
 
   if (out_fd < 0)
-    return CAS_ER_OPEN_FILE;
+    {
+      return CAS_ER_OPEN_FILE;
+    }
 
   close (out_fd);
   return 0;
@@ -340,7 +386,8 @@ net_write_from_file (SOCKET sock_fd, int file_size, char *filename)
 
   while (file_size > 0)
     {
-      read_len = read (in_fd, read_buf, MIN (file_size, SSIZEOF (read_buf)));
+      read_len = read (in_fd, read_buf,
+		       (int) MIN (file_size, SSIZEOF (read_buf)));
       if (read_len < 0)
 	{
 	  close (in_fd);

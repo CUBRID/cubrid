@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -425,7 +425,7 @@ esm_undo (const int buffer_size, char *buffer)
  */
 
 void
-esm_dump (FILE *fp, const int buffer_size, void *data)
+esm_dump (FILE * fp, const int buffer_size, void *data)
 {
   char *shadow_file, *source_file;
   char *buffer;
@@ -486,7 +486,8 @@ esm_shadow_file_exists (const DB_OBJECT * holder_p)
 static char *
 esm_make_shadow_pathname (const char *pathname)
 {
-  static char temp[PATH_MAX];
+  static char shadow_pathname[PATH_MAX];
+  char temp[PATH_MAX];
   int len;
 
   len = strlen (pathname);
@@ -502,7 +503,6 @@ esm_make_shadow_pathname (const char *pathname)
        *   strcpy(temp, pathname);
        */
       esm_expand_pathname (pathname, temp, PATH_MAX);
-      len = strlen (temp);
 
 #if defined(WINDOWS)
       /* We can't simply append the template to the end of the file,
@@ -510,6 +510,7 @@ esm_make_shadow_pathname (const char *pathname)
          Try to keep the same path however so we don't force temp files
          into the current working directory.
        */
+      len = strlen (temp);
       if (len)
 	{
 	  char *ptr;
@@ -531,9 +532,10 @@ esm_make_shadow_pathname (const char *pathname)
     }
 
   /* add template and make the temp file name */
-  strcat (temp, "XXXXXX");
-  mktemp (temp);
-  return (temp);
+  snprintf(shadow_pathname, PATH_MAX - 1, "%sXXXXXX", temp);
+  mktemp (shadow_pathname);
+
+  return (shadow_pathname);
 }
 
 /*
@@ -599,7 +601,8 @@ esm_copy_file (const char *source, const char *destination)
 			 S_IRWXU | S_IRWXG | S_IRWXO);
   if (destination_fd > 0)
     {
-      while ((length = read (source_fd, buffer, COPY_BUFFER_SIZE)) > 0)
+      while ((length = read (source_fd, buffer, COPY_BUFFER_SIZE)) > 0
+	     && length <= COPY_BUFFER_SIZE)
 	{
 	  write (destination_fd, buffer, length);
 	}

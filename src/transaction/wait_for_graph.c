@@ -290,6 +290,8 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
       temp_node_p = (WFG_NODE *) malloc (DB_SIZEOF (WFG_NODE) * num_trans);
       if (temp_node_p == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, DB_SIZEOF (WFG_NODE) * num_trans);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
@@ -650,6 +652,8 @@ wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
 	      free_and_init (temp_p);
 	    }
 
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, DB_SIZEOF (WFG_EDGE));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1346,6 +1350,8 @@ wfg_alloc_tran_group (THREAD_ENTRY * thread_p)
 
   if (temp_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, bytes);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -1391,11 +1397,14 @@ wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
   tran_list_p = (WFG_TRANS_LIST *) malloc (DB_SIZEOF (WFG_TRANS_LIST));
   if (tran_list_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (WFG_TRANS_LIST));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   if (csect_enter (thread_p, CSECT_WFG, INF_WAIT) != NO_ERROR)
     {
+      free_and_init (tran_list_p);
       return ER_FAILED;
     }
 
@@ -1615,6 +1624,8 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
   tran_list_p = (WFG_TRANS_LIST *) malloc (DB_SIZEOF (WFG_TRANS_LIST));
   if (tran_list_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (WFG_TRANS_LIST));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -1761,7 +1772,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
   WFG_STACK *bottom_p = NULL;	/* bottom of WFG stack */
   WFG_STACK *top_p;		/* top of WFG stack */
   WFG_STACK *stack_elem_p;	/* pointer for stack scan */
-  WFG_CYCLE *cycle_p;		/* pointer to the current cycle */
+  WFG_CYCLE *cycle_p = NULL;	/* pointer to the current cycle */
   WFG_WAITER *waiter_p;		/* Waiter transactions in the cycle */
   int htran_index;		/* index of the waiter node of the top edge */
   int cycle_group_no;		/* cycle group number */
@@ -1794,6 +1805,8 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
   bottom_p = (WFG_STACK *) malloc (DB_SIZEOF (WFG_STACK) * wfg_Total_waiters);
   if (bottom_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (WFG_STACK) * wfg_Total_waiters);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1882,6 +1895,9 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		  cycle_p = (WFG_CYCLE *) malloc (DB_SIZEOF (WFG_CYCLE));
 		  if (cycle_p == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY,
+			      1, DB_SIZEOF (WFG_CYCLE));
 		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto error;
 		    }
@@ -1893,7 +1909,11 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 					   cycle_p->num_trans);
 		  if (cycle_p->waiters == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      DB_SIZEOF (WFG_WAITER) * cycle_p->num_trans);
 		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+                      free_and_init (cycle_p);
 		      goto error;
 		    }
 
@@ -2159,7 +2179,8 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
 	    {
 	      tg_all_waiting = false;
 	    }
-	  else if (w_tran_list_p->tran_index == h_tran_list_p->tran_index)
+	  else if (w_tran_list_p != NULL
+		   && w_tran_list_p->tran_index == h_tran_list_p->tran_index)
 	    {
 	      /*
 	       * The waiter is also a holder. Don't need to add
@@ -2211,6 +2232,8 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
   cycle_p = (WFG_CYCLE *) malloc (DB_SIZEOF (WFG_CYCLE));
   if (cycle_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (WFG_CYCLE));
       return NULL;
     }
 
@@ -2227,6 +2250,9 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
     (WFG_WAITER *) malloc (DB_SIZEOF (WFG_WAITER) * cycle_p->num_trans);
   if (cycle_p->waiters == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (WFG_WAITER) * cycle_p->num_trans);
+      free_and_init(cycle_p);
       return NULL;
     }
 

@@ -1569,7 +1569,6 @@ structure_error:
   return er_errid ();
 }
 
-
 /*
  * classobj_get_cached_constraint() - This is used to find a constraint of the given
  *    type, and return the ID.  If the constraint list does not contain
@@ -1581,7 +1580,6 @@ structure_error:
  *   type(in): constraint type
  *   id(out): pointer to ID
  */
-/* TODO : ok */
 int
 classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 				SM_CONSTRAINT_TYPE type, BTID * id)
@@ -1608,6 +1606,27 @@ classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
   return ok;
 }
 
+/*
+ * classobj_has_unique_constraint ()
+ *   return: true if an unique constraint is contained in the constraint list,
+ *           otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
+classobj_has_unique_constraint (SM_CONSTRAINT * constraints)
+{
+  SM_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
 
 /* SM_CONSTRAINT */
 /*
@@ -1642,10 +1661,8 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type,
       return NULL;
     }
 
-
   return constraint;
 }
-
 
 /*
  * classobj_free_constraint() - Frees an constraint structure and all memory
@@ -1673,7 +1690,6 @@ classobj_free_constraint (SM_CONSTRAINT * constraint)
     }
 
   db_ws_free (constraint);
-
 }
 
 /*
@@ -1753,7 +1769,7 @@ classobj_cache_constraint_entry (const char *name,
 	      && DB_GET_STRING (&att_val) != NULL)
 	    {
 	      att = classobj_find_attribute (class_,
-					     DB_GET_STRING (&att_val), 0);
+					     DB_PULL_STRING (&att_val), 0);
 	    }
 	  else if (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER)
 	    {
@@ -2651,6 +2667,9 @@ classobj_cache_not_null_constraints (const char *class_name,
 
   /* Set constraints to point to the first node of the constraint cache and
      last to point to the last node. */
+
+  assert (con_ptr != NULL);
+
   constraints = last = *con_ptr;
 
   if (last != NULL)
@@ -2733,14 +2752,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 	}
     }
 
-  if (con_ptr == NULL)
-    {
-      classobj_free_class_constraints (constraints);
-    }
-  else
-    {
-      *con_ptr = constraints;
-    }
+  *con_ptr = constraints;
 
   return NO_ERROR;
 
@@ -3152,7 +3164,8 @@ classobj_find_cons_index2 (SM_CLASS_CONSTRAINT * cons_list,
 		    }
 
 		  /* check for asc/desc info */
-		  for (i = 0; i < len; i++, key_type = key_type->next)
+		  for (i = 0; key_type != NULL && i < len;
+		       i++, key_type = key_type->next)
 		    {
 		      key_asc_desc = 0;	/* guess as Asc */
 		      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type)
@@ -3390,7 +3403,7 @@ classobj_make_attribute (const char *name, PR_TYPE * type,
       if (att->header.name == NULL)
 	{
 	  db_ws_free (att);
-	  att = NULL;
+	  return NULL;
 	}
     }
   att->is_fk_cache_attr = false;
@@ -3680,18 +3693,21 @@ classobj_clear_attribute_value (DB_VALUE * value)
     {
       /* get directly to the set */
       ref = DB_GET_SET (value);
-      set = ref->set;
-
-      /* always free the underlying set object */
-      if (set != NULL)
+      if (ref != NULL)
 	{
-	  setobj_free (set);
-	}
+	  set = ref->set;
 
-      /* now free the reference, if the counter goes to zero its freed
-         otherwise, it gets left dangling but at least we've free the
-         set storage at this point */
-      set_free (ref);
+	  /* always free the underlying set object */
+	  if (set != NULL)
+	    {
+	      setobj_free (set);
+	    }
+
+	  /* now free the reference, if the counter goes to zero its freed
+	     otherwise, it gets left dangling but at least we've free the
+	     set storage at this point */
+	  set_free (ref);
+	}
     }
   else
     {
@@ -3871,15 +3887,18 @@ classobj_copy_method_arg (SM_METHOD_ARGUMENT * src)
     }
 
   new_ = classobj_make_method_arg (src->index);
-  new_->type = src->type;
-
-  if (src->domain != NULL)
+  if (new_ != NULL)
     {
-      new_->domain = tp_domain_copy (src->domain, true);
-      if (new_->domain == NULL)
+      new_->type = src->type;
+
+      if (src->domain != NULL)
 	{
-	  classobj_free_method_arg (new_);
-	  new_ = NULL;
+	  new_->domain = tp_domain_copy (src->domain, true);
+	  if (new_->domain == NULL)
+	    {
+	      classobj_free_method_arg (new_);
+	      new_ = NULL;
+	    }
 	}
     }
 
@@ -5274,7 +5293,6 @@ classobj_make_class (const char *name)
 
   class_->methods_loaded = 0;
   class_->post_load_cleanup = 0;
-  class_->transaction_cache = 0;
   class_->triggers_validated = 0;
   class_->has_active_triggers = 0;
 
@@ -6604,12 +6622,23 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
   valid = (SM_VALIDATION *) malloc (sizeof (SM_VALIDATION));
   if (valid == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+          sizeof (SM_VALIDATION));
       classobj_free_descriptor (desc);
       desc = NULL;
     }
   else
     {
-      desc->valid = valid;
+      if (desc == NULL)
+        {
+          free_and_init(valid);
+          return desc;
+        }
+      else
+        {
+          desc->valid = valid;
+        }
+
       valid->last_class = NULL;
       valid->validated_classes = NULL;
       valid->last_setdomain = NULL;
@@ -6623,5 +6652,6 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
       valid->last_precision = 0;
       valid->last_scale = 0;
     }
+
   return desc;
 }

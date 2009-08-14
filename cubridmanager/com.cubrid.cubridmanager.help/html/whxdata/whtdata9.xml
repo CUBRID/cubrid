@@ -1,0 +1,30 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<item name="분할이란?" url="syntax/syntax_partition.htm" />
+<book name="영역 분할" >
+  <item name="영역 분할 정의" url="syntax/syntax_partition_range_define.htm" />
+  <item name="영역 분할 재정의" url="syntax/syntax_partition_range_redefine.htm" />
+  <item name="영역 분할 추가" url="syntax/syntax_partition_range_add.htm" />
+  <item name="영역 분할 삭제" url="syntax/syntax_partition_range_delete.htm" />
+</book>
+<book name="해시 분할" >
+  <item name="해시 분할 정의" url="syntax/syntax_partition_hash_define.htm" />
+  <item name="해시 분할 재정의" url="syntax/syntax_partition_hash_redefine.htm" />
+</book>
+<book name="리스트 분할" >
+  <item name="리스트 분할 정의" url="syntax/syntax_partition_list_define.htm" />
+  <item name="리스트 분할 재정의" url="syntax/syntax_partition_list_redefine.htm" />
+  <item name="리스트 분할 삭제" url="syntax/syntax_partition_list_delete.htm" />
+</book>
+<book name="분할 관리" >
+  <item name="분할에서 데이터 조회와 조작" url="syntax/syntax_partition_manage_retreive.htm" />
+  <item name="분할 키 값의 변경에 의한 데이터 이동" url="syntax/syntax_partition_manage_move.htm" />
+  <item name="일반 테이블을 분할 테이블로 변경" url="syntax/syntax_partition_manage_convert.htm" />
+  <item name="분할 테이블을 일반 테이블로 변경" url="syntax/syntax_partition_manage_nconvert.htm" />
+  <item name="분할 프루닝" url="syntax/syntax_partition_manage_pruning.htm" />
+  <item name="분할 표현식에 사용될 수 있는 데이터 타입" url="syntax/syntax_partition_manage_datatype.htm" />
+  <item name="분할 테이블을 이용하여 VIEW 생성" url="syntax/syntax_partition_manage_view.htm" />
+  <item name="분할 테이블의 통계 정보 갱신" url="syntax/syntax_partition_manage_statistics.htm" />
+</book>
+
+</tocdata>

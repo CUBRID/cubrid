@@ -64,7 +64,7 @@ lang_init (void)
    * and character sets. Allow an unrecognized language setting to be
    * treated as an 8bit ascii language, but still keep lang_name set
    */
-  strcpy (lang_Loc_name, LANG_NAME_ENGLISH);
+  strncpy (lang_Loc_name, LANG_NAME_ENGLISH, sizeof (lang_Loc_name));
   lang_Loc_id = INTL_LANG_ENGLISH;
   lang_Loc_bytes_per_char = 1;
   lang_Loc_currency = DB_CURRENCY_DOLLAR;
@@ -81,18 +81,18 @@ lang_init (void)
   env = envvar_get ("LANG");
   if (env != NULL)
     {
-      strcpy (lang_Loc_name, env);
+      strncpy (lang_Loc_name, env, sizeof (lang_Loc_name));
     }
   else
     {
       env = getenv ("LANG");
       if (env != NULL)
 	{
-	  strcpy (lang_Loc_name, env);
+	  strncpy (lang_Loc_name, env, sizeof (lang_Loc_name));
 	}
       else
 	{
-	  strcpy (lang_Loc_name, LANG_NAME_DEFAULT);
+	  strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
 	}
     }
 

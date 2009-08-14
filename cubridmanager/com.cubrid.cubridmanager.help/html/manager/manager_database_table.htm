@@ -1,0 +1,169 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>테이블</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n데이터베이스\n테이블");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_architecture.htm\">데이터베이스<\/a> &nbsp;&gt;&nbsp; 테이블<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>테이블</h3>
+<p>데이터베이스에 로그인하면, 접근할 수 있는 테이블과 시스템 테이블을 탐색 트리에서 볼 수 있다.</p>
+<p><img src="images/manager_database_table_node.jpg" border="1" alt="" /></p>
+<h5>테이블 추가</h5>
+<p>탐색 트리의 [테이블]을 마우스 오른쪽 버튼 클릭해서 [테이블 추가]를 선택하거나, 툴바에서 [테이블 추가 <img src="images/icon_addtable.png" border="0" align="middle" alt="" />]를 클릭한다.</p>
+<p><img src="images/manager_database_table_context.jpg" border="0" alt="" /></p>
+<h6>테이블 추가</h6>
+<p><img src="images/manager_database_table_addbasic.png" border="0" alt="" /></p>
+<ul>
+<li><strong>[일반] 탭</strong>: 추가할 테이블 이름을 정의하고 컬럼을 추가, 편집, 삭제할 수 있다. 정의된 컬럼에 대해 기본키(PK)를 설정할 수 있으며, 테이블을 생성하기 전에는 [↑], [↓]를 클릭해서 선택한 컬럼의 위치를 조정할 수 있다.<br />
+추가 및 편집 시에는 아래 그림과&#160;같은 컬럼 추가 마법사가 지원되며, 문법에 맞지 않는 내용이 입력되면 경고 메시지를 출력하거나 문법에 맞지 않는 내용은 선택할 수 없도록 비활성화한다.</li>
+<li class="desc"><img src="images/manager_database_table_addcol.jpg" border="1" alt="" /></li>
+<li><strong>[외래키/인덱스] 탭</strong>: 외래키와 인덱스를 설정할 수 있다.</li>
+<li class="desc"><img src="images/manager_database_table_indextab.png" border="0" alt="" />
+<ul>
+<li><strong>인덱스 추가</strong>: 데이터베이스에서 지원되는 인덱스 관련 기능을 마법사 형태로 지원한다. 오름차순(asc) 정렬과 내림차순(desc) 정렬은 지원되는 범위 내에서 선택할 수 있다. Reverse 인덱스는 내림차순 정렬만 지원된다.</li>
+<li class="desc"><img src="images/manager_database_table_addindex.jpg" border="1" alt="" /></li>
+<li><strong>외래키 추가</strong>: 데이터베이스에서 지원되는 범위의 외래키 추가&#160;마법사 기능을 제공한다.</li>
+<li class="desc"><img src="images/manager_database_table_addforeign.jpg" border="1" alt="" /></li>
+</ul>
+</li>
+<li><strong>[SQL문] 탭</strong>: 일반 탭과 외래키/인덱스 탭에서 생성한 모든 SQL 문은 [SQL문] 탭을 통해서 확인할&#160;수 있고, 복사할 수 있다.</li>
+<li class="desc"><img src="images/manager_database_table_sqltab.jpg" border="1" alt="" /></li>
+</ul>
+<h6>객체 지향 테이블 추가</h6>
+<p>객체 지향 속성을 가지는 테이블을 추가하려면 [객체 지향 속성 보기]를 선택한다. [객체 지향 속성 보기]를 선택하면, 상속 탭이 추가된다.</p>
+<p><img src="images/manager_database_table_ooadd.png" border="0" alt="" /></p>
+<ul>
+<li><strong>[일반] 탭</strong>: [객체 지향 속성 보기]를 선택하면, 컬럼 항목으로 SHARED, INHERIT, CLASS 정보가 추가된다.<br />
+컬럼 추가 및 편집 시에는&#160;아래 그림과&#160;같이 컬럼 형식을 선택할 수 있고, 데이터 타입으로 OBJECT와 데이터베이스 내에 존재하는 테이블을 선택할 수 있다.</li>
+<li class="desc"><img src="images/manager_database_table_ooaddcol.jpg" border="0" alt="" /></li>
+<li><strong>[상속] 탭</strong>: 상속하고자 하는 수퍼 테이블을 정의할 수 있으며, 컬럼 이름이 충돌하면&#160;조정할 수 있는 기능을&#160;제공한다.</li>
+<li class="desc"><img src="images/manager_database_table_ooinherit.png" border="0" alt="" /></li>
+</ul>
+<h5>전체 조회</h5>
+<p>탐색 트리에서&#160;각 테이블을 마우스 오른쪽 버튼 클릭하여 [전체 조회]를 선택하면 수행할 수 있다. 또는 [질의 편집기]가 열려 있을 때 질의 편집기의 편집 창 또는 결과 창에 해당 테이블을 끌어서 놓아서 수행할 수 있다. 수행하면 새로운 질의 편집기가 열리면서 전체 데이터를 조회한다.</p>
+<h5>개수 조회</h5>
+<p>해당 테이블의 전체 데이터 개수를 조회한다. 다음 구문과&#160;같은 기능을 수행한다.</p>
+<p class="codep">SELECT COUNT(*) FROM table</p>
+<h5>모든 데이터 삭제</h5>
+<p>해당 테이블의 전체 데이터를 삭제한다. 다음 구문과 같은 기능을 수행한다.</p>
+<p class="codep">DELETE FROM table</p>
+<h5>데이터 입력</h5>
+<p>해당 테이블의 타입과 제약 조건 등을 보면서 각 컬럼별로 값을 입력할 수 있다.</p>
+<p><img src="images/manager_database_table_insert.jpg" border="0" alt="" /></p>
+<ul>
+<li>여러 인스턴스를 추가할 때, 각 질의와 결과 사이에 줄바꿈 문자를 추가하여 구분할 수 있다.</li>
+<li>각 필드의 값을 입력할 때 &lt;Enter&gt; 키를 누르면 다음 필드로 커서가 이동한다.</li>
+<li>[지우기] 버튼을 클릭하면 입력 상자의 값, 수행 이력까지 초기화한다.</li>
+<li>수행 이력창은 편집할 수 없다.</li>
+<li><span class="keyword">DATE</span>, <span class="keyword">TIME</span>, <span class="keyword">TIMESTAMP</span>, <span class="keyword">DATETIME</span> 데이터 타입에 대해서는 타입 별로 시스템 데이터를 입력할 수 있다. 예를 들어. <span class="keyword">DATE</span> 타입 같은 경우 <span class="keyword">SYSDATE</span>, <span class="keyword">SYS_DATE</span>, <span class="keyword">CURRENT_DATE</span>, <span class="keyword">DATE'</span><span class="var">2009-07-05</span><span class="keyword">'</span>와 같은 데이터를 입력할 수 있다.</li>
+</ul>
+<h5>데이터 올리기</h5>
+<p>엑셀 또는 CSV 파일의 데이터를&#160;테이블에 입력할 수 있다.</p>
+<p><img src="images/manager_database_table_import.jpg" border="0" alt="" /></p>
+<h5>데이터 내려 받기</h5>
+<p>데이터 내려 받기 기능을 사용해서&#160;해당 테이블의 모든 데이터를 엑셀, CSV, SQL,&#160;큐브리드 로드 형식으로 받을 수 있다.</p>
+<h5>테이블 삭제</h5>
+<p>해당 테이블을 삭제한다. 다음 구문과 같은 기능을 수행한다.</p>
+<p class="codep">DROP FROM table</p>
+<h5>테이블 이름 변경</h5>
+<p>현재 테이블의 이름을 변경할 수 있다.</p>
+<p><img src="images/manager_database_table_rename.jpg" border="0" alt="" /></p>
+<h5>&#160;테이블 편집</h5>
+<p>[테이블 추가]의 모든 기능을 테이블 편집에서도 사용할&#160;수 있다. 단, 테이블 내의 컬럼 순서는 조정할 수 없다.</p>
+<h5>테이블 정보 보기</h5>
+<p>해당 테이블을 더블 클릭하면 해당 테이블의 스키마 구성 정보를 조회해 볼 수 있다.</p>
+<p><img src="images/manager_database_table_info.jpg" border="0" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

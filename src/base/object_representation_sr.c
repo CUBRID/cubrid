@@ -154,7 +154,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   BTREE_ROOT_HEADER root_header;
   BTID_INT btid_int;
 
-  or_rep = or_get_classrep (record, -1);
+  or_rep = or_get_classrep (record, NULL_REPRID);
   if (or_rep == NULL)
     {
       goto error;
@@ -226,6 +226,11 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	  att_variable++;
 	}
 
+      if (att == NULL)
+	{
+	  goto error;
+	}
+
       att->type = or_att->type;
       att->id = or_att->id;
       att->location = or_att->location;
@@ -265,6 +270,11 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->key_size = 0;
 	      bt_statsp->pkeys = NULL;
+
+              for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
+                {
+                  bt_statsp->reserved[k] = 0;
+                }
 
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;
@@ -327,10 +337,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      for (k = 0; k < bt_statsp->key_size; k++)
 		{
 		  bt_statsp->pkeys[k] = 0;
-		}
-	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
-		{
-		  bt_statsp->reserved[k] = 0;
 		}
 	    }
 	}
@@ -441,6 +447,12 @@ orc_class_info_from_record (RECDES * record)
   CLS_INFO *info;
 
   info = (CLS_INFO *) malloc (sizeof (CLS_INFO));
+  if (info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (CLS_INFO));
+      return NULL;
+    }
 
   info->tot_pages = 0;
   info->tot_objects = 0;
@@ -519,7 +531,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
        */
-      if ((insert + nsubs + 1) > max)
+      if (array == NULL || (insert + nsubs + 1) > max)
 	{
 	  newsize = insert + nsubs + 10;
 	  if (array == NULL)
@@ -533,7 +545,9 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 
 	  if (array == NULL)
 	    {
-	      return er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, newsize * sizeof (OID));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  for (i = max; i < newsize; i++)
@@ -550,12 +564,15 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
        */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
+      assert (array != NULL);
+
       /* add the new OIDs */
       for (i = 0; i < nsubs; i++)
 	{
 	  OR_GET_OID (ptr, &array[insert + i]);
 	  ptr += OR_OID_SIZE;
 	}
+
       OID_SET_NULL (&array[insert + nsubs]);
 
       /* return these in case there were changes */
@@ -710,17 +727,24 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
        */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
-      /* add the new OIDs */
-      for (i = 0; i < nsubs; i++)
+      if (array != NULL)
 	{
-	  OR_GET_OID (ptr, &array[insert + i]);
-	  ptr += OR_OID_SIZE;
-	}
-      OID_SET_NULL (&array[insert + nsubs]);
+	  /* add the new OIDs */
+	  for (i = 0; i < nsubs; i++)
+	    {
+	      OR_GET_OID (ptr, &array[insert + i]);
+	      ptr += OR_OID_SIZE;
+	    }
+	  OID_SET_NULL (&array[insert + nsubs]);
 
-      /* return these in case there were changes */
-      *array_size = max;
-      *array_ptr = array;
+	  /* return these in case there were changes */
+	  *array_size = max;
+	  *array_ptr = array;
+	}
+      else
+	{
+	  assert (false);
+	}
     }
 
   return error;
@@ -764,7 +788,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
       goto error;
     }
 
-  or_rep = or_get_classrep (&record, -1);
+  or_rep = or_get_classrep (&record, NULL_REPRID);
   if (or_rep == NULL)
     {
       goto error;
@@ -832,7 +856,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
   /* Need to remove duplicates from a multiple inheritance hierarchy */
   for (i = 0; i < *num_classes; i++)
     {
-      if (OID_EQ (class_, &((*class_oids)[i])))
+      if (*class_oids != NULL && OID_EQ (class_, &((*class_oids)[i])))
 	{
 	  goto success;
 	}
@@ -852,6 +876,13 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	  *class_oids = (OID *) realloc (*class_oids, newsize * sizeof (OID));
 	}
 
+      if (*class_oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, newsize * sizeof (OID));
+	  goto error;
+	}
+
       if (*hfids == NULL)
 	{
 	  *hfids = (HFID *) malloc (newsize * sizeof (HFID));
@@ -861,12 +892,19 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	  *hfids = (HFID *) realloc (*hfids, newsize * sizeof (HFID));
 	}
 
-      if (*class_oids == NULL || *hfids == NULL)
+      if (*hfids == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, newsize * sizeof (HFID));
 	  goto error;
 	}
 
       *max_classes = newsize;
+    }
+
+  if (*class_oids == NULL || *hfids == NULL)
+    {
+      goto error;
     }
 
   COPY_OID (&((*class_oids)[*num_classes]), class_);
@@ -966,6 +1004,11 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 
   /* diskatt now points to the attribute that we are interested in.
      Get the attribute name. */
+  if (diskatt == NULL)
+    {
+      goto error;
+    }
+
   attr_name = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
 						      ORC_ATT_NAME_INDEX));
 
@@ -1211,7 +1254,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
 		}
 	      else
 		{
-		  prop_name = DB_GET_STRING (&value);
+		  prop_name = DB_PULL_STRING (&value);
 		  if (strcmp (name, prop_name) == 0)
 		    {
 		      if ((i + 1) >= max)
@@ -1266,7 +1309,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
       index->fk->next = NULL;
       index->fk->fkname = strdup (fkname);
 
-      args = classobj_decompose_property_oid (DB_GET_STRING (&val),
+      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
 					      &pageid, &slotid, &volid);
       if (args != 3)
 	{
@@ -1340,7 +1383,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      fk_seq = DB_GET_SEQUENCE (&fkval);
+      fk_seq = DB_PULL_SEQUENCE (&fkval);
 
       fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
       if (fk != NULL)
@@ -1349,14 +1392,16 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
 	  if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
 	    {
+	      free_and_init (fk);
 	      return;
 	    }
 
-	  args = classobj_decompose_property_oid (DB_GET_STRING (&val),
+	  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
 						  &pageid, &slotid, &volid);
 
 	  if (args != 3)
 	    {
+	      free_and_init (fk);
 	      return;
 	    }
 
@@ -1366,14 +1411,16 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
 	  if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
 	    {
+	      free_and_init (fk);
 	      return;
 	    }
 
-	  args = classobj_decompose_property_oid (DB_GET_STRING (&val),
+	  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
 						  &volid, &fileid, &pageid);
 
 	  if (args != 3)
 	    {
+	      free_and_init (fk);
 	      return;
 	    }
 
@@ -1381,17 +1428,34 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  fk->self_btid.root_pageid = (PAGEID) pageid;
 	  fk->self_btid.vfid.fileid = (FILEID) fileid;
 
-	  set_get_element_nocopy (fk_seq, 2, &val);
+	  if (set_get_element_nocopy (fk_seq, 2, &val) != NO_ERROR)
+	    {
+	      free_and_init (fk);
+	      return;
+	    }
 	  fk->del_action = DB_GET_INT (&val);
 
-	  set_get_element_nocopy (fk_seq, 3, &val);
+	  if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
+	    {
+	      free_and_init (fk);
+	      return;
+	    }
 	  fk->upd_action = DB_GET_INT (&val);
 
-	  set_get_element_nocopy (fk_seq, 4, &val);
-	  fkname = DB_GET_STRING (&val);
+	  if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
+	    {
+	      free_and_init (fk);
+	      return;
+	    }
+	  fkname = DB_PULL_STRING (&val);
 	  fk->fkname = strdup (fkname);
 
-	  set_get_element_nocopy (fk_seq, 5, &val);
+	  if (set_get_element_nocopy (fk_seq, 5, &val) != NO_ERROR)
+	    {
+	      free_and_init (fk->fkname);
+	      free_and_init (fk);
+	      return;
+	    }
 	  fk->cache_attr_id = DB_GET_INT (&val);
 
 	  if (i == 0)
@@ -1401,8 +1465,16 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	    }
 	  else
 	    {
-	      p->next = fk;
-	      p = p->next;
+	      if (p != NULL)
+		{
+		  p->next = fk;
+		  p = p->next;
+		}
+	      else
+		{
+		  free_and_init (fk->fkname);
+		  free_and_init (fk);
+		}
 	    }
 	}
     }
@@ -1504,7 +1576,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 		  == NO_ERROR)
 		{
 		  or_install_btids_foreign_key (cons_name,
-						DB_GET_SEQUENCE (&att_val),
+						DB_PULL_SEQUENCE (&att_val),
 						index);
 		}
 	    }
@@ -1645,7 +1717,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&id_val),
+  args = classobj_decompose_property_oid (DB_PULL_STRING (&id_val),
 					  &volid, &fileid, &pageid);
 
   if (args != 3)
@@ -1687,7 +1759,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
 static void
 or_install_btids (OR_CLASSREP * rep, DB_SET * props)
 {
-  OR_BTREE_PROPERTY property_vars[] = {
+  OR_BTREE_PROPERTY property_vars[SM_PROPERTY_NUM_INDEX_FAMILY] = {
     {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
     {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
     {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
@@ -1696,7 +1768,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SET * props)
     {SM_PROPERTY_FOREIGN_KEY, NULL, BTREE_FOREIGN_KEY, 0}
   };
 
-  DB_VALUE vals[DIM (property_vars)];
+  DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
   int i;
   int n_btids;
 
@@ -1706,7 +1778,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SET * props)
    *  the OR_INDEX structure in the class (rep).
    */
   n_btids = 0;
-  for (i = 0; i < (int) DIM (property_vars); i++)
+  for (i = 0; i < SM_PROPERTY_NUM_INDEX_FAMILY; i++)
     {
       if (props != NULL
 	  && or_cl_get_prop_nocopy (props, property_vars[i].name, &vals[i]))
@@ -1733,7 +1805,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SET * props)
 
   /* Now extract the unique and index BTIDs from the property list and
      install them into the class and attribute structures. */
-  for (i = 0; i < (int) DIM (property_vars); i++)
+  for (i = 0; i < SM_PROPERTY_NUM_INDEX_FAMILY; i++)
     {
       if (property_vars[i].seq)
 	{
@@ -1750,16 +1822,16 @@ or_install_btids (OR_CLASSREP * rep, DB_SET * props)
 					      &cons_name_val);
 	      if (error == NO_ERROR)
 		{
-		  cons_name = DB_GET_STRING (&cons_name_val);
+		  cons_name = DB_PULL_STRING (&cons_name_val);
 		}
 
 	      error = set_get_element_nocopy (property_vars[i].seq, j + 1,
 					      &ids_val);
-	      if (error == NO_ERROR)
+	      if (error == NO_ERROR && cons_name != NULL)
 		{
 		  if (DB_VALUE_TYPE (&ids_val) == DB_TYPE_SEQUENCE)
 		    {
-		      ids_seq = DB_GET_SEQUENCE (&ids_val);
+		      ids_seq = DB_PULL_SEQUENCE (&ids_val);
 		      or_install_btids_constraint (rep, ids_seq,
 						   property_vars[i].type,
 						   cons_name);
@@ -2107,6 +2179,7 @@ error_cleanup:
     {
       free_and_init (rep->class_attrs);
     }
+  free_and_init (rep);
 
   return NULL;
 }
@@ -2140,7 +2213,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   int rep_count, i, n_fixed, n_variable, offset, start, id;
   char *fixed = NULL;
 
-  if (repid == -1)
+  if (repid == NULL_REPRID)
     {
       return or_get_current_representation (record, do_indexes);
     }
@@ -2350,7 +2423,7 @@ or_get_classrep (RECDES * record, int repid)
   char *fixed;
   int current;
 
-  if (repid == -1)
+  if (repid == NULL_REPRID)
     {
       rep = or_get_current_representation (record, 1);
     }
@@ -2387,7 +2460,7 @@ or_get_classrep_noindex (RECDES * record, int repid)
   char *fixed;
   int current;
 
-  if (repid == -1)
+  if (repid == NULL_REPRID)
     {
       rep = or_get_current_representation (record, 0);
     }

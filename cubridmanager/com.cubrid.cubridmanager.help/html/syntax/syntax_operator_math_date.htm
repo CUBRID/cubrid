@@ -1,0 +1,128 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>날짜/시간 연산</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n산술 연산자\n날짜/시간 연산");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_math.htm\">산술 연산자<\/a> &nbsp;&gt;&nbsp; 날짜/시간 연산<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>날짜/시간 연산</h4>
+<h6>설명</h6>
+<p>같은 타입을 갖는 두 개의 날짜-시간 값을&#160;서로 빼면&#160;두 피연산자 간의 간격이 반환된다. 피연산자 두 개가 모두 <span class="keyword">DATE</span> 타입이면 결과로 두 <span class="keyword">DATE</span> 값 사이의 날짜가 반환된다. 피연산자가 모두 <span class="keyword">TIME</span> 타입이거나 <span class="keyword">TIMESTAMP</span> 타입이면, 결과로 두 값 사이의 초가 반환된다. 피연산자가 모두 <span class="keyword">DATETIME</span>이면, 결과로 두 값 사이의 밀리초가 반환된다.</p>
+<p>두 개의 <span class="keyword">TIMESTAMP</span> 값을 더할 수는 없고, 다만 <span class="keyword">INTEGER</span> 값(초)을 <span class="keyword">TIMESTAMP</span> 값에 더하거나 뺄 수 있으며 연산의 결과로 <span class="keyword">TIMESTAMP</span> 값이 반환된다.</p>
+<p class="code">TIMESTAMP - TIMESTAMP = INTEGER(초 단위)<br />
+TIMESTAMP + INTEGER(초 단위) = TIMESTAMP<br />
+TIMESTAMP - INTEGER(초 단위) = TIMESTAMP</p>
+<p><span class="keyword">TIMESTAMP</span>와 마찬가지로, 두 개의 <span class="keyword">TIME</span> 값을 더할 수 없다. 역시 초 단위의 <span class="keyword">INTEGER</span> 값을 <span class="keyword">TIME</span> 값에서 더하거나 빼면 <span class="keyword">TIME</span> 값이 반환된다.</p>
+<p class="code">TIME - TIME = INTEGER(초 단위)<br />
+TIME + INTEGER(초 단위) = TIME<br />
+TIME - INTEGER(초 단위) = TIME</p>
+<p><span class="keyword">DATE</span> 값에서 <span class="keyword">INTEGER</span> 값을 더하거나 빼면 <span class="keyword">DATE</span> 값이 반환된다. <span class="keyword">INTEGER</span> 값 피연산자는 일 수를 의미한다. <span class="keyword">DATE</span> 값에서 <span class="keyword">DATE</span> 값을 뺄 수 있으며 결과로 <span class="keyword">INTEGER</span> 값이 반환된다. 예를 들어, DATE'11/1/1994' - DATE'12/1/1994' 수식은 <span class="keyword">INTEGER</span> 값 30을 반환한다. 하지만, <span class="keyword">DATE</span> 값끼리 더할 수 없으니 유의해야 한다.</p>
+<p class="code">DATE - DATE = INTEGER(일 수)<br />
+DATE + INTEGER(일 수) = DATE<br />
+DATE - INTEGER(일 수) = DATE</p>
+<p><span class="keyword">DATETIME</span> 값에서 <span class="keyword">DATETIME</span> 값을 빼면 <span class="keyword">BIGINT</span> 값이 반환되며, 반환된 값은 밀리초 기준의 간격을 의미한다. <span class="keyword">DATETIME</span> 값에서 <span class="keyword">BIGINT</span>(밀리초) 값을 더하거나 빼면 <span class="keyword">DATETIME</span> 값이 반환된다.</p>
+<p class="code">DATETIME - DATETIME = BIGINT (밀리초 단위)<br />
+DATETIME + BIGINT(Millisecond) = DATETIME<br />
+DATETIME - BIGINT(Millisecond) = DATETIME</p>
+<h6>예제</h6>
+<p>다음은 역대 올림픽이 개최된 기간을 계산하는 예제이다.</p>
+<p class="code">SELECT&#160;host_year, host_city, closing_date-opening_date+1&#160;FROM olympic;</p>
+<h6>주의 사항</h6>
+<ul>
+<li>날짜-시간&#160;값 간에는 더할 수 없다.</li>
+<li>날짜-시간 산술 연산의 인자 중 하나라도 <span class="keyword">NULL</span>이 포함되어 있으면 수식의 결과는 <span class="keyword">NULL</span>이 반환된다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

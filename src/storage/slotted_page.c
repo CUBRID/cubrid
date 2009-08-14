@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -34,6 +34,7 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 #include "memory_hash.h"
 #include "page_buffer.h"
 #include "log_manager.h"
@@ -66,31 +67,34 @@ struct spage_header
 				   UNANCHORED_KEEP_SEQUENCE */
   unsigned short alignment;	/* Alignment for records: Valid values sizeof
 				   char, short, int, double */
-  int waste_align;		/* Number of bytes wasted because of alignment */
+  int reserved1;		/* Reserved for backward compatibility */
   int total_free;		/* Total free space on page */
   int cont_free;		/* Contiguous free space on page */
   int offset_to_free_area;	/* Byte offset from the beginning of the page
 				   to the first free byte area on the page. */
   bool is_saving;		/* True if saving is need for recovery (undo) */
-  TRANID last_tranid;		/* Last tranid saving space for recovery
-				   purposes */
-  int saved;			/* Saved space of last transaction */
-  int total_saved;		/* Total saved space by all transactions */
+  TRANID tranid;		/* tranid saving space for recovery purposes */
+  int saved;			/* Saved space of the transaction */
+  int reserved2;		/* Reserved for backward compatibility */
 };
 
 typedef struct spage_save_entry SPAGE_SAVE_ENTRY;
+typedef struct spage_save_head SPAGE_SAVE_HEAD;
+
 struct spage_save_entry
 {				/* A hash entry to save space for future undos */
   TRANID tranid;		/* Transaction identifier */
   int saved;			/* Amount of space saved  */
   SPAGE_SAVE_ENTRY *next;	/* Next save */
+  SPAGE_SAVE_ENTRY *prev;	/* Previous save */
+  SPAGE_SAVE_ENTRY *tran_next_save;	/* Next save stored by the same transaction */
+  SPAGE_SAVE_HEAD *head;	/* Head of the save list */
 };
 
-typedef struct spage_save_head SPAGE_SAVE_HEAD;
 struct spage_save_head
 {				/* Head of a saving space */
   VPID vpid;			/* Page and volume where the space is saved */
-  int return_savings;		/* Returned/free saved space */
+  int total_saved;		/* Total saved space by all transactions */
   SPAGE_SAVE_ENTRY *first;	/* First saving space entry */
 };
 
@@ -98,6 +102,9 @@ static MHT_TABLE *spage_Mht_saving;	/* Memory hash table for savings */
 
 static int spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr,
 			     PAGE_PTR pgptr, int save);
+static int spage_get_saved_spaces (THREAD_ENTRY * thread_p,
+				   SPAGE_HEADER * page_header_p,
+				   PAGE_PTR page_p, int *other_saved_spaces);
 static int spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 						  SPAGE_HEADER * sphdr,
 						  PAGE_PTR pgptr);
@@ -196,18 +203,67 @@ static void spage_reduce_contiguous_free_space (SPAGE_HEADER * sphdr,
 /*
  * spage_free_saved_spaces () - Release the savings of transaction
  *   return: void
- *   tranid(in): Transaction from where the savings are release
+ *   first_save_entry(in): first save entry to be released
  *
- * Note: This function could be called once a tranid has finished.
+ * Note: This function could be called once a transaction has finished.
  *       This is optional, it does not need to be done.
  */
 void
-spage_free_saved_spaces (THREAD_ENTRY * thread_p, TRANID tranid)
+spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 {
+  SPAGE_SAVE_ENTRY *entry, *current;
+  SPAGE_SAVE_HEAD *head;
+
+  assert (first_save_entry != NULL);
+
+  entry = (SPAGE_SAVE_ENTRY *) first_save_entry;
+
   if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) == NO_ERROR)
     {
-      (void) mht_map (spage_Mht_saving, spage_free_saved_spaces_helper,
-		      &tranid);
+      while (entry != NULL)
+	{
+	  current = entry;
+	  head = entry->head;
+	  entry = entry->tran_next_save;
+
+	  /* Delete the current node from save entry list */
+	  if (current->prev == NULL)
+	    {
+	      head->first = current->next;
+
+	      /* There is no more entry. Delete save head and go to next entry */
+	      if (head->first == NULL)
+		{
+		  (void) mht_rem (spage_Mht_saving, &(head->vpid), NULL,
+				  NULL);
+		  free_and_init (head);
+		  free_and_init (current);
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      current->prev->next = current->next;
+	    }
+
+	  if (current->next != NULL)
+	    {
+	      current->next->prev = current->prev;
+	    }
+
+	  /* If there is saved space, decrease total saved space held by head */
+	  if (current->saved > 0)
+	    {
+	      head->total_saved -= current->saved;
+
+	      /* Total saved space should be 0 or positive */
+	      if (head->total_saved < 0)
+		{
+		  head->total_saved = 0;
+		}
+	    }
+	  free_and_init (current);
+	}
       csect_exit (CSECT_SPAGE_SAVESPACE);
     }
   else
@@ -218,64 +274,31 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, TRANID tranid)
 }
 
 /*
- * spage_free_saved_spaces_helper () - Remove the entries associated with the given
- *                      transaction identifier
+ * spage_free_all_saved_spaces_helper () - Release all savings
  *   return: NO_ERROR
  *   vpid_key(in):  Volume and page identifier
  *   ent(in): Head entry information
  *   tid(in): Transaction identifier or NULL_TRANID
- *
- * Note: All entries are removed if the transaction identifier is NULL_TRANID.
  */
 static int
-spage_free_saved_spaces_helper (const void *vpid_key, void *ent, void *tid)
+spage_free_all_saved_spaces_helper (const void *vpid_key, void *ent,
+				    void *tid)
 {
-  SPAGE_SAVE_ENTRY *entry, *pv_entry, *tmp_entry;
-  SPAGE_SAVE_HEAD *head;
-  TRANID tranid;
+  SPAGE_SAVE_ENTRY *entry, *current;
 
-  head = (SPAGE_SAVE_HEAD *) ent;
-  tranid = *(TRANID *) tid;
-
-  entry = head->first;
-  pv_entry = NULL;
+  entry = ((SPAGE_SAVE_HEAD *) ent)->first;
 
   while (entry != NULL)
     {
-      if (tranid == NULL_TRANID || tranid == entry->tranid)
-	{
-	  /* If there is a save, return it since transaction will not be undone
-	     any longer */
-	  if (entry->saved > 0)
-	    {
-	      head->return_savings += entry->saved;
-	    }
+      current = entry;
+      entry = entry->next;
 
-	  if (pv_entry != NULL)
-	    {
-	      pv_entry->next = entry->next;
-	    }
-	  else
-	    {
-	      head->first = entry->next;
-	    }
-
-	  tmp_entry = entry;
-	  entry = entry->next;
-	  free_and_init (tmp_entry);
-	}
-      else
-	{
-	  pv_entry = entry;
-	  entry = entry->next;
-	}
+      free_and_init (current);
     }
 
-  if (head->first == NULL)
-    {
-      (void) mht_rem (spage_Mht_saving, vpid_key, NULL, NULL);
-      free_and_init (ent);
-    }
+  /* Release the head of savings */
+  (void) mht_rem (spage_Mht_saving, vpid_key, NULL, NULL);
+  free_and_init (ent);
 
   return NO_ERROR;
 }
@@ -287,35 +310,30 @@ spage_free_saved_spaces_helper (const void *vpid_key, void *ent, void *tid)
  *   pgptr(in): Pointer to slotted page
  *   space(in): Amount of space to save
  *
- * Note: The current transaction saving information is kept on the page and
- *       whatever was on the page is stored on the saving space hash table.
+ * Note: The current transaction saving information is kept on the page only if
+ *       the page is not held by the other transaction. When a transaction
+ *       has occupied the page, the following transactions which try to save
+ *       some space to the page should be make a hash entry.
  *
- *       We only save for what we need to recovery (i.e., undo),savings should
- *       never go negative. That is, we could use some of our savings, but we
- *       could never go negative otherwise, transactions may steal needed space
- *       from each other.
+ *       The head of the save entries holds the total saved space of its list
+ *       except the saved space stored by the page header. Therefore, we should
+ *       sum the space held by the head and the page header when calculating
+ *       available space of the page.
  *
- *       The same algorithm as that of ARIES [MOHAN TODS92], DB2, IMS [OBER80].
- *       Algorithm:
- *             mysavings     += save;
- *             total_savings += save;
- *
- *       We cannot go negative during normal process since we must make sure
- *       that there is space for undoes..even under the following situation:
- *
- *         a) new object of 100 bytes
- *         b) reduce length of object to 50 bytes
- *            Need to save 50 bytes for undo purposes. Nobody else but the
- *            current transaction should use those 50 bytes.
+ *       The page header may hold a negative value of save space. The head
+ *       of the list, however, should not hold a negative value. It is because
+ *       we want to reduce the access of hash table, that is, the access of
+ *       the critical section, to increase the system performance.
  */
 static int
 spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
 		  PAGE_PTR page_p, int space)
 {
   SPAGE_SAVE_HEAD *head_p;
-  SPAGE_SAVE_ENTRY *entry_p, *prev_entry_p;
+  SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
   TRANID tranid;
+  LOG_TDES *tdes;
 
   assert (page_p != NULL);
   assert (page_header_p != NULL);
@@ -337,55 +355,29 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
       return NO_ERROR;
     }
 
-  /* Is there any transaction saving space on this page */
-  if (page_header_p->last_tranid == NULL_TRANID)
+  /*
+   * This page header was already occupied by this transaction.
+   */
+  if (page_header_p->tranid == tranid)
     {
-      /*
-       * There is not any body saving.
-       * There is not need to create a hash entry.
-       *
-       * We cannot go negative in our savings, otherwise, someone can use
-       * the space that it is needed for undo.
-       */
-      if (space > 0)
-	{
-	  page_header_p->last_tranid = tranid;
-	  page_header_p->saved = space;
-	  page_header_p->total_saved = space;
-	}
+      page_header_p->saved += space;
+
       return NO_ERROR;
     }
-  else if (logtb_istran_finished (thread_p, page_header_p->last_tranid) ==
-	   false)
-    {
-      /* There is already a transaction saving space on this page */
-      if (tranid == page_header_p->last_tranid)
-	{
-	  /*
-	   * Current transaction is the last one saving space
-	   *
-	   * We cannot go over current savings, otherwise, someone can use
-	   * the space that it is needed for undo. Use all savings.
-	   */
-	  if ((page_header_p->saved + space) < 0)
-	    {
-	      space = -page_header_p->saved;
-	    }
 
-	  page_header_p->saved += space;
-	  page_header_p->total_saved += space;
-	  return NO_ERROR;
-	}
-    }
-  else
+  /*
+   * This transaction occupies this page header if the page is not occupied or
+   * the transaction which occupied this page header was completed. In this
+   * case, the space should be positive.
+   */
+  if (space > 0
+      && (page_header_p->tranid == NULL_TRANID
+	  || logtb_istran_finished (thread_p, page_header_p->tranid) == true))
     {
-      /* Last transaction has finished */
-      page_header_p->last_tranid = NULL_TRANID;
-      page_header_p->total_saved -= page_header_p->saved;
-      page_header_p->saved = 0;
+      page_header_p->tranid = tranid;
+      page_header_p->saved = space;
+      return NO_ERROR;
     }
-
-  /* Swap the entries */
 
   vpid_p = pgbuf_get_vpid_ptr (page_p);
   if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
@@ -399,135 +391,92 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
   if (head_p == NULL)
     {
       /*
-       * The only transaction that can be saving space is the one on the page,
-       * and curent transaction cannot be the one since it has been checked
-       * already
+       * If it is the first time for this transaction to save some space on
+       * this page, the space should be positive.
        */
-      if (space <= 0)
+      if (space < 0)
 	{
-	  /* We cannot go negative in our savings, otherwise, someone can use
-	     the space that it is needed for undo. */
 	  csect_exit (CSECT_SPAGE_SAVESPACE);
 	  return NO_ERROR;
 	}
 
-      if (page_header_p->last_tranid == NULL_TRANID)
+      head_p = (SPAGE_SAVE_HEAD *) malloc (sizeof (*head_p));
+      if (head_p == NULL)
 	{
-	  /* there is not any transaction saving.. there is not need to create
-	     a hash table entry at this moment. */
-	  page_header_p->last_tranid = tranid;
-	  page_header_p->saved = space;
-	  page_header_p->total_saved = space;
+	  csect_exit (CSECT_SPAGE_SAVESPACE);
+	  return ER_FAILED;
+	}
+
+      entry_p = (SPAGE_SAVE_ENTRY *) malloc (sizeof (*entry_p));
+      if (entry_p == NULL)
+	{
+	  free_and_init (head_p);
+	  csect_exit (CSECT_SPAGE_SAVESPACE);
+	  return ER_FAILED;
+	}
+
+      /*
+       * Form the head and the first entry with information of the page
+       * header, modify the header with current transaction saving, and
+       * add first entry into hash
+       */
+
+      head_p->vpid.volid = vpid_p->volid;
+      head_p->vpid.pageid = vpid_p->pageid;
+      head_p->total_saved = space;
+      head_p->first = entry_p;
+
+      entry_p->tranid = tranid;
+      entry_p->saved = space;
+      entry_p->next = NULL;
+      entry_p->prev = NULL;
+      entry_p->head = head_p;
+
+      /*
+       * Add this entry to the save entry list of this transaction.
+       * It will be used to release the save entries when the transaction
+       * is completed.
+       */
+      tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      if (tdes != NULL)
+	{
+	  entry_p->tran_next_save =
+	    (SPAGE_SAVE_ENTRY *) (tdes->first_save_entry);
+	  tdes->first_save_entry = (void *) entry_p;
 	}
       else
 	{
-	  /* There is a transaction saving, swap it */
-
-	  head_p = (SPAGE_SAVE_HEAD *) malloc (sizeof (*head_p));
-	  if (head_p == NULL)
-	    {
-	      csect_exit (CSECT_SPAGE_SAVESPACE);
-	      return ER_FAILED;
-	    }
-
-	  entry_p = (SPAGE_SAVE_ENTRY *) malloc (sizeof (*entry_p));
-	  if (entry_p == NULL)
-	    {
-	      free_and_init (head_p);
-	      csect_exit (CSECT_SPAGE_SAVESPACE);
-	      return ER_FAILED;
-	    }
-
-	  /*
-	   * Form the head and the first entry with information of the page
-	   * header, modify the header with current transaction saving, and
-	   * add first entry into hash
-	   */
-
-	  head_p->vpid.volid = vpid_p->volid;
-	  head_p->vpid.pageid = vpid_p->pageid;
-	  head_p->return_savings = 0;
-	  head_p->first = entry_p;
-
-	  entry_p->tranid = page_header_p->last_tranid;
-	  entry_p->saved = page_header_p->saved;
-	  entry_p->next = NULL;
-
-	  page_header_p->last_tranid = tranid;
-	  page_header_p->saved = space;
-
-	  page_header_p->total_saved += space;
-
-	  (void) mht_put (spage_Mht_saving, &(head_p->vpid), head_p);
+	  entry_p->tran_next_save = NULL;
 	}
+
+      (void) mht_put (spage_Mht_saving, &(head_p->vpid), head_p);
 
       csect_exit (CSECT_SPAGE_SAVESPACE);
       return NO_ERROR;
     }
 
   /*
-   * Check if the current transaction is in the list. If it is, swap its
-   * values with the last saving transaction (the one on the page),
-   * otherwise, create a new entry for the last saving transaction
+   * Check if the current transaction is in the list. If it is, adjust the
+   * total saved space on the head entry. otherwise, create a new entry.
    */
 
-  /* Add the reclaimed space of committed/aborted transactions */
-
-  page_header_p->total_saved -= head_p->return_savings;
-  head_p->return_savings = 0;
-
-  for (entry_p = head_p->first, prev_entry_p = NULL; entry_p != NULL;
-       prev_entry_p = entry_p, entry_p = entry_p->next)
+  for (entry_p = head_p->first; entry_p != NULL; entry_p = entry_p->next)
     {
       if (tranid == entry_p->tranid)
 	{
 	  /*
-	   * The transaction was found
-	   *
-	   * We cannot over current savings, otherwise, someone can use
-	   * the space that it is needed for undo. Use all savings.
+	   * The transaction was found.
+	   * Total saved space should be 0 or positive value.
 	   */
-	  if ((entry_p->saved + space) < 0)
+	  if ((entry_p->saved + space) <= 0)
 	    {
-	      space = -entry_p->saved;
-	    }
-
-	  entry_p->saved += space;
-	  page_header_p->total_saved += space;
-
-	  /* Now swap the entries */
-
-	  if (page_header_p->last_tranid == NULL_TRANID)
-	    {
-	      /* Remove the entry */
-	      page_header_p->last_tranid = tranid;
-	      page_header_p->saved = entry_p->saved;
-	      if (prev_entry_p != NULL)
-		{
-		  prev_entry_p->next = entry_p->next;
-		}
-	      else
-		{
-		  head_p->first = entry_p->next;
-		}
-
-	      free_and_init (entry_p);
-
-	      if (head_p->first == NULL)
-		{
-		  (void) mht_rem (spage_Mht_saving, &(head_p->vpid), NULL,
-				  NULL);
-		  free_and_init (head_p);
-		}
+	      head_p->total_saved -= entry_p->saved;
+	      entry_p->saved = 0;
 	    }
 	  else
 	    {
-	      space = entry_p->saved;
-	      entry_p->tranid = page_header_p->last_tranid;
-	      entry_p->saved = page_header_p->saved;
-
-	      page_header_p->last_tranid = tranid;
-	      page_header_p->saved = space;
+	      head_p->total_saved += space;
+	      entry_p->saved += space;
 	    }
 
 	  csect_exit (CSECT_SPAGE_SAVESPACE);
@@ -536,53 +485,53 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p,
     }
 
   /* Current transaction is not in the list */
+  if (space > 0)
+    {
+      /* Need to allocate an entry */
 
-  if (space < 0)
-    {
-      /*
-       * We cannot go negative in our savings, otherwise, someone can use
-       * the space that it is needed for undo.
-       *
-       * We do not need to add a hash entry, but we may need to add us to
-       * the header (sphdr) since when there is a hash the header is required,
-       * and the header at this moment can be negative.
-       */
-      space = 0;
-    }
-
-  if (page_header_p->last_tranid == NULL_TRANID)
-    {
-      /* There is not need to create a hash entry */
-      page_header_p->last_tranid = tranid;
-      page_header_p->saved = space;
-      page_header_p->total_saved += space;
-    }
-  else
-    {
-      if (space > 0)
+      entry_p = malloc (sizeof (*entry_p));
+      if (entry_p == NULL)
 	{
-	  /* Need to allocate an entry */
+	  csect_exit (CSECT_SPAGE_SAVESPACE);
+	  return ER_FAILED;
+	}
 
-	  entry_p = malloc (sizeof (*entry_p));
-	  if (entry_p == NULL)
-	    {
-	      csect_exit (CSECT_SPAGE_SAVESPACE);
-	      return ER_FAILED;
-	    }
+      head_p->total_saved += space;
 
-	  /* Swap the entries */
-	  entry_p->tranid = page_header_p->last_tranid;
-	  entry_p->saved = page_header_p->saved;
-	  entry_p->next = head_p->first;
-	  head_p->first = entry_p;
+      entry_p->tranid = tranid;
+      entry_p->saved = space;
+      entry_p->head = head_p;
+      entry_p->prev = NULL;
+      entry_p->next = head_p->first;
 
-	  page_header_p->last_tranid = tranid;
-	  page_header_p->saved = space;
-	  page_header_p->total_saved += space;
+      if (head_p->first != NULL)
+	{
+	  head_p->first->prev = entry_p;
+	}
+
+      head_p->first = entry_p;
+
+      /*
+       * Add this entry to the save entry list of this transaction.
+       * It will be used to release the save entries when the transaction
+       * is completed.
+       */
+      tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      if (tdes != NULL)
+	{
+	  entry_p->tran_next_save =
+	    (SPAGE_SAVE_ENTRY *) (tdes->first_save_entry);
+	  tdes->first_save_entry = (void *) entry_p;
+	}
+      else
+	{
+	  entry_p->tran_next_save = NULL;
 	}
     }
 
   csect_exit (CSECT_SPAGE_SAVESPACE);
+
+  assert (head_p->total_saved >= 0);
   return NO_ERROR;
 }
 
@@ -598,55 +547,63 @@ spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 				       SPAGE_HEADER * page_header_p,
 				       PAGE_PTR page_p)
 {
+  int saved_by_other_trans = 0;
+
+  spage_get_saved_spaces (thread_p, page_header_p, page_p,
+			  &saved_by_other_trans);
+  return saved_by_other_trans;
+}
+
+/*
+ * spage_get_saved_spaces () - Find the total saved space and the space by
+                               other transactions
+ *   return:
+ *   sphdr(in): Pointer to header of slotted page
+ *   pgptr(in): Pointer to slotted page
+ *   saved_by_other_trans(in/out) : The other transaction's saved space will
+ *                                  be returned
+ */
+static int
+spage_get_saved_spaces (THREAD_ENTRY * thread_p,
+			SPAGE_HEADER * page_header_p, PAGE_PTR page_p,
+			int *saved_by_other_trans)
+{
   SPAGE_SAVE_HEAD *head_p;
-  SPAGE_SAVE_ENTRY *entry_p, *prev_entry_p;
+  SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
   TRANID tranid;
-  int save;
-  LOG_DATA_ADDR log_data_addr;
-  int size;
+  int size, my_saved_space;
 
   assert (page_p != NULL);
   assert (page_header_p != NULL);
 
-  pgbuf_lock_save_mutex (page_p);
-
-  /* Collect any saved space that has been freed */
-
-  if (page_header_p->last_tranid == NULL_TRANID)
-    {
-      if (page_header_p->total_saved != 0)
-	{
-	  page_header_p->total_saved = 0;
-	}
-
-      pgbuf_unlock_save_mutex (page_p);
-      return 0;
-    }
-
-  log_data_addr.vfid = NULL;
-  log_data_addr.pgptr = page_p;
-  log_data_addr.offset = 0;
-
   tranid = logtb_find_current_tranid (thread_p);
+  vpid_p = pgbuf_get_vpid_ptr (page_p);
 
-  /* If we are running crash recovery, we are not saving at all */
-  if (log_is_in_crash_recovery () ||
-      logtb_istran_finished (thread_p, page_header_p->last_tranid) == true)
+  /*
+   * At first, we should check whether the space held by this page header is
+   * valid or not. If the transaction which occupied this page header was
+   * completed, the saved space should be cleared.
+   */
+  if (page_header_p->tranid == tranid)
     {
-      /*
-       * Last transaction has completely finished (including commit and
-       * rollback) or we are in crash recovery. That is, it is not alive
-       * any longer.
-       */
-      page_header_p->total_saved -= page_header_p->saved;
-      page_header_p->saved = 0;
-      page_header_p->last_tranid = NULL_TRANID;
-      log_skip_logging (thread_p, &log_data_addr);
-      pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+      my_saved_space = page_header_p->saved;
+      size = my_saved_space;
     }
+  else if (page_header_p->tranid == NULL_TRANID
+	   || logtb_istran_finished (thread_p, page_header_p->tranid) == true)
+    {
+      page_header_p->tranid = NULL_TRANID;
+      page_header_p->saved = 0;
 
-  /* Add any reclaimed/freed space */
+      my_saved_space = 0;
+      size = 0;
+    }
+  else
+    {
+      my_saved_space = 0;
+      size = page_header_p->saved;
+    }
 
   if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
     {
@@ -655,114 +612,49 @@ spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
       /* TODO: missing to return ?? */
     }
 
-  vpid_p = pgbuf_get_vpid_ptr (page_p);
+  /*
+   * Get the saved space held by the head of the save entries. This is
+   * the aggregate value of spaces saved on all entries.
+   */
   head_p = (SPAGE_SAVE_HEAD *) mht_get (spage_Mht_saving, vpid_p);
   if (head_p != NULL)
     {
-      if (head_p->return_savings != 0)
+      entry_p = head_p->first;
+      while (entry_p != NULL)
 	{
-	  /* Add this savings to the page header */
-	  page_header_p->total_saved -= head_p->return_savings;
-	  head_p->return_savings = 0;
-	  log_skip_logging (thread_p, &log_data_addr);
-	  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-	}
-
-      /*
-       * If the current transaction is the last one saving space, return.
-       * Otherwise, check if the current transaction is in the list.
-       * If it is, swap its values with the last saving transaction (i.e., the
-       * one on the page).
-       */
-
-      if (tranid != page_header_p->last_tranid)
-	{
-	  /* Swap the entries if current transaction is in the list */
-	  for (entry_p = head_p->first, prev_entry_p = NULL; entry_p != NULL;
-	       prev_entry_p = entry_p, entry_p = entry_p->next)
+	  if (entry_p->tranid == tranid)
 	    {
-	      if (tranid == entry_p->tranid)
-		{
-		  /* Swap the entry */
-		  save = entry_p->saved;
-		  if (page_header_p->last_tranid == NULL_TRANID)
-		    {
-		      /* Remove the entry */
-		      if (prev_entry_p != NULL)
-			{
-			  prev_entry_p->next = entry_p->next;
-			}
-		      else
-			{
-			  head_p->first = entry_p->next;
-			}
-
-		      free_and_init (entry_p);
-
-		      if (head_p->first == NULL)
-			{
-			  (void) mht_rem (spage_Mht_saving, &(head_p->vpid),
-					  NULL, NULL);
-			  free_and_init (head_p);
-			}
-		    }
-		  else
-		    {
-		      entry_p->tranid = page_header_p->last_tranid;
-		      entry_p->saved = page_header_p->saved;
-		    }
-
-		  page_header_p->last_tranid = tranid;
-		  page_header_p->saved = save;
-		  log_skip_logging (thread_p, &log_data_addr);
-		  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-
-		  break;
-		}
+	      my_saved_space += entry_p->saved;
+	      break;
 	    }
+	  entry_p = entry_p->next;
 	}
-
-      /* Current transaction is not in the list, add an entry only if there is
-         not any one on the head */
-
-      if (page_header_p->last_tranid == NULL_TRANID)
-	{
-	  page_header_p->last_tranid = tranid;
-	  page_header_p->saved = 0;
-	  log_skip_logging (thread_p, &log_data_addr);
-	  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-	}
-    }
-  else
-    {
-      /* There is not an entry in hash. If nobody is saving, then make sure
-         that total saving is zero */
-      if (page_header_p->last_tranid == NULL_TRANID
-	  && page_header_p->total_saved != 0)
-	{
-	  page_header_p->total_saved = 0;
-	  log_skip_logging (thread_p, &log_data_addr);
-	  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-	}
-      else if (tranid == page_header_p->last_tranid
-	       && page_header_p->saved > 0)
-	{
-	  page_header_p->total_saved = page_header_p->saved;
-	}
-    }
-
-  if (tranid == page_header_p->last_tranid && page_header_p->saved > 0)
-    {
-      size = page_header_p->total_saved - page_header_p->saved;
-    }
-  else
-    {
-      size = page_header_p->total_saved;
+      size += head_p->total_saved;
     }
 
   csect_exit (CSECT_SPAGE_SAVESPACE);
-  pgbuf_unlock_save_mutex (page_p);
 
+  /* Saved space should be 0 or positive. */
+  if (size < 0)
+    {
+      if (saved_by_other_trans != NULL)
+	{
+	  *saved_by_other_trans = 0;
+	}
+      return 0;
+    }
+
+  if (my_saved_space < 0)
+    {
+      my_saved_space = 0;
+    }
+
+  if (saved_by_other_trans != NULL)
+    {
+      *saved_by_other_trans = size - my_saved_space;
+    }
+
+  assert (size >= 0);
   return size;
 }
 
@@ -792,9 +684,8 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp,
   if (head_p != NULL)
     {
       fprintf (fp,
-	       "Other savings of VPID = %d|%d returned savings = %d\n",
-	       head_p->vpid.volid, head_p->vpid.pageid,
-	       head_p->return_savings);
+	       "Other savings of VPID = %d|%d total_saved = %d\n",
+	       head_p->vpid.volid, head_p->vpid.pageid, head_p->total_saved);
 
       /* Go over the linked list of entries */
       entry_p = head_p->first;
@@ -866,7 +757,7 @@ spage_finalize (THREAD_ENTRY * thread_p)
 
   if (spage_Mht_saving != NULL)
     {
-      (void) mht_map (spage_Mht_saving, spage_free_saved_spaces_helper,
+      (void) mht_map (spage_Mht_saving, spage_free_all_saved_spaces_helper,
 		      &tranid);
       mht_destroy (spage_Mht_saving);
       spage_Mht_saving = NULL;
@@ -981,27 +872,36 @@ spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 }
 
 /*
- * spage_count_pages () - Count the number of pages
- *   return: the number of pages
+ * spage_collect_statistics () - Collect statistical information of the page
+ *   return: none
  *   pgptr(in): Pointer to slotted page
- *   dont_count_slotid(in): Ignore record stored in this slot identifier
+ *   npages(out): the number of pages
+ *   nrecords(out): the number of records
+ *   rec_length(out): total length of records
  */
-int
-spage_count_pages (PAGE_PTR page_p, const PGSLOTID dont_count_slotid)
+void
+spage_collect_statistics (PAGE_PTR page_p,
+			  int *npages, int *nrecords, int *rec_length)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
-  int pages, i;
+  PGNSLOTS i, last_slot_id;
+  int pages, records, length;
 
   assert (page_p != NULL);
+  assert (npages != NULL && nrecords != NULL && rec_length != NULL);
 
   page_header_p = (SPAGE_HEADER *) page_p;
-  slot_p = spage_find_slot (page_p, page_header_p, 0, false);
-  pages = 1;
+  last_slot_id = page_header_p->num_slots - 1;
+  slot_p = spage_find_slot (page_p, page_header_p, last_slot_id, false);
 
-  for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
+  pages = 1;
+  records = 0;
+  length = 0;
+
+  for (i = last_slot_id; i > 0; ++slot_p, --i)
     {
-      if (slot_p->offset_to_record == NULL_OFFSET || dont_count_slotid == i)
+      if (slot_p->offset_to_record == NULL_OFFSET)
 	{
 	  continue;
 	}
@@ -1009,72 +909,12 @@ spage_count_pages (PAGE_PTR page_p, const PGSLOTID dont_count_slotid)
       if (slot_p->record_type == REC_BIGONE)
 	{
 	  pages += 2;
-	}
-    }
-
-  return pages;
-}
-
-/*
- * spage_count_records () - Count the number of records
- *   return: the number of records
- *   pgptr(in): Pointer to slotted page
- *   dont_count_slotid(in): Ignore record stored in this slot identifier
- */
-int
-spage_count_records (PAGE_PTR page_p, const PGSLOTID dont_count_slotid)
-{
-  SPAGE_HEADER *page_header_p;
-  SPAGE_SLOT *slot_p;
-  int records, i;
-
-  assert (page_p != NULL);
-
-  page_header_p = (SPAGE_HEADER *) page_p;
-  slot_p = spage_find_slot (page_p, page_header_p, 0, false);
-  records = 0;
-
-  for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
-    {
-      if (slot_p->offset_to_record == NULL_OFFSET || dont_count_slotid == i)
-	{
-	  continue;
+	  length += DB_PAGESIZE * 2;	/* Assume two pages */
 	}
 
       if (slot_p->record_type != REC_NEWHOME)
 	{
 	  records++;
-	}
-    }
-
-  return records;
-}
-
-/*
- * spage_sum_length_of_records () - Sum total length of records
- *   return: total length of records
- *   pgptr(in): Pointer to slotted page
- *   dont_count_slotid(in): Ignore record stored in this slot identifier
- */
-int
-spage_sum_length_of_records (PAGE_PTR page_p,
-			     const PGSLOTID dont_count_slotid)
-{
-  SPAGE_HEADER *page_header_p;
-  SPAGE_SLOT *slot_p;
-  int length, i;
-
-  assert (page_p != NULL);
-
-  page_header_p = (SPAGE_HEADER *) page_p;
-  slot_p = spage_find_slot (page_p, page_header_p, 0, false);
-  length = 0;
-
-  for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
-    {
-      if (slot_p->offset_to_record == NULL_OFFSET || dont_count_slotid == i)
-	{
-	  continue;
 	}
 
       if (slot_p->record_type == REC_HOME
@@ -1082,13 +922,11 @@ spage_sum_length_of_records (PAGE_PTR page_p,
 	{
 	  length += slot_p->record_length;
 	}
-      else if (slot_p->record_type == REC_BIGONE)
-	{
-	  length += DB_PAGESIZE * 2;	/* Assume two pages */
-	}
     }
 
-  return length;
+  *npages = pages;
+  *nrecords = records;
+  *rec_length = length;
 }
 
 /*
@@ -1126,9 +964,10 @@ spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
   page_header_p->num_slots = 0;
   page_header_p->num_records = 0;
   page_header_p->is_saving = is_saving;
-  page_header_p->last_tranid = NULL_TRANID;
+  page_header_p->tranid = NULL_TRANID;
   page_header_p->saved = 0;
-  page_header_p->total_saved = 0;
+  page_header_p->reserved1 = 0;
+  page_header_p->reserved2 = 0;
 
   page_header_p->anchor_type = slot_type;
   page_header_p->total_free = DB_ALIGN (DB_PAGESIZE - sizeof (SPAGE_HEADER),
@@ -3583,9 +3422,8 @@ spage_dump_header (FILE * fp, const SPAGE_HEADER * page_header_p)
 		  page_header_p->num_slots, page_header_p->num_records,
 		  spage_anchor_flag_string (page_header_p->anchor_type));
   (void) fprintf (fp,
-		  "ALIGNMENT-TO = %s, WASTED AREA FOR ALIGNMENT = %d,\n",
-		  spage_alignment_string (page_header_p->alignment),
-		  page_header_p->waste_align);
+		  "ALIGNMENT-TO = %s\n",
+		  spage_alignment_string (page_header_p->alignment));
   (void) fprintf (fp,
 		  "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d,"
 		  " FREE SPACE OFFSET = %d,\n", page_header_p->total_free,
@@ -3594,9 +3432,8 @@ spage_dump_header (FILE * fp, const SPAGE_HEADER * page_header_p)
   (void) fprintf (fp,
 		  "IS_SAVING = %d, LAST TRANID SAVING = %d,"
 		  " LOCAL TRANSACTION_SAVINGS = %d\n",
-		  page_header_p->is_saving, page_header_p->last_tranid,
+		  page_header_p->is_saving, page_header_p->tranid,
 		  page_header_p->saved);
-  (void) fprintf (fp, "TOTAL_SAVED = %d\n", page_header_p->total_saved);
 }
 
 /*
@@ -3792,25 +3629,28 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   /* Update any savings, before we check for any incosistencies */
   if ((page_header_p)->is_saving)
     {
-      if (spage_get_saved_spaces_by_other_trans
-	  (thread_p, page_header_p, page_p) < 0
-	  || page_header_p->total_saved > page_header_p->total_free)
+      int other_saved_spaces = 0;
+      int total_saved =
+	spage_get_saved_spaces (thread_p, page_header_p, page_p,
+				&other_saved_spaces);
+
+      if (other_saved_spaces < 0 || total_saved > page_header_p->total_free)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"sp_check: Total savings of %d is inconsistent in page = %d"
 			" of volume = %s. Cannot be > total free (i.e., %d)\n",
-			page_header_p->total_saved,
+			total_saved,
 			pgbuf_get_page_id (page_p),
 			pgbuf_get_volume_label (page_p),
 			page_header_p->total_free);
 	}
 
-      if (page_header_p->total_saved < 0)
+      if (total_saved < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"sp_check: Total savings of %d is inconsistent in page = %d"
 			" of volume = %s. Cannot be < 0\n",
-			page_header_p->total_saved,
+			total_saved,
 			pgbuf_get_page_id (page_p),
 			pgbuf_get_volume_label (page_p));
 	}
@@ -3881,11 +3721,18 @@ spage_is_not_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   assert (page_p != NULL);
   assert (page_header_p != NULL);
 
-  return ((space > page_header_p->total_free - page_header_p->total_saved)
-	  && (space > (page_header_p->total_free -
-		       SPAGE_GET_SAVED_SPACES_BY_OTHER_TRANS (thread_p,
-							      page_header_p,
-							      page_p))));
+  if (page_header_p->is_saving)
+    {
+      int saved_by_other_trans =
+	spage_get_saved_spaces_by_other_trans (thread_p, page_header_p,
+					       page_p);
+
+      return (space > (page_header_p->total_free - saved_by_other_trans));
+    }
+  else
+    {
+      return (space > page_header_p->total_free);
+    }
 }
 
 static bool

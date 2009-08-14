@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -40,6 +40,7 @@
 #include "utility.h"
 #include "loader_action.h"
 
+
 extern int loader_yylineno;
 
 /* The class currently being referenced. */
@@ -47,7 +48,6 @@ static MOP Refclass = NULL;
 /* The class being assigned an id. */
 static MOP Idclass = NULL;
 
-static void string_tolower (char *str);
 static void display_error (int adjust);
 static void parse_error (DB_TYPE token_type, const char *token);
 static void domain_error (DB_TYPE token_type);
@@ -56,23 +56,6 @@ static void unknown_class_error (const char *name);
 static void invalid_class_id_error (int id);
 static void unauthorized_class_error (const char *name);
 static DB_VALUE *get_value (DB_TYPE token_type);
-
-/*
- * string_tolower - ensure that a string contains only lower case letters.
- *    return: void
- *    str(in/out): string to hack
- */
-static void
-string_tolower (char *str)
-{
-  for (; str != NULL && *str != 0; str++)
-    {
-      if (isupper (*str))
-	{
-	  *str = tolower (*str);
-	}
-    }
-}
 
 /*
  * ERROR REPORTING
@@ -614,9 +597,16 @@ act_int (char *token)
   TP_DOMAIN domain;
   TP_DOMAIN *domain_ptr;
 
-  if ((value = get_value (DB_TYPE_INTEGER)) != NULL)
+  value = get_value (DB_TYPE_INTEGER);
+  if (value != NULL)
     {
       domain_ptr = tp_domain_resolve_value (value, &domain);
+      if (domain_ptr == NULL)
+	{
+	  domain_error (DB_TYPE_INTEGER);
+	  return;
+	}
+
       db_make_string (&temp, token);
       error = tp_value_cast (&temp, value, domain_ptr, false);
       if (error)
@@ -639,9 +629,16 @@ act_real (char *token)
   TP_DOMAIN domain;
   TP_DOMAIN *domain_ptr;
 
-  if ((value = get_value (DB_TYPE_FLOAT)) != NULL)
+  value = get_value (DB_TYPE_FLOAT);
+  if (value != NULL)
     {
       domain_ptr = tp_domain_resolve_value (value, &domain);
+      if (domain_ptr == NULL)
+	{
+	  domain_error (DB_TYPE_FLOAT);
+	  return;
+	}
+
       db_make_string (&temp, token);
       error = tp_value_cast (&temp, value, domain_ptr, false);
       if (error)
@@ -791,13 +788,12 @@ act_time (char *token, int ttype)
 		}
 	      break;
 	    case 3:
-	      args = sscanf (token, "%d:%d %s", &hour, &minute, half);
+	      args = sscanf (token, "%d:%d %7s", &hour, &minute, half);
 	      if (args != 3)
 		parse_error (DB_TYPE_TIME, token);
 	      else
 		{
-		  string_tolower (half);
-		  if (strcmp (half, "am") == 0)
+		  if (strcasecmp (half, "am") == 0)
 		    {
 		      db_make_time (value, hour, minute, 0);
 		    }
@@ -809,13 +805,12 @@ act_time (char *token, int ttype)
 	      break;
 	    case 4:
 	      args =
-		sscanf (token, "%d:%d:%d %s", &hour, &minute, &second, half);
+		sscanf (token, "%d:%d:%d %7s", &hour, &minute, &second, half);
 	      if (args != 4)
 		parse_error (DB_TYPE_TIME, token);
 	      else
 		{
-		  string_tolower (half);
-		  if (strcmp (half, "am") == 0)
+		  if (strcasecmp (half, "am") == 0)
 		    {
 		      db_make_time (value, hour, minute, second);
 		    }
@@ -885,7 +880,8 @@ act_string (char *token, int size, DB_TYPE dtype)
   TP_DOMAIN *domain_ptr;
 
   /* size = 0 is an empty string, which is fine */
-  if ((value = get_value (dtype)) != NULL && size >= 0)
+  value = get_value (dtype);
+  if (value != NULL && size >= 0)
     {
       if (dtype == DB_TYPE_CHAR)
 	{
@@ -895,8 +891,16 @@ act_string (char *token, int size, DB_TYPE dtype)
 	{
 	  DB_MAKE_VARNCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size);
 	}
+
       domain_ptr = tp_domain_resolve_value (value, &domain);
-      if (tp_value_cast (&temp, value, domain_ptr, false))
+      if (domain_ptr == NULL)
+	{
+	  domain_error (dtype);
+	  return;
+	}
+
+      if (tp_value_cast (&temp, value, domain_ptr,
+			 false) != DOMAIN_COMPATIBLE)
 	{
 	  if (domain_ptr->type->id == DB_TYPE_TIME
 	      || domain_ptr->type->id == DB_TYPE_DATE
@@ -954,7 +958,7 @@ act_system (const char *token, ACT_SYSOBJ_TYPE type)
     {
       len--;
     }
-  if (len)
+  if (len > 0 && len < (int) sizeof (name))
     {
       strncpy (name, token, len);
       name[len] = '\0';
@@ -1026,7 +1030,14 @@ act_bstring (char *token, int type)
 	  temp.need_clear = true;
 
 	  domain_ptr = tp_domain_resolve_value (value, &domain);
-	  if (tp_value_cast (&temp, value, domain_ptr, false))
+	  if (domain_ptr == NULL)
+	    {
+	      domain_error (DB_TYPE_BIT);
+	      return;
+	    }
+
+	  if (tp_value_cast (&temp, value, domain_ptr,
+			     false) != DOMAIN_COMPATIBLE)
 	    {
 	      parse_error (domain_ptr->type->id, token);
 	    }
@@ -1057,7 +1068,14 @@ act_bstring (char *token, int type)
 	  temp.need_clear = true;
 
 	  domain_ptr = tp_domain_resolve_value (value, &domain);
-	  if (tp_value_cast (&temp, value, domain_ptr, false))
+	  if (domain_ptr == NULL)
+	    {
+	      domain_error (DB_TYPE_BIT);
+	      return;
+	    }
+
+	  if (tp_value_cast (&temp, value, domain_ptr,
+			     false) != DOMAIN_COMPATIBLE)
 	    {
 	      parse_error (domain_ptr->type->id, token);
 	    }

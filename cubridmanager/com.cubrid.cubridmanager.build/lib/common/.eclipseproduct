@@ -1,0 +1,5 @@
+#Eclipse Product File
+#Sat Jun 13 11:50:14 CST 2009
+version=8.2.0
+name=CUBRID Manager
+id=com.cubrid.cubridmanager.app.product

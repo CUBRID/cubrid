@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -99,57 +99,6 @@ static void prepare_response (userdata * ud, nvplist * res);
 static void auto_start_UniCAS (void);
 static void client_info_reset (T_CLIENT_INFO * client);
 
-#if 0				/* ACTIVITY_PROFILE */
-static void uGenerateStatus (nvplist * req, nvplist * res, int retval,
-			     char *diagerror);
-
-static void diag_config_reset (T_CLIENT_INFO * client_info);
-
-#define ADD_CAS_MONITOR_CONFIG(TARGET, SOURCE)  \
-    do { \
-        TARGET.head |= SOURCE.head; \
-        TARGET.body[0] |= SOURCE.body[0]; \
-        TARGET.body[1] |= SOURCE.body[1]; \
-    } while(0)
-
-
-#define ADD_SERVER_MONITOR_CONFIG(TARGET, SOURCE) \
-    do { \
-        TARGET.head[0] |= SOURCE.head[0]; \
-        TARGET.head[1] |= SOURCE.head[1]; \
-        TARGET.body[0] |= SOURCE.body[0]; \
-        TARGET.body[1] |= SOURCE.body[1]; \
-        TARGET.body[2] |= SOURCE.body[2]; \
-        TARGET.body[3] |= SOURCE.body[3]; \
-        TARGET.body[4] |= SOURCE.body[4]; \
-        TARGET.body[5] |= SOURCE.body[5]; \
-        TARGET.body[6] |= SOURCE.body[6]; \
-        TARGET.body[7] |= SOURCE.body[7]; \
-    } while(0)
-
-#define COPY_CAS_MONITOR_CONFIG(TARGET, SOURCE)  \
-    do { \
-        TARGET.head = SOURCE.head; \
-        TARGET.body[0] = SOURCE.body[0]; \
-        TARGET.body[1] = SOURCE.body[1]; \
-    } while(0)
-
-
-#define COPY_SERVER_MONITOR_CONFIG(TARGET, SOURCE) \
-    do { \
-        TARGET.head[0] = SOURCE.head[0]; \
-        TARGET.head[1] = SOURCE.head[1]; \
-        TARGET.body[0] = SOURCE.body[0]; \
-        TARGET.body[1] = SOURCE.body[1]; \
-        TARGET.body[2] = SOURCE.body[2]; \
-        TARGET.body[3] = SOURCE.body[3]; \
-        TARGET.body[4] = SOURCE.body[4]; \
-        TARGET.body[5] = SOURCE.body[5]; \
-        TARGET.body[6] = SOURCE.body[6]; \
-        TARGET.body[7] = SOURCE.body[7]; \
-    } while(0)
-#endif
-
 static SOCKET pserver_sockfd;
 static FILE *start_log_fp;
 static int pid_lock_fd;
@@ -178,6 +127,8 @@ CtrlHandler (DWORD fdwCtrlType)
 static void
 term_handler (int signo)
 {
+  g_pidfile_path[sizeof (g_pidfile_path) - 1] = '\0';
+
   if (strlen (g_pidfile_path) > 0)
     unlink (g_pidfile_path);
   exit (0);
@@ -270,23 +221,37 @@ main (int argc, char **argv)
   if (strcmp (ars_cmd, "start") == 0)
     {
       if (access (pid_file_name, F_OK) < 0)
-	start_pserver ();
+	{
+	  start_pserver ();
+	}
       else
 	{
 	  pidfile = fopen (pid_file_name, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
-
-	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
-	      (is_cmserver_process (pidnum, PSERVER_MODULE_NAME) == 0))
+	  if (pidfile == NULL)
 	    {
-	      /* fprintf (start_log_fp, "Previous pid file found. Removing and proceeding...\n"); */
-	      unlink (pid_file_name);
-	      start_pserver ();
+	      fprintf (start_log_fp,
+		       "Error : pid file exists, but can not open it[%s].\n",
+		       pid_file_name);
 	    }
 	  else
-	    fprintf (start_log_fp,
-		     "Error : Server[pid=%d] already running.\n", pidnum);
+	    {
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+
+	      if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
+		  (is_cmserver_process (pidnum, PSERVER_MODULE_NAME) == 0))
+		{
+		  /* fprintf (start_log_fp, "Previous pid file found. Removing and proceeding...\n"); */
+		  unlink (pid_file_name);
+		  start_pserver ();
+		}
+	      else
+		{
+		  fprintf (start_log_fp,
+			   "Error : Server[pid=%d] already running.\n",
+			   pidnum);
+		}
+	    }
 	}
     }
   else if (strcmp (ars_cmd, "stop") == 0)
@@ -300,11 +265,16 @@ main (int argc, char **argv)
       else
 	{
 	  pidfile = fopen (pid_file_name, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
+	  if (pidfile != NULL)
+	    {
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+	    }
 	  /* fprintf (start_log_fp, "Stopping polling server process with pid %d\n", pidnum); */
-	  if ((kill (pidnum, SIGTERM)) < 0)
-	    fprintf (start_log_fp, "Error : Failed to stop the server.\n");
+	  if ((pidfile == NULL) || (kill (pidnum, SIGTERM) < 0))
+	    {
+	      fprintf (start_log_fp, "Error : Failed to stop the server.\n");
+	    }
 	  else
 	    {
 	      char strbuf[512];
@@ -322,11 +292,14 @@ main (int argc, char **argv)
       else
 	{
 	  pidfile = fopen (pid_file_name, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
+	  if (pidfile != NULL)
+	    {
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+	    }
 
-	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
-	      (is_cmserver_process (pidnum, PSERVER_MODULE_NAME) == 0))
+	  if (pidfile == NULL || ((kill (pidnum, 0) < 0) && (errno == ESRCH))
+	      || (is_cmserver_process (pidnum, PSERVER_MODULE_NAME) == 0))
 	    {
 	      exit (1);
 	    }
@@ -370,12 +343,13 @@ service_start (void *ud)
   FD_SET (pserver_sockfd, &allset);
   maxfd = pserver_sockfd;
   maxi = -1;
-#if 0				/* ACTIVITY_PROFILE */
-  uca_init (NULL);
-#endif
 
   cli_request = nv_create (5, NULL, "\n", ":", "\n");
   cli_response = nv_create (5, NULL, "\n", ":", "\n");
+  if ((cli_request == NULL) || (cli_response == NULL))
+    {
+      goto return_statement;
+    }
 
   for (;;)
     {
@@ -443,9 +417,17 @@ service_start (void *ud)
 		      if (ts_check_client_version (cli_request, cli_response))
 			{
 			  int aleady_connected_index;
+			  char *value;
 			  /* generate token and record new connection to file */
-			  client_info[i].user_id =
-			    strdup (nv_get_val (cli_request, "id"));
+			  value = nv_get_val (cli_request, "id");
+			  if (value != NULL)
+			    {
+			      client_info[i].user_id = strdup (value);
+			    }
+			  else
+			    {
+			      client_info[i].user_id = NULL;
+			    }
 			  client_info[i].ip_address = strdup (pstrbuf);
 
 			  if ((sco.iAllow_AdminMultiCon == 0) &&
@@ -457,10 +439,10 @@ service_start (void *ud)
 			    {
 			      /* must reject this connection */
 			      char message[100];
-			      sprintf (message,
-				       "User was already connected from another client(%s)",
-				       client_info[aleady_connected_index].
-				       ip_address);
+			      snprintf (message, sizeof (message) - 1,
+					"User was already connected from another client(%s)",
+					client_info[aleady_connected_index].
+					ip_address);
 			      ut_send_response (sockfd, cli_response);
 			      nv_add_nvp (cli_request, "_ID",
 					  client_info[i].user_id);
@@ -523,266 +505,17 @@ service_start (void *ud)
 		  nv_add_nvp (cli_request, "_ID", client_info[i].user_id);
 		  if (ut_receive_request (sockfd, cli_request))
 		    {
-#if 0				/* ACTIVITY PROFILE */
-		      char *task;
-		      int j, index;
+
 		      nvplist *res;
-		      char err_msg[1024];
 		      res = nv_create (5, NULL, "\n", ":", "\n");
-		      task = nv_get_val (cli_request, "task");
-		      if (task && !strcmp (task, "setclientdiaginfo"))
-			{
-			  int ret_val;
-			  char *db_name;
-			  char time_buf[16];
-			  struct timeval current_time;
-			  T_CLIENT_MONITOR_CONFIG c_config;
-
-			  nv_add_nvp (res, "task", task);
-			  nv_add_nvp (res, "status", "none");
-			  nv_add_nvp (res, "note", "none");
-
-			  ret_val = ERR_NO_ERROR;
-			  db_name = nv_get_val (cli_request, "db_name");
-			  init_monitor_config (&c_config);
-			  ret_val =
-			    get_client_monitoring_config (cli_request,
-							  &c_config);
-
-			  if (ret_val == ERR_NO_ERROR)
-			    {
-			      MONITOR_CAS_CONFIG shm_cas_config;
-			      void *shm_cas, *shm_server;
-
-			      client_info[i].diag_ref_count++;
-			      ADD_CAS_MONITOR_CONFIG (client_info[i].
-						      diag_cas_config,
-						      c_config.cas);
-
-			      /* flag set to cas shared memory */
-			      shm_cas = uca_broker_shm_open (err_msg);
-			      if (shm_cas)
-				{
-				  if (uca_get_br_diagconfig_with_opened_shm
-				      (shm_cas, (void *) &shm_cas_config,
-				       err_msg) != -1)
-				    {
-				      ADD_CAS_MONITOR_CONFIG (shm_cas_config,
-							      c_config.cas);
-				      uca_set_br_diagconfig_with_opened_shm
-					(shm_cas, (void *) &shm_cas_config,
-					 err_msg);
-
-				      uca_shm_detach (shm_cas);
-				    }
-				}
-
-			      if (db_name)
-				{
-				  for (j = 0;
-				       j < client_info[i].mon_server_num; j++)
-				    {
-				      char *server_name
-					=
-					client_info[i].diag_server_config[j].
-					server_name;
-				      if (!strcmp (server_name, db_name))
-					{
-					  ADD_SERVER_MONITOR_CONFIG
-					    (client_info[i].
-					     diag_server_config[j].
-					     server_config, c_config.server);
-					  break;
-					}
-				    }
-
-				  if (j == client_info[i].mon_server_num)
-				    {
-				      client_info[i].mon_server_num++;
-				      COPY_SERVER_MONITOR_CONFIG (client_info
-								  [i].
-								  diag_server_config
-								  [j].
-								  server_config,
-								  c_config.
-								  server);
-				      strcpy (client_info[i].
-					      diag_server_config[j].
-					      server_name, db_name);
-				    }
-
-				  /* flag set to server shared memory */
-				  ret_val = getservershmid (db_name, err_msg);
-				  if (ret_val != -1)
-				    {
-				      shm_server =
-					diag_shm_open (ret_val,
-						       SHM_DIAG_SERVER,
-						       DIAG_SHM_MODE_ADMIN);
-				      if (shm_server)
-					{
-					  ADD_SERVER_MONITOR_CONFIG (((T_SHM_DIAG_INFO_SERVER *) shm_server)->server_diag_config, c_config.server);
-
-					  diag_shm_detach (shm_server);
-					}
-				    }
-				}
-			      ret_val = ERR_NO_ERROR;
-			    }
-			  gettimeofday (&current_time, NULL);
-
-			  sprintf (time_buf, "%ld", current_time.tv_sec);
-			  nv_add_nvp (res, "start_time_sec", time_buf);
-			  sprintf (time_buf, "%ld", current_time.tv_usec);
-			  nv_add_nvp (res, "start)time_usec", time_buf);
-
-			  uGenerateStatus (cli_request, res, ret_val,
-					   err_msg);
-			  ut_send_response (sockfd, res);
-			  nv_destroy (res);
-			}
-		      else if (task && !strcmp (task, "removeclientdiaginfo"))
-			{
-			  int db_index, db_num, ret_val, skip_cas;
-			  int db_index1, userindex, db_index2;
-			  void *shm_cas, *shm_server;
-			  MONITOR_CAS_CONFIG new_cas_config;
-			  MONITOR_SERVER_CONFIG new_server_config;
-
-			  nv_add_nvp (res, "task", task);
-			  nv_add_nvp (res, "status", "none");
-			  nv_add_nvp (res, "note", "none");
-
-			  ret_val = ERR_NO_ERROR;
-
-			  client_info[i].diag_ref_count--;
-
-			  if (client_info[i].diag_ref_count != 0)
-			    goto removeclientdiaginfo_final;
-
-			  /* 1. delete content in client_info[i].diag_cas_config */
-			  init_cas_monitor_config (&
-						   (client_info[i].
-						    diag_cas_config));
-
-			  /* 2. delete content in client_info[i].diag_server_config */
-			  db_num = client_info[i].mon_server_num;
-			  for (db_index = 0; db_index < db_num; db_index++)
-			    {
-			      init_server_monitor_config (&
-							  (client_info[i].
-							   diag_server_config
-							   [db_index].
-							   server_config));
-			    }
-			  client_info[i].mon_server_num = 0;
-
-			  /* 3. modify shered memory's value by every cilent_info's
-			   * diag_cas_config and diag_server_config's value. */
-			  skip_cas = 0;
-			  for (db_index1 = 0; db_index1 < db_num; db_index1++)
-			    {
-			      init_server_monitor_config (&new_server_config);
-
-			      if (!skip_cas)
-				init_cas_monitor_config (&new_cas_config);
-
-			      for (userindex = 0; userindex < maxi;
-				   userindex++)
-				{
-				  if (client_info[userindex].state ==
-				      VALID_USER)
-				    {
-				      if (!skip_cas)
-					{
-					  ADD_CAS_MONITOR_CONFIG
-					    (new_cas_config,
-					     client_info[userindex].
-					     diag_cas_config);
-					}
-
-				      for (db_index2 = 0;
-					   db_index2 <
-					   client_info[userindex].
-					   mon_server_num; db_index2++)
-					{
-					  if (!strcmp
-					      (client_info[i].
-					       diag_server_config[db_index1].
-					       server_name,
-					       client_info[userindex].
-					       diag_server_config[db_index2].
-					       server_name))
-					    {
-					      ADD_SERVER_MONITOR_CONFIG
-						(new_server_config,
-						 client_info[userindex].
-						 diag_server_config
-						 [db_index2].server_config);
-					    }
-					}
-				    }
-				}
-			      if (!skip_cas)
-				{
-				  /* set value to shared memory */
-				  shm_cas = uca_broker_shm_open (err_msg);
-				  if (shm_cas)
-				    {
-				      ret_val =
-					uca_set_br_diagconfig_with_opened_shm
-					(shm_cas, &new_cas_config, err_msg);
-				      uca_shm_detach (shm_cas);
-				    }
-				  skip_cas = 1;
-				}
-
-			      /* open shared memory by
-			       * client_info[i].diag_server_config[db_index1].servername
-			       * and memory's value set to new_server_config */
-			      ret_val =
-				getservershmid (client_info[i].
-						diag_server_config[db_index1].
-						server_name, err_msg);
-			      if (ret_val != -1)
-				{
-				  shm_server =
-				    diag_shm_open (ret_val, SHM_DIAG_SERVER,
-						   DIAG_SHM_MODE_ADMIN);
-				  if (shm_server)
-				    {
-				      COPY_SERVER_MONITOR_CONFIG (((T_SHM_DIAG_INFO_SERVER *) shm_server)->server_diag_config, new_server_config);
-
-				      diag_shm_detach (shm_server);
-				    }
-				}
-			      memset (client_info[i].
-				      diag_server_config[db_index1].
-				      server_name, '\0',
-				      MAX_SERVER_NAMELENGTH);
-			      ret_val = ERR_NO_ERROR;
-			    }
-			removeclientdiaginfo_final:
-			  uGenerateStatus (cli_request, res, ret_val,
-					   err_msg);
-			  ut_send_response (sockfd, res);
-			  nv_destroy (res);
-			}
-		      else
+		      if (res != NULL)
 			{
 			  prepare_response ((userdata *) ud, res);
 			  ((userdata *) ud)->last_request_time = time (NULL);
 			  ut_send_response (sockfd, res);
 			  nv_destroy (res);
 			}
-#else
-		      nvplist *res;
-		      res = nv_create (5, NULL, "\n", ":", "\n");
-		      prepare_response ((userdata *) ud, res);
-		      ((userdata *) ud)->last_request_time = time (NULL);
-		      ut_send_response (sockfd, res);
-		      nv_destroy (res);
-#endif
+
 		    }
 		  else
 		    {
@@ -808,6 +541,7 @@ service_start (void *ud)
 	    }
 	}			/* end for */
     }
+return_statement:
   nv_destroy (cli_request);
   nv_destroy (cli_response);
 
@@ -1017,7 +751,7 @@ uRemoveConnection (char *new_ip, char *new_port, char *client_ver)
       while (fgets (sbuf, 1024, infile))
 	{
 	  ut_trim (sbuf);
-	  sscanf (sbuf, "%s %s %s %s %s\n", ip, port, c_date, c_time,
+	  sscanf (sbuf, "%19s %9s %15s %15s %15s\n", ip, port, c_date, c_time,
 		  version);
 	  if ((uStringEqual (new_ip, ip)) && (uStringEqual (new_port, port)))
 	    continue;
@@ -1392,73 +1126,4 @@ client_info_reset (T_CLIENT_INFO * client_info)
   client_info->state = NO_USER;
   FREE_MEM (client_info->user_id);
   FREE_MEM (client_info->ip_address);
-
-#if 0				/* ACTIVITY_PROFILE */
-  diag_config_reset (client_info);
-#endif
 }
-
-#if 0				/* ACTIVITY_PROFILE */
-static void
-diag_config_reset (T_CLIENT_INFO * client_info)
-{
-  int i;
-
-  if (!client_info)
-    return;
-
-  init_cas_monitor_config (&(client_info->diag_cas_config));
-  for (i = 0; i < client_info->mon_server_num; i++)
-    {
-      memset (client_info->diag_server_config[i].server_name, '\0',
-	      MAX_SERVER_NAMELENGTH);
-      init_server_monitor_config (&
-				  (client_info->diag_server_config[i].
-				   server_config));
-    }
-  client_info->mon_server_num = 0;
-}
-
-static void
-uGenerateStatus (nvplist * req, nvplist * res, int retval, char *diagerror)
-{
-  char strbuf[1024];
-
-  if ((retval == -1) || (retval == 0))
-    return;
-
-  if ((retval == 1) || (retval == ERR_NO_ERROR))
-    {
-      nv_update_val (res, "status", "success");
-      return;
-    }
-
-  nv_update_val (res, "status", "failure");
-  switch (retval)
-    {
-    case ERR_GENERAL_ERROR:
-      sprintf (strbuf, "Unknown general error");
-      break;
-    case ERR_UNDEFINED_TASK:
-      sprintf (strbuf, "Undefined request - %s", diagerror);
-      break;
-    case ERR_PARAM_MISSING:
-      sprintf (strbuf, "Parameter(%s) missing in the request", diagerror);
-      break;
-    case ERR_FILE_OPEN_FAIL:
-      sprintf (strbuf, "File(%s) open error", diagerror);
-      break;
-    case ERR_WITH_MSG:
-      sprintf (strbuf, "%s", diagerror);
-      break;
-    case ERR_SYSTEM_CALL:
-      sprintf (strbuf, "Error while running(%s)", diagerror);
-      break;
-    default:
-      sprintf (strbuf, "error");
-      break;
-    }
-
-  nv_update_val (res, "note", strbuf);
-}
-#endif

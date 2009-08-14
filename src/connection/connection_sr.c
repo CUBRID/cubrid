@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -188,8 +188,6 @@ static void css_queue_error_packet (CSS_CONN_ENTRY * conn,
 static void css_queue_command_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id,
 				      const NET_HEADER * header, int size);
-static void css_queue_oob_packet (CSS_CONN_ENTRY * conn,
-				  const NET_HEADER * header);
 static char *css_return_oob_buffer (int size);
 static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id);
@@ -212,7 +210,12 @@ css_get_next_client_id (void)
   int next_client_id, rv;
 
   MUTEX_LOCK (rv, css_Client_id_lock);
-  CSS_CHECK_RETURN_ERROR (rv, ER_CSS_CONN_GET_NEXT_CLIENT_ID);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_FAILED;
+    }
 
   css_Client_id++;
   if (css_Client_id == CSS_MAX_CLIENT_ID)
@@ -222,7 +225,12 @@ css_get_next_client_id (void)
   next_client_id = css_Client_id;
 
   rv = MUTEX_UNLOCK (css_Client_id_lock);
-  CSS_CHECK_RETURN_ERROR (rv, ER_CSS_CONN_GET_NEXT_CLIENT_ID);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_FAILED;
+    }
 
   return next_client_id;
 }
@@ -242,21 +250,22 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->request_id = 0;
   conn->status = CONN_OPEN;
   conn->transaction_id = -1;
-  conn->client_id = css_get_next_client_id ();
+  err = css_get_next_client_id ();
+  if (err < 0)
+    {
+      return ER_CSS_CONN_INIT;
+    }
+  conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
   conn->reset_on_commit = false;
-
   err = csect_initialize_critical_section (&conn->csect);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   conn->stop_talk = false;
-
   conn->version_string = NULL;
-
-  conn->local_name = NULL;
-  conn->foreign_name = NULL;
-
   conn->free_queue_list = NULL;
   conn->free_queue_count = 0;
   conn->free_wait_queue_list = NULL;
@@ -265,26 +274,35 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_net_header_count = 0;
 
   err = css_initialize_list (&conn->request_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   err = css_initialize_list (&conn->data_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   err = css_initialize_list (&conn->data_wait_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   err = css_initialize_list (&conn->abort_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   err = css_initialize_list (&conn->buffer_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
-  err = css_initialize_list (&conn->oob_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   err = css_initialize_list (&conn->error_queue, 0);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
-
+  if (err != NO_ERROR)
+    {
+      return ER_CSS_CONN_INIT;
+    }
   return NO_ERROR;
 }
 
@@ -310,9 +328,10 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       conn->status = CONN_CLOSED;
       conn->stop_talk = false;
 
-      free_and_init (conn->version_string);
-      free_and_init (conn->local_name);
-      free_and_init (conn->foreign_name);
+      if (conn->version_string)
+	{
+	  free_and_init (conn->version_string);
+	}
 
       css_remove_all_unexpected_packets (conn);
 
@@ -321,7 +340,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       css_finalize_list (&conn->data_wait_queue);
       css_finalize_list (&conn->abort_queue);
       css_finalize_list (&conn->buffer_queue);
-      css_finalize_list (&conn->oob_queue);
       css_finalize_list (&conn->error_queue);
     }
 
@@ -383,18 +401,23 @@ css_init_conn_list (void)
 
   /* allocate PRM_CSS_MAX_CLIENTS conn entries + 1(conn with master) */
   css_Conn_array = (CSS_CONN_ENTRY *)
-    malloc (sizeof (CSS_CONN_ENTRY) * (PRM_CSS_MAX_CLIENTS + 1));
+    malloc (sizeof (CSS_CONN_ENTRY) * (PRM_CSS_MAX_CLIENTS));
   if (css_Conn_array == NULL)
     {
       return ER_CSS_CONN_INIT;
     }
 
   /* initialize all CSS_CONN_ENTRY */
-  for (i = 0; i < PRM_CSS_MAX_CLIENTS; i++)
+  for (i = 0; i < PRM_CSS_MAX_CLIENTS - 1; i++)
     {
       css_Conn_array[i].idx = i;
       err = css_initialize_conn (&css_Conn_array[i], -1);
-      CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
+      if (err != NO_ERROR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_CONN_INIT, 0);
+	  return ER_CSS_CONN_INIT;
+	}
 
       css_Conn_array[i].next = &css_Conn_array[i + 1];
     }
@@ -402,7 +425,12 @@ css_init_conn_list (void)
   /* initialize the last CSS_CONN_ENTRY */
   css_Conn_array[i].idx = i;
   err = css_initialize_conn (&css_Conn_array[i], -1);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
+  if (err != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
+			   0);
+      return ER_CSS_CONN_INIT;
+    }
 
   css_Conn_array[i].next = NULL;
 
@@ -411,13 +439,28 @@ css_init_conn_list (void)
   css_Free_conn_anchor = &css_Conn_array[0];
 
   err = csect_initialize_critical_section (&css_Active_conn_csect);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
+  if (err != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
+			   0);
+      return ER_CSS_CONN_INIT;
+    }
 
   err = csect_initialize_critical_section (&css_Free_conn_csect);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
+  if (err != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
+			   0);
+      return ER_CSS_CONN_INIT;
+    }
 
   err = MUTEX_INIT (css_Client_id_lock);
-  CSS_CHECK_RETURN_ERROR (err, ER_CSS_CONN_INIT);
+  if (err != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
+			   0);
+      return ER_CSS_CONN_INIT;
+    }
 
   return NO_ERROR;
 }
@@ -473,6 +516,8 @@ css_make_conn (SOCKET fd)
     {
       if (css_initialize_conn (conn, fd) != NO_ERROR)
 	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_CONN_INIT, 0);
 	  return NULL;
 	}
     }
@@ -809,7 +854,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name,
 #else /* WINDOWS */
 		  /* send the "pathname" for the datagram */
 		  /* be sure to open the datagram first.  */
-		  pname = tempnam (NULL, "usql");
+		  pname = tempnam (NULL, "cubrid");
 		  if (pname)
 		    {
 		      if (css_tcp_setup_server_datagram (pname, &socket_fd)
@@ -1530,9 +1575,6 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
     case COMMAND_TYPE:
       css_queue_command_packet (conn, request_id, header, size);
       break;
-    case OOB_TYPE:
-      css_queue_oob_packet (conn, header);
-      break;
     default:
       CSS_TRACE2 ("Asked to queue an unknown packet id = %d.\n", type);
     }
@@ -1838,49 +1880,6 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 			    (unsigned short) ntohl (data_header.request_id),
 			    &data_header, sizeof (NET_HEADER));
 	}
-    }
-}
-
-/*
- * css_queue_oob_packet() - queue oob packet
- *   return: void
- *   conn(in): connection entry
- *   header(in): network header
- */
-static void
-css_queue_oob_packet (CSS_CONN_ENTRY * conn, const NET_HEADER * header)
-{
-  char *buffer;
-  int rc;
-  int size;
-
-  size = ntohl (header->buffer_size);
-  buffer = css_return_oob_buffer (size);
-
-  if (buffer != NULL)
-    {
-      do
-	{
-	  rc = css_net_recv (conn->fd, buffer, &size,
-			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
-	}
-      while (rc == INTERRUPTED_READ);
-
-      if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
-	{
-	  if (!css_is_request_aborted (conn, 0))
-	    {
-	      css_add_queue_entry (conn, &conn->oob_queue, 0, (char *) buffer,
-				   size, NO_ERRORS, conn->transaction_id,
-				   conn->db_error);
-	    }
-	  return;
-	}
-    }
-  else
-    {
-      rc = CANT_ALLOC_BUFFER;
-      css_read_remaining_bytes (conn->fd, sizeof (int) + size);
     }
 }
 
@@ -2229,9 +2228,6 @@ css_remove_unexpected_packets (CSS_CONN_ENTRY * conn,
 			css_find_and_remove_queue_entry (&conn->data_queue,
 							 request_id));
   css_free_queue_entry (conn,
-			css_find_and_remove_queue_entry (&conn->oob_queue,
-							 0));
-  css_free_queue_entry (conn,
 			css_find_and_remove_queue_entry (&conn->error_queue,
 							 request_id));
 }
@@ -2311,8 +2307,6 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 
   css_traverse_list (&conn->abort_queue, css_remove_and_free_queue_entry,
 		     conn);
-
-  css_traverse_list (&conn->oob_queue, css_remove_and_free_queue_entry, conn);
 
   css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry,
 		     conn);

@@ -238,10 +238,10 @@ qe_con_close (T_CON_HANDLE * con_handle)
   if (net_buf.err_code < 0)
     goto con_close_end;
 
-  if (net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size) < 0)
+  if (net_send_msg (con_handle, net_buf.data, net_buf.data_size) < 0)
     goto con_close_end;
 
-  net_recv_msg (con_handle->sock_fd, NULL, NULL, NULL);
+  net_recv_msg (con_handle, NULL, NULL, NULL);
 
 con_close_end:
 
@@ -286,24 +286,20 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  if (type != CCI_TRAN_ROLLBACK)
-    {
-      err_code = net_recv_msg (con_handle->sock_fd, NULL, NULL, err_buf);
-    }
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
-  if (BROKER_INFO_STATEMENT_POOLING (con_handle->broker_info) !=
+  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] !=
       CAS_STATEMENT_POOLING_ON)
     {
       hm_req_handle_free_all (con_handle);
     }
 
-  if (BROKER_INFO_KEEP_CONNECTION (con_handle->broker_info) ==
+  if (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
       CAS_KEEP_CONNECTION_ON)
     {
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -318,8 +314,8 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
 }
 
 int
-qe_prepare (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *sql_stmt,
-	    char flag, T_CCI_ERROR * err_buf, int reuse)
+qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+	    char *sql_stmt, char flag, T_CCI_ERROR * err_buf, int reuse)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_PREPARE;
@@ -328,10 +324,16 @@ qe_prepare (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *sql_stmt,
   char *result_msg = NULL;
   int result_msg_size;
   int result_code;
-  char auto_commit_mode;
 
   if (!reuse)
-    ALLOC_COPY (req_handle->sql_text, sql_stmt);
+    {
+      ALLOC_COPY (req_handle->sql_text, sql_stmt);
+    }
+
+  if (req_handle->sql_text == NULL)
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
 
   sql_stmt_size = strlen (req_handle->sql_text) + 1;
 
@@ -342,8 +344,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *sql_stmt,
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size);
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
-  auto_commit_mode = 0;
-  ADD_ARG_BYTES (&net_buf, &auto_commit_mode, 1);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   if (net_buf.err_code < 0)
     {
@@ -352,15 +353,15 @@ qe_prepare (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *sql_stmt,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
       return err_code;
     }
 
-  result_code =
-    net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  result_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			      err_buf);
   if (result_code < 0)
     {
       return result_code;
@@ -393,14 +394,19 @@ qe_prepare (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *sql_stmt,
 	    MALLOC (sizeof (T_BIND_VALUE) * req_handle->num_bind);
 
 	  if (req_handle->bind_value == NULL)
-	    return CCI_ER_NO_MORE_MEMORY;
+	    {
+	      return CCI_ER_NO_MORE_MEMORY;
+	    }
 
 	  memset (req_handle->bind_value,
 		  0, sizeof (T_BIND_VALUE) * req_handle->num_bind);
 
 	  req_handle->bind_mode = (char *) MALLOC (req_handle->num_bind);
 	  if (req_handle->bind_mode == NULL)
-	    return CCI_ER_NO_MORE_MEMORY;
+	    {
+	      return CCI_ER_NO_MORE_MEMORY;
+	    }
+
 	  memset (req_handle->bind_mode, CCI_PARAM_MODE_UNKNOWN,
 		  req_handle->num_bind);
 	}
@@ -418,7 +424,9 @@ qe_bind_param (T_REQ_HANDLE * req_handle, int index, T_CCI_A_TYPE a_type,
   index--;
 
   if (index < 0 || index >= req_handle->num_bind)
-    return CCI_ER_BIND_INDEX;
+    {
+      return CCI_ER_BIND_INDEX;
+    }
 
   if (req_handle->bind_value[index].flag == BIND_PTR_DYNAMIC)
     {
@@ -442,7 +450,7 @@ qe_bind_param (T_REQ_HANDLE * req_handle, int index, T_CCI_A_TYPE a_type,
 }
 
 int
-qe_execute (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
+qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	    int max_col_size, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -454,7 +462,6 @@ qe_execute (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
   int result_msg_size;
   T_CCI_QUERY_RESULT *qr = NULL;
   char fetch_flag;
-  char auto_commit_mode;
   char forward_only_cursor;
   int remain_msg_size;
 
@@ -488,10 +495,9 @@ qe_execute (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
   ADD_ARG_BYTES (&net_buf, &fetch_flag, 1);
 
   /* Set AutoCommit Mode is FALSE, Forward_Only_Cursor is FALSE */
-  auto_commit_mode = 0;
   forward_only_cursor = 0;
 
-  ADD_ARG_BYTES (&net_buf, &auto_commit_mode, 1);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
   ADD_ARG_BYTES (&net_buf, &forward_only_cursor, 1);
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
@@ -510,13 +516,14 @@ qe_execute (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
       goto execute_error;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   if (err_code < 0)
     goto execute_error;
 
   net_buf_clear (&net_buf);
 
-  res_count = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  res_count = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			    err_buf);
   if (res_count < 0)
     {
       err_code = res_count;
@@ -525,7 +532,7 @@ qe_execute (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
 
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_EXEC, &qr, &remain_msg_size);
-  if (err_code < 0)
+  if (qr == NULL)
     {
       req_handle->num_query_res = 0;
       req_handle->qr = NULL;
@@ -634,15 +641,13 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code =
-    net_recv_msg (con_handle->sock_fd, &result_msg, &result_msg_size,
-		  err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
 
   result_msg_size -= 4;
 
@@ -700,6 +705,25 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 	ADD_ARG_INT (&net_buf, i_val);
       }
       break;
+#if 0
+      /* CCI AUTO COMMIT MODE SUPPORT */
+    case CCI_PARAM_AUTO_COMMIT:
+      {
+	int i_val;
+	i_val = *((int *) value);
+	ADD_ARG_INT (&net_buf, i_val);
+
+	if (i_val == 0)
+	  {
+	    con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
+	  }
+	else
+	  {
+	    con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
+	  }
+      }
+      break;
+#endif
     default:
       net_buf_clear (&net_buf);
       return CCI_ER_PARAM_NAME;
@@ -712,19 +736,18 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (con_handle->sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
 
 int
-qe_close_req_handle (T_REQ_HANDLE * req_handle, SOCKET sock_fd)
+qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CLOSE_REQ_HANDLE;
@@ -737,7 +760,7 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, SOCKET sock_fd)
      failure(using closed socket) returns while sending a message in this function.
      So, if sockect is closed at this point, messages must not be sent to server.
    */
-  if (IS_INVALID_SOCKET (sock_fd) || !req_handle->valid)
+  if (IS_INVALID_SOCKET (con_handle->sock_fd) || !req_handle->valid)
     {
       return 0;
     }
@@ -754,19 +777,19 @@ qe_close_req_handle (T_REQ_HANDLE * req_handle, SOCKET sock_fd)
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, NULL);
+  err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
 
   return err_code;
 }
 
 int
-qe_cursor (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int offset, char origin,
-	   T_CCI_ERROR * err_buf)
+qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int offset,
+	   char origin, T_CCI_ERROR * err_buf)
 {
   char func_code = CAS_FC_CURSOR;
   int err_code;
@@ -868,12 +891,13 @@ qe_cursor (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int offset, char origin,
       goto cursor_error;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   if (err_code < 0)
     goto cursor_error;
   net_buf_clear (&net_buf);
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     {
       return err_code;
@@ -920,7 +944,7 @@ cursor_error:
 }
 
 int
-qe_fetch (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
+qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	  int result_set_index, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -969,12 +993,13 @@ qe_fetch (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char flag,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
@@ -1125,7 +1150,6 @@ qe_glo_new (T_CON_HANDLE * con_handle, char *class_name, char *filename,
   int file_size = 0;
   char *result_msg = NULL;
   int result_msg_size;
-  SOCKET sock_fd = con_handle->sock_fd;
   T_OBJECT glo_oid;
 
   net_buf_init (&net_buf);
@@ -1162,29 +1186,36 @@ qe_glo_new (T_CON_HANDLE * con_handle, char *class_name, char *filename,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   if (file_size > 0)
     {
-      err_code = net_send_file (sock_fd, filename, file_size);
+      err_code = net_send_file (con_handle->sock_fd, filename, file_size);
       if (err_code < 0)
-	return err_code;
+	{
+	  return err_code;
+	}
     }
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  if (result_msg_size < SIZE_OBJECT + 4)
+  if (result_msg_size < SIZE_INT + SIZE_OBJECT)
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_OBJECT (glo_oid, result_msg + 4);
+  NET_STR_TO_OBJECT (glo_oid, result_msg + SIZE_INT);
   ut_oid_to_str (&glo_oid, oid_str);
 
   FREE_MEM (result_msg);
@@ -1200,11 +1231,12 @@ qe_glo_save (T_CON_HANDLE * con_handle, char *oid_str, char *filename,
   int err_code = 0;
   char flag;
   int file_size = 0;
-  SOCKET sock_fd = con_handle->sock_fd;
   T_OBJECT glo_oid;
 
   if (ut_str_to_oid (oid_str, &glo_oid) < 0)
-    return CCI_ER_OBJECT;
+    {
+      return CCI_ER_OBJECT;
+    }
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
@@ -1239,21 +1271,27 @@ qe_glo_save (T_CON_HANDLE * con_handle, char *oid_str, char *filename,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   if (file_size > 0)
     {
-      err_code = net_send_file (sock_fd, filename, file_size);
+      err_code = net_send_file (con_handle->sock_fd, filename, file_size);
       if (err_code < 0)
-	return err_code;
+	{
+	  return err_code;
+	}
     }
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   return err_code;
 }
@@ -1265,14 +1303,15 @@ qe_glo_load (T_CON_HANDLE * con_handle, char *oid_str, int out_fd,
   T_NET_BUF net_buf;
   char func_code = CAS_FC_GLO_LOAD;
   int err_code = 0;
-  SOCKET sock_fd = con_handle->sock_fd;
   T_OBJECT glo_oid;
   char *result_msg = NULL;
   int result_msg_size;
   int file_size;
 
   if (ut_str_to_oid (oid_str, &glo_oid) < 0)
-    return CCI_ER_OBJECT;
+    {
+      return CCI_ER_OBJECT;
+    }
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
@@ -1286,25 +1325,30 @@ qe_glo_load (T_CON_HANDLE * con_handle, char *oid_str, int out_fd,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  result_msg_size -= 4;
-  if (result_msg_size < 4)
+  result_msg_size -= SIZE_INT;
+  if (result_msg_size < SIZE_INT)
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_INT (file_size, result_msg + 4);
+  NET_STR_TO_INT (file_size, result_msg + SIZE_INT);
 
-  err_code = net_recv_file (sock_fd, file_size, out_fd);
+  err_code = net_recv_file (con_handle->sock_fd, file_size, out_fd);
 
   FREE_MEM (result_msg);
 
@@ -1312,8 +1356,8 @@ qe_glo_load (T_CON_HANDLE * con_handle, char *oid_str, int out_fd,
 }
 
 int
-qe_schema_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int type,
-		char *class_name, char *attr_name, char flag,
+qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+		int type, char *class_name, char *attr_name, char flag,
 		T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1343,13 +1387,13 @@ qe_schema_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int type,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  result_code =
-    net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  result_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			      err_buf);
   if (result_code < 0)
     return result_code;
 
@@ -1368,8 +1412,8 @@ qe_schema_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int type,
 }
 
 int
-qe_oid_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
-	    char **attr_name, T_CCI_ERROR * err_buf)
+qe_oid_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+	    char *oid_str, char **attr_name, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_OID_GET;
@@ -1402,13 +1446,13 @@ qe_oid_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  result_code =
-    net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  result_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			      err_buf);
   if (result_code < 0)
     return result_code;
 
@@ -1426,8 +1470,8 @@ qe_oid_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
 }
 
 int
-qe_oid_put (SOCKET sock_fd, char *oid_str, char **attr_name, char **new_val,
-	    T_CCI_ERROR * err_buf)
+qe_oid_put (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name,
+	    char **new_val, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_OID_PUT;
@@ -1460,19 +1504,19 @@ qe_oid_put (SOCKET sock_fd, char *oid_str, char **attr_name, char **new_val,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
 
 int
-qe_oid_put2 (SOCKET sock_fd, char *oid_str, char **attr_name, void **new_val,
-	     int *a_type, T_CCI_ERROR * err_buf)
+qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name,
+	     void **new_val, int *a_type, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_OID_PUT;
@@ -1579,12 +1623,12 @@ qe_oid_put2 (SOCKET sock_fd, char *oid_str, char **attr_name, void **new_val,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
@@ -1595,15 +1639,13 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
   T_NET_BUF net_buf;
   char func_code = CAS_FC_GET_DB_VERSION;
   char *result_msg = NULL;
-  char auto_commit_mode;
   int result_msg_size;
   int err_code;
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
 
-  auto_commit_mode = 0;
-  ADD_ARG_BYTES (&net_buf, &auto_commit_mode, 1);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   if (net_buf.err_code < 0)
     {
@@ -1612,14 +1654,12 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code =
-    net_recv_msg (con_handle->sock_fd, &result_msg, &result_msg_size, NULL);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size, NULL);
   result_msg_size -= 4;
 
   if (err_code >= 0)
@@ -1659,15 +1699,13 @@ qe_get_class_num_objs (T_CON_HANDLE * con_handle, char *class_name, char flag,
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code =
-    net_recv_msg (con_handle->sock_fd, &result_msg, &result_msg_size,
-		  err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code >= 0)
     {
       int tmp_i_value;
@@ -1697,7 +1735,7 @@ qe_get_class_num_objs (T_CON_HANDLE * con_handle, char *class_name, char flag,
 }
 
 int
-qe_oid_cmd (SOCKET sock_fd, char cmd, char *oid_str, char *out_buf,
+qe_oid_cmd (T_CON_HANDLE * con_handle, char cmd, char *oid_str, char *out_buf,
 	    int out_buf_size, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1726,12 +1764,13 @@ qe_oid_cmd (SOCKET sock_fd, char cmd, char *oid_str, char *out_buf,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
@@ -1751,8 +1790,8 @@ qe_oid_cmd (SOCKET sock_fd, char cmd, char *oid_str, char *out_buf,
 }
 
 int
-qe_col_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
-	    const char *col_attr, int *col_size, int *col_type,
+qe_col_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+	    char *oid_str, const char *col_attr, int *col_size, int *col_type,
 	    T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1788,12 +1827,13 @@ qe_col_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
@@ -1814,7 +1854,7 @@ qe_col_get (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char *oid_str,
 }
 
 int
-qe_col_size (SOCKET sock_fd, char *oid_str, const char *col_attr,
+qe_col_size (T_CON_HANDLE * con_handle, char *oid_str, const char *col_attr,
 	     int *set_size, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1850,12 +1890,13 @@ qe_col_size (SOCKET sock_fd, char *oid_str, const char *col_attr,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
@@ -1872,7 +1913,7 @@ qe_col_size (SOCKET sock_fd, char *oid_str, const char *col_attr,
 }
 
 int
-qe_col_set_add_drop (SOCKET sock_fd, char col_cmd, char *oid_str,
+qe_col_set_add_drop (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str,
 		     const char *col_attr, char *value, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1911,17 +1952,17 @@ qe_col_set_add_drop (SOCKET sock_fd, char col_cmd, char *oid_str,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
   return err_code;
 }
 
 int
-qe_col_seq_op (SOCKET sock_fd, char col_cmd, char *oid_str,
+qe_col_seq_op (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str,
 	       const char *col_attr, int index, const char *value,
 	       T_CCI_ERROR * err_buf)
 {
@@ -1969,18 +2010,18 @@ qe_col_seq_op (SOCKET sock_fd, char col_cmd, char *oid_str,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
   return err_code;
 }
 
 int
-qe_next_result (T_REQ_HANDLE * req_handle, char flag, SOCKET sock_fd,
-		T_CCI_ERROR * err_buf)
+qe_next_result (T_REQ_HANDLE * req_handle, char flag,
+		T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_NEXT_RESULT;
@@ -2002,14 +2043,15 @@ qe_next_result (T_REQ_HANDLE * req_handle, char flag, SOCKET sock_fd,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
       return err_code;
     }
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     {
       return err_code;
@@ -2027,7 +2069,7 @@ qe_next_result (T_REQ_HANDLE * req_handle, char flag, SOCKET sock_fd,
 }
 
 int
-qe_execute_array (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
+qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		  T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -2038,14 +2080,13 @@ qe_execute_array (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
   char *result_msg = NULL;
   int result_msg_size;
   int remain_size;
-  char auto_commit_mode;
 
   net_buf_init (&net_buf);
 
   net_buf_cp_str (&net_buf, &func_code, 1);
 
   ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
-  ADD_ARG_BYTES (&net_buf, &auto_commit_mode, 1);
+  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   for (row = 0; row < req_handle->bind_array_size; row++)
     {
@@ -2178,18 +2219,18 @@ qe_execute_array (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code =
-    execute_array_info_decode (result_msg + 4, result_msg_size - 4,
-			       EXECUTE_ARRAY, qr, &remain_size);
+  err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
+					EXECUTE_ARRAY, qr, &remain_size);
 
   FREE_MEM (result_msg);
 
@@ -2241,8 +2282,8 @@ qe_query_result_copy (T_REQ_HANDLE * req_handle, T_CCI_QUERY_RESULT ** res_qr)
 }
 
 int
-qe_cursor_update (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int cursor_pos,
-		  int index, T_CCI_A_TYPE a_type, void *value,
+qe_cursor_update (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+		  int cursor_pos, int index, T_CCI_A_TYPE a_type, void *value,
 		  T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -2268,10 +2309,14 @@ qe_cursor_update (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int cursor_pos,
     }
   else
     {
-      u_type = get_basic_utype (req_handle->col_info[index - 1].type);
+      if (req_handle->col_info == NULL)
+	{
+	  net_buf_clear (&net_buf);
+	  return CCI_ER_TYPE_CONVERSION;
+	}
 
-      if (req_handle->col_info == NULL ||
-	  u_type <= CCI_U_TYPE_FIRST || u_type > CCI_U_TYPE_LAST)
+      u_type = get_basic_utype (req_handle->col_info[index - 1].type);
+      if (u_type <= CCI_U_TYPE_FIRST || u_type > CCI_U_TYPE_LAST)
 	{
 	  net_buf_clear (&net_buf);
 	  return CCI_ER_TYPE_CONVERSION;
@@ -2304,20 +2349,20 @@ qe_cursor_update (T_REQ_HANDLE * req_handle, SOCKET sock_fd, int cursor_pos,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
       return err_code;
     }
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
 
 int
-qe_execute_batch (SOCKET sock_fd, int num_query, char **sql_stmt,
+qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 		  T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -2351,14 +2396,15 @@ qe_execute_batch (SOCKET sock_fd, int num_query, char **sql_stmt,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
       return err_code;
     }
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     {
       return err_code;
@@ -2782,8 +2828,9 @@ qe_get_data_bit (T_CCI_U_TYPE u_type, char *col_value_p, int col_val_size,
 }
 
 int
-qe_get_attr_type_str (SOCKET sock_fd, char *class_name, char *attr_name,
-		      char *buf, int buf_size, T_CCI_ERROR * err_buf)
+qe_get_attr_type_str (T_CON_HANDLE * con_handle, char *class_name,
+		      char *attr_name, char *buf, int buf_size,
+		      T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   int err_code;
@@ -2805,12 +2852,13 @@ qe_get_attr_type_str (SOCKET sock_fd, char *class_name, char *attr_name,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			   err_buf);
   if (err_code < 0)
     return err_code;
 
@@ -2827,8 +2875,8 @@ qe_get_attr_type_str (SOCKET sock_fd, char *class_name, char *attr_name,
 }
 
 int
-qe_get_query_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char log_type,
-		   char **out_buf)
+qe_get_query_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
+		   char log_type, char **out_buf)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_GET_QUERY_INFO;
@@ -2848,12 +2896,12 @@ qe_get_query_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char log_type,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, &result_msg, &result_msg_size, NULL);
+  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size, NULL);
   if (err_code < 0)
     return err_code;
 
@@ -2876,8 +2924,8 @@ qe_get_query_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd, char log_type,
 }
 
 int
-qe_savepoint_cmd (SOCKET sock_fd, char cmd, const char *savepoint_name,
-		  T_CCI_ERROR * err_buf)
+qe_savepoint_cmd (T_CON_HANDLE * con_handle, char cmd,
+		  const char *savepoint_name, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
   int err_code;
@@ -2905,18 +2953,18 @@ qe_savepoint_cmd (SOCKET sock_fd, char cmd, const char *savepoint_name,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
 
 int
-qe_get_param_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
+qe_get_param_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		   T_CCI_PARAM_INFO ** res_param, T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -2942,14 +2990,15 @@ qe_get_param_info (T_REQ_HANDLE * req_handle, SOCKET sock_fd,
       return err_code;
     }
 
-  err_code = net_send_msg (sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
       return err_code;
     }
 
-  num_param = net_recv_msg (sock_fd, &result_msg, &result_msg_size, err_buf);
+  num_param = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			    err_buf);
   if (num_param < 0)
     {
       return num_param;
@@ -2996,13 +3045,12 @@ qe_xa_prepare (T_CON_HANDLE * con_handle, XID * xid, T_CCI_ERROR * err_buf)
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (con_handle->sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   return err_code;
 }
@@ -3028,14 +3076,12 @@ qe_xa_recover (T_CON_HANDLE * con_handle, XID * xid, int num_xid,
       return res;
     }
 
-  res = net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  res = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (res < 0)
     return res;
 
-  res =
-    net_recv_msg (con_handle->sock_fd, &result_msg, &result_msg_size,
-		  err_buf);
+  res = net_recv_msg (con_handle, &result_msg, &result_msg_size, err_buf);
   if (res < 0)
     return res;
 
@@ -3068,13 +3114,12 @@ qe_xa_end_tran (T_CON_HANDLE * con_handle, XID * xid, char type,
       return err_code;
     }
 
-  err_code =
-    net_send_msg (con_handle->sock_fd, net_buf.data, net_buf.data_size);
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
     return err_code;
 
-  err_code = net_recv_msg (con_handle->sock_fd, NULL, NULL, err_buf);
+  err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
@@ -3100,13 +3145,19 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   int result_cache_lifetime;
 
   if (remain_size < 4)
-    return CCI_ER_COMMUNICATION;
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   NET_STR_TO_INT (result_cache_lifetime, cur_p);
   remain_size -= 4;
   cur_p += 4;
 
   if (remain_size < 1)
-    return CCI_ER_COMMUNICATION;
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   stmt_type = *cur_p;
   remain_size -= 1;
   cur_p += 1;
@@ -3115,19 +3166,29 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     {
       return CCI_ER_COMMUNICATION;
     }
+
   NET_STR_TO_INT (num_bind_info, cur_p);
   remain_size -= 4;
   cur_p += 4;
 
   if (remain_size < 1)
-    return CCI_ER_COMMUNICATION;
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   updatable_flag = *cur_p;
   remain_size -= 1;
   cur_p += 1;
 
   num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 1);
   if (num_col_info < 0)
-    return num_col_info;
+    {
+      if (col_info != NULL)
+	{
+	  FREE_MEM (col_info);
+	}
+      return num_col_info;
+    }
 
   req_handle->num_bind = num_bind_info;
   req_handle->num_col_info = num_col_info;
@@ -3344,13 +3405,26 @@ get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
   int i;
 
   if (ret_col_info)
-    *ret_col_info = NULL;
+    {
+      *ret_col_info = NULL;
+    }
 
   if (remain_size < 4)
     {
       return CCI_ER_COMMUNICATION;
     }
+
+  if (cur_p == NULL)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   NET_STR_TO_INT (num_col_info, cur_p);
+  if (num_col_info < 0)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   remain_size -= 4;
   cur_p += 4;
 
@@ -3360,6 +3434,7 @@ get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
     {
       return CCI_ER_NO_MORE_MEMORY;
     }
+
   memset ((char *) col_info, 0, sizeof (T_CCI_COL_INFO) * num_col_info);
 
   for (i = 0; i < num_col_info; i++)
@@ -3433,9 +3508,14 @@ get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
     }
 
   if (ret_col_info)
-    *ret_col_info = col_info;
+    {
+      *ret_col_info = col_info;
+    }
+
   if (next_buf_p)
-    *next_buf_p = cur_p;
+    {
+      *next_buf_p = cur_p;
+    }
 
   return num_col_info;
 
@@ -3449,6 +3529,7 @@ get_column_info_error:
 	}
       FREE_MEM (col_info);
     }
+
   return CCI_ER_COMMUNICATION;
 }
 
@@ -3470,7 +3551,9 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle)
   cur_p += 4;
 
   if (remain_size < class_name_size || class_name_size <= 0)
-    return CCI_ER_COMMUNICATION;
+    {
+      return CCI_ER_COMMUNICATION;
+    }
 
   class_name = cur_p;
   remain_size -= class_name_size;
@@ -3479,7 +3562,14 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle)
   num_col_info =
     get_column_info (cur_p, remain_size, &col_info, &next_buf_p, 0);
   if (num_col_info < 0)
-    return num_col_info;
+    {
+      if (col_info != NULL)
+	{
+	  FREE_MEM (col_info);
+	}
+
+      return num_col_info;
+    }
 
   req_handle->col_info = col_info;
   req_handle->num_col_info = num_col_info;
@@ -3508,14 +3598,24 @@ schema_info_decode (char *buf_p, int size, T_REQ_HANDLE * req_handle)
   int num_col_info;
 
   if (remain_size < 4)
-    return CCI_ER_COMMUNICATION;
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   NET_STR_TO_INT (num_tuple, cur_p);
   remain_size -= 4;
   cur_p += 4;
 
   num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 0);
   if (num_col_info < 0)
-    return num_col_info;
+    {
+      if (col_info != NULL)
+	{
+	  FREE_MEM (col_info);
+	}
+
+      return num_col_info;
+    }
 
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
@@ -3589,6 +3689,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     {
       return CCI_ER_COMMUNICATION;
     }
+
   NET_STR_TO_INT (result_count, cur_p);
   remain_size -= 4;
   cur_p += 4;
@@ -3597,6 +3698,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     {
       return CCI_ER_COMMUNICATION;
     }
+
   stmt_type = *cur_p;
   remain_size -= 1;
   cur_p += 1;
@@ -3605,6 +3707,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
     {
       return CCI_ER_COMMUNICATION;
     }
+
   updatable_flag = *cur_p;
   remain_size -= 1;
   cur_p += 1;
@@ -3612,6 +3715,10 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 1);
   if (num_col_info < 0)
     {
+      if (col_info != NULL)
+	{
+	  FREE_MEM (col_info);
+	}
       return num_col_info;
     }
 
@@ -3723,7 +3830,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  break;
 	case CCI_U_TYPE_DATE:
 	  {
-	    T_CCI_DATE date;
+	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
 	    err_code = ut_str_to_date ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -3736,7 +3843,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  break;
 	case CCI_U_TYPE_TIME:
 	  {
-	    T_CCI_DATE date;
+	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
 	    err_code = ut_str_to_time ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -3749,7 +3856,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  break;
 	case CCI_U_TYPE_TIMESTAMP:
 	  {
-	    T_CCI_DATE date;
+	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
 	    err_code = ut_str_to_timestamp ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -3762,7 +3869,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  break;
 	case CCI_U_TYPE_DATETIME:
 	  {
-	    T_CCI_DATE date;
+	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
 	    err_code = ut_str_to_datetime ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -4193,6 +4300,12 @@ execute_array_info_decode (char *buf, int size, char flag,
     {
       return CCI_ER_COMMUNICATION;
     }
+
+  if (cur_p == NULL)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
   NET_STR_TO_INT (num_query, cur_p);
   remain_size -= 4;
   cur_p += 4;
@@ -4200,7 +4313,10 @@ execute_array_info_decode (char *buf, int size, char flag,
   qr =
     (T_CCI_QUERY_RESULT *) malloc (sizeof (T_CCI_QUERY_RESULT) * num_query);
   if (qr == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
   memset (qr, 0, sizeof (T_CCI_QUERY_RESULT) * num_query);
 
   for (i = 0; i < num_query; i++)
@@ -4212,6 +4328,7 @@ execute_array_info_decode (char *buf, int size, char flag,
 	      qe_query_result_free (i, qr);
 	      return CCI_ER_COMMUNICATION;
 	    }
+
 	  qr[i].stmt_type = *cur_p;
 	  remain_size -= 1;
 	  cur_p += 1;
@@ -4222,6 +4339,7 @@ execute_array_info_decode (char *buf, int size, char flag,
 	  qe_query_result_free (i, qr);
 	  return CCI_ER_COMMUNICATION;
 	}
+
       NET_STR_TO_INT (res_count, cur_p);
       remain_size -= 4;
       cur_p += 4;
@@ -4237,6 +4355,7 @@ execute_array_info_decode (char *buf, int size, char flag,
 	      qe_query_result_free (i, qr);
 	      return CCI_ER_COMMUNICATION;
 	    }
+
 	  NET_STR_TO_INT (err_msg_size, cur_p);
 	  remain_size -= 4;
 	  cur_p += 4;
@@ -4248,6 +4367,7 @@ execute_array_info_decode (char *buf, int size, char flag,
 		  qe_query_result_free (i, qr);
 		  return CCI_ER_COMMUNICATION;
 		}
+
 	      ALLOC_N_COPY (qr[i].err_msg, cur_p, err_msg_size, char *);
 	      remain_size -= err_msg_size;
 	      cur_p += err_msg_size;
@@ -4260,6 +4380,7 @@ execute_array_info_decode (char *buf, int size, char flag,
 	      qe_query_result_free (i, qr);
 	      return CCI_ER_COMMUNICATION;
 	    }
+
 	  NET_STR_TO_OBJECT (oid, cur_p);
 	  ut_oid_to_str (&oid, qr[i].oid);
 	  cur_p += SIZE_OBJECT;
@@ -4270,8 +4391,10 @@ execute_array_info_decode (char *buf, int size, char flag,
 	      int cache_time_sec, cache_time_usec;
 	      if (remain_size < 8)
 		{
+		  qe_query_result_free (i, qr);
 		  return CCI_ER_COMMUNICATION;
 		}
+
 	      NET_STR_TO_INT (cache_time_sec, cur_p);
 	      NET_STR_TO_INT (cache_time_usec, cur_p + 4);
 	      remain_size -= 8;

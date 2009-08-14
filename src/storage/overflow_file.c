@@ -116,6 +116,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   LOG_DATA_ADDR addr;
   LOG_DATA_ADDR logical_undoaddr;
   int ipage, i;
+  int request_pages, remain_pages;
 
   /*
    * We don't need to lock the overflow pages since these pages are not
@@ -205,12 +206,19 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
       if (alloc_vpids_index >= OVERFLOW_ALLOCVPID_ARRAY_SIZE)
 	{
+	  remain_pages = npages - ipage;
+	  if (remain_pages > OVERFLOW_ALLOCVPID_ARRAY_SIZE)
+	    {
+	      request_pages = OVERFLOW_ALLOCVPID_ARRAY_SIZE;
+	    }
+	  else
+	    {
+	      request_pages = remain_pages;
+	    }
+
 	  /* Get the next set of allocated pages */
-	  if (file_find_nthpages
-	      (thread_p, ovf_vfid, alloc_vpids, alloc_nth + ipage,
-	       ((npages - ipage) >
-		OVERFLOW_ALLOCVPID_ARRAY_SIZE ? OVERFLOW_ALLOCVPID_ARRAY_SIZE
-		: npages - ipage)) == -1)
+	  if (file_find_nthpages (thread_p, ovf_vfid, alloc_vpids,
+				  alloc_nth + ipage, request_pages) == -1)
 	    {
 	      goto exit_on_error;
 	    }
@@ -226,18 +234,30 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	}
 
       /* Make sure that I am able to access the next page if any.. */
-      if (npages > (ipage + 1)
-	  && alloc_vpids_index >= OVERFLOW_ALLOCVPID_ARRAY_SIZE)
+      if (alloc_vpids_index >= OVERFLOW_ALLOCVPID_ARRAY_SIZE)
 	{
-	  /* Get the next set of allocated pages */
-	  if (file_find_nthpages
-	      (thread_p, ovf_vfid, alloc_vpids, alloc_nth + ipage + 1,
-	       ((npages - (ipage + 1)) >
-		OVERFLOW_ALLOCVPID_ARRAY_SIZE ? OVERFLOW_ALLOCVPID_ARRAY_SIZE
-		: npages - (ipage + 1))) == -1)
+	  remain_pages = npages - (ipage + 1);
+
+	  if (remain_pages > 0)
 	    {
-	      goto exit_on_error;
+	      if (remain_pages > OVERFLOW_ALLOCVPID_ARRAY_SIZE)
+		{
+		  request_pages = OVERFLOW_ALLOCVPID_ARRAY_SIZE;
+		}
+	      else
+		{
+		  request_pages = remain_pages;
+		}
+
+	      /* Get the next set of allocated pages */
+	      if (file_find_nthpages (thread_p, ovf_vfid, alloc_vpids,
+				      alloc_nth + ipage + 1,
+				      request_pages) == -1)
+		{
+		  goto exit_on_error;
+		}
 	    }
+
 	  alloc_vpids_index = 0;
 	}
 

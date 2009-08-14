@@ -74,12 +74,11 @@ static int esm_pad_overflow (DB_OBJECT * dest_obj, const int fd,
 static void esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
 			     DB_VALUE * return_argument_p);
 static int esm_compare_glo_pathname (DB_OBJECT * holder_p, DB_ELO * glo_p);
-static DB_BIGINT update_position (DB_OBJECT * glo_object_p,
-				  DB_BIGINT position);
+static INT64 update_position (DB_OBJECT * glo_object_p, INT64 position);
 static int destroy_glo_and_holder_and_name (DB_OBJECT * esm_glo_object_p,
 					    DB_OBJECT * holder_p);
 static int get_write_lock (DB_OBJECT * glo_instance_p);
-static DB_BIGINT get_position (DB_OBJECT * glo_object_p);
+static INT64 get_position (DB_OBJECT * glo_object_p);
 static void esm_search (DB_OBJECT * esm_glo_object_p,
 			DB_VALUE * return_argument_p,
 			DB_VALUE * search_for_object_p, int search_type,
@@ -267,8 +266,8 @@ end:
  *  position(in) :
  */
 
-static DB_BIGINT
-update_position (DB_OBJECT * glo_object_p, DB_BIGINT position)
+static INT64
+update_position (DB_OBJECT * glo_object_p, INT64 position)
 {
   /* we must reject negative positions here, or
    * they will wreak havoc on code downstream.
@@ -395,10 +394,10 @@ end:
  *  glo_object_p(in) : the glo object
  */
 
-static DB_BIGINT
+static INT64
 get_position (DB_OBJECT * glo_object_p)
 {
-  DB_BIGINT position = 0;
+  INT64 position = 0;
 
   if (glo_object_p)
     {
@@ -423,9 +422,9 @@ esm_Glo_read (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	      const DB_VALUE * units_p, const DB_VALUE * data_buffer_p)
 {
   int return_value, unit_size;
-  DB_BIGINT position;
+  INT64 position, offset;
   int no_of_units;
-  FSIZE_T length, offset;
+  int length;
 
   DB_ELO *glo_p;
   char *buffer;
@@ -466,8 +465,8 @@ esm_Glo_read (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
-  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
+  length = (int) (((INT64) no_of_units * unit_size) / (INT64) BASE_BYTE);
+  offset = ((INT64) unit_size * position) / (INT64) BASE_BYTE;
 
   return_value = elo_read_from (glo_p, offset, length, buffer,
 				esm_glo_object_p);
@@ -526,6 +525,13 @@ esm_Glo_print_read (DB_OBJECT * esm_glo_object_p,
     }
 
   buffer = (char *) malloc (length);
+  if (buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      length);
+      return;
+    }
+
   db_make_varchar (&db_buffer, DB_MAX_VARCHAR_PRECISION, buffer, length);
   error = db_send (esm_glo_object_p, "read_data", return_argument_p,
 		   argument_length, &db_buffer);
@@ -575,9 +581,9 @@ esm_Glo_write (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	       DB_VALUE * unit_p, DB_VALUE * data_buffer_p)
 {
   int return_value, unit_size;
-  DB_BIGINT position;
+  INT64 position, offset;
   int no_of_units;
-  FSIZE_T length, offset;
+  int length;
 
   DB_ELO *glo_p;
   char *buffer;
@@ -623,8 +629,8 @@ esm_Glo_write (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
-  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
+  length = (int) (((INT64) no_of_units * unit_size) / (INT64) BASE_BYTE);
+  offset = ((INT64) unit_size * position) / (INT64) BASE_BYTE;
 
   return_value = elo_write_to (glo_p, offset, length, buffer,
 			       esm_glo_object_p);
@@ -668,8 +674,8 @@ esm_Glo_insert (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 {
   int return_value, unit_size;
   int no_of_units;
-  DB_BIGINT position;
-  FSIZE_T length, offset;
+  INT64 position, offset;
+  int length;
   DB_ELO *glo_p;
   char *buffer;
   DB_VALUE value;
@@ -713,8 +719,8 @@ esm_Glo_insert (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
 
-  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
-  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
+  length = (int) (((INT64) no_of_units * unit_size) / (INT64) BASE_BYTE);
+  offset = ((INT64) unit_size * position) / (INT64) BASE_BYTE;
 
   return_value = elo_insert_into (glo_p, offset, length, buffer,
 				  esm_glo_object_p);
@@ -757,8 +763,8 @@ esm_Glo_delete (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 		DB_VALUE * unit_p)
 {
   int return_value, unit_size, no_of_units;
-  DB_BIGINT position;
-  FSIZE_T length, offset;
+  INT64 position, offset;
+  int length;
   DB_ELO *glo_p;
   DB_VALUE value;
 
@@ -793,12 +799,10 @@ esm_Glo_delete (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
-
-  length = ((FSIZE_T) no_of_units * unit_size) / (FSIZE_T) BASE_BYTE;
-  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
-  return_value =
-    (int) elo_delete_from (glo_p, offset, length, esm_glo_object_p);
-
+  length = (int) (((INT64) no_of_units * unit_size) / (INT64) BASE_BYTE);
+  offset = (INT64) (unit_size * position) / (INT64) BASE_BYTE;
+  return_value = (int) elo_delete_from (glo_p, offset, length,
+					esm_glo_object_p);
   if (return_value < 0)
     {
       esm_set_error (ERROR_DURING_DELETE);
@@ -819,19 +823,16 @@ esm_Glo_delete (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
  */
 
 void
-esm_Glo_seek (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
-	      DB_VALUE * location_p)
+esm_Glo_seek (DB_OBJECT * esm_glo_object_p,
+	      DB_VALUE * return_argument_p, DB_VALUE * location_p)
 {
-  DB_BIGINT return_value;
+  int return_value;
   int unit_size;
   DB_VALUE value;
   DB_ELO *glo_p;
 
   db_make_int (return_argument_p, -1);	/* error return value */
-
-  if ((location_p == NULL)
-      || !((DB_VALUE_TYPE (location_p) == DB_TYPE_INTEGER)
-	   || (DB_VALUE_TYPE (location_p) == DB_TYPE_BIGINT)))
+  if ((location_p == NULL) || (DB_VALUE_TYPE (location_p) != DB_TYPE_INTEGER))
     {
       esm_set_error (INVALID_INTEGER_INPUT_ARGUMENT);
       return;
@@ -840,21 +841,21 @@ esm_Glo_seek (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INT (&value);
   glo_p = esm_get_glo_from_holder_for_read (esm_glo_object_p);
-
   if (glo_p == NULL)
     {
       esm_set_error (UNABLE_TO_FIND_GLO_STRUCTURE);
       return;
     }
-  return_value = DB_GET_BIGINT (location_p);
+
+  return_value = DB_GET_INT (location_p);
   return_value =
-    ((DB_BIGINT) unit_size * return_value) / (DB_BIGINT) BASE_BYTE;
+    (int) (((INT64) unit_size * return_value) / (INT64) BASE_BYTE);
 
   /* guard against negative glo position */
   if (return_value >= 0
       && update_position (esm_glo_object_p, return_value) >= 0)
     {
-      db_make_bigint (return_argument_p, return_value);
+      db_make_int (return_argument_p, return_value);
       return;
     }
   else
@@ -875,8 +876,8 @@ void
 esm_Glo_truncate (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
   int unit_size;
-  DB_BIGINT position, return_value;
-  FSIZE_T offset;
+  INT64 position, offset;
+  int return_value;
   DB_ELO *glo_p;
 
   if (get_write_lock (esm_glo_object_p) != NO_ERROR)
@@ -896,12 +897,11 @@ esm_Glo_truncate (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, return_argument_p);
   unit_size = DB_GET_INTEGER (return_argument_p);
-  offset = ((FSIZE_T) unit_size * position) / (FSIZE_T) BASE_BYTE;
-  return_value = (DB_BIGINT) elo_truncate (glo_p, offset, esm_glo_object_p);
-
+  offset = (INT64) unit_size *position / (INT64) BASE_BYTE;
+  return_value = (int) elo_truncate (glo_p, offset, esm_glo_object_p);
   if (return_value >= 0)
     {
-      db_make_bigint (return_argument_p, return_value);
+      db_make_int (return_argument_p, return_value);
     }
   else
     {
@@ -919,8 +919,9 @@ esm_Glo_truncate (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
  */
 
 void
-esm_Glo_append (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
-		DB_VALUE * unit_p, DB_VALUE * data_buffer_p)
+esm_Glo_append (DB_OBJECT * esm_glo_object_p,
+		DB_VALUE * return_argument_p, DB_VALUE * unit_p,
+		DB_VALUE * data_buffer_p)
 {
   int return_value, offset, no_of_units;
   int unit_size, length;
@@ -929,7 +930,6 @@ esm_Glo_append (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   DB_VALUE value;
 
   db_make_int (return_argument_p, -1);	/* error return value */
-
   if ((unit_p == NULL) || (DB_VALUE_TYPE (unit_p) != DB_TYPE_INTEGER))
     {
       esm_set_error (INVALID_INTEGER_INPUT_ARGUMENT);
@@ -957,7 +957,6 @@ esm_Glo_append (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, &value);
   unit_size = DB_GET_INTEGER (&value);
   no_of_units = DB_GET_INTEGER (unit_p);
-
   if (no_of_units <= 0)
     {
       db_make_int (return_argument_p, 0);
@@ -966,15 +965,14 @@ esm_Glo_append (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 
   buffer = (char *) DB_GET_STRING (data_buffer_p);
 
-  length = (no_of_units * unit_size) / BASE_BYTE;
-
+  length = (int) (((INT64) no_of_units * unit_size) / (INT64) BASE_BYTE);
   return_value = elo_append_to (glo_p, length, buffer, esm_glo_object_p);
-  offset = (int) elo_get_size (glo_p, esm_glo_object_p);
+  offset = elo_get_size (glo_p, esm_glo_object_p);
 
   /* guard against negative glo position */
   if (return_value >= 0
       && update_position (esm_glo_object_p,
-			  (offset * unit_size) / BASE_BYTE) >= 0)
+			  (offset * unit_size) / (INT64) BASE_BYTE) >= 0)
     {
       db_make_int (return_argument_p, return_value);
     }
@@ -999,18 +997,17 @@ esm_Glo_pathname (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
   DB_VALUE value;
   int rc, save;
 
-  db_make_null (return_argument_p);
-
   if (return_argument_p)
     {
+      db_make_null (return_argument_p);
       AU_DISABLE (save);
-      rc = db_get (esm_glo_object_p, GLO_CLASS_HOLDER_NAME, &value);
 
-      if (rc == 0)
+      rc = db_get (esm_glo_object_p, GLO_CLASS_HOLDER_NAME, &value);
+      if (rc == NO_ERROR)
 	{
 	  holder_p = DB_GET_OBJECT (&value);
 	  rc = db_get (holder_p, GLO_HOLDER_NAME_PTR, &value);
-	  if (rc == 0)
+	  if (rc == NO_ERROR)
 	    {
 	      name_object_p = DB_GET_OBJECT (&value);
 	      if (name_object_p != NULL)
@@ -1019,8 +1016,9 @@ esm_Glo_pathname (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 			  return_argument_p);
 		}
 	    }
-	  AU_ENABLE (save);
 	}
+
+      AU_ENABLE (save);
     }
 }
 
@@ -1039,40 +1037,51 @@ esm_Glo_full_pathname (DB_OBJECT * esm_glo_object_p,
   DB_OBJECT *holder_p, *name_object_p;
   DB_VALUE value;
   int rc, save;
-  char *pathname, expanded_path[PATH_MAX], real_path[PATH_MAX];
+  char *pathname, expanded_path[PATH_MAX], *real_path;
 
-  db_make_null (return_argument_p);
-
-  if (!return_argument_p)
+  if (return_argument_p == NULL)
     {
       return;
     }
 
+  db_make_null (return_argument_p);
   AU_DISABLE (save);
-  rc = db_get (esm_glo_object_p, GLO_CLASS_HOLDER_NAME, &value);
 
-  if (rc != 0)
+  rc = db_get (esm_glo_object_p, GLO_CLASS_HOLDER_NAME, &value);
+  if (rc != NO_ERROR)
     {
       return;
     }
 
   holder_p = DB_GET_OBJECT (&value);
   rc = db_get (holder_p, GLO_HOLDER_NAME_PTR, &value);
-
-  if (rc == 0)
+  if (rc == NO_ERROR)
     {
       name_object_p = DB_GET_OBJECT (&value);
       if (name_object_p != NULL)
 	{
 	  db_get (name_object_p, GLO_NAME_PATHNAME, return_argument_p);
 	  pathname = (char *) DB_GET_STRING (return_argument_p);
-	  esm_expand_pathname (pathname, expanded_path, PATH_MAX);
-	  realpath (expanded_path, real_path);
-	  db_make_string (return_argument_p, real_path);
+	  if (pathname != NULL)
+	    {
+	      esm_expand_pathname (pathname, expanded_path, PATH_MAX);
+
+	      real_path = (char *) db_private_alloc (NULL, PATH_MAX);
+	      if (real_path == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, PATH_MAX);
+		  return;
+		}
+
+	      realpath (expanded_path, real_path);
+	      db_make_string (return_argument_p, real_path);
+	      return_argument_p->need_clear = true;
+	    }
 	}
     }
   AU_ENABLE (save);
-
+  return;
 }
 
 /*
@@ -1119,7 +1128,7 @@ esm_Glo_init (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 void
 esm_Glo_size (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
-  DB_BIGINT total_size;
+  INT64 total_size;
   int unit_size;
   DB_ELO *glo_p;
 
@@ -1133,9 +1142,10 @@ esm_Glo_size (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 
   db_get (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME, return_argument_p);
   unit_size = DB_GET_INTEGER (return_argument_p);
-  total_size = (elo_get_size (glo_p, esm_glo_object_p) * 8) / unit_size;
+  total_size =
+    (elo_get_size (glo_p, esm_glo_object_p) * (INT64) BASE_BYTE) / unit_size;
 
-  db_make_bigint (return_argument_p, total_size);
+  db_make_int (return_argument_p, (int) total_size);
 }
 
 /*
@@ -1153,7 +1163,6 @@ esm_Glo_compress (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
   int rc = 0;
 
   glo_p = esm_get_glo_from_holder_for_read (esm_glo_object_p);
-
   if (glo_p != NULL)
     {
       rc = elo_compress (glo_p);
@@ -1254,8 +1263,8 @@ esm_Glo_create (DB_OBJECT * esm_glo_class, DB_VALUE * return_argument_p,
 	  AU_ENABLE (save);
 	  goto end;
 	}
-      new_esm_glo_object_p = db_create_internal (esm_glo_class);
 
+      new_esm_glo_object_p = db_create_internal (esm_glo_class);
       if (!new_esm_glo_object_p)
 	{
 	  AU_ENABLE (save);
@@ -1265,9 +1274,8 @@ esm_Glo_create (DB_OBJECT * esm_glo_class, DB_VALUE * return_argument_p,
 			       GLO_CLASS_HOLDER_NAME, &value);
       if (error == 0)
 	{
-	  error =
-	    db_send (new_esm_glo_object_p,
-		     GLO_METHOD_INITIALIZE, return_argument_p);
+	  error = db_send (new_esm_glo_object_p, GLO_METHOD_INITIALIZE,
+			   return_argument_p);
 	  if (error == 0)
 	    {
 	      db_make_object (return_argument_p, new_esm_glo_object_p);
@@ -1369,7 +1377,6 @@ esm_pad_overflow (DB_OBJECT * dest_obj, const int fd, const int bytes_written,
   int rc = 0;
   DB_VALUE value1, value2, value3;
 
-
   if (in_unit_size <= 0)
     {
       in_unit_size = UNIT_SIZE_DEFAULT;
@@ -1400,9 +1407,8 @@ esm_pad_overflow (DB_OBJECT * dest_obj, const int fd, const int bytes_written,
 			       write_size);
 	      if (dest_obj)
 		{
-		  if ((db_send
-		       (dest_obj, GLO_METHOD_APPEND, &value3, &value1,
-			&value2) != 0)
+		  if ((db_send (dest_obj, GLO_METHOD_APPEND, &value3,
+				&value1, &value2) != 0)
 		      || (DB_GET_INTEGER (&value3) != write_size))
 		    {
 		      rc = -1;
@@ -1494,8 +1500,9 @@ esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
 			       buffer, network_pagesize);
 	      while (true)
 		{
-		  if (db_send (source, GLO_METHOD_READ, &value3, &value2,
-			       &value1) != 0)
+		  if (db_send
+		      (source, GLO_METHOD_READ, &value3, &value2,
+		       &value1) != 0)
 		    {
 		      break;
 		    }
@@ -1581,8 +1588,8 @@ esm_Glo_migrate (DB_OBJECT * source, DB_OBJECT * dest_obj,
  */
 
 void
-esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
-		 DB_VALUE * destination_p)
+esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p,
+		 DB_VALUE * return_argument_p, DB_VALUE * destination_p)
 {
   DB_VALUE value1, value2, value3;
   char *pathname;
@@ -1595,9 +1602,9 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 
   db_make_int (return_argument_p, -1);	/* error return value */
 
-  if ((destination_p == NULL) ||
-      (!(IS_STRING (destination_p) ||
-	 (DB_VALUE_TYPE (destination_p) == DB_TYPE_OBJECT))))
+  if (DB_IS_NULL (destination_p)
+      || (!(IS_STRING (destination_p)
+	    || (DB_VALUE_TYPE (destination_p) == DB_TYPE_OBJECT))))
     {
       esm_set_error (INVALID_STRING_INPUT_ARGUMENT);
       return;
@@ -1605,14 +1612,13 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 
   if (IS_STRING (destination_p))
     {
-      pathname = (char *) DB_GET_STRING (destination_p);
-
+      pathname = (char *) DB_PULL_STRING (destination_p);
       if (envvar_expand (pathname, realpath, PATH_MAX) != NO_ERROR)
 	{
 	  strcpy (realpath, pathname);
 	}
-      fd = open (realpath, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
 
+      fd = open (realpath, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
       if (fd > 0)
 	{
 	  ftruncate (fd, (int) 0);
@@ -1651,7 +1657,6 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	  db_make_int (&value2, network_pagesize);
 	  db_make_varchar (&value3, DB_MAX_VARCHAR_PRECISION,
 			   buffer, network_pagesize);
-
 	  while (db_send (esm_glo_object_p, GLO_METHOD_READ, &value1, &value2,
 			  &value3) == 0)
 	    {
@@ -1678,9 +1683,8 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 		}
 	      else
 		{
-		  pads_written =
-		    esm_pad_overflow (NULL, fd, total_length,
-				      old_byte_size, 8);
+		  pads_written = esm_pad_overflow (NULL, fd, total_length,
+						   old_byte_size, 8);
 		  if (pads_written < 0)
 		    {
 		      esm_set_error (COPY_TO_ERROR);
@@ -1728,17 +1732,10 @@ esm_Glo_copy_to (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
 	}
       return;			/* this is an error return, unable to open file */
     }
-
-
-  if (DB_VALUE_TYPE (destination_p) == DB_TYPE_OBJECT)
+  else if (DB_VALUE_TYPE (destination_p) == DB_TYPE_OBJECT)
     {
-      dest_object_p = DB_GET_OBJECT (destination_p);
-      if (dest_object_p != NULL)
-	{
-	  esm_Glo_migrate (esm_glo_object_p, dest_object_p,
-			   return_argument_p);
-	  return;
-	}
+      dest_object_p = DB_PULL_OBJECT (destination_p);
+      esm_Glo_migrate (esm_glo_object_p, dest_object_p, return_argument_p);
     }
 }
 
@@ -1770,9 +1767,9 @@ esm_Glo_copy_from (DB_OBJECT * esm_glo_object_p,
 
   db_make_int (return_argument_p, -1);	/* error return value */
 
-  if ((source_p == NULL) ||
-      (!(IS_STRING (source_p) ||
-	 (DB_VALUE_TYPE (source_p) == DB_TYPE_OBJECT))))
+  if (DB_IS_NULL (source_p)
+      || (!(IS_STRING (source_p)
+	    || (DB_VALUE_TYPE (source_p) == DB_TYPE_OBJECT))))
     {
       esm_set_error (INVALID_STRING_INPUT_ARGUMENT);
       return;
@@ -1780,11 +1777,7 @@ esm_Glo_copy_from (DB_OBJECT * esm_glo_object_p,
 
   if (IS_STRING (source_p))
     {
-      pathname = (char *) DB_GET_STRING (source_p);
-
-      /* the pathname should not be expanded. PR5116, -- syoon */
-/*    esm_expand_pathname(pathname, realpath, PATH_MAX); */
-
+      pathname = (char *) DB_PULL_STRING (source_p);
       if (envvar_expand (pathname, realpath, PATH_MAX) != NO_ERROR)
 	{
 	  strcpy (realpath, pathname);
@@ -1796,108 +1789,105 @@ esm_Glo_copy_from (DB_OBJECT * esm_glo_object_p,
 	  db_make_int (&value2, 0);
 	  if (db_send (esm_glo_object_p, GLO_METHOD_SEEK, &value1, &value2) ==
 	      0)
-	    if (db_send (esm_glo_object_p, GLO_METHOD_TRUNCATE, &value1) == 0)
-	      {
-		if (db_get
-		    (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME,
-		     &value1) != 0)
-		  {
-		    esm_set_error (COPY_FROM_ERROR);
-		    return;	/* error return, could not get unit size */
-		  }
-		old_byte_size = DB_GET_INTEGER (&value1);
-		if (old_byte_size == UNIT_SIZE_DEFAULT)
-		  {
-		    old_byte_size = -1;
-		  }
-		else
-		  {
-		    db_make_int (&value1, UNIT_SIZE_DEFAULT);
-		    db_put_internal (esm_glo_object_p,
-				     GLO_CLASS_UNIT_SIZE_NAME, &value1);
-		  }
+	    {
+	      if (db_send (esm_glo_object_p, GLO_METHOD_TRUNCATE, &value1) ==
+		  0)
+		{
+		  if (db_get
+		      (esm_glo_object_p, GLO_CLASS_UNIT_SIZE_NAME,
+		       &value1) != 0)
+		    {
+		      esm_set_error (COPY_FROM_ERROR);
+		      return;	/* error return, could not get unit size */
+		    }
+		  old_byte_size = DB_GET_INTEGER (&value1);
+		  if (old_byte_size == UNIT_SIZE_DEFAULT)
+		    {
+		      old_byte_size = -1;
+		    }
+		  else
+		    {
+		      db_make_int (&value1, UNIT_SIZE_DEFAULT);
+		      db_put_internal (esm_glo_object_p,
+				       GLO_CLASS_UNIT_SIZE_NAME, &value1);
+		    }
 
-		/*
-		 * Start the copy process with the best network page size
-		 */
 
-		network_pagesize = db_network_page_size ();
-		buffer = (char *) malloc (network_pagesize);
-		if (buffer == NULL)
-		  {
-		    esm_set_error (COPY_FROM_ERROR);
-		    return;
-		  }
+		  /*
+		   * Start the copy process with the best network page size
+		   */
 
-		db_make_varchar (&value2, DB_MAX_VARCHAR_PRECISION,
-				 buffer, network_pagesize);
+		  network_pagesize = db_network_page_size ();
+		  buffer = (char *) malloc (network_pagesize);
+		  if (buffer == NULL)
+		    {
+		      esm_set_error (COPY_FROM_ERROR);
+		      return;
+		    }
 
-		while ((length = read (fd, buffer, network_pagesize)) > 0)
-		  {
-		    total_length += length;
-		    db_make_int (&value1, length);
-		    rc =
-		      db_send (esm_glo_object_p, GLO_METHOD_WRITE, &value3,
-			       &value1, &value2);
-		    write_length = DB_GET_INTEGER (&value3);
-		    if ((rc != 0) || (write_length != length))
-		      {
-			close (fd);
-			esm_set_error (COPY_FROM_ERROR);
-			if (old_byte_size > 0)
-			  {
-			    db_make_int (&value1, old_byte_size);
-			    db_put_internal (esm_glo_object_p,
-					     GLO_CLASS_UNIT_SIZE_NAME,
-					     &value1);
-			  }
-			free_and_init (buffer);
-			return;	/* This is an error return, error on write */
-		      }
-		  }
+		  db_make_varchar (&value2, DB_MAX_VARCHAR_PRECISION,
+				   buffer, network_pagesize);
+		  while ((length = read (fd, buffer, network_pagesize)) > 0)
+		    {
+		      total_length += length;
+		      db_make_int (&value1, length);
+		      rc = db_send (esm_glo_object_p, GLO_METHOD_WRITE,
+				    &value3, &value1, &value2);
+		      write_length = DB_GET_INTEGER (&value3);
+		      if ((rc != 0) || (write_length != length))
+			{
+			  close (fd);
+			  esm_set_error (COPY_FROM_ERROR);
+			  if (old_byte_size > 0)
+			    {
+			      db_make_int (&value1, old_byte_size);
+			      db_put_internal (esm_glo_object_p,
+					       GLO_CLASS_UNIT_SIZE_NAME,
+					       &value1);
+			    }
+			  free_and_init (buffer);
+			  return;	/* This is an error return, error on write */
+			}
+		    }
 
-		free_and_init (buffer);
 
-		pads_written = esm_pad_overflow (esm_glo_object_p,
-						 0, total_length,
-						 old_byte_size, 8);
-		if (pads_written < 0)
-		  {
-		    esm_set_error (COPY_TO_ERROR);
-		    total_length = -1;
-		  }
-		else
-		  {
-		    total_length += pads_written;
-		  }
+		  free_and_init (buffer);
+		  pads_written = esm_pad_overflow (esm_glo_object_p,
+						   0, total_length,
+						   old_byte_size, 8);
+		  if (pads_written < 0)
+		    {
+		      esm_set_error (COPY_TO_ERROR);
+		      total_length = -1;
+		    }
+		  else
+		    {
+		      total_length += pads_written;
+		    }
 
-		close (fd);
-		db_make_int (return_argument_p, total_length);
-		if (old_byte_size > 0)
-		  {
-		    db_make_int (&value1, old_byte_size);
-		    db_put_internal (esm_glo_object_p,
-				     GLO_CLASS_UNIT_SIZE_NAME, &value1);
-		  }
-		return;		/* Successful return */
-	      }
+		  close (fd);
+		  db_make_int (return_argument_p, total_length);
+		  if (old_byte_size > 0)
+		    {
+		      db_make_int (&value1, old_byte_size);
+		      db_put_internal (esm_glo_object_p,
+				       GLO_CLASS_UNIT_SIZE_NAME, &value1);
+		    }
+		  return;	/* Successful return */
+		}
+	    }
 	  esm_set_error (COPY_FROM_ERROR);
 	  return;		/* Error return, the truncate failed. */
-	}
-    }
-  if (DB_VALUE_TYPE (source_p) == DB_TYPE_OBJECT)
-    {
-      source_object_p = DB_GET_OBJECT (source_p);
-      if (source_object_p != NULL)
-	{
-	  esm_Glo_migrate (source_object_p, esm_glo_object_p,
-			   return_argument_p);
-	  return;
 	}
       else
 	{
 	  esm_set_error (COPY_FROM_ERROR);
 	}
+    }
+  else if (DB_VALUE_TYPE (source_p) == DB_TYPE_OBJECT)
+    {
+      source_object_p = DB_PULL_OBJECT (source_p);
+      esm_Glo_migrate (source_object_p, esm_glo_object_p, return_argument_p);
     }
 }
 
@@ -1912,10 +1902,10 @@ esm_Glo_copy_from (DB_OBJECT * esm_glo_object_p,
 void
 esm_Glo_position (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p)
 {
-  DB_BIGINT position;
+  INT64 position;
 
   position = get_position (esm_glo_object_p);
-  db_make_bigint (return_argument_p, position);
+  db_make_int (return_argument_p, (int) position);
 }
 
 /*
@@ -1950,7 +1940,6 @@ esm_search (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
   REG_SEARCH_DESCRIPTOR *search_data_struct_p;
 
   db_make_int (return_argument_p, -1);	/* error return value */
-
   if ((search_for_object_p == NULL) || !IS_STRING (search_for_object_p))
     {
       esm_set_error (INVALID_STRING_INPUT_ARGUMENT);
@@ -2108,8 +2097,9 @@ esm_search (DB_OBJECT * esm_glo_object_p, DB_VALUE * return_argument_p,
     {
       db_make_int (&value1, current_position);
     }
-  if (db_send (esm_glo_object_p, GLO_METHOD_SEEK, &return_value, &value1) !=
-      0)
+
+  if (db_send (esm_glo_object_p, GLO_METHOD_SEEK, &return_value, &value1)
+      != 0)
     {
       esm_set_error (SEARCH_ERROR_REPOSITIONING_POINTER);
       db_make_int (return_argument_p, -1);
@@ -2284,7 +2274,7 @@ esm_Glo_import_lo (DB_OBJECT * esm_glo_class_p,
       esm_Glo_copy_from (lo_instance_p, &value, path_name_p);
       if (db_send (lo_instance_p, GLO_METHOD_INITIALIZE, &value) == 0)
 	{
-	  db_make_object (&value, lo_instance_p);	/* PR5265 -- syoon */
+	  db_make_object (&value, lo_instance_p);
 	}
     }
 }
@@ -2309,35 +2299,64 @@ void
 esm_load_esm_classes (void)
 {
   DB_METHOD_LINK Static_methods[] = {
-    {"esm_Glo_create", (METHOD_LINK_FUNCTION) esm_Glo_create},
-    {"esm_Glo_create_lo", (METHOD_LINK_FUNCTION) esm_Glo_create_lo},
-    {"esm_Glo_import_lo", (METHOD_LINK_FUNCTION) esm_Glo_import_lo},
-    {"esm_Glo_create_fbo", (METHOD_LINK_FUNCTION) esm_Glo_create_fbo},
-    {"esm_Glo_init", (METHOD_LINK_FUNCTION) esm_Glo_init},
-    {"esm_Glo_size", (METHOD_LINK_FUNCTION) esm_Glo_size},
-    {"esm_Glo_compress", (METHOD_LINK_FUNCTION) esm_Glo_compress},
-    {"esm_Glo_destroy", (METHOD_LINK_FUNCTION) esm_Glo_destroy},
-    {"esm_Glo_append", (METHOD_LINK_FUNCTION) esm_Glo_append},
-    {"esm_Glo_truncate", (METHOD_LINK_FUNCTION) esm_Glo_truncate},
-    {"esm_Glo_pathname", (METHOD_LINK_FUNCTION) esm_Glo_pathname},
-    {"esm_Glo_full_pathname", (METHOD_LINK_FUNCTION) esm_Glo_full_pathname},
-    {"esm_Glo_delete", (METHOD_LINK_FUNCTION) esm_Glo_delete},
-    {"esm_Glo_insert", (METHOD_LINK_FUNCTION) esm_Glo_insert},
-    {"esm_Glo_seek", (METHOD_LINK_FUNCTION) esm_Glo_seek},
-    {"esm_Glo_write", (METHOD_LINK_FUNCTION) esm_Glo_write},
-    {"esm_Glo_read", (METHOD_LINK_FUNCTION) esm_Glo_read},
-    {"esm_Glo_print_read", (METHOD_LINK_FUNCTION) esm_Glo_print_read},
-    {"esm_Glo_copy_to", (METHOD_LINK_FUNCTION) esm_Glo_copy_to},
-    {"esm_Glo_copy_from", (METHOD_LINK_FUNCTION) esm_Glo_copy_from},
-    {"esm_Glo_position", (METHOD_LINK_FUNCTION) esm_Glo_position},
-    {"esm_Glo_like_search", (METHOD_LINK_FUNCTION) esm_Glo_like_search},
-    {"esm_Glo_reg_search", (METHOD_LINK_FUNCTION) esm_Glo_reg_search},
-    {"esm_Glo_binary_search", (METHOD_LINK_FUNCTION) esm_Glo_binary_search},
-    {"esm_Glo_get_error", (METHOD_LINK_FUNCTION) esm_Glo_get_error},
-    {"esm_Glo_set_error", (METHOD_LINK_FUNCTION) esm_Glo_set_error},
-    {"Glo_create_holder", (METHOD_LINK_FUNCTION) Glo_create_holder},
-    {"Glo_lock_holder", (METHOD_LINK_FUNCTION) Glo_lock_holder},
-    {NULL, NULL}
+    {
+     "esm_Glo_create", (METHOD_LINK_FUNCTION) esm_Glo_create},
+    {
+     "esm_Glo_create_lo", (METHOD_LINK_FUNCTION) esm_Glo_create_lo},
+    {
+     "esm_Glo_import_lo", (METHOD_LINK_FUNCTION) esm_Glo_import_lo},
+    {
+     "esm_Glo_create_fbo", (METHOD_LINK_FUNCTION) esm_Glo_create_fbo},
+    {
+     "esm_Glo_init", (METHOD_LINK_FUNCTION) esm_Glo_init},
+    {
+     "esm_Glo_size", (METHOD_LINK_FUNCTION) esm_Glo_size},
+    {
+     "esm_Glo_compress", (METHOD_LINK_FUNCTION) esm_Glo_compress},
+    {
+     "esm_Glo_destroy", (METHOD_LINK_FUNCTION) esm_Glo_destroy},
+    {
+     "esm_Glo_append", (METHOD_LINK_FUNCTION) esm_Glo_append},
+    {
+     "esm_Glo_truncate", (METHOD_LINK_FUNCTION) esm_Glo_truncate},
+    {
+     "esm_Glo_pathname", (METHOD_LINK_FUNCTION) esm_Glo_pathname},
+    {
+     "esm_Glo_full_pathname", (METHOD_LINK_FUNCTION) esm_Glo_full_pathname},
+    {
+     "esm_Glo_delete", (METHOD_LINK_FUNCTION) esm_Glo_delete},
+    {
+     "esm_Glo_insert", (METHOD_LINK_FUNCTION) esm_Glo_insert},
+    {
+     "esm_Glo_seek", (METHOD_LINK_FUNCTION) esm_Glo_seek},
+    {
+     "esm_Glo_write", (METHOD_LINK_FUNCTION) esm_Glo_write},
+    {
+     "esm_Glo_read", (METHOD_LINK_FUNCTION) esm_Glo_read},
+    {
+     "esm_Glo_print_read", (METHOD_LINK_FUNCTION) esm_Glo_print_read},
+    {
+     "esm_Glo_copy_to", (METHOD_LINK_FUNCTION) esm_Glo_copy_to},
+    {
+     "esm_Glo_copy_from", (METHOD_LINK_FUNCTION) esm_Glo_copy_from},
+    {
+     "esm_Glo_position", (METHOD_LINK_FUNCTION) esm_Glo_position},
+    {
+     "esm_Glo_like_search", (METHOD_LINK_FUNCTION) esm_Glo_like_search},
+    {
+     "esm_Glo_reg_search", (METHOD_LINK_FUNCTION) esm_Glo_reg_search},
+    {
+     "esm_Glo_binary_search", (METHOD_LINK_FUNCTION) esm_Glo_binary_search},
+    {
+     "esm_Glo_get_error", (METHOD_LINK_FUNCTION) esm_Glo_get_error},
+    {
+     "esm_Glo_set_error", (METHOD_LINK_FUNCTION) esm_Glo_set_error},
+    {
+     "Glo_create_holder", (METHOD_LINK_FUNCTION) Glo_create_holder},
+    {
+     "Glo_lock_holder", (METHOD_LINK_FUNCTION) Glo_lock_holder},
+    {
+     NULL, NULL}
   };
 
   db_link_static_methods (Static_methods);

@@ -1,0 +1,150 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>SUBSTR 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n스트링  함수와 연산자\nSUBSTR 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_strfunc_concat.htm\">스트링  함수와 연산자<\/a> &nbsp;&gt;&nbsp; SUBSTR 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SUBSTR 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">SUBSTR</span> 함수는 문자열에서 일부 문자열을 추출한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">SUBSTR</span>( <span class="var">string</span>, <span class="var">position</span> [, <span class="var">substring_length</span>])<br />
+<br />
+<span class="var">string</span> :<br />
+character string<br />
+<span class="keyword">NULL</span></p>
+<ul>
+<li><span class="var">string</span> : 입력 문자열을 지정한다. 입력 값이 <span class="keyword">NULL</span>이면 결과로 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">position</span> : 문자열을 추출할 위치를 지정한다. 문자열의 첫 번째 위치는 항상 1이다. 값이 음수가 되면, 문자열의 끝에서부터 거꾸로 계산하게 된다.</li>
+<li><span class="var">substring_length</span> : 추출할 문자열의 길이를 지정한다. 이 인자가 생략되면 함수는 전체 문자열을 반환한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 입력값이 <span class="keyword">NULL</span>일때의 결과를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT SUBSTR(NULL, 2) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: NULL</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 문자열에서 13번째 위치부터의 문자열을 추출하는 예제이다.</li>
+</ul>
+<p class="code">SELECT SUBSTR('United Arab Emirates', 13) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 'Emirates'</li>
+</ul>
+<ul>
+<li class="title">예제 3</li>
+<li class="desc">다음은 문자열에서 8번째 위치부터 문자 4개를 추출하는 예제이다.</li>
+</ul>
+<p class="code">SELECT SUBSTR('United Arab Emirates', 8, 4) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 'Arab'</li>
+</ul>
+<ul>
+<li class="title">예제 4</li>
+<li class="desc">다음은 문자열에서 끝에서 8번째 위치부터 문자 2개를 추출하는 예제이다.</li>
+</ul>
+<p class="code">SELECT SUBSTR('United Arab Emirates', -8, 2) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 'Em'</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

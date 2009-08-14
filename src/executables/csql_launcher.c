@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -121,6 +121,7 @@ int
 main (int argc, char *argv[])
 {
   char option_string[64];
+  int error = 0;
   CSQL_ARGUMENT csql_arg;
   DSO_HANDLE util_library;
   CSQL csql;
@@ -135,8 +136,10 @@ main (int argc, char *argv[])
     {CSQL_SINGLE_LINE_L, 0, 0, CSQL_SINGLE_LINE_S},
     {CSQL_COMMAND_L, 1, 0, CSQL_COMMAND_S},
     {CSQL_LINE_OUTPUT_L, 0, 0, CSQL_LINE_OUTPUT_S},
+    {CSQL_READ_ONLY_L, 0, 0, CSQL_READ_ONLY_S},
     {CSQL_NO_AUTO_COMMIT_L, 0, 0, CSQL_NO_AUTO_COMMIT_S},
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
+    {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -166,28 +169,51 @@ main (int argc, char *argv[])
 	  csql_arg.cs_mode = true;
 	  break;
 	case CSQL_USER_S:
+	  if (csql_arg.user_name != NULL)
+	    {
+	      free ((void *) csql_arg.user_name);
+	    }
 	  csql_arg.user_name = strdup (optarg);
 	  break;
 	case CSQL_PASSWORD_S:
+	  if (csql_arg.passwd != NULL)
+	    {
+	      free ((void *) csql_arg.passwd);
+	    }
 	  csql_arg.passwd = strdup (optarg);
 	  break;
 	case CSQL_ERROR_CONTINUE_S:
 	  csql_arg.continue_on_error = true;
 	  break;
 	case CSQL_INPUT_FILE_S:
+	  if (csql_arg.in_file_name != NULL)
+	    {
+	      free ((void *) csql_arg.in_file_name);
+	    }
 	  csql_arg.in_file_name = strdup (optarg);
 	  break;
 	case CSQL_OUTPUT_FILE_S:
+	  if (csql_arg.out_file_name != NULL)
+	    {
+	      free ((void *) csql_arg.out_file_name);
+	    }
 	  csql_arg.out_file_name = strdup (optarg);
 	  break;
 	case CSQL_SINGLE_LINE_S:
 	  csql_arg.single_line_execution = true;
 	  break;
 	case CSQL_COMMAND_S:
+	  if (csql_arg.command != NULL)
+	    {
+	      free ((void *) csql_arg.command);
+	    }
 	  csql_arg.command = strdup (optarg);
 	  break;
 	case CSQL_LINE_OUTPUT_S:
 	  csql_arg.line_output = true;
+	  break;
+	case CSQL_READ_ONLY_S:
+	  csql_arg.read_only = true;
 	  break;
 	case CSQL_NO_AUTO_COMMIT_S:
 	  csql_arg.auto_commit = false;
@@ -195,10 +221,13 @@ main (int argc, char *argv[])
 	case CSQL_NO_PAGER_S:
 	  csql_arg.nopager = true;
 	  break;
+	case CSQL_SYSADM_S:
+	  csql_arg.sysadm = true;
+	  break;
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
 			      VERSION);
-	  return 0;
+	  goto exit_on_end;
 	default:
 	  goto print_usage;
 	}
@@ -219,6 +248,12 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
+  if (csql_arg.sysadm
+      && (csql_arg.user_name == NULL || strcmp (csql_arg.user_name, "dba")))
+    {
+      /* sysadm is allowed only to DBA */
+      goto print_usage;
+    }
   if (csql_arg.sa_mode && csql_arg.cs_mode)
     {
       /* Don't allow both at once. */
@@ -236,18 +271,45 @@ main (int argc, char *argv[])
   if (util_library == NULL)
     {
       utility_load_print_error (stderr);
-      return ER_GENERIC_ERROR;
+      goto exit_on_error;
     }
 
   utility_load_symbol (util_library, (DSO_HANDLE *) (&csql), "csql");
   if (csql == NULL)
     {
       utility_load_print_error (stderr);
-      return ER_GENERIC_ERROR;
+      goto exit_on_error;
     }
   return (*csql) (argv[0], &csql_arg);
 
 print_usage:
   utility_csql_usage ();
-  return EXIT_FAILURE;
+  error = EXIT_FAILURE;
+
+exit_on_end:
+  if (csql_arg.user_name != NULL)
+    {
+      free ((void *) csql_arg.user_name);
+    }
+  if (csql_arg.passwd != NULL)
+    {
+      free ((void *) csql_arg.passwd);
+    }
+  if (csql_arg.in_file_name != NULL)
+    {
+      free ((void *) csql_arg.in_file_name);
+    }
+  if (csql_arg.out_file_name != NULL)
+    {
+      free ((void *) csql_arg.out_file_name);
+    }
+  if (csql_arg.command != NULL)
+    {
+      free ((void *) csql_arg.command);
+    }
+  return error;
+
+exit_on_error:
+  error = ER_GENERIC_ERROR;
+  goto exit_on_end;
 }

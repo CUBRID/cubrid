@@ -66,36 +66,26 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-#define NUM_WORKER_THREADS (css_Thread_manager.nthreads)
-#define NUM_DAEMON_THREADS (NUM_PRE_DEFINED_THREADS)
-#define NUM_WORKER_THREADS_PLUS_DAEMON_THREADS (NUM_WORKER_THREADS \
-                                               + NUM_DAEMON_THREADS)
-#define NUM_THREADS (NUM_WORKER_THREADS_PLUS_DAEMON_THREADS + 1)
-
 #if defined(HPUX)
 #define thread_initialize_key()
 #endif /* HPUX */
 
-/* Structure used to hold on to relevant information for oob requests */
-typedef struct css_deferred_request CSS_DEFERRED_REQUEST;
-struct css_deferred_request
-{
-  int client_id;
-  int transaction_id;
-  int request_id;
-};
 
 /* Thread Manager structure */
-typedef struct css_thread_manager CSS_THREAD_MANAGER;
-struct css_thread_manager
+typedef struct thread_manager THREAD_MANAGER;
+struct thread_manager
 {
   THREAD_ENTRY *thread_array;	/* thread entry array */
-  int nthreads;
+  int num_total;
+  int num_workers;
+  int num_daemons;
   bool initialized;
 };
 
-static const int CSS_SLAM_STATUS_INTERRUPTED = 0;
-static const int CSS_RETRY_MAX_SLAM_TIMES = 10;
+/* deadlock + checkpoint + oob + page flush + log flush */
+static const int PREDEFINED_DAEMON_THREAD_NUM = 5;
+
+static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
 
 #if defined(HPUX)
 static __thread THREAD_ENTRY *tsd_ptr;
@@ -103,21 +93,21 @@ static __thread THREAD_ENTRY *tsd_ptr;
 static THREAD_KEY_T css_Thread_key;
 #endif /* HPUX */
 
-static CSS_THREAD_MANAGER css_Thread_manager;
+static THREAD_MANAGER thread_Manager;
 
 /*
  * For special Purpose Threads: deadlock detector, checkpoint daemon
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static DAEMON_THREAD_MONITOR css_Deadlock_detect_thread =
+static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread =
   { 0, true, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
-static DAEMON_THREAD_MONITOR css_Checkpoint_thread =
+static DAEMON_THREAD_MONITOR thread_Checkpoint_thread =
   { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
-static DAEMON_THREAD_MONITOR css_Oob_thread =
+static DAEMON_THREAD_MONITOR thread_Oob_thread =
   { 0, true, true, false, MUTEX_INITIALIZER, COND_INITIALIZER };
-static DAEMON_THREAD_MONITOR css_Page_flush_thread =
+static DAEMON_THREAD_MONITOR thread_Page_flush_thread =
   { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
-DAEMON_THREAD_MONITOR css_Log_flush_thread =
+DAEMON_THREAD_MONITOR thread_Log_flush_thread =
   { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
 
 #if defined(WINDOWS)
@@ -133,7 +123,7 @@ static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
 
 static THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
-static int thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+static void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 
 #if defined(WINDOWS)
 static unsigned __stdcall thread_deadlock_detect_thread (void *);
@@ -183,8 +173,12 @@ thread_initialize_key (void)
   int r;
 
   r = TLS_KEY_ALLOC (css_Thread_key, NULL);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_KEY_CREATE);
-
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_KEY_CREATE, 0);
+      return ER_CSS_PTHREAD_KEY_CREATE;
+    }
   return r;
 }
 
@@ -196,11 +190,15 @@ thread_initialize_key (void)
 int
 thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
 {
-  int r = NO_ERROR;
+  int r;
 
   r = TLS_SET_SPECIFIC (css_Thread_key, (void *) entry_p);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_SETSPECIFIC);
-
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_SETSPECIFIC, 0);
+      return ER_CSS_PTHREAD_SETSPECIFIC;
+    }
   return r;
 }
 
@@ -233,27 +231,29 @@ thread_get_thread_entry_info (void)
 int
 thread_is_manager_initialized (void)
 {
-  return css_Thread_manager.initialized;
+  return thread_Manager.initialized;
 }
 
 /*
  * thread_initialize_manager() - Create and initialize all necessary threads.
  *   return: 0 if no error, or error code
- *   nthreads(in): number of service handler thread
  *
  * Note: It includes a main thread, service handler, a deadlock detector
  *       and a checkpoint daemon. Some other threads like signal handler
  *       might be needed later.
  */
 int
-thread_initialize_manager (int nthreads)
+thread_initialize_manager (void)
 {
   int i, r;
+  size_t size;
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* not HPUX */
 
-  if (css_Thread_manager.initialized == false)
+  assert (PRM_CSS_MAX_CLIENTS >= 10);
+
+  if (thread_Manager.initialized == false)
     {
       r = thread_initialize_key ();
       if (r != NO_ERROR)
@@ -263,48 +263,62 @@ thread_initialize_manager (int nthreads)
 
 #if defined(WINDOWS)
       r = MUTEX_INIT (css_Internal_mutex_for_mutex_initialize);
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_MUTEX_INIT, 0);
+	  return ER_CSS_PTHREAD_MUTEX_INIT;
+	}
       css_initialize_sync_object ();
 #endif /* WINDOWS */
 
 #ifdef CHECK_MUTEX
       r = MUTEXATTR_SETTYPE (mattr, PTHREAD_MUTEX_ERRORCHECK);
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEXATTR_SETTYPE);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_MUTEXATTR_SETTYPE, 0);
+	  return ER_CSS_PTHREAD_MUTEXATTR_SETTYPE;
+	}
 #endif /* CHECK_MUTEX */
     }
   else
     {
       /* destroy mutex and cond */
-      for (i = 1; i <= NUM_WORKER_THREADS_PLUS_DAEMON_THREADS; i++)
+      for (i = 1; i < thread_Manager.num_total; i++)
 	{
-	  r = thread_finalize_entry (&css_Thread_manager.thread_array[i]);
+	  r = thread_finalize_entry (&thread_Manager.thread_array[i]);
 	  if (r != NO_ERROR)
 	    {
 	      return r;
 	    }
 	}
-      r = thread_finalize_entry (&css_Thread_manager.thread_array[0]);
+      r = thread_finalize_entry (&thread_Manager.thread_array[0]);
       if (r != NO_ERROR)
 	{
 	  return r;
 	}
-      free_and_init (css_Thread_manager.thread_array);
-      css_Thread_manager.thread_array = NULL;
+      free_and_init (thread_Manager.thread_array);
+      thread_Manager.thread_array = NULL;
     }
 
-  css_Thread_manager.nthreads = nthreads;
+  /* calculate the number of thread from the number of clients */
+  thread_Manager.num_workers = PRM_CSS_MAX_CLIENTS * 2;
+  thread_Manager.num_daemons = PREDEFINED_DAEMON_THREAD_NUM;
+  thread_Manager.num_total =
+    thread_Manager.num_workers + thread_Manager.num_daemons
+    + 1 /* master thread */ ;
 
-  /* main thread + nthreads * service thread + deadlock detector
-     + checkpoint daemon + sig handler
-     + page flush thread + log flush thread */
-  tsd_ptr = css_Thread_manager.thread_array =
-    (THREAD_ENTRY *) malloc (NUM_THREADS * sizeof (THREAD_ENTRY));
+  size = thread_Manager.num_total * sizeof (THREAD_ENTRY);
+  tsd_ptr = thread_Manager.thread_array = (THREAD_ENTRY *) malloc (size);
   if (tsd_ptr == NULL)
     {
-      CSS_CHECK_RETURN_ERROR (-1, ER_OUT_OF_VIRTUAL_MEMORY);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* init master thread */
+  /* initialize master thread */
   r = thread_initialize_entry (tsd_ptr);
   if (r != NO_ERROR)
     {
@@ -321,18 +335,17 @@ thread_initialize_manager (int nthreads)
   /* init worker/deadlock-detection/checkpoint daemon/audit-flush
      oob-handler thread/page flush thread/log flush thread
      thread_mgr.thread_array[0] is used for main thread */
-  for (i = 1; i <= NUM_WORKER_THREADS_PLUS_DAEMON_THREADS; i++)
+  for (i = 1; i < thread_Manager.num_total; i++)
     {
-      r = thread_initialize_entry (&css_Thread_manager.thread_array[i]);
+      r = thread_initialize_entry (&thread_Manager.thread_array[i]);
       if (r != NO_ERROR)
 	{
 	  return r;
 	}
-
-      css_Thread_manager.thread_array[i].index = i;
+      thread_Manager.thread_array[i].index = i;
     }
 
-  css_Thread_manager.initialized = true;
+  thread_Manager.initialized = true;
 
   return NO_ERROR;
 }
@@ -347,19 +360,31 @@ thread_initialize_manager (int nthreads)
 int
 thread_start_workers (void)
 {
-  int i, r;
+  int thread_index, r;
   THREAD_ENTRY *thread_p;
 #if !defined(WINDOWS)
   THREAD_ATTR_T thread_attr;
   size_t ts_size;
 #endif /* not WINDOWS */
 
+  assert (thread_Manager.initialized == true);
+
 #if !defined(WINDOWS)
   r = THREAD_ATTR_INIT (thread_attr);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_ATTR_INIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_ATTR_INIT, 0);
+      return ER_CSS_PTHREAD_ATTR_INIT;
+    }
 
   r = THREAD_ATTR_SETDETACHSTATE (thread_attr, PTHREAD_CREATE_DETACHED);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_ATTR_SETDETACHSTATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
+      return ER_CSS_PTHREAD_ATTR_SETDETACHSTATE;
+    }
 
 #if defined(AIX)
   /* AIX's pthread is slightly different from other systems.
@@ -371,7 +396,12 @@ thread_start_workers (void)
 #else /* AIX */
   r = THREAD_ATTR_SETSCOPE (thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_ATTR_SETSCOPE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
+      return ER_CSS_PTHREAD_ATTR_SETSCOPE;
+    }
 
 /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
 #if !defined(sun) && !defined(SOLARIS)
@@ -380,7 +410,12 @@ thread_start_workers (void)
   if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
     {
       r = THREAD_ATTR_SETSTACKSIZE (thread_attr, PRM_THREAD_STACKSIZE);
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_ATTR_SETSTACKSIZE);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
+	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
+	}
 
       THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
     }
@@ -389,83 +424,195 @@ thread_start_workers (void)
 #endif /* WINDOWS */
 
   /* start worker thread */
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (thread_index = 1; thread_index <= thread_Manager.num_workers;
+       thread_index++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[thread_index];
       MUTEX_LOCK (r, thread_p->th_entry_lock);
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+	  return ER_CSS_PTHREAD_MUTEX_LOCK;
+	}
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
       r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 			 thread_worker, thread_p, &(thread_p->tid));
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_CREATE, 0);
+	  MUTEX_UNLOCK (thread_p->th_entry_lock);
+	  return ER_CSS_PTHREAD_CREATE;
+	}
 
       r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+      if (r != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+	}
     }
 
   /* start deadlock detection thread */
-  css_Deadlock_detect_thread.thread_index = i++;	/* thread_mgr.nthreads+1 */
+  thread_Deadlock_detect_thread.thread_index = thread_index++;
   thread_p =
-    &css_Thread_manager.thread_array[css_Deadlock_detect_thread.thread_index];
+    &thread_Manager.thread_array[thread_Deadlock_detect_thread.thread_index];
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
   r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 		     thread_deadlock_detect_thread, thread_p,
 		     &(thread_p->tid));
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   /* start checkpoint daemon thread */
-  css_Checkpoint_thread.thread_index = i++;	/* thread_mgr.nthreads+2 */
+  thread_Checkpoint_thread.thread_index = thread_index++;
   thread_p =
-    &css_Thread_manager.thread_array[css_Checkpoint_thread.thread_index];
+    &thread_Manager.thread_array[thread_Checkpoint_thread.thread_index];
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
   r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 		     thread_checkpoint_thread, thread_p, &(thread_p->tid));
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   /* start oob-handler thread */
-  css_Oob_thread.thread_index = i++;	/* thread_mgr.nthreads+3 */
-  thread_p = &css_Thread_manager.thread_array[css_Oob_thread.thread_index];
+  thread_Oob_thread.thread_index = thread_index++;
+  thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
   r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 		     css_oob_handler_thread, thread_p, &(thread_p->tid));
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   /* start page flush daemon thread */
-  css_Page_flush_thread.thread_index = i++;	/* thread_mgr.nthreads+4 */
+  thread_Page_flush_thread.thread_index = thread_index++;
   thread_p =
-    &css_Thread_manager.thread_array[css_Page_flush_thread.thread_index];
+    &thread_Manager.thread_array[thread_Page_flush_thread.thread_index];
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
   r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 		     thread_page_flush_thread, thread_p, &(thread_p->tid));
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   /* start log flush thread */
-  css_Log_flush_thread.thread_index = i++;	/* thread_mgr.nthreads+5 */
+  thread_Log_flush_thread.thread_index = thread_index++;
   thread_p =
-    &css_Thread_manager.thread_array[css_Log_flush_thread.thread_index];
+    &thread_Manager.thread_array[thread_Log_flush_thread.thread_index];
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
   r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
 		     thread_log_flush_thread, thread_p, &(thread_p->tid));
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_CREATE);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   /* destroy thread_attribute */
   r = THREAD_ATTR_DESTROY (thread_attr);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_ATTR_DESTROY);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_ATTR_DESTROY, 0);
+      return ER_CSS_PTHREAD_ATTR_DESTROY;
+    }
 
   return NO_ERROR;
 }
@@ -483,13 +630,15 @@ thread_stop_active_workers (void)
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
 
+  assert (thread_Manager.initialized == true);
+
   css_block_all_active_conn ();
 
   count = 0;
 loop:
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index != -1)
 	{
 	  logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
@@ -509,9 +658,9 @@ loop:
   /* css_broadcast_shutdown_thread(); */
 
   repeat_loop = false;
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->status != TS_FREE)
 	{
 	  repeat_loop = true;
@@ -549,11 +698,13 @@ thread_stop_active_daemons (void)
   int idx;
   THREAD_ENTRY *thread_p;
 
+  assert (thread_Manager.initialized == true);
+
   count = 0;
-  for (i = 0; i < NUM_DAEMON_THREADS; i++)
+  for (i = 0; i < PREDEFINED_DAEMON_THREAD_NUM; i++)
     {
-      idx = NUM_WORKER_THREADS + i + 1;	/* 1 for system thread */
-      thread_p = &css_Thread_manager.thread_array[idx];
+      idx = thread_Manager.num_workers + i + 1;	/* 1 for master thread */
+      thread_p = &thread_Manager.thread_array[idx];
       thread_p->shutdown = true;
     }
 
@@ -565,10 +716,10 @@ thread_stop_active_daemons (void)
 
 loop:
   repeat_loop = false;
-  for (i = 0; i < NUM_DAEMON_THREADS; i++)
+  for (i = 0; i < PREDEFINED_DAEMON_THREAD_NUM; i++)
     {
-      idx = NUM_WORKER_THREADS + i + 1;	/* 1 for system thread */
-      thread_p = &css_Thread_manager.thread_array[idx];
+      idx = thread_Manager.num_workers + i + 1;	/* 1 for master thread */
+      thread_p = &thread_Manager.thread_array[idx];
       if (thread_p->status != TS_DEAD)
 	{
 	  repeat_loop = true;
@@ -580,7 +731,7 @@ loop:
       if (count++ > 30)
 	{
 #if CUBRID_DEBUG
-	  logtb_dump_trantable (NULL, stderr);
+	  xlogtb_dump_trantable (NULL, stderr);
 #endif
 	  er_log_debug (ARG_FILE_LINE,
 			"thread_stop_active_daemons: _exit(0)\n");
@@ -605,9 +756,9 @@ thread_kill_all_workers (void)
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
 
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       thread_p->interrupted = true;
       thread_p->shutdown = true;
     }
@@ -624,9 +775,9 @@ loop:
 loop:
 #endif /* WINDOWS */
   repeat_loop = false;
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->status != TS_DEAD)
 	{
 	  repeat_loop = true;
@@ -638,7 +789,7 @@ loop:
       if (count++ > 60)
 	{
 #if CUBRID_DEBUG
-	  logtb_dump_trantable (NULL, stderr);
+	  xlogtb_dump_trantable (NULL, stderr);
 #endif
 	  er_log_debug (ARG_FILE_LINE, "thread_kill_all_workers: _exit(0)\n");
 	  /* exit process after some tries */
@@ -660,13 +811,13 @@ thread_final_manager (void)
 {
   int i;
 
-  for (i = 1; i <= NUM_WORKER_THREADS_PLUS_DAEMON_THREADS; i++)
+  for (i = 1; i < thread_Manager.num_total; i++)
     {
-      (void) thread_finalize_entry (&css_Thread_manager.thread_array[i]);
+      (void) thread_finalize_entry (&thread_Manager.thread_array[i]);
     }
-  (void) thread_finalize_entry (&css_Thread_manager.thread_array[0]);
-  free_and_init (css_Thread_manager.thread_array);
-  css_Thread_manager.thread_array = NULL;
+  (void) thread_finalize_entry (&thread_Manager.thread_array[0]);
+  free_and_init (thread_Manager.thread_array);
+  thread_Manager.thread_array = NULL;
 
 #ifndef HPUX
   TLS_KEY_FREE (css_Thread_key);
@@ -688,7 +839,12 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
   r = MUTEX_INIT (entry_p->tran_index_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   entry_p->rid = 0;
   entry_p->status = TS_DEAD;
@@ -705,10 +861,20 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 #else /* not CHECK_MUTEX */
   r = MUTEX_INIT (entry_p->th_entry_lock);
 #endif /* not CHECK_MUTEX */
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   r = COND_INIT (entry_p->wakeup_cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
 
   entry_p->resume_status = RESUME_OK;
   entry_p->er_Msg = NULL;
@@ -763,11 +929,26 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   entry_p->conn_entry = NULL;
 
   r = MUTEX_DESTROY (entry_p->tran_index_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_DESTROY);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
   r = MUTEX_DESTROY (entry_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_DESTROY);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
   r = COND_DESTROY (entry_p->wakeup_cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_DESTROY);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_DESTROY, 0);
+      return ER_CSS_PTHREAD_COND_DESTROY;
+    }
   entry_p->resume_status = RESUME_OK;
 
   entry_p->check_interrupt = true;
@@ -814,9 +995,9 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
   int i;
   THREAD_T me = THREAD_ID ();
 
-  for (i = 0; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index == tran_index && thread_p->tid != me)
 	{
 	  return thread_p;
@@ -837,9 +1018,9 @@ thread_find_entry_by_tran_index (int tran_index)
   THREAD_ENTRY *thread_p;
   int i;
 
-  for (i = 0; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
       if (thread_p->tran_index == tran_index)
 	{
 	  return thread_p;
@@ -939,9 +1120,11 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
   assert (thread_p != NULL);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r < 0)
+  if (r != 0)
     {
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
   return r;
@@ -962,9 +1145,11 @@ thread_lock_entry_with_tran_index (int tran_index)
   assert (thread_p != NULL);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r < 0)
+  if (r != 0)
     {
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
   return r;
@@ -983,9 +1168,11 @@ thread_unlock_entry (THREAD_ENTRY * thread_p)
   assert (thread_p != NULL);
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  if (r < 0)
+  if (r != 0)
     {
-      CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
   return r;
@@ -1008,16 +1195,31 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p)
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_WAIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_WAIT, 0);
+      return ER_CSS_PTHREAD_COND_WAIT;
+    }
 
 #if defined(WINDOWS)
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 #endif /* WINDOWS */
   thread_p->status = TS_RUN;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   return NO_ERROR;
 }
@@ -1032,16 +1234,12 @@ int
 thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
 						thread_p, void *time_p)
 {
-  int r1, r2;
+  int r;
 #if defined(WINDOWS)
   int tmp_timespec;
 #else /* WINDOWS */
   struct timespec tmp_timespec;
 #endif /* WINDOWS */
-
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int rv;
-#endif /* WINDOWS && SERVER_MODE */
 
   assert (thread_p->status == TS_RUN);
   thread_p->status = TS_WAIT;
@@ -1052,23 +1250,39 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
   memcpy (&tmp_timespec, time_p, sizeof (struct timespec));
 #endif /* WINDOWS */
 
-  r1 = COND_TIMEDWAIT (thread_p->wakeup_cond, thread_p->th_entry_lock,
-		       tmp_timespec);
-  if (r1 != ETIMEDOUT)
+  r = COND_TIMEDWAIT (thread_p->wakeup_cond, thread_p->th_entry_lock,
+		      tmp_timespec);
+  if (r == ETIMEDOUT)
     {
-      CSS_CHECK_RETURN_ERROR (r1, ER_CSS_PTHREAD_COND_TIMEDWAIT);
-      r1 = NO_ERROR;
+      r = 0;
+    }
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
+      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
     }
 #if defined(WINDOWS)
-  MUTEX_LOCK (rv, thread_p->th_entry_lock);
+  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 #endif /* WINDOWS */
 
   thread_p->status = TS_RUN;
 
-  r2 = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r2, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
-  return r1;
+  return r;
 }
 
 /*
@@ -1083,6 +1297,10 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
   int r;
 
   thread_p = thread_find_entry_by_tran_index (tran_index);
+  if (thread_p == NULL)
+    {
+      return ER_FAILED;
+    }
 
   /*
    * this function must be called by current thread
@@ -1092,16 +1310,31 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_WAIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_WAIT, 0);
+      return ER_CSS_PTHREAD_COND_WAIT;
+    }
 #if defined(WINDOWS)
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 #endif /* WINDOWS */
 
   thread_p->status = TS_RUN;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   return NO_ERROR;
 }
@@ -1117,13 +1350,25 @@ thread_wakeup (THREAD_ENTRY * thread_p)
   int r = NO_ERROR;
 
   r = thread_lock_entry (thread_p);
-  CSS_CHECK_RETURN_ERROR (r, r);
+  if (r != 0)
+    {
+      return r;
+    }
 
   r = COND_SIGNAL (thread_p->wakeup_cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_SIGNAL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_SIGNAL, 0);
+      thread_unlock_entry (thread_p);
+      return ER_CSS_PTHREAD_COND_SIGNAL;
+    }
 
   r = thread_unlock_entry (thread_p);
-  CSS_CHECK_RETURN_ERROR (r, r);
+  if (r != 0)
+    {
+      return r;
+    }
 
   return r;
 }
@@ -1146,13 +1391,24 @@ thread_wakeup_with_tran_index (int tran_index)
     }
 
   r = thread_lock_entry (thread_p);
-  CSS_CHECK_RETURN_ERROR (r, r);
+  if (r != 0)
+    {
+      return r;
+    }
 
   r = COND_SIGNAL (thread_p->wakeup_cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_SIGNAL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_SIGNAL, 0);
+      return ER_CSS_PTHREAD_COND_SIGNAL;
+    }
 
   thread_unlock_entry (thread_p);
-  CSS_CHECK_RETURN_ERROR (r, r);
+  if (r != 0)
+    {
+      return r;
+    }
 
   return r;
 }
@@ -1197,27 +1453,61 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
   assert (thread_p->status == TS_RUN);
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 
   thread_p->status = TS_WAIT;
 
   r = MUTEX_UNLOCK (*mutex_p);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_WAIT);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_WAIT, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_COND_WAIT;
+    }
+
 #if defined(WINDOWS)
   MUTEX_LOCK (r, thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 #endif /* WINDOWS */
 
   MUTEX_LOCK (r, *mutex_p);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
 
   thread_p->status = TS_RUN;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_UNLOCK);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
 
   return NO_ERROR;
 }
@@ -1356,9 +1646,9 @@ thread_has_threads (int tran_index, int client_id)
       return 0;
     }
 
-  for (i = 0, n = 0; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1, n = 0; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
 
       MUTEX_LOCK (rv, thread_p->tran_index_lock);
       n += (thread_p->tid != THREAD_ID ()
@@ -1377,7 +1667,8 @@ thread_has_threads (int tran_index, int client_id)
 /*
  * thread_get_info_threads() - get statistics of threads
  *   return: void
- *   num_threads(out):
+ *   num_total_threads(out):
+ *   num_worker_threads(out):
  *   num_free_threads(out):
  *   num_suspended_threads(out):
  *
@@ -1386,23 +1677,52 @@ thread_has_threads (int tran_index, int client_id)
  *       WARN: this function doesn't lock threadmgr
  */
 void
-thread_get_info_threads (int *num_threads_p,
-			 int *num_free_threads_p,
-			 int *num_suspended_threads_p)
+thread_get_info_threads (int *num_total_threads,
+			 int *num_worker_threads,
+			 int *num_free_threads, int *num_suspended_threads)
 {
   int i;
   THREAD_ENTRY *thread_p;
 
-  *num_threads_p = css_Thread_manager.nthreads;
-  *num_free_threads_p = 0;
-  *num_suspended_threads_p = 0;
-
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  if (num_total_threads)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
-      *num_free_threads_p += (thread_p->status == TS_FREE);
-      *num_suspended_threads_p += (thread_p->status == TS_WAIT);
+      *num_total_threads = thread_Manager.num_total;
     }
+  if (num_worker_threads)
+    {
+      *num_worker_threads = thread_Manager.num_workers;
+    }
+  if (num_free_threads)
+    {
+      *num_free_threads = 0;
+    }
+  if (num_suspended_threads)
+    {
+      *num_suspended_threads = 0;
+    }
+  if (num_free_threads || num_suspended_threads)
+    {
+      for (i = 1; i <= thread_Manager.num_workers; i++)
+	{
+	  thread_p = &thread_Manager.thread_array[i];
+	  if (num_free_threads && thread_p->status == TS_FREE)
+	    (*num_free_threads)++;
+	  if (num_suspended_threads && thread_p->status == TS_WAIT)
+	    (*num_suspended_threads)++;
+	}
+    }
+}
+
+int
+thread_num_worker_threads (void)
+{
+  return thread_Manager.num_workers;
+}
+
+int
+thread_num_total_threads (void)
+{
+  return thread_Manager.num_total;
 }
 
 /*
@@ -1415,13 +1735,15 @@ thread_get_info_threads (int *num_threads_p,
 void
 thread_dump_threads (void)
 {
-  const char *status[] = { "dead", "free", "run", "wait" };
+  const char *status[] = {
+    "dead", "free", "run", "wait"
+  };
   int i;
   THREAD_ENTRY *thread_p;
 
-  for (i = 0; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &css_Thread_manager.thread_array[i];
+      thread_p = &thread_Manager.thread_array[i];
 
       fprintf (stderr,
 	       "thread %d(tid(%ld),client_id(%d),tran_index(%d),"
@@ -1517,7 +1839,7 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 {
   bool old_val = true;
 
-  if (BO_ISSERVER_RESTARTED ())
+  if (BO_IS_SERVER_RESTARTED ())
     {
       if (thread_p == NULL)
 	{
@@ -1540,7 +1862,7 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 {
   bool ret_val = true;
 
-  if (BO_ISSERVER_RESTARTED ())
+  if (BO_IS_SERVER_RESTARTED ())
     {
       if (thread_p == NULL)
 	{
@@ -1653,30 +1975,80 @@ css_initialize_sync_object (void)
 {
   int r;
 
-  r = COND_INIT (css_Deadlock_detect_thread.cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Deadlock_detect_thread.lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  r = COND_INIT (thread_Deadlock_detect_thread.cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = MUTEX_INIT (thread_Deadlock_detect_thread.lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
-  r = COND_INIT (css_Checkpoint_thread.cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Checkpoint_thread.lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  r = COND_INIT (thread_Checkpoint_thread.cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = MUTEX_INIT (thread_Checkpoint_thread.lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
-  r = COND_INIT (css_Oob_thread.cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Oob_thread.lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  r = COND_INIT (thread_Oob_thread.cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = MUTEX_INIT (thread_Oob_thread.lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
-  r = COND_INIT (css_Page_flush_thread.cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Page_flush_thread.lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  r = COND_INIT (thread_Page_flush_thread.cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = MUTEX_INIT (thread_Page_flush_thread.lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
-  r = COND_INIT (css_Log_flush_thread.cond);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_COND_INIT);
-  r = MUTEX_INIT (css_Log_flush_thread.lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_INIT);
+  r = COND_INIT (thread_Log_flush_thread.cond);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = MUTEX_INIT (thread_Log_flush_thread.lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   return r;
 }
@@ -1724,13 +2096,13 @@ thread_deadlock_detect_thread (void *arg_p)
       if (thread_p == (THREAD_ENTRY *) NULL)
 	{
 	  /* none is lock-waiting */
-	  MUTEX_LOCK (rv, css_Deadlock_detect_thread.lock);
-	  css_Deadlock_detect_thread.is_running = false;
-	  COND_WAIT (css_Deadlock_detect_thread.cond,
-		     css_Deadlock_detect_thread.lock);
-	  css_Deadlock_detect_thread.is_running = true;
+	  MUTEX_LOCK (rv, thread_Deadlock_detect_thread.lock);
+	  thread_Deadlock_detect_thread.is_running = false;
+	  COND_WAIT (thread_Deadlock_detect_thread.cond,
+		     thread_Deadlock_detect_thread.lock);
+	  thread_Deadlock_detect_thread.is_running = true;
 #if !defined(WINDOWS)
-	  MUTEX_UNLOCK (css_Deadlock_detect_thread.lock);
+	  MUTEX_UNLOCK (thread_Deadlock_detect_thread.lock);
 #endif /* !WINDOWS */
 	  continue;
 	}
@@ -1778,12 +2150,12 @@ thread_wakeup_deadlock_detect_thread (void)
 {
   int rv;
 
-  MUTEX_LOCK (rv, css_Deadlock_detect_thread.lock);
-  if (css_Deadlock_detect_thread.is_running == false)
+  MUTEX_LOCK (rv, thread_Deadlock_detect_thread.lock);
+  if (thread_Deadlock_detect_thread.is_running == false)
     {
-      COND_SIGNAL (css_Deadlock_detect_thread.cond);
+      COND_SIGNAL (thread_Deadlock_detect_thread.cond);
     }
-  MUTEX_UNLOCK (css_Deadlock_detect_thread.lock);
+  MUTEX_UNLOCK (thread_Deadlock_detect_thread.lock);
 }
 
 /*
@@ -1806,7 +2178,9 @@ thread_checkpoint_thread (void *arg_p)
 #if defined(WINDOWS)
   int to = 0;
 #else /* WINDOWS */
-  struct timespec to = { 0, 0 };
+  struct timespec to = {
+    0, 0
+  };
 #endif /* WINDOWS */
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -1831,11 +2205,11 @@ thread_checkpoint_thread (void *arg_p)
       to.tv_sec = time (NULL) + PRM_LOG_CHECKPOINT_INTERVAL_MINUTES * 60;
 #endif /* WINDOWS */
 
-      MUTEX_LOCK (rv, css_Checkpoint_thread.lock);
-      COND_TIMEDWAIT (css_Checkpoint_thread.cond,
-		      css_Checkpoint_thread.lock, to);
+      MUTEX_LOCK (rv, thread_Checkpoint_thread.lock);
+      COND_TIMEDWAIT (thread_Checkpoint_thread.cond,
+		      thread_Checkpoint_thread.lock, to);
 #if !defined(WINDOWS)
-      MUTEX_UNLOCK (css_Checkpoint_thread.lock);
+      MUTEX_UNLOCK (thread_Checkpoint_thread.lock);
 #endif /* !WINDOWS */
       if (tsd_ptr->shutdown)
 	{
@@ -1864,9 +2238,9 @@ thread_wakeup_checkpoint_thread (void)
 {
   int rv;
 
-  MUTEX_LOCK (rv, css_Checkpoint_thread.lock);
-  COND_SIGNAL (css_Checkpoint_thread.cond);
-  MUTEX_UNLOCK (css_Checkpoint_thread.lock);
+  MUTEX_LOCK (rv, thread_Checkpoint_thread.lock);
+  COND_SIGNAL (thread_Checkpoint_thread.cond);
+  MUTEX_UNLOCK (thread_Checkpoint_thread.lock);
 }
 
 /*
@@ -1879,13 +2253,13 @@ thread_wakeup_oob_handler_thread (void)
 #if !defined(WINDOWS)
   THREAD_ENTRY *thread_p;
 
-  thread_p = &css_Thread_manager.thread_array[css_Oob_thread.thread_index];
+  thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
   pthread_kill (thread_p->tid, SIGURG);
 #endif /* !WINDOWS */
 }
 
 /*
- * css_page_flush_thread() -
+ * thread_page_flush_thread() -
  *   return:
  *   arg_p(in):
  */
@@ -1901,6 +2275,12 @@ thread_page_flush_thread (void *arg_p)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int rv;
+#if defined(WINDOWS)
+  int to = 0;
+#else /* WINDOWS */
+  struct timespec to = { 0, 0 };
+#endif /* WINDOWS */
+  int wakeup_interval_in_secs;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
@@ -1911,7 +2291,7 @@ thread_page_flush_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  css_Page_flush_thread.is_running = true;
+  thread_Page_flush_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -1919,12 +2299,33 @@ thread_page_flush_thread (void *arg_p)
     {
       er_clear ();
 
-      MUTEX_LOCK (rv, css_Page_flush_thread.lock);
-      css_Page_flush_thread.is_running = false;
-      COND_WAIT (css_Page_flush_thread.cond, css_Page_flush_thread.lock);
-      css_Page_flush_thread.is_running = true;
+      wakeup_interval_in_secs = PRM_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL;
+      if (0 < wakeup_interval_in_secs)
+	{
+#if defined(WINDOWS)
+	  to = wakeup_interval_in_secs * 1000;
+#else /* WINDOWS */
+	  to.tv_sec = time (NULL) + wakeup_interval_in_secs;
+#endif /* WINDOWS */
+	}
+
+      MUTEX_LOCK (rv, thread_Page_flush_thread.lock);
+      thread_Page_flush_thread.is_running = false;
+
+      if (0 < wakeup_interval_in_secs)
+	{
+	  COND_TIMEDWAIT (thread_Page_flush_thread.cond,
+			  thread_Page_flush_thread.lock, to);
+	}
+      else
+	{
+	  COND_WAIT (thread_Page_flush_thread.cond,
+		     thread_Page_flush_thread.lock);
+	}
+
+      thread_Page_flush_thread.is_running = true;
 #if !defined(WINDOWS)
-      MUTEX_UNLOCK (css_Page_flush_thread.lock);
+      MUTEX_UNLOCK (thread_Page_flush_thread.lock);
 #endif /* !WINDOWS */
 
       if (tsd_ptr->shutdown)
@@ -1939,7 +2340,7 @@ thread_page_flush_thread (void *arg_p)
   er_clear ();
   tsd_ptr->status = TS_DEAD;
 
-  css_Page_flush_thread.is_running = false;
+  thread_Page_flush_thread.is_running = false;
 
 #if defined(WINDOWS)
   return 0;
@@ -1957,17 +2358,17 @@ thread_wakeup_page_flush_thread (void)
 {
   int rv;
 
-  if (css_Page_flush_thread.is_running)
+  if (thread_Page_flush_thread.is_running)
     {
       return;
     }
 
-  MUTEX_LOCK (rv, css_Page_flush_thread.lock);
-  if (!css_Page_flush_thread.is_running)
+  MUTEX_LOCK (rv, thread_Page_flush_thread.lock);
+  if (!thread_Page_flush_thread.is_running)
     {
-      COND_SIGNAL (css_Page_flush_thread.cond);
+      COND_SIGNAL (thread_Page_flush_thread.cond);
     }
-  MUTEX_UNLOCK (css_Page_flush_thread.lock);
+  MUTEX_UNLOCK (thread_Page_flush_thread.lock);
 }
 
 /*
@@ -2026,12 +2427,20 @@ thread_log_flush_thread (void *arg_p)
 #if defined(WINDOWS)
   int LFT_wait_time = 0;
 #else /* WINDOWS */
-  struct timespec LFT_wait_time = { 0, 0 };
+  struct timespec LFT_wait_time = {
+    0, 0
+  };
 #endif /* WINDOWS */
 
-  struct timeval start_time = { 0, 0 };
-  struct timeval end_time = { 0, 0 };
-  struct timeval work_time = { 0, 0 };
+  struct timeval start_time = {
+    0, 0
+  };
+  struct timeval end_time = {
+    0, 0
+  };
+  struct timeval work_time = {
+    0, 0
+  };
 
   double curr_elapsed = 0;
   double gc_elapsed = 0;
@@ -2059,14 +2468,14 @@ thread_log_flush_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  css_Log_flush_thread.is_valid = true;
+  thread_Log_flush_thread.is_valid = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
   min_wait_time = thread_get_LFT_min_wait_time ();
   gettimeofday (&start_time, NULL);
 
-  MUTEX_LOCK (rv, css_Log_flush_thread.lock);
+  MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2096,16 +2505,16 @@ thread_log_flush_thread (void *arg_p)
       LFT_wait_time.tv_nsec = temp_wait_usec * 1000;
 #endif /* WINDOWS */
 
-      css_Log_flush_thread.is_log_flush_force = false;
-      css_Log_flush_thread.is_running = false;
+      thread_Log_flush_thread.is_log_flush_force = false;
+      thread_Log_flush_thread.is_running = false;
 
-      ret = COND_TIMEDWAIT (css_Log_flush_thread.cond,
-			    css_Log_flush_thread.lock, LFT_wait_time);
+      ret = COND_TIMEDWAIT (thread_Log_flush_thread.cond,
+			    thread_Log_flush_thread.lock, LFT_wait_time);
 
-      css_Log_flush_thread.is_running = true;
+      thread_Log_flush_thread.is_running = true;
 
 #if defined(WINDOWS)
-      MUTEX_LOCK (rv, css_Log_flush_thread.lock);
+      MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
 #endif /* WINDOWS */
 
       if (tsd_ptr->shutdown)
@@ -2139,7 +2548,7 @@ thread_log_flush_thread (void *arg_p)
       have_wake_up_thread = false;
       if (ret == TIMEDWAIT_TIMEOUT)
 	{
-	  if (css_Log_flush_thread.is_log_flush_force)
+	  if (thread_Log_flush_thread.is_log_flush_force)
 	    {
 	      is_background_flush = false;
 	    }
@@ -2230,9 +2639,9 @@ thread_log_flush_thread (void *arg_p)
       MUTEX_UNLOCK (group_commit_info->gc_mutex);
     }
 
-  css_Log_flush_thread.is_valid = false;
-  css_Log_flush_thread.is_running = false;
-  MUTEX_UNLOCK (css_Log_flush_thread.lock);
+  thread_Log_flush_thread.is_valid = false;
+  thread_Log_flush_thread.is_running = false;
+  MUTEX_UNLOCK (thread_Log_flush_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2259,17 +2668,17 @@ thread_wakeup_log_flush_thread (void)
 {
   int rv;
 
-  if (css_Log_flush_thread.is_running)
+  if (thread_Log_flush_thread.is_running)
     {
       return;
     }
 
-  MUTEX_LOCK (rv, css_Log_flush_thread.lock);
-  if (!css_Log_flush_thread.is_running)
+  MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
+  if (!thread_Log_flush_thread.is_running)
     {
-      COND_SIGNAL (css_Log_flush_thread.cond);
+      COND_SIGNAL (thread_Log_flush_thread.cond);
     }
-  MUTEX_UNLOCK (css_Log_flush_thread.lock);
+  MUTEX_UNLOCK (thread_Log_flush_thread.lock);
 }
 
 /*
@@ -2277,14 +2686,12 @@ thread_wakeup_log_flush_thread (void)
  *   return:
  *   tran_index(in):
  */
-static int
+static void
 thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
   css_shutdown_conn_by_tran_index (tran_index);
-
-  return CSS_SLAM_STATUS_INTERRUPTED;
 }
 
 /*
@@ -2325,7 +2732,8 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
 
   signaled = false;
   for (i = 0;
-       i < CSS_RETRY_MAX_SLAM_TIMES && error_code == NO_ERROR && !killed; i++)
+       i < THREAD_RETRY_MAX_SLAM_TIMES && error_code == NO_ERROR && !killed;
+       i++)
     {
       if (logtb_find_client_name_host_pid (kill_tran_index, &slam_progname_p,
 					   &slam_user_p, &slam_host_p,
@@ -2390,9 +2798,9 @@ thread_find_first_lockwait_entry (int *thread_index_p)
   THREAD_ENTRY *thread_p;
   int i;
 
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &(css_Thread_manager.thread_array[i]);
+      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;
@@ -2418,9 +2826,9 @@ thread_find_next_lockwait_entry (int *thread_index_p)
   THREAD_ENTRY *thread_p;
   int i;
 
-  for (i = (*thread_index_p + 1); i <= NUM_WORKER_THREADS; i++)
+  for (i = (*thread_index_p + 1); i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &(css_Thread_manager.thread_array[i]);
+      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;
@@ -2443,7 +2851,7 @@ thread_find_next_lockwait_entry (int *thread_index_p)
 THREAD_ENTRY *
 thread_find_entry_by_index (int thread_index)
 {
-  return (&css_Thread_manager.thread_array[thread_index]);
+  return (&thread_Manager.thread_array[thread_index]);
 }
 
 /*
@@ -2459,9 +2867,9 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
   int i, thread_count;
 
   thread_count = 0;
-  for (i = 1; i <= NUM_WORKER_THREADS; i++)
+  for (i = 1; i <= thread_Manager.num_workers; i++)
     {
-      thread_p = &(css_Thread_manager.thread_array[i]);
+      thread_p = &(thread_Manager.thread_array[i]);
       if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
 	{
 	  continue;

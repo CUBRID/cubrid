@@ -60,33 +60,20 @@ public class CUBRIDDriver implements Driver
   static final String build_serial_number = str(JDBC_DRIVER_SERIAL_NUMBER);
 
   // default connection informations
-  static final String default_hostname = "localhost";
-  static final int default_port = 3456;
-  static final String default_user = "public";
-  static final String default_password = "";
+  public static final String default_hostname = "localhost";
+  public static final int default_port = 30000;
+  public static final String default_user = "public";
+  public static final String default_password = "";
 
+  private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid:";
+  private final static String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
   private final static String CONNECTION_PROPERTY_CHARSET = "charset";
   private final static String CONNECTION_PROPERTY_ALTERNATIVE_HOSTS = "althosts";
+  private final static String CONNECTION_PROPERTY_RECONNECTION_TIME = "rctime";
+  private final static String[] params = {
+    CONNECTION_PROPERTY_CHARSET, CONNECTION_PROPERTY_ALTERNATIVE_HOSTS,
+    CONNECTION_PROPERTY_RECONNECTION_TIME };
 
-  /*
-   * Class.forName("cubrid.jdbc.driver.CUBRIDDriver")로 등록 가능하도록 static
-   * initializer를 통해서 DriverManager에 이 driver를 등록한다.
-   */
-  static
-  {
-    try
-    {
-      DriverManager.registerDriver(new CUBRIDDriver());
-    }
-    catch (SQLException e)
-    {
-    }
-  }
-
-  /*
-   * Class.forName("cubrid.jdbc.driver.CUBRIDDriver")로 등록 가능하도록 static
-   * initializer를 통해서 DriverManager에 이 driver를 등록한다.
-   */
   static
   {
     try
@@ -102,10 +89,6 @@ public class CUBRIDDriver implements Driver
    * java.sql.Driver interface
    */
 
-  /*
-   * CUBRID JDBC Driver의 url이 아니면 null을 return한다. CUBRID JDBC Driver의
-   * url이지만, 오류가 있으면 SQLException을 발생시킨다.
-   */
   public Connection connect(String url, Properties info) throws SQLException
   {
     String hostname, db_name, user, passwd, dummy;
@@ -113,17 +96,16 @@ public class CUBRIDDriver implements Driver
     Properties paramInfo;
     UConnection u_con;
 
-    // CUBRID JDBC Driver의 url인지 확인한다.
     if (!acceptsURL(url))
-      return null;
+      throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
 
-    if (url.toLowerCase().startsWith("jdbc:default:connection:"))
+    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION))
     {
       return defaultConnection();
     }
     else
     {
-      // parsing the url
+      // parse url
       try
       {
         dummy = url.substring(12);
@@ -156,9 +138,13 @@ public class CUBRIDDriver implements Driver
         dummy = dummy.substring(dummy.indexOf(':') + 1);
         paramInfo = make_param_info(dummy);
       }
+      catch (CUBRIDException e)
+      {
+        throw e;
+      }
       catch (Exception e)
       {
-        throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url);
+        throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
       }
 
       // getting informations from the Properties object
@@ -192,40 +178,48 @@ public class CUBRIDDriver implements Driver
       {
         dummy = paramInfo.getProperty(CONNECTION_PROPERTY_ALTERNATIVE_HOSTS);
       }
-      if (dummy == null)
+      if (dummy != null)
       {
-        u_con = UJCIManager.connect(hostname, port, db_name, user, passwd);
+        ArrayList<String> altHostList = new ArrayList<String>();
 
-      }
-      else
-      {
-        ArrayList aConList, aCon;
-      	String hostname2;
-      	int port2;
-
-        aCon = new ArrayList();
-      	aCon.add(hostname);
-      	aCon.add(new Integer(port));
-
-      	aConList = new ArrayList();
-      	aConList.add(0,aCon);
+	altHostList.add(hostname + ":" + port);
 
       	StringTokenizer st = new StringTokenizer(dummy, ",", false);
       	while (st.hasMoreTokens())
       	{
-      	  String stToken = st.nextToken();
-      	  hostname2 = stToken.substring(0, stToken.indexOf(':'));
-      	  stToken = stToken.substring(stToken.indexOf(':')+1);
-      	  port2 = (stToken == null) ? default_port : Integer.valueOf(stToken).intValue();
-
-      	  aCon = new ArrayList();
-      	  aCon.add(hostname2);
-      	  aCon.add(new Integer(port2));
-
-      	  aConList.add(aCon);
+      	  altHostList.add(st.nextToken());
       	}
-      	u_con = UJCIManager.connect(aConList, db_name, user, passwd);
+      	try
+      	{
+	  u_con = UJCIManager.connect(altHostList, db_name, user, passwd, url);
+      	}
+      	catch (CUBRIDException e)
+      	{
+      	  throw e;
+      	}
       }
+      else
+      {
+	try
+	{
+	  u_con = UJCIManager.connect(hostname, port, db_name, user, passwd, url);
+	}
+	catch (CUBRIDException e)
+	{
+	  throw e;
+	}
+      }
+
+      dummy = info.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
+      if (dummy == null)
+      {
+        dummy = paramInfo.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
+      }
+      if (dummy != null)
+      {
+	u_con.setReconnectionTime(Integer.valueOf(dummy).intValue());
+      }
+
       dummy = info.getProperty(CONNECTION_PROPERTY_CHARSET);
       if (dummy == null)
       {
@@ -271,9 +265,8 @@ public class CUBRIDDriver implements Driver
   {
     if (url == null)
       return false;
-    return url.toLowerCase().startsWith("jdbc:cubrid:")
-        || url.toLowerCase().startsWith("jdbc:cubrid:")
-        || url.toLowerCase().startsWith("jdbc:default:connection:");
+    return url.toLowerCase().startsWith(CUBRID_JDBC_URL_HEADER)
+        || url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION);
   }
 
   public DriverPropertyInfo[] getPropertyInfo(String url, Properties info)
@@ -297,7 +290,7 @@ public class CUBRIDDriver implements Driver
     return true;
   }
 
-  private Properties make_param_info(String paramStr)
+  private Properties make_param_info(String paramStr) throws CUBRIDException
   {
     Properties paramInfo = new Properties();
 
@@ -317,6 +310,10 @@ public class CUBRIDDriver implements Driver
       index = paramStr.indexOf('&');
       if (index < 0)
       {
+	index = paramStr.indexOf(';');
+      }
+      if (index < 0)
+      {
         s = paramStr;
         paramStr = null;
       }
@@ -332,7 +329,16 @@ public class CUBRIDDriver implements Driver
         name = s.substring(0, index).trim();
         value = s.substring(index + 1).trim();
 
-        if (name.length() > 0 && value.length() > 0)
+        boolean match = false;
+        for (int i = 0; i < params.length; i++)
+        {
+          if (name.equals(params[i]))
+            match = true;
+        }
+        if (!match || name.length() <= 0)
+          throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url,
+				    " unknown property " + s);
+	else
           paramInfo.setProperty(name, value);
       }
     } while (paramStr != null);

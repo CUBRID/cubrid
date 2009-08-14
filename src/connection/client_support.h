@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -32,9 +32,8 @@
 extern int css_Errno;
 extern CSS_MAP_ENTRY *css_Client_anchor;
 
-extern int css_client_init (int sockid,
-			    void (*oob_function) (char, unsigned int),
-			    const char *server_name, const char *host_name);
+extern int css_client_init (int sockid, const char *server_name,
+			    const char *host_name);
 extern unsigned int css_send_request_to_server (char *host, int request,
 						char *arg_buffer,
 						int arg_buffer_size);
@@ -53,12 +52,14 @@ extern unsigned int css_send_req_to_server (char *host,
 					    int data_buffer_size,
 					    char *reply_buffer,
 					    int reply_size);
+#if 0
 extern unsigned int
 css_send_req_to_server_with_large_data (char *host, int request,
 					char *arg_buffer, int arg_buffer_size,
 					char *data_buffer,
-					FSIZE_T data_buffer_size,
+					INT64 data_buffer_size,
 					char *reply_buffer, int reply_size);
+#endif
 
 extern unsigned int css_send_req_to_server_2_data (char *host,
 						   int request,
@@ -70,10 +71,10 @@ extern unsigned int css_send_req_to_server_2_data (char *host,
 						   int data2_buffer_size,
 						   char *reply_buffer,
 						   int reply_size);
-extern unsigned int css_send_oob_to_server_with_buffer (char *host,
-							int request,
-							char *arg_buffer,
-							int arg_buffer_size);
+extern unsigned int css_send_req_to_server_no_reply (char *host,
+						     int request,
+						     char *arg_buffer,
+						     int arg_buffer_size);
 extern int css_queue_receive_data_buffer (unsigned int eid, char *buffer,
 					  int buffer_size);
 extern unsigned int css_send_error_to_server (char *host,
@@ -84,8 +85,6 @@ extern unsigned int css_send_data_to_server (char *host,
 					     int buffer_size);
 extern unsigned int css_receive_data_from_server (unsigned int eid,
 						  char **buffer, int *size);
-extern unsigned int css_receive_oob_from_server (unsigned int eid,
-						 char **buffer, int *size);
 extern unsigned int css_receive_error_from_server (unsigned int eid,
 						   char **buffer, int *size);
 extern void css_terminate (bool server_error);

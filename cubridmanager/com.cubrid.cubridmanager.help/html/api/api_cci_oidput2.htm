@@ -1,0 +1,216 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>cci_oid_put2</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body lang="KO" xml:lang="KO"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nCCI API\ncci_oid_put2");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI API<\/a> &nbsp;&gt;&nbsp; cci_oid_put2<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cci_oid_put2</h3>
+<h6>설명</h6>
+<p>해당 oid의 <span class="var">attr_name</span> 속성&#160;값을 <span class="var">new_val</span>로 설정한다. <span class="var">attr_name</span>의 마지막은 반드시 NULL이어야 한다. NULL 값을 넣기 위해서는 <span class="var">new_val</span>[i]의 값을 NULL로 지정한다.</p>
+<p><span class="var">a_type</span>에 대한 <span class="var">new_val</span>[i]의 타입은 다음 표와 같다.</p>
+<p class="caption-table">a_type에 대한 new_val[i]의 타입</p>
+<table border="1">
+<tr>
+<th width="130">
+<p align="center">Type</p>
+</th>
+<th width="110">
+<p align="center">value type</p>
+</th>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_STR</p>
+</td>
+<td width="110">
+<p>char*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_INT</p>
+</td>
+<td width="110">
+<p>int*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_FLOAT</p>
+</td>
+<td width="110">
+<p>float*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_DOUBLE</p>
+</td>
+<td width="110">
+<p>double*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_BIT</p>
+</td>
+<td class="keyword" width="110">
+<p>T_CCI_BIT*</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_SET</p>
+</td>
+<td class="keyword" width="110">
+<p>T_CCI_SET</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="130">
+<p>CCI_A_TYPE_DATE</p>
+</td>
+<td class="keyword" width="110">
+<p>T_CCI_DATE*</p>
+</td>
+</tr>
+<tr>
+<td width="130" class="keyword">
+<p>CCI_A_TYPE_BIGINT</p>
+</td>
+<td width="110">
+<p>int64_t</p>
+<p>(Windows는 __int64)</p>
+</td>
+</tr>
+</table>
+<h6>구문</h6>
+<p class="syntax">int<span class="keyword">cci_oid_put2</span>(int <span class="var">conn_handle</span>, char *<span class="var">oidstr</span>, char **<span class="var">attr_name</span>, void **<span class="var">new_val</span>, int *<span class="var">a_type</span>, <span class="keyword">T_CCI_ERROR</span> *<span class="var">err_buf</span>)</p>
+<ul>
+<li><span class="var">conn_handle</span> : (IN) 연결 핸들</li>
+<li><span class="var">oid_str&#160;:</span> (IN) oid</li>
+<li><span class="var">attr_name</span>&#160;: (IN) 속성 이름 목록</li>
+<li><span class="var">new_val</span>&#160;: (IN) 새 값 배열</li>
+<li><span class="var">a_type</span>&#160;: (IN) <span class="var">new_val</span> 타입 배열</li>
+<li><span class="var">err_buf&#160;:</span> (OUT) 데이터베이스 에러 버퍼</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>에러 코드&#160;(0 : 에러 없음)</li>
+</ul>
+<h6>예제</h6>
+<p class="code">char *attr_name[array_size]<br />
+void *attr_val[array_size]<br />
+int a_type[array_size]<br />
+int int_val<br />
+<br />
+…<br />
+<br />
+attr_name[0] = "attr_name0"<br />
+attr_val[0] = &amp;int_val<br />
+a_type[0] = CCI_A_TYPE_INT<br />
+attr_name[1] = "attr_name1"<br />
+attr_val[1] = "attr_val1"<br />
+a_type[1] = CCI_A_TYPE_STR<br />
+<br />
+…<br />
+attr_name[num_attr] = NULL<br />
+<br />
+res = cci_put2(con_h, <span class="var">oid_str</span>, attr_name, attr_val, a_type, &amp;error)<br />
+<br />
+…</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

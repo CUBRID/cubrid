@@ -1,0 +1,133 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>트리거 실행 영역</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트리거(TRIGGER)\n트리거 생성\n트리거 실행 영역");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거(TRIGGER)<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거 생성<\/a> &nbsp;&gt;&nbsp; 트리거 실행 영역<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>트리거 실행 영역</h4>
+<h6>설명</h6>
+<p>트리거 실행 영역은 트리거의 조건 영역이 참이거나&#160;조건 영역이 생략된 경우&#160;수행될&#160;내용을 기술하는&#160;영역이다.</p>
+<p>실행 영역 절에 특정 시점(<span class="keyword">AFTER</span>나 <span class="keyword">DEFERRED</span>)이 주어지지 않으면, 실행 영역은 트리거 이벤트와 같은 시점에서 수행된다.</p>
+<p>아래 목록은 트리거를 정의할 때&#160;사용할 수 있는 실행 영역의 목록이다.</p>
+<ul>
+<li class="title">REJECT</li>
+<li class="desc"><span class="keyword">REJECT</span>는 트리거에서 조건 영역이 참이 아닌 경우 트리거를 발동시킨&#160;연산은 거절되고&#160;데이터베이스의 이전 상태를 그대로 유지한다. 연산이 수행된 후에는 거절할 수 없기 때문에 <span class="keyword">REJECT</span>는 실행 시점이 <span class="keyword">BEFORE</span>일 때만 허용된다. 따라서 실행 시점이 <span class="keyword">AFTER</span>나 <span class="keyword">DERERRED</span>인 경우 <span class="keyword">REJECT</span>를 사용해서는 안 된다.</li>
+<li class="title">INVALIDATE TRANSACTION</li>
+<li class="desc"><span class="keyword">INVALIDATE TRANSACTION</span>은 트리거를 부른 이벤트 연산은 수행되지만, 커밋을 포함하고 있는 트랜잭션은 수행되지 않도록 한다. 트랜잭션이 유효하지 않으면 반드시 <span class="keyword">ROLLBACK</span> 문으로 취소시켜야 한다. 이러한 실행은 데이터를 변경하는 이벤트가 발생한 후에 유효하지 않은 데이터를 가지는 것으로부터 데이터베이스를 보호하기 위해 사용된다.</li>
+<li class="title">PRINT</li>
+<li class="desc"><span class="keyword">PRINT</span>는 터미널 화면에 텍스트 메시지로 트리거 활동을 가시적으로 보여주기 때문에 트리거의 개발이나 시험하는 도중에 사용될 수 있다. 이벤트 &#160;연산의 결과를 거절하거나 무효화시키지는 않는다.</li>
+<li class="title">INSERT</li>
+<li class="desc"><span class="keyword">INSERT</span>는 테이블에 하나 혹은 그 이상의 새로운 인스턴스를 추가한다.</li>
+<li class="title">UPDATE</li>
+<li class="desc"><span class="keyword">UPDATE</span>는 테이블에 있는 하나 혹은 그 이상의&#160;컬럼 값을 변경한다.</li>
+<li class="title">DELETE</li>
+<li class="desc"><span class="keyword">DELETE</span>는 테이블로부터 하나 혹은 그 이상의 인스턴스를 제거한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 트리거 생성 시에 실행영역의 정의 방법을 보여주는 예제이다. medal_trig 트리거는&#160;실행 영역에 <span class="keyword">REJECT</span>를 지정하였다. <span class="keyword">REJECT</span>는 실행 시점이 <span class="keyword">BEFORE</span>일 때만 지정 가능하다.</p>
+<p class="code">CREATE TRIGGER medal_trig<br />
+BEFORE&#160;UPDATE ON participant<br />
+IF new.gold &lt; 0 OR new.silver &lt; 0 OR new.bronze &lt; 0<br />
+EXECUTE REJECT;</p>
+<h6>주의 사항</h6>
+<ul>
+<li><span class="keyword">INSERT</span> 이벤트가 정의된 트리거의 실행 영역에&#160;<span class="keyword">INSERT</span>를 사용할 때는 트리거가 무한 루프에 빠질 수 있으므로 주의해야&#160;한다.</li>
+<li><span class="keyword">UPDATE</span> 이벤트가 정의된 트리거가 분할된 테이블에서 동작하는 경우, 정의된 분할이 깨지거나 의도하지 않은 오동작이 발생할 수 있으므로 주의해야 한다. 이를 방지하기 위해&#160;CUBRID는 트리거가 동작중인 경우 분할 변경을 야기하는 <span class="keyword">UPDATE</span>가 실행되지 않도록 오류 처리한다. <span class="keyword">UPDATE</span> 이벤트가 정의된 트리거의 실행 영역에&#160;<span class="keyword">UPDATE</span>를 사용할 때는&#160;무한 루프에 빠질 수 있으므로 주의해야&#160;한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+task:dropsuper
+status:success
+note:none
+open:classinfo
+dbname:demodb
+classname:sub_athelete
+type:user
+owner:DBA
+virtual:normal
+close:classinfo
+

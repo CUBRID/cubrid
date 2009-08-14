@@ -148,6 +148,11 @@ classobj_decompose_property_oid (const char *buffer,
 {
   char *ptr;
 
+  if (buffer == NULL)
+    {
+      return 0;
+    }
+
   *volid = strtol (buffer, &ptr, 10);
   if (ptr == buffer)
     {
@@ -566,8 +571,6 @@ or_init (OR_BUF * buf, char *data, int length)
   buf->fixups = NULL;
 }
 
-
-
 /*
  * or_put_align32 - pad zero bytes round up to 4 byte bound
  *    return: NO_ERROR or error code
@@ -578,12 +581,13 @@ or_put_align32 (OR_BUF * buf)
 {
   unsigned int bits;
   int rc = NO_ERROR;
-  bits = (UINTPTR) buf->ptr & 3;
 
+  bits = (UINTPTR) buf->ptr & 3;
   if (bits)
     {
       rc = or_pad (buf, 4 - bits);
     }
+
   return rc;
 }
 
@@ -597,11 +601,13 @@ or_get_align32 (OR_BUF * buf)
 {
   unsigned int bits;
   int rc = NO_ERROR;
+
   bits = (UINTPTR) (buf->ptr) & 3;
   if (bits)
     {
       rc = or_advance (buf, 4 - bits);
     }
+
   return rc;
 }
 
@@ -615,11 +621,13 @@ or_get_align64 (OR_BUF * buf)
 {
   unsigned int bits;
   int rc = NO_ERROR;
+
   bits = (UINTPTR) (buf->ptr) & 7;
   if (bits)
     {
       rc = or_advance (buf, 8 - bits);
     }
+
   return rc;
 }
 
@@ -1987,6 +1995,11 @@ or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
 char *
 or_pack_int (char *ptr, int number)
 {
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
   OR_PUT_INT (ptr, number);
   return (ptr + OR_INT_SIZE);
 }
@@ -2000,6 +2013,12 @@ or_pack_int (char *ptr, int number)
 char *
 or_unpack_int (char *ptr, int *number)
 {
+  if (ptr == NULL)
+    {
+      return NULL;
+      *number = 0;
+    }
+
   *number = OR_GET_INT (ptr);
   return (ptr + OR_INT_SIZE);
 }
@@ -3225,16 +3244,16 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
       /* handle the precision if this type wanted one */
       if (precision)
 	{
-	  if (d->precision < OR_DOMAIN_PRECISION_MAX)
+	  if (precision < OR_DOMAIN_PRECISION_MAX)
 	    {
-	      carrier |= d->precision << OR_DOMAIN_PRECISION_SHIFT;
+	      carrier |= precision << OR_DOMAIN_PRECISION_SHIFT;
 	    }
 	  else
 	    {
 	      carrier |=
 		(unsigned int) OR_DOMAIN_PRECISION_MAX <<
 		OR_DOMAIN_PRECISION_SHIFT;
-	      extended_precision = d->precision;
+	      extended_precision = precision;
 	    }
 	}
 
@@ -3338,6 +3357,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	   * Recall that the builtin domain indexes are 1 based rather
 	   * than zero based, must adjust prior to indexing the table.
 	   */
+	  if (index < 1)
+	    {
+	      goto error;
+	    }
 	  domain = tp_Domains[index - 1];
 	  /* stop the loop */
 	  more = false;
@@ -3708,8 +3731,9 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      else
 		{
-		  setdomain = NULL;
+		  goto error;
 		}
+
 	      dom = tp_domain_find_set (type, setdomain, is_desc);
 	      if (dom)
 		{
@@ -4186,7 +4210,7 @@ or_skip_set_header (OR_BUF * buf)
 int
 or_packed_set_length (SETOBJ * set, int include_domain)
 {
-  DB_VALUE *value;
+  DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
   int set_size;
   TP_DOMAIN *set_domain;
@@ -4281,7 +4305,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
 void
 or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 {
-  DB_VALUE *value;
+  DB_VALUE *value = NULL;
   unsigned int bound_word;
   int element_tags, element_size, bound_bits, offset_table;
   char *set_start, *element_start, *offset_ptr, *bound_ptr;
@@ -4373,7 +4397,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 	  else if (bound_ptr != NULL)
 	    {
 	      bit = i & 0x1F;
-	      if (DB_VALUE_TYPE (value) != DB_TYPE_NULL)
+	      if (value != NULL && DB_VALUE_TYPE (value) != DB_TYPE_NULL)
 		{
 		  bound_word |= 1L << bit;
 		}
@@ -4850,10 +4874,14 @@ or_packed_value_size (DB_VALUE * value,
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
-  int size, bits;
+  int size = 0, bits;
   DB_TYPE dbval_type;
 
-  size = 0;
+  if (value == NULL)
+    {
+      return 0;
+    }
+
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
 
@@ -4942,6 +4970,11 @@ or_put_value (OR_BUF * buf, DB_VALUE * value,
   char *start, length, bits;
   int rc = NO_ERROR;
   DB_TYPE dbval_type;
+
+  if (value == NULL)
+    {
+      return ER_FAILED;
+    }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
@@ -5167,6 +5200,81 @@ or_pack_value (char *buf, DB_VALUE * value)
   return orbuf.ptr;
 }
 
+char *
+or_pack_mem_value (char *ptr, DB_VALUE * value)
+{
+  OR_BUF orbuf, *buf;
+  PR_TYPE *type;
+  TP_DOMAIN *domain;
+  char *start, length, bits;
+  int rc = NO_ERROR;
+  DB_TYPE dbval_type;
+
+  if (value == NULL)
+    {
+      return NULL;
+    }
+
+  buf = &orbuf;
+  or_init (buf, ptr, 0);
+  start = buf->ptr;
+
+  or_get_align64 (buf);
+
+  dbval_type = DB_VALUE_DOMAIN_TYPE (value);
+  type = PR_TYPE_FROM_ID (dbval_type);
+  if (type == NULL)
+    {
+      return NULL;
+    }
+
+  if (DB_VALUE_TYPE (value) == DB_TYPE_NULL)
+    {
+      domain = tp_domain_resolve_value (value, NULL);
+      if (domain != NULL)
+	{
+	  rc = or_put_domain (buf, domain, 1, 1);
+	}
+      else
+	{
+	  /* shouldn't get here */
+	  rc = or_put_domain (buf, &tp_Null_domain, 0, 1);
+	}
+    }
+  else
+    {
+      domain = tp_domain_resolve_value (value, NULL);
+      if (domain != NULL)
+	{
+	  rc = or_put_domain (buf, domain, 1, 0);
+	}
+      else
+	{
+	  /* shouldn't get here */
+	  rc = or_put_domain (buf, &tp_Null_domain, 0, 1);
+	  return buf->ptr;
+	}
+
+      if (rc == NO_ERROR)
+	{
+	  or_get_align64 (buf);
+	  rc = (*(type->writeval)) (buf, value);
+	}
+    }
+
+  if (rc == NO_ERROR)
+    {
+      length = (int) (buf->ptr - start);
+      bits = length & 3;
+      if (bits)
+	{
+	  rc = or_pad (buf, 4 - bits);
+	}
+    }
+
+  return buf->ptr;
+}
+
 
 /*
  * or_unpack_value - alternate interface to or_get_value
@@ -5187,6 +5295,71 @@ or_unpack_value (char *buf, DB_VALUE * value)
   or_get_value (&orbuf, value, NULL, -1, true);
 
   return orbuf.ptr;
+}
+
+char *
+or_unpack_mem_value (char *ptr, DB_VALUE * value)
+{
+  OR_BUF orbuf, *buf;
+  TP_DOMAIN *domain;
+  int is_null, rc = NO_ERROR;
+  int total, pad;
+  char *start;
+
+  buf = &orbuf;
+  or_init (buf, ptr, 0);
+  start = buf->ptr;
+  is_null = 0;
+
+  or_get_align64 (buf);
+
+  if (value)
+    {
+      db_make_null (value);
+    }
+
+  domain = or_get_domain (buf, NULL, &is_null);
+  if (domain == NULL)
+    {
+      return NULL;
+    }
+  else if (is_null)
+    {
+      return buf->ptr;
+    }
+
+  or_get_align64 (buf);
+  tp_init_value_domain (domain, value);
+  if (is_null)
+    {
+      db_value_put_null (value);
+    }
+  else
+    {
+      rc = (*(domain->type->readval)) (buf, value, domain, -1, true, NULL, 0);
+      if (rc != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  total = (int) (buf->ptr - start);
+  pad = 0;
+  if (total & 3)
+    {
+      pad = 4 - (total & 3);
+    }
+  if (pad > 0)
+    {
+      rc = or_advance (buf, pad);
+    }
+
+  if (rc != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return buf->ptr;
 }
 
 /*
@@ -5842,7 +6015,7 @@ static char *
 unpack_str_array (char *buffer, char ***string_array, int count)
 {
   int i;
-  char *ptr, **local_array;
+  char *ptr, **array_p;
 
   ptr = buffer;
   if (count <= 0)
@@ -5854,8 +6027,8 @@ unpack_str_array (char *buffer, char ***string_array, int count)
     }
   else
     {
-      *string_array = local_array =
-	(char **) db_private_alloc (NULL, (sizeof (char *) * count));
+      *string_array = (char **) db_private_alloc (NULL,
+						  (sizeof (char *) * count));
       if (*string_array == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -5864,9 +6037,9 @@ unpack_str_array (char *buffer, char ***string_array, int count)
 	}
       else
 	{
-	  for (i = 0; i < count; i++)
+	  for (array_p = *string_array, i = 0; i < count; i++, array_p++)
 	    {
-	      ptr = or_unpack_string (ptr, local_array++);
+	      ptr = or_unpack_string (ptr, array_p);
 	    }
 	}
     }

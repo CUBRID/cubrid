@@ -56,12 +56,43 @@
 #include "cas_sql_log2.h"
 
 #include "release_string.h"
-#ifdef DIAG_DEVEL
 #include "perf_monitor.h"
-#endif
 
 #define OUT_STR		1
 #define IN_STR		0
+
+#define QUERY_BUFFER_MAX                4096
+
+#if !defined(WINDOWS)
+#define STRING_APPEND(buffer_p, avail_size_holder, ...) \
+  do {                                                          \
+    if (avail_size_holder > 0) {                                \
+      int n = snprintf (buffer_p, avail_size_holder, __VA_ARGS__);	\
+      if (n > 0)        {                                       \
+        if (n < avail_size_holder) {                            \
+          buffer_p += n; avail_size_holder -= n;                \
+        } else {                                                \
+          buffer_p += (avail_size_holder - 1); 			\
+	  avail_size_holder = 0; 				\
+        }                                                       \
+      }                                                         \
+    }								\
+  } while (0)
+#else /* !WINDOWS */
+#define STRING_APPEND(buffer_p, avail_size_holder, ...) \
+  do {                                                          \
+    if (avail_size_holder > 0) {                                \
+      int n = _snprintf (buffer_p, avail_size_holder, __VA_ARGS__);	\
+      if (n < 0 || n >= avail_size_holder) {                    \
+        buffer_p += (avail_size_holder - 1);                    \
+        avail_size_holder = 0;                                  \
+        *buffer_p = '\0';                                       \
+      } else {                                                  \
+        buffer_p += n; avail_size_holder -= n;                  \
+      }                                                         \
+    }                                                           \
+  } while (0)
+#endif /* !WINDOWS */
 
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
 			     T_NET_BUF *, T_REQ_INFO *);
@@ -300,12 +331,7 @@ static T_FETCH_FUNC fetch_func[] = {
 static char database_name[SRV_CON_DBNAME_SIZE] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
-static char database_host[MAXHOSTNAMELEN + 1] = "";
 static char cas_db_sys_param[128] = "";
-
-#ifndef LIBCAS_FOR_JSP
-extern char boot_Host_connected[];
-#endif
 
 int
 ux_check_connection (void)
@@ -318,8 +344,8 @@ ux_check_connection (void)
 	{
 	  cas_log_debug (ARG_FILE_LINE,
 			 "ux_check_connection: db_ping_server() error");
-	  cas_log_write (0, TRUE, "connection lost");
-	  if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
+	  cas_log_write_and_end (0, true, "SERVER DOWN");
+	  if (as_info->cur_statement_pooling)
 	    {
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: cur_statement_pooling");
@@ -357,39 +383,57 @@ int
 ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 		     char **db_err_msg)
 {
-  int err_code;
+  int err_code, client_type;
   char *p;
+  const char *host_connected = NULL;
 
   if (db_name == NULL || db_name[0] == '\0')
     return -1;
 
-  if (db_Connect_status == 0	/* DB_CONNECTION_STATUS_NOT_CONNECTED */
+  host_connected = db_get_host_connected ();
+
+  if (db_Connect_status != 1	/* DB_CONNECTION_STATUS_CONNECTED */
       || database_name[0] == '\0'
       || strcmp (database_name, db_name) != 0
-      || strcmp (database_host, boot_Host_connected) != 0)
+      || strcmp (as_info->database_host, host_connected) != 0)
     {
       if (database_name[0] != '\0')
 	{
 	  ux_database_shutdown ();
 	}
-      db_disable_first_user ();
-      db_set_client_type (3);	/* DB_CLIENT_TYPE_BROKER in db.h */
-      if ((err_code = db_login (db_user, db_passwd)) < 0)
+      if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
 	{
-	  goto connect_error;
+	  client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: read_only_broker");
 	}
-      if ((err_code = db_restart (APPL_SERVER_CAS_NAME, 0, db_name)) < 0)
+      else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
+	{
+	  client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: slave_only_broker");
+	}
+      else
+	{
+	  client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	}
+      db_disable_first_user ();
+      err_code = db_restart_ex (program_name, db_name, db_user, db_passwd,
+				client_type);
+      if (err_code < 0)
 	{
 	  goto connect_error;
 	}
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
-		     db_user, db_name, boot_Host_connected);
+		     db_user, db_name, host_connected);
+      strncpy (as_info->database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+      strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
+      as_info->last_connect_time = time (NULL);
+
       strncpy (database_name, db_name, sizeof (database_name) - 1);
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-      strncpy (database_host, boot_Host_connected,
-	       sizeof (database_host) - 1);
 
       ux_get_default_setting ();
     }
@@ -429,7 +473,8 @@ connect_error:
 int
 ux_database_reconnect (void)
 {
-  int err_code;
+  int err_code, client_type;
+  const char *host_connected = NULL;
 
   if (!ux_is_database_connected ())
     return 1;
@@ -440,19 +485,36 @@ ux_database_reconnect (void)
     }
   cas_log_debug (ARG_FILE_LINE, "ux_database_reconnect: db_shutdown()");
 
-  db_set_client_type (3);	/* DB_CLIENT_TYPE_BROKER in db.h */
+  if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
+    {
+      client_type = 5;		/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+      cas_log_debug (ARG_FILE_LINE,
+		     "ux_database_reconnect: read_only_broker");
+    }
+  else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
+    {
+      client_type = 6;		/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+      cas_log_debug (ARG_FILE_LINE,
+		     "ux_database_reconnect: slave_only_broker");
+    }
+  else
+    {
+      client_type = 4;		/* DB_CLIENT_TYPE_BROKER in db.h */
+    }
   db_disable_first_user ();
-  if ((err_code = db_login (database_user, database_passwd)) < 0)
+  err_code = db_restart_ex (program_name, database_name, database_user,
+			    database_passwd, client_type);
+
+  if (err_code < 0)
     {
       goto reconnect_error;
     }
-  if ((err_code = db_restart (APPL_SERVER_CAS_NAME, 0, database_name)) < 0)
-    {
-      goto reconnect_error;
-    }
+
+  host_connected = db_get_host_connected ();
   cas_log_debug (ARG_FILE_LINE,
 		 "ux_database_reconnect: db_login (%s) db_restart(%s) at %s",
-		 database_user, database_name, boot_Host_connected);
+		 database_user, database_name, host_connected);
+  as_info->last_connect_time = time (NULL);
 
   ux_get_default_setting ();
 
@@ -516,6 +578,11 @@ ux_database_shutdown ()
 {
   db_shutdown ();
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
+#ifndef LIBCAS_FOR_JSP
+  as_info->database_name[0] = '\0';
+  as_info->database_host[0] = '\0';
+  as_info->last_connect_time = 0;
+#endif
   memset (database_name, 0, sizeof (database_name));
   memset (database_user, 0, sizeof (database_user));
   memset (database_passwd, 0, sizeof (database_passwd));
@@ -524,7 +591,7 @@ ux_database_shutdown ()
 }
 
 int
-ux_prepare (char *sql_stmt, char flag, char auto_commit_mode,
+ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
@@ -536,7 +603,7 @@ ux_prepare (char *sql_stmt, char flag, char auto_commit_mode,
   int num_markers;
   char stmt_type;
   char updatable_flag;
-  T_QUERY_RESULT *q_result;
+  T_QUERY_RESULT *q_result = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
   int is_first_out = 0;
   char *tmp;
@@ -689,7 +756,7 @@ prepare_result_set:
 
 #if 0				/* FIXME - NBD Benchmark */
 #ifndef LIBCAS_FOR_JSP
-  if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
+  if (as_info->cur_statement_pooling)
     {
       int num_classes = 0;
       DB_OBJECT **classes;
@@ -734,6 +801,7 @@ prepare_result_set:
 					   client_version);
   if (err_code < 0)
     {
+      FREE_MEM (q_result);
       goto prepare_error2;
     }
 
@@ -755,11 +823,12 @@ prepare_error1:
 
 prepare_error2:
 #ifndef LIBCAS_FOR_JSP
-  if (auto_commit_mode == TRUE)
+  if (auto_commit_mode == true)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
+  errors_in_transaction++;
 
   if (srv_handle)
     {
@@ -775,30 +844,49 @@ prepare_error2:
 }
 
 int
-ux_end_tran (char tran_type, char reset_con_status)
+ux_end_tran (int tran_type, bool reset_con_status)
 {
   int err_code;
 
 #ifndef LIBCAS_FOR_JSP
-  if (shm_appl->as_info[shm_as_index].cur_statement_pooling)
-    hm_srv_handle_set_pooled ();
-  else
+  if (!as_info->cur_statement_pooling)
+    {
+      hm_srv_handle_free_all ();
+    }
+#else
+  hm_srv_handle_free_all ();
 #endif
-    hm_srv_handle_free_all ();
 
   if (tran_type == CCI_TRAN_COMMIT)
-    err_code = db_commit_transaction ();
+    {
+      err_code = db_commit_transaction ();
+      cas_log_debug (ARG_FILE_LINE,
+		     "ux_end_tran: db_commit_transaction() = %d", err_code);
+    }
+  else if (tran_type == CCI_TRAN_ROLLBACK)
+    {
+      err_code = db_abort_transaction ();
+      cas_log_debug (ARG_FILE_LINE,
+		     "ux_end_tran: db_abort_transaction() = %d", err_code);
+    }
   else
-    err_code = db_abort_transaction ();
+    {
+      err_code = CAS_ER_INTERNAL;
+    }
 
   if (err_code >= 0)
     {
       xa_prepare_flag = 0;
 #ifndef LIBCAS_FOR_JSP
       if (reset_con_status)
-	shm_appl->as_info[shm_as_index].con_status = CON_STATUS_OUT_TRAN;
+	as_info->con_status = CON_STATUS_OUT_TRAN;
 #endif
     }
+  else
+    {
+      errors_in_transaction++;
+    }
+
   return err_code;
 }
 
@@ -896,8 +984,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	{
 	  flag &= ~CCI_EXEC_QUERY_INFO;
 #ifndef LIBCAS_FOR_JSP
-	  SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			       stmt_id);
+	  SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
 #endif
 	}
       else
@@ -914,8 +1001,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   else
     {
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			   stmt_id);
+      SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
 #endif
     }
 
@@ -925,9 +1011,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     }
 
   n = db_execute_and_keep_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
-  shm_appl->as_info[shm_as_index].num_query_processed++;
+#ifndef LIBCAS_FOR_JSP
+  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info->num_queries_processed++;
 #endif
   if (n < 0)
     {
@@ -968,8 +1054,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       histo_print ();
       cas_log_query_info_end ();
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_APPEND (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			    stmt_id, n,
+      SQL_LOG2_EXEC_APPEND (as_info->cur_sql_log2, stmt_id, n,
 			    cas_log_query_plan_file (srv_handle->id),
 			    cas_log_query_histo_file (srv_handle->id));
 #endif
@@ -980,14 +1065,14 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   else
     {
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			 stmt_id, n);
+      SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 #endif
     }
 
   if (n < 0)
     {
-      if (srv_handle->is_pooled && n == ER_QPROC_INVALID_XASLNODE)
+      if (srv_handle->is_pooled
+	  && (n == ER_QPROC_INVALID_XASLNODE || n == ER_HEAP_UNKNOWN_OBJECT))
 	{
 	  err_code = CAS_ER_STMT_POOLING;
 	  goto execute_error1;
@@ -1074,6 +1159,8 @@ execute_error2:
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
+  errors_in_transaction++;
+
   if (value_list)
     {
       for (i = 0; i < num_bind; i++)
@@ -1192,22 +1279,21 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	db_set_client_cache_time (session, stmt_id, clt_cache_time);
 
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			   stmt_id);
+      SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
 #endif
       n = db_execute_and_keep_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-      shm_appl->as_info[shm_as_index].num_query_processed %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_query_processed++;
+#ifndef LIBCAS_FOR_JSP
+      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_queries_processed++;
 #endif
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			 stmt_id, n);
+      SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 #endif
       if (n < 0)
 	{
-	  if (srv_handle->is_pooled && n == ER_QPROC_INVALID_XASLNODE)
+	  if (srv_handle->is_pooled
+	      && (n == ER_QPROC_INVALID_XASLNODE
+		  || n == ER_HEAP_UNKNOWN_OBJECT))
 	    {
 	      err_code = CAS_ER_STMT_POOLING;
 	      goto execute_all_err_cas;
@@ -1221,7 +1307,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	{
 	  *clt_cache_reusable = TRUE;
 	}
-      else
+      else if (result != NULL)
 	{
 	  /* success; peek the values in tuples */
 	  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
@@ -1350,6 +1436,8 @@ execute_all_err_db:
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 #endif
+  errors_in_transaction++;
+
   if (value_list)
     {
       for (i = 0; i < num_bind; i++)
@@ -1415,9 +1503,9 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   jsp_set_prepare_call ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
-  shm_appl->as_info[shm_as_index].num_query_processed++;
+#ifndef LIBCAS_FOR_JSP
+  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info->num_queries_processed++;
 #endif
   jsp_unset_prepare_call ();
 
@@ -1596,50 +1684,46 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 
       NET_ARG_GET_STR (sql_stmt, sql_size, argv[i]);
 
-      cas_log_write (0, FALSE, "batch %d : %s", i,
-		     (sql_stmt ? sql_stmt : ""));
+      cas_log_write_nonl (0, false, "batch %d : %s", i,
+			  (sql_stmt ? sql_stmt : ""));
 
       session = NULL;
 
       if (!(session = db_open_buffer (sql_stmt)))
 	{
-	  cas_log_write2 ("\n");
+	  cas_log_write2 ("");
 	  goto batch_error;
 	}
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_COMPILE_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			      sql_stmt);
-#endif
+      SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
+#endif /* LIBCAS_FOR_JSP */
       if ((stmt_id = db_compile_statement (session)) < 0)
 	{
-	  cas_log_write2 ("\n");
+	  cas_log_write2 ("");
 	  goto batch_error;
 	}
       if ((stmt_type = db_get_statement_type (session, stmt_id)) < 0)
 	{
-	  cas_log_write2 ("\n");
+	  cas_log_write2 ("");
 	  goto batch_error;
 	}
 
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			   stmt_id);
-#endif
+      SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
+#endif /* LIBCAS_FOR_JSP */
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
 
-      cas_log_write2 (" %s\n", use_plan_cache ? "(PC)" : "");
+      cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
       res_count = db_execute_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-      shm_appl->as_info[shm_as_index].num_query_processed %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_query_processed++;
-#endif
+#ifndef LIBCAS_FOR_JSP
+      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_queries_processed++;
+#endif /* LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			 stmt_id, res_count);
-#endif
+      SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
+#endif /* LIBCAS_FOR_JSP */
       if (res_count < 0)
 	{
 	  goto batch_error;
@@ -1730,7 +1814,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-#endif
+#endif /* LIBCAS_FOR_JSP */
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -1820,19 +1904,16 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	}
 
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_BEGIN (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			   stmt_id);
-#endif
+      SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
+#endif /* LIBCAS_FOR_JSP */
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-      shm_appl->as_info[shm_as_index].num_query_processed %=
-	MAX_DIAG_DATA_VALUE;
-      shm_appl->as_info[shm_as_index].num_query_processed++;
-#endif
 #ifndef LIBCAS_FOR_JSP
-      SQL_LOG2_EXEC_END (shm_appl->as_info[shm_as_index].cur_sql_log2,
-			 stmt_id, res_count);
-#endif
+      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_queries_processed++;
+#endif /* LIBCAS_FOR_JSP */
+#ifndef LIBCAS_FOR_JSP
+      SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
+#endif /* LIBCAS_FOR_JSP */
       if (res_count < 0)
 	{
 	  goto exec_db_error;
@@ -1884,6 +1965,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       if (err_code < 0)
 	{
 	  err_msg = (char *) db_error_string (1);
+	  errors_in_transaction++;
 	}
       else
 	{
@@ -1915,6 +1997,8 @@ execute_array_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 execute_array_error2:
+  errors_in_transaction++;
+
   if (value_list)
     {
       for (i = 0; i < num_bind; i++)
@@ -1945,6 +2029,7 @@ ux_set_isolation_level (int new_isol_level, T_NET_BUF * net_buf)
   err_code = db_set_isolation ((DB_TRAN_ISOLATION) new_isol_level);
   if (err_code < 0)
     {
+      errors_in_transaction++;
       DB_ERR_MSG_SET (net_buf, err_code);
       return CAS_ER_DBMS;
     }
@@ -2002,12 +2087,10 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   if (fetch_count <= 0)
     fetch_count = 100;
 
-  err_code = (*(fetch_func[fetch_func_index])) (srv_handle,
-						cursor_pos,
-						fetch_count,
-						fetch_flag,
-						result_set_index,
-						net_buf, req_info);
+  err_code =
+    (*(fetch_func[fetch_func_index])) (srv_handle, cursor_pos,
+				       fetch_count, fetch_flag,
+				       result_set_index, net_buf, req_info);
 
   if (err_code < 0)
     {
@@ -2023,6 +2106,7 @@ fetch_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 fetch_error2:
+  errors_in_transaction++;
   return err_code;
 }
 
@@ -2093,6 +2177,7 @@ oid_get_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 oid_get_error2:
+  errors_in_transaction++;
   FREE_MEM (attr_name);
   obj = NULL;
   if (err_code >= 0)
@@ -2159,6 +2244,7 @@ ux_glo_new (char *class_name, char *filename, T_NET_BUF * net_buf)
   return 0;
 
 glo_new_error2:
+  errors_in_transaction++;
   class_obj = NULL;
   return err_code;
 }
@@ -2176,6 +2262,7 @@ ux_glo_new2 (char *class_name, char glo_type, char *filename,
   class_obj = db_find_class (class_name);
   if (class_obj == NULL)
     {
+      errors_in_transaction++;
       DB_ERR_MSG_SET (net_buf, db_error_code ());
       return -1;
     }
@@ -2204,6 +2291,7 @@ ux_glo_new2 (char *class_name, char glo_type, char *filename,
 
   if (err_code < 0)
     {
+      errors_in_transaction++;
       DB_ERR_MSG_SET (net_buf, err_code);
       return -1;
     }
@@ -2253,6 +2341,7 @@ ux_glo_save (DB_OBJECT * obj, char *filename, T_NET_BUF * net_buf)
   return 0;
 
 glo_save_error2:
+  errors_in_transaction++;
   return err_code;
 }
 
@@ -2261,14 +2350,16 @@ ux_glo_load (SOCKET sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf)
 {
   DB_VALUE arg_val, ret_val;
   int err_code;
-  char tmp_file[PATH_MAX];
+  char tmp_file[PATH_MAX], dirname[PATH_MAX];
   int size;
 
-  get_cubrid_file (FID_CAS_TMPGLO_DIR, tmp_file);
+  get_cubrid_file (FID_CAS_TMPGLO_DIR, dirname);
 #ifdef LIBCAS_FOR_JSP
-  sprintf (tmp_file, "%s%d.glo", tmp_file, (int) getpid ());
+  snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%d.glo", dirname,
+	    (int) getpid ());
 #else
-  sprintf (tmp_file, "%s%s_%d.glo", tmp_file, broker_name, shm_as_index + 1);
+  snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%s_%d.glo", dirname,
+	    broker_name, shm_as_index + 1);
 #endif
 
   err_code = db_make_string (&arg_val, tmp_file);
@@ -2298,11 +2389,12 @@ ux_glo_load (SOCKET sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf)
   return 0;
 
 glo_load_error2:
+  errors_in_transaction++;
   return err_code;
 }
 
 int
-ux_cursor (int srv_h_id, int offset, char origin, T_NET_BUF * net_buf)
+ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -2476,13 +2568,15 @@ ux_cursor (int srv_h_id, int offset, char origin, T_NET_BUF * net_buf)
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, count, NULL);	/* result msg */
-
+  FREE_MEM (err_str);
   return 0;
 
 cursor_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 cursor_error2:
+  errors_in_transaction++;
+  FREE_MEM (err_str);
   return err_code;
 }
 
@@ -2580,6 +2674,7 @@ cursor_update_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 cursor_update_error2:
+  errors_in_transaction++;
   if (attr_val)
     {
       db_value_clear (attr_val);
@@ -2610,7 +2705,7 @@ ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 }
 
 int
-ux_get_class_num_objs (char *class_name, char flag, T_NET_BUF * net_buf)
+ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF * net_buf)
 {
   DB_OBJECT *class_obj;
   int err_code;
@@ -2624,7 +2719,7 @@ ux_get_class_num_objs (char *class_name, char flag, T_NET_BUF * net_buf)
       goto class_num_objs_error2;
     }
 
-  err_code = db_get_class_num_objs_and_pages (class_obj, (int) flag,
+  err_code = db_get_class_num_objs_and_pages (class_obj, flag,
 					      &num_objs, &num_pages);
 
   if (err_code < 0)
@@ -2641,6 +2736,7 @@ ux_get_class_num_objs (char *class_name, char flag, T_NET_BUF * net_buf)
   return 0;
 
 class_num_objs_error2:
+  errors_in_transaction++;
   class_obj = NULL;
   return err_code;
 }
@@ -2711,6 +2807,7 @@ ux_col_set_drop (DB_COLLECTION * col, DB_VALUE * ele_val, T_NET_BUF * net_buf)
       err_code = db_set_drop (col, ele_val);
       if (err_code < 0)
 	{
+	  errors_in_transaction++;
 	  DB_ERR_MSG_SET (net_buf, err_code);
 	  return -1;
 	}
@@ -2729,6 +2826,7 @@ ux_col_set_add (DB_COLLECTION * col, DB_VALUE * ele_val, T_NET_BUF * net_buf)
       err_code = db_set_add (col, ele_val);
       if (err_code < 0)
 	{
+	  errors_in_transaction++;
 	  DB_ERR_MSG_SET (net_buf, err_code);
 	  return -1;
 	}
@@ -2747,6 +2845,7 @@ ux_col_seq_drop (DB_COLLECTION * col, int index, T_NET_BUF * net_buf)
       err_code = db_seq_drop (col, index - 1);
       if (err_code < 0)
 	{
+	  errors_in_transaction++;
 	  DB_ERR_MSG_SET (net_buf, err_code);
 	  return -1;
 	}
@@ -2766,6 +2865,7 @@ ux_col_seq_insert (DB_COLLECTION * col, int index, DB_VALUE * ele_val,
       err_code = db_seq_insert (col, index - 1, ele_val);
       if (err_code < 0)
 	{
+	  errors_in_transaction++;
 	  DB_ERR_MSG_SET (net_buf, err_code);
 	  return -1;
 	}
@@ -2785,6 +2885,7 @@ ux_col_seq_put (DB_COLLECTION * col, int index, DB_VALUE * ele_val,
       err_code = db_seq_put (col, index - 1, ele_val);
       if (err_code < 0)
 	{
+	  errors_in_transaction++;
 	  DB_ERR_MSG_SET (net_buf, err_code);
 	  return -1;
 	}
@@ -2874,6 +2975,7 @@ oid_put_error1:
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
 oid_put_error2:
+  errors_in_transaction++;
   obj = NULL;
   return err_code;
 }
@@ -2881,7 +2983,7 @@ oid_put_error2:
 void
 db_err_msg_set (T_NET_BUF * net_buf, int err_code, const char *file, int line)
 {
-#if 0	
+#if 0
   int err_code2;
 #endif
   char *err_msg;
@@ -2902,7 +3004,7 @@ db_err_msg_set (T_NET_BUF * net_buf, int err_code, const char *file, int line)
 #ifndef LIBCAS_FOR_JSP
   else if (err_code == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
-      is_ServerAborted = true;
+      is_server_aborted = true;
     }
 #endif
 
@@ -2912,25 +3014,9 @@ db_err_msg_set (T_NET_BUF * net_buf, int err_code, const char *file, int line)
     case -199:			/* ER_NET_SERVER_CRASHED */
     case -224:			/* ER_OBJ_NO_CONNECT */
       /*case -581: *//* ER_DB_NO_MODIFICATIONS */
-#if 0				/* TODO: ??? */
 #ifndef LIBCAS_FOR_JSP
-      if ((err_code2 = ux_database_reconnect ()) < 0)
-	{
-	  /* error while restarting the db server connection */
-	  cas_log_debug (ARG_FILE_LINE,
-			 "db_err_msg_set: ux_database_reconnect() error");
-	}
-#else
-      if (database_name[0] != '\0')
-	{
-	  ux_database_shutdown ();
-	}
-#endif
-#else
-      if (database_name[0] != '\0')
-	{
-	  ux_database_shutdown ();
-	}
+      as_info->reset_flag = TRUE;
+      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
 #endif
       break;
     }
@@ -3023,6 +3109,7 @@ ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf,
   class_obj = db_find_class (class_name);
   if (class_obj == NULL)
     {
+      errors_in_transaction++;
       err_code = db_error_code ();
       DB_ERR_MSG_SET (net_buf, err_code);
       return err_code;
@@ -3030,6 +3117,7 @@ ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf,
   attribute = db_get_attribute (class_obj, attr_name);
   if (attr_name == NULL)
     {
+      errors_in_transaction++;
       err_code = db_error_code ();
       DB_ERR_MSG_SET (net_buf, err_code);
       return err_code;
@@ -3038,6 +3126,7 @@ ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf,
   domain = db_attribute_domain (attribute);
   if (domain == NULL)
     {
+      errors_in_transaction++;
       err_code = db_error_code ();
       DB_ERR_MSG_SET (net_buf, err_code);
       return err_code;
@@ -3072,6 +3161,7 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL)
     {
+      errors_in_transaction++;
       err_code = CAS_ER_SRV_HANDLE;
       net_buf_clear (net_buf);
       net_buf_cp_int (net_buf, err_code, NULL);
@@ -3199,6 +3289,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
   return 0;
 
 parameter_info_error1:
+  errors_in_transaction++;
   net_buf_clear (net_buf);
   net_buf_cp_int (net_buf, err_code, NULL);
   return err_code;
@@ -3215,12 +3306,14 @@ ux_glo_method_call (T_NET_BUF * net_buf, char check_ret, DB_OBJECT * glo_obj,
   err_code = db_send_argarray (glo_obj, method_name, ret_val, args);
   if (err_code < 0)
     {
+      errors_in_transaction++;
       DB_ERR_MSG_SET (net_buf, err_code);
       return -1;
     }
   ret = db_get_int (ret_val);
   if ((check_ret) && (ret < 0))
     {
+      errors_in_transaction++;
       db_value_clear (ret_val);
       if ((err_code = db_send (glo_obj, "get_error", ret_val)) < 0)
 	{
@@ -3240,12 +3333,16 @@ ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf)
   int err_code;
 
   if (obj == NULL)
-    return CAS_ER_OBJECT;
+    {
+      return CAS_ER_OBJECT;
+    }
 
   er_clear ();
 
   if (db_is_instance (obj))
-    return 0;
+    {
+      return 0;
+    }
 
   err_code = db_error_code ();
   if (err_code < 0)
@@ -3391,6 +3488,7 @@ schema_info_error1:
   net_buf_cp_int (net_buf, err_code, NULL);
 
 schema_info_error2:
+  errors_in_transaction++;
   if (srv_handle)
     hm_srv_handle_free (srv_h_id);
   return err_code;
@@ -3559,20 +3657,27 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	char tmp[BUFSIZ];
 
 	NET_ARG_GET_STR (value, val_size, net_value);
-	strcpy (tmp, value);
+	if (value != NULL)
+	  {
+	    strcpy (tmp, value);
+	  }
 	tmp[val_size] = '\0';
 	ut_trim (tmp);
 	precision = strlen (tmp);
 	p = strchr (tmp, '.');
 	if (p == NULL)
-	  scale = 0;
+	  {
+	    scale = 0;
+	  }
 	else
 	  {
 	    scale = strlen (p + 1);
 	    precision--;
 	  }
 	if (tmp[0] == '-')
-	  precision--;
+	  {
+	    precision--;
+	  }
 
 	err_code =
 	  db_value_domain_init (&db_val, DB_TYPE_NUMERIC, precision, scale);
@@ -3865,7 +3970,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
     case DB_TYPE_CHAR:
       {
 	DB_C_CHAR str;
-	int length;
+	int length = 0;
 
 	str = db_get_char (val, &length);
 	if (max_col_size > 0)
@@ -3880,7 +3985,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
     case DB_TYPE_NCHAR:
       {
 	DB_C_NCHAR nchar;
-	int length;
+	int length = 0;
 
 	nchar = db_get_nchar (val, &length);
 	if (max_col_size > 0)
@@ -4006,11 +4111,19 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	else
 	  {
 	    str = db_get_char (&v, &len);
-	    strncpy (buf, str, sizeof (buf) - 1);
-	    buf[sizeof (buf) - 1] = '\0';
-	    ut_trim (buf);
-	    add_res_data_string (net_buf, buf, strlen (buf), col_type);
-	    data_size = 4 + strlen (buf) + 1 + ((col_type) ? 1 : 0);
+	    if (str != NULL)
+	      {
+		strncpy (buf, str, sizeof (buf) - 1);
+		buf[sizeof (buf) - 1] = '\0';
+		ut_trim (buf);
+		add_res_data_string (net_buf, buf, strlen (buf), col_type);
+		data_size = 4 + strlen (buf) + 1 + ((col_type) ? 1 : 0);
+	      }
+	    else
+	      {
+		net_buf_cp_int (net_buf, -1, NULL);
+		data_size = 4;
+	      }
 	    db_value_clear (&v);
 	  }
       }
@@ -5027,8 +5140,11 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else
 	{
-	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0);
-	  db_string_free (tmp_str);
+	  if (tmp_str != NULL)
+	    {
+	      add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0);
+	      db_string_free (tmp_str);
+	    }
 	}
 
       /* 2. status */
@@ -5592,19 +5708,27 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	  char set_type, cas_type;
 	  int precision;
 	  short scale;
+	  char *temp_column = NULL;
 
-	  null_type_column =
-	    (char *) REALLOC (null_type_column, num_cols + 1);
-	  if (null_type_column == NULL)
+	  temp_column = (char *) REALLOC (null_type_column, num_cols + 1);
+	  if (temp_column == NULL)
 	    {
 	      net_buf_clear (net_buf);
 	      net_buf_cp_int (net_buf, CAS_ER_NO_MORE_MEMORY, NULL);
+	      if (null_type_column != NULL)
+		{
+		  FREE_MEM (null_type_column);
+		}
+	      FREE_MEM (col_update_info);
 	      return CAS_ER_NO_MORE_MEMORY;
 	    }
+	  null_type_column = temp_column;
 	  null_type_column[num_cols] = 0;
 
 	  if (stripped_column_name)
-	    col_name = (char *) db_query_format_name (col);
+	    {
+	      col_name = (char *) db_query_format_name (col);
+	    }
 	  else
 	    {
 	      col_name = (char *) db_query_format_original_name (col);
@@ -5670,9 +5794,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	    }
 
 	  /*
-	   * precision; 08?????? ?????? ????????? odbc???????????? ???5??????????????? ?????? ??????=.
-	   * select "ABC" from XX
-	   *
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
@@ -5878,7 +5999,10 @@ get_domain_str (DB_DOMAIN * domain)
 	    size += (strlen (set_dom_name_p) + 3);
 	  domain_str = (char *) realloc (domain_str, size);
 	  if (domain_str == NULL)
-	    return NULL;
+	    {
+	      FREE_MEM (set_dom_name_p);
+	      return NULL;
+	    }
 	  if (is_first == TRUE)
 	    is_first = FALSE;
 	  else
@@ -5900,25 +6024,34 @@ get_domain_str (DB_DOMAIN * domain)
 
   if (domain_str == NULL)
     {
+      int avail_size;
+      char *domain_str_p;
+
       size = strlen (p);
       if (precision_str[0] != '\0')
-	size += strlen (precision_str) + 2;
+	{
+	  size += strlen (precision_str) + 2;
+	}
       if (scale_str[0] != '\0')
-	size += strlen (scale_str) + 1;
+	{
+	  size += strlen (scale_str) + 1;
+	}
       domain_str = (char *) malloc (size + 1);
       if (domain_str == NULL)
-	return NULL;
-      strcpy (domain_str, p);
+	{
+	  return NULL;
+	}
+      domain_str_p = domain_str;
+      avail_size = size;
+      STRING_APPEND (domain_str_p, avail_size, "%s", p);
       if (precision_str[0] != '\0')
 	{
-	  strcat (domain_str, "(");
-	  strcat (domain_str, precision_str);
+	  STRING_APPEND (domain_str_p, avail_size, "(%s", precision_str);
 	  if (scale_str[0] != '\0')
 	    {
-	      strcat (domain_str, ",");
-	      strcat (domain_str, scale_str);
+	      STRING_APPEND (domain_str_p, avail_size, ",%s", scale_str);
 	    }
-	  strcat (domain_str, ")");
+	  STRING_APPEND (domain_str_p, avail_size, ")");
 	}
     }
 
@@ -6028,6 +6161,9 @@ ux_str_to_obj (char *str)
   int read;
   char del1, del2, del3;
 
+  if (str == NULL)
+    return NULL;
+
   read =
     sscanf (str, "%c%d%c%d%c%d", &del1, &page, &del2, &slot, &del3, &vol);
   if (read != 6)
@@ -6052,7 +6188,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
 		char v_class_flag, T_SRV_HANDLE * srv_handle,
 		T_BROKER_VERSION client_version)
 {
-  char sql_stmt[1024];
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   const char *case_stmt;
   const char *where_vclass;
@@ -6074,30 +6211,31 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
     }
   where_vclass = "class_type in {'VCLASS', 'PROXY'}";
 
-  sprintf (sql_stmt,
-	   "SELECT class_name, CAST(%s AS short) FROM db_class ", case_stmt);
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT class_name, CAST(%s AS short) FROM db_class ",
+		 case_stmt);
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (v_class_flag)
 	{
 	  if (class_name)
 	    {
-	      sprintf (sql_stmt + strlen (sql_stmt),
-		       "WHERE class_name LIKE '%s' ESCAPE '\\' AND %s",
-		       class_name, where_vclass);
+	      STRING_APPEND (sql_p, avail_size,
+			     "WHERE class_name LIKE '%s' ESCAPE '\\' AND %s",
+			     class_name, where_vclass);
 	    }
 	  else
 	    {
-	      sprintf (sql_stmt + strlen (sql_stmt), "WHERE %s",
-		       where_vclass);
+	      STRING_APPEND (sql_p, avail_size, "WHERE %s", where_vclass);
 	    }
 	}
       else
 	{
 	  if (class_name)
 	    {
-	      sprintf (sql_stmt + strlen (sql_stmt),
-		       "WHERE class_name LIKE '%s' ESCAPE '\\' ", class_name);
+	      STRING_APPEND (sql_p, avail_size,
+			     "WHERE class_name LIKE '%s' ESCAPE '\\' ",
+			     class_name);
 	    }
 	}
     }
@@ -6107,14 +6245,14 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
 	class_name = (char *) "";
       if (v_class_flag)
 	{
-	  sprintf (sql_stmt + strlen (sql_stmt),
-		   "WHERE class_name = '%s' AND %s",
-		   class_name, where_vclass);
+	  STRING_APPEND (sql_p, avail_size,
+			 "WHERE class_name = '%s' AND %s",
+			 class_name, where_vclass);
 	}
       else
 	{
-	  sprintf (sql_stmt + strlen (sql_stmt),
-		   "WHERE class_name = '%s'", class_name);
+	  STRING_APPEND (sql_p, avail_size,
+			 "WHERE class_name = '%s'", class_name);
 	}
     }
 
@@ -6134,51 +6272,62 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name,
 	       char pattern_flag, char class_attr_flag,
 	       T_SRV_HANDLE * srv_handle)
 {
-  char sql_stmt[1024];
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
 
   ut_tolower (class_name);
   ut_tolower (attr_name);
 
-  strcpy (sql_stmt, "SELECT class_name, attr_name FROM db_attribute WHERE ");
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT class_name, attr_name FROM db_attribute WHERE ");
 
   if (class_attr_flag)
-    strcat (sql_stmt, " attr_type = 'CLASS' ");
+    {
+      STRING_APPEND (sql_p, avail_size, " attr_type = 'CLASS' ");
+    }
   else
-    strcat (sql_stmt, " attr_type in {'INSTANCE', 'SHARED'} ");
+    {
+      STRING_APPEND (sql_p, avail_size,
+		     " attr_type in {'INSTANCE', 'SHARED'} ");
+    }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  sprintf (sql_stmt + strlen (sql_stmt),
-		   " AND class_name LIKE '%s' ESCAPE '\\' ", class_name);
+	  STRING_APPEND (sql_p, avail_size,
+			 " AND class_name LIKE '%s' ESCAPE '\\' ",
+			 class_name);
 	}
     }
   else
     {
       if (class_name == NULL)
-	class_name = (char *) "";
-      sprintf (sql_stmt + strlen (sql_stmt),
-	       " AND class_name = '%s' ", class_name);
+	{
+	  class_name = (char *) "";
+	}
+      STRING_APPEND (sql_p, avail_size,
+		     " AND class_name = '%s' ", class_name);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
     {
       if (attr_name)
 	{
-	  sprintf (sql_stmt + strlen (sql_stmt),
-		   " AND attr_name LIKE '%s' ESCAPE '\\' ", attr_name);
+	  STRING_APPEND (sql_p, avail_size,
+			 " AND attr_name LIKE '%s' ESCAPE '\\' ", attr_name);
 	}
     }
   else
     {
       if (attr_name == NULL)
-	attr_name = (char *) "";
-      sprintf (sql_stmt + strlen (sql_stmt),
-	       " AND attr_name = '%s' ", attr_name);
+	{
+	  attr_name = (char *) "";
+	}
+      STRING_APPEND (sql_p, avail_size, " AND attr_name = '%s' ", attr_name);
     }
-  sprintf (sql_stmt + strlen (sql_stmt), " ORDER BY class_name, def_order");
+  STRING_APPEND (sql_p, avail_size, " ORDER BY class_name, def_order");
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)
     {
@@ -6667,9 +6816,9 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
     }
   stmt_type = db_get_statement_type (session, stmt_id);
   num_result = db_execute_statement (session, stmt_id, &result);
-#ifdef DIAG_DEVEL
-  shm_appl->as_info[shm_as_index].num_query_processed %= MAX_DIAG_DATA_VALUE;
-  shm_appl->as_info[shm_as_index].num_query_processed++;
+#ifndef LIBCAS_FOR_JSP
+  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info->num_queries_processed++;
 #endif
   if (num_result < 0)
     {
@@ -6713,27 +6862,30 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name,
 			int pattern_flag, T_SRV_HANDLE * srv_handle)
 {
   int num_result = 0;
-
-  char sql_stmt[1024];
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
 
   ut_tolower (class_name);
 
-  strcpy (sql_stmt, "SELECT class_name, super_class_name \
+  STRING_APPEND (sql_p, avail_size, "SELECT class_name, super_class_name \
 		    FROM db_direct_super_class ");
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  sprintf (sql_stmt + strlen (sql_stmt),
-		   "WHERE class_name LIKE '%s' ESCAPE '\\' ", class_name);
+	  STRING_APPEND (sql_p, avail_size,
+			 "WHERE class_name LIKE '%s' ESCAPE '\\' ",
+			 class_name);
 	}
     }
   else
     {
       if (class_name == NULL)
-	class_name = (char *) "";
-      sprintf (sql_stmt + strlen (sql_stmt), "WHERE class_name = '%s'",
-	       class_name);
+	{
+	  class_name = (char *) "";
+	}
+      STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'",
+		     class_name);
     }
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)
@@ -6859,14 +7011,16 @@ make_prepare_call_info (int num_args, int is_first_out)
 
   call_info = (T_PREPARE_CALL_INFO *) MALLOC (sizeof (T_PREPARE_CALL_INFO));
   if (call_info == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   memset (call_info, 0, sizeof (T_PREPARE_CALL_INFO));
 
   ret_val = (DB_VALUE *) MALLOC (sizeof (DB_VALUE));
   if (ret_val == NULL)
     {
-      return NULL;
+      goto exit_on_error;
     }
   db_make_null (ret_val);
 
@@ -6874,19 +7028,23 @@ make_prepare_call_info (int num_args, int is_first_out)
     {
       arg_val = (DB_VALUE **) MALLOC (sizeof (DB_VALUE *) * (num_args + 1));
       if (arg_val == NULL)
-	return NULL;
+	{
+	  goto exit_on_error;
+	}
       memset (arg_val, 0, sizeof (DB_VALUE *) * (num_args + 1));
 
       param_mode = (char *) MALLOC (sizeof (char) * num_args);
       if (param_mode == NULL)
-	return NULL;
+	{
+	  goto exit_on_error;
+	}
 
       for (i = 0; i < num_args; i++)
 	{
 	  arg_val[i] = (DB_VALUE *) MALLOC (sizeof (DB_VALUE));
 	  if (arg_val[i] == NULL)
 	    {
-	      return NULL;
+	      goto exit_on_error;
 	    }
 	  db_make_null (arg_val[i]);
 	  param_mode[i] = CCI_PARAM_MODE_UNKNOWN;
@@ -6900,6 +7058,20 @@ make_prepare_call_info (int num_args, int is_first_out)
   call_info->is_first_out = is_first_out;
 
   return call_info;
+
+exit_on_error:
+  FREE_MEM (call_info);
+  FREE_MEM (ret_val);
+  FREE_MEM (param_mode);
+  if (arg_val != NULL)
+    {
+      for (i = 0; i < num_args; i++)
+	{
+	  FREE_MEM (arg_val[i]);
+	}
+      FREE_MEM (arg_val);
+    }
+  return NULL;
 }
 
 static void
@@ -7054,12 +7226,17 @@ ux_use_sp_out (int srv_h_id)
 
   q_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (srv_handle->session != NULL && q_result->stmt_id >= 0)
-    column_info = db_get_query_type_list ((DB_SESSION *) srv_handle->session,
-					  q_result->stmt_id);
+    {
+      column_info =
+	db_get_query_type_list ((DB_SESSION *) srv_handle->session,
+				q_result->stmt_id);
+    }
   else
-    column_info = NULL;
+    {
+      column_info = NULL;
+    }
 
-  if (q_result->result && column_info)
+  if (q_result->result != NULL && column_info != NULL)
     {
       new_handle_id =
 	create_srv_handle_with_query_result ((DB_QUERY_RESULT *) q_result->
@@ -7070,6 +7247,10 @@ ux_use_sp_out (int srv_h_id)
       if (new_handle_id > 0)
 	{
 	  q_result->copied = TRUE;
+	}
+      else
+	{
+	  FREE_MEM (column_info);
 	}
     }
 
@@ -7304,7 +7485,7 @@ check_class_chn (T_SRV_HANDLE * srv_handle)
   int i;
   DB_OBJECT **classes;
 
-  if (!shm_appl->as_info[shm_as_index].cur_statement_pooling)
+  if (!as_info->cur_statement_pooling)
     return 0;
 
   if (!srv_handle->is_pooled)
@@ -7321,7 +7502,7 @@ check_class_chn (T_SRV_HANDLE * srv_handle)
 	return CAS_ER_STMT_POOLING;
       if (srv_handle->classes_chn[i] != db_chn (classes[i], DB_FETCH_READ))
 	{
-	  if (db_Connect_status == 0)	/* DB_CONNECTION_STATUS_NOT_CONNECTED */
+	  if (db_Connect_status != 1)	/* DB_CONNECTION_STATUS_CONNECTED */
 	    return CAS_ER_DBSERVER_DISCONNECTED;
 	  return CAS_ER_STMT_POOLING;
 	}
@@ -7365,18 +7546,19 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #ifndef LIBCAS_FOR_JSP
   int err_code;
+  int elapsed_sec = 0, elapsed_msec = 0;
 
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
-      cas_log_write (0, TRUE, "auto_commit");
-      err_code = ux_end_tran (CCI_TRAN_COMMIT, TRUE);
-      cas_log_write (0, TRUE, "auto_commit %d", err_code);
+      cas_log_write (0, false, "auto_commit");
+      err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
+      cas_log_write (0, false, "auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
-      cas_log_write (0, TRUE, "auto_rollback");
-      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, TRUE);
-      cas_log_write (0, TRUE, "auto_rollback %d", err_code);
+      cas_log_write (0, false, "auto_rollback");
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
+      cas_log_write (0, false, "auto_rollback %d", err_code);
     }
   else
     {
@@ -7387,15 +7569,45 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       DB_ERR_MSG_SET (net_buf, err_code);
       req_info->need_rollback = TRUE;
+      errors_in_transaction++;
     }
   else
     {
       req_info->need_rollback = FALSE;
     }
 
-  if (shm_appl->as_info[shm_as_index].cur_keep_con != KEEP_CON_OFF)
+  tran_timeout = ut_check_timeout (&tran_start_time,
+			      shm_appl->long_transaction_time,
+			      &elapsed_sec, &elapsed_msec);
+  if (tran_timeout >= 0)
     {
-      if (shm_appl->as_info[shm_as_index].cas_log_reset)
+      as_info->num_long_transactions %= MAX_DIAG_DATA_VALUE;
+      as_info->num_long_transactions++;
+    }
+  if (err_code < 0 || errors_in_transaction > 0)
+    {
+      cas_log_end (SQL_LOG_MODE_ERROR, elapsed_sec, elapsed_msec);
+      errors_in_transaction = 0;
+    }
+  else
+    {
+      if (tran_timeout >= 0 || query_timeout >= 0)
+	{
+	  cas_log_end (SQL_LOG_MODE_TIMEOUT, elapsed_sec, elapsed_msec);
+	}
+      else
+	{
+	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
+	}
+    }
+  gettimeofday (&tran_start_time, NULL);
+  gettimeofday (&query_start_time, NULL);
+  tran_timeout = 0;
+  query_timeout = 0;
+
+  if (as_info->cur_keep_con != KEEP_CON_OFF)
+    {
+      if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name, shm_as_index);
 	}
@@ -7404,17 +7616,13 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  return -1;
 	}
 
-      if (shm_appl->sql_log2 != shm_appl->as_info[shm_as_index].cur_sql_log2)
+      if (shm_appl->sql_log2 != as_info->cur_sql_log2)
 	{
-	  sql_log2_end (FALSE);
-	  shm_appl->as_info[shm_as_index].cur_sql_log2 = shm_appl->sql_log2;
-	  sql_log2_init (broker_name, shm_as_index,
-			 shm_appl->as_info[shm_as_index].cur_sql_log2, TRUE);
+	  sql_log2_end (false);
+	  as_info->cur_sql_log2 = shm_appl->sql_log2;
+	  sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
+			 true);
 	}
-      cas_log_end (&tran_start_time, broker_name, shm_as_index,
-		   shm_appl->sql_log_time, NULL, shm_appl->sql_log_max_size,
-		   FALSE);
-
       return 0;
     }
 #endif

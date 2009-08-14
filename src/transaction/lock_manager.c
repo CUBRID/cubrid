@@ -52,7 +52,10 @@
 #include "thread_impl.h"
 #include "query_manager.h"
 
-extern bool lock_Comp[][9];
+#ifndef DB_NA
+#define DB_NA           2
+#endif
+extern int lock_Comp[11][11];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */
@@ -898,7 +901,7 @@ lock_initialize_object_lock_res_list (void)
 
   /* initialize the object lock resource block */
   res_block->next_block = (LK_RES_BLOCK *) NULL;
-  res_block->count = (lk_Gl.max_obj_locks * LK_RES_RATIO);
+  res_block->count = MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO), 1);
   res_block->block = (LK_RES *) malloc (SIZEOF_LK_RES * res_block->count);
   if (res_block->block == (LK_RES *) NULL)
     {
@@ -961,7 +964,7 @@ lock_initialize_object_lock_entry_list (void)
 
   /* initialize the object lock entry block */
   entry_block->next_block = (LK_ENTRY_BLOCK *) NULL;
-  entry_block->count = (lk_Gl.max_obj_locks * LK_ENTRY_RATIO);
+  entry_block->count = MAX ((lk_Gl.max_obj_locks * LK_ENTRY_RATIO), 1);
   entry_block->block =
     (LK_ENTRY *) malloc (SIZEOF_LK_ENTRY * entry_block->count);
   if (entry_block->block == (LK_ENTRY *) NULL)
@@ -1328,7 +1331,7 @@ lock_alloc_resource_block (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  res_block->count = LK_MORE_RES_COUNT;
+  res_block->count = MAX (LK_MORE_RES_COUNT, 1);
   res_block->block = (LK_RES *) malloc (SIZEOF_LK_RES * res_block->count);
   if (res_block->block == (LK_RES *) NULL)
     {
@@ -1538,7 +1541,7 @@ lock_alloc_entry_block (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  entry_block->count = LK_MORE_ENTRY_COUNT;
+  entry_block->count = MAX (LK_MORE_ENTRY_COUNT, 1);
   entry_block->block =
     (LK_ENTRY *) malloc (SIZEOF_LK_ENTRY * entry_block->count);
   if (entry_block->block == (LK_ENTRY *) NULL)
@@ -2169,6 +2172,7 @@ lock_add_non2pl_lock (LK_RES * res_ptr, int tran_index, LOCK lock)
   LK_ENTRY *non2pl;
   LK_TRAN_LOCK *tran_lock;
   int rv;
+  int compat;
 
   /* The caller is holding a resource mutex */
 
@@ -2192,15 +2196,28 @@ lock_add_non2pl_lock (LK_RES * res_ptr, int tran_index, LOCK lock)
 
       if (non2pl->granted_mode != INCON_NON_TWO_PHASE_LOCK)
 	{
-	  if (lock == INCON_NON_TWO_PHASE_LOCK
-	      || !lock_Comp[lock][non2pl->granted_mode])
+	  if (lock == INCON_NON_TWO_PHASE_LOCK)
 	    {
 	      non2pl->granted_mode = INCON_NON_TWO_PHASE_LOCK;
 	      tran_lock->num_incons_non2pl += 1;
 	    }
 	  else
-	    {			/* lock_Comp[lock][non2pl->granted_mode] */
-	      non2pl->granted_mode = lock_Conv[lock][non2pl->granted_mode];
+	    {
+	      assert (lock >= NULL_LOCK && non2pl->granted_mode >= NULL_LOCK);
+	      compat = lock_Comp[lock][non2pl->granted_mode];
+	      assert (compat != DB_NA);
+
+	      if (compat == false)
+		{
+		  non2pl->granted_mode = INCON_NON_TWO_PHASE_LOCK;
+		  tran_lock->num_incons_non2pl += 1;
+		}
+	      else
+		{
+		  non2pl->granted_mode =
+		    lock_Conv[lock][non2pl->granted_mode];
+		  assert (non2pl->granted_mode != NA_LOCK);
+		}
 	    }
 	}
 
@@ -2252,6 +2269,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
   LK_ENTRY *ta, *tap;
   LK_ENTRY *tb, *tbp;
   LK_ENTRY *tc, *tcp;
+  int compat1, compat2;
 
   /* find the position where the lock entry to be inserted */
   if (entry_ptr->blocked_mode == NULL_LOCK)
@@ -2282,15 +2300,28 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	{
 	  if (i->blocked_mode != NULL_LOCK)
 	    {
-	      if ((ta == (LK_ENTRY *) NULL)
-		  && (lock_Comp[entry_ptr->blocked_mode][i->blocked_mode]))
+	      assert (entry_ptr->blocked_mode >= NULL_LOCK
+		      && entry_ptr->granted_mode >= NULL_LOCK);
+	      assert (i->blocked_mode >= NULL_LOCK
+		      && i->granted_mode >= NULL_LOCK);
+
+	      compat1 = lock_Comp[entry_ptr->blocked_mode][i->blocked_mode];
+	      assert (compat1 != DB_NA);
+
+	      if (ta == NULL && compat1 == true)
 		{
 		  ta = i;
 		  tap = prev;
 		}
-	      if ((ta == (LK_ENTRY *) NULL) && (tb == (LK_ENTRY *) NULL)
-		  && (lock_Comp[entry_ptr->blocked_mode][i->granted_mode])
-		  && (!lock_Comp[i->blocked_mode][entry_ptr->granted_mode]))
+
+	      compat1 = lock_Comp[entry_ptr->blocked_mode][i->granted_mode];
+	      assert (compat1 != DB_NA);
+
+	      compat2 = lock_Comp[i->blocked_mode][entry_ptr->granted_mode];
+	      assert (compat2 != DB_NA);
+
+	      if (ta == NULL && tb == NULL
+		  && compat1 == true && compat2 == false)
 		{
 		  tb = i;
 		  tbp = prev;
@@ -2298,7 +2329,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	    }
 	  else
 	    {
-	      if (tc == (LK_ENTRY *) NULL)
+	      if (tc == NULL)
 		{
 		  tc = i;
 		  tcp = prev;
@@ -2307,22 +2338,22 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	  prev = i;
 	  i = i->next;
 	}
-      if (ta != (LK_ENTRY *) NULL)
+      if (ta != NULL)
 	{
 	  prev = tap;
 	}
-      else if (tb != (LK_ENTRY *) NULL)
+      else if (tb != NULL)
 	{
 	  prev = tbp;
 	}
-      else if (tc != (LK_ENTRY *) NULL)
+      else if (tc != NULL)
 	{
 	  prev = tcp;
 	}
     }
 
   /* insert the given lock entry into the found position */
-  if (prev == (LK_ENTRY *) NULL)
+  if (prev == NULL)
     {
       entry_ptr->next = res_ptr->holder;
       res_ptr->holder = entry_ptr;
@@ -2377,9 +2408,14 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int rv;
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
+  int compat1, compat2;
+
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
   nwaits = 0;
+
+  assert (entry_ptr->granted_mode >= NULL_LOCK
+	  && entry_ptr->blocked_mode >= NULL_LOCK);
 
   if (PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL == 0)
     {
@@ -2394,10 +2430,18 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
       MUTEX_LOCK (rv, res_ptr->res_mutex);
       for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
 	{
-	  if (entry != entry_ptr
-	      && (!lock_Comp[entry->granted_mode][entry_ptr->blocked_mode]
-		  || !lock_Comp[entry->blocked_mode][entry_ptr->
-						     blocked_mode]))
+	  if (entry == entry_ptr)
+	    {
+	      continue;
+	    }
+
+	  assert (entry->granted_mode >= NULL_LOCK
+		  && entry->blocked_mode >= NULL_LOCK);
+	  compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
+	  compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+	  assert (compat1 != DB_NA && compat2 != DB_NA);
+
+	  if (compat1 == false || compat2 == false)
 	    {
 	      wait_for[nwaits++] = entry->tran_index;
 	      break;
@@ -2408,8 +2452,17 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	{
 	  for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
 	    {
-	      if (entry != entry_ptr
-		  && !lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode])
+	      if (entry == entry_ptr)
+		{
+		  continue;
+		}
+
+	      assert (entry->granted_mode >= NULL_LOCK
+		      && entry->blocked_mode >= NULL_LOCK);
+	      compat1 =
+		lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+	      assert (compat1 != DB_NA);
+	      if (compat1 == false)
 		{
 		  wait_for[nwaits++] = entry->tran_index;
 		  break;
@@ -2428,10 +2481,18 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
       free_mutex_flag = true;
       for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
 	{
-	  if (entry != entry_ptr
-	      && (!lock_Comp[entry->granted_mode][entry_ptr->blocked_mode]
-		  || !lock_Comp[entry->blocked_mode][entry_ptr->
-						     blocked_mode]))
+	  if (entry == entry_ptr)
+	    {
+	      continue;
+	    }
+
+	  assert (entry->granted_mode >= NULL_LOCK
+		  && entry->blocked_mode >= NULL_LOCK);
+	  compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
+	  compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+	  assert (compat1 != DB_NA && compat2 != DB_NA);
+
+	  if (compat1 == false || compat2 == false)
 	    {
 	      EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
 	      wait_for[nwaits++] = entry->tran_index;
@@ -2440,8 +2501,17 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
       for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
 	{
-	  if (entry != entry_ptr
-	      && !lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode])
+	  if (entry == entry_ptr)
+	    {
+	      continue;
+	    }
+
+	  assert (entry->granted_mode >= NULL_LOCK
+		  && entry->blocked_mode >= NULL_LOCK);
+	  compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
+	  assert (compat1 != DB_NA);
+
+	  if (compat1 == false)
 	    {
 	      EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
 	      wait_for[nwaits++] = entry->tran_index;
@@ -2981,21 +3051,28 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   LK_ENTRY *prev_check;
   LK_ENTRY *check, *i, *prev;
   LOCK mode;
+  int compat;
 
   /* The caller is holding a resource mutex */
 
-  prev_check = (LK_ENTRY *) NULL;
+  prev_check = NULL;
   check = res_ptr->holder;
-  while (check != (LK_ENTRY *) NULL && check->blocked_mode != NULL_LOCK)
+  while (check != NULL && check->blocked_mode != NULL_LOCK)
     {
       /* there are some blocked holders */
       mode = NULL_LOCK;
-      for (i = check->next; i != (LK_ENTRY *) NULL; i = i->next)
+      for (i = check->next; i != NULL; i = i->next)
 	{
+	  assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[i->granted_mode][mode];
+	  assert (mode != NA_LOCK);
 	}
 
-      if (!lock_Comp[check->blocked_mode][mode])
+      assert (check->blocked_mode >= NULL_LOCK);
+      compat = lock_Comp[check->blocked_mode][mode];
+      assert (compat != DB_NA);
+
+      if (compat == false)
 	{
 	  break;		/* stop the granting */
 	}
@@ -3011,7 +3088,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  /* the thread is still waiting on a lock */
 
 	  /* reposition the lock entry according to UPR */
-	  for (prev = check, i = check->next; i != (LK_ENTRY *) NULL;)
+	  for (prev = check, i = check->next; i != NULL;)
 	    {
 	      if (i->blocked_mode == NULL_LOCK)
 		{
@@ -3023,7 +3100,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  if (prev != check)
 	    {			/* reposition it */
 	      /* remove it */
-	      if (prev_check == (LK_ENTRY *) NULL)
+	      if (prev_check == NULL)
 		{
 		  res_ptr->holder = check->next;
 		}
@@ -3074,7 +3151,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  prev_check = check;
 	}
 
-      if (prev_check == (LK_ENTRY *) NULL)
+      if (prev_check == NULL)
 	{
 	  check = res_ptr->holder;
 	}
@@ -3104,14 +3181,20 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   LOCK mode;
   bool change_total_waiters_mode = false;
   int error_code = NO_ERROR;
+  int compat;
 
   /* The caller is holding a resource mutex */
 
-  prev_check = (LK_ENTRY *) NULL;
+  prev_check = NULL;
   check = res_ptr->waiter;
-  while (check != (LK_ENTRY *) NULL)
+  while (check != NULL)
     {
-      if (!lock_Comp[check->blocked_mode][res_ptr->total_holders_mode])
+      assert (check->blocked_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+      compat = lock_Comp[check->blocked_mode][res_ptr->total_holders_mode];
+      assert (compat != DB_NA);
+
+      if (compat == false)
 	{
 	  break;		/* stop the granting */
 	}
@@ -3127,7 +3210,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  change_total_waiters_mode = true;
 
 	  /* remove the lock entry from the waiter */
-	  if (prev_check == (LK_ENTRY *) NULL)
+	  if (prev_check == NULL)
 	    {
 	      res_ptr->waiter = check->next;
 	    }
@@ -3144,8 +3227,11 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  lock_position_holder_entry (res_ptr, check);
 
 	  /* change total_holders_mode */
+	  assert (check->granted_mode >= NULL_LOCK
+		  && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode =
 	    lock_Conv[check->granted_mode][res_ptr->total_holders_mode];
+	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* insert the lock entry into transaction hold list. */
 	  lock_insert_into_tran_hold_list (check);
@@ -3186,7 +3272,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  prev_check = check;
 	}
 
-      if (prev_check == (LK_ENTRY *) NULL)
+      if (prev_check == NULL)
 	{
 	  check = res_ptr->waiter;
 	}
@@ -3199,9 +3285,11 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   if (change_total_waiters_mode == true)
     {
       mode = NULL_LOCK;
-      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL; i = i->next)
+      for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
+	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[i->blocked_mode][mode];
+	  assert (mode != NA_LOCK);
 	}
       res_ptr->total_waiters_mode = mode;
     }
@@ -3231,6 +3319,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
   LK_ENTRY *prev_check;
   LK_ENTRY *check, *i;
   LOCK mode;
+  int compat;
 
   /* the caller is holding a resource mutex */
 
@@ -3239,17 +3328,37 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
   check = res_ptr->waiter;
   while (check != from_whom)
     {
+      assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[check->blocked_mode][mode];
+      assert (mode != NA_LOCK);
+
       prev_check = check;
       check = check->next;
     }
 
   /* check = from_whom; */
-  while (check != (LK_ENTRY *) NULL && lock_Comp[check->blocked_mode][mode])
+  while (check != NULL)
     {
-      if (!lock_Comp[check->blocked_mode][res_ptr->total_holders_mode])
+      assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      compat = lock_Comp[check->blocked_mode][mode];
+      assert (compat != DB_NA);
+
+      if (compat != true)
 	{
+	  break;
+	}
+
+      assert (check->blocked_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+      compat = lock_Comp[check->blocked_mode][res_ptr->total_holders_mode];
+      assert (compat != DB_NA);
+
+      if (compat == false)
+	{
+	  assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[check->blocked_mode][mode];
+	  assert (mode != NA_LOCK);
+
 	  prev_check = check;
 	  check = check->next;
 	  continue;
@@ -3278,8 +3387,11 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	  lock_position_holder_entry (res_ptr, check);
 
 	  /* change total_holders_mode */
+	  assert (check->granted_mode >= NULL_LOCK
+		  && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode =
 	    lock_Conv[check->granted_mode][res_ptr->total_holders_mode];
+	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* insert into transaction lock hold list */
 	  lock_insert_into_tran_hold_list (check);
@@ -3317,11 +3429,14 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	  (void) thread_unlock_entry (check->thrd_entry);
 
 	  /* change prev_check */
+	  assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[check->blocked_mode][mode];
+	  assert (mode != NA_LOCK);
+
 	  prev_check = check;
 	}
 
-      if (prev_check == (LK_ENTRY *) NULL)
+      if (prev_check == NULL)
 	{
 	  check = res_ptr->waiter;
 	}
@@ -3331,16 +3446,18 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 	}
     }
 
-  if (check == (LK_ENTRY *) NULL)
+  if (check == NULL)
     {
       res_ptr->total_waiters_mode = mode;
     }
   else
     {
       mode = NULL_LOCK;
-      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL; i = i->next)
+      for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
+	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[i->blocked_mode][mode];
+	  assert (mode != NA_LOCK);
 	}
       res_ptr->total_waiters_mode = mode;
     }
@@ -3551,6 +3668,7 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
   LOCK new_mode;
   LOCK group_mode;
   int rv;
+  int compat1, compat2;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -3622,8 +3740,14 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
   /* I am not a lock holder of the lockable object. */
   if (entry_ptr == (LK_ENTRY *) NULL)
     {
-      if (lock_Comp[lock][res_ptr->total_waiters_mode]
-	  && lock_Comp[lock][res_ptr->total_holders_mode])
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+
+      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
+      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
+      assert (compat1 != DB_NA && compat2 != DB_NA);
+
+      if (compat1 == true && compat2 == true)
 	{
 	  MUTEX_UNLOCK (res_ptr->res_mutex);
 	  return LK_GRANTED;
@@ -3636,7 +3760,10 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
     }
 
   /* I am a lock holder of the lockable object. */
+  assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
   new_mode = lock_Conv[lock][entry_ptr->granted_mode];
+  assert (new_mode != NA_LOCK);
+
   if (new_mode == entry_ptr->granted_mode)
     {
       /* a request with either a less exclusive or an equal mode of lock */
@@ -3651,10 +3778,18 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid,
 	{
 	  if (i != entry_ptr)
 	    {
+	      assert (i->granted_mode >= NULL_LOCK
+		      && group_mode >= NULL_LOCK);
 	      group_mode = lock_Conv[i->granted_mode][group_mode];
+	      assert (group_mode != NA_LOCK);
 	    }
 	}
-      if (lock_Comp[new_mode][group_mode])
+
+      assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+      compat1 = lock_Comp[new_mode][group_mode];
+      assert (compat1 != DB_NA);
+
+      if (compat1 == true)
 	{
 	  MUTEX_UNLOCK (res_ptr->res_mutex);
 	  return LK_GRANTED;
@@ -3715,6 +3850,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index,
   LK_ACQUISITION_HISTORY *history;
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
+  int compat1, compat2;
 
   if (thread_p == NULL)
     {
@@ -3919,14 +4055,19 @@ start:
       entry_ptr = entry_ptr->next;
     }
 
-  if (entry_ptr == (LK_ENTRY *) NULL)
+  if (entry_ptr == NULL)
     {
       /* The object exists in the hash chain &
        * I am not a lock holder of the lockable object.
        */
       /* 1. I am not a holder & my request can be granted. */
-      if (lock_Comp[lock][res_ptr->total_waiters_mode]
-	  && lock_Comp[lock][res_ptr->total_holders_mode])
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
+	      && res_ptr->total_holders_mode >= NULL_LOCK);
+      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
+      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
+      assert (compat1 != DB_NA && compat2 != DB_NA);
+
+      if (compat1 == true && compat2 == true)
 	{
 	  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
 	    {
@@ -3967,8 +4108,11 @@ start:
 	  lock_position_holder_entry (res_ptr, entry_ptr);
 
 	  /* change total_holders_mode (total mode of holder list) */
+	  assert (lock >= NULL_LOCK
+		  && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode =
 	    lock_Conv[lock][res_ptr->total_holders_mode];
+	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* add the lock entry into the transaction hold list */
 	  lock_insert_into_tran_hold_list (entry_ptr);
@@ -4116,8 +4260,10 @@ start:
 	}
 
       /* change total_waiters_mode (total mode of waiting waiter) */
+      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
       res_ptr->total_waiters_mode =
 	lock_Conv[lock][res_ptr->total_waiters_mode];
+      assert (res_ptr->total_waiters_mode != NA_LOCK);
 
       goto blocked;
 
@@ -4156,7 +4302,9 @@ start:
    */
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
+  assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
   new_mode = lock_Conv[lock][entry_ptr->granted_mode];
+  assert (new_mode != NA_LOCK);
 
   if (new_mode == entry_ptr->granted_mode)
     {
@@ -4164,10 +4312,12 @@ start:
       entry_ptr->count += 1;
       if (is_instant_duration)
 	{
+	  compat1 = lock_Comp[lock][entry_ptr->granted_mode];
+	  assert (compat1 != DB_NA);
+
 	  if ((lock >= IX_LOCK
 	       && (entry_ptr->mlk_count == 0
-		   && entry_ptr->granted_mode >= IX_LOCK))
-	      && (lock_Comp[lock][entry_ptr->granted_mode] != true))
+		   && entry_ptr->granted_mode >= IX_LOCK)) && compat1 != true)
 	    {
 	      /* if the lock is already aquired with incompatible mode by current transaction,
 	         remove instant instance locks */
@@ -4204,11 +4354,17 @@ start:
     {
       if (i != entry_ptr)
 	{
+	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
 	  group_mode = lock_Conv[i->granted_mode][group_mode];
+	  assert (group_mode != NA_LOCK);
 	}
     }
 
-  if (lock_Comp[new_mode][group_mode])
+  assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
+  compat1 = lock_Comp[new_mode][group_mode];
+  assert (compat1 != DB_NA);
+
+  if (compat1 == true)
     {
       if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
 	{
@@ -4226,8 +4382,11 @@ start:
       entry_ptr->granted_mode = new_mode;
       entry_ptr->count += 1;
 
+      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
       res_ptr->total_holders_mode =
 	lock_Conv[lock][res_ptr->total_holders_mode];
+      assert (res_ptr->total_holders_mode != NA_LOCK);
+
       lock_update_non2pl_list (res_ptr, tran_index, lock);
       MUTEX_UNLOCK (res_ptr->res_mutex);
 
@@ -4278,7 +4437,9 @@ start:
   entry_ptr->count += 1;
   entry_ptr->thrd_entry = thread_p;
 
+  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
   res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+  assert (res_ptr->total_holders_mode != NA_LOCK);
 
   /* remove the lock entry from the holder list */
   prev = (LK_ENTRY *) NULL;
@@ -4536,7 +4697,9 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
 	      mode = NULL_LOCK;
 	      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL; i = i->next)
 		{
+		  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 		  mode = lock_Conv[i->blocked_mode][mode];
+		  assert (mode != NA_LOCK);
 		}
 	      res_ptr->total_waiters_mode = mode;
 	    }
@@ -4600,8 +4763,13 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
   mode = NULL_LOCK;
   for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
     {
+      assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[i->granted_mode][mode];
+      assert (mode != NA_LOCK);
+
+      assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[i->blocked_mode][mode];
+      assert (mode != NA_LOCK);
     }
   res_ptr->total_holders_mode = mode;
 
@@ -4729,8 +4897,13 @@ lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p,
   total_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
+      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->granted_mode][total_mode];
+      assert (total_mode != NA_LOCK);
+
+      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (total_mode != NA_LOCK);
     }
   res_ptr->total_holders_mode = total_mode;
 
@@ -4842,8 +5015,13 @@ lock_internal_demote_update_inst_lock (THREAD_ENTRY * thread_p,
   total_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
+      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->granted_mode][total_mode];
+      assert (total_mode != NA_LOCK);
+
+      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (total_mode != NA_LOCK);
     }
   res_ptr->total_holders_mode = total_mode;
 
@@ -5093,8 +5271,13 @@ lock_internal_demote_shared_inst_lock (THREAD_ENTRY * thread_p,
   total_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
+      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->granted_mode][total_mode];
+      assert (total_mode != NA_LOCK);
+
+      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (total_mode != NA_LOCK);
     }
   res_ptr->total_holders_mode = total_mode;
 
@@ -5619,6 +5802,7 @@ lock_update_non2pl_list (LK_RES * res_ptr, int tran_index, LOCK lock)
   LK_ENTRY *next;
   LK_TRAN_LOCK *tran_lock;
   int rv;
+  int compat;
 
   /* The caller is holding a resource mutex */
 
@@ -5644,19 +5828,25 @@ lock_update_non2pl_list (LK_RES * res_ptr, int tran_index, LOCK lock)
 	}
       else
 	{			/* different transaction */
-	  if (curr->granted_mode != INCON_NON_TWO_PHASE_LOCK
-	      && !lock_Comp[lock][curr->granted_mode])
+	  if (curr->granted_mode != INCON_NON_TWO_PHASE_LOCK)
 	    {
 	      /* The transaction with the released lock must decache the lock
 	       * object since an incompatible locks has been acquired.
 	       * This implies that the transaction with the released lock
 	       * may not be serializable (repeatable read consistent) any longer.
 	       */
-	      curr->granted_mode = INCON_NON_TWO_PHASE_LOCK;
-	      tran_lock = &lk_Gl.tran_lock_table[curr->tran_index];
-	      MUTEX_LOCK (rv, tran_lock->non2pl_mutex);
-	      tran_lock->num_incons_non2pl += 1;
-	      MUTEX_UNLOCK (tran_lock->non2pl_mutex);
+	      assert (lock >= NULL_LOCK && curr->granted_mode >= NULL_LOCK);
+	      compat = lock_Comp[lock][curr->granted_mode];
+	      assert (compat != DB_NA);
+
+	      if (compat == false)
+		{
+		  curr->granted_mode = INCON_NON_TWO_PHASE_LOCK;
+		  tran_lock = &lk_Gl.tran_lock_table[curr->tran_index];
+		  MUTEX_LOCK (rv, tran_lock->non2pl_mutex);
+		  tran_lock->num_incons_non2pl += 1;
+		  MUTEX_UNLOCK (tran_lock->non2pl_mutex);
+		}
 	    }
 	  prev = curr;
 	  curr = curr->next;
@@ -5844,10 +6034,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   bool lock_holder_found = false;
   bool inact_trans_found = false;
   int tot_WFG_nodes;
+#if defined(CUBRID_DEBUG)
   int num_WFG_nodes;
   int WFG_nidx;
   int tran_index_area[20];
   int *tran_index_set = &tran_index_area[0];
+#endif
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -5953,6 +6145,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
      3) Prefer a transaction with a closer tiemout.
      4) Prefer the youngest transaction.
    */
+#if defined(CUBRID_DEBUG)
   num_WFG_nodes = tot_WFG_nodes;
   if (num_WFG_nodes > 20)
     {
@@ -5965,7 +6158,6 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
     }
   WFG_nidx = 0;
 
-#if defined(CUBRID_DEBUG)
   if (TWFG_node[t].checked_by_deadlock_detector == false)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -5984,9 +6176,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 			"Inactive transaction is found in a deadlock cycle\n"
 			"(tran_index=%d, tranid=%d, state=%s)\n",
 			t, tranid, log_state_string (logtb_find_state (t)));
-#endif /* CUBRID_DEBUG */
 	  tran_index_set[WFG_nidx] = t;
 	  WFG_nidx += 1;
+#endif /* CUBRID_DEBUG */
 	}
       else
 	{
@@ -6000,8 +6192,10 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   else
     {
       victims[victim_count].tran_index = NULL_TRAN_INDEX;
+#if defined(CUBRID_DEBUG)
       tran_index_set[WFG_nidx] = t;
       WFG_nidx += 1;
+#endif
     }
 
   for (v = s; v != t;)
@@ -6026,9 +6220,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 			    "(tran_index=%d, tranid=%d, state=%s)\n",
 			    v, tranid,
 			    log_state_string (logtb_find_state (v)));
-#endif /* CUBRID_DEBUG */
 	      tran_index_set[WFG_nidx] = v;
 	      WFG_nidx += 1;
+#endif /* CUBRID_DEBUG */
 	    }
 	  else
 	    {
@@ -6046,11 +6240,13 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 		}
 	    }
 	}
+#if defined(CUBRID_DEBUG)
       else
 	{			/* TWFG_node[v].candidate == false */
 	  tran_index_set[WFG_nidx] = v;
 	  WFG_nidx += 1;
 	}
+#endif
       w = TWFG_node[v].ancestor;
       TWFG_node[v].ancestor = -1;
       v = w;
@@ -6268,6 +6464,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[64];
 
+  memset (time_val, 0, sizeof (time_val));
+
   /* dump object identifier */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				  MSGCAT_SET_LOCK,
@@ -6420,7 +6618,10 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 #if defined(WINDOWS)
 	      strcpy (time_val, ctime (&stime));
 #else /* WINDOWS */
-	      ctime_r (&stime, time_val);
+	      if (ctime_r (&stime, time_val) == NULL)
+		{
+		  strcpy (time_val, "???");
+		}
 #endif /* WINDOWS */
 	      if (time_val[strlen (time_val) - 1] == '\n')
 		{
@@ -6539,8 +6740,13 @@ lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   total_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
+      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->granted_mode][total_mode];
+      assert (total_mode != NA_LOCK);
+
+      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (total_mode != NA_LOCK);
     }
   if (total_mode != res_ptr->total_holders_mode)
     {
@@ -6552,7 +6758,9 @@ lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   total_mode = NULL_LOCK;
   for (i = res_ptr->waiter; i != NULL; i = i->next)
     {
+      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (total_mode != NA_LOCK);
     }
   if (total_mode != res_ptr->total_waiters_mode)
     {
@@ -9046,7 +9254,7 @@ lock_force_timeout_lock_wait_transactions (void)
   int i;
   THREAD_ENTRY *thrd;
 
-  for (i = 0; i < MAX_NTHRDS; i++)
+  for (i = 1; i < thread_num_total_threads (); i++)
     {
       thrd = thread_find_entry_by_index (i);
       (void) thread_lock_entry (thrd);
@@ -9142,7 +9350,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
     }
   else
     {
-      for (i = 0; i < MAX_NTHRDS; i++)
+      for (i = 1; i < thread_num_total_threads (); i++)
 	{
 	  thrd = thread_find_entry_by_index (i);
 	  (void) thread_lock_entry (thrd);
@@ -9336,6 +9544,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
   int i, rv;
+  int compat1, compat2;
 
   /* initialize deadlock detection related structures */
 
@@ -9447,8 +9656,16 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		}
 	      for (hj = hi->next; hj != NULL; hj = hj->next)
 		{
-		  if (!lock_Comp[hj->blocked_mode][hi->granted_mode]
-		      || !lock_Comp[hj->blocked_mode][hi->blocked_mode])
+		  assert (hi->granted_mode >= NULL_LOCK
+			  && hi->blocked_mode >= NULL_LOCK);
+		  assert (hj->granted_mode >= NULL_LOCK
+			  && hj->blocked_mode >= NULL_LOCK);
+
+		  compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
+		  compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
+		  assert (compat1 != DB_NA && compat2 != DB_NA);
+
+		  if (compat1 == false || compat2 == false)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
@@ -9456,7 +9673,11 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 							  lockwait_stime /
 							  1000));
 		    }
-		  if (!lock_Comp[hi->blocked_mode][hj->granted_mode])
+
+		  compat1 = lock_Comp[hi->blocked_mode][hj->granted_mode];
+		  assert (compat1 != DB_NA);
+
+		  if (compat1 == false)
 		    {
 		      (void) lock_add_WFG_edge (hi->tran_index,
 						hj->tran_index, true,
@@ -9472,8 +9693,16 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      for (hj = res_ptr->waiter; hj != NULL; hj = hj->next)
 		{
-		  if (!lock_Comp[hj->blocked_mode][hi->granted_mode]
-		      || !lock_Comp[hj->blocked_mode][hi->blocked_mode])
+		  assert (hi->granted_mode >= NULL_LOCK
+			  && hi->blocked_mode >= NULL_LOCK);
+		  assert (hj->granted_mode >= NULL_LOCK
+			  && hj->blocked_mode >= NULL_LOCK);
+
+		  compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
+		  compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
+		  assert (compat1 != DB_NA && compat2 != DB_NA);
+
+		  if (compat1 == false || compat2 == false)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
@@ -9489,7 +9718,13 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      for (hj = hi->next; hj != NULL; hj = hj->next)
 		{
-		  if (!lock_Comp[hj->blocked_mode][hi->blocked_mode])
+		  assert (hj->blocked_mode >= NULL_LOCK
+			  && hi->blocked_mode >= NULL_LOCK);
+
+		  compat1 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
+		  assert (compat1 != DB_NA);
+
+		  if (compat1 == false)
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, false,
@@ -9662,8 +9897,7 @@ final:
 	}
       else
 	{
-	  int max_threads = 0;
-	  int free_threads = 0;
+	  int worker_threads = 0;
 	  int suspended_threads = 0;
 	  int thrd_index;
 	  THREAD_ENTRY *thrd_ptr;
@@ -9671,15 +9905,15 @@ final:
 	  /* Make sure that we have threads available for another client
 	   * to execute, otherwise Panic...
 	   */
-	  thread_get_info_threads (&max_threads, &free_threads,
+	  thread_get_info_threads (NULL, &worker_threads, NULL,
 				   &suspended_threads);
-	  if (max_threads == suspended_threads)
+	  if (worker_threads == suspended_threads)
 	    {
 	      /* We must timeout at least one thread, so other clients can execute,
 	       * otherwise, the server will hang.
 	       */
 	      thrd_ptr = thread_find_first_lockwait_entry (&thrd_index);
-	      while (thrd_ptr != (THREAD_ENTRY *) NULL)
+	      while (thrd_ptr != NULL)
 		{
 		  if (lock_wakeup_deadlock_victim_timeout
 		      (thrd_ptr->tran_index) == true)
@@ -9688,10 +9922,14 @@ final:
 		    }
 		  thrd_ptr = thread_find_next_lockwait_entry (&thrd_index);
 		}
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		      ER_LK_NOTENOUGH_ACTIVE_THREADS, 3, max_threads,
-		      logtb_get_number_assigned_tran_indices (),
-		      thrd_ptr->tran_index);
+
+	      if (thrd_ptr != NULL)
+		{
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+			  ER_LK_NOTENOUGH_ACTIVE_THREADS, 3, worker_threads,
+			  logtb_get_number_assigned_tran_indices (),
+			  thrd_ptr->tran_index);
+		}
 	    }
 	  lk_Gl.no_victim_case_count = 0;
 	}
@@ -10166,6 +10404,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   int hash_index;
   LK_HASH *hash_anchor;
   LK_RES *res_ptr;
+  LK_RES *res_prev;
   int rv;
 
   if (outfp == NULL)
@@ -10244,11 +10483,42 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       hash_anchor = &lk_Gl.obj_hash_table[hash_index];
       MUTEX_LOCK (rv, hash_anchor->hash_mutex);
       res_ptr = hash_anchor->hash_next;
+      res_prev = NULL;
       while (res_ptr != (LK_RES *) NULL)
 	{
 	  MUTEX_LOCK (rv, res_ptr->res_mutex);
+
+	  if (res_ptr->holder == NULL && res_ptr->waiter == NULL
+	      && res_ptr->non2pl == NULL)
+	    {
+	      if (res_prev == (LK_RES *) NULL)
+		{
+		  hash_anchor->hash_next = res_ptr->hash_next;
+		}
+	      else
+		{
+		  res_prev->hash_next = res_ptr->hash_next;
+		}
+
+	      MUTEX_UNLOCK (res_ptr->res_mutex);
+	      lock_free_resource (res_ptr);
+
+	      if (res_prev == (LK_RES *) NULL)
+		{
+		  res_ptr = hash_anchor->hash_next;
+		  continue;
+		}
+	      else
+		{
+		  res_ptr = res_prev->hash_next;
+		  continue;
+		}
+	    }
+
 	  lock_dump_resource (thread_p, outfp, res_ptr);
+
 	  MUTEX_UNLOCK (res_ptr->res_mutex);
+	  res_prev = res_ptr;
 	  res_ptr = res_ptr->hash_next;
 	}
       MUTEX_UNLOCK (hash_anchor->hash_mutex);

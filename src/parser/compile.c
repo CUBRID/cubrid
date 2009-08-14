@@ -415,6 +415,9 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
+  lcks.classes = NULL;
+  lcks.only_all = NULL;
+  lcks.locks = NULL;
 
   /* we don't pre fetch for non query statements */
   if (!statement)
@@ -793,6 +796,12 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 
       entity->info.spec.only_all = PT_ONLY;
       entity->info.spec.range_var = parser_copy_tree (parser, entity_name);
+      if (entity->info.spec.range_var == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	  return NULL;
+	}
+
       entity->info.spec.range_var->info.name.resolved = NULL;
       upd->info.update.spec = entity;
     }

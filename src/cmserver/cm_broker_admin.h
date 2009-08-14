@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -30,11 +30,6 @@
 #define BROKER_LOG_DIR  "log/broker"
 #define UNICAS_CONF_DIR	"conf"
 #define UNICAS_SQL_LOG_DIR "sql_log"
-
-#define SQL_LOG_MODE_OFF                0x00
-#define SQL_LOG_MODE_ON                 0x01
-#define SQL_LOG_MODE_APPEND             0x02
-#define SQL_LOG_MODE_BIND_VALUE         0x04
 
 typedef enum
 {
@@ -70,6 +65,7 @@ typedef struct
   int pid;
   int num_request;
   int as_port;
+  const char *service_flag;
   const char *status;
   time_t last_access_time;
   int psize;
@@ -80,6 +76,15 @@ typedef struct
   char *clt_appl_name;
   char *request_file;
   char *log_msg;
+  char *database_name;
+  char *database_host;
+  time_t last_connect_time;
+  INT64 num_requests_received;
+  INT64 num_transactions_processed;
+  INT64 num_queries_processed;
+  INT64 num_long_queries;
+  INT64 num_long_transactions;
+  INT64 num_error_queries;
 } T_DM_UC_AS_INFO;
 
 typedef struct
@@ -106,16 +111,22 @@ typedef struct
   int num_thr;
   float pcpu;
   int cpu_time;
+  int num_busy_count;
   int num_req;
+  INT64 num_tran;
+  INT64 num_query;
+  INT64 num_long_tran;
+  INT64 num_long_query;
+  INT64 num_error_query;
+  int long_query_time;
+  int long_transaction_time;
   char *session_timeout;
   int as_max_size;
+  char keep_connection;
   char log_backup;
-  char sql_log_on_off;
-  char sql_log_append_mode;
-  char sql_log_bind_value;
+  char sql_log_mode;
   char source_env_flag;
   char access_list_flag;
-  int sql_log_time;
   int time_to_kill;
   char status[16];
   char auto_add[4];
@@ -167,27 +178,6 @@ char *uca_get_conf_path (const char *filename, char *buf);
 int uca_conf_write (T_DM_UC_CONF * uc_conf, char *del_broekr,
 		    char *_dbmt_error);
 int uca_del_cas_log (char *br_name, int as_id, char *_dbmt_error);
-#ifdef DIAG_DEVEL
-int uca_get_active_session_with_opened_shm (void *br_shm, char *err_msg);
-void *uca_broker_shm_open (char *err_msg);
-#if 0				/* ACTIVITY PROFILE */
-int uca_get_br_diagconfig_with_opened_shm (void *shm_br, void *c_config,
-					   char *err_msg);
-int uca_set_br_diagconfig_with_opened_shm (void *shm_br, void *c_config,
-					   char *err_msg);
-#endif
-int uca_get_br_num_with_opened_shm (void *shm_br, char *err_msg);
-int uca_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name,
-				     int buffer_size, char *err_msg);
-void *uca_as_shm_open (void *shm_br, int br_index, char *err_msg);
-int uca_get_as_num_with_opened_shm (void *shm_br, int br_index,
-				    char *err_msg);
-int uca_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[],
-					      int array_size, char *err_msg);
-int uca_get_as_tran_processed_with_opened_shm (void *shm_as,
-					       long long array[],
-					       int array_size, char *err_msg);
-int uca_shm_detach (void *p);
-#endif
+
 
 #endif /* _CM_BROKER_ADMIN_H_ */

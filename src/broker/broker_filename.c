@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * broker_filename.c - 
+ * broker_filename.c -
  */
 
 #ident "$Id$"
@@ -64,7 +64,7 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
 void
 set_cubrid_home ()
 {
-  char *p;
+  char *p, dirname[PATH_MAX];
 
   p = getenv_cubrid_broker ();
   if (p)
@@ -72,8 +72,8 @@ set_cubrid_home ()
       strcpy (cubrid_dir, p);
       return;
     }
-  getcwd (cubrid_dir, sizeof (cubrid_dir));
-  strcat (cubrid_dir, "/..");
+  getcwd (dirname, sizeof (dirname));
+  snprintf (cubrid_dir, sizeof (cubrid_dir) - 1, "%s/..", dirname);
 }
 
 char *

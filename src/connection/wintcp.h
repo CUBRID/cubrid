@@ -51,7 +51,6 @@ extern SOCKET css_tcp_client_open_with_retry (const char *hostname, int port,
 extern void css_shutdown_socket (SOCKET fd);
 extern int css_fd_down (SOCKET fd);
 extern unsigned int css_gethostid (void);
-extern bool css_broadcast_to_client (SOCKET client_fd, char data);
 extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);
 extern bool css_tcp_master_datagram (char *pathname, SOCKET * sockfd);
@@ -61,9 +60,12 @@ extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd,
 			     unsigned short rid);
 extern int css_tcp_master_open (int port, SOCKET * sockfd);
 extern SOCKET css_master_accept (SOCKET sockfd);
-extern int css_read_broadcast_information (SOCKET fd, char *byte);
 extern int css_open_server_connection_socket (void);
 extern void css_close_server_connection_socket (void);
 extern SOCKET css_server_accept (SOCKET sockfd);
 extern int css_get_max_socket_fds (void);
+
+extern int css_get_peer_name (SOCKET sockfd, char *hostname, size_t len);
+extern int css_get_sock_name (SOCKET sockfd, char *hostname, size_t len);
+
 #endif /* _WINTCP_H_ */

@@ -1,0 +1,135 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>관계 연산자</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n관계 연산자");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; 관계 연산자<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>관계 연산자</h3>
+<h6>설명</h6>
+<p>관계 연산자는 두 수식의 값을 비교하여 참 또는 거짓을 반환한다. 비교는 수식의 두 인자의 순서에 기반하여 이루어지며, 항상 첫 번째 수식이 두 번째 수식에 비교된다. 관계 연산의 비교 인자들은 같은 데이터 타입이거나 시스템에 의해서 공통의 데이터 타입으로 묵시적으로 변환될 수 있어야 한다. 그렇지 못하면 명시적으로 타입을 변환해주어야 한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="var">value_expression&#160; relational_operator&#160; value_expression</span><br />
+<br />
+<span class="var">value_expression :</span><br />
+<span class="var">bit string</span><br />
+<span class="var">character string</span><br />
+<span class="var">numeric value</span><br />
+<span class="var">date-time value</span><br />
+<span class="var">collection value</span>&#160;<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">relational_operator :</span><br />
+= &#160;&#160;&#160;(같다)<br />
+&gt; &#160;&#160;&#160;(크다)<br />
+&lt; &#160;&#160;&#160;(작다)<br />
+&lt;&gt; &#160;&#160;(다르다)<br />
+&lt;= &#160;&#160;(작거나 같다)<br />
+&gt;= &#160;&#160;(크거나 같다)</p>
+<ul>
+<li><span class="var">value_expression</span> : 비교할 수식을&#160;선언한다.
+<ul>
+<li>bit string : 비트열에 대하여 부울린 연산을 수행할 수 있으며, 모든 관계 연산자를 비트열을&#160;비교하는데 사용할 수 있다. 길이가 같지 않은 두 수식을 비교할 때는 길이가 짧은 비트열의 오른쪽 끝에 0이 추가된다.</li>
+<li>character string : 관계 연산자를 통해 비교할 두 문자열은 같은 문자 코드 세트를 가져야 한다. 문자 코드와 연관된 정렬 체계(collation)에 의해 비교 순서가 결정된다. 서로 다른 길이의 문자열을 비교할 때는, 비교 전에 길이가 긴 문자열의 길이와 같아지도록 길이가 짧은 문자열 뒤에 공백을 추가한다.</li>
+<li>numeric value : 모든 숫자 값을 관계 연산자를 이용하여 비교할 수 있으며, 모든 수치형 타입을 부울린 비교에 사용할 수 있다. 서로 다른 수치형 타입을 비교할 때에는&#160;시스템이 묵시적으로 타입을 변환한다. 예를 들어, <span class="keyword">INTEGER</span> 값을 <span class="keyword">DECIMAL</span> 값과 비교할 때 시스템은 먼저 <span class="keyword">INTEGER</span>를 <span class="keyword">DECIMAL</span>로 변환한 후 비교한다. <span class="keyword">FLOAT</span>에 대해서 비교할 때에는 <span class="keyword">FLOAT</span>는 시스템 종속적으로 처리되므로 정확한 값이 아니라 범위를 지정해야 한다.</li>
+<li>date-time value : 날짜-시간 값을 같은 타입 간에 비교할 때에 값의 순서는 연대기 순으로 결정된다. 즉, 두 개의 날짜와 시간&#160;값을 비교할 때, 이전 날짜가 나중 날짜보다 작은 것으로 간주된다. 서로 다른 타입의 날짜-시간 값은 관계 연산자를 통해 비교할 수 없다.</li>
+<li>collection value : 두 순차집합을 비교할 때에는 순차집합이 생성되었을 때 사용자가 명시한 순서대로 원소 간의 비교가 이루어진다. 집합과 다중집합을 포함하는 비교는 적절한 집합 연산자로 오버로딩 된다. 집합, 다중집합, 리스트 또는 순차집합에 대한 비교 연산을 이 장의 뒷부분에서 설명하는 포함 연산자를 이용하여 수행할 수 있다. 자세한 정보는 <a href="syntax_operator_contain_contain.htm">포함 연산자</a>를 참조한다.</li>
+<li><span class="keyword">NULL</span> : <span class="keyword">NULL</span> 값은 모든 데이터 타입의 값 범위 내에 포함되지 않는다. 따라서, <span class="keyword">NULL</span> 값의 비교는 주어진 값이 <span class="keyword">NULL</span> 값인지 아닌지에 대한 비교만 가능하다. <span class="keyword">NULL</span> 값이 다른 데이터 타입으로 할당될 때 묵시적인 타입 변경은 일어나지 않는다. 예를 들어, <span class="keyword">INTEGER</span> 타입의 속성이 <span class="keyword">NULL</span> 값을 가지고 있고 부동 소수점 타입과 비교할 때, 비교하기 전에 <span class="keyword">NULL</span> 값을 <span class="keyword">FLOAT</span> 형으로 변환하지 않는다. <span class="keyword">NULL</span> 값에 대한 관계 연산은 결과를 반환하지 않는다.</li>
+</ul>
+</li>
+<li><span class="var">&#160;relational_operator</span> :&#160;관계 연산자를 이용하여 두 수식의 값을 비교한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

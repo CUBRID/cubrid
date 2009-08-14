@@ -39,8 +39,10 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -s, --single-line            단일 라인 실행\n\
   -c, --command=ARG            CSQL 명령어들\n\
   -l, --line-output            한 라인 내에 값 표시\n\
+  -r, --read-only              읽기 전용 모드\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
+      --sysadm                 시스템 관리자 모드\n\
 \n\
 추가적인 정보는 http://www.cubrid.com 에서 얻을 수 있습니다.\n
 41 %s: 환경 변수 %s_MODE 의 값이 틀림. \n%s 또는 %s 이어야 합니다.\n
@@ -67,15 +69,11 @@ $set 1 MSGCAT_CSQL_SET_CSQL
 65 결과 없음.
 70 %d 개의 열이 %s.
 $ These 3 should be blank
-$quote "
-71 ""
-72 ""
-73 ""
-$quote
 75 자동화된 API 시험기
 76 적합하지 않은 자동화 API 시험기
 79 csql>
 80 csql
+81 sysadm>
 
 145 <도움말: 클래스 스키마>
 146 없음
@@ -158,6 +156,7 @@ $ csql help messages
    ;TRigger [`*'|trigger-name] - 트리거 정의 출력.\n\
    ;Get system_parameter       - 시스템 파라메터 보기.\n\
    ;SEt system_parameter=value - 시스템 파라메터 설정.\n\
+   ;PLan [simple|detail|off]   - 쿼리 플랜 보기 설정.\n\
    ;Info <command>             - 내부 정보 출력.\n\
    ;TIme [ON/OFF]              - 쿼리 수행 시간 보기 설정|해제\n\
    ;HISTORYList                - 수행된 쿼리 리스트 보기.\n\

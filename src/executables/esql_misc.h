@@ -126,6 +126,12 @@ enum ex_msg
   EX_TRANS_SET = 14
 };
 
+enum
+{
+  MSG_OUT_OF_MEMORY = 1
+};
+
+
 enum scanner_mode
 {
   ECHO_MODE = 0,

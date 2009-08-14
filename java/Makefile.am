@@ -4,10 +4,10 @@ JDBC_SRC_DIR = $(SRC)/jdbc
 
 DRIVER = jspserver.jar
 
-JDBC_DRIVER_MAJOR_VERSION = ${shell cut -d . -f 1 ${top_srcdir}/BUILD_NUMBER}
-JDBC_DRIVER_MINOR_VERSION = ${shell cut -d . -f 2 ${top_srcdir}/BUILD_NUMBER}
-JDBC_DRIVER_PATCH_VERSION = ${shell cut -d . -f 3 ${top_srcdir}/BUILD_NUMBER}
-JDBC_DRIVER_SERIAL_NUMBER = ${shell cut -d . -f 4 ${top_srcdir}/BUILD_NUMBER}
+JDBC_DRIVER_MAJOR_VERSION = `cut -d . -f 1 ${top_srcdir}/BUILD_NUMBER`
+JDBC_DRIVER_MINOR_VERSION = `cut -d . -f 2 ${top_srcdir}/BUILD_NUMBER`
+JDBC_DRIVER_PATCH_VERSION = `cut -d . -f 3 ${top_srcdir}/BUILD_NUMBER`
+JDBC_DRIVER_SERIAL_NUMBER = `cut -d . -f 4 ${top_srcdir}/BUILD_NUMBER`
 JDBC_VERSION = \
 	-DJDBC_DRIVER_MAJOR_VERSION=$(JDBC_DRIVER_MAJOR_VERSION) \
 	-DJDBC_DRIVER_MINOR_VERSION=$(JDBC_DRIVER_MINOR_VERSION) \
@@ -16,7 +16,7 @@ JDBC_VERSION = \
 	-DSERVER_SIDE_JDBC
 PJAVA_CFLAGS = $(JDBC_VERSION) @JDK6_DEFINE@
 
-javadir = ${prefix}/java
+javadir = @JAVA_DIR@
 java_DATA = $(DRIVER) ${JDBC_SRC_DIR}/logging.properties
 
 BUILT_SOURCES = \

@@ -1,0 +1,400 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>OID와 컬렉션 사용</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nJDBC API\nJDBC 프로그래밍\nOID와 컬렉션 사용");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC 프로그래밍<\/a> &nbsp;&gt;&nbsp; OID와 컬렉션 사용<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>OID와 컬렉션 사용</h4>
+<p>JDBC 스펙에 정의된 메소드 이외에 CUBRID JDBC 드라이버에서 추가로 OID, 컬렉션(set, multiset, sequence), GLO 등을 다루는 메소드를 제공한다.</p>
+<p>이 메소드의 사용을 위해서는 기본적으로 import하는 CUBRID JDBC 드라이버 클래스 이외에 <span class="keyword">cubrid.sql.*;</span>를 import해야 한다. 또한 표준 JDBC API에서 제공하는 <span class="keyword">ResultSet</span> 클래스가 아닌 <span class="keyword">CUBRIDResultSet</span> 클래스로 변환하여 결과를 받아야 한다.</p>
+<p class="code">import cubrid.jdbc.driver.* ;<br />
+import cubrid.sql.* ;<br />
+...<br />
+CUBRIDResultSet urs = (CUBRIDResultSet) stmt.executeQuery(<br />
+"SELECT city FROM location");</p>
+<p class="note"><span class="notice-title">주의</span> CUBRID의 확장 API를 사용하면, <span class="keyword">AUTO COMMIT</span> 기능을 설정하였더라도 <span class="keyword">AUTO COMMIT</span>이 되지 않는다. 따라서 항상 open한 연결에 대해 커밋를 해주어야 한다. CUBRID 확장 API는 OID, 컬렉션, GLO 등을 다루는 메소드이다.</p>
+<h6>OID사용</h6>
+<p>OID를 사용할 때 다음의 규칙을 지켜야 한다.</p>
+<ul>
+<li><span class="keyword">CUBRIDOID</span>를 사용하기 위해서는 반드시 <span class="keyword">cubrid.sql.*</span>를 import 해야 한다. (a)</li>
+<li><span class="keyword">SELECT</span> 문에 클래스명을 주어 OID를 가져올 수 있다. 물론 다른 속성과 혼용해서 사용할 수도 있다. (b)</li>
+<li>질의에 대한 <span class="keyword">ResultSet</span>은 반드시 <span class="keyword">CUBRIDResultSet</span>으로 받아야 한다. (c)</li>
+<li><span class="keyword">CUBRIDResultSet</span>에서 OID를 가져오는 메소드는 <span class="keyword">getOID</span>()이다. (d)</li>
+<li>OID에서 값을 가져오기 위해서는 <span class="keyword">getValues</span>() 메소드를 통해 가져올 수 있다. 그 결과는 <span class="keyword">ResultSet</span>이다. (e)</li>
+<li>OID에 값을 대입하기 위해서는 <span class="keyword">setValues</span>() 메소드를 통해서 적용할 수 있다. (f)</li>
+<li>확장 API 사용시에는 연결에 대해 항상 <span class="keyword">commit</span>()을 해주어야 한다. (g)</li>
+</ul>
+<p class="code">import java.sql.*;<br />
+import java.lang.*;<br />
+<span class="code-emphasis">import cubrid.sql.*;</span> //a<br />
+import cubrid.jdbc.driver.*;<br />
+<br />
+class OID_Sample<br />
+{<br />
+&#160;&#160;&#160;public static void main (String args [])<br />
+&#160;&#160;&#160;{<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String url= "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String user = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String passwd = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">String sql = "select location from location";</span> //b<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String[] attr = { "lodging", "country", "city",<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;"street", "latitude", "longitude" } ;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Object[] value = { "Korea Hotel", "Korea", "Seoul","NA",<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;new Float(36.5), new Float(55.5) };<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Connection con = DriverManager.getConnection(url,user,passwd);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = con.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">CUBRIDResultSet rs = (CUBRIDResultSet)stmt.executeQuery(sql);</span> //c<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;ResultSetMetaData rsmd = rs.getMetaData();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;int numOfColumn = rsmd.getColumnCount();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;for (int i=1; i &lt;= numOfColumn; i++ ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;String ColumnName=rsmd.getColumnName(i);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;String JdbcType=rsmd.getColumnTypeName(i);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(ColumnName );<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print("("+ JdbcType + ")");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(" | ");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print("\n");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDResultSet rsoid = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;int k=1;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;while (rs.next ()) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">CUBRIDOID oid = rs.getOID(1);</span> //d<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print("OID");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(" | ");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">rsoid=(CUBRIDResultSet)oid.getValues(attr);</span> //e<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;while (rsoid.next()) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;for( int j=1; j &lt;= attr.length; j++ ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(rsoid.getObject(j));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(" | ");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print("\n");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;if (k == 1) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">&#160;oid.setValues(attr, value);</span> //f<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;k = 0;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">&#160;con.commit();</span> //g<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;//System.err.println(e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<h6>컬렉션 사용</h6>
+<p>아래 예제 1의 'a'에 해당하는 부분이 <span class="keyword">CUBRIDResultSet</span>으로부터 컬렉션 타입의 데이터를 가져오는 부분으로 그 결과는 배열 형태로 반환한다.</p>
+<p>예제 1)</p>
+<p class="code">import java.sql.*;<br />
+import java.lang.*;<br />
+import cubrid.sql.*;<br />
+import cubrid.jdbc.driver.*;<br />
+&#160;<br />
+// create class collection_test(<br />
+// settest set(integer),<br />
+// multisettest multiset(integer),<br />
+// listtest list(Integer)<br />
+// );<br />
+//<br />
+&#160;<br />
+// insert into collection_test values({1,2,3},{1,2,3},{1,2,3});<br />
+// insert into collection_test values({2,3,4},{2,3,4},{2,3,4});<br />
+// insert into collection_test values({3,4,5},{3,4,5},{3,4,5});<br />
+&#160;<br />
+class Collection_Sample<br />
+{<br />
+&#160;&#160;&#160;public static void main (String args [])<br />
+&#160;&#160;&#160;{<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String url= "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String user = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String passwd = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String sql = "select settest,multisettest,listtest from collection_test";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e){<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Connection con = DriverManager.getConnection(url,user,passwd);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = con.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDResultSet rs = (CUBRIDResultSet) stmt.executeQuery(sql);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDResultSetMetaData rsmd = (CUBRIDResultSetMetaData) rs.getMeta Data();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;int numbOfColumn = rsmd.getColumnCount();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;while (rs.next ()) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;for (int j=1; j&lt;=numbOfColumn; j++ ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="code-emphasis">Object[] reset = (Object[]) rs.getCollection(j);</span> //a<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;for (int m=0 ; m &lt; reset.length ; m++)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(reset[m] +",");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print(" | ");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.print("\n");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<p>예제 2)</p>
+<p class="code">import java.sql.*;<br />
+import java.io.*;<br />
+import java.lang.*;<br />
+import cubrid.sql.*;<br />
+import cubrid.jdbc.driver.*;<br />
+&#160;<br />
+// create class collection_test(<br />
+// settest set(integer),<br />
+// multisettest multiset(integer),<br />
+// listtest list(Integer)<br />
+// );<br />
+//<br />
+// insert into collection_test values({1,2,3},{1,2,3},{1,2,3});<br />
+// insert into collection_test values({2,3,4},{2,3,4},{2,3,4});<br />
+// insert into collection_test values({3,4,5},{3,4,5},{3,4,5});<br />
+&#160;<br />
+class SetOP_Sample<br />
+{<br />
+&#160;&#160;&#160;public static void main (String args [])<br />
+&#160;&#160;&#160;{<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String url = "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String user = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String passwd = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String sql = "select collection_test from collection_test";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e){<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDConnection con =(CUBRIDConnection)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;DriverManager.getConnection(url,user,passwd);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = con.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDResultSet rs = (CUBRIDResultSet)stmt.executeQuery(sql);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;while (rs.next ()) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDOID oid = rs.getOID(1);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.addToSet("settest",new Integer(10));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.addToSet("multisettest",new Integer(20));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.addToSequence("listtest",1,new Integer(30));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.addToSequence("listtest",100,new Integer(100));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.putIntoSequence("listtest",99,new Integer(99));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.removeFromSet("settest",new Integer(1));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.removeFromSet("multisettest",new Integer(2));<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.removeFromSequence("listtest",99);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.removeFromSequence("listtest",1);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.commit();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<h6>GLO 사용</h6>
+<p>GLO를 사용하려면 DriverManager를 통해 연결할 때 반드시 <span class="keyword">CUBRIDConnection</span>으로 해야 한다. <span class="keyword">CUBRIDConnection</span>으로부터 얻은 연결은 <span class="keyword">getNewGLO</span>() 메소드를 사용해서&#160;<span class="keyword">FileInputStream</span> 객체를 입력할 수 있다. 그 결과로 <span class="keyword">CUBRIDOID</span> 클래스의 인스턴스가 반환된다.</p>
+<p>예제 1)</p>
+<p class="code">import java.sql.*;<br />
+import java.sql.*;<br />
+import java.io.*;<br />
+import java.lang.*;<br />
+import cubrid.jdbc.driver.*;<br />
+import cubrid.sql.*;<br />
+&#160;<br />
+//-----------------------------------------------------------<br />
+// create class filetest under glo<br />
+//<br />
+// assumes that testin1, testin2 files are in the location<br />
+// of the execution of this program.<br />
+// result of theexecution will create in the location<br />
+// of execution,<br />
+//------------------------------------------------------------<br />
+&#160;<br />
+class GLO_Sample<br />
+{<br />
+&#160;&#160;&#160;public static void main (String args [])<br />
+&#160;&#160;&#160;{<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String url = "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String user = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String passwd = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e){<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDConnection con = (CUBRIDConnection)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;DriverManager.getConnection(url,user,passwd);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;FileInputStream inputfile = new FileInputStream("testin");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDOID oid = con.getNewGLO("filetest", inputfile);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;inputfile.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("getNewGLO1..");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;FileOutputStream outputfile = new FileOutputStream("testout");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.loadGLO(outputfile);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;outputfile.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("loadGLO1..");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;inputfile = new FileInputStream("testin2");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.saveGLO( inputfile );<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;inputfile.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("saveGLO2..");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;outputfile = new FileOutputStream("testout2");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid.loadGLO(outputfile);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;outputfile.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("loadGLO2..");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.commit();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<p>예제 2)</p>
+<p class="code">import java.sql.*;<br />
+import java.lang.*;<br />
+import cubrid.jdbc.driver.*;<br />
+import cubrid.sql.*;<br />
+&#160;<br />
+class SetOID_Sample<br />
+{<br />
+&#160;&#160;&#160;public static void main (String args [])<br />
+&#160;&#160;&#160;{<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String url = "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String user = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String passwd = "";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String usql = "update location set city='Pusan' where location=?";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String sql = "select location, city from location";<br />
+&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(Exception e){<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDConnection con = (CUBRIDConnection)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;DriverManager.getConnection(url,user,passwd;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = con.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDResultSet rs = (CUBRIDResultSet)stmt.executeQuery(sql);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDOID oid = null;<br />
+&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.next()<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;oid = rs.getOID(1);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRIDPreparedStatement ps = (CUBRIDPreparedStatement)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.prepareStatement(usql);<br />
+&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;ps.setOID(1, oid); // OID of the last tuple<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;ps.executeUpdate();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;con.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch(SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;e.printStackTrace();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;}<br />
+}</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

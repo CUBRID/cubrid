@@ -1,0 +1,72 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<book name="CUBRID 매니저 소개" >
+  <item name="CUBRID 매니저 구조" url="manager/manager_architecture_server.htm" />
+  <book name="CUBRID 매니저 클라이언트" >
+    <item name="RCP 응용 프로그램" url="manager/manager_architecture_client_rcp.htm" />
+    <item name="Eclipse 플러그인" url="manager/manager_architecture_client_eclipse.htm" />
+  </book>
+</book>
+<book name="CUBRID 매니저 실행" >
+  <item name="실행 환경 설정" url="manager/manager_execute_setting.htm" />
+  <item name="CUBRID 매니저 서버 실행" url="manager/manager_execute_server.htm" />
+  <item name="CUBRID 매니저 클라이언트 실행" url="manager/manager_execute_client.htm" />
+</book>
+<book name="호스트 관리" >
+  <item name="기본 호스트 정보" url="manager/manager_host_default.htm" />
+  <item name="호스트 연결 및 연결 해제" url="manager/manager_host_connect.htm" />
+  <item name="호스트 추가 및 삭제" url="manager/manager_host_add.htm" />
+</book>
+<item name="서비스 관리" url="manager/manager_service.htm" />
+<book name="사용자 관리" >
+  <item name="사용자 권한 설정" url="manager/manager_user_auth.htm" />
+  <item name="사용자 추가, 편집 및 삭제" url="manager/manager_user_edit.htm" />
+</book>
+<item name="속성 관리" url="manager/manager_properties.htm" />
+<book name="질의 편집기" >
+  <item name="질의 편집기 구조" url="manager/manager_queryeditor_architecture.htm" />
+  <item name="툴바 기능" url="manager/manager_queryeditor_toolbar.htm" />
+  <item name="질의 편집 창" url="manager/manager_queryeditor_editor.htm" />
+  <item name="질의 결과 창" url="manager/manager_queryeditor_result.htm" />
+  <item name="질의 편집기 옵션" url="manager/manager_queryeditor_option.htm" />
+  <item name="질의 실행 계획 보기" url="manager/manager_queryeditor_queryplan.htm" />
+</book>
+<book name="데이터베이스" >
+  <item name="데이터베이스 기능 구조" url="manager/manager_database_architecture.htm" />
+  <item name="데이터베이스 생성" url="manager/manager_database_add.htm" />
+  <item name="데이터베이스 설정" url="manager/manager_database_set.htm" />
+  <item name="사용자" url="manager/manager_database_user.htm" />
+  <item name="테이블" url="manager/manager_database_table.htm" />
+  <item name="뷰" url="manager/manager_database_view.htm" />
+  <item name="트리거" url="manager/manager_database_trigger.htm" />
+  <item name="시리얼" url="manager/manager_database_serial.htm" />
+  <item name="저장 프로시저" url="manager/manager_database_procedure.htm" />
+  <book name="작업 자동화" >
+    <item name="백업 자동화" url="manager/manager_database_jobauto_backup.htm" />
+    <item name="질의 자동화" url="manager/manager_database_jobauto_query.htm" />
+  </book>
+  <item name="저장 공간" url="manager/manager_database_dbspace.htm" />
+  <item name="데이터베이스 로드" url="manager/manager_database_load.htm" />
+  <item name="데이터베이스 언로드" url="manager/manager_database_unload.htm" />
+  <item name="데이터베이스 백업" url="manager/manager_database_backup.htm" />
+  <item name="데이터베이스 복구" url="manager/manager_database_restore.htm" />
+  <item name="데이터베이스 이름 변경" url="manager/manager_database_rename.htm" />
+  <item name="데이터베이스 복사" url="manager/manager_database_copy.htm" />
+  <item name="데이터베이스 최적화" url="manager/manager_database_optimize.htm" />
+  <item name="데이터베이스 공간 정리" url="manager/manager_database_space.htm" />
+  <item name="데이터베이스 검사" url="manager/manager_database_check.htm" />
+  <item name="데이터베이스 잠금 정보" url="manager/manager_database_lock.htm" />
+  <item name="데이터베이스 트랜잭션 정보" url="manager/manager_database_transaction.htm" />
+  <item name="데이터베이스 삭제" url="manager/manager_database_delete.htm" />
+  <item name="OID 탐색기" url="manager/manager_database_oid.htm" />
+</book>
+<book name="브로커" >
+  <item name="브로커 구조" url="manager/manager_broker_architecture.htm" />
+  <item name="브로커 메뉴" url="manager/manager_broker_menu.htm" />
+  <item name="개별 브로커 기능" url="manager/manager_broker_function.htm" />
+  <item name="SQL 로그" url="manager/manager_broker_sqllog.htm" />
+</book>
+<item name="상태 모니터" url="manager/manager_monitor.htm" />
+<item name="로그" url="manager/manager_log.htm" />
+
+</tocdata>

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -25,15 +25,6 @@
 
 #include "config.h"
 
-#include "error_manager.h"
-#include "db.h"
-#include "environment_variable.h"
-#include "system_parameter.h"
-#include "release_string.h"
-#include "memory_alloc.h"
-#include "jsp_sr.h"
-
-#if !defined(DISABLE_JSP)
 #if defined(WINDOWS)
 #include <windows.h>
 #include <Delayimp.h>
@@ -44,6 +35,15 @@
 #endif /* !WINDOWS */
 
 #include <jni.h>
+
+#include "db.h"
+#include "environment_variable.h"
+#include "system_parameter.h"
+#include "release_string.h"
+#include "memory_alloc.h"
+#include "storage_common.h"
+#include "error_manager.h"
+#include "jsp_sr.h"
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
@@ -112,10 +112,6 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 JavaVM *jvm = NULL;
 jint sp_port = -1;
 
-#endif /* !DISABLE_JSP */
-
-#if !defined(DISABLE_JSP)
-
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
 FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
@@ -128,9 +124,7 @@ extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 static void *jsp_get_create_java_vm_function_ptr (void);
 static void jsp_display_warning_msg (void);
 #endif /* !WINDOWS */
-#endif /* !DISABLE_JSP */
 
-#if !defined(DISABLE_JSP)
 #if defined(WINDOWS)
 
 /*
@@ -308,28 +302,33 @@ static void *
 jsp_get_create_java_vm_function_ptr (void)
 {
   char *java_home = NULL;
-  char jvm_library_path[BUF_SIZE];
-  void *libVM_p = dlopen (JVM_LIB_FILE, RTLD_LAZY | RTLD_GLOBAL);
+  char jvm_library_path[PATH_MAX];
+  void *libVM_p;
 
+  libVM_p = dlopen (JVM_LIB_FILE, RTLD_LAZY | RTLD_GLOBAL);
   if (libVM_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
 	      dlerror ());
 
       java_home = getenv ("JAVA_HOME");
-      if (java_home)
+      if (java_home != NULL)
 	{
-	  sprintf (jvm_library_path, "%s/%s/%s", java_home, JVM_LIB_PATH,
-		   JVM_LIB_FILE);
+	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home,
+		    JVM_LIB_PATH, JVM_LIB_FILE);
 	  libVM_p = dlopen (jvm_library_path, RTLD_LAZY | RTLD_GLOBAL);
 
 	  if (libVM_p == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
 	      return NULL;
 	    }
 	}
       else
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND,
+		  1, dlerror ());
 	  return NULL;
 	}
     }
@@ -354,9 +353,6 @@ jsp_display_warning_msg ()
 #endif
 }
 
-#endif /* !DISABLE_JSP */
-
-
 /*
  * jsp_start_server -
  *   return: Error Code
@@ -369,9 +365,6 @@ jsp_display_warning_msg ()
 int
 jsp_start_server (const char *db_name, const char *path)
 {
-#if defined(DISABLE_JSP)
-  return -1;
-#else /* DISABLE_JSP */
   JNIEnv *env_p = NULL;
   jint res;
   jclass cls, string_cls;
@@ -380,39 +373,37 @@ jsp_start_server (const char *db_name, const char *path)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption options[3];
-  char classpath[BUF_SIZE], logging_prop[BUF_SIZE];
+  char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
   char *loc_p, *locale;
   const char *envroot;
   char optionString2[] = "-Xrs";
   CREATE_VM_FUNC create_vm_func = NULL;
 
-  if (!PRM_JAVA_STORED_PROCEDURE)
+  if (PRM_JAVA_STORED_PROCEDURE == false)
     {
       return NO_ERROR;
     }
 
-  if (jvm)
+  if (jvm != NULL)
     {
       return NO_ERROR;		/* already created */
     }
 
   envroot = envvar_root ();
+  if (envroot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
+	      1, "envvar_root");
+      return ER_SP_CANNOT_START_JVM;
+    }
 
-  strcpy (classpath, "-Djava.class.path=");
-  strcat (classpath, envroot);
-#if defined(WINDOWS)
-  strcat (classpath, "\\java\\jspserver.jar");
-#else /* not WINDOWS */
-  strcat (classpath, "/java/jspserver.jar");
-#endif /* not WINDOWS */
+  snprintf (classpath, sizeof (classpath) - 1,
+	    "-Djava.class.path=%s%cjava%cjspserver.jar",
+	    envroot, PATHSLASH, PATHSLASH);
 
-  strcpy (logging_prop, "-Djava.util.logging.config.file=");
-  strcat (logging_prop, envroot);
-#if defined(WINDOWS)
-  strcat (logging_prop, "\\java\\logging.properties");
-#else /* not WINDOWS */
-  strcat (logging_prop, "/java/logging.properties");
-#endif /* not WINDOWS */
+  snprintf (logging_prop, sizeof (logging_prop) - 1,
+	    "-Djava.util.logging.config.file=%s%cjava%clogging.properties",
+	    envroot, PATHSLASH, PATHSLASH);
 
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
@@ -424,7 +415,7 @@ jsp_start_server (const char *db_name, const char *path)
 
   locale = NULL;
   loc_p = setlocale (LC_TIME, NULL);
-  if (loc_p)
+  if (loc_p != NULL)
     {
       locale = strdup (loc_p);
     }
@@ -452,13 +443,17 @@ jsp_start_server (const char *db_name, const char *path)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
 	      dlerror ());
       jsp_display_warning_msg ();
+      if (locale != NULL)
+	{
+	  free (locale);
+	}
       return er_errid ();
     }
 
 #endif /* !WINDOWS */
 
   setlocale (LC_TIME, locale);
-  if (locale)
+  if (locale != NULL)
     {
       free (locale);
     }
@@ -551,7 +546,6 @@ error:
   jvm = NULL;
 
   return er_errid ();
-#endif /* !DISABLE_JSP */
 }
 
 /*
@@ -578,11 +572,7 @@ jsp_stop_server (void)
 int
 jsp_server_port (void)
 {
-#if defined(DISABLE_JSP)
-  return -1;
-#else /* DISABLE_JSP */
   return sp_port;
-#endif /* !DISABLE_JSP */
 }
 
 /*
@@ -596,9 +586,5 @@ jsp_server_port (void)
 int
 jsp_jvm_is_loaded (void)
 {
-#if defined(DISABLE_JSP)
-  return false;
-#else /* DISABLE_JSP */
   return jvm != NULL;
-#endif /* !DISABLE_JSP */
 }

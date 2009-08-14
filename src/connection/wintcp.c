@@ -33,6 +33,7 @@
 #include <sys/timeb.h>
 #include <winsock2.h>
 #include <windows.h>
+#include <ws2tcpip.h>
 
 #include "dbtype.h"
 #ifdef SERVER_MODE
@@ -159,7 +160,7 @@ css_tcp_client_open (const char *host_name, int port)
   SOCKET fd;
 
   fd = css_tcp_client_open_with_retry (host_name, port, true);
-  if (IS_INVALID_SOCKET(fd))
+  if (IS_INVALID_SOCKET (fd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 0);
@@ -175,7 +176,8 @@ css_tcp_client_open (const char *host_name, int port)
  *   willretry(in):
  */
 SOCKET
-css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry)
+css_tcp_client_open_with_retry (const char *host_name, int port,
+				bool will_retry)
 {
   int bool_value;
   SOCKET s;
@@ -433,32 +435,6 @@ css_gethostid (void)
 }
 
 /*
- * css_broadcast_to_client() - send an Out-Of_Band (OOB) data message to a
- *                             client
- *   return:
- *   client_fd(in):
- *   data(in):
- */
-bool
-css_broadcast_to_client (SOCKET client_fd, char data)
-{
-  int rc;
-
-  TPRINTF ("About to send a broadcast byte of %ld\n", (int) data);
-
-  rc = send (client_fd, &data, 1, MSG_OOB);
-  if (rc == SOCKET_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ERR_CSS_WINTCP_BROADCAST_TO_CLIENT, 1, WSAGetLastError ());
-      return false;
-    }
-
-  TPRINTF ("Sent broadcast message of %ld bytes\n", rc);
-  return true;
-}
-
-/*
  * css_tcp_setup_server_datagram() - datagram stubs
  *   return:
  *   pathname(in):
@@ -678,18 +654,6 @@ css_master_accept (SOCKET sockfd)
 }
 
 /*
- * css_read_broadcast_information() - gets broadcast info from server
- *   return:
- *   fd(in):
- *   byte(out):
- */
-int
-css_read_broadcast_information (SOCKET fd, char *byte)
-{
-  return (recv (fd, byte, 1, MSG_OOB));
-}
-
-/*
  * css_open_server_connection_socket() - open the socket used by the server
  *                                       for incomming client connection
  *                                       requests
@@ -798,7 +762,51 @@ css_server_accept (SOCKET sockfd)
 }
 
 int
-css_get_max_socket_fds(void)
+css_get_max_socket_fds (void)
 {
   return max_socket_fds;
+}
+
+/*
+ * css_get_peer_name() - get the hostname of the peer socket
+ *   return: 0 if success; otherwise errno
+ *   hostname(in): buffer for hostname
+ *   len(in): size of the hostname buffer
+ */
+int
+css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
+{
+  struct sockaddr_in saddr_buf;
+  struct sockaddr *saddr;
+  int saddr_len;
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  saddr_len = sizeof (saddr_buf);
+  if (getpeername (sockfd, saddr, &saddr_len) != 0)
+    {
+      return WSAGetLastError ();
+    }
+  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+}
+
+/*
+ * css_get_sock_name() - get the hostname of the socket
+ *   return: 0 if success; otherwise errno
+ *   hostname(in): buffer for hostname
+ *   len(in): size of the hostname buffer
+ */
+int
+css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
+{
+  struct sockaddr_in saddr_buf;
+  struct sockaddr *saddr;
+  int saddr_len;
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  saddr_len = sizeof (saddr_buf);
+  if (getsockname (sockfd, saddr, &saddr_len) != 0)
+    {
+      return WSAGetLastError ();
+    }
+  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }

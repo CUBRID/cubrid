@@ -1,0 +1,119 @@
+﻿
+<html>
+<head>
+<title>cci_cursor</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nCCI API\ncci_cursor");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_cci_intro_intro.htm\">CCI API<\/a> &nbsp;&gt;&nbsp; cci_cursor<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cci_cursor</h3>
+<h6>설명</h6>
+<p>요청 핸들에 설정된 커서를 이동시킨다. <span class="keyword">cci_cursor</span>(<span class="var">req_handle</span>, 1, <span class="keyword">CCI_CURSOR_FIRST</span>, <span class="var">err_buf</span>)는 항상 첫 번째 위치로 커서를 이동시키고, <span class="keyword">cci_cursor</span>(<span class="var">req_handle</span>, 1, <span class="keyword">CCI_CURSOR_LAST</span>, <span class="var">err_buf</span>)는 마지막 위치로 커서를 이동시킨다. <span class="keyword">cci_cursor</span>(<span class="var">req_handle</span>, 1, <span class="keyword">CCI_CURSOR_CURRENT</span>, <span class="var">err_buf</span>) 는 커서의 현재 위치에서 다음 위치로 이동시킨다. 유효한 커서 위치가 아닐 경우 <span class="keyword">CCI_ER_NO_MORE_DATA</span>를 반환한다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cci_cursor</span>(int <span class="var">req_handle</span>, int <span class="var">offset</span>, <span class="keyword">T_CCI_CURSOR_POS</span> <span class="var">origin</span>, <span class="keyword">T_CCI_ERROR</span> *<span class="var">err_buf</span>)</p>
+<p></p>
+<p></p>
+<ul>
+<li><span class="var">req_handle</span> : (IN) 요청 핸들</li>
+<li><span class="var">offset</span> : (IN) 이동할 오프셋</li>
+<li><span class="var">origin</span> : (IN) 커서 위치</li>
+<li><span class="var">err_buf</span> :&#160;(OUT) 데이터베이스 에러 버퍼</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>에러 코드 (0 : 에러 없음)</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

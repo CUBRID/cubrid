@@ -42,6 +42,7 @@
 #else
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/timeb.h>
 #endif
 
 #ifdef V3_TEST
@@ -53,11 +54,12 @@
 #include "broker_util.h"
 #include "broker_filename.h"
 
+#if !defined(LIBCAS_FOR_JSP)
 static char db_err_log_file[PATH_MAX];
 static char as_pid_file_name[PATH_MAX] = "";
 
 int
-ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
+ut_access_log (int as_index, struct timeval * start_time, char error_flag,
 	       int error_log_offset)
 {
   FILE *fp;
@@ -69,14 +71,20 @@ ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
   time_t t1, t2;
   char *p;
   char err_str[4];
-  T_TIMEVAL end;
+  struct timeval end_time;
 
-  TIMEVAL_MAKE (&end);
+  gettimeofday (&end_time, NULL);
 
-  t1 = TIMEVAL_GET_SEC (start);
-  t2 = TIMEVAL_GET_SEC (&end);
-  ct1 = *localtime (&t1);
-  ct2 = *localtime (&t2);
+  t1 = start_time->tv_sec;
+  t2 = end_time.tv_sec;
+#if defined (WINDOWS)
+  if (localtime_s (&ct1, &t1) != 0 || localtime_s (&ct2, &t2) != 0)
+#else /* !WINDOWS */
+  if (localtime_r (&t1, &ct1) == NULL || localtime_r (&t2, &ct2) == NULL)
+#endif /* !WINDOWS */
+    {
+      return -1;
+    }
   ct1.tm_year += 1900;
   ct2.tm_year += 1900;
 
@@ -107,28 +115,29 @@ ut_access_log (int as_index, T_TIMEVAL * start, char error_flag,
 
 #ifdef V3_TEST
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
-	   as_index + 1, clt_ip, clt_appl, script, TIMEVAL_GET_SEC (start),
-	   TIMEVAL_GET_MSEC (start), TIMEVAL_GET_SEC (&end),
-	   TIMEVAL_GET_MSEC (&end), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
-	   ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1,
-	   ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec, (int) getpid (),
-	   err_str, error_log_offset, uts_size ());
+           "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+           "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
+           as_index + 1, clt_ip, clt_appl, script,
+           (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+           (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+           ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+           ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+           ct2.tm_min, ct2.tm_sec,
+           (int) getpid (), err_str, error_file_offset, uts_size());
 #else
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
-	   as_index + 1, clt_ip, clt_appl, script, TIMEVAL_GET_SEC (start),
-	   TIMEVAL_GET_MSEC (start), TIMEVAL_GET_SEC (&end),
-	   TIMEVAL_GET_MSEC (&end), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
-	   ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1,
-	   ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec, (int) getpid (),
-	   err_str, error_log_offset);
+           "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+           "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+           as_index + 1, clt_ip, clt_appl, script,
+           (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+           (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+           ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+           ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+           ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1);
 #endif
 
   fclose (fp);
-  return ((TIMEVAL_GET_SEC (&end)) - (TIMEVAL_GET_SEC (start)));
+  return (end_time.tv_sec - start_time->tv_sec);
 }
 
 char *
@@ -197,22 +206,6 @@ ut_file_unlock (char *lock_file)
   unlink (lock_file);
 }
 
-char *
-ut_timestamp_to_str (time_t ts)
-{
-  static char time_str_buf[32];
-  struct tm ct;
-
-  ct = *localtime (&ts);
-  ct.tm_year += 1900;
-
-  sprintf (time_str_buf, "%02d/%02d/%02d %02d:%02d:%02d",
-	   ct.tm_year, ct.tm_mon + 1, ct.tm_mday,
-	   ct.tm_hour, ct.tm_min, ct.tm_sec);
-
-  return time_str_buf;
-}
-
 #if defined(WINDOWS)
 int
 ut_kill_process (int pid, char *br_name, int as_index)
@@ -263,14 +256,15 @@ clear_sock_file:
 
   if (br_name != NULL && as_index >= 0)
     {
-      char tmp[PATH_MAX];
+      char tmp[PATH_MAX], dirname[PATH_MAX];
 
-      get_cubrid_file (FID_SOCK_DIR, tmp);
-      sprintf (tmp, "%s%s.%d", tmp, br_name, as_index + 1);
+      get_cubrid_file (FID_SOCK_DIR, dirname);
+      snprintf (tmp, PATH_MAX - 1, "%s%s.%d", dirname, br_name, as_index + 1);
       unlink (tmp);
 
-      get_cubrid_file (FID_AS_PID_DIR, tmp);
-      sprintf (tmp, "%s%s_%d.pid", tmp, br_name, as_index + 1);
+      get_cubrid_file (FID_AS_PID_DIR, dirname);
+      snprintf (tmp, PATH_MAX - 1, "%s%s_%d.pid", dirname, br_name,
+		as_index + 1);
       unlink (tmp);
     }
 
@@ -413,3 +407,90 @@ as_get_my_as_info (char *br_name, int *as_index)
 
   return 0;
 }
+#endif /* LIBCAS_FOR_JSP */
+
+int
+ut_time_string (char *buf)
+{
+  struct timeb tb;
+  struct tm tm, *tm_p;
+
+  if (buf == NULL)
+    {
+      return 0;
+    }
+
+  (void) ftime (&tb);
+#if defined(WINDOWS)
+  tm_p = localtime (&tb.time);
+  if (tm_p)
+    {
+      tm = *tm_p;
+  }
+#else
+  tm_p = localtime_r (&tb.time, &tm);
+#endif
+  tm.tm_mon++;
+  buf[0] = (tm.tm_mon / 10) + '0';
+  buf[1] = (tm.tm_mon % 10) + '0';
+  buf[2] = '/';
+  buf[3] = (tm.tm_mday / 10) + '0';
+  buf[4] = (tm.tm_mday % 10) + '0';
+  buf[5] = ' ';
+  buf[6] = (tm.tm_hour / 10) + '0';
+  buf[7] = (tm.tm_hour % 10) + '0';
+  buf[8] = ':';
+  buf[9] = (tm.tm_min / 10) + '0';
+  buf[10] = (tm.tm_min % 10) + '0';
+  buf[11] = ':';
+  buf[12] = (tm.tm_sec / 10) + '0';
+  buf[13] = (tm.tm_sec % 10) + '0';
+  buf[14] = '.';
+  buf[17] = (tb.millitm % 10) + '0';
+  tb.millitm /= 10;
+  buf[16] = (tb.millitm % 10) + '0';
+  tb.millitm /= 10;
+  buf[15] = (tb.millitm % 10) + '0';
+  buf[18] = '\0';
+
+  return 18;
+}
+
+#if defined (WINDOWS)
+/*
+ * gettimeofday - Windows port of Unix gettimeofday()
+ *   return: none
+ *   tp(out): where time is stored
+ *   tzp(in): unused
+ */
+int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+#if 1                           /* _ftime() version */
+  struct _timeb tm;
+  _ftime (&tm);
+  tp->tv_sec = tm.time;
+  tp->tv_usec = tm.millitm * 1000;
+  return 0;
+#else /* GetSystemTimeAsFileTime version */
+  FILETIME ft;
+  unsigned __int64 tmpres = 0;
+  static int tzflag;
+
+  GetSystemTimeAsFileTime (&ft);
+
+  tmpres |= ft.dwHighDateTime;
+  tmpres <<= 32;
+  tmpres |= ft.dwLowDateTime;
+
+  tmpres -= DELTA_EPOCH_IN_MICROSECS;
+
+  tmpres /= 10;
+
+  tv->tv_sec = (tmpres / 1000000UL);
+  tv->tv_usec = (tmpres % 1000000UL);
+
+  return 0;
+#endif
+}
+#endif /* WINDOWS */

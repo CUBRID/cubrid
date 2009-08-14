@@ -1,0 +1,147 @@
+﻿
+<html>
+<head>
+<title>cubrid_fetch</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_fetch");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_fetch<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_fetch</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_fetch</span> 함수는 질의 결과로부터 한 행을 얻는 데 사용된다. 결과를 가져온 후 커서는 자동으로 다음 행으로 이동한다.</p>
+<h6>구문</h6>
+<p class="syntax">mixed <span class="keyword">cubrid_fetch</span> (int <span class="var">req_handle</span>[, int <span class="var">type</span>])</p>
+<ul>
+<li><span class="var">req_handle</span> : 요청 핸들</li>
+<li><span class="var">type</span> &#160;: 가져올 결과 배열 타입<br />
+CUBRID_NUM, CUBRID_ASSOC,<br />
+CUBRID_BOTH, CUBRID_OBJECT</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : 결과 배열이나 객체.</li>
+<li class="desc"><span class="var">type</span> 인수에서 결정한다. <span class="var">type</span> 인수를 생략했을 때는 CUBRID_BOTH로 간주한다. 질의의 결과를 객체 데이터 타입으로 받을 경우는 결과 열 이름이 PHP에서 허용하는 식별자의 규칙에 맞아야 사용할 수 있다. 예를 들어 "count(*)"와 같은 열 이름은 객체 타입으로 받아서 사용할 수 없다.</li>
+<li class="desc"><span class="var">type</span>에 따른 결과의 형태는 다음과 같다.
+<ul>
+<li>CUBRID_NUM : 수치 배열 (0-기본)</li>
+<li>CUBRID_ASSOC : 연관 배열</li>
+<li>CUBRID_BOTH : 수치 그리고 연관 배열 (기본값)</li>
+<li>CUBRID_OBJECT : 질의 결과의 열 이름과 같은 이름의 속성을 가지는 객체</li>
+</ul>
+</li>
+<li>실패 : false</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$req = cubrid_execute ( $con, "select * from members",<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRID_INCLUDE_OID | CUBRID_ASYNC);<br />
+if ($req) {<br />
+&#160;&#160;&#160;while ( list ($id, $name) = cubrid_fetch ($req) ){<br />
+&#160;&#160;&#160;&#160;&#160;&#160;echo $id;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;echo $name;<br />
+&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;cubrid_close_request ($req);<br />
+}<br />
+$req = cubrid_execute ($con, "select * from teams");<br />
+if ($req) {<br />
+&#160;&#160;&#160;while ($row = cubrid_fetch ($req, CUBRID_OBJECT)) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;echo $row-&gt;id;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;echo $row-&gt;name;<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<h6>관련 항목</h6>
+<ul>
+<li><a href="api_php_execute.htm"><span class="keyword">cubrid_execute</span></a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

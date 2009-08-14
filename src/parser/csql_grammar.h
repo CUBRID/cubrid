@@ -387,77 +387,77 @@
      COMP_GE = 604,
      COMP_LE = 605,
      PARAM_HEADER = 606,
-     IdName = 607,
-     BracketDelimitedIdName = 608,
-     DelimitedIdName = 609,
-     UNSIGNED_INTEGER = 610,
-     UNSIGNED_REAL = 611,
-     CHAR_STRING = 612,
-     NCHAR_STRING = 613,
-     BIT_STRING = 614,
-     HEX_STRING = 615,
-     CPP_STYLE_HINT = 616,
-     C_STYLE_HINT = 617,
-     SQL_STYLE_HINT = 618,
-     ACTIVE = 619,
-     ANALYZE = 620,
-     AUTO_INCREMENT = 621,
-     COST = 622,
-     COMMITTED = 623,
-     CACHE = 624,
-     DECREMENT = 625,
-     GROUPS = 626,
-     GE_INF_ = 627,
-     GE_LE_ = 628,
-     GE_LT_ = 629,
-     GT_INF_ = 630,
-     GT_LE_ = 631,
-     GT_LT_ = 632,
-     HASH = 633,
-     INVALIDATE = 634,
-     INSTANCES = 635,
-     INF_LE_ = 636,
-     INF_LT_ = 637,
-     INFINITE_ = 638,
-     INACTIVE = 639,
-     INCREMENT = 640,
-     JAVA = 641,
-     LOCK_ = 642,
-     MAXIMUM = 643,
-     MAXVALUE = 644,
-     MEMBERS = 645,
-     MINVALUE = 646,
-     NAME = 647,
-     NOCYCLE = 648,
-     NOMAXVALUE = 649,
-     NOMINVALUE = 650,
-     PARTITION = 651,
-     PARTITIONING = 652,
-     PARTITIONS = 653,
-     PASSWORD = 654,
-     PRINT = 655,
-     PRIORITY = 656,
-     RANGE_ = 657,
-     REJECT_ = 658,
-     REMOVE = 659,
-     REORGANIZE = 660,
-     REPEATABLE = 661,
-     RETAIN = 662,
-     REVERSE = 663,
-     SERIAL = 664,
-     STABILITY = 665,
-     START_ = 666,
-     STATEMENT = 667,
-     STATUS = 668,
-     STDDEV = 669,
-     SYSTEM = 670,
-     THAN = 671,
-     TIMEOUT = 672,
-     TRACE = 673,
-     TRIGGERS = 674,
-     UNCOMMITTED = 675,
-     VARIANCE = 676,
-     WORKSPACE = 677
+     ACTIVE = 607,
+     ANALYZE = 608,
+     AUTO_INCREMENT = 609,
+     COST = 610,
+     COMMITTED = 611,
+     CACHE = 612,
+     DECREMENT = 613,
+     GROUPS = 614,
+     GE_INF_ = 615,
+     GE_LE_ = 616,
+     GE_LT_ = 617,
+     GT_INF_ = 618,
+     GT_LE_ = 619,
+     GT_LT_ = 620,
+     HASH = 621,
+     INVALIDATE = 622,
+     INSTANCES = 623,
+     INF_LE_ = 624,
+     INF_LT_ = 625,
+     INFINITE_ = 626,
+     INACTIVE = 627,
+     INCREMENT = 628,
+     JAVA = 629,
+     LOCK_ = 630,
+     MAXIMUM = 631,
+     MAXVALUE = 632,
+     MEMBERS = 633,
+     MINVALUE = 634,
+     NAME = 635,
+     NOCYCLE = 636,
+     NOMAXVALUE = 637,
+     NOMINVALUE = 638,
+     PARTITION = 639,
+     PARTITIONING = 640,
+     PARTITIONS = 641,
+     PASSWORD = 642,
+     PRINT = 643,
+     PRIORITY = 644,
+     RANGE_ = 645,
+     REJECT_ = 646,
+     REMOVE = 647,
+     REORGANIZE = 648,
+     REPEATABLE = 649,
+     RETAIN = 650,
+     REVERSE = 651,
+     SERIAL = 652,
+     STABILITY = 653,
+     START_ = 654,
+     STATEMENT = 655,
+     STATUS = 656,
+     STDDEV = 657,
+     SYSTEM = 658,
+     THAN = 659,
+     TIMEOUT = 660,
+     TRACE = 661,
+     TRIGGERS = 662,
+     UNCOMMITTED = 663,
+     VARIANCE = 664,
+     WORKSPACE = 665,
+     IdName = 666,
+     BracketDelimitedIdName = 667,
+     DelimitedIdName = 668,
+     UNSIGNED_INTEGER = 669,
+     UNSIGNED_REAL = 670,
+     CHAR_STRING = 671,
+     NCHAR_STRING = 672,
+     BIT_STRING = 673,
+     HEX_STRING = 674,
+     CPP_STYLE_HINT = 675,
+     C_STYLE_HINT = 676,
+     SQL_STYLE_HINT = 677
    };
 #endif
 
@@ -467,36 +467,7 @@
 
 #define YYMAXDEPTH	1000000
 
-//#define PARSER_DEBUG
-
-
-#ifdef PARSER_DEBUG
-
-#define DBG_PRINT printf("rule: %d\n", __LINE__); 
-#define PARSER_NEW_NODE(a, b) __make_node(a, b, __LINE__)
-#define PARSER_FREE_NODE(a, b) parser_free_node(a, b)
-#define PRINT_(a) printf(a)
-#define PRINT_1(a, b) printf(a, b)
-#define PRINT_2(a, b, c) printf(a, b, c)
-
-#else
-
-#define DBG_PRINT
-#define PARSER_NEW_NODE(a, b) parser_new_node(a, b)
-#define PARSER_FREE_NODE(a, b) parser_free_node(a, b)
-#define PRINT_(a)
-#define PRINT_1(a, b) 
-#define PRINT_2(a, b, c)
-
-#endif
-
-
-
-
-#define STACK_SIZE	128
-
-
-
+/* #define PARSER_DEBUG */
 
 #include "config.h"
 
@@ -521,6 +492,75 @@
 
 
 
+#ifdef PARSER_DEBUG
+#define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
+#define PRINT_(a) printf(a)
+#define PRINT_1(a, b) printf(a, b)
+#define PRINT_2(a, b, c) printf(a, b, c)
+#else
+#define DBG_PRINT
+#define PRINT_(a)
+#define PRINT_1(a, b)
+#define PRINT_2(a, b, c)
+#endif
+
+#define STACK_SIZE	128
+
+typedef struct function_map FUNCTION_MAP;
+struct function_map
+{
+  const char* keyword;
+  PT_OP_TYPE op;
+};
+
+
+static FUNCTION_MAP functions[] = {
+  {"abs", PT_ABS},
+  {"ceil", PT_CEIL},
+  {"char_length", PT_CHAR_LENGTH},
+  {"chr", PT_CHR},
+  {"decode", PT_DECODE},
+  {"decr", PT_DECR},
+  {"drand", PT_DRAND},
+  {"drandom", PT_DRANDOM},
+  {"exp", PT_EXP},
+  {"floor", PT_FLOOR},
+  {"greatest", PT_GREATEST},
+  {"groupby_num", PT_GROUPBY_NUM},
+  {"incr", PT_INCR},
+  {"inst_num", PT_INST_NUM},
+  {"instr", PT_INSTR},
+  {"instrb", PT_INSTR},
+  {"last_day", PT_LAST_DAY},
+  {"length", PT_CHAR_LENGTH},
+  {"lengthb", PT_CHAR_LENGTH},
+  {"least", PT_LEAST},
+  {"log", PT_LOG},
+  {"lpad", PT_LPAD},
+  {"ltrim", PT_LTRIM},
+  {"mod", PT_MODULUS},
+  {"months_between", PT_MONTHS_BETWEEN},
+  {"nvl", PT_NVL},
+  {"nvl2", PT_NVL2},
+  {"orderby_num", PT_ORDERBY_NUM},
+  {"power", PT_POWER},
+  {"rand", PT_RAND},
+  {"random", PT_RANDOM},
+  {"round", PT_ROUND},
+  {"rpad", PT_RPAD},
+  {"rtrim", PT_RTRIM},
+  {"sign", PT_SIGN},
+  {"sqrt", PT_SQRT},
+  {"substr", PT_SUBSTRING},
+  {"substrb", PT_SUBSTRING},
+  {"to_char", PT_TO_CHAR},
+  {"to_date", PT_TO_DATE},
+  {"to_datetime",PT_TO_DATETIME},
+  {"to_number", PT_TO_NUMBER},
+  {"to_time", PT_TO_TIME},
+  {"to_timestamp", PT_TO_TIMESTAMP},
+  {"trunc", PT_TRUNC},
+};
 
 
 static int parser_groupby_exception = 0;
@@ -595,14 +635,14 @@ typedef struct {
 #define CONTAINER_AT_2(a)			(a).c3
 #define CONTAINER_AT_3(a)			(a).c4
 
-#define YEN_SIGN_TEXT		"(\0xa1\0xef)" 
-#define DOLLAR_SIGN_TEXT	"$"	
-#define WON_SIGN_TEXT		"\\"		
+#define YEN_SIGN_TEXT		"(\0xa1\0xef)"
+#define DOLLAR_SIGN_TEXT	"$"
+#define WON_SIGN_TEXT		"\\"
 
 void yyerror_explicit(int line, int column);
 void yyerror(const char* s);
 
-int keyword_offset(const char* name);
+FUNCTION_MAP* keyword_offset(const char* name);
 PT_NODE* keyword_func(const char* name, PT_NODE* args);
 
 static PT_NODE* parser_make_expression(PT_OP_TYPE OP, PT_NODE* arg1, PT_NODE* arg2, PT_NODE* arg3);
@@ -617,7 +657,7 @@ static void parser_restore_cannot_cache(void);
 static void parser_save_and_set_si_datetime(int value);
 static void parser_restore_si_datetime(void);
 
-static void parser_save_and_set_si_tran_id(int value); 
+static void parser_save_and_set_si_tran_id(int value);
 static void parser_restore_si_tran_id(void);
 
 static void parser_save_and_set_cannot_prepare(bool value);
@@ -672,7 +712,6 @@ static int parser_count_list(PT_NODE* list);
 static PT_MISC_TYPE parser_attr_type;
 
 int parse_one_statement (int state);
-PT_NODE * __make_node(PARSER_CONTEXT* this_parser, int PT_DROP, int line);
 
 
 int g_msg[1024];
@@ -685,69 +724,11 @@ void set_msg(int code);
 void _push_msg(int code, int line);
 void pop_msg(void);
 
-typedef enum {
-	PARSER_ERR_START	= 1000,
-	INVALID_DATA_TYPE,
-	INVALID_ATTACH,
-	INVALID_PREPARE,
-	INVALID_EXECUTE,
-	INVALID_SCOPE,
-	INVALID_SET_SYS_PARAM,
-	INVALID_SET_TRAN,
-	INVALID_SET_TRIGGER_TRACE,
-	INVALID_SET_TRIGGER_DEPTH,
-	INVALID_SET_OPT_LEVEL,		// 10
-	INVALID_SET_OPT_COST,
-	INVALID_GET_OPT_LEVEL,
-	INVALID_GET_OPT_COST,
-	INVALID_GET_TRAN_ISOL,
-	INVALID_GET_TRAN_LOCK,
-	INVALID_GET_TRIGGER_TRACE,
-	INVALID_GET_TRIGGER_DEPTH,
-	INVALID_GET_STAT,
-	INVALID_CREATE_INDEX,
-	INVALID_CREATE_USER,		// 20
-	INVALID_CREATE_TRIGGER,
-	INVALID_CREATE_SERIAL,
-	INVALID_CREATE_PROCEDURE,
-	INVALID_CREATE_FUNCTION,
-	MISS_GROUPS,
-	MISS_MEMBERS,
-	MISS_PASSWORD,
-	MISS_AUTH_CMD_LIST,
-	MISS_CLASS_SPEC_LIST,
-	MISS_ID_LIST,			// 30
-	MISS_EXPR,
-	INVALID_ID,
-	INVALID_SUBSTRING,
-	INVALID_TRIM,
-	INVALID_CAST,
-	INVALID_ADD_MONTHS,
-	INVALID_OCTET_LENGTH,
-	INVALID_BIT_LENGTH,
-	INVALID_LOWER,
-	INVALID_UPPER,			// 40
-	INVALID_TRANSLATE,
-	INVALID_REPLACE,
-	INVALID_TO_NUMBER,
-
-
-
-	// explicit syntax error
-	INVALID_STRCAT,	
-	INVALID_ALTER,
-	INVALID_DROP,
-	INVALID_CREATE,
-	INVALID_RELATIONAL_OP,
-	INVALID_EQ,
-	INVALID_NEQ,
-} PARSER_ERR_CODE; 
-
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 314 "../../src/parser/csql_grammar.y"
+#line 295 "../../src/parser/csql_grammar.y"
 {
 	int number;
 	PT_NODE* node;
@@ -757,7 +738,7 @@ typedef union YYSTYPE
 	container_4 c4;
 }
 /* Line 2616 of glr.c.  */
-#line 761 "../../src/parser/csql_grammar.h"
+#line 742 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

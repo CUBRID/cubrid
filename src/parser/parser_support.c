@@ -1855,6 +1855,13 @@ pt_insert_host_var (PARSER_CONTEXT * parser, PT_NODE * h_var, PT_NODE * list)
     {
       /* the new node goes before the rest of the list */
       new_node = parser_copy_tree (parser, h_var);
+      if (new_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	  return NULL;
+	}
+
+
       new_node->next = list;
       list = new_node;
     }
@@ -1870,6 +1877,12 @@ pt_insert_host_var (PARSER_CONTEXT * parser, PT_NODE * h_var, PT_NODE * list)
       if (tail->info.host_var.index < h_var->info.host_var.index)
 	{
 	  new_node = parser_copy_tree (parser, h_var);
+	  if (new_node == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      return NULL;
+	    }
+
 	  tail->next = new_node;
 	  new_node->next = temp;
 	}
@@ -1957,10 +1970,14 @@ pt_host_info (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_HOST_VARS *result = (PT_HOST_VARS *) calloc (1,
 						  sizeof (PT_HOST_VARS));
-  memset (result, 0, sizeof (PT_HOST_VARS));
 
-  (void) parser_walk_tree (parser, stmt, pt_collect_host_info,
-			   (void *) result, NULL, NULL);
+  if (result)
+    {
+      memset (result, 0, sizeof (PT_HOST_VARS));
+
+      (void) parser_walk_tree (parser, stmt, pt_collect_host_info,
+			       (void *) result, NULL, NULL);
+    }
 
   return result;
 }
@@ -2224,7 +2241,7 @@ pt_get_proxy_spec_name (const char *qspec)
       from_name = pt_get_spec_name (parser, qtree[0]);
     }
 
-  if (!from_name)
+  if (from_name == NULL)
     {
       result = NULL;		/* no, it failed */
     }
@@ -2242,12 +2259,21 @@ pt_get_proxy_spec_name (const char *qspec)
 	  name = (char *) malloc (newlen);
 	  namelen = newlen;
 	}
-      strcpy (name, from_name);
+
+
+      if (name)
+	{
+	  strcpy (name, from_name);
+	}
 
       result = name;
     }
 
-  parser_free_parser (parser);
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+
   return result;
 }
 
@@ -3787,6 +3813,7 @@ regu_free_domain (SM_DOMAIN * ptr)
     }
 }
 
+
 /*
  * regu_cp_domain () -
  *   return: SM_DOMAIN *
@@ -3816,6 +3843,7 @@ regu_cp_domain (SM_DOMAIN * ptr)
       new_ptr->next = regu_cp_domain (ptr->next);
       if (new_ptr->next == NULL)
 	{
+	  free_and_init (new_ptr);
 	  return NULL;
 	}
     }
@@ -3825,6 +3853,9 @@ regu_cp_domain (SM_DOMAIN * ptr)
       new_ptr->setdomain = regu_cp_domain (ptr->setdomain);
       if (new_ptr->setdomain == NULL)
 	{
+	  regu_free_domain (new_ptr->next);
+	  new_ptr->next = NULL;
+	  free_and_init (new_ptr);
 	  return NULL;
 	}
     }
@@ -4401,13 +4432,13 @@ pt_alloc_packing_buf (int size)
     }
 
   if (packing_heap == NULL)
-    {				/* first time */
+    {
       packing_heap_num_slot = PACKING_MMGR_BLOCK_SIZE;
       packing_heap = (HL_HEAPID *) calloc (packing_heap_num_slot,
 					   sizeof (HL_HEAPID));
       if (packing_heap == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  PACKING_MMGR_BLOCK_SIZE * sizeof (HL_HEAPID));
 	  return NULL;
@@ -4422,7 +4453,7 @@ pt_alloc_packing_buf (int size)
 					    * sizeof (HL_HEAPID));
       if (packing_heap == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  PACKING_MMGR_BLOCK_SIZE * sizeof (HL_HEAPID));
 	  return NULL;
@@ -4444,7 +4475,7 @@ pt_alloc_packing_buf (int size)
   if (heap_id == 0)
     {
       /* make sure an error is set, one way or another */
-      er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, PACKING_MMGR_CHUNK_SIZE);
       res = NULL;
     }

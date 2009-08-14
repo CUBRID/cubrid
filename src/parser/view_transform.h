@@ -34,14 +34,6 @@ typedef enum PT_FETCH_AS
 { PT_NORMAL_SELECT, PT_INVERTED_ASSIGNMENTS }
 PT_FETCH_AS;
 
-typedef const char *conststring;
-static const conststring db_auth_name[DB_AUTH_DELETE * 2] =
-  { "", "Select", "Insert", "Insert", "Update", "Update", "Update",
-  "Update",
-  "Delete", "Delete", "Delete", "Delete", "Delete", "Delete", "Delete",
-  "Delete"
-};
-
 extern PT_NODE *mq_bump_correlation_level (PARSER_CONTEXT * parser,
 					   PT_NODE * node, int increment,
 					   int match);

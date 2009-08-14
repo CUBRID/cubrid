@@ -86,8 +86,8 @@ struct rvfun RV_fun[] = {
    disk_rv_dump_alloctable},
   {RVDK_IDDEALLOC_WITH_VOLHEADER,
    "RVDK_IDDEALLOC_WITH_VOLHEADER",
-   disk_rv_set_alloctable_with_vhdr,
-   disk_rv_clear_alloctable_with_vhdr,
+   NULL,
+   NULL,
    disk_rv_dump_alloctable_with_vhdr,
    disk_rv_dump_alloctable_with_vhdr},
   {RVDK_MAGIC,
@@ -632,41 +632,51 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-#if defined(WINDOWS)
-   NULL},
-#else /* WINDOWS */
    repl_data_insert_log_dump},
-#endif /* WINDOWS */
   {RVREPL_DATA_UPDATE,
    "RVREPL_DATA_UPDATE",
    NULL,
    NULL,
    NULL,
-#if defined(WINDOWS)
-   NULL},
-#else /* WINDOWS */
    repl_data_insert_log_dump},
-#endif /* WINDOWS */
   {RVREPL_DATA_DELETE,
    "RVREPL_DATA_DELETE",
    NULL,
    NULL,
    NULL,
-#if defined(WINDOWS)
-   NULL},
-#else /* WINDOWS */
    repl_data_insert_log_dump},
-#endif /* WINDOWS */
   {RVREPL_SCHEMA,
    "RVREPL_SCHEMA",
    NULL,
    NULL,
    NULL,
-#if defined(WINDOWS)
-   NULL}
-#else /* WINDOWS */
-   repl_schema_log_dump}
-#endif /* WINDOWS */
+   repl_schema_log_dump},
+  {RVREPL_DATA_UPDATE_START,
+   "RVREPL_DATA_UPDATE_START",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVREPL_DATA_UPDATE_END,
+   "RVREPL_DATA_UPDATE_END",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+
+  {RVDK_IDDEALLOC_BITMAP_ONLY,
+   "RVDK_IDDEALLOC_BITMAP_ONLY",
+   disk_rv_set_alloctable_bitmap_only,
+   disk_rv_clear_alloctable_bitmap_only,
+   disk_rv_dump_alloctable_with_vhdr,
+   disk_rv_dump_alloctable_with_vhdr},
+
+  {RVDK_IDDEALLOC_VHDR_ONLY,
+   "RVDK_IDDEALLOC_VHDR_ONLY",
+   disk_rv_set_alloctable_vhdr_only,
+   disk_rv_clear_alloctable_vhdr_only,
+   disk_rv_dump_alloctable_with_vhdr,
+   disk_rv_dump_alloctable_with_vhdr},
 };
 
 /*

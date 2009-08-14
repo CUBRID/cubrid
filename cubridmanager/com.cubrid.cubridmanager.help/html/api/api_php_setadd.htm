@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<title>cubrid_set_drop</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_set_add");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_set_add<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_set_add</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_set_add</span> 함수는 주어진 SET 타입(set, multiset) 속성에 원하는 원소를 하나 삽입한다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_set_add</span> (int <span class="var">conn_handle</span>, string <span class="var">oid</span>, string <span class="var">attr_name</span>, string <span class="var">set_element</span>)</p>
+<ul>
+<li><span class="var">conn_handle</span>&#160;: 연결 핸들</li>
+<li><span class="var">oid</span>&#160;: 원하는 인스턴스의 OID</li>
+<li><span class="var">attr_name</span>&#160;: 인스턴스의 원하는 속성 이름</li>
+<li><span class="var">set_string</span>&#160;: 삽입하고자 하는 원소의 내용</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : true</li>
+<li>실패 : false</li>
+</ul>
+<h6>예제</h6>
+<p class="code">cubrid_set_add ($con, $oid, "friend", "James");<br />
+cubrid_set_add ($con, $oid, "friend", "Michael");</p>
+<h6>관련 항목</h6>
+<ul>
+<li class="keyword"><a href="api_php_setdrop.htm">cubrid_set_drop</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -41,6 +41,7 @@
 #include "storage_common.h"
 #include "page_buffer.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "thread_impl.h"
@@ -1416,7 +1417,9 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
    * Don't need to flush, if there is a need the participant will be contacted
    * again.
    */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 
@@ -1599,7 +1602,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 			 (char *) tdes->gtrinfo.info_data);
     }
 
-  if (acq_locks.nobj_locks > 0)
+  if (acq_locks.obj != NULL)
     {
       /* Append the acquired locks on objects */
       size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
@@ -1612,9 +1615,10 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    * the commitment of the transaction if the coordinator requests commit
    */
 
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 
@@ -1836,9 +1840,10 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * particpants know about each other and the coordiantor.
    */
 
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -1881,8 +1886,10 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * participant needed in the event of a crash. If the decision is not
        * found in the log, we will assume abort
        */
-      logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
       tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      assert (LOG_CS_OWN ());
     }
   else
     {
@@ -1895,7 +1902,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * We do not need to flush the log since if the decision is not found in
        * the log, abort is assumed.
        */
-      logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
       tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
     }
   LOG_CS_EXIT ();

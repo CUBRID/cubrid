@@ -29,7 +29,8 @@
 #if defined (CS_MODE)
 void la_test_log_page (const char *database_name, const char *log_path,
 		       int page_num);
-int la_apply_log_file (const char *database_name, const char *log_path);
+int la_apply_log_file (const char *database_name, const char *log_path,
+		       const int max_mem_size);
 #endif /* CS_MODE */
 
 #endif /* _LOG_APPLIER_HEADER_ */

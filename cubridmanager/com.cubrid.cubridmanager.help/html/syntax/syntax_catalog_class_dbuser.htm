@@ -1,0 +1,206 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>db_user</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 클래스\ndb_user");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_class_class.htm\">시스템 카탈로그 클래스<\/a> &nbsp;&gt;&nbsp; db_user<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>db_user</h4>
+<table border="1" width="80%">
+<tbody>
+<tr>
+<th width="100">
+<p>속성명</p>
+</th>
+<th width="160">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td width="100">
+<p>name</p>
+</td>
+<td width="160">
+<p>VARCHAR(1073741823)</p>
+</td>
+<td>
+<p>사용자명</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>id</p>
+</td>
+<td width="160">
+<p>INTEGER</p>
+</td>
+<td>
+<p>사용자 식별자</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>password</p>
+</td>
+<td width="160">
+<p>db_password</p>
+</td>
+<td>
+<p>사용자 패스워드로 사용자에게 보여지지는 않는다.</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>direct_groups</p>
+</td>
+<td width="160">
+<p>SET OF db_user</p>
+</td>
+<td>
+<p>사용자가 직접적으로 속한 그룹</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>groups</p>
+</td>
+<td width="160">
+<p>SET OF db_user</p>
+</td>
+<td>
+<p>사용자가 직,간접적으로 속한 그룹</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>authorization</p>
+</td>
+<td width="160">
+<p>db_authorization</p>
+</td>
+<td>
+<p>사용자가 가지고 있는 권한 정보</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>triggers</p>
+</td>
+<td width="160">
+<p>SEQUENCE OF object</p>
+</td>
+<td>
+<p>사용자의 action에 의해 발생되는 트리거들</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h6>메소드 이름</h6>
+<ul>
+<li><span class="keyword">set_password</span>()</li>
+<li><span class="keyword">set_password_encoded</span>()</li>
+<li><span class="keyword">add_member</span>()</li>
+<li><span class="keyword">drop_member</span>()</li>
+<li><span class="keyword">print_authorizations</span>()</li>
+<li><span class="keyword">add_user</span>()</li>
+<li><span class="keyword">drop_user</span>()</li>
+<li><span class="keyword">find_user</span>()</li>
+<li><span class="keyword">login</span>()</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

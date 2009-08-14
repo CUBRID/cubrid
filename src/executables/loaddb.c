@@ -385,12 +385,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int status = 0;
   int errors, objects, defaults;
 #if !defined (LDR_OLD_LOADDB)
-  int lastcommit;
+  int lastcommit = 0;
 #endif /* !LDR_OLD_LOADDB */
   char *passwd;
   /* set to static to avoid copiler warning (clobbered by longjump) */
   static int interrupted = false;
-  int au_save;
+  int au_save = 0;
   extern bool obt_Enable_autoincrement;
 
   char log_file_name[PATH_MAX];
@@ -441,16 +441,17 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  if (Index_file[0] != '\0'
-      && PRM_SR_NBUFFERS < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
-    {
-      sysprm_set_force ("sort_buffer_pages",
-			LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
-    }
-
   /* error message log file */
   sprintf (log_file_name, "%s_%s.err", Volume, arg->command_name);
   er_init (log_file_name, ER_NEVER_EXIT);
+
+  if (Index_file[0] != '\0'
+      && PRM_SR_NBUFFERS < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
+    {
+      sysprm_set_force (PRM_NAME_SR_NBUFFERS,
+			LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
+    }
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   /* login */
   if (User_name != NULL || !dba_mode)
@@ -677,6 +678,17 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (schema_file != NULL)
     {
       print_log_msg (1, "\nStart schema loading.\n");
+
+      /*
+       * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
+       * Therefore, we do not perform user authentication when the loader
+       * is executing by DBA group user.
+       */
+      if (au_is_dba_group_member (Au_user))
+	{
+	  AU_DISABLE (au_save);
+	}
+
       if (ldr_exec_query_from_file (Schema_file, schema_file,
 				    &schema_file_start_line,
 				    Periodic_commit) != 0)
@@ -690,6 +702,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 			 LOAD_SCHEMA_FILE_S, Schema_file,
 			 schema_file_start_line);
 	  goto error_return;
+	}
+
+      if (au_is_dba_group_member (Au_user))
+	{
+	  AU_ENABLE (au_save);
 	}
 
       print_log_msg (1, "Schema loading from %s finished.\n", Schema_file);
@@ -890,8 +907,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	    }
 	}
       ldr_final ();
-      fclose (object_file);
-      object_file = NULL;
+      if (object_file != NULL)
+	{
+	  fclose (object_file);
+	  object_file = NULL;
+	}
     }
 
   /* create index */
@@ -1050,6 +1070,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
 	    }
 	  error = er_errid ();
+	  db_close_session (session);
 	  goto end;
 	}
       parser_start_line_no = parser_end_line_no;
@@ -1071,10 +1092,10 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
 		{
 		  session_error =
 		    db_get_next_error (session_error, &line, &col);
-		  if (line > 0)
+		  if (line >= 0)
 		    {
 		      print_log_msg (1, "In %s line %d,\n", file_name,
-				     line + (*start_line) - 1);
+				     line + (*start_line));
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      error = er_errid ();
 		    }
@@ -1140,32 +1161,40 @@ get_ignore_class_list (const char *inputfile_name)
 {
   int inc_unit = 128;
   int list_size;
-  FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  FILE *input_file = NULL;
+  char buffer[DB_MAX_IDENTIFIER_LENGTH], buffer_scan_format[16];
   char class_name[DB_MAX_IDENTIFIER_LENGTH];
-  char **p;
 
-  ignoreClasslist = NULL;
+  if (ignoreClasslist != NULL)
+    {
+      free_ignoreclasslist ();
+    }
 
   if (inputfile_name == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
-  if ((input_file = fopen (inputfile_name, "r")) == NULL)
+  input_file = fopen (inputfile_name, "r");
+  if (input_file == NULL)
     {
       perror (inputfile_name);
       return 1;
     }
 
   ignoreClasslist = (char **) malloc (sizeof (char *) * inc_unit);
-  memset (ignoreClasslist, '\0', inc_unit);
-
   if (ignoreClasslist == NULL)
     {
-      return -1;
+      goto error;
     }
+
+  memset (ignoreClasslist, '\0', inc_unit);
 
   list_size = inc_unit;
   ignoreClassnum = 0;
+
+  snprintf (buffer_scan_format, sizeof (buffer_scan_format), "%%%ds\n",
+	    (int) (sizeof (buffer) - 1));
 
   while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH,
 		input_file) != NULL)
@@ -1179,19 +1208,18 @@ get_ignore_class_list (const char *inputfile_name)
 				   sizeof (char *) * (list_size + inc_unit));
 	      if (ignoreClasslist == NULL)
 		{
-		  free_ignoreclasslist ();
-		  return -1;
+		  goto error;
 		}
+
+	      memset (ignoreClasslist + list_size, '\0', inc_unit);
 	      list_size = list_size + inc_unit;
 	    }
 
-	  p = ignoreClasslist + ignoreClassnum;
-	  sscanf ((char *) buffer, "%s\n", (char *) class_name);
-	  *p = strdup (class_name);
-	  if (*p == NULL)
+	  sscanf ((char *) buffer, buffer_scan_format, (char *) class_name);
+	  ignoreClasslist[ignoreClassnum] = strdup (class_name);
+	  if (ignoreClasslist[ignoreClassnum] == NULL)
 	    {
-	      free_ignoreclasslist ();
-	      return -1;
+	      goto error;
 	    }
 
 	  ignoreClassnum++;
@@ -1201,6 +1229,12 @@ get_ignore_class_list (const char *inputfile_name)
   fclose (input_file);
 
   return 0;
+
+error:
+  free_ignoreclasslist ();
+  fclose (input_file);
+
+  return -1;
 }
 
 static void
@@ -1220,5 +1254,6 @@ free_ignoreclasslist (void)
       free (ignoreClasslist);
       ignoreClasslist = NULL;
     }
+  ignoreClassnum = 0;
 }
 #endif

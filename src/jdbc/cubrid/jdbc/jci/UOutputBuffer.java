@@ -100,7 +100,15 @@ class UOutputBuffer
      * (byte) ((length >>> 0) & 0xFF); outStream.write(bSize);
      * outStream.flush();
      */
-    overwriteInt(length - 4, 0, 0);
+    byte[] jdbcInfo = null;
+    /* now, just send back received casinfo data to cas */
+    jdbcInfo = u_con.getCASInfo();
+
+    overwriteInt(length - 8, 0, 0);
+    if (jdbcInfo != null)
+    {
+      overwriteBytes(u_con.getCASInfo(), 0, 4);
+    }
 
     for (int i = 0; i < bufferCursor; i++)
     {
@@ -595,6 +603,23 @@ class UOutputBuffer
     bufferCursor = saved_buffer_cursor;
     positionInABuffer = saved_position_buffer;
   }
+  
+  private void overwriteBytes(byte[] data, int msg_buffer_cursor,
+      int msg_buffer_position)
+  {
+    int saved_length = length;
+    int saved_buffer_cursor = bufferCursor;
+    int saved_position_buffer = positionInABuffer;
+
+    bufferCursor = msg_buffer_cursor;
+    positionInABuffer = msg_buffer_position;
+
+    writeBytes(data, 0, data.length);
+
+    length = saved_length;
+    bufferCursor = saved_buffer_cursor;
+    positionInABuffer = saved_position_buffer;
+  }
 
   private void writeInt(int data)
   {
@@ -733,10 +758,21 @@ class UOutputBuffer
 
   private void clearBuffer(OutputStream out)
   {
+    byte[] jdbcinfo = new byte[4]; 
+    /* clear jdbcinfo value, 
+       this data will be over written by sendData() function */
+    /* not defined yet */
+    jdbcinfo[0] = 0;
+    jdbcinfo[1] = 0;
+    jdbcinfo[2] = 0;
+    jdbcinfo[3] = 0;
+
     length = 0;
     bufferCursor = 0;
     positionInABuffer = 0;
     outStream = out;
+
     writeInt(0);
+    writeBytes(jdbcinfo, 0, jdbcinfo.length);
   }
 }

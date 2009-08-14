@@ -1,0 +1,7 @@
+task:dbmtuserlogin
+status:success
+note:none
+targetid:admin
+dbname:demodb
+authority:isdba
+

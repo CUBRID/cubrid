@@ -1,0 +1,115 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>FLOAT 또는 REAL</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="FLOAT" />
+<meta name="MS-HKWD" content="REAL" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n수치형 데이터  타입\nFLOAT 또는 REAL");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_num_def.htm\">수치형 데이터  타입<\/a> &nbsp;&gt;&nbsp; FLOAT 또는 REAL<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>FLOAT 또는 REAL</h4>
+<h6>설명</h6>
+<p><span class="keyword">FLOAT</span>(또는 <span class="keyword">REAL</span>) 데이터 타입은 근사치 수치형 타입이다. 정밀도를 옵션으로 지정할 수 있다.</p>
+<p>정밀도 <span class="var">p</span>가 7 이하로 지정되면 단일-정밀도(single-precision) 수치로 표현된다. 만약 7보다 크고 19 이하이면 <span class="keyword"><a href="syntax_datatype_num_double.htm">DOUBLE</a></span> 데이터 타입으로 간주된다. 허용되는 값의 범위는 사용되고 있는 시스템에 따라 다를 수 있는데, 보통 ANSI/IEEE 754-1985 표준을 준수한다. 이에 따르면 -10e+38에서 +10e+38까지의 크기를 저장할 수 있고, 정규화된 수치로는 1.175494e-38에서 3.402823e+38까지 표현할 수 있다.</p>
+<p><span class="keyword">FLOAT</span>는 정밀도와 스케일이 생략된 <span class="keyword">REAL과</span> 같은 의미를 갖는다.</p>
+<p class="syntax"><span class="keyword">FLOAT</span>(<span class="var">p</span>)</p>
+<h6>참고 사항</h6>
+<p><span class="keyword">FLOAT</span> 타입으로 표현할 수 있는 최소값부터 최대값까지의 범위는 CUBRID가 수행되는 시스템에 종속적이다. <span class="keyword"><a href="syntax_datatype_num_integer.htm">INTEGER</a></span>와 달리 <span class="keyword">FLOAT</span>는 근사치를 저장하기 때문에 비교에 사용할 때 주의해야 한다. 예를 들어, 어떤 값을 <span class="keyword">FLOAT</span>로 변환할 수는 있으나, 그 변환된 값이 변환 전의 값과 정확히 같다고 보증할 수 없다. 따라서, <span class="keyword">FLOAT</span> 타입의 속성에 조건을 주어 <span class="keyword">SELECT</span>를 수행할 때에는 특정 <span class="keyword">FLOAT</span> 값과 같은 값을 갖는 조건(즉, 등식 조건)이 아니라 범위를 갖는 조건을 주는 것이 좋다. 이 특징은 <span class="keyword"><a href="syntax_datatype_num_double.htm">DOUBLE</a></span> 타입에서도 마찬가지이다. 이것은 CUBRID만의 특징이 아니라 근사치 수치형 데이터 타입을 다루는 모든 컴퓨터의 특징이다.</p>
+<h6>예제</h6>
+<p class="code">FLOAT에 8934를 지정하면 8.934000e+03이 저장된다.<br />
+FLOAT(0)에 34를 지정하면 3.400000e+01이 저장된다.<br />
+FLOAT(5)에 -234.67을 지정하면 -2.346700e+02가 저장된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

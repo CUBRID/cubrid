@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -49,32 +49,45 @@ struct t_object
   short volid;
 };
 
+enum tran_auto_commit {
+ TRAN_NOT_AUTOCOMMIT = 0,
+ TRAN_AUTOCOMMIT = 1,
+ TRAN_AUTOROLLBACK = 2
+};
+
 typedef struct t_req_info T_REQ_INFO;
 struct t_req_info
 {
   T_BROKER_VERSION client_version;
-  int need_auto_commit;
+  enum tran_auto_commit need_auto_commit;
   char need_rollback;
-  char need_reconnect;
 };
 
 #ifndef LIBCAS_FOR_JSP
 extern int restart_is_needed (void);
-extern bool is_ServerAborted;
-#endif
+extern bool is_server_aborted;
 
+extern const char *program_name;
 extern char broker_name[32];
+
 extern int shm_as_index;
 extern T_SHM_APPL_SERVER *shm_appl;
-extern char sql_log_mode;
-extern T_TIMEVAL tran_start_time;
+extern T_APPL_SERVER_INFO *as_info;
 
+extern struct timeval tran_start_time;
+extern struct timeval query_start_time;
+extern int tran_timeout;
+extern int query_timeout;
+#endif
+
+extern int errors_in_transaction;
 extern char stripped_column_name;
 extern char cas_client_type;
 
 extern int cas_default_isolation_level;
 extern int cas_default_lock_timeout;
 extern int cas_send_result_flag;
+extern int cas_info_size;
 
 extern int xa_prepare_flag;
 

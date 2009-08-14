@@ -1,0 +1,339 @@
+#!/usr/bin/env python
+
+'''This script create code review file for CUBRID
+This script require python 2.4 or above.
+
+REQUIREMENT:
+  This is working on Linux or Unix OS only
+  Python version 2.4.3 or more
+  Subversion version 1.5 or more
+  GNU Indent
+
+Changelog
+  2008-07-30 xkyu
+    Created first version
+  2008-09-02 xkyu
+    Supoort multi old dirs in one creview file
+  2008-12-02 xkyu
+    Create empty file when it exists only at new or old path
+  2009-07-15 sqlee
+    Add -r ignore revision option
+  2009-07-30 xkyu
+    Fix to allow space in source path
+'''
+
+import os
+import sys
+import re
+import getopt
+import shutil
+import tarfile
+import time
+
+verbose = False
+revision = False
+nochange = False
+forceyes = False
+
+exclude_list = ['configure', 'Makefile.in', 'makefile']
+donottouch_dirs = ['heaplayers']
+donottouch_files = []
+
+
+def getSvnStatusList (inputfiles):
+  sources = " ".join(inputfiles)
+  if verbose:
+    print 'svn status files: %s' % (sources)
+  if revision:
+    list = os.popen ('svn status -q %s' % (sources))
+  else:
+    list = os.popen ('svn status -qu %s' % (sources))
+  files = list.readlines ()
+  list.close ()
+  for i in range (len (files)):
+    files[i] = files[i][0:-1] # remove last '\n'
+  return set (files)
+
+
+def isValidFile (file):
+  if not file in exclude_list:
+    if not os.path.isdir (file):
+      return True
+  return False
+  
+  
+def getModifiedFiles (fileset):
+  filelist = sorted (fileset)
+  codereviews = []
+  for i in range (len (filelist)):
+    #split = filelist[i].split()
+    split = re.split ("[\s]+", filelist[i], 2)
+    if verbose:
+      print "split result:", split
+
+    if split[0] == 'C':
+      print 'Aborted. Resolve the conflict first. (svn resolved)\n\tstatus line: "%s"\n' % (filelist[i])
+      return[]
+#    if split[0] == '*' or split[1] == '*':
+#      print 'Update the working copy first. (svn update)\n\tstatus line: "%s"' % (filelist[i])
+#      return[]
+    if split[0] == 'M' or split[0] == 'A' or split[0] == 'D':
+      if split[1] == '*':
+        print 'Aborted. Update the working copy first. (svn update)\n\tstatus line: "%s"\n' % (filelist[i])
+        return[]
+      file = split[-1]
+      if isValidFile (file):
+        codereviews.append ([split[0], file])
+
+  return codereviews
+      
+      
+def prepareSomething (code_review_path):
+  if os.path.exists (code_review_path):
+    print 'CAUTION: "' + code_review_path + '" is exists.'
+    while True:
+      if forceyes:
+        answer = 'Y'
+      else:
+        answer = raw_input('    keep and review with it? <Y/n> : ')
+      if answer in ('y', 'Y', ''):
+        print 'Keep and review with old files...'
+        return
+      elif answer in ('n', 'N'):
+        print 'Remove old review files...'
+        shutil.rmtree (code_review_path)
+        return
+    
+    
+def cleanupSomething (code_review_path):
+  if os.path.exists (code_review_path):
+    while True:
+      if forceyes:
+        answer = 'Y'
+      else:
+        answer = raw_input('Keep temporary path "%s"? <Y/n> : ' % (code_review_path))
+      if answer in ('y', 'Y', ''):
+        print 'Keep files for later use...'
+        return
+      elif answer in ('n', 'N'):
+        print 'Remove temporary files...'
+        shutil.rmtree (code_review_path)
+        return
+
+
+def prepareCodeReviewPath (base_path):
+  old_path = base_path + '/old'
+  new_path = base_path + '/new'
+  svn_path = base_path + '/svn'
+
+  try:
+    if os.path.exists (old_path):
+      if os.path.exists (svn_path):
+        os.rename (old_path,
+            old_path + '_' +
+              time.strftime('%Y%m%d%H%M%S',
+                time.localtime(os.path.getctime(old_path))))
+      else:
+        os.rename (old_path, svn_path)
+    else:
+      svn_path = old_path
+
+    if os.path.exists (new_path):
+      os.rename (new_path, old_path)
+    else:
+      os.makedirs (new_path)
+
+    if not os.path.exists (svn_path):
+      os.makedirs (svn_path)
+
+    return (svn_path, new_path)
+
+  except:
+    print >> sys.stderr, "Create old & new base directory error."
+    return (None, None)
+
+
+def isAllowToChange (file):
+  if nochange:
+    return False
+
+  for ex_dir in donottouch_dirs:
+    search_pattern = r'\b' + ex_dir + r'\b'
+    if re.search (search_pattern, os.path.dirname(file)):
+      if verbose: print 'do not touch directory...', ex_dir
+      return False
+
+  for ex_file in donottouch_files:
+    search_pattern = r'\b' + ex_file + r'\b'
+    if re.search (search_pattern, os.path.basename(file)):
+      if verbose: print 'do not touch file...', ex_file
+      return False
+
+  ext = os.path.splitext (file)[1]
+  if ext not in ['.c', '.h']:
+    if verbose: print 'do not touch extention...', ext
+    return False
+
+  if not os.path.isfile (file):
+    if verbose: print '%s is not file' % (file)
+    return False
+
+  return True
+
+def prepareCodeReviewFile (output, files):
+  (svn_output_base, new_output_base) = prepareCodeReviewPath (output)
+
+  if not svn_output_base or not new_output_base:
+    print >> sys.stderr, "Prepare old & new base directory error."
+    return False
+
+  if verbose:
+    print 'No-change mode is', nochange
+
+  for i in range (len (files)):
+    dirname = os.path.dirname (files[i][1]) 
+    if len (dirname) >= 0:
+      new_path = new_output_base + '/' + dirname
+      if not os.path.exists (new_path):
+        os.makedirs (new_path)
+      svn_path = svn_output_base + '/' + dirname
+      if not os.path.exists (svn_path):
+        os.makedirs (svn_path)
+    if not files[i][0] == 'D':
+      if isAllowToChange (files[i][1]):
+        if verbose: print 'changing mode...', files[i][1]
+        os.chmod (files[i][1], 0644)
+        if verbose: print 'indenting...', files[i][1]
+        os.system ('/usr/bin/indent ' + files[i][1])
+      if len (dirname) >= 0:
+        shutil.copy (files[i][1], new_path)
+        svn_file_path = svn_output_base + '/' + files[i][1]
+        if not os.path.exists (svn_file_path):
+          os.system ('/bin/touch ' + '"' + svn_file_path + '"')
+    if not files[i][0] == 'A':
+      if len (dirname) >= 0:
+        os.system ('/usr/bin/svn cat "%s" > "%s/%s"' % (files[i][1], svn_output_base, files[i][1]))
+        new_file_path = new_output_base + '/' + files[i][1]
+        if not os.path.exists (new_file_path):
+          os.system ('/bin/touch ' + new_file_path)
+
+  print 'Prepared files :'
+  for i in range (len (files)):
+    print '  [%d] %s %s' % (i, files[i][0], files[i][1])
+
+  return True
+    
+
+def createCodeReviewFile (path, output):
+  if verbose:
+    print 'Temporary path: "%s", filename: "%s"' % (path, output)
+
+  if os.path.exists (output):
+    while True:
+      if forceyes:
+        answer = 'Y'
+      else:
+        answer = raw_input('overwrite "%s"? file <Y/n> : ' % (output))
+      if answer in ('y', 'Y', ''):
+        break
+      elif answer in ('n', 'N'):
+        print 'Aborted.'
+        sys.exit()
+
+  os.system ('/usr/bin/svn status > %s/status.txt' % (path))
+
+  tar = tarfile.open (output, "w:gz")
+  tar.add (path)
+
+  print 'Done.'
+  print output + ' is created.'
+
+  return True
+
+
+def usage ():
+  print os.path.basename (sys.argv[0]), 'Usage:'
+  print '  %s [options] [files...]' % (os.path.basename (sys.argv[0]))
+  print '    -h , --help      : print usage'
+  print '    -d , --tempdir   : temporary output path [default: "CODE_REVIEW"]'
+  print '    -o , --output    : output file [default: "CODE_REVIEW.creview"]'
+  print '    -n , --nochange  : do not change(indent,mode) working copy files'
+  print '    -y , --yes       : automatic yes to all prompts, nerver prompt'
+  print '    -v , --verbose   : turn on verbose mode'
+  print '    -r , --revision  : revision ignore mode'
+  print '    files...         : files or paths to review (default: .)'
+  
+  
+def main ():
+  try:
+    opts, args = getopt.getopt (sys.argv[1:], "hd:o:vnyr",["help", "tempdir=", "output=", "verbose", "nochange", "yes", "revision"])
+  except getopt.GetoptError:
+    print 'get option error.'
+    usage ()
+    sys.exit (2)
+
+  path = "CODE_REVIEW"
+  crfile = "CODE_REVIEW.creview"
+  inputfiles = []
+  global verbose
+  global nochange
+  global forceyes
+  global revision
+
+  for o, a in opts:
+    if o in ("-v", "--verbose"):
+      print 'verbose mode on'
+      verbose = True
+    if o in ("-n", "--nochange"):
+      nochange = True
+    if o in ("-h", "--help"):
+      usage ()
+      sys.exit ()
+    if o in ("-d", "--tempdir"):
+      path = a
+    if o in ("-o", "--output"):
+      crfile = a
+    if o in ("-y", "--yes"):
+      forceyes = True
+    if o in ("-r", "--revision"):
+      revision = True
+
+  # get code review filename
+  if len (args) > 0:
+    for i in range (len (args)):
+      if os.path.exists (args[i]):
+        inputfiles.append (args[i])
+      else:
+        print >> sys.stderr, "file (%s) not exist. Aborted." % (args[i])
+        sys.exit (2)
+
+  # prepare something...
+  prepareSomething (path)
+
+  # get file list for code review
+  review_files = getModifiedFiles (getSvnStatusList (inputfiles))
+  if len (review_files) <= 0:
+    print >> sys.stderr, "Quitting..."
+    sys.exit (2)
+  
+  if verbose:
+    print "Review files: ", review_files
+    
+  # prepare Code review files
+  if not prepareCodeReviewFile (path, review_files):
+    print >> sys.stderr, "Cannot prepare code review files."
+    sys.exit (2)
+    
+  # create Code review review_files
+  if not createCodeReviewFile (path, crfile):
+    print >> sys.stderr, "Cannot create code review files."
+    sys.exit (2)
+      
+  # cleanup something...
+  cleanupSomething (path)
+
+if __name__ == "__main__":
+  main ()
+
+# vim: ts=2 sts=2 et
+

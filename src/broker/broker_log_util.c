@@ -39,17 +39,6 @@
 #include "broker_log_util.h"
 
 char *
-ut_uchar2ipstr (unsigned char *ip_addr)
-{
-  static char ip_str[32];
-
-  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
-	   (unsigned char) ip_addr[1],
-	   (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
-  return (ip_str);
-}
-
-char *
 ut_trim (char *str)
 {
   char *p;
@@ -97,25 +86,6 @@ ut_tolower (char *str)
     }
 }
 
-void
-ut_timeval_diff (T_TIMEVAL * start, T_TIMEVAL * end, int *res_sec,
-		 int *res_msec)
-{
-  int sec, msec;
-
-  sec = TIMEVAL_GET_SEC (end) - TIMEVAL_GET_SEC (start);
-  msec = TIMEVAL_GET_MSEC (end) - TIMEVAL_GET_MSEC (start);
-
-  if (msec < 0)
-    {
-      msec += 1000;
-      sec--;
-    }
-
-  *res_sec = sec;
-  *res_msec = msec;
-}
-
 int
 ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 {
@@ -150,3 +120,41 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
     *lineno = *lineno + 1;
   return out_str_len;
 }
+#if defined (WINDOWS)
+/*
+ * gettimeofday - Windows port of Unix gettimeofday()
+ *   return: none
+ *   tp(out): where time is stored
+ *   tzp(in): unused
+ */
+int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+#if 1                           /* _ftime() version */
+  struct _timeb tm;
+  _ftime (&tm);
+  tp->tv_sec = tm.time;
+  tp->tv_usec = tm.millitm * 1000;
+  return 0;
+#else /* GetSystemTimeAsFileTime version */
+  FILETIME ft;
+  unsigned __int64 tmpres = 0;
+  static int tzflag;
+
+  GetSystemTimeAsFileTime (&ft);
+
+  tmpres |= ft.dwHighDateTime;
+  tmpres <<= 32;
+  tmpres |= ft.dwLowDateTime;
+
+  tmpres -= DELTA_EPOCH_IN_MICROSECS;
+
+  tmpres /= 10;
+
+  tv->tv_sec = (tmpres / 1000000UL);
+  tv->tv_usec = (tmpres % 1000000UL);
+
+  return 0;
+#endif
+}
+#endif /* WINDOWS */

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -27,21 +27,25 @@
 
 #ident "$Id$"
 
-extern void cas_log_init (T_TIMEVAL * start_time);
 extern void cas_log_open (char *br_name, int as_index);
 extern void cas_log_reset (char *br_name, int as_index);
+extern void cas_log_close (bool flag);
 #ifdef CAS_ERROR_LOG
 extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
 #endif
-extern int cas_access_log (T_TIMEVAL * start_time, int as_index,
+extern int cas_access_log (struct timeval *start_time, int as_index,
 			   int client_ip_addr);
-extern void cas_log_end (T_TIMEVAL * start_time, char *br_name, int as_index,
-			 int sql_log_time, char *sql_log2_filename,
-			 int sql_log_max_size, int close_flag);
-extern void cas_log_write (unsigned int seq_num, char print_new_line,
+extern void cas_log_end (int mode, int run_time_sec, int run_time_msec);
+extern void cas_log_write_nonl (unsigned int seq_num, bool unit_start,
+			      const char *fmt, ...);
+extern void cas_log_write (unsigned int seq_num, bool unit_start,
 			   const char *fmt, ...);
+extern void cas_log_write_and_end (unsigned int seq_num, bool unit_start,
+				   const char *fmt, ...);
+extern void cas_log_write2_nonl (const char *fmt, ...);
 extern void cas_log_write2 (const char *fmt, ...);
-extern void cas_log_write_query_string (char *query, char print_new_line);
+extern void cas_log_write_value_string (char *value, int size);
+extern void cas_log_write_query_string (char *query, int size);
 
 #define ARG_FILE_LINE   __FILE__, __LINE__
 #if defined (NDEBUG)

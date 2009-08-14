@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,10 +53,10 @@ extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 extern int ux_database_reconnect (void);
 #endif
 extern int ux_is_database_connected (void);
-extern int ux_prepare (char *sql_stmt, char flag, char auto_commit_mode,
+extern int ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
 		       T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
-extern int ux_end_tran (char tran_type, char reset_con_status);
+extern int ux_end_tran (int tran_type, bool reset_con_status);
 extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			   T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
@@ -73,11 +73,11 @@ extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_glo_new (char *class_name, char *filename, T_NET_BUF * net_buf);
 extern int ux_glo_save (DB_OBJECT * obj, char *filename, T_NET_BUF * net_buf);
 extern int ux_glo_load (SOCKET sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf);
-extern int
-ux_cursor (int srv_h_id, int offset, char origin, T_NET_BUF * net_buf);
+extern int ux_cursor (int srv_h_id, int offset, int origin,
+		      T_NET_BUF * net_buf);
 extern void ux_database_shutdown (void);
 extern int ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-extern int ux_get_class_num_objs (char *class_name, char flag,
+extern int ux_get_class_num_objs (char *class_name, int flag,
 				  T_NET_BUF * net_buf);
 
 extern void ux_col_get (DB_COLLECTION * col, char col_type, char ele_type,

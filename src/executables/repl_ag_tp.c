@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -38,6 +38,7 @@
 #include "repl_tp.h"
 #include "log_compress.h"
 #include "error_code.h"
+#include "system_parameter.h"
 
 extern FILE *debug_Log_fd;
 extern int debug_Dump_info;
@@ -129,19 +130,15 @@ pthread_key_t slave_Key;
  *  the log record having forward las as (-1, -1). The target record would be
  *  a final record of archive.
  */
-#define REPL_REFETCH_COUNT               5
-
 #define REPL_PARTIAL_RECORD(lrec, final, first_pageid)                        \
           (!LSA_ISNULL(&lrec->forw_lsa) &&                                    \
            !LSA_ISNULL(&lrec->back_lsa) &&                                    \
            (lrec->trid < 0 ||                                                 \
             LSA_LT(&lrec->forw_lsa, final) ||                                 \
-            lrec->forw_lsa.pageid > final->pageid + 5 ||                      \
             lrec->forw_lsa.pageid < first_pageid ||                           \
             lrec->forw_lsa.pageid < -1        ||                              \
             lrec->back_lsa.pageid < -1        ||                              \
-            !(LOG_SMALLER_LOGREC_TYPE <= lrec->type                           \
-             && lrec->type <= LOG_LARGER_LOGREC_TYPE)) )
+            lrec->type > LOG_LARGER_LOGREC_TYPE) )
 
 #define REPL_PREFETCH_PAGE_COUNT         1000
 
@@ -165,7 +162,9 @@ static int repl_ag_archive_by_file_rename (MASTER_INFO * minfo,
 					   PAGEID flushed, char *buf,
 					   char *archive_path,
 					   PAGEID last_pageid);
+#if 0
 static void repl_ag_delete_min_trantable (MASTER_INFO * minfo);
+#endif
 static int repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed);
 static int repl_update_distributor (SLAVE_INFO * sinfo, int idx);
 static bool repl_tr_log_apply_pre (void *arg, SLAVE_INFO * sinfo,
@@ -474,7 +473,7 @@ repl_ag_shutdown_by_signal (int ignore)
 {
   int i;
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd, "AGENT EXIT\n");
       fflush (debug_Log_fd);
@@ -512,6 +511,11 @@ repl_ag_find_last_applied_lsa ()
   SLAVE_INFO *sinfo = repl_ag_get_slave_info (NULL);
   int i;
   int error = NO_ERROR;
+
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   /* find out the last page LOG LSA applied */
   for (i = 0; i < sinfo->m_cnt; i++)
@@ -791,6 +795,7 @@ repl_ag_archive_by_file_rename (MASTER_INFO * minfo,
  *
  *    called by FLUSH thread
  */
+#if 0
 static void
 repl_ag_delete_min_trantable (MASTER_INFO * minfo)
 {
@@ -828,7 +833,7 @@ repl_ag_delete_min_trantable (MASTER_INFO * minfo)
     }
   if (apply)
     {
-      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	{
 	  fprintf (debug_Log_fd, "repl_ag_delete_min_trantable\n");
 	  fflush (debug_Log_fd);
@@ -836,6 +841,7 @@ repl_ag_delete_min_trantable (MASTER_INFO * minfo)
       repl_ag_clear_repl_item (apply);
     }
 }
+#endif
 
 /*
  * repl_ag_archive_copy_log() - archive the active copy log
@@ -873,7 +879,7 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
       return error;
     }
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd,
 	       "TRUNCATE ENTER : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -919,41 +925,22 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
   buf = (char *) malloc (minfo->io_pagesize);
   REPL_CHECK_ERR_NULL (REPL_FILE_AG_TP, REPL_AGENT_MEMORY_ERROR, buf);
 
-  if (create_Arv == false
-      && ((minfo->copy_log.first_pageid - minfo->copy_log.start_pageid)
-	  / minfo->copylog_size) != 0)
+  if ((minfo->copy_log.last_pageid - minfo->copy_log.first_pageid) >
+      minfo->copylog_size)
     {
-      error = repl_ag_truncate_copy_log (minfo, flushed, buf, last_pageid);
-    }
-  else
-    {
-      /* create the archive file */
-      sprintf (archive_path, "%s.ar%d", minfo->copylog_path,
-	       (minfo->copy_log.first_pageid - minfo->copy_log.start_pageid)
-	       / minfo->copylog_size);
-
-      file_size = repl_io_file_size (pb->log_vdes);
-      if (file_size >= 0)
+      if (create_Arv)
 	{
-
-	  if (file_size <
-	      ((off_t) minfo->copylog_size) *
-	      ((off_t) (minfo->io_pagesize)) * 2)
-	    {
-	      error = repl_ag_archive_by_file_rename (minfo, flushed, buf,
-						      archive_path,
-						      last_pageid);
-	    }
-	  else
-	    {
-	      error = repl_ag_archive_by_file_copy (minfo, flushed, buf,
-						    archive_path,
-						    last_pageid);
-	    }
+	  snprintf (archive_path, FILE_PATH_LENGTH - 1, "%s.ar%d",
+		    minfo->copylog_path,
+		    (minfo->copy_log.first_pageid -
+		     minfo->copy_log.start_pageid) / minfo->copylog_size);
+	  error = repl_ag_archive_by_file_copy (minfo, flushed, buf,
+						archive_path, last_pageid);
 	}
       else
 	{
-	  error = REPL_AGENT_IO_ERROR;
+	  error =
+	    repl_ag_truncate_copy_log (minfo, flushed, buf, last_pageid);
 	}
     }
 
@@ -961,7 +948,7 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
     REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_CANT_CREATE_ARCHIVE,
 			  archive_path);
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd,
 	       "TRUNCATE EXIT : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -995,7 +982,7 @@ repl_update_distributor (SLAVE_INFO * sinfo, int idx)
 
   master = &sinfo->masters[idx];
 
-  db_set_client_type (DB_CLIENT_TYPE_LOG_REPLICATOR);
+  db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
   error = db_login ("dba", dist_Passwd);
   if (error == NO_ERROR)
     error = db_restart ("repl_agent", 0, dist_Dbname);
@@ -1310,6 +1297,9 @@ repl_rectype_string (LOG_RECTYPE type)
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
       return "LOG_DUMMY_FILLPAGE_FORARCHIVE";
 
+    case LOG_DUMMY_HA_SERVER_STATE:
+      return "LOG_DUMMY_HA_SERVER_STATE";
+
     case LOG_END_OF_LOG:
       return "LOG_END_OF_LOG";
 
@@ -1342,7 +1332,7 @@ repl_tr_log_record_process (void *arg,
   REPL_APPLY *apply = NULL;
   int error = NO_ERROR;
   LOG_LSA lsa_apply;
-  time_t slave_time;
+  time_t slave_time, master_time;
 
   /* Is this a partial record? refetch the target page */
   if (debug_Dump_info & REPL_DEBUG_LOG_DUMP)
@@ -1450,7 +1440,7 @@ repl_tr_log_record_process (void *arg,
 	}
 
     case LOG_COMMIT:
-      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	{
 	  fprintf (debug_Log_fd,
 		   "COMMIT: TRAIL LSA(%d,%d), FINAL(%d,%d)\n",
@@ -1462,22 +1452,35 @@ repl_tr_log_record_process (void *arg,
       /* apply the replication log to the slave */
       if (LSA_GT (final, &sinfo->masters[m_idx].final_lsa))
 	{
-	  error = repl_ag_set_commit_log (lrec->trid, final, m_idx,
-					  lrec->type ==
-					  LOG_COMMIT_TOPOPE ? -1 :
-					  repl_ag_retrieve_eot_time
-					  (pg_ptr, final, m_idx));
+	  if (lrec->type == LOG_COMMIT_TOPOPE)
+	    {
+	      master_time = -1;
+	    }
+	  else
+	    {
+	      error = repl_ag_retrieve_eot_time (pg_ptr, final, m_idx,
+						 &master_time);
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      error = repl_ag_set_commit_log (lrec->trid, final, m_idx,
+					      master_time);
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      pb->need_shutdown = true;
 	    }
+
 	  REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
 				   REPL_AGENT_INTERNAL_ERROR, NULL, arg);
 
 	  do
 	    {
 	      error = repl_ag_apply_commit_list (&lsa_apply, m_idx,
-						 &sinfo->old_time);
+						 &sinfo->old_time,
+						 lrec->type == LOG_COMMIT);
 	      if (error == REPL_AGENT_CANT_CONNECT_TO_SLAVE)
 		{
 		  /* If errors, all threads related this slave db would fail also,
@@ -1513,17 +1516,11 @@ repl_tr_log_record_process (void *arg,
 						 * there is the replication log
 						 * applying to the slave
 						 */
-	  /* if the apply thread reaches the final LSA previously applied,
-	   * it's safe for the FLUSH thread to make an archive log
-	   */
-	  if (pb->start_to_archive == false)
-	    {
-	      pb->start_to_archive = true;
-	    }
 	}
       else
 	{
-	  repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx);
+	  repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx,
+					     lrec->type == LOG_COMMIT);
 	}
       break;
 
@@ -1532,11 +1529,13 @@ repl_tr_log_record_process (void *arg,
       break;
 
     case LOG_ABORT:
-      repl_ag_apply_abort (m_idx, lrec->trid,
-			   repl_ag_retrieve_eot_time (pg_ptr, final,
-						      m_idx),
-			   &sinfo->old_time);
-      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+      error = repl_ag_retrieve_eot_time (pg_ptr, final, m_idx, &master_time);
+      if (error == NO_ERROR)
+	{
+	  repl_ag_apply_abort (m_idx, lrec->trid, master_time,
+			       &sinfo->old_time);
+	}
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	{
 	  fprintf (debug_Log_fd,
 		   "ABORT TRAN : TRAIL LSA(%d,%d), FINAL(%d,%d)\n",
@@ -1545,7 +1544,7 @@ repl_tr_log_record_process (void *arg,
 		   final->pageid, final->offset);
 	  fflush (debug_Log_fd);
 	}
-      repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx);
+      repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx, true);
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
@@ -1610,7 +1609,15 @@ repl_tr_log_commit (SLAVE_INFO * sinfo, int m_idx, REPL_PB * pb)
 	  LSA_COPY (&sinfo->masters[m_idx].last_committed_lsa,
 		    &sinfo->masters[m_idx].final_lsa);
 
-	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+	  /* if the apply thread reaches the final LSA previously applied,
+	   * it's safe for the FLUSH thread to make an archive log
+	   */
+	  if (pb->start_to_archive == false)
+	    {
+	      pb->start_to_archive = true;
+	    }
+
+	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	    {
 	      fprintf (debug_Log_fd,
 		       "COMMIT : TRAIL LSA(%d, %d)\n",
@@ -1714,6 +1721,13 @@ repl_tr_log_apply (void *arg)
   bool is_connect = true;
   bool is_idle;
 
+  if (arg == NULL)
+    {
+      REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_INTERNAL_ERROR);
+      repl_error_flush (err_Log_fp, 0);
+      db_shutdown ();
+      exit (EXIT_FAILURE);
+    }
   /* set slave info (thread specific data) to connect */
   repl_ag_set_slave_info (*(int *) arg);
   sinfo = sInfo[*(int *) arg];
@@ -1738,7 +1752,7 @@ repl_tr_log_apply (void *arg)
 			       sinfo->conn.dbname, arg);
     }
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd,
 	       "AGENT START : TRAIL LSA(%d, %d), COPY LOG(%d,%d,%d)\n",
@@ -1781,7 +1795,7 @@ repl_tr_log_apply (void *arg)
 	      break;
 	    }
 
-	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+	  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	    {
 	      fprintf (debug_Log_fd,
 		       "AGENT PRE : FINAL LSA(%d,%d), TRAIL LSA(%d, %d)\n",
@@ -1837,6 +1851,10 @@ repl_tr_log_apply (void *arg)
 		      PTHREAD_MUTEX_UNLOCK (pb->mutex);
 		    }
 		}
+
+	      REPL_CHECK_THREAD_NULL (log_buf, APPLY_THREAD,
+				      1, REPL_AGENT_INTERNAL_ERROR,
+				      NULL, arg);
 
 	      /* Now, we've got the target page */
 	      /* set the log page pointer */
@@ -1909,13 +1927,15 @@ repl_tr_log_apply (void *arg)
 	      if (is_idle
 		  && repl_ag_get_resource_size () > (size_t) agent_Max_size)
 		{
+		  REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_NEED_MORE_WS);
+		  repl_error_flush (err_Log_fp, false);
 		  restart_Agent = true;
 		  pb->need_shutdown = true;
 		}
 	    }
 	}
     }
-  while (!pb->need_shutdown);
+  while (pb != NULL && !pb->need_shutdown);
 
   if (arg)
     {
@@ -1923,7 +1943,7 @@ repl_tr_log_apply (void *arg)
     }
   db_shutdown ();
 
-  repl_error_flush (err_Log_fp, 0);
+  repl_error_flush (err_Log_fp, false);
 
   PTHREAD_EXIT;
 
@@ -2263,7 +2283,9 @@ repl_tr_log_recv (void *arg)
   PTHREAD_MUTEX_LOCK (pb->mutex);
   error = repl_init_log_buffer (pb, minfo->log_buffer_size,
 				SIZEOF_REPL_LOG_BUFFER);
-  pb->start_pageid = pb->min_pageid = start_pageid;
+  pb->start_pageid = start_pageid;
+  pb->min_pageid = start_pageid;
+  pb->max_pageid = start_pageid;
   PTHREAD_MUTEX_UNLOCK (pb->mutex);
   REPL_CHECK_THREAD_ERROR (RECV_THREAD, false, REPL_AGENT_MEMORY_ERROR,
 			   NULL, arg);
@@ -2306,6 +2328,7 @@ repl_tr_log_recv (void *arg)
 	  if (first_time == true && in_archive == true)
 	    {
 	      REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_GET_LOG_PAGE_FAIL);
+	      repl_error_flush (err_Log_fp, false);
 	      restart_Agent = true;
 	      pb->need_shutdown = true;
 	    }
@@ -2318,6 +2341,10 @@ repl_tr_log_recv (void *arg)
 	}
       if (!repl_ag_valid_page ((LOG_PAGE *) minfo->conn.resp_buffer, *id))
 	{
+	  if (!minfo->is_end_of_record)
+	    {
+	      SLEEP_USEC (0, 100 * 1000);
+	    }
 	  continue;
 	}
 
@@ -2547,7 +2574,8 @@ repl_ag_thread_init ()
       REPL_CHECK_ERR_NULL (REPL_FILE_AG_TP, REPL_AGENT_MEMORY_ERROR, id1);
       *id1 = i;
       id2 = (int *) malloc (DB_SIZEOF (int));
-      REPL_CHECK_ERR_NULL (REPL_FILE_AG_TP, REPL_AGENT_MEMORY_ERROR, id2);
+      REPL_CHECK_ERR_NULL_WITH_FREE (REPL_FILE_AG_TP, REPL_AGENT_MEMORY_ERROR,
+				     id2, id1);
       *id2 = i;
 
       /* create the log receiver and flush thread per master */
@@ -2724,7 +2752,7 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
 	  fflush (log_out_fp);
 
 	  dump_node = head;
-	  while (dump_node)
+	  while (dump_node != NULL)
 	    {
 	      if (dump_node->tranid == lrec->trid)
 		{
@@ -2740,6 +2768,12 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
 	  else
 	    {
 	      dump_node = (REPL_DUMP_NODE *) malloc (sizeof (REPL_DUMP_NODE));
+	      if (dump_node == NULL)
+		{
+		  free_and_init (cache_log_buffer);
+		  fprintf (log_out_fp, "MEMORY MALLOC ERROR\n");
+		  return;
+		}
 	      dump_node->next = NULL;
 	      dump_node->prev = NULL;
 	      dump_node->tranid = lrec->trid;
@@ -2758,7 +2792,7 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
       read_pageid++;
     }
 
-  while (head)
+  while (head != NULL)
     {
       dump_node = head;
       head = head->next;
@@ -2769,10 +2803,5 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
       free_and_init (dump_node);
     }
 
-  if (cache_log_buffer)
-    {
-      free_and_init (cache_log_buffer);
-      cache_log_buffer = NULL;
-    }
-
+  free_and_init (cache_log_buffer);
 }

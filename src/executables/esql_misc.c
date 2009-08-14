@@ -53,11 +53,6 @@ struct generic
   char *name;
 };
 
-enum
-{
-  MSG_OUT_OF_MEMORY = 1
-};
-
 varstring pp_subscript_buf;
 varstring pp_host_var_buf;
 
@@ -204,6 +199,13 @@ pp_new_ptr_vec (PTR_VEC * vec)
   if (vec == NULL)
     {
       vec = malloc (sizeof (PTR_VEC));
+      if (vec == NULL)
+	{
+	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+	  exit (1);
+	  return NULL;
+	}
+
       vec->heap_allocated = TRUE;
     }
   else

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -112,6 +112,9 @@
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
                           NULL : (v)->data.ch.medium.buf)
 
+#define DB_PULL_STRING(v) \
+    ((v)->data.ch.medium.buf)
+
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
 
@@ -129,9 +132,14 @@
          (v)->data.ch.medium.size, (INTL_CODESET) (v)->data.ch.medium.codeset, (l)), \
     (v)->data.ch.medium.buf))
 
+#define DB_PULL_CHAR(v, l) \
+    ((intl_char_count((unsigned char *)(v)->data.ch.medium.buf, \
+                      (v)->data.ch.medium.size, \
+                      (INTL_CODESET) (v)->data.ch.medium.codeset, (l)), \
+     (v)->data.ch.medium.buf))
 
 #define DB_GET_NCHAR(v, l) DB_GET_CHAR(v, l)
-
+#define DB_PULL_NCHAR(v, l) DB_PULL_CHAR(v, l)
 
 
 /* note: this will have to change when we start using the small and large
@@ -141,30 +149,52 @@
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : \
       (((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
 
+#define DB_PULL_BIT(v, l) \
+    ((((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
+
 #define DB_GET_OBJECT(v) \
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? (DB_OBJECT *)(NULL) : (v)->data.op)
+
+#define DB_PULL_OBJECT(v) \
+    ((v)->data.op)
 
 #define DB_GET_OID(v) \
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? (OID *)(NULL) : &((v)->data.oid))
 
+#define DB_PULL_OID(v) \
+    (&((v)->data.oid))
+
 #define DB_GET_SET(v) \
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.set)
 
+#define DB_PULL_SET(v) \
+    ((v)->data.set)
+
 #define DB_GET_MULTISET(v) DB_GET_SET(v)
+#define DB_PULL_MULTISET(v) DB_PULL_SET(v)
 
 #define DB_GET_LIST(v) DB_GET_SET(v)
+#define DB_PULL_LIST(v) DB_PULL_SET(v)
+
+#define DB_PULL_SEQUENCE(v) DB_PULL_LIST(v)
 
 #define DB_GET_MIDXKEY(v) \
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
                   NULL : (DB_MIDXKEY *)(&(v)->data.midxkey))
 
+#define DB_PULL_MIDXKEY(v) \
+    ((DB_MIDXKEY *)(&(v)->data.midxkey))
+
 #define DB_GET_ELO(v) \
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.elo)
+
+#define DB_PULL_ELO(v) \
+    ((v)->data.elo)
 
 #define DB_GET_TIME(v) \
     ((DB_TIME *)(&(v)->data.time))
@@ -185,6 +215,9 @@
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.p)
 
+#define DB_PULL_POINTER(v) \
+    ((v)->data.p)
+
 #define DB_GET_ERROR(v) \
     ((v)->data.error)
 
@@ -197,6 +230,9 @@
     (((v)->domain.general_info.is_null || \
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
                       NULL : (v)->data.num.d.buf)
+
+#define DB_PULL_NUMERIC(v) \
+    ((v)->data.num.d.buf)
 
 #define DB_GET_STRING_SIZE(v) \
     (((v)->data.ch.info.style == MEDIUM_STRING) ? \
@@ -224,24 +260,35 @@
 #define db_get_float(v) DB_GET_FLOAT(v)
 #define db_get_double(v) DB_GET_DOUBLE(v)
 #define db_get_string(v) DB_GET_STRING(v)
+#define db_pull_string(v) DB_PULL_STRING(v)
 #define db_get_char(v, l) DB_GET_CHAR(v, l)
+#define db_pull_char(v, l) DB_PULL_CHAR(v, l)
 #define db_get_nchar(v, l) DB_GET_NCHAR(v, l)
+#define db_pull_nchar(v, l) DB_PULL_NCHAR(v, l)
 #define db_get_bit(v, l) DB_GET_BIT(v, l)
+#define db_pull_bit(v, l) DB_PULL_BIT(v, l)
 #define db_get_object(v) DB_GET_OBJECT(v)
+#define db_pull_object(v) DB_PULL_OBJECT(v)
 #define db_get_oid(v) DB_GET_OID(v)
+#define db_pull_oid(v) DB_PULL_OID(v)
 #define db_get_set(v) DB_GET_SET(v)
+#define db_pull_set(v) DB_PULL_SET(v)
 #define db_get_midxkey(v) DB_GET_MIDXKEY(v)
+#define db_pull_midxkey(v) DB_PULL_MIDXKEY(v)
 #define db_get_elo(v) DB_GET_ELO(v)
+#define db_pull_elo(v) DB_PULL_ELO(v)
 #define db_get_time(v) DB_GET_TIME(v)
 #define db_get_date(v) DB_GET_DATE(v)
 #define db_get_timestamp(v) DB_GET_TIMESTAMP(v)
 #define db_get_datetime(v) DB_GET_DATETIME(v)
 #define db_get_monetary(v) DB_GET_MONETARY(v)
 #define db_get_pointer(v) DB_GET_POINTER(v)
+#define db_pull_pointer(v) DB_PULL_POINTER(v)
 #define db_get_error(v) DB_GET_ERROR(v)
 #define db_get_short(v) DB_GET_SHORT(v)
 #define db_get_smallint(v) DB_GET_SHORT(v)
 #define db_get_numeric(v) DB_GET_NUMERIC(v)
+#define db_pull_numeric(v) DB_PULL_NUMERIC(v)
 #define db_get_string_size(v) DB_GET_STRING_SIZE(v)
 #define db_get_resultset(v) DB_GET_RESULTSET(v)
 #define db_get_string_codeset(v) DB_GET_STRING_CODESET(v)
@@ -287,15 +334,18 @@
      (v)->need_clear = false, \
      NO_ERROR)
 
-#define db_make_oid(v, n) \
-    (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
-     ((v)->domain.general_info.type = DB_TYPE_OID, \
+#define db_push_oid(v, n) \
+    ((v)->domain.general_info.type = DB_TYPE_OID, \
      (v)->data.oid.pageid = (n)->pageid, \
      (v)->data.oid.slotid = (n)->slotid, \
      (v)->data.oid.volid = (n)->volid, \
      (v)->domain.general_info.is_null = OID_ISNULL(n), \
      (v)->need_clear = false, \
-     NO_ERROR))
+     NO_ERROR)
+
+#define db_make_oid(v, n) \
+    (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
+     db_push_oid((v), (n)))
 
 #define db_make_elo(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_ELO, \

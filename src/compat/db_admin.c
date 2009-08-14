@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -80,6 +80,7 @@ static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
 #if !defined(WINDOWS)
 void sigfpe_handler (int sig);
 #endif
+
 
 /*
  * install_static_methods() - Installs the static method definitions for the
@@ -270,9 +271,9 @@ db_add_volume (const char *ext_path, const char *ext_name,
 	      "db_add_volume");
       return er_errid ();
     }
-  volid =
-    boot_add_volume_extension (ext_path, ext_name, ext_comments, ext_npages,
-			       ext_purpose, false);
+
+  volid = boot_add_volume_extension (ext_path, ext_name, ext_comments,
+				     ext_npages, ext_purpose, false);
   if (volid == NULL_VOLID)
     {
       error = er_errid ();
@@ -377,8 +378,8 @@ db_get_client_type (void)
 void
 db_set_client_type (int client_type)
 {
-  if (client_type > DB_CLIENT_TYPE_LOG_REPLICATOR
-      || client_type <= DB_CLIENT_TYPE_SYSTEM_INTERNAL)
+  if (client_type > DB_CLIENT_TYPE_MAX
+      || client_type < DB_CLIENT_TYPE_DEFAULT)
     {
       db_Client_type = DB_CLIENT_TYPE_DEFAULT;
     }
@@ -489,6 +490,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.login_name = NULL;
       client_credential.host_name = NULL;
       client_credential.process_id = -1;
+
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
 	{
@@ -497,7 +499,7 @@ db_restart (const char *program, int print_version, const char *volume)
       else
 	{
 	  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
-	  strcpy (db_Database_name, volume);
+	  strncpy (db_Database_name, volume, DB_MAX_IDENTIFIER_LENGTH);
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
@@ -518,6 +520,34 @@ db_restart (const char *program, int print_version, const char *volume)
 }
 
 /*
+ * db_restart_ex() - extended db_restart()
+ *
+ * returns : error code.
+ *
+ *   program(in) : the program name from argv[0]
+ *   db_name(in) : the name of the database (server)
+ *   db_user(in) : the database user name
+ *   db_password(in) : the password
+ *   client_type(in) : DB_CLIENT_TYPE_XXX in db.h
+ */
+int
+db_restart_ex (const char *program, const char *db_name,
+	       const char *db_user, const char *db_password, int client_type)
+{
+  int retval;
+
+  retval = au_login (db_user, db_password);
+  if (retval != NO_ERROR)
+    {
+      return retval;
+    }
+
+  db_set_client_type (client_type);
+
+  return db_restart (program, false, db_name);
+}
+
+/*
  * db_shutdown() - This closes a database that was previously restarted.
  * return : error code.
  *
@@ -535,6 +565,7 @@ db_shutdown (void)
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
+  db_Disable_modifications = 0;
 
   return (error);
 }
@@ -549,6 +580,34 @@ db_ping_server (int client_val, int *server_val)
   error = net_client_ping_server (client_val, server_val);
 #endif /* CS_MODE */
   return error;
+}
+
+/*
+ * db_disable_modification - Disable database modification operation
+ *   return: error code
+ *
+ * NOTE: This function will change 'db_Disable_modifications'.
+ */
+int
+db_disable_modification (void)
+{
+  /*CHECK_CONNECT_ERROR (); */
+  db_Disable_modifications++;
+  return NO_ERROR;
+}
+
+/*
+ * db_enable_modification - Enable database modification operation
+ *   return: error code
+ *
+ * NOTE: This function will change 'db_Disable_modifications'.
+ */
+int
+db_enable_modification (void)
+{
+  /*CHECK_CONNECT_ERROR (); */
+  db_Disable_modifications--;
+  return NO_ERROR;
 }
 
 /*
@@ -569,7 +628,7 @@ db_commit_transaction (void)
   int retval;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_MODIFICATION_ERROR ();
+  /*CHECK_MODIFICATION_ERROR (); */
 
   /* API does not support RETAIN LOCK */
   retval = tran_commit (false);
@@ -592,7 +651,7 @@ db_abort_transaction (void)
   int error;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_MODIFICATION_ERROR ();
+  /*CHECK_MODIFICATION_ERROR (); */
 
   error = tran_abort ();
   if (error == NO_ERROR)
@@ -1564,8 +1623,8 @@ db_error_init (const char *logfile)
 
 /*
  *
- * db_register_error_loghandler () - This function registers user supplied 
- * error log handler function (db_error_log_handler_t type) which is called 
+ * db_register_error_loghandler () - This function registers user supplied
+ * error log handler function (db_error_log_handler_t type) which is called
  * whenever DBMS error message is to be logged.
  *
  * return : previously registered error log handler function (may be NULL)
@@ -1814,7 +1873,7 @@ db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE purpose,
     }
 
   object = db_real_instance (object);
-  if (!WS_ISVID (object))
+  if (object != NULL && !WS_ISVID (object))
     {
       obj = locator_fetch_nested (object, purpose, max_level, quit_on_error);
     }
@@ -2029,6 +2088,11 @@ db_identifier (DB_OBJECT * obj)
   DB_IDENTIFIER *oid;
 
   oid = NULL;
+
+  if (!obj)
+    {
+      goto end;
+    }
   if (WS_MARKED_DELETED (obj))
     {
       goto end;
@@ -2036,14 +2100,14 @@ db_identifier (DB_OBJECT * obj)
   if (WS_ISVID (obj))
     {
       obj = db_real_instance (obj);
-    }
-  if (!obj)
-    {
-      goto end;			/* non-updatable view has no oid */
-    }
-  if (WS_ISVID (obj))
-    {
-      goto end;			/* a proxy has no oid */
+      if (!obj)
+	{
+	  goto end;		/* non-updatable view has no oid */
+	}
+      if (WS_ISVID (obj))
+	{
+	  goto end;		/* a proxy has no oid */
+	}
     }
 
   oid = ws_oid (obj);
@@ -2142,8 +2206,8 @@ db_set_system_parameters (const char *data)
 		  data);
 	  break;
 	case PRM_ERR_NOT_SOLE_TRAN:
-	  error = ER_PRM_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_NOT_SOLE_TRAN, 0);
+	  error = ER_NOT_SOLE_TRAN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_SOLE_TRAN, 0);
 	  break;
 	case PRM_ERR_COMM_ERR:
 	  error = ER_NET_SERVER_COMM_ERROR;
@@ -2208,8 +2272,8 @@ db_get_system_parameters (char *data, int len)
 		  ER_PRM_CANNOT_CHANGE, 1, data);
 	  break;
 	case PRM_ERR_NOT_SOLE_TRAN:
-	  error = ER_PRM_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_NOT_SOLE_TRAN, 0);
+	  error = ER_NOT_SOLE_TRAN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_SOLE_TRAN, 0);
 	  break;
 	case PRM_ERR_COMM_ERR:
 	  error = ER_NET_SERVER_COMM_ERROR;
@@ -2242,3 +2306,14 @@ db_disable_first_user (void)
   Au_remember_first_user = false;
   return NO_ERROR;
 }
+
+char *
+db_get_host_connected (void)
+{
+#if defined(CS_MODE)
+  return boot_get_host_connected ();
+#else
+  return "localhost";
+#endif
+}
+

@@ -1,0 +1,148 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>INSTR 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n스트링  함수와 연산자\nINSTR 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_strfunc_concat.htm\">스트링  함수와 연산자<\/a> &nbsp;&gt;&nbsp; INSTR 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>INSTR 함수</h4>
+<h6>설명&#160;</h6>
+<p><span class="keyword">INSTR</span> 함수는 <span class="keyword">POSITION</span> 함수와 유사하게 한 스트링 내에서 다른 스트링의 위치를 반환하는 함수이나, 탐색을 시작할 위치를 지정할 수 있다.</p>
+<p></p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">INSTR</span>( <span class="var">string</span> , <span class="var">substring</span> [, <span class="var">position</span>] )</p>
+<p>주어진 <span class="var">string</span> 내에서 <span class="var">substring</span>을 탐색한다.</p>
+<ul>
+<li><span class="var">string</span> : 입력 문자열을 지정한다.</li>
+<li><span class="var">substring</span> : 위치를 반환할 문자열을 지정한다.</li>
+<li><span class="var">position</span> : 선택 사항으로 탐색을 시작할 <span class="var">string</span>의 위치를 나타낸다. 생략되면 디폴트 값인 1이 적용된다. <span class="var">string</span>의 첫 번째 위치는 1로 지정된다. 값이 음수이면 <span class="var">string</span>의 끝에서부터 거꾸로 개수만큼을 세어 위치한 곳에서부터 <span class="var">string</span>의 앞부분을 향해 탐색한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 문자열 'United Arab Emirates' 중 문자열 'United'의 위치를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT INSTR('United Arab Emirates', 'United', 1) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 1</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 문자열 'United Arab Emirates' 중 앞에서 13번째 위치부터 문자열 'Emirates'의 위치를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT INSTR('United Arab Emirates', 'Emirates', 13) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 13</li>
+</ul>
+<ul>
+<li class="title">예제 3</li>
+<li class="desc">다음은 문자열 'United Arab Emirates' 중 앞에서 4번째 위치부터 문자열 'Arab'의 위치를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT INSTR('United Arab Emirates', 'Arab', 4) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 8</li>
+</ul>
+<ul>
+<li class="title">예제 4</li>
+<li class="desc">다음은 문자열 'United Arab Emirates' 중 끝에서 왼쪽으로 9번째 위치부터 문자열 'Emirates'의 위치를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT INSTR('United Arab Emirates', 'Emirates', -9) FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 13</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -63,6 +63,7 @@ struct t_job_info
 typedef struct t_as_info T_AS_INFO;
 struct t_as_info
 {
+  char service_flag;
   int pid;
   int num_request;
   int as_port;
@@ -76,6 +77,15 @@ struct t_as_info
   char clt_appl_name[32];
   char request_file[64];
   char log_msg[64];
+  char database_name[32];
+  char database_host[MAXHOSTNAMELEN + 1];
+  time_t last_connect_time;
+  INT64 num_requests_received;
+  INT64 num_transactions_processed;
+  INT64 num_queries_processed;
+  INT64 num_long_queries;
+  INT64 num_long_transactions;
+  INT64 num_error_queries;
 };
 
 typedef struct t_br_info T_BR_INFO;
@@ -93,16 +103,22 @@ struct t_br_info
   int num_thr;
   float pcpu;
   int cpu_time;
+  int num_busy_count;
   int num_req;
+  INT64 num_tran;
+  INT64 num_query;
+  INT64 num_long_query;
+  INT64 num_long_tran;
+  INT64 num_error_query;
   int session_timeout;
-  int sql_log_time;
   int as_max_size;
   int time_to_kill;
+  int long_query_time;
+  int long_transaction_time;
+  char keep_connection;
   char status;
   char auto_add_flag;
-  char sql_log_on_off;
-  char sql_log_append_mode;
-  char sql_log_bind_value;
+  char sql_log_mode;
   char log_backup_flag;
   char source_env_flag;
   char access_list_flag;
@@ -155,7 +171,6 @@ typedef void (*T_UC_CHANGE_CONFIG_F) (T_UC_CONF *, const char *, const char *,
 				      const char *);
 typedef int (*T_UC_CHANGER_F) (char *, char *, char *, char *);
 typedef int (*T_UC_DEL_CAS_LOG_F) (char *, int, char *);
-#ifdef DIAG_DEVEL
 typedef int (*T_UC_GET_ACTIVE_SESSION_WITH_OPENED_SHM) (void *, char *);
 typedef void *(*T_UCA_BROKER_SHM_OPEN) (char *err_msg);
 typedef int (*T_UCA_GET_BR_NUM_WITH_OPENED_SHM) (void *shm_br, char *err_msg);
@@ -174,8 +189,12 @@ typedef int (*T_UCA_GET_AS_TRAN_PROCESSED_WITH_OPENED_SHM) (void *shm_as,
 							    long long array[],
 							    int array_size,
 							    char *err_msg);
+typedef int (*T_UCA_GET_AS_QUERY_PROCESSED_WITH_OPENED_SHM) (void *shm_as,
+							     long long
+							     array[],
+							     int array_size,
+							     char *err_msg);
 typedef int (*T_UCA_SHM_DETACH) (void *p);
-#endif
 
 DLL_EXPORT const char *uc_version (void);
 DLL_EXPORT int uc_start (char *err_msg);
@@ -203,7 +222,6 @@ DLL_EXPORT void uc_change_config (T_UC_CONF * unicas_conf, char *br_name,
 				  char *name, char *value);
 DLL_EXPORT int uc_changer (char *br_name, char *name, char *value, char *);
 DLL_EXPORT int uc_del_cas_log (char *br_name, int asid, char *errmsg);
-#ifdef DIAG_DEVEL
 DLL_EXPORT int uc_get_active_session_with_opened_shm (void *, char *);
 DLL_EXPORT void *uc_broker_shm_open (char *err_msg);
 
@@ -222,7 +240,10 @@ DLL_EXPORT int uc_get_as_tran_processed_with_opened_shm (void *shm_as,
 							 long long array[],
 							 int array_size,
 							 char *err_msg);
+DLL_EXPORT int uc_get_as_query_processed_with_opened_shm (void *shm_as,
+							  long long array[],
+							  int array_size,
+							  char *err_msg);
 DLL_EXPORT void uc_shm_detach (void *p);
-#endif
 
 #endif /* _BROKER_ADMIN_SO_H_ */

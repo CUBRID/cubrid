@@ -792,7 +792,13 @@ aj_load_autobackupdb_conf (ajob * p_aj)
 	    c->period_date = 6;
 	  else
 	    {
-	      FREE_MEM (c);
+	      if (c != NULL)
+		{
+		  FREE_MEM (c->dbname);
+		  FREE_MEM (c->backup_id);
+		  FREE_MEM (c->path);
+		  FREE_MEM (c);
+		}
 	      continue;
 	    }
 	}
@@ -815,7 +821,13 @@ aj_load_autobackupdb_conf (ajob * p_aj)
 	}
       else
 	{
-	  FREE_MEM (c);
+	  if (c != NULL)
+	    {
+	      FREE_MEM (c->dbname);
+	      FREE_MEM (c->backup_id);
+	      FREE_MEM (c->path);
+	      FREE_MEM (c);
+	    }
 	  continue;
 	}
       c->time = atoi (conf_item[5]);
@@ -893,9 +905,9 @@ aj_load_execquery_conf (ajob * p_aj)
       if (c == NULL)
 	break;
 
-      strcpy (c->dbname, conf_item[0]);
-      strcpy (c->query_id, conf_item[1]);
-      strcpy (c->dbmt_uid, conf_item[2]);
+      snprintf (c->dbname, sizeof (c->dbname) - 1, "%s", conf_item[0]);
+      snprintf (c->query_id, sizeof (c->query_id) - 1, "%s", conf_item[1]);
+      snprintf (c->dbmt_uid, sizeof (c->dbmt_uid) - 1, "%s", conf_item[2]);
 
       if (strcmp (conf_item[3], "ONE") == 0)
 	c->period = AEQT_ONE;
@@ -906,9 +918,10 @@ aj_load_execquery_conf (ajob * p_aj)
       else if (strcmp (conf_item[3], "MONTH") == 0)
 	c->period = AEQT_MONTH;
 
-      strcpy (c->detail1, conf_item[4]);
-      strcpy (c->detail2, conf_item[5]);
-      strcpy (c->query_string, conf_item[6]);
+      snprintf (c->detail1, sizeof (c->detail1) - 1, "%s", conf_item[4]);
+      snprintf (c->detail2, sizeof (c->detail2) - 1, "%s", conf_item[5]);
+      snprintf (c->query_string, sizeof (c->query_string) - 1, "%s",
+		conf_item[6]);
       c->db_mode = 2;
       c->next = NULL;
     }				/* end of while */
@@ -921,10 +934,15 @@ static void
 aj_execquery_handler (void *hd, time_t prev_check_time, time_t cur_time)
 {
   time_t execquery_time;
-  struct tm exec_tm, cur_tm;
+  struct tm exec_tm, cur_tm, *tm_p;
   autoexecquery_node *c;
 
-  cur_tm = *localtime (&cur_time);
+  tm_p = localtime (&cur_time);
+  if (tm_p == NULL)
+    {
+      return;
+    }
+  cur_tm = *tm_p;
 
   for (c = (autoexecquery_node *) (hd); c != NULL; c = c->next)
     {
@@ -1201,10 +1219,15 @@ static void
 aj_autobackupdb_handler (void *hd, time_t prev_check_time, time_t cur_time)
 {
   time_t backup_time;
-  struct tm backup_tm, cur_tm;
+  struct tm backup_tm, cur_tm, *tm_p;
   autobackupdb_node *c;
 
-  cur_tm = *localtime (&cur_time);
+  tm_p = localtime (&cur_time);
+  if (tm_p == NULL)
+    {
+      return;
+    }
+  cur_tm = *tm_p;
 
   for (c = (autobackupdb_node *) (hd); c != NULL; c = c->next)
     {
@@ -1265,7 +1288,7 @@ aj_backupdb (autobackupdb_node * n)
 {
   char filepath[512];
   char inputfilepath[512];
-  char buf[1024], dbdir[512];
+  char buf[2048], dbdir[512];
   char backup_vol_name[128];
   const char *opt_mode;
   char db_start_flag = 0;
@@ -1273,7 +1296,7 @@ aj_backupdb (autobackupdb_node * n)
   int retval;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char level_str[32];
-  char thread_num_str[8];
+  char thread_num_str[16];
   const char *argv[16];
   int argc = 0;
   FILE *inputfile;
@@ -1435,9 +1458,8 @@ aj_backupdb (autobackupdb_node * n)
 	{
 	  int buf_len;
 	  memset (buf, 0, sizeof (buf));
-	  sprintf (buf, "Failed to turn on DB : ");
-	  buf_len = strlen (buf);
-	  strncpy (buf + buf_len, err_buf, sizeof (buf) - buf_len - 1);
+	  buf_len = sprintf (buf, "Failed to turn on DB : ");
+	  snprintf (buf + buf_len, sizeof (buf) - buf_len - 1, "%s", err_buf);
 	  _aj_autobackupdb_error_log (n, buf);
 	}
     }

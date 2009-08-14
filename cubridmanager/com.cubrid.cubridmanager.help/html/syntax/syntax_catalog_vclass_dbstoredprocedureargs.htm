@@ -1,0 +1,198 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>DB_STORED_PROCEDURE_ARGS</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 가상 클래스\nDB_STORED_PROCEDURE_ARGS");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_vclass_vclass.htm\">시스템 카탈로그 가상 클래스<\/a> &nbsp;&gt;&nbsp; DB_STORED_PROCEDURE_ARGS<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>DB_STORED_PROCEDURE_ARGS</h4>
+<p>데이터베이스 내에서 현재 사용자가 접근 권한을 가진 Java 저장 함수의 인자에 대한 정보를 보여준다.</p>
+<table border="1">
+<tbody>
+<tr>
+<th width="100">
+<p>속성명</p>
+</th>
+<th width="120">
+<p>데이터 타입</p>
+</th>
+<th width="170">
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td width="100">
+<p>&#160;sp_name</p>
+</td>
+<td width="120">
+<p>VARCHAR(255)</p>
+</td>
+<td width="170">
+<p>SP 이름</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>&#160;index_of</p>
+</td>
+<td width="120">
+<p>INTEGER</p>
+</td>
+<td width="170">
+<p>매개변수 순서</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>&#160;arg_name</p>
+</td>
+<td width="120">
+<p>VARCHAR(256)</p>
+</td>
+<td width="170">
+<p>매개변수 이름</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>&#160;data_type</p>
+</td>
+<td width="120">
+<p>VARCHAR(16)</p>
+</td>
+<td width="170">
+<p>매개변수 데이터 타입</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>&#160;mode</p>
+</td>
+<td width="120">
+<p>VARCHAR(6)</p>
+</td>
+<td width="170">
+<p>모드 (IN, OUT, INOUT)</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h6>정의</h6>
+<p class="code">CREATE VCLASS db_stored_procedure_args (sp_name, index_of, arg_name, data_type, mode)<br />
+AS<br />
+SELECT sp.sp_name, sp.index_of, sp.arg_name,<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CASE sp.data_type&#160;&#160; WHEN 28 THEN 'CURSOR'&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; ELSE ( SELECT dt.type_name FROM _db_data_type dt<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; WHERE sp.data_type = dt.type_id) END,<br />
+&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CASE WHEN sp.mode = 1 THEN 'IN' WHEN sp.mode = 2 THEN 'OUT'&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; ELSE 'INOUT' END<br />
+FROM _db_stored_procedure_args sp<br />
+ORDER BY sp.sp_name, sp.index_of ;</p>
+<h6>예제</h6>
+<p>다음 예제에서는 'phone_info' Java 저장 프로시저의 인수 정보를 순서대로 조회한다.</p>
+<p class="code">csql&gt; select index_of, arg_name, data_type, mode&#160;<br />
+csql&gt; from&#160; db_stored_procedure_args<br />
+csql&gt; where sp_name = 'phone_info'<br />
+csql&gt; order by index_of<br />
+csql&gt; ;x<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 3&gt; ===<br />
+&#160;<br />
+&#160;&#160;&#160;&#160; index_of&#160; arg_name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; data_type&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; mode&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<br />
+===============================================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 0&#160; 'name'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'STRING'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'IN'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1&#160; 'phoneno'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'STRING'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'IN'&#160;&#160;&#160;&#160;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

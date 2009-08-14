@@ -1,0 +1,119 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>데이터베이스 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n데이터베이스\n데이터베이스 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_architecture.htm\">데이터베이스<\/a> &nbsp;&gt;&nbsp; 데이터베이스 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 설정</h3>
+<p>데이터베이스 서버 매개 변수를 설정하는 방법은 다음과 같다.</p>
+<ul>
+<li>호스트 내의 모든 데이터베이스에 공통으로 적용되는 데이터베이스 서버 매개 변수를 설정하려면, 해당 호스트 또는 [데이터베이스]를 마우스 오른쪽 버튼 클릭하고 [속성]을 선택한 후 [서버 공통 변수 설정]에서 설정한다.</li>
+<li>특정 데이터베이스의 매개 변수를 설정하려면, 해당 데이터베이스를 마우스 오른쪽 버튼 클릭하고 [속성]을 선택한 후, [서버 고유 변수 설정]에서 설정한다.</li>
+</ul>
+<h6>서버 공통 변수 설정</h6>
+<p><span class="keyword">$CUBRID/conf/cubrid.conf</span> 파일의 <span class="keyword">[common]</span> 섹션에 대한 공통 매개 변수를 설정한다.&#160;설치&#160;시 기본으로 포함된 매개 변수를 설정하는 [기본 설정] 탭과 나머지 모든 매개 변수를 설정하는&#160;[고급 설정] 탭으로 구성되어 있다. 각 매개 변수에 대한 자세한 설명은 <a href="../pm/pm_server_general.htm">데이터베이스 서버 설정</a>을 참조한다.</p>
+<ul>
+<li><strong>기본 설정</strong></li>
+<li class="desc"><img src="images/manager_database_set_basic.jpg" border="0" alt="" /></li>
+<li><strong>고급 설정</strong></li>
+<li class="desc"><img src="images/manager_database_set_advance.jpg" border="0" alt="" /></li>
+</ul>
+<p>서버 공통 변수 설정에서 설정하는&#160;모든 값은 편집 시 바로 유효성 검사를 수행하여 사용자의 실수를 최소화한다.</p>
+<p><img src="images/manager_database_set_check.jpg" border="0" alt="" /></p>
+<h6>서버 고유 변수 설정</h6>
+<p>서버 고유 변수 설정은 서버 공통 변수 설정과 동일한 기능을 제공한다. 단, 설정한 값은 해당 데이터베이스에만 적용 되는 것으로 <span class="keyword">$CUBRID/conf/cubrid.conf</span> 파일의 <span class="keyword">[@DBNAME]</span> 섹션에만 추가된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

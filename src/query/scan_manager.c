@@ -223,7 +223,7 @@ free_iscan_oid_buf_list (OID * oid_buf_p)
 #endif /* SERVER_MODE */
 
   MUTEX_LOCK (rv, scan_Iscan_oid_buf_list_mutex);
-  if (scan_Iscan_oid_buf_list_count < PRM_MAX_THREADS)
+  if (scan_Iscan_oid_buf_list_count < thread_num_worker_threads ())
     {
       /* save previous oid buf pointer */
       *(intptr_t *) oid_buf_p = (intptr_t) scan_Iscan_oid_buf_list;
@@ -519,7 +519,7 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt,
 
   qsort ((void *) key_vals, key_cnt, sizeof (KEY_VAL_RANGE), key_val_compare);
 
-  return key_val_fn (key_vals, key_cnt);
+  return ((*key_val_fn) (key_vals, key_cnt));
 }
 
 /*
@@ -539,7 +539,7 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   bool save_need_clear;
   DB_MIDXKEY midxkey;
 
-  int n_atts, nwords, i;
+  int ncols, nwords, natts, i;
   int buf_size, disk_size, nullmap_size;
   unsigned int *bits;
 
@@ -568,13 +568,23 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
   /* pointer to multi-column index key domain info. structure */
   setdomain = BTS->btid_int.key_type->setdomain;
 
+  for (dom = setdomain, ncols = 0; dom; dom = dom->next, ncols++)
+    {
+      ;				/* bitmap is always fully sized */
+    }
+
+  nwords = OR_BOUND_BIT_WORDS (ncols);
+  nullmap_size = (nwords * 4);
+
+  buf_size = nullmap_size;
+
   /* init */
   val = NULL;
   clear_value = false;
   DB_MAKE_NULL (&temp_val);
 
-  for (operand = func->value.funcp->operand, n_atts = 0, dom = setdomain;
-       operand; operand = operand->next, n_atts++, dom = dom->next)
+  for (operand = func->value.funcp->operand, dom = setdomain, natts = 0;
+       operand; operand = operand->next, dom = dom->next, natts++)
     {
       if (dom->precision < 0)
 	{
@@ -650,8 +660,8 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 		  save_val_is_null = val->domain.general_info.is_null;
 		  save_val_type = val->domain.general_info.type;
 		  save_need_clear = val->need_clear;
-		  if (tp_value_cast_no_domain_select (val, val, dom, true) !=
-		      DOMAIN_COMPATIBLE)
+		  if (tp_value_cast_no_domain_select (val, val, dom, true)
+		      != DOMAIN_COMPATIBLE)
 		    {
 		      /* restore null casted val's non-null info; prevent server LEAK */
 		      if (!save_val_is_null)
@@ -668,33 +678,18 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	}
 
-      if (dom->next)
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
 	{
-	  if (TP_IS_DOUBLE_ALIGN_TYPE (dom->next->type->id))
-	    {
-	      disk_size = DB_ALIGN (disk_size, MAX_ALIGNMENT);
-	    }
-	  else
-	    {
-	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
-	    }
+	  buf_size = DB_ALIGN (buf_size, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  buf_size = DB_ALIGN (buf_size, INT_ALIGNMENT);
 	}
 
       buf_size += disk_size;
     }
 
-  nwords = OR_BOUND_BIT_WORDS (n_atts);
-  nullmap_size = (nwords * 4);
-  if (TP_IS_DOUBLE_ALIGN_TYPE (setdomain->type->id))
-    {
-      nullmap_size = DB_ALIGN (nullmap_size, MAX_ALIGNMENT);
-    }
-  else
-    {
-      nullmap_size = DB_ALIGN (nullmap_size, INT_ALIGNMENT);
-    }
-
-  buf_size += nullmap_size;
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
     {
@@ -703,9 +698,9 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
 
   nullmap_ptr = midxkey.buf;
-  key_ptr = nullmap_ptr + (nwords * 4);
+  key_ptr = nullmap_ptr + nullmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - (nwords * 4));
+  OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
 
   if (nwords > 0)
     {
@@ -727,7 +722,7 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
 
   for (operand = func->value.funcp->operand, dom = setdomain, i = 0;
-       operand && (i < n_atts); operand = operand->next, dom = dom->next, i++)
+       operand && (i < natts); operand = operand->next, dom = dom->next, i++)
     {
       if (clear_value)
 	{
@@ -746,6 +741,15 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
       if (DB_IS_NULL (val))
 	{
 	  continue;		/* zero size; go ahead */
+	}
+
+      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
+	{
+	  or_get_align64 (&buf);
+	}
+      else
+	{
+	  or_get_align32 (&buf);
 	}
 
       if (dom->type->id == DB_TYPE_OBJECT)
@@ -789,24 +793,17 @@ xd_dbvals_to_midxkey (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 	    }
 	}
 
-      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
-	{
-	  or_get_align64 (&buf);
-	}
-      else
-	{
-	  or_get_align32 (&buf);
-	}
-
       (*((dom->type)->writeval)) (&buf, val);
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }				/* for (operand = ...) */
+
+  assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
 
   /***********************
    Make midxkey DB_VALUE
   ***********************/
   midxkey.size = buf_size;
-  midxkey.ncolumns = n_atts;
+  midxkey.ncolumns = natts;
 
   midxkey.domain = BTS->btid_int.key_type;
 
@@ -872,7 +869,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   RANGE range;
   DB_VALUE *key_val1p, *key_val2p;
   int ret = NO_ERROR;
-
+  int n;
 
   /* pointer to INDX_SCAN_ID structure */
   iscan_id = &s_id->s.isid;
@@ -972,17 +969,32 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  /* check for key range is valid; do partial-key cmp */
 	  if (key_ranges[i].key1 && key_ranges[i].key2)
 	    {
-	      if ((*(BTS->btid_int.key_type->type->cmpval))
-		  (&key_vals[i].key1, &key_vals[i].key2,
-		   NULL, 0, 0, 1, NULL) > 0)
+	      key_val1p = &key_vals[i].key1;
+	      key_val2p = &key_vals[i].key2;
+
+	      if (PRIM_IS_NULL (key_val1p)
+		  || btree_multicol_key_has_null (key_val1p)
+		  || PRIM_IS_NULL (key_val2p)
+		  || btree_multicol_key_has_null (key_val2p))
 		{
 		  key_vals[i].range = NA_NA;	/* mark as empty range */
+		}
+	      else if (key_vals[i].range != EQ_NA)
+		{
+		  int cmp;
+
+		  cmp = (*(BTS->btid_int.key_type->type->cmpval))
+		    (key_val1p, key_val2p, NULL, 0, 0, 1, NULL);
+		  if (cmp == DB_GT)
+		    {
+		      key_vals[i].range = NA_NA;	/* mark as empty range */
+		    }
 		}
 	    }
 
 	}
 
-      /* elimnating duplicated keys and merging ranges are required even
+      /* eliminating duplicated keys and merging ranges are required even
          though the query optimizer dose them because the search keys or
          ranges could be unbound values at optimization step such as join
          attribute */
@@ -1067,22 +1079,19 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
 
       /* calling 'btree_range_search()' */
-      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
-						       &indx_infop->indx_id.i.
-						       btid,
-						       s_id->readonly_scan,
-						       iscan_id->lock_hint,
-						       BTS, key_val1p,
-						       key_val2p, GE_LE, 1,
-						       &iscan_id->cls_oid,
-						       iscan_id->oid_list.
-						       oidp,
-						       (DB_PAGESIZE *
-							PRM_BT_OID_NBUFFERS),
-						       &key_filter, iscan_id,
-						       false,
-						       iscan_id->
-						       need_count_only);
+      n = btree_range_search (thread_p,
+			      &indx_infop->indx_id.i.btid,
+			      s_id->readonly_scan,
+			      iscan_id->lock_hint,
+			      BTS,
+			      key_val1p, key_val2p,
+			      GE_LE, 1,
+			      &iscan_id->cls_oid,
+			      iscan_id->oid_list.oidp,
+			      (DB_PAGESIZE * PRM_BT_OID_NBUFFERS),
+			      &key_filter,
+			      iscan_id, false, iscan_id->need_count_only);
+      iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
 	{
 
@@ -1158,22 +1167,19 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
 
       /* calling 'btree_range_search()' */
-      iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
-						       &indx_infop->indx_id.i.
-						       btid,
-						       s_id->readonly_scan,
-						       iscan_id->lock_hint,
-						       BTS, key_val1p,
-						       key_val2p, range, 1,
-						       &iscan_id->cls_oid,
-						       iscan_id->oid_list.
-						       oidp,
-						       (DB_PAGESIZE *
-							PRM_BT_OID_NBUFFERS),
-						       &key_filter, iscan_id,
-						       false,
-						       iscan_id->
-						       need_count_only);
+      n = btree_range_search (thread_p,
+			      &indx_infop->indx_id.i.btid,
+			      s_id->readonly_scan,
+			      iscan_id->lock_hint,
+			      BTS,
+			      key_val1p, key_val2p,
+			      range, 1,
+			      &iscan_id->cls_oid,
+			      iscan_id->oid_list.oidp,
+			      (DB_PAGESIZE * PRM_BT_OID_NBUFFERS),
+			      &key_filter,
+			      iscan_id, false, iscan_id->need_count_only);
+      iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
 	{
 	  goto exit_on_error;
@@ -1220,25 +1226,19 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  /* calling 'btree_range_search()' */
-	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
-							   &indx_infop->
-							   indx_id.i.btid,
-							   s_id->
-							   readonly_scan,
-							   iscan_id->
-							   lock_hint, BTS,
-							   key_val1p,
-							   key_val2p, GE_LE,
-							   1,
-							   &iscan_id->cls_oid,
-							   iscan_id->oid_list.
-							   oidp,
-							   (DB_PAGESIZE *
-							    PRM_BT_OID_NBUFFERS),
-							   &key_filter,
-							   iscan_id, false,
-							   iscan_id->
-							   need_count_only);
+	  n = btree_range_search (thread_p,
+				  &indx_infop->indx_id.i.btid,
+				  s_id->readonly_scan,
+				  iscan_id->lock_hint,
+				  BTS,
+				  key_val1p, key_val2p,
+				  GE_LE, 1,
+				  &iscan_id->cls_oid,
+				  iscan_id->oid_list.oidp,
+				  (DB_PAGESIZE * PRM_BT_OID_NBUFFERS),
+				  &key_filter,
+				  iscan_id, false, iscan_id->need_count_only);
+	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)
 	    {
 	      goto exit_on_error;
@@ -1327,25 +1327,19 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  /* calling 'btree_range_search()' */
-	  iscan_id->oid_list.oid_cnt = btree_range_search (thread_p,
-							   &indx_infop->
-							   indx_id.i.btid,
-							   s_id->
-							   readonly_scan,
-							   iscan_id->
-							   lock_hint, BTS,
-							   key_val1p,
-							   key_val2p, range,
-							   1,
-							   &iscan_id->cls_oid,
-							   iscan_id->oid_list.
-							   oidp,
-							   (DB_PAGESIZE *
-							    PRM_BT_OID_NBUFFERS),
-							   &key_filter,
-							   iscan_id, false,
-							   iscan_id->
-							   need_count_only);
+	  n = btree_range_search (thread_p,
+				  &indx_infop->indx_id.i.btid,
+				  s_id->readonly_scan,
+				  iscan_id->lock_hint,
+				  BTS,
+				  key_val1p, key_val2p,
+				  range, 1,
+				  &iscan_id->cls_oid,
+				  iscan_id->oid_list.oidp,
+				  (DB_PAGESIZE * PRM_BT_OID_NBUFFERS),
+				  &key_filter,
+				  iscan_id, false, iscan_id->need_count_only);
+	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)
 	    {
 	      goto exit_on_error;
@@ -1771,9 +1765,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   /* attribute information of the index key */
-  if (heap_get_indexinfo_of_btid
-      (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type,
-       &isidp->bt_num_attrs, &isidp->bt_attr_ids, NULL) != NO_ERROR)
+  if (heap_get_indexinfo_of_btid (thread_p, cls_oid,
+				  &indx_info->indx_id.i.btid, &isidp->bt_type,
+				  &isidp->bt_num_attrs, &isidp->bt_attr_ids,
+				  NULL) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -2510,6 +2505,11 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   KEY_VAL_RANGE *key_vals;
   int i;
 
+  if (scan_id == NULL)
+    {
+      return;
+    }
+
   if ((scan_id->status == S_ENDED) || (scan_id->status == S_CLOSED))
     {
       return;
@@ -2606,7 +2606,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   INDX_SCAN_ID *isidp;
 
 
-  if (scan_id->status == S_CLOSED)
+  if (scan_id == NULL || scan_id->status == S_CLOSED)
     {
       return;
     }

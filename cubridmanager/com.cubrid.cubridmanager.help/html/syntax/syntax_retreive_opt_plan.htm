@@ -1,0 +1,144 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>쿼리 실행 계획 보기</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n질의 최적화\n쿼리 실행 계획 보기");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_opt_statistics.htm\">질의 최적화<\/a> &nbsp;&gt;&nbsp; 쿼리 실행 계획 보기<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>쿼리 실행 계획 보기</h4>
+<h6>설명</h6>
+<p>CUBRID SQL 질의에 대한 실행 계획(쿼리 플랜)을 보기 위해서는 <span class="keyword">SET OPTIMIZATION</span> 구문을 이용해서 최적화 수준(optimization level) 값을 변경시킨다. 현재의 최적화 수준 값은 <span class="keyword">GET OPTIMIZATION</span> 구문으로 얻을 수 있다.</p>
+<p>CUBRID 질의 최적화기는 사용자에 의해 설정된 최적화 수준 값을 참조하여 최적화 여부와 쿼리 실행 계획의 출력 여부를 결정한다. 쿼리 실행 계획은 표준 출력으로 표시되므로 CSQL 인터프리터와 같은 터미널 기반의 프로그램에서 사용하는 것을 가정하고 설명한다. CUBRID 매니저를 이용해서 쿼리 플랜을 보는 방법에 대해서는 "<a href="../manager/manager_queryeditor_queryplan.htm">질의 실행 계획 보기</a>"를&#160;참고한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">SET OPTIMIZATION LEVEL</span> <span class="var">opt-level</span> [;]<br />
+<span class="keyword">GET OPTIMIZATION LEVEL</span> [ { <span class="keyword">TO</span> | <span class="keyword">INTO</span> } <span class="var">variable</span> ] [;]</p>
+<ul>
+<li><span class="var">opt-level</span>: 최적화 수준을 지정하는 값으로 다음과 같은 의미를 갖는다.
+<ul>
+<li>0 : 질의 최적화를 수행하지 않는다. 실행하는 쿼리는 가장 단순한 형태의 실행 계획을 가지고 실행된다. 디버깅의 용도 이외에는 사용되지 않는다.</li>
+<li>1 : 질의 최적화를 수행한다. CUBRID에서 사용되는 기본 설정 값으로 대부분의 경우 변경할 필요가 없다.</li>
+<li>2: 질의 최적화를 수행하여 실행 계획을 생성하나 쿼리 자체는 수행되지 않는다. 일반적으로 사용되지 않고 다음 쿼리 실행 계획 보기를 위한 설정값과 같이 설정되어 사용된다.</li>
+<li>257 : 질의 최적화를 수행하여 생성된 쿼리 실행 계획(플랜)을 출력한다. 256+1의 값으로 해석하여 값을 1로 설정하고 쿼리 플랜 출력을 지정한 것과 같다.</li>
+<li>258 : 질의 최적화를 수행하여 생성된 쿼리 실행 계획을 출력한다. 257 설정과의 차이는 쿼리를 수행하지 않는다는 것이다. 즉, 256+2의 값으로 해석하여 값을 2로 설정하고 쿼리 플랜 출력을 지정한 것과 같다. 쿼리 실행 계획을 살펴보고자 하나 실행 결과에는 관심이 없을 경우 유용한 설정이다.</li>
+<li>513 : 질의 최적화를 수행하고 상세 쿼리 실행 계획을 출력한다. 512+1의 의미이다.</li>
+<li>514 : 질의 최적화를 수행하고 상세 쿼리 실행 계획을 출력하나 쿼리는 실행하지는 않는다. 512+2의 의미이다.</li>
+</ul>
+</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 심권호 선수가 메달을 획득한 연도와 메달 종류를 구하는 예제를 이용해 쿼리 실행 계획 보기를 수행한 것이다.</p>
+<p class="code">GET OPTIMIZATION LEVEL<br />
+<br />
+=== &lt; Result of GET OPTIMIZATION Command in Line 1&gt; ===<br />
+&#160; &#160; &#160; &#160; &#160; &#160; &#160; Result<br />
+=============<br />
+&#160; &#160; &#160; &#160; &#160; &#160; &#160; &#160; &#160; &#160; &#160; &#160; 1<br />
+<br />
+SET OPTIMIZATION LEVEL 258<br />
+<br />
+SELECT a.name, b.host_year, b.medal<br />
+FROM athlete a, game b WHERE a.name = 'Sim Kwon Ho' AND a.code = b.athlete_code<br />
+Query plan:<br />
+&#160; Nested loops<br />
+&#160; &#160; &#160; &#160; Sequential scan(game b)<br />
+&#160; &#160; &#160; &#160; Index scan(athlete a, pk_athlete_code, a.code=b.athlete_code)<br />
+<br />
+=== &lt; Result of SELECT Command in Line 1&gt; ===<br />
+There are no results.<br />
+0 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

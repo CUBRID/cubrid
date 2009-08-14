@@ -123,7 +123,7 @@ static void tr_print_n_string (char *stmt, int length);
 static void emit_whenever (void);
 static char *escape_string (const char *, int length, int *counter);
 
-static const char *c_type_to_db_type_c[NUM_C_VARIABLE_TYPES] = {
+static const char *c_type_to_db_type_c[] = {
   "DB_TYPE_C_SHORT",
   "DB_TYPE_C_INT",
   "DB_TYPE_C_LONG",
@@ -143,7 +143,13 @@ static const char *c_type_to_db_type_c[NUM_C_VARIABLE_TYPES] = {
   "",				/* DB_VALUE; what to do? */
   "DB_TYPE_C_VARCHAR",
   "DB_TYPE_C_BIT",
-  "DB_TYPE_C_VARBIT"
+  "DB_TYPE_C_VARBIT",
+  "DB_TYPE_C_NCHAR",
+  "DB_TYPE_C_VARNCHAR",
+  "DB_TYPE_C_STRING_CONST",
+  "DB_TYPE_C_SQLDA",
+  "DB_TYPE_C_BIGINT",
+  ""
 };
 
 enum esql_msg			/* Message codes for esql.msg */

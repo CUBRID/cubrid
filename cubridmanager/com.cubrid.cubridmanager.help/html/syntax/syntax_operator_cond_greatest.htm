@@ -1,0 +1,119 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>GREATEST 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="GREATEST" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n조건/비교 관련 함수와 연산자\nGREATEST 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_cond_case.htm\">조건/비교 관련 함수와 연산자<\/a> &nbsp;&gt;&nbsp; GREATEST 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>GREATEST 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">GREATEST</span> 함수는 인자 목록&#160;중에서 가장 큰 값을 반환하는 함수이다.&#160;</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">GREATEST</span>( <span class="var">expression</span> [, <span class="var">expression</span>]* )</p>
+<ul>
+<li><span class="var">expression</span> :&#160;하나 이상의 값을 나열한다. 모든 인자들은 반드시 비교 가능한 타입이어야 한다. 모든 인자가 같은 타입이면, 인자의 타입이 결과로 반환된다. 그렇지 않은 경우에는 다음과 같은 규칙에 따라 반환 값의 타입이 결정된다. 인자가 <span class="keyword"><a href="syntax_datatype_string_varchar.htm">VARCHAR</a></span> 또는 <span class="keyword"><a href="syntax_datatype_string_char.htm">CHAR</a></span> 타입인 경우, 반환 값의 타입은 가장 긴 수식의 길이를 가지는 <span class="keyword"><a href="syntax_datatype_string_varchar.htm">VARCHAR</a></span> 타입이다. <span class="keyword"><a href="syntax_datatype_string_varchar.htm">VARCHAR</a></span> 타입이 존재하지 않으면 <span class="keyword"><a href="syntax_datatype_string_char.htm">CHAR</a></span> 타입으로 결과가 반환된다. 인자들 중에 근사값으로 표현되는 수치형이 존재하면, 결과 역시 근사값으로 표현되는 수치형이 반환된다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 1988 올림픽에서 한국이 획득한&#160;각 메달의 수와 최대 메달의 수를 반환하는 예제이다.</p>
+<p class="code">SELECT gold, silver , bronze, GREATEST (gold, silver, bronze) FROM participant<br />
+WHERE host_year=1988<br />
+AND nation_code = 'KOR';<br />
+결과값)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;gold &#160;&#160;&#160;&#160;&#160;&#160;silver &#160;&#160;&#160;&#160;&#160;&#160;bronze &#160;greatest(gold, silver, bronze)<br />
+=======================================================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;12 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;10 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;11 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;12</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -477,7 +477,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
   /* Determine the page & entry in the hash file */
   pos = hash;
 
-  while (pos != INVALID_FILE_POS)
+  do
     {
       page_no = pos / ht->entries_per_page;
       entry_no = pos % ht->entries_per_page;
@@ -524,6 +524,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
 	}
       pos = entry->next;
     }
+  while (pos != INVALID_FILE_POS);
 
   /* This is a new entry, and the last entry examined is not available */
   entry->next = ht->overflow;

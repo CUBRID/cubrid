@@ -41,7 +41,6 @@ public:
 	CStatic	m_ucpd_txt_time_to_kill;
 	CStatic	m_ucpd_txt_appl_server;
 	CStatic	m_ucpd_txt_session_timeout;
-	CStatic	m_ucpd_txt_sql_log_time;
 	CStatic	m_ucpd_txt_appl_server_max_size;
 	CStatic	m_ucpd_txt_access_list;
 	CButton	m_ucpd_txt_sc;
@@ -65,7 +64,6 @@ public:
 	CEdit	m_ucpd_job_queue_size;
 	CEdit	m_ucpd_session_timeout;
 	CEdit	m_ucpd_time_to_kill;
-	CEdit	m_ucpd_sql_log_time;
 	CButton	m_ucpd_sql_log;
 	CEdit	m_ucpd_source_env;
 	CButton	m_ucpd_log_backup;
@@ -112,7 +110,6 @@ protected:
 	afx_msg void OnChangeUcpdMax();
 	afx_msg void OnChangeUcpdSizelimit();
 	afx_msg void OnChangeUcpdLogdir();
-	afx_msg void OnChangeUcpdSqltime();
 	afx_msg void OnChangeUcpdSecuriyFile();
 	afx_msg void OnChangeUcpdEnvFile();
 	afx_msg void OnChangeUcpdTimetokill();

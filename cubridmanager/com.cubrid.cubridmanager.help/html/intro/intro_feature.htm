@@ -1,0 +1,158 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CUBRID의 특징</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 소개\nCUBRID의 특징");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"intro.htm\">CUBRID 소개<\/a> &nbsp;&gt;&nbsp; CUBRID의 특징<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>CUBRID의 특징</h2>
+<h5>완벽한 트랜잭션 지원</h5>
+<p>트랜잭션의 원자성(atomicity), 일관성(consistency), 고립성(isolation), 지속성(durability)을 완벽하게 보장하기 위해 CUBRID는 다음의 기능을 충실하게 지원한다.</p>
+<ul>
+<li>트랜잭션 단위의 commit, rollback, savepoint 지원</li>
+<li>시스템이나 데이터베이스의 장애 시 트랜잭션 일관성 보장</li>
+<li>복제간 트랜잭션 일관성 보장</li>
+<li>데이터베이스, 테이블, 레코드 등 다중 단위 잠금(multiple granularity locking) 지원</li>
+<li>교착 상태(deadlock) 자동 해결</li>
+<li>분산 트랜잭션(two phase commit) 지원</li>
+</ul>
+<h5>데이터베이스 백업 및 복구</h5>
+<p>데이터베이스 백업은 CUBRID 데이터베이스 볼륨, 제어 파일, 로그 파일을 저장하는 작업이고, 데이터베이스 복구는 백업 작업에 의해 생성된 백업 파일, 활성 로그, 보관 로그를 이용하여 특정 시점의 데이터베이스로 복구하는 작업이다. 이 때, 복구 환경은 백업 환경과 동일한 운영체제 및 동일 버전의 CUBRID가 설치되어야 한다.</p>
+<p>CUBRID가 지원하는 백업 방식으로는 온라인 백업, 오프라인 백업, 증분 백업이 있고, 복구 방식으로는 증분 백업에 의한 복구, 부분 복구, 전체 복구가 있다.</p>
+<h5>테이블 분할 – 파티션</h5>
+<p>분할 기법(partitioning)은 하나의 테이블을 여러 개의 독립적인 논리적 단위로 분할하는 기법을 가리킨다. 각 논리적 단위를 분할(partition)이라 부르며, 각 분할을 서로 다른 물리적 공간에 나누어 저장하도록 하여 레코드를 검색할 때 해당 분할 만으로의 접근을 통해 성능 향상을 기대할 수 있다. CUBRID가 제공하는 분할 기법은 다음과 같다.</p>
+<ul>
+<li>레인지 분할 기법 : 컬럼 값의 범위를 기준으로 테이블을 분할하는 기법</li>
+<li>해시 분할 기법 : 컬럼의 해시값을 기준으로 분할하는 기법</li>
+<li>리스트 분할 기법 : 컬럼 값의 목록을 기준으로 분할하는 기법</li>
+</ul>
+<h5>복제</h5>
+<p>복제 기법은 하나의 데이터베이스에 저장된 데이터를 다른 데이터베이스에 복제하여 동일 데이터를 이용하는 응용의 접근을 여러 데이터베이스에 분산시킴으로써 성능을 향상시키고 서버 가용성을 높이는 기법이다. 현재 CUBRID는 Linux 및 Unix 계열에만 복제 기법을 지원한다. CUBRID 복제 시스템은 트랜잭션 로그 기반으로 동작하며, 실시간 복제, 트랜잭션 일관성 보장, 슬레이브 데이터베이스의 스키마 독립성 제공, 복제로 인한 마스터 데이터베이스의 영향 최소화의 특징을 가지며, 다음과 같이 구성된다.</p>
+<ul>
+<li>마스터 데이터베이스 : 복제 대상이 되는 원본 데이터베이스로서, 읽기/쓰기 등의 모든 연산이 이루어진다. 비동기식 복제가 이루어지므로 복제로 인해 마스터 데이터베이스 운영에는 지장이 없다. 복제 서버와 복제 에이전트를 통해 슬레이브 서버에 전달되는 복제 로그는 마스터 서버에서 생성된다.</li>
+<li>슬레이브 데이터베이스 : 원본 데이터베이스를 복제한 데이터베이스로서, 읽기 연산만 허용된다. 마스터 데이터베이스에 쓰기 연산이 일어나면 복수개의 슬레이브 데이터베이스로 트랜잭션이 자동 복제되므로, 읽기 연산을 분산시킬 수 있다.</li>
+<li>배포 데이터베이스 : 마스터 데이터베이스와 슬레이브 데이터베이스에 관한 정보를 저장하며, 트랜잭션 일관성이 보장되면서 복제 배포가 이루어지도록 한다.</li>
+<li>복제 서버 : 마스터 시스템에서 실행되는 복제 서버는 마스터 데이터베이스의 트랜잭션 로그를 복제 에이전트에 전송한다.</li>
+<li>복제 에이전트 : 슬레이브 시스템에서 실행되는 복제 에이전트는 전달받은 복제 로그를 분석하여 슬레이브 데이터베이스 서버에 적용하여 실제 복제 작업을 수행하는 프로세스이다.</li>
+</ul>
+<h5>Java 저장 프로시저</h5>
+<p>저장 프로시저는 미들웨어에서 실행되는 로직과 데이터베이스에서 실행되는 로직을 분리하여 응용 프로그램의 복잡성을 줄이고, 재사용성, 보안성, 성능을 향상시킬 수 있는 기법이다. CUBRID는 범용 언어인 Java로 작성되고, Java&#160;가상 머신(JVM, Java Virtual Machine)에서 구동되는 Java 저장 프로시저를 제공한다. CUBRID에서 Java 저장 프로시저를 실행하기 위해서는 다음과 같은 절차가 수행되어야 한다.</p>
+<ol>
+<li>Java 가상 머신 설치 및 환경 설정</li>
+<li>Java 소스 파일 작성</li>
+<li>컴파일 및 Java&#160;리소스 로딩</li>
+<li>로딩된 Java&#160;클래스를 데이터베이스에서 호출할 수 있도록 등록</li>
+<li>Java 저장 프로시저 호출</li>
+</ol>
+<h5>클릭 카운터</h5>
+<p>인터넷 환경에서의 데이터 검색 시 검색이력을 남기기 위한 조회수 등과 같은 카운터를 데이터베이스에 유지하는 시나리오가 보편적 이다.</p>
+<p>일반적으로 위의 시나리오는 <span class="keyword">SELECT</span> 문을 이용하여 데이터를 검색하고, 검색한 질의에 대한 조회수를 증가 시키기 위해 다시 <span class="keyword">UPDATE</span> 문을 통해 구현하는 것이 일반적인 방식이었다.</p>
+<p>이 방식은 한 데이터에 <span class="keyword">SELECT</span>가 집중될 때 <span class="keyword">UPDATE</span>에 대한 잠금(Lock) 경쟁이 가중되어 급격한 성능 저하가 발생하는 단점이 존재한다.</p>
+<p>이에 CUBRID는 인터넷 환경에서 사용자 편의성 및 성능 측면에서 최적화된 기능을 제공하기 위해 클릭카운터(Click Counter) 라는 새로운 개념을 도입하고, 이를 위해 <span class="keyword">INCR</span> 함수 및 <span class="keyword">WITH INCREMENT FOR</span> 구문을 제공한다.</p>
+<h5>관계형 데이터 모델 확장</h5>
+<h6>컬렉션</h6>
+<p>관계형 데이터베이스에서는 한 컬럼이 여러 개의 값을 가지는 것을 허용하지 않지만, CUBRID는 한 컬럼이 여러 개의 값을 가지도록 정의할 수 있다. 이를 위해 CUBRID에서는 컬렉션(collection)이라는 데이터 타입을 제공하는데, 컬렉션 타입은 원소의 중복 허용 여부에 따라 크게 <span class="keyword">SET</span>, <span class="keyword">MULTISET</span>, <span class="keyword">LIST</span>의 세 종류로 구분할 수 있다.</p>
+<ul>
+<li><span class="keyword">SET</span> : 각 원소의 중복을 허용하지 않는 집합으로서, 원소의 나열 순서와 무관하게 중복없이 정렬되어 저장된다.</li>
+<li><span class="keyword">MULTISET</span> : 각 원소의 중복을 허용하는 집합으로서, 원소의 나열 순서와 무관하다.</li>
+<li><span class="keyword">LIST</span> : 각 원소의 중복을 허용하는 집합으로서, <span class="keyword">SET</span>, <span class="keyword">MULTISET</span>과 달리 원소의 순서를 유지한다.</li>
+</ul>
+<h6>상속</h6>
+<p>상속은 부모 테이블에서 생성된 컬럼과 메소드들을 자식 테이블에서 재사용할 수 있게 하는 개념으로서, CUBRID는 상속을 지원함으로써 재사용성을 제공한다. CUBRID에서 제공하는 상속 기능을 이용하여 공통의 컬럼을 가지는 부모 테이블을 생성하고, 부모 테이블을 상속받아 고유한 컬럼을 추가한 자식 테이블을 생성함으로써, 필요한 컬럼 수를 최소화한 데이터베이스 모델링이 가능해진다.</p>
+<h6>컴포지션</h6>
+<p>관계형 데이터베이스에서는 참조하는 테이블이 참조되는 테이블의 기본 키를 외래 키로 가짐으로써 테이블 간 참조 관계가 정의되는데, 참조되는 테이블의 기본 키가 다수의 컬럼이거나 기본 키의 크기가 매우 큰 경우에는 테이블 간 조인 연산의 성능이 저하되는 문제가 있다. 그러나, CUBRID는 참조되는 테이블의 레코드가 위치하는 물리적인 주소값(OID)을 직접 이용할 수 있으므로 조인 연산 없이도 참조 관계를 정의할 수 있다.</p>
+<p>즉, 객체형 데이터베이스에서는 참조되는 테이블의 기본 키 컬럼을 참조하는 대신에, 참조되는 테이블을 도메인(타입)으로 하는 컬럼을 통하여, 한 레코드가 다른 레코드의 참조값을 가지는 컴포지션 관계(compopsition relation)를 구성할 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

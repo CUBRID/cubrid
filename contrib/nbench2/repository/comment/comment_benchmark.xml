@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<benchmark name="CommentComponent">
+	<transaction-frame>
+		<frame name="createCommentObject" impl="impl_1">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="lst_cment_no" type="INTEGER" />
+				<map name="comment_count" type="INTEGER" />
+			</input-map>
+		</frame>
+
+		<frame name="getTotalCountForList" impl="impl_2">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+			</input-map>
+			<output-map>
+				<map name="count" type="INTEGER" />
+			</output-map>
+		</frame>
+
+		<frame name="listObjectComments" impl="impl_3">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="offset" type="INTEGER" />
+				<map name="limit" type="INTEGER" />
+			</input-map>
+			<output-map>
+				<map name="nread" type="INTEGER" />
+			</output-map>
+		</frame>
+
+		<frame name="getCommentObject" impl="impl_4">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+			</input-map>
+			<output-map>
+				<map name="found" type="INTEGER" />
+				<!-- if found below members are available -->
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="tot_cment_cnt" type="INTEGER" />
+				<map name="dsp_tot_cment_cnt" type="INTEGER" />
+				<map name="lst_cment_no" type="INTEGER" />
+				<map name="tot_trbk_cnt" type="INTEGER" />
+				<map name="cment_obj_url" type="STRING" />
+				<map name="rgst_ymdt" type="TIMESTAMP" />
+			</output-map>
+		</frame>
+		
+		<frame name="getCommentCountByUserInPeriod" impl="impl_5">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="wrtr_mbr_id" type="STRING" />
+				<map name="period_in_sec" type="INTEGER" />
+			</input-map>
+			<output-map>
+				<map name="count" type="INTEGER" />
+			</output-map>
+		</frame>
+
+		<frame name="newObjectId" impl="impl_6">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+			</input-map>
+			<output-map>
+				<map name="obj_id" type="STRING" />
+			</output-map>
+		</frame>
+
+		<frame name="newCommentNo" impl="impl_7">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+			</input-map>
+			<output-map>
+				<map name="cment_no" type="INTEGER" />
+			</output-map>
+		</frame>
+
+		<frame name="createWithCommentNo" impl="impl_8">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="cment_no" type="INTEGER" />
+				<map name="cment_tp_cd" type="STRING" />
+				<map name="sprr_cment_no" type="INTEGER" />
+				<map name="upr_cment_no" type="INTEGER" />
+				<map name="cment_sort_id" type="STRING" />
+				<map name="prit_rnk" type="INTEGER" />
+				<map name="rpl_lv_cnt" type="INTEGER" />
+				<map name="wrtr_mbr_id" type="STRING" />
+				<map name="wrtr_ncknm" type="STRING" />
+				<map name="wrtr_ip" type="STRING" />
+				<map name="psacn_no" type="INTEGER" />
+				<map name="prfl_photo_url" type="STRING" />
+				<map name="pwd" type="STRING" />
+				<map name="wrtr_hompg_url" type="STRING" />
+				<map name="cment_cont" type="STRING" />
+				<map name="font_no" type="INTEGER" />
+				<map name="font_sz" type="INTEGER" />
+				<map name="del_rsn_tp_cd" type="STRING" />
+				<map name="spam_scr" type="INTEGER" />
+			</input-map>
+		</frame>
+
+		<frame name="updateCommentObjForNewComment" impl="impl_9">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="obj_id" type="STRING" />
+				<map name="lst_cment_no" type="INTEGER" />
+			</input-map>
+		</frame>
+		<frame name="listUserComments" impl="impl_10">
+			<input-map>
+				<map name="table_id" type="INTEGER" />
+				<map name="svc_id" type="INTEGER" />
+				<map name="tkt_no" type="INTEGER" />
+				<map name="wrtr_mbr_id" type="STRING" />
+				<map name="offset" type="INTEGER" />
+				<map name="offset_limit" type="INTEGER" />
+			</input-map>
+			<output-map>
+				<map name="nread" type="INTEGER" />
+			</output-map>
+		</frame>
+	</transaction-frame>
+
+	<sample-space>
+		<sample name="tkt_no" elem-type="INTEGER" type="round" value="1,2,3,4,5" />
+		<sample name="cment_tp_cd" elem-type="STRING" type="round" value="NS" />
+		<sample name="prit_rnk" elem-type="INTEGER" type="round" value="0" />
+		<sample name="wrtr_mbr_id" elem-type="STRING" type="random-string" value="8:16" />
+		<sample name="wrtr_ncknm" elem-type="STRING" type="random-string" value="10:20" />
+		<sample name="wrtr_ip" elem-type="STRING" type="random-ip" value="" />
+		<sample name="psacn_no" elem-type="INTEGER" type="round" value="0" />
+		<sample name="prfl_photo_url" elem-type="STRING" type="round" value="http://" />
+		<sample name="pwd" elem-type="STRING" type="round" value="password" />
+		<sample name="wrtr_hompg_url" elem-type="STRING" type="round" value="http://" />
+		<sample name="cment_cont" elem-type="STRING" type="random-string" value="80:160" />
+		<sample name="font_no" elem-type="INTEGER" type="round" value="0,1,2,3,4,5,6,7,8,9,10" />
+		<sample name="font_sz" elem-type="INTEGER" type="round" value="1,2,3,4,5,6,7,8,9,10" />
+		<sample name="del_rsn_tp_cd" elem-type="STRING" type="round" value="-1" />
+		<sample name="spam_scr" elem-type="INTEGER" type="round" value="0,1,1,1,1,1,1,1,1,1,5,5,5,5,10,77,99" />
+	</sample-space>
+
+	<transaction-common>
+	//
+	// mixInitializer(num_active_articles, num_replies)
+	//
+	// called during Database host variable initialization phase
+	// This function is called repetitively Context host variable
+	// supports context object saving through [get/set]PrivateObject method
+	//
+	function mixInitializer(num_active_articles, num_replies) {
+
+		// check arguments 
+		if(num_active_articles &lt; 1) {
+			throw 'mixInitializer: invalid num_active_articles value';
+		}
+		if(num_replies &lt; 1) {
+			throw 'mixInitializer: invalid num_replies value';
+		}
+		
+		// lazy setup context private object
+		cpo = Context.getPrivateObject();
+		if(cpo == null) {
+		    cpo = new Object();
+			cpo.total_curr_articles = 0;
+
+		    Context.setPrivateObject(cpo);
+		}
+			
+		// lazy setup cafe related fields
+		cafe = Database.chooseCafeForNewActiveArticle();
+			
+		table_id = cafe.getTableID();
+		svc_id = cafe.getCafeID();
+		obj_id = Frame.newObjectId(table_id).obj_id;
+		tkt_no = Sample.tkt_no.nextValue();
+			
+		replies = num_replies;
+			
+		article = newArticleAndComment(table_id, svc_id, tkt_no, obj_id);
+		replies--;
+			
+		while(replies &gt; 0) {
+			cment_no = Frame.newCommentNo(table_id).cment_no;
+			addComment(table_id, svc_id, tkt_no, obj_id, cment_no, true);
+			replies--;
+		}
+			
+		// add the article as an private object (not replacement)
+		cafe.setNewPrivateObject(article);
+		cpo.total_curr_articles++;
+						
+		if(cpo.total_curr_articles == num_active_articles) {
+			Context.setupDone();
+		} else {
+			Context.setProgress(cpo.total_curr_articles/num_active_articles);
+		}
+	}
+		
+	//
+	// addComment
+	// add comment for the article object (table_id, svc_id, tkt_no) 
+	// with cment_no
+	//
+	function addComment(table_id, svc_id, tkt_no, obj_id, cment_no, update) {
+
+		Frame.createWithCommentNo(
+			table_id,
+			svc_id,
+			tkt_no,
+			obj_id,
+			cment_no,
+			Sample.cment_tp_cd.nextValue(),
+			cment_no, // sprr_cment_no 
+			cment_no, // upr_cment_no 
+			'!!!!!!!!!!!!!!!!!!!!', // cment_sort_id 
+			Sample.prit_rnk.nextValue(),
+			0, // rpl_lv_cnt
+			Sample.wrtr_mbr_id.nextValue(),
+			Sample.wrtr_ncknm.nextValue(),
+			Sample.wrtr_ip.nextValue(),
+			Sample.psacn_no.nextValue(),
+			Sample.prfl_photo_url.nextValue(),
+			Sample.pwd.nextValue(),
+			Sample.wrtr_hompg_url.nextValue(),
+			Sample.cment_cont.nextValue(),
+			Sample.font_no.nextValue(),
+			Sample.font_sz.nextValue(),
+			Sample.del_rsn_tp_cd.nextValue(),
+			Sample.spam_scr.nextValue()
+			);
+				
+		if(update) {
+			Frame.updateCommentObjForNewComment(table_id, svc_id, tkt_no, obj_id, cment_no);
+		}
+	}
+		
+	//
+	//
+	//
+	function newArticleAndComment(table_id, svc_id, tkt_no, obj_id) {
+		// get new cment_no value
+		cment_no = Frame.newCommentNo(table_id).cment_no;
+		
+		// create an article and a comment on the article
+		Frame.createCommentObject(table_id, svc_id, tkt_no, obj_id, cment_no, 0);
+		addComment(table_id, svc_id, tkt_no, obj_id, cment_no, true);
+			
+		//return new article object			
+		article = new Object();
+		article.svc_id = svc_id;
+		article.tkt_no = tkt_no;
+		article.obj_id = obj_id;
+		article.wrtr_mbr_id = Sample.wrtr_mbr_id.nextValue();
+		article.invalid = false;
+		return article;
+	}
+	</transaction-common>
+	
+	<transaction-definition>
+		<transaction name="newArticle" sla="3000">
+		cafe = Database.chooseCafe();
+		article = cafe.getPrivateObject();
+		article.invalid = true;
+		</transaction>
+		
+		
+		<transaction name="newComment" sla="3000">
+		// select a cafe and an article 
+		cafe = Database.chooseCafe();
+
+		article = cafe.getPrivateObject();
+		table_id = cafe.getTableID();
+
+		if(article.invalid) {
+			// simulate the case when there is no comment object
+			article.tkt_no = Sample.tkt_no.nextValue();
+			article.obj_id = Frame.newObjectId(table_id).obj_id;
+			article.wrtr_mbr_id = Sample.wrtr_mbr_id.nextValue();
+			article.invalid = false;
+		}
+		svc_id = article.svc_id;
+		tkt_no = article.tkt_no;
+		obj_id = article.obj_id;
+
+		// choose a user and check permission
+		wrtr_mbr_id = Sample.wrtr_mbr_id.nextValue();
+		_count = Frame.getCommentCountByUserInPeriod(table_id, svc_id, tkt_no, obj_id, wrtr_mbr_id, 3).count;
+
+		// ------------------
+		// BEGIN TRANSACTION
+		// ------------------
+		if(Control.getAutoCommit()) {
+		  Control.setAutoCommit(false);
+		}
+
+		// get comment object 
+		CO = Frame.getCommentObject(table_id, svc_id, tkt_no, obj_id);
+		if(_count == 0) {
+			// make a new comment
+			cment_no = Frame.newCommentNo(table_id).cment_no;
+				
+			// false --> do not update comment object
+			addComment(table_id, svc_id, tkt_no, obj_id, cment_no, false); 
+			
+			if(CO.found == 0) {
+				Frame.createCommentObject(table_id, svc_id, tkt_no, obj_id, cment_no, 1);
+			} else {
+				Frame.updateCommentObjForNewComment(table_id, svc_id, tkt_no, obj_id, cment_no);
+		  	}
+		}
+
+		// ------------------
+		// END TRANSACTION
+		// ------------------
+		Control.commit();
+		Control.setAutoCommit(true);
+
+		</transaction>
+
+		<transaction name="readComments" sla="1500">
+		Control.setAutoCommit(true);
+
+		/* select a cafe and an article */
+		cafe = Database.chooseCafe();
+		table_id = cafe.getTableID();
+			
+		article = cafe.getPrivateObject();
+		if(article == null) {
+			throw 'readComments: no article to read comment of..';
+		} 
+			
+		// get article key
+		svc_id = article.svc_id;
+		tkt_no = article.tkt_no;
+		obj_id = article.obj_id;
+						
+
+		// get the total number of comments of the article 
+		count = Frame.getTotalCountForList(table_id, svc_id, tkt_no, obj_id).count;
+			
+		// list at most 300 comments 
+		if(count &gt; 300) {
+			count = 300;
+		}
+		offset = 0; 
+		while(count &gt; 0) {
+			Frame.listObjectComments(table_id, svc_id, tkt_no, obj_id, offset, offset + 100);
+			count = count - 100;
+			offset = offset + 100;  
+		}
+		</transaction>
+<!-- BEGIN: dhlee added -->
+		<transaction name="listUserComments" sla="1500">
+		Control.setAutoCommit(true);
+		// select a cafe and an article 
+		cafe = Database.chooseCafe();
+		table_id = cafe.getTableID();
+
+		article = cafe.getPrivateObject();
+		svc_id = article.svc_id;
+		tkt_no = article.tkt_no;
+		obj_id = article.obj_id;
+		wrtr_mbr_id = article.wrtr_mbr_id;
+
+		Frame.listUserComments(table_id, svc_id, tkt_no, wrtr_mbr_id, 0, 100);
+		</transaction>
+<!-- END: dhlee added -->
+	</transaction-definition>
+
+	<transaction-mix>
+		<!-- NOTE user supplied host variables are shared with threads within same mix context -->
+		<mix
+			name="mix1" 
+			nthread="5" 
+			setup="mixInitializer(5000, 5);"
+			target="newArticle:newComment:readComments:listUserComments"
+			type="ratio" 
+			value="1:5:125:10" 
+			think-time="0:0:0:0" 
+			/>
+		<mix
+			name="mix2" 
+			nthread="5" 
+			setup="mixInitializer(5000, 5);"
+			target="newArticle:newComment:readComments:listUserComments"
+			type="ratio" 
+			value="1:5:125:10" 
+			think-time="0:0:0:0" 
+			/>
+		<mix
+			name="mix3" 
+			nthread="5" 
+			setup="mixInitializer(5000, 5);"
+			target="newArticle:newComment:readComments:listUserComments"
+			type="ratio" 
+			value="1:5:125:10" 
+			think-time="0:0:0:0" 
+			/>
+	</transaction-mix>
+</benchmark>
+

@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -37,11 +37,11 @@
 
 /*
  * OBJ_FORCE_NULL_TO_UNBOUND
- * 
+ *
  * Note:
  *    Macro to convert a DB_VALUE structure that contains a logical NULL
  *    value into one with DB_TYPE_NULL.
- * 
+ *
  */
 
 #define OBJ_FORCE_NULL_TO_UNBOUND(dbvalue) \
@@ -66,10 +66,10 @@
 
 
 /*
- * 
+ *
  *       		      OBJECT HEADER FIELDS
- * 
- * 
+ *
+ *
  */
 
 /*
@@ -94,7 +94,7 @@
  * this may no longer be an option.  We're lucky now in that the
  * disk representation for these is exactly the same as the memory
  * representation.
- * 
+ *
  */
 
 #define OBJ_BOUND_BIT_WORDS OR_BOUND_BIT_WORDS
@@ -115,10 +115,10 @@
 extern char *obj_Method_error_msg;
 
 /*
- * 
+ *
  *       		    OBJECT ACCESS FUNCTIONS
- * 
- * 
+ *
+ *
  */
 
 /* Creation and deletion */
@@ -187,6 +187,8 @@ extern MOP obj_find_unique (MOP op, const char *attname, DB_VALUE * value,
 			    AU_FETCHMODE fetchmode);
 extern MOP obj_find_object_by_pkey (MOP classop, DB_VALUE * key,
 				    AU_FETCHMODE fetchmode);
+extern MOP obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key,
+					 AU_FETCHMODE fetchmode);
 
 extern MOP obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
 				 DB_VALUE * value, AU_FETCHMODE fetchmode);
@@ -206,7 +208,7 @@ extern MOP obj_find_primary_key (MOP op, const DB_VALUE ** values,
 				 int size, AU_FETCHMODE fetchmode);
 /*
  * extern MOP obj_find_object_by_pkey(MOP op, SM_CLASS_CONSTRAINT *pk, const DB_VALUE *key);
- * 
+ *
  */
 
 extern MOP obj_find_multi_attr (MOP op, int size,

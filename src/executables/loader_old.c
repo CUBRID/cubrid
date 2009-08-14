@@ -1398,7 +1398,7 @@ update_class_and_shared_attributes (void)
 	{
 	  /* swizzle the pointer */
 	  DB_OBJECT *mop;
-	  mop = db_object (db_get_oid (value));
+	  mop = db_object (db_pull_oid (value));
 	  DB_MAKE_OBJECT (value, mop);
 	}
 
@@ -2424,7 +2424,8 @@ ldr_add_value (DB_TYPE token_type, DB_VALUE ** retval)
   /* just ignore the value if we're not in a valid state */
   if (Loader.valid)
     {
-      if ((error = check_domain (token_type, &value_type)))
+      error = check_domain (token_type, &value_type);
+      if (error != NO_ERROR)
 	{
 	  /* make sure we ignore this object and prevent the actual load
 	     phase */
@@ -2436,8 +2437,10 @@ ldr_add_value (DB_TYPE token_type, DB_VALUE ** retval)
 	    {
 	      value = &Loader.values[Loader.value_count];
 	      error = get_domain (&domain);
-	      if (error)
-		ldr_internal_error ();
+	      if (error != NO_ERROR || domain == NULL)
+		{
+		  ldr_internal_error ();
+		}
 	      else
 		{
 		  db_value_domain_init (value, value_type, domain->precision,
@@ -2453,8 +2456,10 @@ ldr_add_value (DB_TYPE token_type, DB_VALUE ** retval)
 	       * initialize the domain.
 	       */
 	      error = get_domain (&domain);
-	      if (error)
-		ldr_internal_error ();
+	      if (error != NO_ERROR)
+		{
+		  ldr_internal_error ();
+		}
 	      else
 		{
 		  value = set_new_element (Loader.set);
@@ -2512,9 +2517,12 @@ ldr_add_reference (MOP class, int id)
    * is encountered for this class.
    */
   if (!Loader.valid)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
-  if (!(error = check_object_domain (class, &actual_class)))
+  error = check_object_domain (class, &actual_class);
+  if (error == NO_ERROR)
     {
       if (Loader.set == NULL)
 	{
@@ -2555,6 +2563,12 @@ ldr_add_reference (MOP class, int id)
 	   * and returns a pointer directly to the value.
 	   */
 	  value = set_new_element (Loader.set);
+	  if (value == NULL)
+	    {
+	      ldr_internal_error ();
+	      return er_errid ();
+	    }
+
 	  error = find_instance (actual_class, &oid, id);
 	  if (error == ER_LDR_INTERNAL_REFERENCE)
 	    {
@@ -2591,9 +2605,12 @@ ldr_add_reference_to_class (MOP class)
    * every instance line for this class.
    */
   if (!Loader.valid)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
-  if (!(error = check_class_domain ()))
+  error = check_class_domain ();
+  if (error == NO_ERROR)
     {
       if (Loader.set == NULL)
 	{
@@ -2604,6 +2621,12 @@ ldr_add_reference_to_class (MOP class)
       else
 	{
 	  value = set_new_element (Loader.set);
+	  if (value == NULL)
+	    {
+	      ldr_internal_error ();
+	      return er_errid ();
+	    }
+
 	  DB_MAKE_OBJECT (value, class);
 	}
     }

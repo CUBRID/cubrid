@@ -1,3 +1,5 @@
+
+
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -76,7 +78,6 @@ enum
 };
 
 #define CSQL_SESSION_COMMAND_PREFIX(C)	(((C) == ';') || ((C) == '!'))
-#define CSQLRC_FILE_NAME        ".csqlrc"
 
 /* size of input buffer */
 #define LINE_BUFFER_SIZE         (4000)
@@ -123,9 +124,8 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 
 int csql_Error_code = NO_ERROR;
 
-static char csql_Sqlx_prompt[100];
-static char csql_Sqlx_name[100];
-static char csql_Sqlx_product[100];
+static char csql_Prompt[100];
+static char csql_Name[100];
 
 
 /*
@@ -172,6 +172,7 @@ static void display_error (DB_SESSION * session, int stmt_start_line_no);
 static void free_attr_spec (DB_QUERY_TYPE ** attr_spec);
 static void csql_set_sys_param (const char *arg_str);
 static void csql_get_sys_param (const char *arg_str);
+static void csql_set_plan_dump (const char *arg_str);
 static void csql_exit_init (void);
 static void csql_exit_cleanup (void);
 static void csql_print_buffer (void);
@@ -341,209 +342,6 @@ display_buffer (void)
 }
 
 /*
- * csql_execute_rcfile() - execute commands from rc file
- *   return: none
- *   csql_arg(in/out)
- */
-static void
-csql_execute_rcfile (CSQL_ARGUMENT * csql_arg)
-{
-  char line[LINE_MAX], *s, *t, path[PATH_MAX + 1];
-  int len, cmd;
-  FILE *fp;
-
-  fp = fopen (CSQLRC_FILE_NAME, "r");
-  if (!fp)
-    {
-      snprintf (path, PATH_MAX, "%s/%s", getenv ("HOME"), CSQLRC_FILE_NAME);
-      fp = fopen (path, "r");
-      if (!fp)
-	{
-	  return;
-	}
-    }
-
-  while (!feof (fp))
-    {
-      if (fgets (line, LINE_MAX, fp))
-	{
-	  len = strlen (line);
-	  if (!len)
-	    {
-	      continue;
-	    }
-
-	  s = line;
-	  t = line + len - 1;
-	  while (isspace (*s) && s < t)
-	    {
-	      s++;
-	    }
-	  while (isspace (*t) && s < t)
-	    {
-	      t--;
-	    }
-	  *(t + 1) = '\0';
-	  if (*s == '#' || *s == '\n')
-	    {
-	      continue;
-	    }
-
-	  if (CSQL_SESSION_COMMAND_PREFIX (*s))
-	    {
-	      if (csql_Is_echo_on)
-		{
-		  fprintf (csql_Output_fp, "%s\n", s);
-		}
-
-	      s = strtok (++s, " \t\n");
-	      t = strtok (NULL, " \t\n");
-	      if (s == NULL || t == NULL || *s == '\0' ||
-		  (cmd = csql_get_session_cmd_no (s)) < 0)
-		{
-		  continue;
-		}
-
-	      switch ((SESSION_CMD) cmd)
-		{
-		case S_CMD_CD:
-		  csql_change_working_directory (t);
-		  break;
-		case S_CMD_COMMIT:
-		  (void) db_commit_transaction ();
-		  break;
-		case S_CMD_ROLLBACK:
-		  (void) db_abort_transaction ();
-		  break;
-		case S_CMD_AUTOCOMMIT:
-		  if (!strcasecmp (t, "on"))
-		    {
-		      csql_arg->auto_commit = true;
-		    }
-		  else if (!strcasecmp (t, "off"))
-		    {
-		      csql_arg->auto_commit = false;
-		    }
-		  break;
-		case S_CMD_SHELL_CMD:
-		  strncpy (csql_Shell_cmd, t, PATH_MAX - 1);
-		  break;
-		case S_CMD_EDIT_CMD:
-		  strncpy (csql_Editor_cmd, t, PATH_MAX - 1);
-		  break;
-		case S_CMD_PRINT_CMD:
-		  strncpy (csql_Print_cmd, t, PATH_MAX - 1);
-		  break;
-		case S_CMD_PAGER_CMD:
-		  strncpy (csql_Pager_cmd, t, PATH_MAX - 1);
-		  break;
-		case S_CMD_NOPAGER_CMD:
-		  csql_Pager_cmd[0] = '\0';
-		  break;
-		case S_CMD_SCHEMA:
-		  csql_help_schema ((*t) ? t : NULL);
-		  break;
-		case S_CMD_TRIGGER:
-		  csql_help_trigger ((*t) ? t : NULL);
-		  break;
-		case S_CMD_DATABASE:
-		  fprintf (csql_Output_fp, "\n\t%s\n\n", csql_arg->db_name);
-		  break;
-		case S_CMD_SET_PARAM:
-		  csql_set_sys_param (t);
-		  break;
-		case S_CMD_GET_PARAM:
-		  csql_get_sys_param (t);
-		  break;
-		case S_CMD_ECHO:
-		  if (!strcasecmp (t, "on"))
-		    {
-		      csql_Is_echo_on = true;
-		    }
-		  if (!strcasecmp (t, "off"))
-		    {
-		      csql_Is_echo_on = false;
-		    }
-		  break;
-		case S_CMD_DATE:
-		  {
-		    time_t tloc = time (NULL);
-		    struct tm *tmloc;
-		    char str[80];
-		    tmloc = localtime (&tloc);
-		    strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", tmloc);
-		    fprintf (csql_Output_fp, "\n\t%s\n", str);
-		  }
-		  break;
-		case S_CMD_TIME:
-		  if (!strcasecmp (t, "on"))
-		    {
-		      csql_Is_time_on = true;
-		    }
-		  if (!strcasecmp (t, "off"))
-		    {
-		      csql_Is_time_on = false;
-		    }
-		  break;
-		case S_CMD_HISTO:
-		  if (histo_is_supported ())
-		    {
-		      if (!strcasecmp (t, "on"))
-			{
-			  csql_Is_histo_on = true;
-			  histo_start ();
-			}
-		      else if (!strcasecmp (t, "off"))
-			{
-			  csql_Is_histo_on = false;
-			  histo_stop ();
-			}
-		    }
-		  break;
-		case S_CMD_CLR_HISTO:
-		  if (histo_is_supported ())
-		    {
-		      if (csql_Is_histo_on)
-			{
-			  histo_clear ();
-			}
-		    }
-		  break;
-		case S_CMD_DUMP_HISTO:
-		  if (histo_is_supported ())
-		    {
-		      if (csql_Is_histo_on)
-			{
-			  histo_print ();
-			  fprintf (csql_Output_fp, "\n");
-			}
-		    }
-		  break;
-		case S_CMD_DUMP_CLR_HISTO:
-		  if (histo_is_supported ())
-		    {
-		      if (csql_Is_histo_on)
-			{
-			  histo_print ();
-			  fprintf (csql_Output_fp, "\n");
-			  histo_clear ();
-			}
-		    }
-		  break;
-		default:
-		  break;
-		}
-	    }
-	  else
-	    {
-	      (void) csql_execute_statements (csql_arg, STRING_INPUT, s);
-	    }
-	}
-    }
-  fclose (fp);
-}
-
-/*
  * start_csql()
  *   return: none
  *   sql_arg(in/out): CSQL_ARGUMENT structure
@@ -586,6 +384,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   char *sess_cmd;		/* session command pointer */
   char *argument;		/* argument str */
   DB_HELP_COMMAND csql_cmd_no;	/* CSQL cmd no for syntax help */
+  char *line_read_alloced = NULL;
+  bool flag_append_new_line;
+  bool incomplete_prev_line = false;
 
   if (csql_arg->column_output && csql_arg->line_output)
     {
@@ -627,7 +428,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  sprintf (csql_Scratch_text, "\n\t%s %s\n\n", csql_Sqlx_product,
+  sprintf (csql_Scratch_text, "\n\t%s\n\n",
 	   csql_get_message (CSQL_INITIAL_CSQL_TITLE));
   csql_fputs (csql_Scratch_text, csql_Tty_fp);
 
@@ -635,28 +436,27 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	   csql_get_message (CSQL_INITIAL_HELP_MSG));
   csql_fputs (csql_Scratch_text, csql_Tty_fp);
 
-  csql_execute_rcfile (csql_arg);
-
 #if !defined(GNU_Readline)
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
     {
+      int avail_size;
       init_readline ();
       stifle_history (PRM_CSQL_HISTORY_NUM);
       using_history ();
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
 
-      strcat (csql_Sqlx_prompt, " ");
+      avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
+      if (avail_size > 0)
+	{
+	  strncat (csql_Prompt, " ", avail_size);
+	}
     }
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
 
   for (;;)
     {
-      char *line_read_alloced = NULL;
-      bool flag_append_new_line;
-      bool incomplete_prev_line = false;
-
       if (line_read_alloced)
 	{
 	  free (line_read_alloced);
@@ -668,7 +468,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #if defined(GNU_Readline)
       if (csql_Is_interactive)
 	{
-	  if ((line_read = readline (csql_Sqlx_prompt)) != NULL)
+	  if ((line_read = readline (csql_Prompt)) != NULL)
 	    {
 	      for (t = line_read; isspace (*t); t++)
 		;
@@ -704,7 +504,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
-	  if ((line_read = readline (csql_Sqlx_prompt)) != NULL)
+	  if ((line_read = readline (csql_Prompt)) != NULL)
 	    {
 	      line_read_alloced = line_read;
 	      flag_append_new_line = true;
@@ -718,7 +518,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #else /* WINDOWS */
       if (csql_Is_interactive)
 	{
-	  fprintf (csql_Output_fp, "%s ", csql_Sqlx_prompt);	/* display prompt */
+	  fprintf (csql_Output_fp, "%s ", csql_Prompt);	/* display prompt */
 	}
 
       line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -1023,7 +823,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  break;
 
 	case S_CMD_DATABASE:
-	  fprintf (csql_Error_fp, "\n\t%s\n\n", csql_arg->db_name);
+	  if (strchr (csql_arg->db_name, '@') != NULL)
+	    {
+	      fprintf (csql_Error_fp, "\n\t%s\n\n", csql_arg->db_name);
+	    }
+	  else
+	    {
+	      fprintf (csql_Error_fp, "\n\t%s@%s\n\n", csql_arg->db_name,
+		       db_get_host_connected ());
+	    }
 	  break;
 
 	case S_CMD_SET_PARAM:
@@ -1032,6 +840,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	case S_CMD_GET_PARAM:
 	  csql_get_sys_param (argument);
+	  break;
+
+	case S_CMD_PLAN_DUMP:
+	  csql_set_plan_dump ((argument[0] == '\0') ? NULL : argument);
 	  break;
 
 	case S_CMD_ECHO:
@@ -1053,10 +865,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	case S_CMD_DATE:
 	  {
 	    time_t tloc = time (NULL);
-	    struct tm *tmloc;
+	    struct tm tmloc;
 	    char str[80];
-	    tmloc = localtime (&tloc);
-	    strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", tmloc);
+	    utility_localtime (&tloc, &tmloc);
+	    strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
 	    fprintf (csql_Output_fp, "\n\t%s\n", str);
 	  }
 	  break;
@@ -1517,7 +1329,7 @@ csql_change_working_directory (const char *dirname)
     }
   else
     {
-      sprintf (buf, "\n%s %s.\n\n", msg, dirname);
+      snprintf (buf, sizeof (buf) - 1, "\n%s %s.\n\n", msg, dirname);
       csql_fputs (buf, csql_Tty_fp);
     }
 }
@@ -1568,6 +1380,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
+#if defined(CS_MODE)
+  bool prm_query_mode_sync = prm_get_query_mode_sync ();
+#endif
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1646,8 +1461,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
-      struct timeval start_time, end_time;
-      float elapsed_time;
+      struct timeval start_time, end_time, elapsed_time;
       int stmt_id;
       CUBRID_STMT_TYPE stmt_type;	/* statement type */
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
@@ -1662,6 +1476,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
       if (stmt_id < 0)
 	{
+	  /*
+	   * Transaction should be aborted if an error occurs during
+	   * compilation on auto commit mode.
+	   */
+	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT)
+	    {
+	      db_abort_transaction ();
+	    }
+
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  /* Do not continue if there are no statments in the buffer */
@@ -1689,7 +1512,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
 
 #if defined(CS_MODE)
-      if (PRM_QUERY_MODE_SYNC)
+      if (prm_query_mode_sync)
 	{
 	  db_set_session_mode_sync (session);
 	}
@@ -1732,7 +1555,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 			stmt_type);
 
 #if defined(CS_MODE)
-	  if (PRM_QUERY_MODE_SYNC)
+	  if (prm_query_mode_sync)
 	    csql_Row_count = db_error;
 #else /* !CS_MODE */
 	  csql_Row_count = db_error;
@@ -1759,8 +1582,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	case CUBRID_STMT_GET_TRIGGER:
 	case CUBRID_STMT_GET_LDB:
 	case CUBRID_STMT_GET_STATS:
-	  csql_results (csql_arg, result, db_get_query_type_ptr (result),
-			stmt_start_line_no, stmt_type);
+	  if (result != NULL)
+	    {
+	      csql_results (csql_arg, result, db_get_query_type_ptr (result),
+			    stmt_start_line_no, stmt_type);
+	    }
 	  break;
 
 	case CUBRID_STMT_UPDATE:
@@ -1805,12 +1631,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       if (csql_Is_time_on)
 	{
 	  (void) gettimeofday (&end_time, NULL);
-	  elapsed_time = (float)
-	    ((end_time.tv_sec + end_time.tv_usec / 1000000.0f) -
-	     (start_time.tv_sec + start_time.tv_usec / 1000000.0f));
+
+	  elapsed_time.tv_sec = end_time.tv_sec - start_time.tv_sec;
+	  elapsed_time.tv_usec = end_time.tv_usec - start_time.tv_usec;
+	  if (elapsed_time.tv_usec < 0)
+	    {
+	      elapsed_time.tv_sec--;
+	      elapsed_time.tv_usec += 1000000;
+	    }
 	  fprintf (csql_Output_fp,
-		   "SQL statement execution time: %10.6f sec\n",
-		   elapsed_time);
+		   "SQL statement execution time: %5d.%06d sec\n",
+		   elapsed_time.tv_sec, elapsed_time.tv_usec);
 	}
 
       if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT
@@ -1900,7 +1731,7 @@ csql_set_sys_param (const char *arg_str)
     return;
 
   if (strncmp (arg_str, "cost", 4) == 0
-      && sscanf (arg_str, "cost %s %s", plantype, val) == 2)
+      && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
     {
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
@@ -1948,7 +1779,7 @@ csql_get_sys_param (const char *arg_str)
     return;
 
   if (strncmp (arg_str, "cost", 4) == 0
-      && sscanf (arg_str, "cost %s", plantype) == 1)
+      && sscanf (arg_str, "cost %127s", plantype) == 1)
     {
       cost = qo_plan_get_cost_fn (plantype);
       if (cost == 'u')
@@ -1977,6 +1808,61 @@ csql_get_sys_param (const char *arg_str)
 
   csql_append_more_line (0, ans);
   csql_display_more_lines ("Get Param Input");
+  csql_free_more_lines ();
+}
+
+/*
+ * csql_get_sys_param()
+ *   return:
+ *   arg_str(in)
+ */
+static void
+csql_set_plan_dump (const char *arg_str)
+{
+  int level;
+  char line[128];
+
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+
+  if (arg_str != NULL)
+    {
+      if (!strncmp (arg_str, "simple", 6))
+	{
+	  level &= ~0x200;
+	  level |= 0x100;
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	}
+      else if (!strncmp (arg_str, "detail", 6))
+	{
+	  level &= ~0x100;
+	  level |= 0x200;
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	}
+      else if (!strncmp (arg_str, "off", 3))
+	{
+	  level &= ~(0x100 | 0x200);
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	}
+    }
+
+  if (PLAN_DUMP_ENABLED (level))
+    {
+      if (SIMPLE_DUMP (level))
+	{
+	  snprintf (line, 128, "plan simple (opt level %d)", level);
+	}
+      if (DETAILED_DUMP (level))
+	{
+	  snprintf (line, 128, "plan detail (opt level %d)", level);
+	}
+    }
+  else
+    {
+      snprintf (line, 128, "plan off (opt level %d)", level);
+    }
+
+  csql_append_more_line (0, line);
+  csql_display_more_lines ("Plan Dump");
   csql_free_more_lines ();
 }
 
@@ -2061,6 +1947,7 @@ csql_exit_session (int error)
 {
   char line_buf[LINE_BUFFER_SIZE];
   bool commit_on_shutdown = false;
+  bool prm_commit_on_shutdown = prm_get_commit_on_shutdown ();
 
   if (!db_commit_is_needed ())
     {
@@ -2070,7 +1957,7 @@ csql_exit_session (int error)
       db_abort_transaction ();
     }
 
-  if (csql_Is_interactive && !PRM_COMMIT_ON_SHUTDOWN
+  if (csql_Is_interactive && !prm_commit_on_shutdown
       && db_commit_is_needed () && !feof (csql_Input_fp))
     {
       FILE *tf;
@@ -2244,6 +2131,7 @@ int
 csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 {
   char *env;
+  int client_type;
 
   /* Establish a globaly accessible longjmp environment so we can terminate
    * on severe errors without calling exit(). */
@@ -2271,15 +2159,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
 
   /* set up prompt and message fields. */
-  strcpy (csql_Sqlx_prompt, csql_get_message (CSQL_LANG_PROMPT_PREFIX));
-  strcpy (csql_Sqlx_name, csql_get_message (CSQL_LANG_NAME_PREFIX));
-  strcpy (csql_Sqlx_product, csql_get_message (CSQL_LANG_PRODUCT_PREFIX));
-
-  strcat (csql_Sqlx_prompt, csql_get_message (CSQL_CSQL_PROMPT_NAME));
+  if (csql_arg->sysadm)
+    {
+      strcpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT));
+    }
+  else
+    {
+      strcpy (csql_Prompt, csql_get_message (CSQL_PROMPT));
+    }
 #if defined(GNU_Readline)
-  strcat (csql_Sqlx_prompt, " ");
+  strcat (csql_Prompt, " ");
 #endif /* GNU_Readline */
-  strcat (csql_Sqlx_name, csql_get_message (CSQL_CSQL_NAME));
+  strcpy (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file,
    * it is necessary to be opening csql_Input_fp at this point
@@ -2327,9 +2218,21 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /*
    * login and restart database
    */
-  db_set_client_type (DB_CLIENT_TYPE_CSQL);
-  if (db_login (csql_arg->user_name, csql_arg->passwd) < 0 ||
-      db_restart (argv0, FALSE, csql_arg->db_name) < 0)
+  if (csql_arg->sysadm)
+    {
+      client_type = DB_CLIENT_TYPE_ADMIN_CSQL;
+    }
+  else if (csql_arg->read_only)
+    {
+      client_type = DB_CLIENT_TYPE_READ_ONLY_CSQL;
+    }
+  else
+    {
+      client_type = DB_CLIENT_TYPE_CSQL;
+    }
+  if (db_restart_ex (argv0, csql_arg->db_name,
+		     csql_arg->user_name, csql_arg->passwd,
+		     client_type) != NO_ERROR)
     {
       if (!csql_Is_interactive || csql_arg->passwd != NULL ||
 	  db_error_code () != ER_AU_INVALID_PASSWORD)
@@ -2348,12 +2251,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	csql_arg->passwd = (char *) NULL;	/* to fit into db_login protocol */
 
       /* try again */
-      if (db_login (csql_arg->user_name, csql_arg->passwd) < 0 ||
-	  db_restart (argv0, FALSE, csql_arg->db_name) < 0)
+      if (db_restart_ex (argv0, csql_arg->db_name,
+			 csql_arg->user_name, csql_arg->passwd,
+			 client_type) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
 	}
+    }
+
+  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+    {
+      au_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag

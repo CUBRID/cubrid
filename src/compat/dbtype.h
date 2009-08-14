@@ -642,7 +642,6 @@ typedef enum
 {
   DB_TYPE_C_DEFAULT = 0,
   DB_TYPE_C_FIRST = 100,	/* first for iteration */
-  DB_TYPE_C_BIGINT,
   DB_TYPE_C_INT,
   DB_TYPE_C_SHORT,
   DB_TYPE_C_LONG,
@@ -666,6 +665,7 @@ typedef enum
   DB_TYPE_C_ERROR,
   DB_TYPE_C_IDENTIFIER,
   DB_TYPE_C_DATETIME,
+  DB_TYPE_C_BIGINT,
   DB_TYPE_C_LAST,		/* last for iteration   */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;

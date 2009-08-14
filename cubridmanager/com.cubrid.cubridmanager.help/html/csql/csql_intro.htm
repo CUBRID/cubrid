@@ -1,0 +1,118 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CSQL 인터프리터 소개</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CSQL 인터프리터\nCSQL 인터프리터 소개");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"csql.htm\">CSQL 인터프리터<\/a> &nbsp;&gt;&nbsp; CSQL 인터프리터 소개<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2 style='line-height:18.0pt'><span lang="EN-US" style='font-size:15.0pt' xml:lang="EN-US">CSQL</span> <span style='font-size:15.0pt'>인터프리터 소개</span></h2>
+<h5 style='line-height:18.0pt'>SQL 사용을 위한 도구</h5>
+<p style='line-height:18.0pt'>CSQL 인터프리터는 CUBRID와 함께 설치되는 대화형<span lang="EN-US" xml:lang="EN-US">(interactive)</span> 방식과 일괄 수행<span lang="EN-US" xml:lang="EN-US">(batch)</span> 방식으로 <span lang="EN-US" xml:lang="EN-US">SQL</span> 질의를 수행하고 수행 결과를 조회할 수 있는 프로그램이다<span lang="EN-US" xml:lang="EN-US">. CSQL</span> 인터프리터는 명령어 라인 입력 방식의 인터페이스를 제공하며<span lang="EN-US" xml:lang="EN-US">,</span> 입력된 <span lang="EN-US" xml:lang="EN-US">SQL</span> 문장과 그 결과는 나중에 사용하기 위해서 파일에 저장할 수도 있다.</p>
+<p style='line-height:18.0pt'>CSQL 인터프리터는 CUBRID를 사용하는 가장 기본적이고 손쉬운 방법이다<span lang="EN-US" xml:lang="EN-US">. CUBRID를 사용하는데 제공되는 다양한</span> 다양한 API<span lang="EN-US" xml:lang="EN-US">(JDBC, ODBC, PHP, CCI</span> 등<span lang="EN-US" xml:lang="EN-US">)를 활용하여 데이터베이스 응용 프로그램을 작성할 수 있다. 또한,</span> CUBRID에서 제공하는 관리 및 질의 도구인 CUBRID 매니저를 사용할 수도 있다. <span lang="EN-US" xml:lang="EN-US">사용자는</span> CSQL 인터프리터가 제공하는 터미널 기반의 환경에서 <span lang="EN-US" xml:lang="EN-US">SQL</span> 질의를 생성하고<span lang="EN-US" xml:lang="EN-US">,</span> 수행 결과를 조회할 수 있다.</p>
+<p style='line-height:18.0pt'>CSQL 인터프리터는 CUBRID 데이터베이스에 접속하여 <span lang="EN-US" xml:lang="EN-US">SQL</span> 문을 통해 다양한 작업을 수행한다. <span lang="EN-US" xml:lang="EN-US">CSQL</span> 인터프리터를 이용해 다음과 같은 작업을 수행할 수 있다.</p>
+<ul>
+<li>SQL 문을 이용하여 데이터베이스 조회<span lang="EN-US" xml:lang="EN-US">,</span> 갱신<span lang="EN-US" xml:lang="EN-US">,</span> 삭제 등의 작업</li>
+<li>외부 셸 명령 실행</li>
+<li>조회 결과의 저장 혹은 출력</li>
+<li>SQL 스크립트 파일의 작성 및 실행</li>
+<li>테이블 스키마 조회</li>
+<li>데이터베이스 서버 시스템 파라미터의 조회 및 변경</li>
+<li>다양한 데이터베이스 정보(스키마, 트리거, 지연 트리거, workspace, 잠금, 통계) 조회</li>
+</ul>
+<h5 style='line-height:18.0pt'>DBA를 위한 도구</h5>
+<p style='line-height:18.0pt'><span class="keyword">DBA</span>(Database Administrator)는 일상적인 많은 관리 업무를 수행하기 위해서 CUBRID가 설치된 시스템에 접속해서 CUBRID가 제공하는 다양한 관리 유틸리티를 이용해서 작업을 수행한다<span lang="EN-US" xml:lang="EN-US">.</span> 따라서<span lang="EN-US" xml:lang="EN-US">,</span> 터미널 기반의 인터페이스를 제공하는 <span lang="EN-US" xml:lang="EN-US">CSQL</span> 인터프리터는 <span class="keyword">DBA</span>가 데이터베이스 관리 업무를 수행하는데 유용하게 사용된다<span lang="EN-US" xml:lang="EN-US">.</span> 또한<span lang="EN-US" xml:lang="EN-US">, CSQL</span> 인터프리터는 <span class="keyword">DBA</span>에게 필요한 다양한 데이터베이스 정보를 제공한다.</p>
+<p style='line-height:18.0pt'>CSQL 인터프리터는 독립 모드<span lang="EN-US" xml:lang="EN-US">(Standalone Mode)</span>로 실행될 수도 있다<span lang="EN-US" xml:lang="EN-US">.</span> 독립 실행 모드는 <span lang="EN-US" xml:lang="EN-US">CSQL</span> 인터프리터가 서버 프로세스의 기능을 포함하여 직접 데이터베이스 파일에 접근하여 수행하는 방식이다<span lang="EN-US" xml:lang="EN-US">.</span> 즉 별도의 데이터베이스 서버 프로세스가 구동되어 있지 않은 상태에서 해당 데이터베이스를 대상으로 <span lang="EN-US" xml:lang="EN-US">SQL</span> 문을 실행할 수 있다<span lang="EN-US" xml:lang="EN-US">.</span> <span lang="EN-US" xml:lang="EN-US">CSQL</span> 인터프리터는 데이터베이스 서버나 브로커 등 어떠한 다른 프로그램의 도움 없이 <span class="keyword">csql</span> 유틸리티 하나로 데이터베이스를 이용할 수 있는 강력한 수단이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

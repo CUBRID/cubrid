@@ -1,0 +1,121 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>NCHAR(n)</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="NCHAR(n)" />
+<meta name="MS-HKWD" content="NATIONAL CHARACTER(n)" />
+<meta name="MS-HKWD" content="NATIONAL CHAR(n)" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n문자 스트링 데이터 타입\nNCHAR(n)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">문자 스트링 데이터 타입<\/a> &nbsp;&gt;&nbsp; NCHAR(n)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>NCHAR(n)</h4>
+<h6>설명</h6>
+<p>고정길이 국가 문자 스트링은 <span class="keyword">NCHAR</span>(<span class="var">n</span>)로 나타내는데, 여기서 <span class="var">n</span>은 문자의 개수를 나타낸다. 이 데이터 타입에 저장될 수 있는 문자 스트링은 앞에서 소개한 문자 세트여야 한다. 만약, <span class="var">n</span>이 생략되면 길이는 디폴트 값 1로 지정된다. 만약, 스트링의 크기가 <span class="var">n</span>을 넘어설 때, 넘어서는 부분이 공백문자인 경우에는 이를 절삭하고, 넘어서는 부분이 공백문자가 아닌 경우에는 오류로 처리된다. <span class="var">n</span>보다 작은 문자 스트링이 저장될 때에는 나머지 부분이 공백문자로 채워진다. 어떤 언어의 문자 세트에서는 하나의 문자가 한 개 이상의 바이트로 저장되기 때문에 <span class="var">n</span>을 바이트 크기로 보면 안된다.<br />
+<span class="keyword">NCHAR</span>에서 사용되는 로캘은 운영체제에 설정된 로캘 혹은 <span class="keyword">CUBRID_LANG</span> 환경 변수 값으로 지정된다.</p>
+<p><span class="keyword">NCHAR</span>(<span class="var">n</span>)와 <span class="keyword">NATIONAL CHAR</span>(<span class="var">n</span>), 그리고 <span class="keyword">NATIONAL CHARACTER</span>(<span class="var">n</span>)는 같은 의미로 사용된다.</p>
+<h6>참고 사항</h6>
+<ul>
+<li><span class="var">n</span>은 0보다 큰 숫자여야 한다.</li>
+<li>하나의 데이터베이스에서 사용할 수 있는 국가 문자 코드 세트는 하나로 지정되어 있다. 예를 들어, 같은 데이터베이스에서 8비트 ISO 8889-1 Latin 코드 세트를 사용하면서 동시에 EUC 인코딩 코드 세트를 사용할 수는 없다.</li>
+<li>국가 문자 스트링으로 선언된 속성에 고정이든 가변이든 일반 스트링을 지정하면 오류가 발생한다.</li>
+<li>서로 다른 문자 코드 세트를 혼용하여 사용할 경우에도 오류가 발생한다.</li>
+</ul>
+<h6>예제</h6>
+<p class="code">NCHAR(8)에 N'Härder'를 지정하면 'Härder&#160; '가 저장된다(6자리 문자 스트링과 공백문자 2개로 구성됨).<br />
+NCHAR(6)에 N'Härder&#160; '를 지정하면 'Härder'가 저장된다(6을 넘어서는 부분이 공백문자이므로 이를 절삭하고 6자리 문자 스트링로 구성됨).<br />
+NCHAR에 N'Härder'를 지정하면 오류가 발생한다(디폴트 값 1보다 문자 스트링의 크기가 크기 때문에 오류 발생).<br />
+NCHAR(12)에 'pacesetter'를 지정하면 오류가 발생한다(국가 문자 스트링으로 선언된 속성에 일반 스트링을 지정하면 오류 발생).</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -34,11 +34,6 @@
 #include "thread_impl.h"
 
 
-/* Name sizes */
-#define MAX_SERVER_HOST_NAME 256
-#define MAX_SERVER_NAME      256
-
-
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.
    This must be the byte size of the structure
@@ -66,6 +61,7 @@ enum net_server_request
   NET_SERVER_BO_FIND_NTEMP_VOLS,
   NET_SERVER_BO_FIND_LAST_TEMP,
   NET_SERVER_BO_CHANGE_HA_MODE,
+  NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE,
 
   NET_SERVER_TM_SERVER_COMMIT,
   NET_SERVER_TM_SERVER_ABORT,
@@ -136,6 +132,7 @@ enum net_server_request
   NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO,
   NET_SERVER_LOG_DUMP_STAT,
   NET_SERVER_LOG_GETPACK_TRANTB,
+  NET_SERVER_LOG_DUMP_TRANTB,
 
   NET_SERVER_LK_DUMP,
 
@@ -188,6 +185,7 @@ enum net_server_request
 
   NET_SERVER_PRM_SET_PARAMETERS,
   NET_SERVER_PRM_GET_PARAMETERS,
+  NET_SERVER_PRM_DUMP_PARAMETERS,
 
   NET_SERVER_JSP_GET_SERVER_PORT,
 
@@ -199,6 +197,8 @@ enum net_server_request
   NET_SERVER_TEST_PERFORMANCE,
 
   NET_SERVER_SHUTDOWN,
+
+  NET_SERVER_REPL_BTREE_FIND_UNIQUE,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
@@ -210,13 +210,12 @@ enum net_server_request
   NET_SERVER_PING_WITH_HANDSHAKE = 999,
 };
 
-/* Server capabilities */
-#define NET_INTERRUPT_ENABLED_CAP 0x80000000
-
-/* for the generated interface routines */
-typedef const char CONSTCHAR;
-
-extern unsigned int net_Interrupt_enabled;
+/* Server/client capabilities */
+#define NET_CAP_BACKWARD_COMPATIBLE     0x80000000
+#define NET_CAP_FORWARD_COMPATIBLE      0x40000000
+#define NET_CAP_INTERRUPT_ENABLED       0x00800000
+#define NET_CAP_UPDATE_DISABLED         0x00008000
+#define NET_CAP_REMOTE_DISABLED         0x00000080
 
 extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);

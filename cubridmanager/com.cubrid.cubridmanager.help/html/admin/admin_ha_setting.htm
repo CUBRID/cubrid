@@ -1,0 +1,141 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>HA 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\nHA 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; HA 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>HA 설정</h3>
+<p>HA 기능을 사용하기 위해서는 아래와 같은 설정이 필요하다.</p>
+<h6>시스템 구성</h6>
+<p>&#160;<img src="images/admin_ha_setting_arch.png" border="0" alt="" /></p>
+<p>자동 failover와 failback 기능을 수행하기 위해서는 Linux-HA 프로젝트의 Heartbeat이 데이터베이스 서버가 구동되는 각 시스템에 설치가 되어 있어야 한다. Heartbeat 구성에 대해서는 별도의 Heartbeat 설치 관련 문서를 참고한다.</p>
+<p>또한 브로커와 데이터베이스 서버를 분리된 시스템에 각각 구성함으로써 시스템의 정지를 발생시킬 수 있는 여러 장애에 좀더 유연하게 대처할 수 있도록 시스템을 구성할 수도 있다.</p>
+<h6>데이터베이스 서버 설정</h6>
+<p>HA 기능을 사용하기 위해서는 데이터베이스 서버 시스템의 <span class="keyword">cubrid.conf</span> 설정 파일에서 <span class="keyword">ha_mode</span> 파라미터를 <span class="keyword">on</span>으로 설정해야 한다. <span class="keyword">ha_mode</span> 파라미터가 설정되지 않은 경우, 디폴트 값은 <span class="keyword">off</span>이므로 HA 기능을 설정하지 않은 일반적인 서버로 동작 한다.</p>
+<p class="codep">#cubrid.conf</p>
+<p class="codep">ha_mode=on</p>
+<p>데이터베이스 서버가 HA 기능을 사용 중인지 확인하기 위해서는 <span class="keyword">cubrid changemode</span> 유틸리티를 사용하여 결과가 제대로 출력되는지 확인할 수 있다.</p>
+<p class="codep">% cubrid changemode demodb</p>
+<p class="codep">The server 'demodb''s current HA running mode is active.</p>
+<h6>브로커 설정</h6>
+<p>브로커의 기본 동작 모드는 읽기와 쓰기 연산을 요청하는 모드이며, 필요 시 <span class="keyword">cubrid_broker.conf</span>의 <span class="keyword">ACCESS_MODE</span> &#160;파라미터를 이용하여 Read only 브로커나 Slave only 브로커로 설정한다.</p>
+<p class="codep">#cubrid_broker.conf</p>
+<p class="codep">ACCESS_MODE = RW|RO|SO</p>
+<p class="codep">&#160;</p>
+<p class="codep">RW := Read-Write broker (<span class="comment">기본값</span>)</p>
+<p class="codep">RO := Read-Only broker</p>
+<p class="codep">SO := Slave-Only broker</p>
+<p>구동중인 브로커의 동작 모드는 <span class="keyword">cubrid broker status</span> 유틸리티의 <span class="keyword">-f</span> 인자를 사용하여 확인할 수 있다. 브로커 상태에 대한 자세한 내용은 <a href="admin_service_broker_status.htm">브로커 상태 확인</a>을 참고한다.</p>
+<p class="codep">% broker1 &#160;- cub_cas [4430,40821] /home/CUBRID/log/broker/broker1.access /home/CUBRID/</p>
+<p class="codep">&#160;JOB QUEUE:0, AUTO_ADD_APPL_SERVER:ON, SQL_LOG_MODE:ALL:100000</p>
+<p class="codep">&#160;LONG_TRANSACTION_TIME:60, LONG_QUERY_TIME:60, SESSION_TIMEOUT:300</p>
+<p class="codep">&#160;KEEP_CONNECTION:AUTO, ACCESS_MODE:RW</p>
+<p class="codep">-----------------------------------------------------------------------------------------------------------------</p>
+<p class="codep">ID &#160;&#160;PID &#160;&#160;QPS &#160;&#160;LQS PSIZE STATUS &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;LAST ACCESS TIME &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;DB &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;HOST &#160;&#160;LAST CONNECT TIME</p>
+<p class="codep">------------------------------------------------------------------------------------------------------------------</p>
+<p class="codep">&#160;1 &#160;4431 &#160;&#160;&#160;&#160;0 &#160;&#160;&#160;&#160;0 50140 IDLE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2009/08/06 11:42:40 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-</p>
+<p class="codep">&#160;2 &#160;4432 &#160;&#160;&#160;&#160;0 &#160;&#160;&#160;&#160;0 50140 IDLE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2009/08/06 11:42:40 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-</p>
+<p class="codep">&#160;3 &#160;4433 &#160;&#160;&#160;&#160;0 &#160;&#160;&#160;&#160;0 50144 IDLE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2009/08/06 11:42:40 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-</p>
+<p class="codep">&#160;4 &#160;4434 &#160;&#160;&#160;&#160;0 &#160;&#160;&#160;&#160;0 50140 IDLE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2009/08/06 11:42:40 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-</p>
+<p class="codep">&#160;5 &#160;4435 &#160;&#160;&#160;&#160;0 &#160;&#160;&#160;&#160;0 50144 IDLE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2009/08/06 11:42:40 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;-</p>
+<h6>데이터베이스 호스트 정보 설정</h6>
+<p>HA 구성에서 사용할 Active 서버 및 Standby 서버의 호스트 정보를 브로커 및 서버 시스템 내 데이터베이스 위치 정보 파일(<span class="keyword">database.txt</span>)에 추가해야 한다. Active 서버와 Standby 서버는 콜론(:)으로 구분하며, Standby 서버는 한 개 이상 추가 가능하고 각 호스트들 간의 구분 또한 콜론(:)으로 구분한다.</p>
+<p class="codep">#databases.txt</p>
+<p class="codep">#db-name &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;vol-path &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;db-host &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;log-path</p>
+<p class="codep">nbd2 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;/home/db/db2 &#160;&#160;&#160;&#160;&#160;server_s1:server_s2 &#160;&#160;&#160;&#160;&#160;&#160;/home/db/db2</p>
+<p class="codep">nbd1 &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;/home/db/db1 &#160;&#160;&#160;&#160;&#160;server_s1:server_s2 &#160;&#160;&#160;&#160;&#160;&#160;/home/db/db1</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

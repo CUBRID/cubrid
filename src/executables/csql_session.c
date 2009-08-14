@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -85,6 +85,7 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"nopager", S_CMD_NOPAGER_CMD},
   {"set", S_CMD_SET_PARAM},
   {"get", S_CMD_GET_PARAM},
+  {"plan", S_CMD_PLAN_DUMP},
   {"echo", S_CMD_ECHO},
   {"date", S_CMD_DATE},
   {"time", S_CMD_TIME},
@@ -766,11 +767,13 @@ csql_help_info (const char *command, int aucommit_flag)
       goto error;
     }
   tok = strtok (dup, " \t");
-  if (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") ||
-      !strcasecmp (tok, "deferred") || !strcasecmp (tok, "workspace") ||
-      !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats") ||
-      !strcasecmp (tok, "logstat") ||
-      !strcasecmp (tok, "plan") || !strcasecmp (tok, "qcache"))
+  if (tok != NULL &&
+      (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") ||
+       !strcasecmp (tok, "deferred") || !strcasecmp (tok, "workspace") ||
+       !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats") ||
+       !strcasecmp (tok, "logstat") ||
+       !strcasecmp (tok, "plan") || !strcasecmp (tok, "qcache") ||
+       !strcasecmp (tok, "trantable")))
     {
 #if !defined(WINDOWS)
       csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);

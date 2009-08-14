@@ -1,0 +1,5 @@
+task:createdb
+status:failure
+note:Couldn't create database.
+Number of page must be greater than or equal to 100
+

@@ -613,8 +613,9 @@ then
   error_exit 1 err_write_auth $log_vol_path   # write authorization failure
 fi
 
+max_level=0
 exec 5< $file.ori
-while read -u5 dum1 dum2 vol_path
+while read -u5 backup_level unit_num vol_path
 do
   cur_bkfile=$CurDir/${vol_path##*/}
   if [ ! -f $cur_bkfile ]
@@ -624,14 +625,18 @@ do
     error_exit 1 err_file_error $cur_bkfile 
   fi
   # replace bk_vol path as log_vol_path
-  echo "$dum1 $dum2 $cur_bkfile" >> $log_vol_path/$file
+  echo "$backup_level $unit_num $cur_bkfile" >> $log_vol_path/$file
+  if [ $max_level -lt $backup_level ]
+  then
+    max_level=$backup_level
+  fi
 done
 
 exec 5<&-
 
 # restore the master db
 print_mes PROG21    # restoring the slave database.. wait a moment
-$rootdir/bin/cubrid restoredb -p -r $master_db_name -u 2> .slave.tmp 1> .slave.tmp2
+$rootdir/bin/cubrid restoredb -l $max_level -d backuptime -r $master_db_name -u 2> .slave.tmp 1> .slave.tmp2
 result=`eval cat .slave.tmp | grep ERROR`
 
 if [ -n "$result" ]

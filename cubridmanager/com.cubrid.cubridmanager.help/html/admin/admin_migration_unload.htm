@@ -1,0 +1,342 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 내보내기(unload)</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 마이그레이션\n데이터베이스 내보내기(unload)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_migration_migration.htm\">데이터베이스 마이그레이션<\/a> &nbsp;&gt;&nbsp; 데이터베이스 내보내기(unload)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 내보내기(unload)</h3>
+<p>데이터베이스를 언로드/로드하는 목적은 다음과 같다.</p>
+<ul>
+<li>데이터베이스 볼륨을 재구성하여 데이터베이스 재구축</li>
+<li>시스템이 다른 환경에서 마이그레이션 수행</li>
+<li>버전이 다른 DBMS에서 마이그레이션 수행</li>
+</ul>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid unloaddb</span>&#160;[ <span class="var">options</span> ] <span class="var">database_name</span><br />
+[ <span class="var">options</span> ]<br />
+<span class="keyword">-i</span> | <span class="keyword">-O</span> | <span class="keyword">-s</span> | <span class="keyword">-d</span> | <span class="keyword">-v</span> | <span class="keyword">-S</span> | <span class="keyword">-C</span> |<br />
+<span class="keyword">--input-class-file</span> | <span class="keyword">--output-path</span> | <span class="keyword">--schema-only</span> | <span class="keyword">--data-only</span> | <span class="keyword">--verbose</span> | <span class="keyword">--SA-mode</span> | <span class="keyword">--CS-mode</span> | <span class="keyword">--include-reference</span> | <span class="keyword">--input-class-only</span> | <span class="keyword">--lo-count</span> | <span class="keyword">--estimated-size</span> | <span class="keyword">--cached-pages</span> | <span class="keyword">--output-prefix</span> | <span class="keyword">--hash-file</span> | <span class="keyword">--use-delimiter</span></p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">unloaddb</span>&#160;:&#160;데이터베이스를 아스키 파일로 생성하는 유틸리티로 시스템 교체, 제품 버전 업그레이드,&#160;또는 데이터베이스 볼륨의 재구성을 위해&#160;<span class="keyword">cubrid loaddb</span>&#160;유틸리티와&#160;함께 사용된다. 독립 모드 및 클라이언트/서버 모드에서 모두 사용할 수 있으며, 해당 데이터베이스가 운영 중일 때에도 데이터를 언로드할 수 있다.</li>
+<li><span class="var">options</span>&#160;:&#160;단축 옵션은 <span class="keyword">-</span>와 함께 지정해야 하고, 전체 옵션은 <span class="keyword">--</span>와 함께 지정해야 한다. 대소문자에 유의한다.</li>
+<li><span class="var">database_name</span> : 언로드할 데이터베이스의 이름을 지정한다.</li>
+</ul>
+<h6>반환 값<sup>&#160;</sup></h6>
+<p><span class="keyword">cubrid unloaddb</span> 유틸리티의&#160;반환 값은 다음과 같다.</p>
+<ul>
+<li>&#160;0 : 성공</li>
+<li>&#160;Non-zero :&#160;실패</li>
+</ul>
+<h6>생성 파일</h6>
+<ul>
+<li>스키마 파일(<span class="var">database-name</span><span class="keyword">_schema</span>) : 해당 데이터베이스에 정의된 스키마 정보를 포함하는 파일이다.</li>
+<li>객체 파일(<span class="var">database-name</span><span class="keyword">_objects</span>) : 해당 데이터베이스에 포함된 인스턴스 정보를 포함하는 파일이다.</li>
+<li>인덱스 파일(<span class="var">database-name</span><span class="keyword">_indexes</span>) : 해당 데이터베이스에 정의된 인덱스 정보를 포함하는 파일이다.</li>
+<li>트리거 파일(<span class="var">database-name</span><span class="keyword">_trigger</span>) : 해당 데이터베이스에 정의된 트리거 정보를 포함하는 파일이다. 만약 데이터를 로딩하는 동안 트리거가 구동되는 것을 원치 않는다면, 데이터 로딩을 완료한 후에 트리거 정의를 로딩하면 된다.</li>
+</ul>
+<p>이러한 스키마, 객체, 인덱스, 트리거 파일은 같은&#160;디렉터리에 생성된다.</p>
+<h6>옵션</h6>
+<p>다음은 <span class="keyword">cubrid&#160;unloaddb</span> 유틸리티와 함께 사용할 수 있는&#160;옵션을 정리한 표이다. 대소문자를 구별해서 사용해야 한다.</p>
+<table border="1" width="80%">
+<tbody>
+<tr>
+<th width="152">
+<p>&#160;옵션</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-i</p>
+<p>&#160;--input-class-file</p>
+</td>
+<td>
+<p>인수로 지정된 입력 파일에 지정된 클래스를 대상으로 데이터베이스를 언로드한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-O</p>
+<p>&#160;--output-path</p>
+</td>
+<td>
+<p>스키마와 객체 파일이 생성될 디렉터리를 지정한다. 옵션이 지정되지 않으면 현재 디렉터리에 생성된다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-s</p>
+<p>&#160;--schema-only</p>
+</td>
+<td>
+<p>데이터 파일은 생성하지 않고, 스키마 파일만 생성한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-d</p>
+<p>&#160;--data-only</p>
+</td>
+<td>
+<p>스키마 파일은 생성하지 않고,&#160;데이터 파일만 생성한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-v</p>
+<p>&#160;--verbose</p>
+</td>
+<td>
+<p>언로드되는 데이터베이스의 상세 정보를 화면에 출력한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-S</p>
+<p>&#160;--SA-mode</p>
+</td>
+<td>
+<p>독립 모드에서 데이터베이스를 언로드한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;-C</p>
+<p>&#160;--CS-mode</p>
+</td>
+<td>
+<p>클라이언트/서버 모드에서 데이터베이스를 언로드한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--include-reference</p>
+</td>
+<td>
+<p><span class="keyword">-i</span> 옵션과 함께 사용되며, 객체 참조도 함께 생성한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--input-class-only</p>
+</td>
+<td>
+<p><span class="keyword">-i</span> 옵션과 함께 사용되며, 입력 파일에 포함된 테이블에 관한 스키마 파일만 생성한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--lo-count</p>
+</td>
+<td>
+<p>한 디렉터리에 생성될 큰 객체(LO) 데이터 파일의 수를 설정한다.</p>
+<p>디폴트 값 :&#160;0</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--estimated-size</p>
+</td>
+<td>
+<p>예상되는 인스턴스 수를 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--cached-pages</p>
+</td>
+<td>
+<p>메모리에 캐시할 객체 테이블의 수를 설정한다.</p>
+<p>디폴트 값 : 100</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--output-prefix</p>
+</td>
+<td>
+<p>스키마와 객체 파일명 앞에 붙이는 prefix를 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--hash-file</p>
+</td>
+<td>
+<p>해시 파일의 이름을 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td class="keyword" width="152">
+<p>&#160;--use-delimiter</p>
+</td>
+<td>
+<p>속성 이름을 따옴표로 감싸서 출력한다.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li class="title">언로드할 테이블 목록이 포함된 입력 파일(-i 또는 --input-class-file)</li>
+<li class="desc"><span class="keyword">-i</span>는 데이터베이스의 일부 클래스만 언로드하기 위하여, 언로드할&#160;테이블 목록이 저장된 입력 파일을 지정하는 옵션이다.&#160;단, <span class="keyword">-i</span> 옵션을 지정하더라도, 입력 파일에 포함되지 않은 나머지 테이블에 관한 스키마 파일도 출력 파일로 생성된다.</li>
+</ul>
+<p class="code">cubrid unloaddb -i table_list.txt&#160;demodb</p>
+<ul>
+<li class="desc"><span class="keyword">-i</span>&#160;옵션은&#160;<span class="keyword">--input-class-only</span>와 함께 결합될 수 있으며, 이는 입력 파일에 포함된 테이블에 관한 스키마 파일만 생성되도록 하는 명령이다.</li>
+</ul>
+<p class="code">cubrid unloaddb --input-class-only&#160;-i table_list.txt&#160;demodb</p>
+<ul>
+<li class="desc"><span class="keyword">-i</span> 옵션은 <span class="keyword">--include-reference</span>와 함께 결합될 수 있으며, 이는 객체 참조도 함께 생성되도록 하는 명령이다.</li>
+</ul>
+<p class="code">cubrid unloaddb --include-reference -i table_list.txt&#160;demodb</p>
+<ul>
+<li class="title">생성 파일이 저장되는 디렉터리 지정(-O 또는&#160;--output-path)</li>
+</ul>
+<ul>
+<li class="desc"><span class="keyword">-O</span> 옵션은 언로드 작업을 통해 생성되는 출력 파일이 저장되는 디렉터리를 지정하기 위한 옵션이다. 만약, <span class="keyword">-O</span> 옵션이 지정되지 않으면 현재 작업 디렉터리에 출력 파일이 생성된다.</li>
+</ul>
+<p class="code">cubrid unloaddb&#160;-O ./CUBRID/Databases/demodb demodb</p>
+<ul>
+<li class="desc">지정된 디렉터리가 존재하지 않는 경우 다음과 같은 에러 메시지가 출력된다.</li>
+</ul>
+<p class="code">unloaddb: No such file or directory.</p>
+<ul>
+<li class="title">스키마 파일만 생성(-s 또는 --schema-only)</li>
+</ul>
+<ul>
+<li class="desc"><span class="keyword">-s</span> 옵션은 언로드 작업을 통해 생성되는 출력 파일 중 스키마 파일만 생성되도록 지정하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid unloaddb&#160;-s demodb</p>
+<ul>
+<li class="title">데이터&#160;파일만 생성(-d 또는&#160;--data-only)</li>
+<li class="desc"><span class="keyword">-d</span> 옵션은 언로드 작업을 통해 생성되는 출력 파일 중,&#160;데이터 파일만 생성되도록 지정하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid unloaddb&#160;-d demodb</p>
+<ul>
+<li class="title">언로드 상태 정보 출력(-v 또는&#160;--verbose)</li>
+<li class="desc"><span class="keyword">-v</span> 옵션은 &#160;언로드 작업이 진행되는 동안 언로드되는 데이터베이스의 테이블 및 인스턴스에 관한 상세 정보를 화면에 출력하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid unloaddb -v demodb</p>
+<ul>
+<li class="title">독립 모드(-S 또는 --SA-mode)</li>
+<li class="desc"><span class="keyword">-S</span> 옵션은 지정된 데이터베이스에 독립 모드로 접근하여 언로드 작업을 수행하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid unloaddb -S demodb</p>
+<ul>
+<li class="title">클라이언트/서버 모드(-C 또는 --CS-mode)</li>
+<li class="desc"><span class="keyword">-C</span> 옵션은 지정된 데이터베이스에 클라이언트/서버 모드로 접근하여 언로드 작업을 수행하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid unloaddb -C demodb</p>
+<ul>
+<li class="title">예상되는 인스턴스 수(--estimated-size)</li>
+<li class="desc"><span class="keyword">--estimated-size</span> 옵션은 언로드할 데이터베이스의 인스턴스 저장을 위한 해시 메모리를 사용자 임의로 할당하기 위한 옵션이다. 만약 <span class="keyword">--estimated-size</span> 옵션이 지정되지 않으면 최근의 통계 정보를 기반으로 데이터베이스의 인스턴스 수를 결정하게 되는데, 만약 최근 통계 정보가 갱신되지 않았거나 해시 메모리를 크게 할당하고 싶은 경우 이 옵션을 이용할 수 있다. 따라서, 옵션의 인수로 너무 적은 인스턴스 개수를 정의한다면 해시 충돌로 인해 언로드 성능이 저하된다.</li>
+</ul>
+<p class="code">cubrid unloaddb&#160;--estimated-size 1000 demodb</p>
+<ul>
+<li class="title">캐시되는 페이지 수(--cached-pages)</li>
+<li class="desc"><span class="keyword">--cached-pages</span>는 메모리에 캐시되는 테이블의 페이지 수를 지정하기 위한 옵션이다.&#160;각 페이지는 4,096 바이트이며, 관리자는 메모리의 크기와 속도를 고려하여 캐시되는 페이지 수를 지정할 수 있다. 만약,&#160;이 옵션이 지정되지 않으면 디폴트 값은 100페이지가 된다.</li>
+</ul>
+<p class="code">cubrid unloaddb&#160;--cached-pages&#160;500 demodb</p>
+<ul>
+<li class="title">생성 파일명의 프리픽스 지정(--output-prefix)</li>
+<li class="desc"><span class="keyword">--output-prefix</span>는 언로드 작업에 의해 생성되는 스키마 파일과 객체 파일의 이름 앞에 붙는 prefix를 지정하기 위한 옵션이다. 예제를 수행하면&#160;스키마 파일명은 abcd_schema가 되고, 객체 파일명은 abcd_objects가 된다. 만약,&#160;<span class="keyword">--output-prefix</span> 옵션을 지정하지 않으면 언로드할 데이터베이스 이름이 prefix로 사용된다.</li>
+</ul>
+<p class="code">cubrid unloaddb --output-prefix&#160;abcd demodb</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

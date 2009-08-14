@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -27,6 +27,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include "btree_load.h"
 #include "storage_common.h"
@@ -131,8 +132,7 @@ static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key,
 				    int max_key_len, VPID * pageid,
 				    LOAD_ARGS * load_args);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
-			       int n_nulls, int n_oids, int n_keys,
-			       int unique_flag, int reverse_flag);
+			       int n_nulls, int n_oids, int n_keys);
 
 static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid,
 			    PAGE_PTR page_ptr);
@@ -192,7 +192,7 @@ BTID *
 xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   OID * class_oids, int n_classes, int n_attrs,
 		   int *attr_ids, HFID * hfids, int unique_flag,
-		   int reverse_flag, OID * fk_refcls_oid,
+		   int reverse_flag, int last_key_desc, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
 		   const char *fk_name)
 {
@@ -203,7 +203,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   VPID vpid;
   INT16 save_volid;
   FILE_BTREE_DES btdes;
-  DB_VALUE key_copy;
   BTID_INT btid_int;
   LOG_DATA_ADDR addr;
   char midxkeybuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
@@ -245,8 +244,18 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
 
+  /*
+   * check for the last element domain of partial-key and key is desc;
+   * set default according to reverse info
+   * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
+   */
+  btid_int.part_key_desc = btid_int.last_key_desc = last_key_desc;
+
+  /* init index key copy_buf info */
+  btid_int.copy_buf = NULL;
+  btid_int.copy_buf_len = 0;
+
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
-  db_make_null (&key_copy);
 
   /* create a file descriptor */
   COPY_OID (&btdes.class_oid, &class_oids[0]);
@@ -441,9 +450,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       init_pgcnt = num_sort_pages;
     }
 
-  if (file_create
-      (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes, &vpid,
-       1) == NULL)
+  if (file_create (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes,
+		   &vpid, 1) == NULL)
     {
       goto error;
     }
@@ -512,9 +520,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     }
 
   /* Build the leaf pages of the btree as the output of the sort */
-  if (btree_index_sort
-      (thread_p, sort_args, num_sort_pages, btree_construct_leafs,
-       load_args) != NO_ERROR)
+  if (btree_index_sort (thread_p, sort_args, num_sort_pages,
+			btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
     }
@@ -550,7 +557,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
       if (btree_build_nleafs
 	  (thread_p, load_args, sort_args->n_nulls, sort_args->n_oids,
-	   load_args->n_keys, unique_flag, reverse_flag) != NO_ERROR)
+	   load_args->n_keys) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
 	  goto error;
@@ -915,8 +922,6 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
  *   n_nulls(in):
  *   n_oids(in):
  *   n_keys(in):
- *   unique_flag(in):
- *   reverse_flag(in):
  *
  * Note: This function builds the non-leaf level nodes of the B+Tree
  * index in three phases. In the first phase, the first non-leaf
@@ -927,8 +932,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
  */
 static int
 btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
-		    int n_nulls, int n_oids, int n_keys, int unique_flag,
-		    int reverse_flag)
+		    int n_nulls, int n_oids, int n_keys)
 {
   RECDES temp_recdes;		/* Temporary record descriptor; */
   char *temp_data = NULL;
@@ -1059,7 +1063,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  /* Insert the prefix key to the parent level */
 	  ret =
 	    btree_get_prefix (&last_key, &first_key, &prefix_key,
-			      reverse_flag);
+			      BTREE_IS_LAST_KEY_DESC (load_args->btid));
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -1138,9 +1142,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 		     &leaf_pnt, true, &clear_last_key, &last_key_offset, 0);
 
   /* Insert this key to the parent level */
-  if (btree_connect_page
-      (thread_p, &last_key, max_key_len, &load_args->leaf.vpid,
-       load_args) == NULL)
+  if (btree_connect_page (thread_p, &last_key, max_key_len,
+			  &load_args->leaf.vpid, load_args) == NULL)
     {
       goto exit_on_error;
     }
@@ -1215,6 +1218,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  cur_nleafpgptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE,
 				      PGBUF_LATCH_WRITE,
 				      PGBUF_UNCONDITIONAL_LATCH);
+	  if (cur_nleafpgptr == NULL)
+	    {
+	      goto exit_on_error;
+	    }
 
 	  /* obtain the header information for the current non-leaf page */
 	  btree_get_header_ptr (cur_nleafpgptr, &header_ptr);
@@ -1225,8 +1232,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 	  /* Learn the last key of the current page */
 	  /* Notice that since this is a non-leaf node */
-	  if (spage_get_record
-	      (cur_nleafpgptr, key_cnt + 1, &temp_recdes, PEEK) != S_SUCCESS)
+	  if (spage_get_record (cur_nleafpgptr, key_cnt + 1, &temp_recdes,
+				PEEK) != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
@@ -1313,12 +1320,12 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   VPID_SET_NULL (&root_header.node.next_vpid);
   root_header.key_type = load_args->btid->key_type;
 
-  if (unique_flag)
+  if (load_args->btid->unique)
     {
       root_header.num_nulls = n_nulls;
       root_header.num_oids = n_oids;
       root_header.num_keys = n_keys;
-      root_header.unique = unique_flag;
+      root_header.unique = load_args->btid->unique;
     }
   else
     {
@@ -1328,7 +1335,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       root_header.unique = false;
     }
 
-  if (reverse_flag)
+  if (load_args->btid->reverse)
     {
       root_header.reverse = true;
     }
@@ -1695,10 +1702,10 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
   key_len = load_args->cur_key_len = btree_get_key_length (this_key);
   VPID_SET_NULL (&leaf_rec.ovfl);
   leaf_rec.key_len = (key_len < BTREE_MAX_KEYLEN_INPAGE) ? key_len : -1;
-  if (btree_write_record
-      (thread_p, load_args->btid, &leaf_rec, this_key, true,
-       (leaf_rec.key_len == -1), key_len, true, class_oid, first_oid,
-       &load_args->out_recdes) != NO_ERROR)
+  if (btree_write_record (thread_p, load_args->btid, &leaf_rec, this_key,
+			  true, (leaf_rec.key_len == -1), key_len, true,
+			  class_oid, first_oid,
+			  &load_args->out_recdes) != NO_ERROR)
     {
       /* this must be an overflow key insertion failure, we assume the
        * overflow manager has logged an error.
@@ -2196,9 +2203,10 @@ btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
       key_size = buf.endptr - buf.ptr;
     }
 
-  if ((*(load_args->btid->key_type->type->readval))
-      (&buf, &this_key, load_args->btid->key_type, key_size, copy,
-       NULL, 0) != NO_ERROR)
+  if ((*(load_args->btid->key_type->type->readval)) (&buf, &this_key,
+						     load_args->btid->
+						     key_type, key_size, copy,
+						     NULL, 0) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -2335,7 +2343,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       ret = locator_attribute_info_force (thread_p, hfid, oid, &attr_info,
 					  &cache_attr_id, 1, LC_FLUSH_UPDATE,
 					  SINGLE_ROW_UPDATE, &upd_scancache,
-					  &force_count, true);
+					  &force_count, true,
+					  REPL_INFO_TYPE_STMT_NORMAL);
       if (ret != NO_ERROR)
 	{
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -2829,11 +2838,14 @@ int
 btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   VFID *vfid;
+  int ret;
 
   vfid = (VFID *) rcv->data;
+  ret = file_destroy (thread_p, vfid);
 
-  return ((file_destroy (thread_p, vfid) == NO_ERROR)
-	  ? NO_ERROR : er_errid ());
+  assert (ret == NO_ERROR);
+
+  return ((ret == NO_ERROR) ? NO_ERROR : er_errid ());
 }
 
 /*

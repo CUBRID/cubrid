@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -37,7 +37,7 @@ struct logwr_context
   bool shutdown;
 };
 
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE)
 typedef enum logwr_action LOGWR_ACTION;
 enum logwr_action
 {
@@ -69,8 +69,11 @@ struct logwr_global
 
   LOGWR_MODE mode;
   LOGWR_ACTION action;
+
   PAGEID last_recv_pageid;
-  PAGEID last_flush_pageid;
+  PAGEID last_arv_fpageid;
+  PAGEID last_arv_lpageid;
+  int last_arv_num;
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \
@@ -79,21 +82,23 @@ struct logwr_global
 #define LOGWR_IS_ARCHIVE_PAGE(pageid) \
         ((pageid) != LOGPB_HEADER_PAGE_ID && (pageid) < logwr_Gl.hdr.nxarv_pageid)
 
-#define LOGWR_IS_SERVER_ARCHIVING() \
-	(logwr_Gl.hdr.append_lsa.pageid \
-          >= (logwr_Gl.hdr.fpageid + logwr_Gl.hdr.npages))
+#define LOGWR_AT_SERVER_ARCHIVING() \
+	(LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(logwr_Gl.hdr.append_lsa.pageid) \
+	 && (logwr_Gl.hdr.eof_lsa.pageid < logwr_Gl.hdr.append_lsa.pageid))
 
 extern LOGWR_GLOBAL logwr_Gl;
 extern void logwr_flush_header_page (void);
 extern int logwr_write_log_pages (void);
 extern int logwr_set_hdr_and_flush_info (void);
-#endif /* !SERVER_MODE */
+#endif /* CS_MODE */
 
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
 				int mode);
+extern PAGEID logwr_to_physical_pageid (PAGEID logical_pageid);
 
 #if defined(SERVER_MODE)
 int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid,
 			  int mode);
+extern int logwr_get_min_copied_fpageid (void);
 #endif /* SERVER_MODE */
 #endif /* _LOG_WRITER_HEADER_ */

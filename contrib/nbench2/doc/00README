@@ -1,0 +1,9 @@
+-------
+ Make
+-------
+1. Using ant
+ant            (for compilation)
+ant clean      (for compilation)
+ant dist       (for distribution)
+ant dist-clean (for distribution)
+

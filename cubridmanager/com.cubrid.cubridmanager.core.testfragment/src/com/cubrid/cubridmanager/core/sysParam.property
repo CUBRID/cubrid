@@ -1,0 +1,12 @@
+host=localhost
+monport=8001
+jpport=8002
+clientVersion=8.2.0
+passwd=1111
+dbname=demodb
+serverPath=C:\\CUBRID
+brokerPort=33000
+dbUser=dba
+port=33000
+charset=
+dbPass=

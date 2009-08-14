@@ -1,0 +1,165 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>식별자</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n식별자");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; 식별자<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>식별자</h2>
+<h5>식별자 작성 원칙</h5>
+<p>CSQL 인터프리터에서 입력 가능한 식별자는 다음의 원칙에 따라 작성한다.</p>
+<ul>
+<li>반드시 문자로 시작되어야 한다. 즉, 숫자나 기호로 시작할 수 없다.</li>
+<li>대소문자를 구별하지 않는다.</li>
+<li>예약어는 허용되지 않는다.</li>
+</ul>
+<h6>&lt;<span class="var">identifier</span>&gt;</h6>
+<p class="syntax">:: = &lt;<span class="var">identifier_letter</span>&gt; [ { &lt;<span class="var">other_identifier</span>&gt;&#160;} &amp; ldots; ]</p>
+<h6>&lt;<span class="var">identifier_letter</span>&gt;</h6>
+<p class="syntax">:: = &lt;<span class="var">upper_case_letter</span>&gt;<br />
+&#160; | &lt;<span class="var">lower_case_letter</span>&gt;</p>
+<h6>&lt;<span class="var">other_identifier</span>&gt;</h6>
+<p class="syntax">:: = &lt;<span class="var">identifier_letter</span>&gt;<br />
+&#160; | &lt;<span class="var">digit</span>&gt;<br />
+&#160; | _<br />
+&#160; | #<br />
+&#160; | %</p>
+<h6>&lt;<span class="var">digit</span>&gt;</h6>
+<p class="syntax">:: = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9</p>
+<h6>&lt;<span class="var">upper_case_letter</span>&gt;</h6>
+<p class="syntax">:: = A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P| Q | R | S | T | U | V | W | X | Y | Z</p>
+<h6>&lt;<span class="var">lower_case_letter</span>&gt;</h6>
+<p class="syntax">:: = a | b | c | d | e | f | g | h | i | j | k | l | m | n | o | p| q | r | s | t | u | v | w | x | y | z</p>
+<h5>허용되는 식별자</h5>
+<h6>문자로 시작되는 식별자</h6>
+<p>식별자의 첫 글자에는 반드시 문자를 사용해야 한다. 하지만, 그 외에는 특수 문자를 허용한다.</p>
+<p>다음은 허용되는 식별자의 예제이다.</p>
+<ul>
+<li>예제</li>
+</ul>
+<p class="code">a<br />
+a_b<br />
+ssn#<br />
+fg%<br />
+this_is_an_example_#%%#</p>
+<h6>큰따옴표 또는 대괄호로 둘러싸인 식별자</h6>
+<p>첫 글자에 숫자나 특수 문자를 사용할 수 없다는 식별자 작성 원칙을 위반하더라도, 큰따옴표(" ") 또는 대괄호([ ])로 식별자를 둘러싸면 예외적으로 허용된다.</p>
+<p>다음은 허용되는 식별자의 예제이다.</p>
+<ul>
+<li>예제</li>
+</ul>
+<p class="code">"select"<br />
+"@lowcost"<br />
+"low cost"<br />
+"abc""def"<br />
+[position]</p>
+<h5>허용되지 않는 식별자</h5>
+<h6>특수 문자로 시작되는 식별자</h6>
+<p>언더바(_)를 포함하여 특수 문자로 시작되는 식별자는 허용되지 않는다.</p>
+<ul>
+<li>예제</li>
+</ul>
+<p class="code">_a<br />
+#ack<br />
+%nums</p>
+<h6>숫자로 시작되는 식별자</h6>
+<p>숫자로 시작되는 식별자도 허용되지 않는다.</p>
+<ul>
+<li>예제</li>
+</ul>
+<p class="code">2fer<br />
+88abs</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

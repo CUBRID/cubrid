@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -43,7 +43,6 @@
 #endif /* WINDOWS */
 #include "transaction_cl.h"
 #include "error_manager.h"
-#include "oob_handler.h"
 #include "client_support.h"
 
 static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
@@ -53,9 +52,6 @@ CSS_MAP_ENTRY *css_Client_anchor;
 
 static void css_internal_server_shutdown (void);
 static void css_handle_pipe_shutdown (int sig);
-static void css_shutdown_handler (unsigned int eid);
-static void css_server_down_handler (unsigned int eid);
-static void css_waiting_poll_handler (unsigned int eid);
 static void css_set_pipe_signal (void);
 static int css_test_for_server_errors (CSS_MAP_ENTRY * entry,
 				       unsigned int eid);
@@ -105,75 +101,6 @@ css_handle_pipe_shutdown (int sig)
 }
 
 /*
- * css_shutdown_handler() -
- *   return:
- *   eid(in):
- */
-static void
-css_shutdown_handler (unsigned int eid)
-{
-  char *buffer;
-  int size;
-
-#if !defined(WINDOWS)
-  syslog (LOG_ALERT, "Shutdown notification sent from server\n");
-#endif /* not WINDOWS */
-
-  if (css_receive_oob_from_server (eid, &buffer, &size) == 0)
-    {
-#if !defined(WINDOWS)
-      syslog (LOG_ALERT, " data length = %d, data = %s\n", size, buffer);
-#else /* not WINDOWS */
-      fprintf (stdout, "data length = %d, data = %s\n", size, buffer);
-#endif /* not WINDOWS */
-      free_and_init (buffer);
-    }
-}
-
-/*
- * css_server_down_handler() -
- *   return:
- *   eid(in):
- *
- * Note: When the server is going down, it sends all clients an OOB message
- *       which requires all clients to immediatly close any open connections
- *       to that server. This helps prevent "stuck" sockets due to clients
- *       holding one end of a closed socket.
- */
-static void
-css_server_down_handler (unsigned int eid)
-{
-  CSS_MAP_ENTRY *entry;
-
-  entry = css_return_entry_from_eid (eid, css_Client_anchor);
-  if (entry != NULL)
-    {
-      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-    }
-}
-
-/*
- * css_waiting_poll_handler() -
- *   return:
- *   eid(in):
- *
- * Note: When the server is waiting for data from a client, such as during
- *       method invocation, the server periodically checks whether the client
- *       is still alive.
- */
-static void
-css_waiting_poll_handler (unsigned int eid)
-{
-  char *buffer;
-  int size;
-
-  if (css_receive_oob_from_server (eid, &buffer, &size) == 0)
-    {
-      free_and_init (buffer);
-    }
-}
-
-/*
  * css_set_pipe_signal() - sets up the signal handling mechanism
  *   return:
  *
@@ -211,9 +138,7 @@ css_set_pipe_signal (void)
  *   host_name(in):
  */
 int
-css_client_init (int sockid,
-		 void (*oob_function) (char, unsigned int),
-		 const char *server_name, const char *host_name)
+css_client_init (int sockid, const char *server_name, const char *host_name)
 {
   CSS_CONN_ENTRY *conn;
   int error = NO_ERROR;
@@ -223,23 +148,6 @@ css_client_init (int sockid,
 #endif /* WINDOWS */
 
   css_Service_id = sockid;
-
-#if !defined(WINDOWS)
-  css_init_oob_handler ();
-  if (oob_function)
-    {
-      css_set_oob_handler (OOB_SERVER_SHUTDOWN,
-			   (OOB_HANDLER_FUNCTION) oob_function);
-    }
-  else
-    {
-      css_set_oob_handler (OOB_SERVER_SHUTDOWN,
-			   (OOB_HANDLER_FUNCTION) css_shutdown_handler);
-    }
-  css_set_oob_handler (OOB_SERVER_DOWN, css_server_down_handler);
-  css_set_oob_handler (OOB_WAITING_POLL, css_waiting_poll_handler);
-#endif /* not WINDOWS */
-
   css_set_pipe_signal ();
   conn = css_connect_to_cubrid_server ((char *) host_name,
 				       (char *) server_name);
@@ -388,6 +296,7 @@ css_send_req_to_server (char *host, int request,
   return 0;
 }
 
+#if 0
 /*
  * css_send_req_to_server_with_large_data() - send a request to server with
  *    large data
@@ -409,7 +318,7 @@ unsigned int
 css_send_req_to_server_with_large_data (char *host, int request,
 					char *arg_buffer, int arg_buffer_size,
 					char *data_buffer,
-					FSIZE_T data_buffer_size,
+					INT64 data_buffer_size,
 					char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
@@ -438,6 +347,7 @@ css_send_req_to_server_with_large_data (char *host, int request,
   css_Errno = SERVER_WAS_NOT_FOUND;
   return 0;
 }
+#endif
 
 /*
  * css_send_req_to_server_2_data() - send a request to server
@@ -495,8 +405,8 @@ css_send_req_to_server_2_data (char *host, int request,
 }
 
 /*
- * css_send_oob_to_server_with_buffer() - send a data request to the server
- *                                        using the out-of-band message
+ * css_send_req_to_server_no_reply() - send a data request to the server
+ *                                     and receive no reply
  *   return:
  *   host(in):
  *   request(in):
@@ -504,8 +414,8 @@ css_send_req_to_server_2_data (char *host, int request,
  *   arg_buffer_size(in):
  */
 unsigned int
-css_send_oob_to_server_with_buffer (char *host, int request, char *arg_buffer,
-				    int arg_buffer_size)
+css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer,
+				 int arg_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -514,12 +424,8 @@ css_send_oob_to_server_with_buffer (char *host, int request, char *arg_buffer,
   if (entry != NULL)
     {
       entry->conn->transaction_id = tm_Tran_index;
-      css_Errno = css_send_oob_request_with_data_buffer (entry->conn,
-							 (char)
-							 OOB_CLIENT_TO_SERVER,
-							 request, &rid,
-							 arg_buffer,
-							 arg_buffer_size);
+      css_Errno = css_send_request_no_reply (entry->conn, request, &rid,
+					     arg_buffer, arg_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  return (css_make_eid (entry->id, rid));
@@ -744,46 +650,6 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
     {
       css_Errno = css_receive_error (entry->conn, CSS_RID_FROM_EID (eid),
 				     buffer, size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  return 0;
-	}
-      else
-	{
-	  /*
-	   * Normally, we disconnect upon any type of receive error.  However,
-	   * in the case of allocation errors, we want to continue and
-	   * propagate the error.
-	   */
-	  if (css_Errno != CANT_ALLOC_BUFFER)
-	    {
-	      css_remove_queued_connection_by_entry (entry,
-						     &css_Client_anchor);
-	    }
-	  return css_Errno;
-	}
-    }
-
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return css_Errno;
-}
-
-/*
- * css_receive_oob_from_server() - return out of band data sent by the server
- *   return:
- *   eid(in): enquiry id
- *   buffer(out): data buffer to be returned
- *   size(out): size of data buffer that was returned
- */
-unsigned int
-css_receive_oob_from_server (unsigned int eid, char **buffer, int *size)
-{
-  CSS_MAP_ENTRY *entry;
-
-  entry = css_return_entry_from_eid (eid, css_Client_anchor);
-  if (entry != NULL)
-    {
-      css_Errno = css_receive_oob (entry->conn, buffer, size);
       if (css_Errno == NO_ERRORS)
 	{
 	  return 0;

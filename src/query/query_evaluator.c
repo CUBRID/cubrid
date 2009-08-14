@@ -1127,6 +1127,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 				 0) != NO_ERROR)
 	{
 	  /* TODO: look once more, need to free (tpl)? */
+	  pr_clear_value (&list_val);
+	  qfile_close_scan (thread_p, &s_id);
+	  db_private_free_and_init (thread_p, p_tplrec.tpl);
 	  return V_ERROR;
 	}
 
@@ -1614,7 +1617,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
   COMP_EVAL_TERM *et_comp;
   ALSM_EVAL_TERM *et_alsm;
   LIKE_EVAL_TERM *et_like;
-  DB_VALUE *peek_val1, *peek_val2;
+  DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   DB_LOGICAL result = V_UNKNOWN;
   int regexp_res;
   PRED_EXPR *t_pr;
@@ -1622,6 +1625,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 
   peek_val1 = NULL;
   peek_val2 = NULL;
+  peek_val3 = NULL;
 
   switch (pr->type)
     {
@@ -1732,7 +1736,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		}
 
 	      if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-		  && !heap_does_exist (thread_p, DB_GET_OID (peek_val1),
+		  && !heap_does_exist (thread_p, DB_PULL_OID (peek_val1),
 				       (OID *) 0))
 		{
 		  result = V_TRUE;
@@ -1959,10 +1963,23 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      return V_UNKNOWN;
 	    }
 
+	  if (et_like->esc_char)
+	    {
+	      /* fetch escape regular expression */
+	      if (fetch_peek_dbval (thread_p,
+				    et_like->esc_char, vd, NULL, obj_oid,
+				    NULL, &peek_val3) != NO_ERROR)
+		{
+		  return V_ERROR;
+		}
+	      else if (db_value_is_null (peek_val3))
+		{
+		  return V_UNKNOWN;
+		}
+	    }
 	  /* evaluate regular expression match */
 	  /* Note: Currently only STRING type is supported */
-	  db_string_like (peek_val1, peek_val2, et_like->esc_char,
-			  &regexp_res);
+	  db_string_like (peek_val1, peek_val2, peek_val3, &regexp_res);
 	  result = (DB_LOGICAL) regexp_res;
 	  break;
 
@@ -2068,7 +2085,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     }
 
   if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-      && !heap_does_exist (thread_p, DB_GET_OID (peek_val1), (OID *) 0))
+      && !heap_does_exist (thread_p, DB_PULL_OID (peek_val1), (OID *) 0))
     {
       return V_TRUE;
     }
@@ -2336,11 +2353,12 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		 OID * obj_oid)
 {
   LIKE_EVAL_TERM *et_like;
-  DB_VALUE *peek_val1, *peek_val2;
+  DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   int regexp_res;
 
   peek_val1 = NULL;
   peek_val2 = NULL;
+  peek_val3 = NULL;
 
   et_like = &pr->pe.eval_term.et.et_like;
 
@@ -2366,9 +2384,24 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
       return V_UNKNOWN;
     }
 
+  if (et_like->esc_char)
+    {
+      /* fetch escape regular expression */
+      if (fetch_peek_dbval (thread_p,
+			    et_like->esc_char, vd, NULL, obj_oid, NULL,
+			    &peek_val3) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+      else if (db_value_is_null (peek_val3))
+	{
+	  return V_UNKNOWN;
+	}
+    }
+
   /* evaluate regular expression match */
   /* Note: Currently only STRING type is supported */
-  db_string_like (peek_val1, peek_val2, et_like->esc_char, &regexp_res);
+  db_string_like (peek_val1, peek_val2, peek_val3, &regexp_res);
 
   return (DB_LOGICAL) regexp_res;
 }
@@ -2555,21 +2588,26 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
   int prev_j_index;
   char *prev_j_ptr;
 
-  if (!value)
+  if (value == NULL)
     {
       return V_ERROR;
     }
 
-  if (!filterp || !filterp->scan_pred->regu_list)
+  if (filterp == NULL)
     {
       return V_TRUE;
     }
 
   scan_predp = filterp->scan_pred;
   scan_attrsp = filterp->scan_attrs;
-  if (!scan_predp || !scan_attrsp)
+  if (scan_predp == NULL || scan_attrsp == NULL)
     {
       return V_ERROR;
+    }
+
+  if (scan_predp->regu_list == NULL)
+    {
+      return V_TRUE;
     }
 
   ev_res = V_TRUE;

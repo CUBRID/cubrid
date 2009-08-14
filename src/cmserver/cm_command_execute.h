@@ -46,6 +46,8 @@
 
 #define CUBRID_DATABASE_TXT	"databases.txt"
 #define CUBRID_CUBRID_CONF	"cubrid.conf"
+#define CUBRID_DBMT_CONF	"cm.conf"
+#define CUBRID_BROKER_CONF	"cubrid_broker.conf"
 #define CUBRID_UNLOAD_EXT_INDEX	"_indexes"
 #define CUBRID_UNLOAD_EXT_TRIGGER	"_trigger"
 #define CUBRID_UNLOAD_EXT_OBJ	"_objects"

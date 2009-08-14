@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -818,6 +818,11 @@ vid_is_updatable (MOP mop)
 {
   VID_INFO *mop_vid_info;
 
+  if (mop == NULL)
+    {
+      return false;
+    }
+
   if (!mop->is_vid)
     {
       return false;
@@ -1259,6 +1264,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
   DB_VALUE val;
   DB_COLLECTION *col;
   DB_OBJECT *vmop;
+  LOCK lock;
 
   if ((mop == NULL) || (seq == NULL))
     {
@@ -1361,7 +1367,12 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
    * lock it to avoid getting a Workspace pin violation
    * later in vid_fetch_instance.
    */
-  ws_set_lock (mop, lock_Conv[S_LOCK][ws_get_lock (mop)]);
+  lock = ws_get_lock (mop);
+  assert (lock >= NULL_LOCK);
+  lock = lock_Conv[S_LOCK][lock];
+  assert (lock != NA_LOCK);
+
+  ws_set_lock (mop, lock);
 
   return error;
 }
@@ -1410,10 +1421,17 @@ void
 vid_get_keys (MOP mop, DB_VALUE * value)
 {
   VID_INFO *mop_vid_info;
+  OID *oid;
+
+  if (mop == NULL)
+    {
+      return;
+    }
 
   if (!mop->is_vid)
     {
-      db_make_oid (value, ws_oid (mop));
+      oid = ws_oid (mop);
+      db_make_oid (value, oid);
       return;
     }
   mop_vid_info = mop->oid_info.vid_info;
@@ -1449,14 +1467,17 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   DB_OBJLIST *objlst, *new1;
   DB_QUERY_RESULT *qres;
   DB_QUERY_ERROR query_error;
-  char *mem, query[2000];
+  char query[2000];
   int t, tuple_cnt;
   DB_VALUE value;
+  MOP mop;
+  SM_CLASS_TYPE class_type;
+#if defined(ENABLE_LDB)
+  char *mem;
   LOCK lock;
   MOBJ inst;
-  MOP mop;
   SM_ATTRIBUTE *attribute_p;
-  SM_CLASS_TYPE class_type;
+#endif /* ENABLE_LDB */
 
   /* make sure we have reasonable arguments */
   if (!class_mop || !class_p)
@@ -1480,6 +1501,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     {
       /* select x from vclass x */
     }
+#if defined(ENABLE_LDB)
   else if (class_type == SM_LDBVCLASS_CT)
     {
       /* "select x, * from proxy x" */
@@ -1499,6 +1521,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 	    }
 	}
     }
+#endif /* ENABLE_LDB */
 
   if (strlen (query) + strlen (class_name) + 7 >= 2000)
     {
@@ -1554,6 +1577,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
       new1->next = objlst;
       objlst = new1;
 
+#if defined(ENABLE_LDB)
       /*
        * install the proxy instance into this client workspace.
        * (we'd like to do this for vclass instances too. But,
@@ -1595,9 +1619,14 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 	    }
 
 	  /* S_LOCK the instance */
-	  lock = lock_Conv[S_LOCK][ws_get_lock (mop)];
+	  lock = ws_get_lock (mop);
+	  assert (lock >= NULL_LOCK);
+	  lock = lock_Conv[S_LOCK][lock];
+	  assert (lock != NA_LOCK);
+
 	  ws_set_lock (mop, lock);
 	}
+#endif /* ENABLE_LDB */
     }
 
   /* recycle query results */
@@ -1832,7 +1861,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 int
 vid_oid_to_object (const DB_VALUE * value, DB_OBJECT ** mop)
 {
-  OID oid;
+  OID *oid;
 
   *mop = NULL;
   /* make sure we have a reasonable argument */
@@ -1845,10 +1874,10 @@ vid_oid_to_object (const DB_VALUE * value, DB_OBJECT ** mop)
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_OID:
-      oid = *DB_GET_OID (value);
-      if (!OID_ISNULL (&oid))
+      oid = DB_GET_OID (value);
+      if (oid != NULL && !OID_ISNULL (oid))
 	{
-	  *mop = ws_mop (&oid, NULL);
+	  *mop = ws_mop (oid, NULL);
 	}
       break;
 
@@ -2122,15 +2151,18 @@ vid_encode_object (DB_OBJECT * object, char *string,
   DB_OBJECT *class_;
   OID *temp_oid;
 
-  if (!object || !(class_ = db_get_class (object)))
+  if (object == NULL || (class_ = db_get_class (object)) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
       return (ER_HEAP_UNKNOWN_OBJECT);
     }
 
-  if (!string || (allocated_length < MIN_STRING_OID_LENGTH))
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL, 0);
+  if (string == NULL || (allocated_length < MIN_STRING_OID_LENGTH))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL, 0);
+      return ER_OBJ_BUFFER_TOO_SMALL;
+    }
 
   /*
    * classify the object into one of:
@@ -2142,6 +2174,11 @@ vid_encode_object (DB_OBJECT * object, char *string,
    */
 
   class_ = db_get_class (object);
+  if (class_ == NULL)
+    {
+      return ER_FAILED;
+    }
+
   if (db_is_any_class (object) || db_is_class (class_))
     {
       /* if the specified string length is less than */
@@ -2295,19 +2332,19 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
 {
   OID obj_id;
   DB_VALUE val;
-  int vobj_len, len, rc = NO_ERROR;
+  int vobj_len = 0, len, rc = NO_ERROR;
   OR_BUF buf;
   char vobj_buf[MAX_STRING_OID_LENGTH], *bufp = vobj_buf;
 
   /* make sure we got reasonable arguments */
-  if (!object)
+  if (object == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OBJ_NULL_ADDR_OUTPUT_OBJ, 0);
       return (ER_OBJ_NULL_ADDR_OUTPUT_OBJ);
     }
 
-  if (!string || !strlen (string))
+  if (string == NULL || !strlen (string))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENT, 0);
       return ER_OBJ_INVALID_ARGUMENT;

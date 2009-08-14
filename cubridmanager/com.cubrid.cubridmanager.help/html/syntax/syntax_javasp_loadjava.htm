@@ -1,0 +1,115 @@
+﻿
+<html>
+<head>
+<title>loadjava 유틸리티</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\nloadjava 유틸리티");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; loadjava 유틸리티<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>loadjava 유틸리티</h3>
+<h6>설명</h6>
+<p>컴파일된 Java 파일이나 JAR(Java Archive) 파일을 CUBRID로 로딩하기 위해서 <span class="keyword">loadjava</span> 유틸리티를 사용한다. <span class="keyword">loadjava</span> 유틸리티를 사용하여 Java *.class 파일이나 *.jar 파일을 로딩하면 해당 데이터베이스 경로에 해당 파일이 이동시킨다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">loadjava</span> &lt;<span class="var">option</span>&gt; <span class="var">database-name</span> <span class="var">java-class-file</span></p>
+<ul>
+<li><span class="var">database-name</span> : Java 파일을 로드 하려고 하는 데이터베이스 이름</li>
+<li><span class="var">java-class-file</span> : 로드 하려는 Java 클래스 파일 이름 또는 jar&#160;파일 이름</li>
+<li>&lt; <span class="var">option</span>&gt; :
+<ul>
+<li><span class="keyword">-y</span> : 이름이 같은 클래스 파일이 존재하면 자동으로 덮어쓰기 한다. 디폴트는 <span class="keyword">no</span>이다. 만약 <span class="keyword">– y</span> 옵션을 명시하지 않고 로딩할 때 이름이 같은 클래스 파일이 존재하면 덮어쓰기를 할 것인지 묻는다.</li>
+</ul>
+</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1387,6 +1387,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
       (void) file_destroy (thread_p, &xasl_id_p->temp_vfid);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      if (class_oid_list_p)
+	db_private_free_and_init (thread_p, class_oid_list_p);
+      if (repr_id_list_p)
+	db_private_free_and_init (thread_p, repr_id_list_p);
       return NULL;
     }
 
@@ -1582,9 +1586,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
-  xasl_cache_entry_p =
-    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, dbval_count,
-					&cache_clone_p);
+  xasl_cache_entry_p = qexec_check_xasl_cache_ent_by_xasl (thread_p, 
+							   xasl_id_p, 
+							   dbval_count,
+							   &cache_clone_p);
   if (xasl_cache_entry_p == NULL)
     {
       /* It doesn't be there or was marked to be deleted. */
@@ -1674,7 +1679,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   query_p->query_mode = is_sync_query ? SYNC_MODE : ASYNC_MODE;
   query_p->query_flag = *flag_p;
 #if defined (SERVER_MODE)
-  query_p->tid = thread_p->tid;
+  if (thread_p != NULL)
+    {
+      query_p->tid = thread_p->tid;
+    }
 #endif
 
   /* to return query id */
@@ -1690,9 +1698,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       if (cache_clone_p == NULL || cache_clone_p->xasl == NULL)
 	{			/* not found clone */
 	  /* load the XASL stream from the file of xasl_id */
-	  if (qfile_load_xasl
-	      (thread_p, xasl_id_p, &query_p->xasl_data,
-	       &query_p->xasl_size) == 0)
+	  if (qfile_load_xasl (thread_p, xasl_id_p, &query_p->xasl_data,
+			       &query_p->xasl_size) == 0)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqm_query_execute: ls_load_xasl failed"
@@ -1772,8 +1779,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
     {
       /* allocate new QFILE_LIST_ID to be stored in the query entry
          cloning from the QFILE_LIST_ID of the found list cache entry */
-      query_p->list_id =
-	qfile_clone_list_id (&list_cache_entry_p->list_id, false);
+      query_p->list_id = qfile_clone_list_id (&list_cache_entry_p->list_id, 
+					      false);
       if (query_p->list_id == NULL)
 	{
 	  goto error;
@@ -1866,16 +1873,15 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 #endif
 	  /* everything is ok, mark that the query is completed */
 	  qmgr_mark_query_as_completed (query_p);
-
 	}
       else
 	{
 #if defined (SERVER_MODE)
-	  /* start the query in asynchronous mode and get temporay QFILE_LIST_ID */
-	  list_id_p =
-	    qmgr_process_async_select (thread_p, cache_clone_p, query_p,
-				       dbval_count, dbvals_p);
-	  if (!list_id_p)
+	  /* start the query in asynchronous mode and get temporary QFILE_LIST_ID */
+	  list_id_p = qmgr_process_async_select (thread_p, cache_clone_p, 
+						 query_p, dbval_count, 
+						 dbvals_p);
+	  if (list_id_p == NULL)
 	    {
 	      /* error while starting async query */
 	      goto error;
@@ -1894,9 +1900,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       if (!qmgr_is_not_allowed_result_cache (*flag_p))
 	{
 	  /* check once more to ensure that the related XASL entry exists */
-	  xasl_cache_entry_p =
-	    qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, -1,
-						NULL);
+	  xasl_cache_entry_p = qexec_check_xasl_cache_ent_by_xasl (thread_p, 
+								   xasl_id_p, 
+								   -1,
+								   NULL);
 	  if (xasl_cache_entry_p == NULL)
 	    {
 	      /* it could be happen if the XASL entry was (to be) deleted */
@@ -1910,15 +1917,19 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	    }
 	  else
 	    {
+	      if (list_id_p == NULL)
+		{
+		  goto error;
+		}
+
 	      /* the type of the result file should be FILE_QUERY_AREA
 	         in order not to deleted at the time of query_end */
 	      if (file_get_type (thread_p, &list_id_p->temp_vfid) !=
 		  FILE_QUERY_AREA)
 		{
 		  /* duplicate the list file */
-		  tmp_list_id_p =
-		    qfile_duplicate_list (thread_p, list_id_p,
-					  QFILE_FLAG_RESULT_FILE);
+		  tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p,
+							QFILE_FLAG_RESULT_FILE);
 		  if (tmp_list_id_p)
 		    {
 		      qfile_destroy_list (thread_p, list_id_p);
@@ -2790,7 +2801,14 @@ qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
   else
     {
       oid_block_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
+      if (oid_block_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (OID_BLOCK_LIST));
+	  return NULL;
+	}
     }
+
 
   oid_block_p->next = NULL;
   oid_block_p->last_oid_idx = 0;
@@ -3499,6 +3517,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       qmgr_unlock_mutex (&tran_entry_p->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID,
 	      1, query_id);
+      free_and_init (tfile_vfid_p);
       return NULL;
     }
 
@@ -4424,7 +4443,16 @@ qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       if (query_p->errid != NO_ERROR)
 	{
 #if defined (SERVER_MODE)
-	  query_p->er_msg = strdup ((char *) er_msg ());
+	  char *ptr = (char *) er_msg ();
+
+	  if (ptr != NULL)
+	    {
+	      query_p->er_msg = strdup (ptr);
+	    }
+	  else
+	    {
+	      query_p->er_msg = NULL;
+	    }
 #else
 	  query_p->er_msg = (char *) er_msg ();
 #endif
@@ -4723,6 +4751,14 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 				  (CSS_THREAD_FN) qmgr_execute_async_select,
 				  (CSS_THREAD_ARG) async_query_p,
 				  -1 /* implicit: DEFAULT */ );
+
+      if (job_p == NULL)
+	{
+	  free_and_init (async_query_p);
+	  free_and_init (tmp_list_p);
+	  return (QFILE_LIST_ID *) NULL;
+	}
+
       css_add_to_job_queue (job_p);
 
       return tmp_list_p;

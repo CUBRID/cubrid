@@ -335,9 +335,20 @@ main (int argc, char **argv)
   int i, argc_index = 0;
   char **admin_argv = NULL;
 
+  /* validate the number of arguments to avoid klocwork's error message */
+  if (argc < 0 || argc > 1024)
+    {
+      goto failure;
+    }
+
   if (strcmp (program_name, UTIL_SQLX_NAME) == 0)
     {
       admin_argv = (char **) malloc ((argc + 1) * sizeof (char *));
+      if (admin_argv == NULL)
+	{
+	  goto failure;
+	}
+
       memcpy (admin_argv, argv, argc * sizeof (char *));
       if (convert_argv (argc, &admin_argv[1], ua_Sqlx_map) != NO_ERROR)
 	{
@@ -352,6 +363,11 @@ main (int argc, char **argv)
   else if (strcmp (program_name, UTIL_OLD_COMMDB_NAME) == 0)
     {
       admin_argv = (char **) malloc ((argc + 1) * sizeof (char *));
+      if (admin_argv == NULL)
+	{
+	  goto failure;
+	}
+
       memcpy (admin_argv, argv, argc * sizeof (char *));
       if (convert_argv (argc, &admin_argv[1], us_Commdb_map) != NO_ERROR)
 	{
@@ -370,6 +386,11 @@ main (int argc, char **argv)
 	  if (strcmp (ua_Util_table[i].app_name, program_name) == 0)
 	    {
 	      admin_argv = (char **) malloc ((argc + 2) * sizeof (char *));
+	      if (admin_argv == NULL)
+		{
+		  goto failure;
+		}
+
 	      admin_argv[argc_index++] = (char *) UTIL_CUBRID;
 	      admin_argv[argc_index++] = (char *) ua_Util_table[i].util_name;
 	      memcpy (&admin_argv[argc_index], &argv[1],

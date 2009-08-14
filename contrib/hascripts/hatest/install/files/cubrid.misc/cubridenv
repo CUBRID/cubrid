@@ -1,0 +1,17 @@
+#
+CUBRID=CUB_HOME
+CUBRID_DATABASES=CUB_DATABASES
+PATH=${PATH}:${CUBRID}/bin
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${CUBRID}/lib
+
+export CUBRID
+export CUBRID_DATABASES
+export PATH
+export LD_LIBRARY_PATH
+
+echo "CUBRID=${CUBRID}"
+echo "CUBRID_DATABASES=${CUBRID_DATABASES}"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+echo "PATH=${PATH}"
+
+#alias w='watch -d csql -u nbd -p nbd -c \"select \* from ha_test\" nbd@localhost' 

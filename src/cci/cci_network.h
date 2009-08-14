@@ -46,6 +46,7 @@
  * IMPORTED OTHER HEADER FILES						*
  ************************************************************************/
 
+#include "cci_handle_mng.h"
 
 /************************************************************************
  * EXPORTED DEFINITIONS							*
@@ -58,7 +59,12 @@
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/
-
+typedef struct
+{
+  int *msg_body_size_ptr;
+  char *info_ptr;
+  char buf[MSG_HEADER_SIZE];
+} MSG_HEADER;
 /************************************************************************
  * EXPORTED FUNCTION PROTOTYPES						*
  ************************************************************************/
@@ -66,16 +72,16 @@
 extern int net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 			    char *db_user, char *db_passwd, char is_first,
 			    T_CCI_ERROR * err_buf, char *broker_info,
-			    int *cas_pid, SOCKET *ret_sock);
-extern int net_send_msg (SOCKET sock_fd, char *msg, int size);
-extern int net_recv_msg (SOCKET sock_fd, char **msg, int *size,
+			    char *cas_info, int *cas_pid, SOCKET * ret_sock);
+extern int net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size);
+extern int net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *size,
 			 T_CCI_ERROR * err_buf);
 extern int net_send_file (SOCKET sock_fd, char *filename, int filesize);
 extern int net_recv_file (SOCKET sock_fd, int file_size, int out_fd);
 
 
 extern int net_cancel_request (unsigned char *ip_addr, int port, int pid);
-extern int net_check_cas_request (SOCKET sock_fd);
+extern int net_check_cas_request (T_CON_HANDLE * con_handle);
 
 /************************************************************************
  * EXPORTED VARIABLES							*

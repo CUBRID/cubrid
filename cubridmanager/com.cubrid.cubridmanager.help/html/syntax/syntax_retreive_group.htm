@@ -1,0 +1,148 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>GROUP BY HAVING</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 조회\nGROUP BY HAVING 절");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_select.htm\">데이터 조회<\/a> &nbsp;&gt;&nbsp; GROUP BY HAVING 절<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>GROUP BY HAVING 절</h3>
+<h6>설명</h6>
+<p><span class="keyword">GROUP</span> <span class="keyword">BY</span> 절은 질의문의 <span class="keyword">SELECT</span> 절에 하나 이상의 집계 함수가 주어진 경우에 사용된다.</p>
+<p>질의 결과는 그룹으로 구성되는데 <span class="keyword">HAVING</span> 절을 지정하면 <span class="keyword">GROUP</span> <span class="keyword">BY</span> 절로 구성되는 모든 그룹을 나열하는 것이 아니라,&#160;지정된 조건을 만족하는 그룹만 조회되도록 조건을 설정할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">GROUP</span> <span class="keyword">BY</span> <span class="var">expression_list</span> [ <span class="keyword">HAVING</span> <span class="var">search_condition</span>]</p>
+<ul>
+<li><span class="var">expression_list</span> : <span class="var">expression_list</span>는 하나 이상의&#160;컬럼 이름 또는 표현식으로 구성되며, 각각의 항목은 쉼표(,)로 구별되어야 한다.</li>
+<li><span class="var">search_condition</span> : 질의 결과 그룹은 <span class="keyword">HAVING</span> 선택 사항에서 지정한 <span class="var">search_condition</span>에 의해 한정할 수 있다. 질의 결과로 여러 그룹이 생성되었을 경우에도 특정 논리 표현식을 만족하는 그룹만 표시되도록 제한할 수 있다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 1988년 이후 올림픽에서 각 해마다의 금메달 개수가 몇 개인지 조회하는 예제이다. <span class="keyword">participant</span> 테이블에 대해 <span class="keyword">host_year</span>별로 <span class="keyword">gold</span>의&#160;합을 구한다. 이 예제에서 테이블 <span class="keyword">participant</span> 인스턴스는 5개의 서로 다른 <span class="keyword">host_year</span> 값을 가지므로 5개의 그룹이 만들어지고, 각각의 <span class="keyword">host_year</span> 값의 그룹에 대해&#160;<span class="keyword">sum(gold)</span> 값이 계산된다.</li>
+</ul>
+<p class="code">SELECT host_year, SUM(gold) FROM participant WHERE host_year &gt;= 1988 GROUP BY host_year;<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;&#160;&#160; host_year&#160;&#160;&#160; sum(gold)<br />
+==========================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1988&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 241<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 260<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 271<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 298<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 301<br />
+5 rows selected.</p>
+<ul>
+<li class="title">예제 2&#160;</li>
+<li class="desc">다음은 국가별로 올림픽에 출전한 선수들을 묶고, 200명 이상 출전한 국가에 대해서 국가코드와 선수 수를 조회하는 예제이다. <span class="keyword">GROUP</span> <span class="keyword">BY</span> 절에 <span class="keyword">HAVING</span> 절을 더하여 지정 조건에 만족하는 인스턴스를 조회할 수 있다. 위의 질의문에서는 <span class="keyword">count(code)</span>가 200이 넘는 인스턴스에 한해 <span class="keyword">nation_code</span>로 묶여 조회된다. <span class="keyword">WHERE</span>가 <span class="keyword">SELECT</span> 절의 조건절이라고 한다면, <span class="keyword">HAVING</span>은 <span class="keyword">GROUP</span> <span class="keyword">BY</span> 절의 조건절이 된다.</li>
+<li class="desc"><span class="keyword">GROUP</span> <span class="keyword">BY</span> 절에&#160;컬럼뿐만 아니라 표현식을 나열할 수도 있다. 이 경우 표현식은 컬럼, 함수, 상수 값으로 구성될 수 있다.</li>
+</ul>
+<p class="code">SELECT nation_code, COUNT(code) FROM athlete GROUP BY nation_code HAVING COUNT(code) &gt; 200;<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160; nation_code&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; count(code)<br />
+===================================<br />
+&#160; 'AUS'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 355<br />
+&#160; 'CHN'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 296<br />
+&#160; 'CUB'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 203<br />
+&#160; 'GER'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 417<br />
+&#160; 'ITA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 226<br />
+&#160; 'JPN'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 205<br />
+&#160; 'KOR'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 263<br />
+&#160; 'NED'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 214<br />
+&#160; 'RUS'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 369<br />
+&#160; 'USA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 810&#160; &#160;&#160;<br />
+10 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

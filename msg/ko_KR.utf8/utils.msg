@@ -181,7 +181,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start\n\
     stop\n\
     restart\n\
-    status      [-b] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n
 27 cubrid 유틸리티, 버전 %s\n\
@@ -207,6 +207,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     status\n
 30 '%s' 인자가 필요 없습니다.\n
 31 데이터베이스 이름이 누락됐습니다.\n
+32 복제가 지원되지 않는 플랫폼입니다.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -496,7 +497,8 @@ cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
   -K, --shutdown-repl-server=NAME  해당 복제 서버 shutdown\n\
   -k, --shutdown-repl-agent=NAME   해당 복제 agent shutdown\n\
   -A, --shutdown-all               모든 프로세스 shutdown\n\
-  -h, --host=HOST                  해당 호스트의 마스트 서버로 접속\n
+  -h, --host=HOST                  해당 호스트의 마스트 서버로 접속\n\
+  -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n
 28 알 수 없는 명령입니다: %s\n
 29 호스트 이름을 찾을 수 없습니다-중지\n
 30 인자 파일을 찾을 수 없습니다\n
@@ -782,6 +784,8 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 39 오류(%d): 배포 DB의 master_info 클래스에 너무 많은 MASTER DB가 등록되어 있습니다. 
 40 오류(%d): 배포 DB의 trail_info 클래스를 점검하여 주십시오.
 41 오류(%d): 트랜잭션이 철회되었습니다. 설정 파일의 (cubrid.conf) 의 max_block_size 및 max_block_count를 조정하여 워크스페이스의 용량을 늘려 주십시오.
+51 로그(%d): 복제 에이전트가 재 시작됩니다.
+52 로그(%d): 복제 로그의 타입이 UPDATE에서 INSERT로 변환되었습니다.
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 `%s'을 열 수 없습니다\n
@@ -796,12 +800,16 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Cannot open output file `%s'\n
+21 System parameters to be used by the client program.\n
+22 System parameters loaded by the server '%s'\n
+23 System parameters to be used in standalone mode.\n
 60 \
 paramdump: Dump system parameter settings.\n\
 usage: %s paramdump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -b, --both                   dump both client and server parameters\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
 
@@ -811,6 +819,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 21 Enter DBA password:
 22 The server `%s''s current HA running mode is %s.\n
 23 The server `%s''s HA running mode is changed to \"%s\".\n
+24 서버가 HA 모드로 설정되지 않았습니다.\n
 59 changemode는 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
@@ -819,11 +828,11 @@ usage: %s changemode [OPTION] database-name\n\
 valid options:\n\
   -m, --mode=MODE             change the server mode to MODE; default; none\n\
   -w, --wait                  wait util the server mode is changed\n\
-  -f, --force                 force to change\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+  -f, --force                 force to change\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 21 Enter DBA password:
+22 서버가 HA 모드로 설정되지 않았습니다.\n
 59 copylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
@@ -831,13 +840,13 @@ usage: %s copylogdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
-  -m, --mode=MODE             operation mode; default: async\n\
-                              MODE: async or sync\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+  -m, --mode=MODE             operation mode; default: sync\n\
+                              MODE: sync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
+22 서버가 HA 모드로 설정되지 않았습니다.\n
 59 applylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
@@ -845,5 +854,4 @@ usage: %s applylogdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH of copied log volumes\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
-
+      --max-mem-size=SIZE     maximum process SIZE in MB; max 1000\n

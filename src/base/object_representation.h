@@ -177,14 +177,14 @@
 
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
 
-#define swap64(x)        ((((x)&(0x00000000000000FFLL))<<56) \
-                         |(((x)&(0xFF00000000000000LL))>>56) \
-                         |(((x)&(0x000000000000FF00LL))<<40) \
-                         |(((x)&(0x00FF000000000000LL))>>40) \
-                         |(((x)&(0x0000000000FF0000LL))<<24) \
-                         |(((x)&(0x0000FF0000000000LL))>>24) \
-                         |(((x)&(0x00000000FF000000LL))<<8)  \
-                         |(((x)&(0x000000FF00000000LL))>>8))
+#define swap64(x)  ((((unsigned long long) (x)&(0x00000000000000FFULL))<<56) \
+                   |(((unsigned long long) (x)&(0xFF00000000000000ULL))>>56) \
+                   |(((unsigned long long) (x)&(0x000000000000FF00ULL))<<40) \
+                   |(((unsigned long long) (x)&(0x00FF000000000000ULL))>>40) \
+                   |(((unsigned long long) (x)&(0x0000000000FF0000ULL))<<24) \
+                   |(((unsigned long long) (x)&(0x0000FF0000000000ULL))>>24) \
+                   |(((unsigned long long) (x)&(0x00000000FF000000ULL))<<8)  \
+                   |(((unsigned long long) (x)&(0x000000FF00000000ULL))>>8))
 
 #else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
 #define swap64(x)        (x)
@@ -1076,6 +1076,8 @@ extern int or_get_value (OR_BUF * buf, DB_VALUE * value,
 			 struct tp_domain *domain, int expected, bool copy);
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
+extern char *or_pack_mem_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_value (char *buf, DB_VALUE * value);
+extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

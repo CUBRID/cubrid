@@ -1,0 +1,28 @@
+task:gettriggerinfo
+status:success
+note:none
+dbname:demodb
+open:triggerlist
+open:triggerinfo
+name:limit_pools
+conditiontime:BEFORE
+eventtype:UPDATE
+action:update resort set number_of_pools=new.number_of_pools-1 where "name"=obj."name"
+target_class:resort
+target_att:number_of_pools
+condition:new.number_of_pools>0
+actiontime:BEFORE
+status:ACTIVE
+priority:0.01000
+close:triggerinfo
+open:triggerinfo
+name:glo_delete_contents
+eventtype:DELETE
+action:call destroy_data(obj)
+target_class:glo
+actiontime:BEFORE
+status:ACTIVE
+priority:1.00000
+close:triggerinfo
+close:triggerlist
+

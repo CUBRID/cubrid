@@ -108,9 +108,6 @@
 
 #define MAX_ALIGN 7
 
-
-unsigned int net_Interrupt_enabled = 1;	/* default is on */
-
 /*
  * Flag to indicate whether we've crossed the client/server boundary.
  * It really only comes into play in standalone.
@@ -121,6 +118,9 @@ unsigned int db_on_server = 0;
 static char *pack_const_string (char *buffer, const char *cstring);
 static int length_const_string (const char *cstring);
 #endif /* CS_MODE */
+static BTREE_SEARCH
+btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
+			    OID * oid, bool is_replication);
 
 #if defined(CS_MODE)
 /*
@@ -1643,13 +1643,13 @@ disk_get_remarks (VOLID volid)
 {
 #if defined(CS_MODE)
   int req_error;
-  char *area;
+  char *area = NULL;
   int area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  char *remark = NULL;
+  char *remark = NULL, *p = NULL;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -1660,10 +1660,11 @@ disk_get_remarks (VOLID volid)
 				   request, OR_ALIGNED_BUF_SIZE (a_request),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, &area, &area_size);
-  if (!req_error)
+  if (!req_error && area != NULL)
     {
       or_unpack_int (reply, &area_size);
-      or_unpack_string (area, &remark);
+      or_unpack_string_nocopy (area, &p);
+      remark = strdup (p);
       free_and_init (area);
     }
 
@@ -1812,13 +1813,13 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
 {
 #if defined(CS_MODE)
   int req_error;
-  char *area;
+  char *area = NULL;
   int area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  char *name;
+  char *name = NULL;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -1829,11 +1830,14 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
 				   request, OR_ALIGNED_BUF_SIZE (a_request),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, &area, &area_size);
-  if (!req_error)
+  if (!req_error && area != NULL)
     {
       or_unpack_int (reply, &area_size);
       or_unpack_string_nocopy (area, &name);
-      strcpy (vol_fullname, name);
+      if (name != NULL)
+	{
+	  strcpy (vol_fullname, name);
+	}
       free_and_init (area);
     }
   else
@@ -2383,25 +2387,15 @@ void
 log_set_interrupt (int set)
 {
 #if defined(CS_MODE)
-  int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
 
   request = OR_ALIGNED_BUF_START (a_request);
+  or_pack_int (request, set);
 
-  /*
-   * only send the interrupt if the server can handle it without taking
-   * down the whole machine like Solaris is apt to do.
-   */
-  if (net_Interrupt_enabled)
-    {
-      or_pack_int (request, set);
-
-      req_error =
-	net_client_req_no_reply_via_oob (NET_SERVER_LOG_SET_INTERRUPT,
-					 request,
-					 OR_ALIGNED_BUF_SIZE (a_request));
-    }
+  (void) net_client_request_no_reply (NET_SERVER_LOG_SET_INTERRUPT,
+				      request,
+				      OR_ALIGNED_BUF_SIZE (a_request));
 #else /* CS_MODE */
 
   ENTER_SERVER ();
@@ -2432,7 +2426,6 @@ log_dump_stat (FILE * outfp)
       outfp = stdout;
     }
 
-  /* TODO: change msg function */
   req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_STAT,
 					      NULL, 0, NULL, 0,
 					      NULL, 0, outfp);
@@ -2482,7 +2475,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && db_Log_replication_mode == false)
+      if (reset_on_commit == true && db_Enable_replications <= 0)
 	{
 	  /*
 	   * fail-back action
@@ -2538,7 +2531,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
       ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit == true && db_Log_replication_mode == false)
+      if (reset_on_commit == true && db_Enable_replications <= 0)
 	{
 	  /*
 	   * fail-back action
@@ -3292,8 +3285,6 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
  * return:
  *
  *   outfp(in):
- *
- * NOTE:
  */
 void
 lock_dump (FILE * outfp)
@@ -3306,7 +3297,6 @@ lock_dump (FILE * outfp)
       outfp = stdout;
     }
 
-  /* TODO: simpler function */
   req_error = net_client_request_recv_stream (NET_SERVER_LK_DUMP,
 					      NULL, 0, NULL, 0,
 					      NULL, 0, outfp);
@@ -3452,36 +3442,22 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
  * return:
  *
  *   client_credential(in)
- *   rootclass_oid(in):
- *   rootclass_hfid(in):
  *   client_lock_wait(in):
  *   client_isolation(in):
  *   tran_state(out):
- *   current_pagesize(out):
- *   server_clock(out):
- *   client_clock(out):
- *   server_disk_compatibility_level(out):
- *
- * NOTE:
+ *   server_credential(out):
  */
 int
 boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
-		      OID * rootclass_oid, HFID * rootclass_hfid,
 		      int client_lock_wait, TRAN_ISOLATION client_isolation,
-		      TRAN_STATE * tran_state, PGLENGTH * current_pagesize,
-		      struct timeval *server_clock,
-		      struct timeval *client_clock,
-		      float *server_disk_compatibility_level)
+		      TRAN_STATE * tran_state,
+		      BOOT_SERVER_CREDENTIAL * server_credential)
 {
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
-  int request_size;
-  int req_error, transtate_int;
-  char *request, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE + OR_INT_SIZE +
-		  OR_INT_SIZE + (OR_INT_SIZE * 2) + OR_FLOAT_SIZE) a_reply;
-  char *reply;
-  int int_pagesize;
+  int request_size, area_size, req_error, temp_int;
+  char *request, *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -3511,24 +3487,30 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, client_lock_wait);
       ptr = or_pack_int (ptr, (int) client_isolation);
 
-      req_error = net_client_request (NET_SERVER_BO_REGISTER_CLIENT,
-				      request, request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0);
-      gettimeofday (client_clock, NULL);
-
+      req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT,
+				       request, request_size, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, &area, &area_size);
       if (!req_error)
 	{
-	  ptr = or_unpack_int (reply, &tran_index);
-	  ptr = or_unpack_oid (ptr, rootclass_oid);
-	  ptr = or_unpack_hfid (ptr, rootclass_hfid);
-	  ptr = or_unpack_int (ptr, &transtate_int);
-	  *tran_state = (TRAN_STATE) transtate_int;
-	  ptr = or_unpack_int (ptr, &int_pagesize);
-	  *current_pagesize = int_pagesize;
-	  ptr = or_unpack_int (ptr, (int *) &(server_clock->tv_sec));
-	  ptr = or_unpack_int (ptr, (int *) &(server_clock->tv_usec));
-	  ptr = or_unpack_float (ptr, server_disk_compatibility_level);
+	  or_unpack_int (reply, &area_size);
+	  if (area_size > 0)
+	    {
+	      ptr = or_unpack_int (area, &tran_index);
+	      ptr = or_unpack_int (ptr, &temp_int);
+	      *tran_state = (TRAN_STATE) temp_int;
+	      ptr = or_unpack_string (ptr, &server_credential->db_full_name);
+	      ptr = or_unpack_string (ptr, &server_credential->host_name);
+	      ptr = or_unpack_int (ptr, &server_credential->process_id);
+	      ptr = or_unpack_oid (ptr, &server_credential->root_class_oid);
+	      ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
+	      ptr = or_unpack_int (ptr, &temp_int);
+	      server_credential->page_size = (PGLENGTH) temp_int;
+	      ptr =
+		or_unpack_float (ptr, &server_credential->disk_compatibility);
+	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
+	    }
+	  free_and_init (area);
 	}
       free_and_init (request);
     }
@@ -3540,12 +3522,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   ENTER_SERVER ();
 
   tran_index = xboot_register_client (NULL, client_credential,
-				      rootclass_oid, rootclass_hfid,
 				      client_lock_wait, client_isolation,
-				      tran_state, current_pagesize);
-  gettimeofday (server_clock, NULL);
-  *client_clock = *server_clock;
-  *server_disk_compatibility_level = rel_disk_compatible ();
+				      tran_state, server_credential);
 
   EXIT_SERVER ();
 
@@ -3749,9 +3727,8 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 
   ENTER_SERVER ();
 
-  volid =
-    xboot_add_volume_extension (NULL, ext_path, ext_name, ext_comments,
-				ext_npages, ext_purpose, ext_overwrite);
+  volid = xboot_add_volume_extension (NULL, ext_path, ext_name, ext_comments,
+				      ext_npages, ext_purpose, ext_overwrite);
 
   EXIT_SERVER ();
 
@@ -4111,7 +4088,7 @@ boot_emergency_patch (const char *db_name, bool recreate_log)
 
 /*
  * boot_change_ha_mode - change server's HA state
- *   return:
+ *   return: new state
  */
 HA_SERVER_STATE
 boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
@@ -4123,21 +4100,19 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
   char *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_request;
   char *request;
-  int request_size;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   request = OR_ALIGNED_BUF_START (a_request);
-  request_size = OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   ptr = or_pack_int (request, (int) state);
   ptr = or_pack_int (ptr, (int) force);
   ptr = or_pack_int (ptr, (int) wait);
 
   req_error = net_client_request (NET_SERVER_BO_CHANGE_HA_MODE,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &i);
@@ -4149,6 +4124,44 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
   /* Cannot run in standalone mode */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
 	  "changemode");
+  return HA_SERVER_STATE_NA;
+#endif /* !CS_MODE */
+}
+
+/*
+ * boot_notify_ha_log_applier_state - notify log applier's state to the server
+ *   return: NO_ERROR or ER_FAILED
+ */
+int
+boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  ptr = or_pack_int (request, (int) state);
+
+  req_error = net_client_request (NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+
+  return status;
+#else /* CS_MODE */
+  /* Cannot run in standalone mode */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
+	  "log applier");
   return ER_FAILED;
 #endif /* !CS_MODE */
 }
@@ -4167,13 +4180,14 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
  * NOTE:
  */
 LOID *
-largeobjmgr_create (LOID * loid, FSIZE_T length, char *buffer,
-		    FSIZE_T est_lo_length, OID * oid)
+largeobjmgr_create (LOID * loid, int length, char *buffer,
+		    int est_lo_length, OID * oid)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE * 2 + OR_LOID_SIZE + OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_LOID_SIZE +
+		  OR_OID_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
   char *reply;
@@ -4181,19 +4195,16 @@ largeobjmgr_create (LOID * loid, FSIZE_T length, char *buffer,
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, length);
-  ptr = or_pack_int64 (ptr, est_lo_length);
+  ptr = request;
+  ptr = or_pack_int (ptr, length);
+  ptr = or_pack_int (ptr, est_lo_length);
   ptr = or_pack_loid (ptr, loid);
   ptr = or_pack_oid (ptr, oid);
 
-  req_error = net_client_request_send_large_data (NET_SERVER_LARGEOBJMGR_CREATE,
-						  request,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_request), reply,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_reply), buffer, length,
-						  NULL, 0);
-
+  req_error = net_client_request (NET_SERVER_LARGEOBJMGR_CREATE,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  buffer, length, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_loid (reply, loid);
@@ -4250,7 +4261,7 @@ largeobjmgr_destroy (LOID * loid)
       or_unpack_int (reply, &status);
     }
 
-  return ((int) status);
+  return status;
 #else /* CS_MODE */
   int success = ER_FAILED;
 
@@ -4276,42 +4287,38 @@ largeobjmgr_destroy (LOID * loid)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_read (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
+int
+largeobjmgr_read (LOID * loid, INT64 offset, int length, char *buffer)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  int processed_length = -1;
   int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF ((OR_INT64_SIZE * 2) + OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
+  char *ptr, *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, offset);
-  ptr = or_pack_int64 (ptr, length);
+  ptr = request;
+  ptr = or_pack_int64 (ptr, offset);
+  ptr = or_pack_int (ptr, length);
   ptr = or_pack_loid (ptr, loid);
 
-  req_error = net_client_request_recv_large_data (NET_SERVER_LARGEOBJMGR_READ,
-						  request,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_request), reply,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_reply), NULL, 0, buffer,
-						  &length);
+  req_error =
+    net_client_request2_no_malloc (NET_SERVER_LARGEOBJMGR_READ, request,
+				   OR_ALIGNED_BUF_SIZE (a_request), reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				   buffer, &length);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  int processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4335,44 +4342,37 @@ largeobjmgr_read (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_write (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
+int
+largeobjmgr_write (LOID * loid, INT64 offset, int length, char *buffer)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  int processed_length = -1;
   int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF ((OR_INT64_SIZE * 2) + OR_LOID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
+  char *ptr, *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, length);
+  ptr = request;
   ptr = or_pack_int64 (ptr, offset);
+  ptr = or_pack_int (ptr, length);
   ptr = or_pack_loid (ptr, loid);
-  ptr = or_pack_int (ptr, (int) (length / INT_MAX) + 1);
 
-  req_error = net_client_request_send_large_data (NET_SERVER_LARGEOBJMGR_WRITE,
-						  request,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_request), reply,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_reply), buffer, length,
-						  NULL, 0);
-
+  req_error = net_client_request (NET_SERVER_LARGEOBJMGR_WRITE, request,
+				  OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				  length, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  int processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4396,43 +4396,38 @@ largeobjmgr_write (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_insert (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
+int
+largeobjmgr_insert (LOID * loid, INT64 offset, int length, char *buffer)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  int processed_length = -1;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE * 2 + OR_LOID_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, length);
+  ptr = request;
   ptr = or_pack_int64 (ptr, offset);
+  ptr = or_pack_int (ptr, length);
   ptr = or_pack_loid (ptr, loid);
-  ptr = or_pack_int (ptr, (int) (length / INT_MAX) + 1);
 
-  req_error = net_client_request_send_large_data (NET_SERVER_LARGEOBJMGR_INSERT,
-						  request,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_request), reply,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_reply), buffer, length,
-						  NULL, 0);
+  req_error = net_client_request (NET_SERVER_LARGEOBJMGR_INSERT, request,
+				  OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				  length, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  int processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4455,12 +4450,11 @@ largeobjmgr_insert (LOID * loid, FSIZE_T offset, FSIZE_T length, char *buffer)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_delete (LOID * loid, FSIZE_T offset, FSIZE_T length)
+INT64
+largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  INT64 processed_length = -1;
   int req_error;
   char *ptr;
   OR_ALIGNED_BUF ((OR_INT64_SIZE * 2) + OR_LOID_SIZE) a_request;
@@ -4471,7 +4465,8 @@ largeobjmgr_delete (LOID * loid, FSIZE_T offset, FSIZE_T length)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, offset);
+  ptr = request;
+  ptr = or_pack_int64 (ptr, offset);
   ptr = or_pack_int64 (ptr, length);
   ptr = or_pack_loid (ptr, loid);
 
@@ -4481,13 +4476,12 @@ largeobjmgr_delete (LOID * loid, FSIZE_T offset, FSIZE_T length)
 				  0, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int64 (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  INT64 processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4510,42 +4504,37 @@ largeobjmgr_delete (LOID * loid, FSIZE_T offset, FSIZE_T length)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_append (LOID * loid, FSIZE_T length, char *buffer)
+int
+largeobjmgr_append (LOID * loid, int length, char *buffer)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  int processed_length = -1;
   int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_LOID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOID_SIZE) a_request;
+  char *ptr, *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, length);
+  ptr = request;
+  ptr = or_pack_int (ptr, length);
   ptr = or_pack_loid (ptr, loid);
-  ptr = or_pack_int (ptr, (int) (length / INT_MAX) + 1);
 
-  req_error = net_client_request_send_large_data (NET_SERVER_LARGEOBJMGR_APPEND,
-						  request,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_request), reply,
-						  OR_ALIGNED_BUF_SIZE
-						  (a_reply), buffer, length,
-						  NULL, 0);
+  req_error = net_client_request (NET_SERVER_LARGEOBJMGR_APPEND,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				  length, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  int processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4567,23 +4556,22 @@ largeobjmgr_append (LOID * loid, FSIZE_T length, char *buffer)
  *
  * NOTE:
  */
-FSIZE_T
-largeobjmgr_truncate (LOID * loid, FSIZE_T offset)
+INT64
+largeobjmgr_truncate (LOID * loid, INT64 offset)
 {
 #if defined(CS_MODE)
-  FSIZE_T processed_length = -1;
-  INT64 tmp_int64;
+  INT64 processed_length = -1;
   int req_error;
-  char *ptr;
   OR_ALIGNED_BUF (OR_INT64_SIZE + OR_LOID_SIZE) a_request;
-  char *request;
+  char *ptr, *request;
   OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, offset);
+  ptr = request;
+  ptr = or_pack_int64 (ptr, offset);
   ptr = or_pack_loid (ptr, loid);
 
   req_error = net_client_request (NET_SERVER_LARGEOBJMGR_TRUNCATE,
@@ -4592,13 +4580,12 @@ largeobjmgr_truncate (LOID * loid, FSIZE_T offset)
 				  0, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      processed_length = tmp_int64;
+      ptr = or_unpack_int64 (reply, &processed_length);
     }
 
   return processed_length;
 #else /* CS_MODE */
-  FSIZE_T processed_length = -1;
+  INT64 processed_length = -1;
 
   ENTER_SERVER ();
 
@@ -4668,12 +4655,11 @@ largeobjmgr_compress (LOID * loid)
  *
  * NOTE:
  */
-FSIZE_T
+INT64
 largeobjmgr_length (LOID * loid)
 {
 #if defined(CS_MODE)
-  FSIZE_T length = -1;
-  INT64 tmp_int64;
+  INT64 length = -1;
   int req_error;
   char *ptr;
   OR_ALIGNED_BUF (OR_LOID_SIZE) a_request;
@@ -4688,18 +4674,16 @@ largeobjmgr_length (LOID * loid)
 
   req_error = net_client_request (NET_SERVER_LARGEOBJMGR_LENGTH,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
-				  reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				  0, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int64 (reply, &tmp_int64);
-      length = tmp_int64;
+      ptr = or_unpack_int64 (reply, &length);
     }
 
   return length;
 #else /* CS_MODE */
-  FSIZE_T length = -1;
+  INT64 length = -1;
 
   ENTER_SERVER ();
 
@@ -4877,7 +4861,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
 		 int attr_id, int unique_btree, int reverse_btree)
 {
 #if defined(CS_MODE)
-  int error;
+  int error = NO_ERROR;
   int req_error, request_size, domain_size;
   char *ptr;
   char *request;
@@ -4911,8 +4895,10 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
     {
       ptr = or_unpack_int (reply, &error);
       ptr = or_unpack_btid (ptr, btid);
-      if (error)
-	btid = NULL;
+      if (error != NO_ERROR)
+	{
+	  btid = NULL;
+	}
     }
 
   free_and_init (request);
@@ -4950,6 +4936,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
  *   hfids(in):
  *   unique_flag(in):
  *   reverse_flag(in):
+ *   last_key_desc(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
@@ -4961,12 +4948,12 @@ int
 btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		  int n_classes, int n_attrs,
 		  int *attr_ids, HFID * hfids,
-		  int unique_flag, int reverse_flag,
+		  int unique_flag, int reverse_flag, int last_key_desc,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		  int cache_attr_id, const char *fk_name)
 {
 #if defined(CS_MODE)
-  int error, req_error, request_size, domain_size;
+  int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
@@ -4979,7 +4966,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   request_size = OR_BTID_ALIGNED_SIZE
     + domain_size + (n_classes * OR_OID_SIZE) + OR_INT_SIZE + OR_INT_SIZE
     + (n_classes * n_attrs * OR_INT_SIZE) + (n_classes * OR_HFID_SIZE)
-    + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
+    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
     + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE + or_packed_string_length (fk_name);
 
   request = (char *) malloc (request_size);
@@ -5012,6 +4999,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 
   ptr = or_pack_int (ptr, unique_flag);
   ptr = or_pack_int (ptr, reverse_flag);
+  ptr = or_pack_int (ptr, last_key_desc);
 
   ptr = or_pack_oid (ptr, fk_refcls_oid);
   ptr = or_pack_btid (ptr, fk_refcls_pk_btid);
@@ -5026,8 +5014,10 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     {
       ptr = or_unpack_int (reply, &error);
       ptr = or_unpack_btid (ptr, btid);
-      if (error)
-	btid = NULL;
+      if (error != NO_ERROR)
+	{
+	  btid = NULL;
+	}
     }
   else
     {
@@ -5044,8 +5034,8 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   btid =
     xbtree_load_index (NULL, btid, key_type, class_oids, n_classes, n_attrs,
 		       attr_ids, hfids, unique_flag, reverse_flag,
-		       fk_refcls_oid, fk_refcls_pk_btid, cache_attr_id,
-		       fk_name);
+		       last_key_desc, fk_refcls_oid, fk_refcls_pk_btid,
+		       cache_attr_id, fk_name);
   if (btid == NULL)
     {
       error = er_errid ();
@@ -5074,7 +5064,7 @@ int
 btree_delete_index (BTID * btid)
 {
 #if defined(CS_MODE)
-  int req_error, status;
+  int req_error, status = NO_ERROR;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -5094,7 +5084,7 @@ btree_delete_index (BTID * btid)
       or_unpack_int (reply, &status);
     }
 
-  return ((int) status);
+  return status;
 
 #else /* CS_MODE */
   int success = ER_FAILED;
@@ -5152,7 +5142,7 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 {
 #if defined(CS_MODE)
   char *request, *reply, *ptr;
-  int req_error, status, request_size;
+  int req_error, status = NO_ERROR, request_size;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5178,7 +5168,7 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
     }
 
   free_and_init (request);
-  return ((int) status);
+  return status;
 
 #else /* CS_MODE */
   int success = ER_FAILED;
@@ -5208,6 +5198,20 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
 {
+  return btree_find_unique_internal (btid, key, class_oid, oid, false);
+}
+
+BTREE_SEARCH
+repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid,
+			OID * oid)
+{
+  return btree_find_unique_internal (btid, key, class_oid, oid, true);
+}
+
+static BTREE_SEARCH
+btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
+			    OID * oid, bool is_replication)
+{
   BTREE_SEARCH status = BTREE_ERROR_OCCURRED;
 
   if (btid == NULL || key == NULL || class_oid == NULL || oid == NULL)
@@ -5222,6 +5226,7 @@ btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
       char *request;
       OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
       char *reply;
+      enum net_server_request request_id;
 
       reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5235,10 +5240,19 @@ btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
 	}
 
       ptr = or_pack_btid (request, btid);
-      ptr = or_pack_value (ptr, key);
+      if (is_replication == true)
+	{
+	  ptr = or_pack_mem_value (ptr, key);
+	  request_id = NET_SERVER_REPL_BTREE_FIND_UNIQUE;
+	}
+      else
+	{
+	  ptr = or_pack_value (ptr, key);
+	  request_id = NET_SERVER_BTREE_FIND_UNIQUE;
+	}
       ptr = or_pack_oid (ptr, class_oid);
 
-      req_error = net_client_request (NET_SERVER_BTREE_FIND_UNIQUE,
+      req_error = net_client_request (request_id,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				      NULL, 0);
@@ -5281,7 +5295,7 @@ int
 btree_class_test_unique (char *buf, int buf_size)
 {
 #if defined(CS_MODE)
-  int req_error, status;
+  int req_error, status = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
@@ -5296,7 +5310,7 @@ btree_class_test_unique (char *buf, int buf_size)
       or_unpack_int (reply, &status);
     }
 
-  return ((int) status);
+  return status;
 #else /* CS_MODE */
   int success = ER_FAILED;
 
@@ -5850,7 +5864,6 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
     }
 
   return status;
-
 #else /* CS_MODE */
   int status;
 
@@ -5942,7 +5955,6 @@ qmgr_dump_query_plans (FILE * outfp)
       outfp = stdout;
     }
 
-  /* TODO: simpler function */
   req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_PLANS,
 					      NULL, 0, NULL, 0,
 					      NULL, 0, outfp);
@@ -5976,7 +5988,6 @@ qmgr_dump_query_cache (FILE * outfp)
       outfp = stdout;
     }
 
-  /* TODO: simpler function */
   req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_CACHE,
 					      NULL, 0, NULL, 0,
 					      NULL, 0, outfp);
@@ -6012,7 +6023,7 @@ qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done,
   OR_ALIGNED_BUF (OR_PTR_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *area, *reply, *ptr;
+  char *area = NULL, *reply, *ptr;
   int area_size;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -6024,7 +6035,7 @@ qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done,
 				   request, OR_ALIGNED_BUF_SIZE (a_request),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, &area, &area_size);
-  if (!req_error)
+  if (!req_error && area != NULL)
     {
       int dummy_int;
       char *dummy_str = NULL;
@@ -6073,10 +6084,7 @@ qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done,
 	    }
 	}
 
-      if (area)
-	{
-	  free_and_init (area);
-	}
+      free_and_init (area);
       return *done;
     }
 
@@ -6677,6 +6685,37 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p)
 }
 
 /*
+ * logtb_dump_trantable -
+ *
+ * return:
+ *
+ *   outfp(in):
+ */
+void
+logtb_dump_trantable (FILE * outfp)
+{
+#if defined(CS_MODE)
+  int req_error;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_TRANTB,
+					      NULL, 0, NULL, 0,
+					      NULL, 0, outfp);
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  xlogtb_dump_trantable (NULL, outfp);
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
  * heap_get_class_num_objects_pages -
  *
  * return:
@@ -7032,6 +7071,34 @@ sysprm_obtain_server_parameters (char *data, int len)
 }
 
 /*
+ * sysprm_dump_server_parameters -
+ *
+ * return:
+ */
+void
+sysprm_dump_server_parameters (FILE * outfp)
+{
+#if defined(CS_MODE)
+  int req_error;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  req_error = net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS,
+					      NULL, 0, NULL, 0,
+					      NULL, 0, outfp);
+#else /* CS_MODE */
+  ENTER_SERVER ();
+
+  xsysprm_dump_server_parameters (outfp);
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
  * heap_has_instance -
  *
  * return:
@@ -7358,22 +7425,21 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server.
      And, if several pages are left to get, keep it as async mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.last_flush_pageid);
-  if (logwr_Gl.last_recv_pageid >= logwr_Gl.last_flush_pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
     {
       /* In case of synchronous request */
-      /* TODO: if the offset points to the end of the page,
-         get the next page */
-      logwr_Gl.last_recv_pageid = logwr_Gl.last_flush_pageid;
-      if (LOGWR_IS_SERVER_ARCHIVING ()
-	  && LSA_GE (&logwr_Gl.hdr.eof_lsa, &logwr_Gl.hdr.append_lsa))
+      if (logwr_Gl.last_recv_pageid != NULL_PAGEID
+	  && LOGWR_AT_SERVER_ARCHIVING ())
 	{
 	  /* If the server is in previous step to do archiving and
 	     the last page in active log is completed, get the next page of it */
 	  first_pageid_torecv = logwr_Gl.last_recv_pageid + 1;
 	}
       else
-	first_pageid_torecv = logwr_Gl.last_recv_pageid;
+	{
+	  first_pageid_torecv = logwr_Gl.last_recv_pageid;
+	}
       mode = (logwr_Gl.last_recv_pageid == NULL_PAGEID) ?
 	LOGWR_MODE_ASYNC : logwr_Gl.mode;
     }
@@ -7399,13 +7465,11 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
       mode = LOGWR_MODE_ASYNC;
     }
 
-#if defined(LOGWR_DEBUG_MSG)
   er_log_debug (ARG_FILE_LINE, "logwr_get_log_pages, fpageid(%d), mode(%s)",
 		first_pageid_torecv,
 		mode == LOGWR_MODE_SYNC ? "sync" : (mode ==
 						    LOGWR_MODE_ASYNC ? "async"
 						    : "semisync"));
-#endif /* LOGWR_DEBUG_MSG */
 
   save_mode = logwr_Gl.mode;
   logwr_Gl.mode = mode;
@@ -7434,7 +7498,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
       if (error == ER_NET_SERVER_CRASHED)
 	{
 	  /* Write the server is dead at the log header */
-	  logwr_Gl.hdr.ha_server_status = LOG_HA_SRVSTAT_DEAD;
+	  logwr_Gl.hdr.ha_server_state = HA_SERVER_STATE_DEAD;
 	  logwr_flush_header_page ();
 	  ctx_ptr->shutdown = true;
 	}

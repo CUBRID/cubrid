@@ -1,0 +1,13 @@
+CREATE TABLE "sup1"
+CLASS ATTRIBUTE(
+"float" smallint DEFAULT 1
+)
+(
+"smallint" smallint AUTO_INCREMENT PRIMARY KEY UNIQUE,
+"integer" integer AUTO_INCREMENT(2,1),
+"bigint" bigint,
+"numeric1" numeric(15,0) AUTO_INCREMENT UNIQUE,
+"numeric2" numeric(17,2) DEFAULT 12.50,
+"float" float DEFAULT 12 NOT NULL,
+"setint" set_of(smallint) DEFAULT {1, 2}
+);

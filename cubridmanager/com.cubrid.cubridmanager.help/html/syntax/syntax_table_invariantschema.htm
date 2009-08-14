@@ -1,0 +1,116 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>스키마 불변성</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n테이블 조작\n클래스 충돌 해결\n스키마 불변성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_create_syntax.htm\">테이블 조작<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_conflict_intro.htm\">클래스 충돌 해결<\/a> &nbsp;&gt;&nbsp; 스키마 불변성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>스키마 불변성</h4>
+<p>데이터베이스 스키마 불변성은 항상(스키마 변경 전/후) 스키마가 지켜야 하는 스키마의 특징이다, 클래스 계층 불변성, 이름 불변성, 상속 불변성, 일관성의 불변성 등 네 가지 유형의 불변성이 존재한다.</p>
+<ul>
+<li><span class="keyword">클래스 계층 불변성</span>은 하나의 루트를 가지며 연결된 클래스들이 방향성을 갖는 비순환 그래프(DAG: directed acyclic graph)인 클래스 계층 구조를 정의한다. 즉, 루트를 제외한 모든 클래스는 하나 이상의 수퍼클래스를 가지고 자기 자신이 수퍼클래스가 될 수 없다. DAG의 루트는 object라는 시스템 정의 클래스이다.</li>
+<li><span class="keyword">이름 불변성</span>이란 클래스 계층 구조상의 모든 클래스는 고유한 이름을 가져야 하고, 클래스 내의 모든 속성 역시 고유한 이름을 가져야 함을 의미한다. 즉, 동일한 이름의 클래스를 생성하거나 한 클래스에서 동일한 이름의 속성, 메소드를 생성하는 것은 규칙에 어긋나므로 거부된다.</li>
+<li class="desc">이름 불변성은 이름변경 한정어(qualifier)에 의해 재정의된다. 이름변경 한정어는 속성 또는 메소드의 이름이 변경될 수 있도록 한다.</li>
+<li><span class="keyword">상속 불변성</span>은 한 클래스는 모든 수퍼클래스의 모든 속성들과 메소드들을 상속해야 한다는 것이다. 이 불변성은 출처 한정어, 충돌 한정어, 도메인 한정어 등 세 개의 한정어로 구분될 수 있다. 상속 이후, 상속된 속성들과 메소드들은 이름이 변경될 수 있다. 기본 값 또는 공유 값 속성의 경우에, 기본 값과 공유 값은 수정될 수 있다. 상속 불변성은 이러한 변경들이 속성들과 메소드들을 상속한 모든 클래스에 전파될 것이라는 것을 의미한다.
+<ul>
+<li><span class="keyword">출처 한정어</span>는, 클래스 S라는 클래스를 상속한 클래스들을 클래스 C가 다시 상속받을 경우, 클래스 S로부터 각각의 클래스에 상속된 속성(메소드)들은 오직 하나씩만 클래스 C에 상속될 수 있다는 것을 의미한다. 다시 말하면, 만일 한 속성(메소드)이 클래스 S에 먼저 정의되었고, 다른 클래스들에 의해 상속되었다면, 그 속성(메소드)이 여러 개의 서브클래스에 존재하지만 실질적으로는 한 속성(메소드)인 것이다. 따라서, 한 클래스가 출처가 같은 속성(메소드)를 가지는 클래스들로부터 다중 상속 받는 경우, 오직 한 속성(메소드)의 모습만을 상속한다.</li>
+<li><span class="keyword">충돌 한정어</span>란, 출처는 다르지만 동일한 이름을 가지는 속성(메소드)을 가지는 두 개 이상의 클래스를 클래스 C 가 상속한다면, 클래스 C는 하나 이상의 클래스를 모두 상속받을 수 있다는 것이다. 동일한 이름의 속성(메소드)를 상속받으려면 이름 불변성을 위반하므로 이름 변경이 필요하다.</li>
+<li><span class="keyword">도메인 한정어</span>는 상속된 속성의 도메인이 그 도메인의 서브클래스로 변환될 수도 있음을 의미한다.</li>
+</ul>
+</li>
+<li><span class="keyword">일치 불변성</span>은 데이터베이스 스키마는 스키마를 변경하는 순간을 제외하고 항상 스키마 불변성과 모든 규칙들(<a href="syntax_table_schemachange.htm">스키마 변경 규칙</a>)을 준수해야 한다는 것이다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+﻿
+<html>
+<head>
+<title>Call Specifications</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\n로딩한 Java 클래스 등록\nCall Specifications");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_publish_overview.htm\">로딩한 Java 클래스 등록<\/a> &nbsp;&gt;&nbsp; Call Specifications<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>Call Specifications</h4>
+<p>CUBRID에서는 Java 저장 함수/프로시저를 사용하기 위해서는 Call Specifications를 작성해야 한다. Call Specifications는 Java 함수 이름과 인자 타입 그리고 리턴&#160;값과 리턴&#160;값의 타입을 SQL 문이나 Java 응용프로그램에서 접근할 수 있도록 해주는 역할을 한다. Call Specifications를 작성하는 구문은 <span class="keyword">CREATE FUNCTION</span> 또는 <span class="keyword">CREATE PROCEDURE</span> 구문을 사용하여 작성한다. Java 저장 함수/프로시저의 이름은 대소문자를 구별하지 않는다. Java 저장 함수/프로시저의 이름의 최대 길이는 256자이다. 또한 하나의 Java 저장 함수/프로시저가 가질 수 있는 인자의 최대 개수는 64개이다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE</span> {<span class="keyword">PROCEDURE</span> <span class="var">procedure_name</span>[(<span class="var">param</span>[, <span class="var">param</span>] …)] | <span class="keyword">FUNCTION</span> <span class="var">function_name</span>[(<span class="var">param</span>[, <span class="var">param</span>]…)] <span class="keyword">RETURN</span> <span class="var">sql_type</span> }<br />
+{<span class="keyword">IS | AS</span>} <span class="keyword">LANGUAGE JAVA</span><br />
+<span class="keyword">NAME</span> '<span class="var">method_fullname</span> (<span class="var">java_type_fullname</span>[,<span class="var">java_type_fullname</span>]…) [<span class="var">return java_type_fullname</span>]';<br />
+<span class="var"><br />
+parameter_name</span> [<span class="keyword">IN|OUT|IN OUT|INOUT</span>] <span class="var">sql_type</span><br />
+&#160;&#160; (<span class="var">default</span> <span class="keyword">IN</span>)<br /></p>
+<p>Java 저장 함수/프로시저의 인자를 <span class="keyword">OUT</span>으로 설정한 경우 길이가 1인 1차원 배열로 전달된다. 그러므로 Java 메소드는 배열의 첫번째 공간에 전달할 값을 저장하여야 한다.</p>
+<h6>예제</h6>
+<p class="code">CREATE FUNCTION Hello() RETURN VARCHAR<br />
+AS LANGUAGE JAVA<br />
+NAME 'SpCubrid.HelloCubrid() return java.lang.String';<br />
+<br />
+CREATE FUNCTION Sp_int(i int) RETURN int<br />
+AS LANGUAGE JAVA<br />
+NAME 'SpCubrid.SpInt(int) return int';<br />
+<br />
+CREATE PROCEDURE Athlete_Add(name varchar,gender varchar, nation_code varchar, event varchar)<br />
+AS LANGUAGE JAVA<br />
+NAME 'Athlete.Athlete(java.lang.String, java.lang.String, java.lang.String, java.lang.String)';<br />
+<br />
+CREATE PROCEDURE test_out(x OUT STRING)<br />
+AS LANGUAGE JAVA<br />
+NAME 'SpCubrid.outTest(java.lang.String[] o)';</p>
+<p>Java 저장 함수/프로시저를 등록할 때, Java 저장 함수/프로시저의 반환 정의와 Java 파일의 선언부의 반환 정의와의 일치 여부는 검사하지 않는다. 따라서, Java 저장 함수/프로시저의 경우 등록할 때의 <span class="var">sql_type</span> 반환 정의를 따르고, Java 파일 선언부의 반환 정의는 사용자 정의 정보로서만 의미를 가지게 된다.</p>
+<ul>
+<li class="title">데이터 타입 맵핑</li>
+<li class="desc">Call Specifications에는 SQL의 데이터 타입과 Java의 매개변수와 반환 값의 데이터 타입이 맞게 대응되어야 한다. CUBRID에서 허용되는 SQL과 Java의 데이터 타입의 관계는 다음의 표와 같다.</li>
+<li class="desc"><span class="caption-table">데이터 타입 맵핑</span></li>
+<li class="desc">
+<table border="1" width="80%">
+<tr>
+<th width="150">
+<p>SQL Type</p>
+</th>
+<th>
+<p>Java Type</p>
+</th>
+</tr>
+<tr>
+<td width="150">
+<p>CHAR, VARCHAR</p>
+</td>
+<td>
+<p>java.lang.String, java.sql.Date, java.sql.Time, java.sql.Timestamp, java.lang.Byte, java.lang.Short, java.lang.Integer, java.lang.Long, java.lang.Float, java.lang.Double, java.math.BigDecimal, byte, short, int, long, float, double</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>NUMERIC, SHORT,</p>
+<p>INT, FLOAT, DOUBLE,</p>
+<p>CURRENCY</p>
+</td>
+<td>
+<p>java.lang.Byte, java.lang.Short, java.lang.Integer, java.lang.Long, java.lang.Float, java.lang.Double, java.math.BigDecimal, java.lang.String, byte, short, int, long, float, double</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>DATE, TIME, TIMESTAMP</p>
+</td>
+<td>
+<p>java.sql.Date, java.sql.Time, java.sql.Timestamp, java.lang.String</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>SET, MULTISET, SEQUENCE</p>
+</td>
+<td>
+<p>java.lang.Object[], java primitive type array, java.lang.Integer[] ...</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>OBJECT</p>
+</td>
+<td>
+<p>cubrid.sql.CUBRIDOID</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>CURSOR</p>
+</td>
+<td>
+<p>cubrid.jdbc.driver.CUBRIDResultSet</p>
+</td>
+</tr>
+</table>
+</li>
+<li class="title">등록된 Java 저장 함수/프로시저의 정보 확인</li>
+<li class="desc">등록된 Java 저장 함수/프로시저의 정보는 <span class="keyword">db_stored_procedure</span> 시스템 가상 클래스와 <span class="keyword">db_stored_procedure_args</span> 시스템 가상 클래스에서 확인할 수 있다. <span class="keyword">db_stored_procedure</span> 시스템 가상 클래스에서는 저장 함수/프로시저의 이름과 타입, 반환 타입, 인자의 수, Java 클래스에 대한 명세, Java 저장 함수/프로시저의 소유자에 대한 정보를 확인할 수 있다. <span class="keyword">db_stored_procedure_args</span> 시스템 가상 클래스에서는 저장 함수/프로시저에서 사용하는 인자에 대한 정보를 확인할 수 있다.</li>
+</ul>
+<p class="code">csql&gt; select * from db_stored_procedure<br />
+csql&gt; ;xrun<br />
+<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;<br />
+sp_name &#160;&#160;&#160;&#160;sp_type &#160;&#160;return_type &#160;&#160;&#160;arg_count<br />
+sp_name &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;sp_type &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;return_type &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;arg_count &#160;lang target &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;owner<br />
+================================================================================<br />
+'hello' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'FUNCTION' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'STRING' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;0 &#160;'JAVA''SpCubrid.HelloCubrid() return java.lang.String' &#160;'DBA'<br />
+&#160;<br />
+'sp_int' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'FUNCTION' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'INTEGER' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;1 &#160;'JAVA''SpCubrid.SpInt(int) return int' &#160;'DBA'<br />
+&#160;<br />
+'athlete_add' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'PROCEDURE' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'void' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;4 &#160;'JAVA''Athlete.Athlete(java.lang.String, java.lang.String, java.lang.String, java.lang.String)' &#160;'DBA'<br />
+&#160;<br />
+3 rows selected.<br />
+&#160;<br />
+Current transaction has been committed.<br />
+&#160;<br />
+1 command(s) successfully processed.<br />
+&#160;<br />
+csql&gt; select * from db_stored_procedure_args<br />
+csql&gt; xrun<br />
+&#160;<br />
+=== &lt; Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+sp_name &#160;&#160;index_of &#160;arg_name &#160;data_type &#160;&#160;&#160;&#160;&#160;mode<br />
+&#160;<br />
+=================================================<br />
+&#160;'sp_int' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;0 &#160;'i' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'INTEGER' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'IN'<br />
+&#160;'athlete_add' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;0 &#160;'name' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'STRING' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'IN'<br />
+&#160;'athlete_add' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;1 &#160;'gender' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'STRING' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'IN'<br />
+&#160;'athlete_add' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2 &#160;'nation_code' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'STRING' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'IN'<br />
+&#160;'athlete_add' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;3 &#160;'event' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'STRING' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'IN'<br />
+&#160;<br />
+5 rows selected.<br />
+<br />
+Current transaction has been committed.<br />
+<br />
+1 command(s) successfully processed.&#160;</p>
+<ul>
+<li class="title">Java 저장 함수/프로시저의 삭제</li>
+<li class="desc">CUBRID에서는 등록한 Java 함수/저장 프로시저를 삭제할 수 있다. <span class="keyword">DROP FUNCTION</span> <span class="var">function_name</span> 또는 <span class="keyword">DROP PROCEDURE</span> <span class="var">procedure_name</span> 구문을 사용하여 Java 저장 프로시저를 삭제할 수 있다. 또한 여러 개의 <span class="var">function_name</span>이나 <span class="var">procedure_name</span>을 콤마(,)로 구분하여 한꺼번에 여러 개의 Java 저장 함수/프로시저를 삭제할 수 있다.</li>
+<li class="desc">Java 저장 함수/프로시저의 삭제는 Java 저장 함수/프로시저를 등록한 사용자와 DBA의 구성원만 삭제할 수 있다. 예를 들어 'sp_int' Java 저장 함수를 PUBLIC이 등록을 하였다고 한다면, <span class="keyword">PUBLIC</span> 또는 <span class="keyword">DBA</span>의 구성원만이 'sp_int' Java 저장 함수를 삭제할 수 있다.</li>
+</ul>
+<p class="code">drop function hello[, sp_int]<br />
+drop procedure Athlete_Add</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<book name="glo 클래스" >
+  <item name="개요" url="syntax/syntax_mm_glo_intro.htm" />
+  <item name="클래스에 정의된 속성" url="syntax/syntax_mm_glo_attr.htm" />
+  <item name="클래스에 정의된 메소드" url="syntax/syntax_mm_glo_method.htm" />
+  <item name="동시성" url="syntax/syntax_mm_glo_concurrency.htm" />
+  <item name="복구" url="syntax/syntax_mm_glo_recovery.htm" />
+</book>
+
+</tocdata>

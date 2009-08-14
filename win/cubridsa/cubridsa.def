@@ -1,14 +1,24 @@
 LIBRARY	cubridsa
 EXPORTS
 ;
-; variables
-;
-;
 ; functions
 ;
+    au_enable
+    au_change_owner
+    au_disable
+    au_grant
+    au_get_public_user
+    au_get_dba_user
+    cfg_free_directory
+    cfg_find_db_list
+    cfg_read_directory
+    check_database_name
     css_does_master_exist
     css_windows_shutdown
     css_windows_startup
+    css_get_peer_name
+    css_get_sock_name
+    db_create_internal
     db_error_string
     db_find_all_triggers
     db_find_user
@@ -20,11 +30,15 @@ EXPORTS
     db_get_set
     db_get_string
     db_get_superclasses
+    db_io_page_size
     db_is_system_class
     db_is_vclass
     db_login
     db_objlist_free
+    db_page_size
+    db_put_internal
     db_restart
+    db_restart_ex
     db_set_get
     db_set_size
     db_shutdown
@@ -40,14 +54,43 @@ EXPORTS
     db_trigger_name
     db_trigger_priority
     db_trigger_status
+    do_is_partitioned_subclass
+    elo_get_pathname
+    er_errid
+    file_alloc_pages
+    file_dealloc_page
+    file_find_nthfile
+    file_get_numfiles
+    file_get_tracker_vfid
+    fileio_make_volume_info_name
+    locator_has_heap
     ntohi64
+    numeric_coerce_int_to_num
+    pgbuf_fix_release
+    pgbuf_fix_debug
+    pgbuf_get_vpid_ptr
+    pgbuf_set_dirty
     prm_get_master_port_id
     rel_build_number
+    rel_disk_compatible
     rel_name
+    rel_release_string
+    sm_mark_system_class
+    sm_finish_class
+    sm_update_class
+    smt_add_attribute
+    smt_add_class_method
+    smt_def_class
+    smt_edit_class_mop
+    smt_quit
+	smt_set_attribute_default
     sysprm_load_and_init
+    sysprm_set_to_default
+    sysprm_set_force
     sysprm_obtain_parameters
     utility_get_generic_message
     utility_initialize
+    au_get_user_class_name
 ; utility functions
 	createdb
 	renamedb
@@ -63,8 +106,15 @@ EXPORTS
 	patchdb
 	checkdb
 	alterdbhost
-	estimatedb_data
-	estimatedb_index
+
+;
+;	enalbe below two functions when
+;	 #if defined(ENABLE_UNUSED_FUNCTION) is on
+;
+;	estimatedb_data
+;	estimatedb_index
+;
+
 	loaddb_user
 	unloaddb
 	compactdb
@@ -654,3 +704,4 @@ EXPORTS
     dbt_set_label
     dbt_set_loader_commands
     dbt_set_object_id
+	rel_bit_platform

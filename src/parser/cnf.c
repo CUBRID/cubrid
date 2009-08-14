@@ -705,7 +705,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 
 		  arg1 = pt_and (parser, arg1, lhs);
 		}
-	      if (arg1->info.expr.op == PT_AND)
+	      if (arg1 && arg1->info.expr.op == PT_AND)
 		{
 		  arg1->info.expr.paren_type = 1;
 		}
@@ -725,7 +725,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 
 		  arg2 = pt_and (parser, arg2, rhs);
 		}
-	      if (arg2->info.expr.op == PT_AND)
+	      if (arg2 && arg2->info.expr.op == PT_AND)
 		{
 		  arg2->info.expr.paren_type = 1;
 		}
@@ -741,7 +741,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	      list = (arg1) ? arg1 : arg2;
 	    }
 
-	  if (list->info.expr.op == PT_OR)
+	  if (list != NULL && list->info.expr.op == PT_OR)
 	    {
 	      list->info.expr.paren_type = 1;
 	    }

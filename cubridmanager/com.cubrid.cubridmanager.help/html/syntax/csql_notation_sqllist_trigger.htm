@@ -1,0 +1,127 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>TRIGGER문</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID SQL 구문\nSQL 문 목록\nTRIGGER 문");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">CUBRID SQL 구문<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">SQL 문 목록<\/a> &nbsp;&gt;&nbsp; TRIGGER 문<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>TRIGGER 문</h4>
+<h5>&lt;<span class="var">get trigger statement</span>&gt;</h5>
+<p class="syntax"><span class="keyword">GET TRIGGER TRACE</span> [ { <span class="keyword">TO</span> | <span class="keyword">INTO</span> }<br />
+&lt;<span class="var">variable</span>&gt; ]<br />
+| <span class="keyword">GET TRIGGER</span> [ <span class="keyword">MAXIMUM</span> ] <span class="keyword">DEPTH</span> [ { <span class="keyword">TO</span> | <span class="keyword">INTO</span> } &lt;<span class="var">variable</span>&gt; ]</p>
+<h5>&lt;<span class="var">set trigger statement</span>&gt;</h5>
+<p class="syntax"><span class="keyword">SET TRIGGER TRACE</span> &lt;<span class="var">trace spec</span>&gt;<br />
+| <span class="keyword">SET TRIGGER</span> [ <span class="keyword">MAXIMUM</span> ] <span class="keyword">DEPTH</span> &lt;<span class="var">depth spec</span>&gt;</p>
+<h5>&lt;<span class="var">trace spec</span>&gt;</h5>
+<p class="syntax">{ <span class="keyword">ON</span> | <span class="keyword">OFF</span> }<br />
+| &lt;<span class="var">unsigned integer literal</span>&gt;<br />
+| &lt;<span class="var">variable</span>&gt;</p>
+<h5>&lt;<span class="var">depth spec</span>&gt;</h5>
+<p class="syntax"><span class="keyword">INFINITE</span><br />
+| &lt;<span class="var">unsigned integer literal</span>&gt;<br />
+| &lt;<span class="var">variable</span>&gt;</p>
+<h5>예제</h5>
+<p class="code">CREATE TRIGGER check_age_update<br />
+BEFORE UPDATE ON person(age)<br />
+IF new.age &lt; obj.age<br />
+EXECUTE REJECT;</p>
+<p class="code">CREATE TRIGGER emit_message_on_commit<br />
+BEFORE COMMIT<br />
+EXECUTE PRINT "Committing transaction.";</p>
+<p class="code">ALTER TRIGGER check_age_update PRIORITY 10.0;</p>
+<p class="code">ALTER TRIGGER emit_message_on_commit STATUS INACTIVE;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

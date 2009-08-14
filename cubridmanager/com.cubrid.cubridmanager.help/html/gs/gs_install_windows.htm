@@ -1,0 +1,152 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>Windows에서의 설치와 실행</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\n설치와 실행\nWindows에서의 설치와 실행");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_install_linux.htm\">설치와 실행<\/a> &nbsp;&gt;&nbsp; Windows에서의 설치와 실행<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>Windows에서의 설치와 실행</h3>
+<h5>설치 시 확인 사항</h5>
+<p>CUBRID 2008 R2.0 이후부터 32비트 버전과 64비트 버전을 사용할 수 있다. 32비트 Windows에서는 CUBRID 32비트 버전을 설치하고, 64비트 Windows에서는 CUBRID 64비트 버전을 설치한다. CUBRID 매니저 및 자바 저장 프로시져를 사용하려면 Java 1.5 이상 버전이 설치되어 있어야 한다. Windows XP 또는&#160;Windows Vista 사용자는 CUBRID와는 별도로 배포되는 Visual Studio 2008 배포팩이 설치되어 있어야 한다.</p>
+<h5>설치</h5>
+<h6>서버와 클라이언트를 같이 설치할 경우</h6>
+<p>Windows용 데이터베이스 서버와 클라이언트용 컴포넌트를 같이 설치해야 할 경우 <span class="keyword">ALL</span>을 선택한다.</p>
+<p><img src="images/gs_install_windows_all.png" border="0" alt="" /></p>
+<h6>클라이언트 모듈만 설치할 경우</h6>
+<p>클라이언트 모듈만 설치하려면 <span class="keyword">CLIENT_ONLY</span>를 선택한다.</p>
+<p><span class="keyword">CLIENT_ONLY</span>를 선택하면, CUBRID 매니저를 비롯한 각종 클라이언트 접속용 환경(OLEDB Provider, ODBC Driver, JDBC Driver 및 CCI Library)만 설치된다.</p>
+<p><img src="images/gs_install_windows_client.png" border="0" alt="" /></p>
+<h5><a name="config" id="config">환경 설정</a></h5>
+<p>서비스 포트 등 사용자 환경에 맞춰 설정을 변경하려면 <span class="keyword">%CUBRID%\conf</span> 디렉터리에서 다음 파일의 파라미터 값을 변경한다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="120">
+<p>구분&#160;</p>
+</th>
+<th>
+<p>내용</p>
+</th>
+</tr>
+<tr>
+<td width="120">
+<p class="keyword">cm.conf</p>
+</td>
+<td>
+<p>CUBRID 매니저용 설정 파일로 기본 포트는 8001로 설정되어 있다.</p>
+<p>설정된 포트와 설정된 포트 번호+1 두 개의 포트가 사용됨. 즉, 8001 포트를 설정하면 8001, 8002 두 개의 포트가 사용된다.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p class="keyword">cubrid.conf</p>
+</td>
+<td>
+<p>서버 설정용 파일로 운영하려는 데이터베이스의 메모리, 동시 사용자 수에 따른 스레드 수, 브로커와 서버 사이의 통신 포트 등을 설정한다.</p>
+<p>자세한 내용은 <a href="../pm/pm_db_setting.htm">데이터베이스 파라미터</a>를 참조한다.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p><span class="keyword">cubrid_broker.conf</span></p>
+</td>
+<td>
+<p>브로커 설정용 파일로 운영하려는 브로커가 사용하는 포트, 응용서버(CAS) 수, SQL LOG 등을 설정한다.</p>
+<p>실제 JDBC와 같은 드라이버에서 보는 포트는 해당 브로커의 포트이다.</p>
+<p>자세한 내용은 <a href="../pm/pm_broker_one.htm">브로커별 파라미터</a>를 참조한다.</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

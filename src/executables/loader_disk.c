@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -78,6 +78,10 @@ alloc_recdes (int length)
       rec->length = 0;
       rec->type = 0;
       rec->data = ((char *) rec) + sizeof (RECDES);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
     }
   return (rec);
 }
@@ -255,7 +259,8 @@ disk_reserve_instance (MOP classop, OID * oid)
       else
 	{
 	  if (heap_assign_address_with_class_oid (NULL, hfid, oid, expected,
-						  ws_oid (classop)) != oid)
+						  ws_oid (classop)) !=
+	      NO_ERROR)
 	    {
 	      error = ER_LDR_CANT_INSERT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -332,7 +337,8 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       free_recdes (Diskrec);
       Diskrec = alloc_recdes (newsize);
       /* try one more time */
-      if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
+      if (Diskrec == NULL
+	  || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
 	{
 	  error = ER_LDR_CANT_TRANSFORM;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -387,7 +393,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       free_recdes (Diskrec);
       Diskrec = alloc_recdes (newsize);
       /* try one more time */
-      if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
+      if (Diskrec == NULL
+	  || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
 	{
 	  error = ER_LDR_CANT_TRANSFORM;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -464,9 +471,11 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
 	  newsize = -Diskrec->length + DB_PAGESIZE;
 	}
       free_recdes (Diskrec);
-      if ((Diskrec = alloc_recdes (newsize)) == NULL)
+      Diskrec = alloc_recdes (newsize);
+      if (Diskrec == NULL)
 	{
 	  error = er_errid ();
+	  break;
 	}
     }
   if (tf_status != TF_SUCCESS)
@@ -475,7 +484,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
 
-  if (!error)
+  if (error == NO_ERROR && Diskrec != NULL)
     {
       hfid = get_class_heap (classop, (SM_CLASS *) classop->object);
       if (hfid == NULL)
@@ -541,9 +550,11 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 	  newsize = -Diskrec->length + DB_PAGESIZE;
 	}
       free_recdes (Diskrec);
-      if ((Diskrec = alloc_recdes (newsize)) == NULL)
+      Diskrec = alloc_recdes (newsize);
+      if (Diskrec == NULL)
 	{
 	  error = er_errid ();
+	  break;
 	}
     }
   if (tf_status != TF_SUCCESS)
@@ -551,7 +562,7 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
       error = ER_LDR_CANT_TRANSFORM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
-  if (!error)
+  if (error == NO_ERROR && Diskrec != NULL)
     {
       hfid = get_class_heap (classop, (SM_CLASS *) classop->object);
       if (hfid == NULL)

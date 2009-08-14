@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -34,6 +34,7 @@
 #include "porting.h"
 #include "thread.h"
 #include "connection_defs.h"
+#include "connection_support.h"
 #include "error_manager.h"
 #include "critical_section.h"
 #include "thread_impl.h"
@@ -73,46 +74,6 @@ extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern void css_shutdown_conn_by_tran_index (int tran_index);
 
-extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
-extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
-extern void css_read_remaining_bytes (SOCKET fd, int len);
-extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
-extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
-			 int timeout);
-extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
-
-extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn,
-					      int request,
-					      unsigned short *request_id,
-					      const char *arg_buffer,
-					      int arg_size,
-					      char *reply_buffer,
-					      int reply_size);
-extern int css_send_request (CSS_CONN_ENTRY * conn, int command,
-			     unsigned short *request_id,
-			     const char *arg_buffer, int arg_buffer_size);
-extern int css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-			  const char *buffer, int buffer_size);
-extern int css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-			      const char *buffer1, int buffer1_size,
-			      const char *buffer2, int buffer2_size);
-extern int css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-				const char *buffer1, int buffer1_size,
-				const char *buffer2, int buffer2_size,
-				const char *buffer3, int buffer3_size);
-extern int css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-			       const char *buffer1, int buffer1_size,
-			       const char *buffer2, int buffer2_size,
-			       const char *buffer3, int buffer3_size,
-			       const char *buffer4, int buffer4_size);
-extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-				const char **buffers, int *buffers_size,
-				int num_buffers);
-
-extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
-			   const char *buffer, int buffer_size);
-extern int css_send_oob (CSS_CONN_ENTRY * conn, char byte,
-			 const char *buffer, int buffer_size);
 extern int css_send_abort_request (CSS_CONN_ENTRY * conn,
 				   unsigned short request_id);
 extern int css_read_header (CSS_CONN_ENTRY * conn,

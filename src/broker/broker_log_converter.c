@@ -30,11 +30,15 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
 
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
-#include "broker_getopt.h"
 
 #define CAS_LOG_MSG_INDEX 19
 #define CAS_RUN_NEW_LINE_CHAR	1
@@ -183,9 +187,11 @@ log_converter (FILE * infp, FILE * outfp)
 	}
     }
 
+  FREE_MEM (linebuf_tstr);
   return 0;
 
 error:
+  FREE_MEM (linebuf_tstr);
   return -1;
 }
 

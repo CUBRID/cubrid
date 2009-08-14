@@ -34,6 +34,7 @@ remember_LDFLAGS="$LDFLAGS"
 AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_LIBTOOL
+AC_PROG_RANLIB
 AC_PROG_INSTALL
 AC_PROG_YACC
 AC_PROG_LEX
@@ -242,7 +243,6 @@ then
 	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lhoard -lstdc++ -ldl -lpthread"
 fi
 
-AC_CHECK_PROG(ANT, ant, ant)
 AC_ARG_WITH(jdk,
 	AS_HELP_STRING([--with-jdk=DIR],
 		       [JDK HOME you want to use @<:@default=check@:>@]),
@@ -292,11 +292,14 @@ AS_IF([test "x$with_jdk" != "xno"],
 	then
 	    JDK6_DEFINE=-DJDK6
 	fi
-
-	JDBC_DIR=jdbc
-	JSP_DIR=java
     else
 	AC_MSG_ERROR(Java 1.5 or later is required)
+    fi
+
+    AC_CHECK_PROG(ANT, ant, ant)
+    if test "x$ANT" == "x"
+    then
+      AC_MSG_ERROR(Ant was not found. check PATH or install ant)
     fi
 
     AC_CHECK_FILE($JDK_HOME/include/jni.h,[JAVA_INC="-I$JDK_HOME/include"],
@@ -323,8 +326,6 @@ int main(void) { return 0; }
     ],
     [SYS_DEFS="$SYS_DEFS -DDISABLE_JSP"])
 AC_SUBST(JDK6_DEFINE)
-AC_SUBST(JDBC_DIR)
-AC_SUBST(JSP_DIR)
 AC_SUBST(JAVA_INC)
 AC_SUBST(JAVA_HOME)
 
@@ -411,7 +412,6 @@ SERVER_DEFS="-DSERVER_MODE"
 CS_DEFS="-DCS_MODE"
 SA_DEFS="-DSA_MODE"
 COMMON_DEFS="-DANSI=1 -DSYSV -DMAXPATHLEN=1024 -D_REENTRANT"
-OTHER_DEFS="-DYY_PREFIX=qp_yy"
 VERSION_DEFS="-DMAJOR_VERSION=$MAJOR_VERSION -DMINOR_VERSION=$MINOR_VERSION \
 -DPATCH_VERSION=$PATCH_VERSION -DRELEASE_STRING=$RELEASE_STRING \
 -DMAJOR_RELEASE_STRING=$MAJOR_RELEASE_STRING -DBUILD_NUMBER=$BUILD_NUMBER"
@@ -433,6 +433,43 @@ ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
 EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC"
 
+# install dir
+DIR_DEFS="-DCUBRID_PREFIXDIR=\\\"\$(prefix)\\\" -DCUBRID_BINDIR=\\\"\$(bindir)\\\" -DCUBRID_LIBDIR=\\\"\$(libdir)\\\""
+if test "x$CONF_DIR" == "x"
+then
+	CONF_DIR="${prefix}/conf"
+fi
+DIR_DEFS="$DIR_DEFS -DCUBRID_CONFDIR=\\\"$CONF_DIR\\\""
+
+if test "x$JAVA_DIR" == "x"
+then
+	JAVA_DIR="${prefix}/java"
+fi
+DIR_DEFS="$DIR_DEFS -DCUBRID_JAVADIR=\\\"$JAVA_DIR\\\""
+
+if test "x$JDBC_DIR" == "x"
+then
+	JDBC_DIR="${prefix}/jdbc"
+fi
+DIR_DEFS="$DIR_DEFS -DCUBRID_JDBCDIR=\\\"$JDBC_DIR\\\""
+
+if test "x$DEMO_DIR" == "x"
+then
+	DEMO_DIR="${prefix}/demo"
+fi
+
+if test "x$MSG_DIR" == "x"
+then
+	MSG_DIR="${prefix}/msg"
+fi
+DIR_DEFS="$DIR_DEFS -DCUBRID_LOCALEDIR=\\\"$MSG_DIR\\\""
+
+if test "x$VAR_DIR" == "x"
+then
+	VAR_DIR="${prefix}/var"
+fi
+DIR_DEFS="$DIR_DEFS -DCUBRID_VARDIR=\\\"$VAR_DIR\\\""
+
 AC_SUBST([BUILD_NUMBER])
 AC_SUBST([SYS_DEFS])
 AC_SUBST([SYS_LIBS])
@@ -442,7 +479,6 @@ AC_SUBST([SERVER_DEFS])
 AC_SUBST([CS_DEFS])
 AC_SUBST([SA_DEFS])
 AC_SUBST([COMMON_DEFS])
-AC_SUBST([OTHER_DEFS])
 AC_SUBST([VERSION_DEFS])
 AC_SUBST([SRC_INC])
 AC_SUBST([CUBRID_LIB])
@@ -451,6 +487,13 @@ AC_SUBST([SA_LIB])
 AC_SUBST([CAS_LIB])
 AC_SUBST([CCI_LIB])
 AC_SUBST([ESQL_LIB])
+AC_SUBST([BIT_MODEL])
+AC_SUBST([DIR_DEFS])
+AC_SUBST([CONF_DIR])
+AC_SUBST([JAVA_DIR])
+AC_SUBST([JDBC_DIR])
+AC_SUBST([DEMO_DIR])
+AC_SUBST([MSG_DIR])
 
 AH_TOP([
 #ifndef _CONFIG_H_
@@ -479,7 +522,7 @@ AC_CONFIG_FILES([Makefile
 	demo/Makefile
 	jdbc/Makefile
 	java/Makefile
-	cubridmanager/Makefile
+	cubridmanager/com.cubrid.cubridmanager.build/Makefile
 	])
 
 AC_OUTPUT

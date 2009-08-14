@@ -1,0 +1,145 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>레인지 분할 정의</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n분할\n영역 분할\n영역 분할 정의");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition.htm\">분할<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition_range_define.htm\">영역 분할<\/a> &nbsp;&gt;&nbsp; 영역 분할 정의<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>영역 분할 정의</h4>
+<h6>설명</h6>
+<p>영역 분할은 <span class="keyword">PARTITION&#160;BY RANGE</span> 문을&#160;이용하여&#160;정의한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE TABLE</span>(<br />
+...<br />
+)<br />
+<span class="keyword">PARTITION BY RANGE</span> ( &lt;<span class="var">partition_expression</span>&gt; ) (<br />
+<span class="keyword">PARTITION</span> &lt;<span class="var">partition_name</span>&gt; <span class="keyword">VALUES LESS THAN</span> ( &lt;<span class="var">range_value</span>&gt; ),<br />
+<span class="keyword">PARTITION</span> &lt;<span class="var">partition_name</span>&gt; <span class="keyword">VALUES LESS THAN</span> ( &lt;<span class="var">range_value</span>&gt; ) ),<br />
+... )<br />
+)</p>
+<ul>
+<li><span class="var">partition_expression</span> : 분할 표현식을&#160;지정한다.&#160;표현식은 분할 대상이 되는 컬럼 명을 지정하거나 함수를 사용하여&#160;지정할 수 있다. 사용 가능한 데이터 타입과 함수에 대한 자세한 설명은 "<a href="syntax_partition_manage_datatype.htm">분할 표현식에 사용할 수 있는 데이터 타입</a>"을 참조한다.</li>
+<li><span class="var">partition_name</span>&#160;: 분할 명을 지정한다.</li>
+<li><span class="var">range_value</span>&#160;: 분할의 기준이 되는&#160;값을 지정한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 올림픽 참가국 정보를 담은 participant2 테이블을&#160;생성하고&#160;참가한 올림픽의 개최연도를 2000년도 전/후로 영역 분할하는 데이터를 삽입하는 예제이다. 데이터 삽입 시 88년, 96년 올림픽에 참가한 국가는 before_2000에, 나머지 국가는 before_2008에 저장된다.</li>
+</ul>
+<p class="code">CREATE&#160;TABLE participant2 (host_year INT, nation CHAR(3), gold INT, silver INT, bronze INT)<br />
+PARTITION BY RANGE (host_year)<br />
+(PARTITION before_2000 VALUES LESS THAN (2000),<br />
+PARTITION before_2008 VALUES LESS THAN&#160;(2008)&#160;);<br />
+<br />
+INSERT INTO&#160;participant2&#160;VALUES (1988, 'NZL', 3, 2, 8);<br />
+INSERT INTO participant2 VALUES (1988, 'CAN', 3, 2, 5);<br />
+INSERT INTO participant2 VALUES (1996, 'KOR', 7, 15, 5);<br />
+INSERT INTO participant2 VALUES (2000, 'RUS', 32, 28, 28);<br />
+INSERT INTO participant2 VALUES (2004, 'JPN', 16, 9, 12);</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음과 같이&#160;영역 분할에서&#160;분할 키 값이&#160;<span class="keyword">NULL</span>이면 첫 번째 분할에 저장된다.</li>
+</ul>
+<p class="code">INSERT INTO participant2 VALUES(NULL, 'AAA', 0, 0, 0);</p>
+<h6>주의 사항</h6>
+<ul>
+<li>한 테이블이 가질 수 있는 최대 분할 개수는 1024이다.</li>
+<li>분할 키 값이 <span class="keyword">NULL</span>이면, 첫 번째 분할에 저장된다(예제 2 참조).</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

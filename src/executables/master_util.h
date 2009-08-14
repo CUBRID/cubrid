@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -36,7 +36,6 @@ struct socket_queue_entry
   SOCKET fd;
   int fd_type;
   int db_error;
-  int transaction_id;
   int queue_p;
   int info_p;
   int error_p;
@@ -45,12 +44,8 @@ struct socket_queue_entry
   char *version_string;
   char *env_var;
   CSS_CONN_ENTRY *conn_ptr;
-  int timeout_duration;
-  struct timeval *client_timeout;
   int port_id;
   struct socket_queue_entry *next;
-  struct sockaddr_in *local_name;
-  struct sockaddr_in *foreign_name;
 };
 
 extern bool master_util_config_startup (const char *db_name, int *port_id);

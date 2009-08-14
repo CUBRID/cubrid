@@ -467,6 +467,11 @@ main (int argc, char *argv[])
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
 
+  while (shm_br->br_info[br_index].ready_to_service != true)
+    {
+      SLEEP_MILISEC (0, 200);
+    }
+
   THREAD_BEGIN (receiver_thread, receiver_thr_f, NULL);
   THREAD_BEGIN (dispatch_thread, dispatch_thr_f, NULL);
   THREAD_BEGIN (psize_check_thread, psize_check_thr_f, NULL);
@@ -552,12 +557,12 @@ main (int argc, char *argv[])
 		{
 		  shm_appl->as_info[add_as_index].pid = pid;
 		  shm_appl->as_info[add_as_index].session_id = 0;
-		  shm_appl->as_info[add_as_index].session_keep = FALSE;
 		  shm_appl->as_info[add_as_index].psize = getsize (pid);
 		  shm_appl->as_info[add_as_index].psize_time = time (NULL);
 		  shm_appl->as_info[add_as_index].uts_status =
 		    UTS_STATUS_IDLE;
 		  shm_appl->as_info[add_as_index].service_flag = SERVICE_ON;
+		  shm_appl->as_info[add_as_index].reset_flag = FALSE;
 		  (shm_br->br_info[br_index].appl_server_num)++;
 		  (shm_appl->num_appl_server)++;
 		}
@@ -609,8 +614,12 @@ main (int argc, char *argv[])
 		  shm_appl->as_info[drop_as_index].service_flag = SERVICE_ON;
 		  drop_as_index = -1;
 		}
-	      CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
-				 CON_STATUS_LOCK_BROKER);
+
+	      if (drop_as_index >= 0)
+		{
+		  CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
+				     CON_STATUS_LOCK_BROKER);
+		}
 	      MUTEX_UNLOCK (con_status_mutex);
 	    }
 
@@ -833,8 +842,6 @@ dispatch_thr_f (void *arg)
     {
       for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	{
-	  if (shm_appl->as_info[i].session_keep == TRUE)
-	    continue;
 	  if (shm_appl->as_info[i].service_flag == SERVICE_OFF)
 	    {
 	      if (shm_appl->as_info[i].uts_status == UTS_STATUS_IDLE)
@@ -860,7 +867,7 @@ dispatch_thr_f (void *arg)
 	{
 	  MUTEX_UNLOCK (clt_table_mutex);
 	  MUTEX_UNLOCK (suspend_mutex);
-	  SLEEP_MILISEC (0, 10);
+	  SLEEP_MILISEC (0, 30);
 	  continue;
 	}
       MUTEX_UNLOCK (clt_table_mutex);
@@ -875,7 +882,7 @@ dispatch_thr_f (void *arg)
 	  MUTEX_UNLOCK (service_flag_mutex);
 
 	  if (as_index < 0)
-	    SLEEP_MILISEC (0, 10);
+	    SLEEP_MILISEC (0, 30);
 	  else
 	    break;
 	}
@@ -906,7 +913,7 @@ dispatch_thr_f (void *arg)
 
 	  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, 0);
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  if (send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr) == 0)
+	  if (send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr) == FALSE)
 	    {			/* fail */
 	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
 	      shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
@@ -1140,7 +1147,7 @@ run_appl_server (int as_index)
   char appl_name[APPL_SERVER_NAME_MAX_SIZE], appl_name_str[64];
   char access_log_env_str[256], error_log_env_str[256];
   int pid;
-  char argv0[64];
+  char argv0[128];
   char buf[PATH_MAX];
 #if !defined(WINDOWS)
   int i;
@@ -1196,8 +1203,8 @@ run_appl_server (int as_index)
 	       shm_br->br_info[br_index].error_log_file);
       putenv (error_log_env_str);
 
-      sprintf (argv0, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name,
-	       as_index + 1);
+      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
+		shm_br->br_info[br_index].name, appl_name, as_index + 1);
 
 #if defined(WINDOWS)
       pid = run_child (appl_name);
@@ -1245,13 +1252,13 @@ restart_appl_server (int as_index)
     }
   else
     {
-      char pid_file_name[PATH_MAX];
+      char pid_file_name[PATH_MAX], dirname[PATH_MAX];
       FILE *fp;
       int old_pid;
 
-      get_cubrid_file (FID_AS_PID_DIR, pid_file_name);
-      sprintf (pid_file_name, "%s%s_%d.pid", pid_file_name,
-	       shm_br->br_info[br_index].name, as_index + 1);
+      get_cubrid_file (FID_AS_PID_DIR, dirname);
+      snprintf (pid_file_name, PATH_MAX - 1, "%s%s_%d.pid", dirname,
+		shm_br->br_info[br_index].name, as_index + 1);
       fp = fopen (pid_file_name, "r");
       if (fp)
 	{
@@ -1806,18 +1813,16 @@ psize_check_thr_f (void *ar)
 static void
 check_cas_log (char *br_name, int as_index)
 {
-  char log_filename[512];
+  char log_filename[PATH_MAX], dirname[PATH_MAX];
 
-  if ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
-      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
-      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_MYSQL))
+  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
     return;
-  if (!(shm_appl->sql_log_mode & SQL_LOG_MODE_ON))
+  if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE)
     return;
 
-  get_cubrid_file (FID_SQL_LOG_DIR, log_filename);
-  sprintf (log_filename, "%s%s_%d.sql.log", log_filename, br_name,
-	   as_index + 1);
+  get_cubrid_file (FID_SQL_LOG_DIR, dirname);
+  snprintf (log_filename, PATH_MAX, "%s%s_%d.sql.log", dirname,
+	    br_name, as_index + 1);
 
   if (access (log_filename, F_OK) < 0)
     {
@@ -2065,15 +2070,16 @@ find_idle_cas (void)
 
   for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
     {
-      if (shm_appl->as_info[i].session_keep == TRUE)
-	{
-	  continue;
-	}
       if (shm_appl->as_info[i].service_flag != SERVICE_ON)
 	{
 	  continue;
 	}
+#if !defined (WINDOWS)
+      if (shm_appl->as_info[i].uts_status == UTS_STATUS_IDLE
+	  && kill (shm_appl->as_info[i].pid, 0) == 0)
+#else
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_IDLE)
+#endif
 	{
 	  idle_cas_id = i;
 	  wait_cas_id = -1;
@@ -2143,9 +2149,7 @@ find_drop_as_index (void)
   int i, drop_as_index, exist_idle_cas;
   time_t max_wait_time, wait_time;
 
-  if ((shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
-      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_ORACLE)
-      && (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS_MYSQL))
+  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
     {
       drop_as_index = shm_br->br_info[br_index].appl_server_num - 1;
       wait_time =

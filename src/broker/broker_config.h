@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -25,9 +25,9 @@
 #ifndef	_BROKER_CONFIG_H_
 #define	_BROKER_CONFIG_H_
 
+#include "config.h"
+
 #define	APPL_SERVER_CAS		0
-#define	APPL_SERVER_CAS_ORACLE	1
-#define	APPL_SERVER_CAS_MYSQL	2
 
 #define MAX_BROKER_NUM          100
 
@@ -36,7 +36,13 @@
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
 
-#define	DEFAULT_SERVER_MAX_SIZE	20
+#if __WORDSIZE == 64
+#define	DEFAULT_SERVER_MAX_SIZE	80
+#elif __WORDSIZE == 32
+#define DEFAULT_SERVER_MAX_SIZE 40
+#else
+#error "Error __WORDSIZE"
+#endif
 #define	DEFAULT_TIME_TO_KILL	120	/* seconds */
 #define SQL_LOG_TIME_MAX	-1
 
@@ -45,41 +51,25 @@
 #define CONF_ERR_LOG_BROWSER    0x02
 #define CONF_ERR_LOG_BOTH       (CONF_ERR_LOG_LOGFILE | CONF_ERR_LOG_BROWSER)
 
-#define SQL_LOG_MODE_OFF		0x00
-#define SQL_LOG_MODE_ON			0x01
-#define SQL_LOG_MODE_APPEND		0x02
-#define SQL_LOG_MODE_BIND_VALUE		0x04
-
 #define DEFAULT_SQL_LOG_MAX_SIZE	100000	/* 100M */
+#define DEFAULT_LONG_QUERY_TIME         60
+#define DEFAULT_LONG_TRANSACTION_TIME   60
 #define MAX_SQL_LOG_MAX_SIZE            2000000
 
 #define BROKER_NAME_LEN		64
 #define BROKER_LOG_MSG_SIZE	64
 
-#define CONF_GET_VALUE_ON_OFF(CONF_FIELD, VALUE)	\
-	CONF_FIELD = conf_get_value_table_on_off(VALUE)
 
-#define CONF_GET_VALUE_POSITIVE_INT(CONF_FIELD, STR_VALUE, DEFAULT_VAL)	\
-	do {							\
-	  CONF_FIELD = atoi(STR_VALUE);				\
-	  if ((CONF_FIELD) <= 0)				\
-	    CONF_FIELD = DEFAULT_VAL;				\
-	} while (0)
-
-#define CONF_GET_VALUE_INT(CONF_FIELD, STR_VALUE)	\
-	CONF_FIELD = atoi(STR_VALUE)
-
-#define CONF_GET_VALUE_SQL_LOG(SQL_LOG_MODE, CONF_VALUE, SQL_LOG_MODE_VALUE)  \
-	do {							\
-	  char	_tmp_on_off;					\
-	  CONF_GET_VALUE_ON_OFF(_tmp_on_off, CONF_VALUE);	\
-	  if (_tmp_on_off == ON)				\
-	    SQL_LOG_MODE |= SQL_LOG_MODE_VALUE;			\
-	  else if (_tmp_on_off == OFF)				\
-	    SQL_LOG_MODE &= ~SQL_LOG_MODE_VALUE;		\
-	  else							\
-	    SQL_LOG_MODE = -1;					\
-	} while (0)
+typedef enum t_sql_log_value T_SQL_LOG_MODE_VALUE;
+enum t_sql_log_mode_value
+{
+  SQL_LOG_MODE_NONE = 0,
+  SQL_LOG_MODE_ERROR = 1,
+  SQL_LOG_MODE_TIMEOUT = 2,
+  SQL_LOG_MODE_NOTICE = 3,
+  SQL_LOG_MODE_ALL = 4,
+  SQL_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
+};
 
 typedef enum t_keep_con_value T_KEEP_CON_VALUE;
 enum t_keep_con_value
@@ -88,6 +78,14 @@ enum t_keep_con_value
   KEEP_CON_ON = 1,
   KEEP_CON_AUTO = 2,
   KEEP_CON_DEFAULT = KEEP_CON_AUTO
+};
+
+typedef enum t_access_mode_value T_ACCESS_MODE_VALUE;
+enum t_access_mode_value
+{
+  READ_WRITE_ACCESS_MODE = 0,
+  READ_ONLY_ACCESS_MODE = 1,
+  SLAVE_ONLY_ACCESS_MODE = 2
 };
 
 typedef struct t_broker_info T_BROKER_INFO;
@@ -104,7 +102,7 @@ struct t_broker_info
   char cache_user_info;
   char sql_log2;
   char statement_pooling;
-  char sql_log_single_line;
+  char access_mode;
   char name[BROKER_NAME_LEN];
   int pid;
   int port;
@@ -117,12 +115,13 @@ struct t_broker_info
   int appl_server_shm_id;
   int appl_server_max_size;
   int session_timeout;
-  int sql_log_time;
   int job_queue_size;
   int time_to_kill;
   int err_code;
   int os_err_code;
   int sql_log_max_size;
+  int long_query_time;
+  int long_transaction_time;
 #if defined (WINDOWS)
   int pdh_workset;
   float pdh_pct_cpu;
@@ -140,17 +139,20 @@ struct t_broker_info
 
   char jdbc_cache;
   char jdbc_cache_only_hint;
+  char cci_pconnect;
   int jdbc_cache_life_time;
+  char ready_to_service;
 };
 
-#if defined (_UC_ADMIN_SO_)
-extern int broker_config_read (T_BROKER_INFO *, int *, int *, char *, char,
-			       char *);
-#else
-extern int broker_config_read (T_BROKER_INFO *, int *, int *, char *);
-#endif
-int conf_get_value_table_on_off (const char *value);
-int conf_get_value_keep_con (const char *value);
+extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
+			       int *num_broker, int *br_shm_id,
+			       char *admin_log_file, char admin_flag,
+			       char *admin_err_msg);
+extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
+				int num_broker, int br_shm_id);
 
+extern int conf_get_value_table_on_off (const char *value);
+extern int conf_get_value_sql_log_mode (const char *value);
+extern int conf_get_value_keep_con (const char *value);
 
 #endif /* _BROKER_CONFIG_H_ */

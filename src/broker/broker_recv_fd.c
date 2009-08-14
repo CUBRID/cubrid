@@ -78,7 +78,7 @@ recv_fd (int fd, int *rid)
   msg.msg_controllen = CONTROLLEN;
 #endif
 
-  if ((rc = recvmsg (fd, &msg, 0)) < 0)
+  if ((rc = recvmsg (fd, &msg, 0)) < sizeof (int))
     {
 #ifdef _DEBUG
       printf ("recvmsg failed. errno = %d. str=%s\n", errno,

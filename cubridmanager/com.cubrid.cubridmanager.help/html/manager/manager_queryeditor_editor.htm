@@ -1,0 +1,127 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>질의 편집 창</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n질의 편집기\n질의 편집 창");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_queryeditor_architecture.htm\">질의 편집기<\/a> &nbsp;&gt;&nbsp; 질의 편집 창<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>질의 편집 창</h3>
+<p>질의 편집 창에서는&#160;데이터베이스 조작을 위한 질의를 입력하고 편집할 수 있으며,&#160;툴바에서 지원하는 모든 기능을 사용할 수 있다. 질의 편집 창은&#160;구문 자동 완성 기능 및 팝업 메뉴를 통한 편집 및 스키마 정보 보기 기능을 제공한다.</p>
+<h6>바로가기 메뉴</h6>
+<p>질의 편집 창에서 마우스 오른쪽 버튼을 클릭하여 복사, 잘라내기, 붙여넣기, 찾기/바꾸기, SQL서식화, 스키마 정보 보기를 실행할 수 있다. 편집 기능은 메뉴의 [편집] 기능과 동기화되어 있다.</p>
+<p><img src="images/manager_queryeditor_editor_context.png" border="0" alt="" /></p>
+<h6>스키마 정보 보기</h6>
+<p>테이블 이름을 선택한 후 [스키마 정보 보기]를 실행하면 질의 편집기 뷰와 스키마 정보 뷰를 한 화면에서 보면서 질의를 작성할 수 있다.</p>
+<p><img src="images/manager_queryeditor_editor_schema.jpg" border="0" alt="" /></p>
+<h6>구문 자동 완성</h6>
+<p>큐브리드 데이터베이스 키워드에 대해서 입력을 하면 자동으로 구문을 찾아 완성시켜 주므로&#160;사용의 편의성을 높이고 사용자의 접근성을 높여 준다.</p>
+<p><img src="images/manager_queryeditor_editor_auto.jpg" border="0" alt="" /></p>
+<h6>다중 질의 수행 기능</h6>
+<p>질의문 마지막에 세미콜론(;)을 입력하여, 하나의 질의가 끝나고 다음 질의가 시작됨을 명시한다. 여러 개의 질의가 존재할 경우, 각 질의는 순차적으로 수행되며, 질의별로 질의 결과 창에 결과 탭이 형성된다. 세미콜론으로 구분하지 않고 다중 질의를 수행하면, 첫 번째 질의만 수행되고 이후의 질의는 무시된다.</p>
+<p><img src="images/manager_queryeditor_editor_multi.jpg" border="0" alt="" /></p>
+<h6>끌어서 놓기</h6>
+<p>조회하려는 테이블을 호스트 탐색 트리에서 질의 편집기의 편집 창으로 끌어서 놓으면 해당 테이블에 대한 <span class="keyword">SELECT</span> 질의문이 자동 생성된다.</p>
+<p><img src="images/manager_queryeditor_editor_drag.jpg" border="0" alt="" /></p>
+<h6>질의 취소 기능</h6>
+<p>수행 중인 질의를 중지시킬 수 있는 기능이다. 정지 기능은 두 가지 기능으로 나누어 볼 수 있다.</p>
+<ul>
+<li class="title">다중 질의 수행 시</li>
+<li class="desc">자동 커밋이 설정되어 있을 때 다중 질의 수행 시 정지 버튼을 클릭하면, 현재 취소되는 질의 이전에 처리한 질의들은 정상적으로 반영되고, 현재 취소된 질의와 이후의 질의는 반영되지 않는다. 자동 커밋이 설정되어 있지 않으면, 수행된 모든 질의를 반영하지 않는다.</li>
+<li class="title">긴 트랜잭션 수행 시</li>
+<li class="desc">정지 호출 시 CUBRID 매니저 &gt; JDBC &gt; 브로커 &gt; 서버의 각 단계로 질의 취소 명령이 전달되어 최종적으로 데이터베이스 서버에서 해당 질의가 정지되어야 실제 질의가 취소된다. 단, 윈도우 시스템에서 브로커와 서버가 구동 중일 때는 본 기능이 동작하지 않는다.</li>
+<li class="desc"><img src="images/manager_queryeditor_editor_stop.jpg" border="0" alt="" /></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>SERIALIZABLE</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트랜잭션 관리\n트랜잭션 격리 수준\nSERIALIZABLE");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_intro.htm\">트랜잭션 관리<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_isolation_intro.htm\">트랜잭션 격리 수준<\/a> &nbsp;&gt;&nbsp; SERIALIZABLE<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SERIALIZABLE</h4>
+<p>이 격리 수준에서는 모든 동시성 관련 문제들, 즉 더티 읽기, 반복 불가능한 읽기, 유령 읽기 등이 발생하지 않는다.</p>
+<p>다음과 같은 규칙이 적용된다.</p>
+<ul>
+<li>트랜잭션은 다른 트랜잭션에서 수정 중인 객체를 덮어쓰지 않는다.</li>
+<li>트랜잭션은 트랜잭션이 끝날 때까지 객체를 커밋하지 않는다.</li>
+<li>트랜잭션은 다른 트랜잭션에서 수정 중인 객체를 읽지 않는다.</li>
+<li>다른 트랜잭션은 현재 트랜잭션이 종료하기 전까지 현재 트랜잭션이 읽은 객체들(특정 클래스의 인스턴스들 혹은 특정 조건을 만족하는 인스턴스들)에 속하는 객체들을 추가하지 못한다.</li>
+</ul>
+<p>이 격리 수준은 2단계 잠금 프로토콜을 따른다.</p>
+<h6>예제</h6>
+<p>다음 예제는 한 트랜잭션은 어떤 클래스에 인스턴스를 삽입하고, 다른 트랜잭션은 특정 검색 조건으로 검색하는 트랜잭션이 있는 경우이다. 트랜잭션 T1은 임의의 트랜잭션 격리 수준이고, T2는 <span class="keyword">SERIALIZABLE</span> 격리 수준이다. 여기서 participant2 클래스는 기존에 생성되지 않은 것을 가정한다.</p>
+<ol>
+<li>T1이 participant2 클래스를 생성하고 host_year, nation_code 속성에 &#160;유일 키(unique key)를 생성하고 몇 개의 인스턴스들을 삽입한다. T1이 커밋한 후에 CUBRID는 T1에 의해 획득된 모든 잠금들을 해제한다. 그리고, T2가 participant2 에 대해 nation_code = 'AUS' 라는 조건으로 검색한다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">set transaction isolation level serializable;<br />
+;autocommit off<br />
+create class participant2 (host_year integer, nation_code char(3));<br />
+create unique index on participant2 (host_year, nation_code);<br />
+insert into participant2 (host_year, nation_code) values (2008, 'AUS');<br />
+commit work;<br />
+;xrun<br />
+<span class="var">1 rows inserted.</span></li>
+<li>User2 (T2)</li>
+<li class="code">set transaction isolation level serializable;<br />
+;autocommit off<br />
+select * from participant2 where nation_code='AUS';<br />
+;xrun<br />
+<span class="var">1 rows selected.</span></li>
+</ol>
+</li>
+<li>이때, T1이 (2004, 'AUS')인 인스턴스를 participant2 클래스에 삽입하려고 하면 T2가 nation_code = 'AUS'라는 조건으로 검색하고 나서 아직 <span class="keyword">COMMIT WORK</span> 문을 수행하지 않았기 때문에 대기한다. T2가 커밋을 하여 모든 잠금들을 해제하면 대기하였던 T1이 수행된다. T2가 나중에(------ 2nd 이하) 다시 같은 조건으로 검색하면 T1이 아직 삽입한 인스턴스에 대해 잠금을 획득하고 있으므로 대기 상태가 된다.
+<ol>
+<li>User1 (T1):</li>
+<li class="code">insert into participant2 (host_year, nation_code) values (2004, 'AUS');<br />
+;xrun<br />
+------ 1st<br />
+<span class="var">1 rows inserted.</span></li>
+<li>User2 (T2):</li>
+<li class="code">select host_year, nation_code from participant2 where nation_code='AUS';<br />
+;xrun<br />
+<span class="var">=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;&#160;&#160;&#160;host_year &#160;nation_code<br />
+=====================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2008 &#160;'AUS' &#160;<br />
+1 rows selected.</span><br />
+commit work;<br />
+;xrun<br />
+<span class="var">1 command(s) successfully processed.</span><br />
+------ 2nd<br />
+select host_year, nation_code from participant2 where nation_code='AUS';<br />
+;xrun</li>
+</ol>
+</li>
+<li>다시 T1이 커밋하면 잠금이 해제되면서 T2가 수행되어 <span class="keyword">SELECT</span> 문의 결과를 볼 수 있게 된다.
+<ol>
+<li>User1 (T1) :</li>
+<li class="code">commit work;<br />
+;xrun</li>
+<li>User2 (T2):</li>
+<li class="code"><span class="var">=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;&#160;&#160;&#160;host_year &#160;nation_code<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2008 &#160;'AUS'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2004 &#160;'AUS'<br />
+2 rows selected</span>.</li>
+</ol>
+</li>
+<li>T1이 participant2 클래스를 nation_medals 클래스로 이름을 갱신하려고 하면 T2가 커밋되지 않았기 때문에 대기하게 된다.
+<ol>
+<li>User 1 (T1):</li>
+<li class="code">rename class participant2 as nation_medals;<br />
+;xrun</li>
+</ol>
+</li>
+<li>T2가 커밋하면(a) T1이 다시 진행되어 participant2 클래스를 nation_medals 클래스로 갱신한다. T1이 커밋되고(b), T2가 participant2 클래스에 대한 <span class="keyword">SELECT</span> 문이 수행되면(c) participant2 클래스는 더 이상 존재하지 않으므로 구문 에러가 발생한다.
+<ol>
+<li>User 2 (T2):</li>
+<li class="code">commit work;<br />
+;xrun<br />
+---------------------------------------------------------------------------(a)<br />
+select * from participant2 where nation_code = 'AUS';<br />
+;xrun<br />
+---------------------------------------------------------------------------(c)<br />
+<span class="var">In line 1, column 1,<br />
+ERROR: Unknown class "participant2".</span></li>
+<li>User 1 (T1):</li>
+<li class="code">commit work;<br />
+;xrun<br />
+---------------------------------------------------------------------------(b)</li>
+</ol>
+</li>
+</ol>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

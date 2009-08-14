@@ -1,0 +1,127 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>질의 수행 계획 캐시 확인</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 관리\n질의 수행 계획 캐시 확인");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_server_command.htm\">데이터베이스 관리<\/a> &nbsp;&gt;&nbsp; 질의 수행 계획 캐시 확인<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>질의 수행 계획 캐시 확인</h3>
+<p><span class="keyword">cubrid plandump</span> 유틸리티를 사용해서 서버에 저장(캐시)되어 있는 질의 수행 계획들의 정보를 출력할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid</span> <span class="keyword">plandump</span>&#160;<span class="var">options</span> <span class="var">database_name</span><br />
+<span class="var">options</span> : [<span class="keyword">-d</span>|<span class="keyword">--drop</span>] &#160;[{<span class="keyword">-o</span>|<span class="keyword">--output-file</span>=} <span class="var">file</span>]</p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">plandump</span> :&#160;대상 데이터베이스에 대하여 현재 캐시에 저장되어 있는 질의 수행 계획을 출력하는 명령이다.</li>
+<li><span class="var">options</span> :&#160;<span class="keyword">-d</span>와 <span class="keyword">-o</span> 옵션만 지원한다.</li>
+<li><span class="var">database_name</span> :&#160;데이터베이스 서버 캐시로부터 질의 수행 계획을 확인 또는 제거하고자 하는 데이터베이스 이름이다</li>
+</ul>
+<h6>옵션</h6>
+<ul>
+<li class="title">캐시에 저장된 질의 수행 계획 확인</li>
+</ul>
+<p class="code">cubrid plandump testdb</p>
+<p></p>
+<ul>
+<li class="title">캐시에 저장된 질의 수행 계획 제거(-d 또는 --drop)</li>
+</ul>
+<p class="code">cubrid plandump -d testdb</p>
+<p></p>
+<ul>
+<li class="title">캐시에 저장된 질의 수행 계획 결과 파일에 저장(-o 또는 --output)</li>
+</ul>
+<p class="code">cubrid plandump -o output.txt testdb</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

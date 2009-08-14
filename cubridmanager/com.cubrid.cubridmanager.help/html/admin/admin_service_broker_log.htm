@@ -1,0 +1,261 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>브로커 로그</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID 제어\n브로커\n브로커 로그");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_conf_command.htm\">CUBRID 제어<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_broker_all.htm\">브로커<\/a> &nbsp;&gt;&nbsp; 브로커 로그<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>브로커 로그</h4>
+<p>브로커 구동과 관련된 로그에는 접속 로그, 에러 로그, SQL 로그가 있다. 각각의 로그는 설치 디렉터리의 log 디렉터리에서 확인할 수 있으며, 저장 디렉터리의 변경은&#160;브로커 환경 설정 파일(cubrid_broker.conf)의 LOG_DIR 파라미터와 ERROR_LOG_DIR 파라미터를 통해 설정할 수 있다.</p>
+<h6>접속 로그 확인</h6>
+<p>접속 로그 파일은&#160;응용 클라이언트&#160;접속에 관한 정보를 기록하며,&#160;<span class="var">broker_name.access</span>의 이름으로&#160;저장된다.&#160;또한, 브로커 환경 설정 파일에서 LOG_BACKUP 파라미터가 ON으로 설정된 경우, 브로커의 구동이 정상적으로 종료되면 접속 로그 파일에 종료된 날짜와 시간 정보가 추가되어 로그 파일이 저장된다. 예를 들어, broker1이 2008년 6월 17일 오후 12시 27분에 정상 종료되었다면, broker1.access.20080617.1227 이라는 접속 로그 파일이 생성된다. 다음은 접속 로그의 예제를 보여준다.</p>
+<p>다음은 log 디렉터리에 생성된 접속 로그 파일의 예제와 설명이다.</p>
+<p class="code">1 192.168.1.203 - - 972523031.298 972523032.058 2008/08/17 12:27:46~2008/08/17 12:27:47 7118 - -1<br />
+2 192.168.1.203 - - 972523052.778 972523052.815 2008/08/17 12:27:47~2008/08/17 12:27:47 7119 ERR 1025<br />
+1 192.168.1.203 - - 972523052.778 972523052.815 2008/08/17 12:27:49~2008/08/17 12:27:49 7118 - -1</p>
+<ul>
+<li>1 :&#160;브로커의 응용서버에 부여된 ID</li>
+<li>192.168.1.203 :&#160;응용 클라이언트의 IP 주소</li>
+<li>972523031.298 :&#160;클라이언트의 요청 처리를 시작한 시각의 타임스탬프 값</li>
+<li>2008/08/17 12:27:46 :&#160;클라이언트 요청을 처리 시작한 시각</li>
+<li>972523032.058 :&#160;클라이언트의 요청 처리를 완료한 시각의 타임스탬프 값</li>
+<li>2008/08/17 12:27:47 :&#160;클라이언트의 요청을 처리 완료한 시각</li>
+<li>7118 :&#160;응용서버의 프로세스 ID</li>
+<li>-1 :&#160;요청 처리 중 발생된 에러가 없음</li>
+<li>ERR 1025 :&#160;요청 처리 중 발생된 에러가 있고, 에러 정보는 에러 로그 파일의 offset=1025에 존재함</li>
+</ul>
+<h6>에러 로그 확인</h6>
+<p>에러 로그 파일은 응용 클라이언트의 요청을 처리하는 도중에 발생된 에러에 관한 정보를 기록하며,&#160;<span class="var">broker_name_app_server_num.err</span>의 이름으로 저장된다.</p>
+<p>다음은 에러 로그의 예제와 설명이다.</p>
+<p class="code">Time: 02/04/09 13:45:17.687 - SYNTAX ERROR *** ERROR CODE = -493, Tran = 1, EID = 38<br />
+Syntax: Unknown class "unknown_tbl". select * from unknown_tbl</p>
+<ul>
+<li>Time: 02/04/09 13:45:17.687 : 에러 발생 시각</li>
+<li>&#160; - SYNTAX ERROR : 에러의 종류(SYNTAX ERROR, ERROR 등)</li>
+<li>*** ERROR CODE = -493 : 에러 코드</li>
+<li>&#160; Tran = 1 : 트랜잭션 ID. -1은 트랜잭션 ID를 할당 받지 못한 경우임.</li>
+<li>&#160; EID = 38 : 에러 ID. SQL 문 처리 중 에러가 발생한 경우, 서버나 클라이언트 에러 로그와 관련이 있는 SQL 로그를 찾을 때 사용함.</li>
+<li>&#160; Syntax:… &#160;: 에러 메시지</li>
+</ul>
+<h6>SQL 로그 관리</h6>
+<p>SQL 로그 파일은 응용 클라이언트가 요청하는 SQL을 기록하며, <span class="var">broker_name_app_server_num.sql.log</span>라는 이름으로 저장된다. SQL 로그는 SQL_LOG 파라미터 값이 ON인 경우에 설치 디렉터리의 log/broker/sql_log 디렉터리에 생성된다. 이 때, 생성되는 SQL 로그 파일의 크기는 SQL_LOG_MAX_SIZE 파라미터의 설정값을 초과할 수 없으므로 주의한다.</p>
+<p>다음은 SQL 로그 파일의 예제와 설명이다.</p>
+<p class="code">02/04 13:45:17.687 (38) prepare 0 insert into unique_tbl values (1)<br />
+02/04 13:45:17.687 (38) prepare srv_h_id 1<br />
+02/04 13:45:17.687 (38) execute srv_h_id 1 insert into unique_tbl values (1)<br />
+02/04 13:45:17.687 (38) execute error:-670 tuple 0 time 0.000, EID = 39<br />
+02/04 13:45:17.687 (0) auto_rollback<br />
+02/04 13:45:17.687 (0) auto_rollback 0<br />
+*** 0.000<br />
+<br />
+02/04 13:45:17.687 (39) prepare 0 select * from unique_tbl<br />
+02/04 13:45:17.687 (39) prepare srv_h_id 1 (PC)<br />
+02/04 13:45:17.687 (39) execute srv_h_id 1 select * from unique_tbl<br />
+02/04 13:45:17.687 (39) execute 0 tuple 1 time 0.000<br />
+02/04 13:45:17.687 (0) auto_commit<br />
+02/04 13:45:17.687 (0) auto_commit 0<br />
+*** 0.000</p>
+<ul>
+<li>02/04 13:45:17.687 : 응용 클라이언트의 요청 시각</li>
+<li>(39) : SQL 문 그룹의 시퀀스 번호이며, prepared statement pooling을 사용하는 경우, 파일 내에서 SQL 문마다 고유(unique)하게 부여된다.</li>
+<li>prepare 0 : prepared statement인지 여부</li>
+<li>prepare srv_h_id 1 : 해당 SQL 문을 srv_h_id 1로 prepare한다.</li>
+<li>(PC) : 플랜 캐시에 저장되어 있는 내용을 사용하는 경우에 출력된다.</li>
+<li>SELECT... : 실행 SQL 문. Statement pooling한 경우, WHERE 절의 binding 변수가 ?로 표시된다.</li>
+<li>Execute 0 tuple 1 time 0.000 : 1개의 row가 실행되고, 소요 시간은 0.000초</li>
+<li>auto_commit/auto_rollback : 자동으로 커밋되거나, 롤백되는 것을&#160;의미한다. 두 번째 auto_commit/auto_rollback은 에러 코드이며, 0은 에러가 없이 트랜잭션이 완료되었음을 뜻한다.</li>
+</ul>
+<p>설치 디렉터리의 log/broker/sql_log 디렉터리에 생성된 SQL 로그를 실행 시간이 긴 순서대로 정렬하기 위하여 <span class="keyword">broker_log_top</span> 유틸리티를 실행한다. <span class="keyword">broker_log_top</span> 유틸리티의 구문은 다음과 같으며, 예제는 8월 18일부터 8월 19일까지 생성된 SQL 로그를 트랜잭션 실행 시간이 긴 순서대로 정렬한다.</p>
+<p class="syntax"><span class="keyword">broker_log_top</span> [<span class="var">options</span>] <span class="var">sql_log_file</span><br />
+<span class="var">options</span> : {-<span class="var">t</span> | -<span class="var">F</span> &#160;<span class="var">date</span> | -<span class="var">T</span> &#160;<span class="var">date</span>}</p>
+<p class="code">% broker_log_top -F 0818 -T 0819 -t *.sql.log<br />
+query_editor_1.sql.log<br />
+query_editor_2.sql.log<br />
+query_editor_3.sql.log<br />
+query_editor_4.sql.log<br />
+query_editor_5.sql.log</p>
+<p>설치 디렉터리의 log/broker/sql_log 디렉터리에 생성된 SQL 로그&#160;파일에 기록된 질의를 별도의 입력 파일로 저장하기 위하여 broker_log_converter 유틸리티를 실행한다. broker_log_converter 유틸리티의 구문은 다음과 같으며, 예제는 query_editor_1.sql.log 파일에 저장된 질의를 query_convert.in 파일로 변경한다.</p>
+<p class="syntax"><span class="keyword">broker_log_converter</span> &#160;<span class="var">SQL_log_file</span> &#160;<span class="var">output_file</span></p>
+<p class="code">% broker_log_converter query_editor_1.sql.log query_convert.in</p>
+<p>broker_log_converter 유틸리티에 의해 생성된&#160;질의 파일에 저장된 질의를 재실행하기 위하여 broker_log_runner 유틸리티를 실행한다.&#160;broker_log_runner 유틸리티의 구문은 다음과 같으며, 예제는 query_convert.in 파일에 저장된 질의를 demodb에서&#160;재실행하며, 브로커 IP가 192.168.1.10이고, 브로커&#160;포트는 30000인 환경임을 가정한다.</p>
+<p class="syntax"><span class="keyword">broker_log_runner</span> <span class="var">options</span> <span class="var">input_file</span><br />
+<span class="var">options</span> : -<span class="keyword">I</span> <span class="var">cas_ip</span> -<span class="keyword">P</span> <span class="var">cas_port</span> &#160;-<span class="keyword">d</span> <span class="var">dbname</span> &#160;[-<span class="keyword">u</span> <span class="var">dbuser</span> [-<span class="keyword">p</span> <span class="var">dbpasswd</span>&#160;]]&#160; [-<span class="keyword">t</span> <span class="var">num_thread</span>]&#160;[-<span class="keyword">r</span> <span class="var">repeat_count</span>]&#160;[ -<span class="keyword">o</span> <span class="var">result_file</span>]&#160;</p>
+<table border="1">
+<tr>
+<th>
+<p>옵션</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">I</span> <span class="var">broker_ip</span></p>
+</td>
+<td>
+<p>CUBRID 브로커의 IP주소 또는 호스트 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">P</span> <span class="var">broker_port</span></p>
+</td>
+<td>
+<p>CUBRID 브로커의 포트 번호</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">d</span> <span class="var">dbname</span></p>
+</td>
+<td>
+<p>질의를 실행할 데이터베이스 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">u</span> <span class="var">dbuser</span></p>
+</td>
+<td>
+<p>데이터베이스 사용자 이름 (디폴트 값: public)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">p</span> <span class="var">dbpasswd</span></p>
+</td>
+<td>
+<p>데이터베이스 암호</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">t</span> <span class="var">numthread</span></p>
+</td>
+<td>
+<p>스레드의 개수(디폴트 값: 1)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">r</span> <span class="var">repeat_count</span></p>
+</td>
+<td>
+<p>질의가 수행될 횟수(디폴트 값: 1)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>-<span class="keyword">o</span> <span class="var">result_file</span></p>
+</td>
+<td>
+<p>수행 결과를 저장할 파일 이름</p>
+</td>
+</tr>
+</table>
+<p class="code">% broker_log_runner -I 192.168.1.10&#160; -P 30000 -d demodb -t 2 query_convert.in<br />
+cas_ip = 192.168.1.10<br />
+cas_port = 30000<br />
+num_thread = 2<br />
+repeat = 1<br />
+dbname = demodb<br />
+dbuser = public<br />
+dbpasswd =<br />
+exec_time : 0.001<br />
+exec_time : 0.000<br />
+0.000500 0.000500 -</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

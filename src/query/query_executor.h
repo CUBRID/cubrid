@@ -331,6 +331,7 @@ struct buildvalue_proc_node
   DB_VALUE *grbynum_val;	/* groupby_num() value result */
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
+  int is_always_false;		/* always-false agg-query? */
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;

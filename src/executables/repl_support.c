@@ -354,19 +354,23 @@ repl_pack_server_name (bool serveryn, const char *server_name,
 {
   char *packed_name = NULL;
   const char *env_name = NULL;
-  char pid_string[10];
+  char pid_string[16];
   int n_len, r_len, e_len, p_len;
 
   if (server_name != NULL)
     {
       env_name = envvar_root ();
+      if (env_name == NULL)
+	{
+	  return NULL;
+	}
 
       /* here we changed the 2nd string in packed_name from
        * rel_release_string() to rel_major_release_string()
        * solely for the purpose of matching the name of the CUBRID driver.
        */
 
-      sprintf (pid_string, "%d", getpid ());
+      snprintf (pid_string, sizeof (pid_string), "%d", getpid ());
       n_len = strlen (server_name) + 1;
       r_len = strlen (rel_major_release_string ()) + 1;
       e_len = strlen (env_name) + 1;
@@ -374,10 +378,19 @@ repl_pack_server_name (bool serveryn, const char *server_name,
       *name_length = n_len + r_len + e_len + p_len + 5;
 
       packed_name = malloc (*name_length);
+      if (packed_name == NULL)
+	{
+	  return NULL;
+	}
+
       if (serveryn == true)
-	packed_name[0] = '+';
+	{
+	  packed_name[0] = '+';
+	}
       else
-	packed_name[0] = '&';
+	{
+	  packed_name[0] = '&';
+	}
       memcpy (packed_name + 1, server_name, n_len);
       memcpy (packed_name + 1 + n_len, rel_major_release_string (), r_len);
       memcpy (packed_name + 1 + n_len + r_len, env_name, e_len);
@@ -424,10 +437,16 @@ repl_connect_to_master (bool serveryn, const char *server_name)
   int name_length = 0;
 
   packed_name = repl_pack_server_name (serveryn, server_name, &name_length);
-  conn = css_connect_to_master_server (PRM_TCP_PORT_ID, packed_name,
+  if (packed_name == NULL)
+    {
+      return REPL_COMMON_ERROR;
+    }
+  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name,
 				       name_length);
   if (conn == NULL)
-    return REPL_COMMON_ERROR;
+    {
+      return REPL_COMMON_ERROR;
+    }
 
   repl_Pipe_to_master = conn->fd;
 
@@ -484,7 +503,7 @@ out:
    * could be a shell. For now, leave in/out/err open
    */
 
-  fd_max = css_get_max_socket_fds();
+  fd_max = css_get_max_socket_fds ();
   for (fd = 3; fd < fd_max; fd++)
     {
       close (fd);
@@ -607,7 +626,12 @@ repl_error_flush (FILE * fp, bool serveryn)
     {
       er_time = time (NULL);
       er_tm_p = localtime (&er_time);
-      strftime (time_array, 256, "%c", er_tm_p);
+      if (er_tm_p == NULL)
+	{
+	  memset (&er_tm, 0, sizeof (struct tm));
+	  er_tm_p = &er_tm;
+	}
+      strftime (time_array, sizeof (time_array), "%c", er_tm_p);
       fprintf (fp, "[%s] :  ", time_array);
     }
 

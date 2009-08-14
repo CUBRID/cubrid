@@ -1,0 +1,293 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>HA 관련 시스템 카탈로그</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\nHA 관련 시스템 카탈로그");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; HA 관련 시스템 카탈로그<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>HA 관련 시스템 카탈로그</h3>
+<h6>클래스 이름: db_ha_apply_info</h6>
+<p><span class="keyword">applylogdb</span> 유틸리티가 복제 로그를 반영할 때마다 그 진행 상태를 저장하기 위한 테이블이다. 이 테이블은 <span class="keyword">applylogdb</span> 유틸리티가 커밋하는 시점마다 갱신된다. 각 칼럼의 의미는 다음과 같다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="110">
+<p>칼럼명</p>
+</th>
+<th width="100">
+<p>칼럼 타입</p>
+</th>
+<th>
+<p>의미</p>
+</th>
+</tr>
+<tr>
+<td width="110">
+<p>db_name</p>
+</td>
+<td width="100">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>로그에 저장된 DB 이름</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>db_creation_time</p>
+</td>
+<td width="100">
+<p>DATETIME</p>
+</td>
+<td>
+<p>반영하는 로그에 대한 원본 DB의 생성 시각</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>copied_log_path</p>
+</td>
+<td width="100">
+<p>VARCHAR(4096)</p>
+</td>
+<td>
+<p>반영하는 로그 파일의 경로</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>page_id</p>
+</td>
+<td width="100">
+<p>INTEGER</p>
+</td>
+<td>
+<p>슬레이브 DB에 커밋된 복제 로그의 page</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>offset</p>
+</td>
+<td width="100">
+<p>INTEGER</p>
+</td>
+<td>
+<p>슬레이브 DB에 커밋된 복제 로그의 offset</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>log_record_time</p>
+</td>
+<td width="100">
+<p>DATETIME</p>
+</td>
+<td>
+<p>슬레이브 DB에 커밋된 복제 로그에 포함된 timestamp, 즉 해당 로그 레코드 생성 시간</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>last_access_time</p>
+</td>
+<td width="100">
+<p>DATETIME</p>
+</td>
+<td>
+<p>applylogdb가 슬레이브 DB에 commit 한 시각</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>insert_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 insert한 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>update_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 update한 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>delete_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 delete한 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>schema_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 schema를 변경한 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>commit_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 commit한 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>fail_counter</p>
+</td>
+<td width="100">
+<p>BIGINT</p>
+</td>
+<td>
+<p>applylogdb가 insert/update/delete/commit/schema 변경 중 실패 횟수</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>required_page_id</p>
+</td>
+<td width="100">
+<p>INTEGER</p>
+</td>
+<td>
+<p>applylogdb가 읽을 수 있는 최소 pageid</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>start_time</p>
+</td>
+<td width="100">
+<p>DATETIME</p>
+</td>
+<td>
+<p>applylogdb 프로세스가 슬레이브 DB에 접속한 시간</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>status</p>
+</td>
+<td width="100">
+<p>INTEGER</p>
+</td>
+<td>
+<p>반영 진행 상태 (0: IDLE, 1: BUSY)</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

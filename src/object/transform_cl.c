@@ -754,12 +754,20 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
   if (tf_Allow_fixups)
     {
       buf->fixups = tf_make_fixup ();
+      if (buf->fixups == NULL)
+	{
+	  return TF_ERROR;
+	}
     }
 
   class_ = (SM_CLASS *) classobj;
 
   if (optimize_sets (class_, obj) != NO_ERROR)
     {
+      if (tf_Allow_fixups)
+	{
+	  tf_free_fixup (buf->fixups);
+	}
       return TF_ERROR;
     }
   switch (_setjmp (buf->env))
@@ -838,7 +846,10 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
     }
 
   /* make sure we free this */
-  tf_free_fixup (buf->fixups);
+  if (tf_Allow_fixups)
+    {
+      tf_free_fixup (buf->fixups);
+    }
 
   *index_flag = has_index;
 
@@ -927,15 +938,22 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	}
 
       /* variable */
-      for (i = class_->fixed_count, j = 0; i < class_->att_count; i++, j++)
+      if (vars != NULL)
 	{
-	  att = &(class_->attributes[i]);
-	  mem = obj + att->offset;
-	  PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	  for (i = class_->fixed_count, j = 0;
+	       i < class_->att_count && j < class_->variable_count; i++, j++)
+	    {
+	      att = &(class_->attributes[i]);
+	      mem = obj + att->offset;
+	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	    }
 	}
     }
+
   if (vars != NULL)
-    db_ws_free (vars);
+    {
+      db_ws_free (vars);
+    }
 
   return (obj);
 }
@@ -987,33 +1005,34 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
   SM_REPR_ATTRIBUTE *rat, *found;
   char *mem;
 
-  FOR_ATTRIBUTES (class_->attributes, att)
-  {
-    found = NULL;
-    for (rat = oldrep->attributes; rat != NULL && found == NULL;
-	 rat = rat->next)
-      {
-	if (rat->attid == att->id)
-	  {
-	    found = rat;
-	  }
-      }
-    if (found == NULL)
-      {
-	mem = obj + att->offset;
-	/* initialize in case there isn't an initial value */
-	PRIM_INITMEM (att->type, mem);
-	if (!DB_IS_NULL (&att->original_value))
-	  {
-	    /* assign the initial value, should check for non-existance ? */
-	    PRIM_SETMEM (att->type, att->domain, mem, &att->original_value);
-	    if (!att->type->variable_p)
-	      {
-		OBJ_SET_BOUND_BIT (obj, att->storage_order);
-	      }
-	  }
-      }
-  }
+  for (att = class_->attributes; att != NULL;
+       att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      found = NULL;
+      for (rat = oldrep->attributes; rat != NULL && found == NULL;
+	   rat = rat->next)
+	{
+	  if (rat->attid == att->id)
+	    {
+	      found = rat;
+	    }
+	}
+      if (found == NULL)
+	{
+	  mem = obj + att->offset;
+	  /* initialize in case there isn't an initial value */
+	  PRIM_INITMEM (att->type, mem);
+	  if (!DB_IS_NULL (&att->original_value))
+	    {
+	      /* assign the initial value, should check for non-existance ? */
+	      PRIM_SETMEM (att->type, att->domain, mem, &att->original_value);
+	      if (!att->type->variable_p)
+		{
+		  OBJ_SET_BOUND_BIT (obj, att->storage_order);
+		}
+	    }
+	}
+    }
 }
 
 
@@ -1077,6 +1096,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	      if (vars == NULL)
 		{
 		  or_abort (buf);
+		  return NULL;
 		}
 	      else
 		{
@@ -1093,7 +1113,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	  /* calculate an attribute map */
 	  total = oldrep->fixed_count + oldrep->variable_count;
 	  attmap = NULL;
-	  if (total)
+	  if (total > 0)
 	    {
 	      attmap =
 		(SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) *
@@ -1105,6 +1125,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		      db_ws_free (vars);
 		    }
 		  or_abort (buf);
+		  return NULL;
 		}
 	      else
 		{
@@ -1119,18 +1140,35 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	  /* read the fixed attributes */
 	  rat = oldrep->attributes;
 	  start = buf->ptr;
-	  for (i = 0; i < oldrep->fixed_count && rat != NULL;
+	  for (i = 0;
+	       i < oldrep->fixed_count && rat != NULL && attmap != NULL;
 	       i++, rat = rat->next)
 	    {
 	      type = PR_TYPE_FROM_ID (rat->typeid_);
+	      if (type == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_TF_INVALID_REPRESENTATION, 1,
+			  class_->header.name);
+
+		  db_ws_free (attmap);
+		  if (vars != NULL)
+		    {
+		      db_ws_free (vars);
+		    }
+
+		  or_abort (buf);
+		  return NULL;
+		}
+
 	      if (attmap[i] == NULL)
 		{
 		  PRIM_READ (type, rat->domain, buf, NULL, -1);
 		}
 	      else
 		{
-		  PRIM_READ (type, rat->domain, buf, obj + attmap[i]->offset,
-			     -1);
+		  PRIM_READ (type, rat->domain, buf,
+			     obj + attmap[i]->offset, -1);
 		}
 	    }
 
@@ -1157,8 +1195,8 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		}
 
 	      rat = oldrep->attributes;
-	      for (i = 0; i < oldrep->fixed_count && rat != NULL;
-		   i++, rat = rat->next)
+	      for (i = 0; i < oldrep->fixed_count && rat != NULL
+		   && attmap != NULL; i++, rat = rat->next)
 		{
 		  if (attmap[i] != NULL)
 		    {
@@ -1172,19 +1210,35 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	    }
 
 	  /* variable */
-	  for (i = 0; i < oldrep->variable_count && rat != NULL;
-	       i++, rat = rat->next)
+	  if (vars != NULL)
 	    {
-	      type = PR_TYPE_FROM_ID (rat->typeid_);
-	      att_index = oldrep->fixed_count + i;
-	      if (attmap[att_index] == NULL)
+	      for (i = 0; i < oldrep->variable_count && rat != NULL
+		   && attmap != NULL; i++, rat = rat->next)
 		{
-		  PRIM_READ (type, rat->domain, buf, NULL, vars[i]);
-		}
-	      else
-		{
-		  PRIM_READ (type, rat->domain, buf,
-			     obj + attmap[att_index]->offset, vars[i]);
+		  type = PR_TYPE_FROM_ID (rat->typeid_);
+		  if (type == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_TF_INVALID_REPRESENTATION, 1,
+			      class_->header.name);
+
+		      db_ws_free (attmap);
+		      db_ws_free (vars);
+
+		      or_abort (buf);
+		      return NULL;
+		    }
+
+		  att_index = oldrep->fixed_count + i;
+		  if (attmap[att_index] == NULL)
+		    {
+		      PRIM_READ (type, rat->domain, buf, NULL, vars[i]);
+		    }
+		  else
+		    {
+		      PRIM_READ (type, rat->domain, buf,
+				 obj + attmap[att_index]->offset, vars[i]);
+		    }
 		}
 	    }
 
@@ -1751,15 +1805,15 @@ static void
 install_substructure_set (OR_BUF * buf, DB_LIST * list, VREADER reader,
 			  int expected)
 {
-  DB_LIST *l;
+  DB_LIST *p;
   int count, i;
 
   if (expected)
     {
       count = or_skip_set_header (buf);
-      for (i = 0, l = list; i < count; i++, l = l->next)
+      for (i = 0, p = list; i < count && p != NULL; i++, p = p->next)
 	{
-	  (*reader) (buf, l);
+	  (*reader) (buf, p);
 	}
     }
 }
@@ -1953,12 +2007,20 @@ disk_to_domain2 (OR_BUF * buf)
   int rc = NO_ERROR;
 
   vars = read_var_table (buf, tf_Metaclass_domain.n_variable);
+  if (vars == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+
   typeid_ = (DB_TYPE) or_get_int (buf, &rc);
 
   domain = tp_domain_new (typeid_);
   if (domain == NULL)
     {
+      free_var_table (vars);
       or_abort (buf);
+      return NULL;
     }
 
   domain->precision = or_get_int (buf, &rc);
@@ -2106,6 +2168,12 @@ disk_to_metharg (OR_BUF * buf)
   int rc = NO_ERROR;
 
   vars = read_var_table (buf, tf_Metaclass_metharg.n_variable);
+  if (vars == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+
   arg = classobj_make_method_arg (0);
   if (arg == NULL)
     {
@@ -3068,6 +3136,7 @@ disk_to_repattribute (OR_BUF * buf)
   if (vars == NULL)
     {
       or_abort (buf);
+      return NULL;
     }
 
   id = or_get_int (buf, &rc);
@@ -3077,6 +3146,7 @@ disk_to_repattribute (OR_BUF * buf)
     {
       free_var_table (vars);
       or_abort (buf);
+      return NULL;
     }
 
   rat->domain =
@@ -3177,11 +3247,19 @@ disk_to_representation (OR_BUF * buf)
   int rc = NO_ERROR;
 
   vars = read_var_table (buf, tf_Metaclass_representation.n_variable);
+  if (vars == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+
   rep = classobj_make_representation ();
 
   if (rep == NULL)
     {
+      free_var_table (vars);
       or_abort (buf);
+      return NULL;
     }
   else
     {
@@ -3705,6 +3783,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	      free_var_table (vars);
 	    }
 	  or_abort (buf);
+	  return NULL;
 	}
       else
 	{
@@ -3755,20 +3834,29 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
 					   class_->att_count);
 	  if (class_->att_count && class_->attributes == NULL)
-	    or_abort (buf);
+	    {
+	      or_abort (buf);
+	      return NULL;
+	    }
 
 	  class_->shared = (SM_ATTRIBUTE *)
 	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
 					   class_->shared_count);
 	  if (class_->shared_count && class_->shared == NULL)
-	    or_abort (buf);
+	    {
+	      or_abort (buf);
+	      return NULL;
+	    }
 
 	  class_->class_attributes = (SM_ATTRIBUTE *)
 	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
 					   class_->class_attribute_count);
 	  if (class_->class_attribute_count
 	      && class_->class_attributes == NULL)
-	    or_abort (buf);
+	    {
+	      or_abort (buf);
+	      return NULL;
+	    }
 
 	  class_->methods = (SM_METHOD *)
 	    classobj_alloc_threaded_array (sizeof (SM_METHOD),
@@ -3776,6 +3864,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  if (class_->method_count && class_->methods == NULL)
 	    {
 	      or_abort (buf);
+	      return NULL;
 	    }
 
 	  class_->class_methods = (SM_METHOD *)
@@ -3784,6 +3873,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  if (class_->class_method_count && class_->class_methods == NULL)
 	    {
 	      or_abort (buf);
+	      return NULL;
 	    }
 
 	  /* variable 5 */
@@ -3839,8 +3929,10 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  /* variable 13 */
 	  triggers = get_object_set (buf, vars[13].length);
 	  if (triggers != NULL)
-	    class_->triggers =
-	      tr_make_schema_cache (TR_CACHE_CLASS, triggers);
+	    {
+	      class_->triggers =
+		tr_make_schema_cache (TR_CACHE_CLASS, triggers);
+	    }
 
 	  /* variable 14 */
 	  class_->properties = get_property_list (buf, vars[14].length);
@@ -3863,22 +3955,23 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  classobj_fixup_loaded_class (class_);
 
 	  /* set attribute's auto_increment object if any */
-	  FOR_ATTRIBUTES (class_->attributes, att)
-	  {
-	    att->auto_increment = NULL;
-	    if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
-	      {
-		SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-						class_->header.name,
-						att->header.name);
-		r = do_get_serial_obj_id (&serial_obj_id, &found,
-					  auto_increment_name);
-		if (r == 0 && found)
-		  {
-		    att->auto_increment = db_object (&serial_obj_id);
-		  }
-	      }
-	  }
+	  for (att = class_->attributes; att != NULL;
+	       att = (SM_ATTRIBUTE *) att->header.next)
+	    {
+	      att->auto_increment = NULL;
+	      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+		{
+		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
+						  class_->header.name,
+						  att->header.name);
+		  r = do_get_serial_obj_id (&serial_obj_id, &found,
+					    auto_increment_name);
+		  if (r == 0 && found)
+		    {
+		      att->auto_increment = db_object (&serial_obj_id);
+		    }
+		}
+	    }
 	}
       free_var_table (vars);
     }
@@ -4066,7 +4159,10 @@ tf_disk_to_class (RECDES * record)
 	  class_ = (MOBJ) disk_to_class (buf, (SM_CLASS **) & class_);
 	}
 
-      ((SM_CLASS *) class_)->header.obj_header.chn = chn;
+      if (class_ != NULL)
+	{
+	  ((SM_CLASS *) class_)->header.obj_header.chn = chn;
+	}
       break;
 
     default:

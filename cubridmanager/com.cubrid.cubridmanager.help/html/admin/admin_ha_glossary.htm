@@ -1,0 +1,158 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>용어 정의</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\n용어 정의");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; 용어 정의<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>용어 정의</h3>
+<h6>마스터 데이터베이스</h6>
+<p>복제의 대상이 되는 원본 데이터베이스이며 마스터 데이터베이스는 읽기, 쓰기 등 모든 데이터베이스 연산이 허용된다.</p>
+<h6>슬레이브 데이터베이스</h6>
+<p>마스터 데이터베이스와 동일한 내용의 복제된 데이터베이스(replica)이며, 마스터 데이터베이스의 변경이 자동적으로 반영되는 데이터베이스이다. 마스터 데이터베이스와 달리 슬레이브 데이터베이스는 읽기 연산만 사용될 수 있다.</p>
+<h6>Active 서버</h6>
+<p>'primary 서버'라고도 하며, 사용자에게 서비스를 제공하는 서버이다. active 서버는 마스터 데이터베이스를 사용한 읽기, 쓰기 등 모든 서비스를 제공한다.</p>
+<h6>Standby 서버</h6>
+<p>'secondary', 'passive' 혹은 'failover 서버'라고 하며, active 서버가 장애로 인해 서비스를 할 수 없을 때, active 서버를 대신하여 서비스를 제공할 수 있다. standby 서버는 슬레이브 데이터베이스를 사용한 읽기 서비스를 제공한다.</p>
+<h6>Failover</h6>
+<p>active 서버 또는 active 서버가 존재하는 시스템에 장애가 발생하여 서비스를 제공할 수 없는 상태가 검출되면, 자동으로 standby 서버를 active 서버로 절체하여 서비스를 계속 제공하는 기능이다.</p>
+<h6>Failback</h6>
+<p>failover 이후, active 서버가 장애 이전의 상태로 복구되면 자동으로 복구된 active 서버를 통하여 서비스가 수행되도록 원래의 상태로 다시 절체되는 기능이다.</p>
+<h6>Role change</h6>
+<p>이전 active 서버에서 장애가 복구가 되어도 failback 하지 않고 현재의 상태로 서비스를 계속 제공하는 기능이다.</p>
+<h6>Heartbeat</h6>
+<p>HA 기능을 제공하기 위한 핵심 구성 요소이다. 이 기능은 데이터, 응용 프로그램, 서비스와 같은 시스템을 구성하는 중요한 자원의 가용 상태를 확인하고 failover, failback, monitoring 기능을 제공한다</p>
+<h6>서버 이중화(Duplex, Duplicate)</h6>
+<p>HA기능을 제공하기 위해 서버 HW를 중복으로 구성하여 시스템을 구축하는 것이다. 장애 발생시 standby 서버가 active 서버의 기능을 수행하는 방식(Active-Standby. 아래 그림)과 장애 발생 서버의 역할을 추가로 대행하면서 서비스기능을 수행하도록 이중 체계를 구축하는 방식(Active-Active)이 있다.</p>
+<p><img src="images/admin_ha_glossary_duplex.png" border="0" alt="" /></p>
+<p class="caption">데이터베이스 서버 다중화 구조</p>
+<p>하나의 데이터베이스에 장애가 발생하여도 서비스를 계속 제공할 수 있도록 여러 대의 데이터베이스 서버를 구성한 구조이다. 서비스를 제공 중이던 active 데이터베이스 서버에 장애가 발생하면, 동일한 데이터를 가지고 있는 standby 데이터베이스 서버가 서비스를 제공할 수 있다.</p>
+<h6>브로커 다중화 구조</h6>
+<p>브로커를 다중화 하여 특정 브로커에 장애가 발생하여도 다른 브로커를 통한 서비스를 계속 제공할 수 있도록 구성한 구조이다. 또한 각각의 브로커는 아래에서 설명하는 것과 같이 다른 특성을 가질 수 있다.</p>
+<ul>
+<li><span class="keyword">Read-only broker</span> : read only 브로커는 읽기 연산만을 수행하는 브로커이며 standby 서버와의 연결을 통해 서비스를 제공한다. standby 서버가 존재하지 않는 경우 active 서버로 읽기 요청을 보낼 수 있다. 즉, 데이터베이스 서버와의 연결을 시도하는 순서는 standby 서버 우선이며 모든 standby 서버와의 연결 실패 시, active 서버와 연결될 수 있다.</li>
+<li><span class="keyword">Slave-only broker</span> : read-only broker와 달리 slave-only broker는 standby 서버로만 요청을 보낼 수 있다. standby 서버가 존재하지 않는 경우 active 서버로 연결을 시도하지 않는다.</li>
+</ul>
+<h6>트랜잭션 로그 다중화(Transaction Log Multiplication)</h6>
+<p>active 서버에서 생성되는 트랜잭션 로그가 하나 이상의 standby 서버에 실시간으로 전송하여 모든 서버에 동일한 로그가 기록되도록 하는 기능이다.</p>
+<h6>CUBRID 데이터베이스 서버의 HA 모드</h6>
+<ul>
+<li><span class="keyword">active</span> : 일반적인 읽기 및 쓰기 요청에 대한 서비스를 제공하며, 복제에 필요한 트랜잭션 로그를 생성하는 상태이다..</li>
+<li><span class="keyword">to-be active</span> : standby 상태의 서버를 active 모드로 변경하면 to-be-active 단계를 거쳐 active가 된다. to-be-active상태이면 유입되는 요청을 중지(suspend)하고 반영되지 않은 복제 로그를 반영한 후 active 상태로 변경된다.</li>
+<li><span class="keyword">standby</span> : 읽기 요청에 대한 서비스만 제공하는 상태로 쓰기 요청은 거부(deny)한다.</li>
+<li><span class="keyword">to-be standby</span> : 서버를 standby로 모드로 변경하면 to-be-standby 단계를 거쳐 standby가 된다. to-be-standby 모드이면 유입되는 요청을 거부(deny)하고 수행 중인 트랜잭션이 완료되면 standby 상태로 변경된다.</li>
+<li><span class="keyword">maintenance</span> : 데이터베이스의 운영 작업(스키마 변경, 설정 변경 등)을 하기 위한 모드이다. 일시적으로 해당 데이터베이스 서버를 HA 구성에서 제외시킨 다음 데이터베이스 서버를 maintenance 모드로 실행시켜서 필요한 운영 작업을 할 수 있다. 상태 동작 방식은 다음과 같다.
+<ul>
+<li>로컬 호스트의 클라이언트만 접속할 수 있지만, 트랜잭션 로그를 복사 또는 적용하는 copylogdb와 applylogdb 유틸리티는 접속할 수 없다.</li>
+<li>쓰기 연산을 통하여 데이터베이스를 변경할 수 있지만, 변경에 대한 복제 로그를 생성하지 않는다.</li>
+</ul>
+</li>
+<li class="desc"><img src="images/admin_ha_glossary_mode.png" border="0" alt="" /></li>
+<li class="desc"><span class="caption">모드 간의 상태 변경 다이어그램</span></li>
+<li>failover 시 데이터베이스 서버의 상태 변화
+<ul>
+<li>active 서버: active -&gt; dead</li>
+<li>standby 서버: standby -&gt; to-be-active -&gt; active</li>
+</ul>
+</li>
+<li>failback 시 데이터베이스 서버의 상태 변화
+<ul>
+<li>active 서버: active -&gt; to-be-standby -&gt; standby</li>
+<li>장애 복구 서버: to-be-standby -&gt; standby -&gt; to-be-active -&gt; active</li>
+</ul>
+</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

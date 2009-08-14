@@ -58,7 +58,9 @@ bool CManageRegistry::bOpenRegistry()
 						KEY_QUERY_VALUE,
 						&hKeyReg );
 
-	if (rc != ERROR_SUCCESS) return false;
+	if (rc != ERROR_SUCCESS) {
+		return false;
+	}
 
 	return true;
 }
@@ -67,27 +69,34 @@ bool CManageRegistry::bOpenRegistry()
 
 char* CManageRegistry::sGetItem( char* sItemName )
 {
+#define BUF_SIZE 2048
+
 	char* sValue;
-	char* sBuff = new char[2048];
+	char sBuff[BUF_SIZE];
 
 	DWORD   rc;
-	DWORD   len;
+	DWORD   len = BUF_SIZE;
 	DWORD   dwType;
 
-	if( !sItemName || !hKeyReg || !sKeyPath ) return NULL;
+	if(!sItemName || !hKeyReg || !sKeyPath) return NULL;
 
-	memset(sBuff, 0x00, 2048);
+	memset(sBuff, 0x00, BUF_SIZE);
 
 	rc = RegQueryValueEx( hKeyReg, sItemName, 0, &dwType, (LPBYTE)sBuff, &len );
 
-	if (rc != ERROR_SUCCESS) return NULL;
-	if( !sBuff || strlen( sBuff ) <= 0 ) return NULL;
+	if (rc != ERROR_SUCCESS)
+	  {
+		return NULL;
+	  }
 
-	sValue = new char[strlen( sBuff ) + 1];
+	if(!sBuff || len <= 0)
+	  {
+		return NULL;
+	  }
 
-	memset( sValue, 0x00, strlen( sBuff ) + 1 );
-	strcpy( sValue, sBuff );
-	delete sBuff;
+	sValue = new char[len + 1];
+
+	strncpy( sValue, sBuff, len );
 
 	return sValue;
 }
@@ -139,6 +148,7 @@ bool CManageRegistry::GetJavaRootPath(char *path)
 	DWORD   rc;
 	DWORD   len;
 	DWORD   dwType;
+	short   reg_mask = 0;
 
 	char currentVersion[16];
 	char regkey_java_current_version[2048];
@@ -146,10 +156,16 @@ bool CManageRegistry::GetJavaRootPath(char *path)
 
 	if (!path) return false;
 
+#if defined (_WIN64)
+	reg_mask = KEY_QUERY_VALUE | KEY_WOW64_32KEY;
+#else
+	reg_mask = KEY_QUERY_VALUE;
+#endif
+
 	rc = RegOpenKeyEx(  HKEY_LOCAL_MACHINE,
 						REGKEY_JAVA,
 						0,
-						KEY_QUERY_VALUE,
+						reg_mask,
 						&hKeyReg );
 
 	if (rc != ERROR_SUCCESS) return false;
@@ -167,7 +183,7 @@ bool CManageRegistry::GetJavaRootPath(char *path)
 	rc = RegOpenKeyEx(  HKEY_LOCAL_MACHINE,
 						regkey_java_current_version,
 						0,
-						KEY_QUERY_VALUE,
+						reg_mask,
 						&hKeyReg );
 
 	if (rc != ERROR_SUCCESS) return false;

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -120,9 +120,6 @@ static int css_return_queued_data (CSS_CONN_ENTRY * conn,
 static int css_return_queued_request (CSS_CONN_ENTRY * conn,
 				      unsigned short *rid, int *request,
 				      int *buffer_size);
-static int css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer,
-				  int *buffer_size);
-
 
 /*
  * css_shutdown_conn () -
@@ -161,7 +158,6 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->request_queue = NULL;
   conn->abort_queue = NULL;
   conn->buffer_queue = NULL;
-  conn->oob_queue = NULL;
   conn->error_queue = NULL;
   conn->transaction_id = -1;
   conn->db_error = 0;
@@ -452,14 +448,14 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
   int type;
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
 
+  if (conn == NULL || conn->status != CONN_OPEN)
+    {
+      return CONNECTION_CLOSED;
+    }
+
   if (css_return_queued_request (conn, rid, request, buffer_size))
     {
       return NO_ERRORS;
-    }
-
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return CONNECTION_CLOSED;
     }
 
   rc = css_read_header (conn, &local_header);
@@ -536,17 +532,17 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer,
   int type;
 
 check_queue:
-  if (css_return_queued_data (conn, req_id, buffer, buffer_size, &rc))
-    {
-      TRACE ("returning queued data of size %d\n", *buffer_size);
-      return rc;
-    }
-
-  if (!conn || conn->status != CONN_OPEN)
+  if (conn == NULL || conn->status != CONN_OPEN)
     {
       TRACE ("conn->status = %d in css_receive_data\n",
 	     conn ? conn->status : 0);
       return CONNECTION_CLOSED;
+    }
+
+  if (css_return_queued_data (conn, req_id, buffer, buffer_size, &rc))
+    {
+      TRACE ("returning queued data of size %d\n", *buffer_size);
+      return rc;
     }
 
 begin:
@@ -670,13 +666,14 @@ css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id,
   int type;
 
 check_queue:
+  if (conn == NULL || conn->status != CONN_OPEN)
+    {
+      return CONNECTION_CLOSED;
+    }
+
   if (css_return_queued_error (conn, req_id, buffer, buffer_size, &rc))
     {
       return rc;
-    }
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return CONNECTION_CLOSED;
     }
 
 begin:
@@ -759,88 +756,6 @@ begin:
     }
 
   return rc;
-}
-
-/*
- * css_receive_oob() - return an OOB message from the client
- *   return:
- *   conn(in):
- *   buffer(out):
- *   buffer_size(out):
- */
-int
-css_receive_oob (CSS_CONN_ENTRY * conn, char **buffer, int *buffer_size)
-{
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-  int header_size;
-  int rc;
-  unsigned int rid;
-  int type;
-
-check_queue:
-  rc = NO_ERRORS;
-  if (css_return_queued_oob (conn, buffer, buffer_size))
-    {
-      return rc;
-    }
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return CONNECTION_CLOSED;
-    }
-
-begin:
-  header_size = sizeof (NET_HEADER);
-  rc = css_net_read_header (conn->fd, (char *) &header, &header_size);
-  if (rc == INTERRUPTED_READ)
-    {
-      goto check_queue;
-    }
-
-  if (rc == NO_ERRORS)
-    {
-      rid = ntohl (header.request_id);
-      type = ntohl (header.type);
-      if (OOB_TYPE == type)
-	{
-	  *buffer_size = ntohl (header.buffer_size);
-	  if (*buffer_size != 0)
-	    {
-	      *buffer = (char *) css_return_oob_buffer (buffer_size);
-	      if (*buffer != NULL)
-		{
-		  do
-		    {
-		      /* timeout in mili-second in css_net_recv() */
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
-					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
-		    }
-		  while (rc == INTERRUPTED_READ);
-		}
-	      else
-		{
-		  /*
-		   * If we can't allocate an oob_buffer (1 byte), we're in
-		   * serious trouble...
-		   */
-		  css_read_remaining_bytes (conn->fd,
-					    sizeof (int) + *buffer_size);
-		  rc = CANT_ALLOC_BUFFER;
-		}
-	    }
-	}
-      else
-	{
-	  css_queue_unexpected_packet (type, conn, rid, &header,
-				       header.buffer_size);
-	  goto begin;
-	}
-    }
-  else
-    {
-      *buffer = NULL;
-      *buffer_size = 0;
-    }
-  return (rc);
 }
 
 /*
@@ -933,8 +848,8 @@ static CSS_CONN_ENTRY *
 css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn,
 			     int port_id, unsigned short *rid)
 {
-  int reason, buffer_size;
-  char *buffer;
+  int reason = -1, buffer_size;
+  char *buffer = NULL;
   CSS_CONN_ENTRY *return_status;
 
   return_status = NULL;
@@ -962,6 +877,11 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn,
 
 	      /* we shouldn't have to deal with SERVER_STARTED responses here ? */
 	    }
+	}
+
+      if (buffer != NULL && buffer != (char *) &reason)
+	{
+	  free_and_init (buffer);
 	}
     }
 
@@ -1131,7 +1051,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   int size;
   int retry_count;
   unsigned short rid;
-  char *buffer;
+  char *buffer = NULL;
   char reason_buffer[sizeof (int)];
   char *error_area;
   int error_length;
@@ -1148,13 +1068,18 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
       css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
       if (css_receive_data (conn, rid, &buffer, &size) == NO_ERRORS)
 	{
-	  if (size == sizeof (int))
+	  if (buffer != NULL && size == sizeof (int))
 	    {
 	      reason = ntohl (*((int *) buffer));
 	    }
 	  else
 	    {
 	      reason = SERVER_NOT_FOUND;
+	    }
+
+	  if (buffer != NULL && buffer != reason_buffer)
+	    {
+	      free_and_init (buffer);
 	    }
 
 	  switch (reason)
@@ -1179,10 +1104,15 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 					  reason_buffer);
 	      if (css_receive_data (conn, rid, &buffer, &size) == NO_ERRORS)
 		{
-		  if (size == sizeof (int))
+		  if (buffer != NULL && size == sizeof (int))
 		    {
 		      port_id = ntohl (*((int *) buffer));
 		      css_close_conn (conn);
+		      if (buffer != reason_buffer)
+			{
+			  free_and_init (buffer);
+			}
+
 		      if (css_server_connect_part_two (host_name, conn,
 						       port_id, &rid))
 			{
@@ -1207,6 +1137,11 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	    default:
 	      break;
 	    }
+	}
+
+      if (buffer != NULL && buffer != reason_buffer)
+	{
+	  free_and_init (buffer);
 	}
     }
 
@@ -1432,33 +1367,6 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id,
 }
 
 /*
- * css_return_queued_oob () - return any OOB message that may have been queued
- *   return:
- *   conn(in/out):
- *   buffer(out):
- *   buffer_size(out):
- */
-static int
-css_return_queued_oob (CSS_CONN_ENTRY * conn, char **buffer, int *buffer_size)
-{
-  CSS_QUEUE_ENTRY *oob_q_entry_p;
-
-  oob_q_entry_p = css_find_queue_entry (conn->oob_queue, 0);
-
-  if (oob_q_entry_p != NULL)
-    {
-      *buffer = oob_q_entry_p->buffer;
-      *buffer_size = oob_q_entry_p->size;
-      oob_q_entry_p->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&conn->oob_queue, oob_q_entry_p);
-
-      return 1;
-    }
-
-  return 0;
-}
-
-/*
  * css_return_queued_error () - return any error data that has been queued
  *   return:
  *   conn(in/out):
@@ -1575,6 +1483,5 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
   css_queue_remove_header (&conn->request_queue);
   css_queue_remove_header (&conn->data_queue);
   css_queue_remove_header (&conn->abort_queue);
-  css_queue_remove_header (&conn->oob_queue);
   css_queue_remove_header (&conn->error_queue);
 }

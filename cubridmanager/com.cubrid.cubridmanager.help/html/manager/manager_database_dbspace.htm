@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>저장 공간</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n데이터베이스\n저장 공간");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_architecture.htm\">데이터베이스<\/a> &nbsp;&gt;&nbsp; 저장 공간<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>저장 공간</h3>
+<p>데이터베이스에 로그인하면, 접근할 수 있는 저장 공간을 탐색 트리에서 볼 수 있다. 데이터베이스 볼륨 상태를 분석하거나, 자동 볼륨 추가 설정 및 볼륨 추가를 수행할 수 있다.</p>
+<p><img src="images/manager_database_dbspace_node.jpg" border="1" alt="" /></p>
+<h6>데이터베이스 공간 정보</h6>
+<p>데이터베이스 공간 정보를 확인하려면, 탐색 트리에서 해당 데이터베이스 이름을 더블 클릭하거나, [저장 공간]을 마우스 오른쪽 버튼 클릭해서 [데이터베이스 공간 정보]를 선택한다.</p>
+<p><img src="images/manager_database_dbspace_demodb.png" border="1" alt="" /></p>
+<p>탐색 트리에서 [저장 공간]의 하위 노드를 더블 클릭하면 해당 노드를 구성하는 볼륨 정보를 출력한다.</p>
+<p><img src="images/manager_database_dbspace_datavol.png" border="1" alt="" /></p>
+<h6>자동 볼륨 추가 설정</h6>
+<p><img src="images/manager_database_dbspace_auto.png" border="0" alt="" /></p>
+<ul>
+<li><strong>볼륨 형식</strong>: 데이터 볼륨 또는 인덱스 볼륨에 대해서만 자동 추가 기능을 사용할 수 있다.</li>
+<li><strong>볼륨 자동 추가 기능 사용</strong>: 해당 형식의 볼륨에 대해 자동 추가 기능을 사용한다.</li>
+<li><strong>여유 공간 비율</strong>: [여유 공간 비율]에 지정한 값과 남은 볼륨이 같을 때, 자동으로 볼륨을 추가한다는 의미이다. 예를 들어, 여유 공간 비율이 5%이면, 기존 볼륨의 여유 공간이 5% 남았을 때, 자동으로 데이터 볼륨을 추가한다. 최소 값은 5%이고 최대 값은 30%이다.</li>
+<li><strong>볼륨 크기</strong>: 자동으로 추가할 볼륨의 크기를 설정한다.</li>
+</ul>
+<h6>볼륨 추가</h6>
+<p><img src="images/manager_database_dbspace_addvol.png" border="0" alt="" /></p>
+<ul>
+<li><strong>경로</strong>: 추가할 볼륨이 저장되는 디렉터리를 입력한다. 디폴트 값은 데이터베이스 볼륨이 생성되는 디렉터리이다.</li>
+<li><strong>볼륨 형식</strong>: 추가할 볼륨의 타입을 정한다. data, generic, index, temp 중 하나를 선택할 수 있다.</li>
+<li><strong>볼륨 크기</strong>: 추가할 볼륨의 크기를 입력한다. 입력 단위는 Mbyte이다.</li>
+<li><strong>페이지 수</strong>: 볼륨 크기에서 입력한 Mbyte를 해당 데이터베이스 페이지 크기로 자동 환산하여 보여 준다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

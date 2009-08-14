@@ -1,0 +1,57 @@
+4d3
+<     cubrid_nbd1:2	(heartbeat::ocf:cubrid)
+8d6
+<     cubrid_nbd2:2	(heartbeat::ocf:cubrid)
+12d9
+<     cubrid_nbd3:2	(heartbeat::ocf:cubrid)
+16,52d12
+<     cubrid_nbd4:2	(heartbeat::ocf:cubrid)
+< Resource Group: group_cubrid_nbd1_0_ldup_1
+<     cubrid_nbd1_0_lw_1	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd1_0_la_1	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd1_1_ldup_0
+<     cubrid_nbd1_1_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd1_1_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd2_0_ldup_1
+<     cubrid_nbd2_0_lw_1	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd2_0_la_1	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd2_1_ldup_0
+<     cubrid_nbd2_1_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd2_1_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd3_0_ldup_1
+<     cubrid_nbd3_0_lw_1	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd3_0_la_1	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd3_1_ldup_0
+<     cubrid_nbd3_1_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd3_1_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd4_0_ldup_1
+<     cubrid_nbd4_0_lw_1	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd4_0_la_1	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd4_1_ldup_0
+<     cubrid_nbd4_1_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd4_1_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd1_0_ldup_2
+<     cubrid_nbd1_0_lw_2	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd1_0_la_2	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd1_2_ldup_0
+<     cubrid_nbd1_2_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd1_2_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd2_0_ldup_2
+<     cubrid_nbd2_0_lw_2	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd2_0_la_2	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd2_2_ldup_0
+<     cubrid_nbd2_2_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd2_2_la_0	(heartbeat::ocf:cubrid-la)
+65,76d24
+< Resource Group: group_cubrid_nbd3_0_ldup_2
+<     cubrid_nbd3_0_lw_2	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd3_0_la_2	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd3_2_ldup_0
+<     cubrid_nbd3_2_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd3_2_la_0	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd4_0_ldup_2
+<     cubrid_nbd4_0_lw_2	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd4_0_la_2	(heartbeat::ocf:cubrid-la)
+< Resource Group: group_cubrid_nbd4_2_ldup_0
+<     cubrid_nbd4_2_lw_0	(heartbeat::ocf:cubrid-lw)
+<     cubrid_nbd4_2_la_0	(heartbeat::ocf:cubrid-la)

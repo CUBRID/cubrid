@@ -1,0 +1,37 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<item name="개요" url="syntax/syntax_tran_intro.htm" />
+<book name="데이터베이스 트랜잭션" >
+  <item name="개요" url="syntax/syntax_tran_tran_intro.htm" />
+  <item name="트랜잭션 커밋" url="syntax/syntax_tran_tran_commit.htm" />
+  <item name="트랜잭션 롤백" url="syntax/syntax_tran_tran_rollback.htm" />
+  <item name="세이브포인트와 부분 롤백" url="syntax/syntax_tran_tran_savepoint.htm" />
+</book>
+<item name="데이터베이스 동시성" url="syntax/syntax_tran_concurrency.htm" />
+<book name="잠금 프로토콜" >
+  <item name="개요" url="syntax/syntax_tran_lock_intro.htm" />
+  <item name="단위 잠금" url="syntax/syntax_tran_lock_granularity.htm" />
+  <item name="잠금 허용 여부 결정" url="syntax/syntax_tran_lock_determine.htm" />
+  <item name="트랜잭션 교착 상태" url="syntax/syntax_tran_lock_deadlocks.htm" />
+  <item name="트랜잭션 타임아웃" url="syntax/syntax_tran_lock_timeouts.htm" />
+</book>
+<book name="트랜잭션 격리 수준" >
+  <item name="개요" url="syntax/syntax_tran_isolation_intro.htm" />
+  <item name="격리 수준 설정" url="syntax/syntax_tran_isolation_setting.htm" />
+  <item name="격리 수준 값 얻기" url="syntax/syntax_tran_isolation_getting.htm" />
+  <item name="SERIALIZABLE" url="syntax/syntax_tran_isolation_serializable.htm" />
+  <item name="REPEATABLE READ CLASS with REPEATABLE READ INSTANCES" url="syntax/syntax_tran_isolation_repeatable.htm" />
+  <item name="REPEATABLE READ CLASS with READ COMMITTED INSTANCES" url="syntax/syntax_tran_isolation_repeatcom.htm" />
+  <item name="REPEATABLE READ CLASS with READ UNCOMMITTED INSTANCES" url="syntax/syntax_tran_isolation_repeatuncom.htm" />
+  <item name="READ COMMITTED CLASS with READ COMMITTED INSTANCES" url="syntax/syntax_tran_isolation_readcom.htm" />
+  <item name="READ COMMITTED CLASS with READ UNCOMMITTED INSTANCES" url="syntax/syntax_tran_isolation_readuncom.htm" />
+  <item name="UPDATE INCONSISTENCY" url="syntax/syntax_tran_isolation_update.htm" />
+  <item name="지원하지 않는 격리 수준 조합" url="syntax/syntax_tran_isolation_unsupported.htm" />
+  <item name="CUBRID에서 더티 인스턴스(dirty instances)를 다루는 방법" url="syntax/syntax_tran_isolation_handledirty.htm" />
+</book>
+<book name="복구" >
+  <item name="개요" url="syntax/syntax_tran_recovery_intro.htm" />
+  <item name="데이터베이스 재구동" url="syntax/syntax_tran_recovery_restart.htm" />
+</book>
+
+</tocdata>

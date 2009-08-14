@@ -2361,7 +2361,7 @@ xts_save_regu_variable_list (const REGU_VARIABLE_LIST regu_var_list)
 {
   int offset;
   int *regu_var_offset_table;
-  int offset_buffer[OFFSET_BUFFER_SIZE];
+  int offset_local_buffer[OFFSET_BUFFER_SIZE];
   REGU_VARIABLE_LIST regu_var_p;
   int nelements, i;
 
@@ -2392,7 +2392,7 @@ xts_save_regu_variable_list (const REGU_VARIABLE_LIST regu_var_list)
     }
   else
     {
-      regu_var_offset_table = offset_buffer;
+      regu_var_offset_table = offset_local_buffer;
     }
 
   i = 0;
@@ -2403,7 +2403,7 @@ xts_save_regu_variable_list (const REGU_VARIABLE_LIST regu_var_list)
       regu_var_offset_table[i] = xts_save_regu_variable (&regu_var_p->value);
       if (regu_var_offset_table[i] == ER_FAILED)
 	{
-	  if (OFFSET_BUFFER_SIZE <= nelements)
+	  if (regu_var_offset_table != offset_local_buffer)
 	    {
 	      free_and_init (regu_var_offset_table);
 	    }
@@ -2413,7 +2413,7 @@ xts_save_regu_variable_list (const REGU_VARIABLE_LIST regu_var_list)
 
   offset = xts_save_int_array (regu_var_offset_table, nelements + 1);
 
-  if (OFFSET_BUFFER_SIZE <= nelements)
+  if (regu_var_offset_table != offset_local_buffer)
     {
       free_and_init (regu_var_offset_table);
     }
@@ -2432,7 +2432,7 @@ xts_save_regu_varlist_list (const REGU_VARLIST_LIST regu_var_list_list)
 {
   int offset;
   int *regu_var_list_offset_table;
-  int offset_buffer[OFFSET_BUFFER_SIZE];
+  int offset_local_buffer[OFFSET_BUFFER_SIZE];
   REGU_VARLIST_LIST regu_var_list_p;
   int nelements, i;
 
@@ -2465,7 +2465,7 @@ xts_save_regu_varlist_list (const REGU_VARLIST_LIST regu_var_list_list)
     }
   else
     {
-      regu_var_list_offset_table = offset_buffer;
+      regu_var_list_offset_table = offset_local_buffer;
     }
 
   i = 0;
@@ -2477,7 +2477,7 @@ xts_save_regu_varlist_list (const REGU_VARLIST_LIST regu_var_list_list)
 	xts_save_regu_variable_list (regu_var_list_p->list);
       if (regu_var_list_offset_table[i] == ER_FAILED)
 	{
-	  if (OFFSET_BUFFER_SIZE <= nelements)
+	  if (regu_var_list_offset_table != offset_local_buffer)
 	    {
 	      free_and_init (regu_var_list_offset_table);
 	    }
@@ -2487,7 +2487,7 @@ xts_save_regu_varlist_list (const REGU_VARLIST_LIST regu_var_list_list)
 
   offset = xts_save_int_array (regu_var_list_offset_table, nelements + 1);
 
-  if (OFFSET_BUFFER_SIZE <= nelements)
+  if (regu_var_list_offset_table != offset_local_buffer)
     {
       free_and_init (regu_var_list_offset_table);
     }
@@ -3088,6 +3088,8 @@ xts_process_buildvalue_proc (char *ptr,
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, build_value_proc->is_always_false);
 
   return ptr;
 }
@@ -3753,9 +3755,12 @@ xts_process_like_eval_term (char *ptr, const LIKE_EVAL_TERM * like_eval_term)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = pack_char (ptr, like_eval_term->esc_char);
-
-  ptr = or_pack_int (ptr, like_eval_term->esc_char_set);
+  offset = xts_save_regu_variable (like_eval_term->esc_char);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -3764,6 +3769,11 @@ static char *
 xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 {
   int offset;
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   ptr = or_pack_int (ptr, access_spec->type);
 
@@ -4739,7 +4749,8 @@ xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * build_value)
   size += PTR_SIZE +		/* having_pred */
     PTR_SIZE +			/* grbynum_val */
     PTR_SIZE +			/* agg_list */
-    PTR_SIZE;			/* outarith_list */
+    PTR_SIZE +			/* outarith_list */
+    OR_INT_SIZE;		/* is_always_false */
 
   return size;
 }
@@ -5179,8 +5190,7 @@ xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * like_eval_term)
 
   size += PTR_SIZE +		/* src */
     PTR_SIZE +			/* pattern */
-    BYTE_SIZE +			/* esc_char */
-    OR_INT_SIZE;		/* esc_char_set */
+    PTR_SIZE;			/* esc_char */
 
   return size;
 }

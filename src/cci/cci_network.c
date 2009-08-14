@@ -38,7 +38,6 @@
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
-
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -59,6 +58,7 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 
+#include "porting.h"
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cci_network.h"
@@ -90,16 +90,15 @@ static int net_send_int (SOCKET sock_fd, int value);
 static int net_recv_int (SOCKET sock_fd, int *value);
 static int net_send_str (SOCKET sock_fd, char *buf, int size);
 static int net_recv_str (SOCKET sock_fd, char *buf, int size);
-
-
+static void init_msg_header (MSG_HEADER * header);
+static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
+static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
-
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/
-
 #if defined(CCI_OLEDB) || defined(CCI_ODBC)
 static char cci_client_type = CAS_CLIENT_ODBC;
 #else
@@ -122,16 +121,18 @@ static char cci_client_type = CAS_CLIENT_CCI;
 int
 net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 		 char *db_user, char *db_passwd, char is_first,
-		 T_CCI_ERROR * err_buf, char *broker_info, int *cas_pid,
-		 SOCKET *ret_sock)
+		 T_CCI_ERROR * err_buf, char *broker_info,
+		 char *cas_info, int *cas_pid, SOCKET * ret_sock)
 {
   SOCKET srv_sock_fd;
   char client_info[SRV_CON_CLIENT_INFO_SIZE];
   char db_info[SRV_CON_DB_INFO_SIZE];
+  MSG_HEADER msg_header;
   int err_code;
   int new_port;
-  int msg_size;
   char *msg_buf;
+
+  init_msg_header (&msg_header);
 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
@@ -148,6 +149,10 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   if (db_passwd)
     strncpy (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE, db_passwd,
 	     SRV_CON_DBPASSWD_SIZE - 1);
+  snprintf (db_info + SRV_CON_URL_SIZE, SRV_CON_URL_SIZE,
+	    "cci:cubrid:%s:%d:%s:%s:%s:", ip_addr, port,
+	    (db_name ? db_name : ""), (db_user ? db_user : ""),
+	    (db_passwd ? db_passwd : ""));
 
   if (connect_srv (ip_addr, port, is_first, &srv_sock_fd) < 0)
     {
@@ -161,7 +166,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) < 0)
+  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) <= 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
@@ -189,26 +194,22 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-
-  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &msg_size, 4) < 0)
+  if (net_recv_msg_header (srv_sock_fd, &msg_header) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
 
-  msg_size = ntohl (msg_size);
-  if (msg_size < 4)
-    {
-      err_code = CCI_ER_COMMUNICATION;
-      goto connect_srv_error;
-    }
-  msg_buf = (char *) malloc (msg_size);
+  memcpy (cas_info, msg_header.info_ptr, MSG_HEADER_INFO_SIZE);
+
+  msg_buf = (char *) malloc (*(msg_header.msg_body_size_ptr));
   if (msg_buf == NULL)
     {
       err_code = CCI_ER_NO_MORE_MEMORY;
       goto connect_srv_error;
     }
-  if (net_recv_str (srv_sock_fd, msg_buf, msg_size) < 0)
+  if (net_recv_str (srv_sock_fd, msg_buf, *(msg_header.msg_body_size_ptr)) <
+      0)
     {
       FREE_MEM (msg_buf);
       err_code = CCI_ER_COMMUNICATION;
@@ -222,7 +223,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 	{
 	  if (err_buf)
 	    {
-	      memcpy (err_buf->err_msg, msg_buf + 4, msg_size - 4);
+	      memcpy (err_buf->err_msg, &msg_buf[4],
+		      *(msg_header.msg_body_size_ptr) - 4);
 	      err_buf->err_code = err_code;
 	    }
 	  err_code = CCI_ER_DBMS;
@@ -234,9 +236,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   if (cas_pid)
     *cas_pid = err_code;
 
-  if (msg_size >= (4 + BROKER_INFO_SIZE))
+  if (*(msg_header.msg_body_size_ptr) >= (4 + BROKER_INFO_SIZE))
     {
-      memcpy (broker_info, msg_buf + 4, BROKER_INFO_SIZE);
+      memcpy (broker_info, &msg_buf[4], BROKER_INFO_SIZE);
     }
   FREE_MEM (msg_buf);
 
@@ -271,7 +273,7 @@ net_cancel_request (unsigned char *ip_addr, int port, int pid)
       goto cancel_error;
     }
 
-  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) < 0)
+  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) <= 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -290,71 +292,101 @@ cancel_error:
 }
 
 int
-net_check_cas_request (SOCKET sock_fd)
+net_check_cas_request (T_CON_HANDLE * con_handle)
 {
-  char msg[5];
+  char msg[9];
+  MSG_HEADER msg_header;
   int data_size;
-  int msg_size, ret_value = -1;
+  int ret_value = -1;
 
-  if (IS_INVALID_SOCKET(sock_fd))
+  if (IS_INVALID_SOCKET (con_handle->sock_fd))
     return 0;
+
+  init_msg_header (&msg_header);
 
   data_size = 1;
   data_size = htonl (data_size);
   memcpy (msg, (char *) &data_size, 4);
-  msg[4] = CAS_FC_CHECK_CAS;
 
-  if (net_send_str (sock_fd, msg, sizeof (msg)) < 0)
+  /* just send con->cas_info to cas for debuging */
+  msg[4] = con_handle->cas_info[CAS_INFO_STATUS];
+  msg[5] = con_handle->cas_info[CAS_INFO_RESERVED_1];
+  msg[6] = con_handle->cas_info[CAS_INFO_RESERVED_2];
+  msg[7] = con_handle->cas_info[CAS_INFO_RESERVED_3];
+  msg[8] = CAS_FC_CHECK_CAS;
+
+  if (net_send_str (con_handle->sock_fd, msg, sizeof (msg)) < 0)
     return -1;
 
-  if (net_recv_int (sock_fd, &msg_size) < 0)
-    return -1;
-  if (msg_size < 4)
-    return -1;
-  if (net_recv_int (sock_fd, &ret_value) < 0)
-    return -1;
-
+  if (net_recv_msg_header (con_handle->sock_fd, &msg_header) < 0)
+    {
+      return -1;
+    }
+  if (*(msg_header.msg_body_size_ptr) == 0)
+    {
+      return 0;
+    }
+  else
+    {
+      if (net_recv_int (con_handle->sock_fd, &ret_value) < 0)
+	{
+	  return -1;
+	}
+    }
   return ret_value;
 }
 
 
 int
-net_send_msg (SOCKET sock_fd, char *msg, int size)
+net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
 {
-  if (net_send_int (sock_fd, size) < 0)
+  MSG_HEADER send_msg_header;
+
+  init_msg_header (&send_msg_header);
+
+  *(send_msg_header.msg_body_size_ptr) = size;
+  memcpy (send_msg_header.info_ptr, con_handle->cas_info,
+	  MSG_HEADER_INFO_SIZE);
+
+  /* send msg header */
+  if (net_send_msg_header (con_handle->sock_fd, &send_msg_header) < 0)
     return CCI_ER_COMMUNICATION;
-  if (net_send_str (sock_fd, msg, size) < 0)
+
+  if (net_send_str (con_handle->sock_fd, msg, size) < 0)
     return CCI_ER_COMMUNICATION;
 
   return 0;
 }
 
 int
-net_recv_msg (SOCKET sock_fd, char **msg, int *msg_size,
+net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	      T_CCI_ERROR * err_buf)
 {
   char *tmp_p = NULL;
+  MSG_HEADER recv_msg_header;
   int result_code;
-  int size;
+
+  init_msg_header (&recv_msg_header);
 
   if (msg)
     *msg = NULL;
   if (msg_size)
     *msg_size = 0;
 
-  if (net_recv_int (sock_fd, &size) < 0)
-    return CCI_ER_COMMUNICATION;
-
-  if (size < 4)
+  if (net_recv_msg_header (con_handle->sock_fd, &recv_msg_header) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
 
-  tmp_p = (char *) MALLOC (size);
+  memcpy (con_handle->cas_info, recv_msg_header.info_ptr,
+	  MSG_HEADER_INFO_SIZE);
+
+  tmp_p = (char *) MALLOC (*(recv_msg_header.msg_body_size_ptr));
   if (tmp_p == NULL)
     return CCI_ER_NO_MORE_MEMORY;
 
-  if (net_recv_str (sock_fd, tmp_p, size) < 0)
+  if (net_recv_str
+      (con_handle->sock_fd, tmp_p, *(recv_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (tmp_p);
       return CCI_ER_COMMUNICATION;
@@ -368,7 +400,8 @@ net_recv_msg (SOCKET sock_fd, char **msg, int *msg_size,
 	{
 	  if (err_buf)
 	    {
-	      memcpy (err_buf->err_msg, tmp_p + 4, size - 4);
+	      memcpy (err_buf->err_msg, tmp_p + 4,
+		      *(recv_msg_header.msg_body_size_ptr) - 4);
 	      err_buf->err_code = result_code;
 	    }
 	  result_code = CCI_ER_DBMS;
@@ -383,7 +416,7 @@ net_recv_msg (SOCKET sock_fd, char **msg, int *msg_size,
     FREE_MEM (tmp_p);
 
   if (msg_size)
-    *msg_size = size;
+    *msg_size = *(recv_msg_header.msg_body_size_ptr);
 
   return result_code;
 }
@@ -409,7 +442,8 @@ net_send_file (SOCKET sock_fd, char *filename, int filesize)
 
   while (remain_size > 0)
     {
-      read_len = read (fd, read_buf, MIN (remain_size, SSIZEOF (read_buf)));
+      read_len = (int) read (fd, read_buf,
+			     (int) MIN (remain_size, SSIZEOF (read_buf)));
       if (read_len < 0)
 	{
 	  close (fd);
@@ -432,7 +466,7 @@ net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
 
   while (file_size > 0)
     {
-      read_len = MIN (file_size, SSIZEOF (read_buf));
+      read_len = (int) MIN (file_size, SSIZEOF (read_buf));
       if (net_recv_str (sock_fd, read_buf, read_len) < 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -486,7 +520,7 @@ net_recv_str (SOCKET sock_fd, char *buf, int size)
     {
       read_len =
 	READ_FROM_SOCKET (sock_fd, buf + tot_read_len, size - tot_read_len);
-      if (read_len < 0)
+      if (read_len <= 0)
 	{
 	  return CCI_ER_COMMUNICATION;
 	}
@@ -495,6 +529,47 @@ net_recv_str (SOCKET sock_fd, char *buf, int size)
     }
 
   return 0;
+}
+
+static int
+net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header)
+{
+  if (net_recv_str (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+  *(header->msg_body_size_ptr) = ntohl (*(header->msg_body_size_ptr));
+
+  if ((*header->msg_body_size_ptr) < 0)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+  return 0;
+}
+
+static int
+net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header)
+{
+  *(header->msg_body_size_ptr) = htonl (*(header->msg_body_size_ptr));
+  if (net_send_str (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
+  return 0;
+}
+
+static void
+init_msg_header (MSG_HEADER * header)
+{
+  header->msg_body_size_ptr = (int *) (header->buf);
+  header->info_ptr = (char *) (header->buf + MSG_HEADER_MSG_SIZE);
+
+  *(header->msg_body_size_ptr) = 0;
+  header->info_ptr[0] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[1] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[2] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[3] = CAS_INFO_RESERVED_DEFAULT;
 }
 
 static int

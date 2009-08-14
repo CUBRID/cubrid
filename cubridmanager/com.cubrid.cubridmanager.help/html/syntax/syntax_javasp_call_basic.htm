@@ -1,0 +1,140 @@
+﻿
+<html>
+<head>
+<title>CALL 사용</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\nJava 저장 함수/프로시저 호출\nCALL 사용");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_call_basic.htm\">Java 저장 함수/프로시저 호출<\/a> &nbsp;&gt;&nbsp; CALL 사용<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CALL 사용</h3>
+<p>등록된 Java 저장 함수/프로시저는 <span class="keyword">CALL</span> 문을 사용하거나, SQL 문에서 호출하거나, Java 응용프로그램에서 호출될 수 있다.</p>
+<p>다음과 같이 <span class="keyword">CALL</span> 문을 사용하여 호출할 수 있다. <span class="keyword">CALL</span> 문에서 호출되는 Java 저장 함수/프로시저의 이름은 대소문자를 구분하지 않는다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CALL</span> {<span class="var">procedure_name</span> ([<span class="var">param</span>[, <span class="var">param</span>]…]) | <span class="var">function_name</span> ([<span class="var">param</span>[, <span class="var">param</span>]…]) <span class="keyword">INTO</span> :<span class="var">host_variable</span><br />
+<span class="var">param</span> {<span class="var">literal</span> | :<span class="var">host_variable</span>}</p>
+<h6>예제</h6>
+<p class="code">call Hello() into :HELLO;<br />
+call Sp_int(3) into :i;<br />
+call phone_info('Tom','016-111-1111');</p>
+<p>CUBRID에서는 Java 저장 함수/프로시저를 같은 <span class="keyword">CALL</span> 문을 이용해 호출한다. 따라서 다음과 같이 <span class="keyword">CALL</span> 문을 처리하게 된다.</p>
+<ol>
+<li><span class="keyword">CALL</span> 문에 대상 클래스가 있는 경우 메소드로 처리한다.</li>
+<li><span class="keyword">CALL</span> 문에 대상 클래스가 없는 경우 먼저 Java 저장 함수/프로시저 수행 여부를 검사하고 Java 저장 함수/프로시저가 존재하면 Java 저장 함수/프로시저를 수행한다.</li>
+<li>2에서 Java 저장 함수/프로시저가 존재하지 않으면 메소드 수행 여부를 검사하여 같은 이름이 존재하면 수행한다.</li>
+</ol>
+<p>만약 존재하지 않는 Java 저장 함수/프로시저를 호출하는 경우에는 다음과 같은 에러가 나타난다.</p>
+<p class="code">csql&gt; call deposit()<br />
+csql&gt; ;xrun<br />
+<br />
+In the command from line 1,<br />
+<br />
+ERROR: Stored procedure/function 'deposit' is not exist.<br />
+<br />
+0 command(s) successfully processed.<br />
+<br />
+csql&gt; call deposit('Tom', 3000000)<br />
+csql&gt; ;xrun<br />
+<br />
+In line 1, column 6,<br />
+<br />
+ERROR: Methods require an object as their target.<br />
+<br />
+0 command(s) successfully processed.</p>
+<p><span class="keyword">CALL</span> 문에 인자가 없는 경우는 메소드와 구분되므로 "ERROR: Stored procedure/function 'deposit' is not exist."라는 오류 메시지가 나타난다.&#160;하지만, <span class="keyword">CALL</span> 문에 인자가 있는 경우에는 메소드와 구분할 수 없기 때문에 "ERROR: Methods require an object as their target."이라는 메시지가 나타난다.</p>
+<p>그리고, 아래와 같이 Java 저장 함수/프로시저를 호출하는 <span class="keyword">CALL</span> 문 안에 <span class="keyword">CALL</span> 문이 중첩되는 경우와 <span class="keyword">CALL</span> 문을 사용하여 Java 저장 함수/프로시저 호출 시 인자로 서브 질의를 사용할 경우 <span class="keyword">CALL</span> 문은 수행이 되지 않는다.</p>
+<p class="code">call phone_info('Tom', call sp_int(999));<br />
+call phone_info((select * from Phone where id='Tom'));</p>
+<p>Java 저장 함수/프로시저를 호출하여 수행 중 exception이 발생하면 <span class="var">dbname</span><span class="keyword">_java.log</span> 파일에 exception 내용이 기록되어 저장된다. 만약 화면으로 exception 내용을 확인하고자 할 경우는 <span class="keyword">$CUBRID/java/logging.properties</span> 파일의 handlers 값을 " java.lang.logging.ConsoleHandler" 로 수정하면 화면으로 exception 내용을 출력한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

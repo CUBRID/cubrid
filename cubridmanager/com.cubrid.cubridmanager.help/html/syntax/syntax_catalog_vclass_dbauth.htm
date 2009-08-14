@@ -1,0 +1,213 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>DB_AUTH</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 가상 클래스\nDB_AUTH");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_vclass_vclass.htm\">시스템 카탈로그 가상 클래스<\/a> &nbsp;&gt;&nbsp; DB_AUTH<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>DB_AUTH</h4>
+<p>데이터베이스 내에서 현재 사용자가 권한을 가지는 클래스에 대한 권한 정보를 보여준다.</p>
+<table border="1" width="80%">
+<tbody>
+<tr>
+<th width="110">
+<p>속성명</p>
+</th>
+<th width="110">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td width="110">
+<p>grantor_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>권한을 부여한 사용자명</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>grantee_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>권한을 받은 사용자명</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>class_name</p>
+</td>
+<td width="110">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>권한부여 대상인 클래스명</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>auth_type</p>
+</td>
+<td width="110">
+<p>VARCHAR(7)</p>
+</td>
+<td>
+<p>부여된 권한 타입명</p>
+</td>
+</tr>
+<tr>
+<td width="110">
+<p>is_grantable</p>
+</td>
+<td width="110">
+<p>VARCHAR(3)</p>
+</td>
+<td>
+<p>권한 받은 클래스에 대해 다른 사용자에게 권한을 부여할 수 있으면 ‘YES’, 아니면 ‘NO’</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h6>정의</h6>
+<p class="code">CREATE VCLASS db_auth (grantor_name, grantee_name, class_name, auth_type, is_grantable )<br />
+AS<br />
+SELECT CAST(a.grantor.name AS VARCHAR(255)),<br />
+&#160;&#160;&#160;&#160;&#160;&#160; &#160;CAST(a.grantee.name AS VARCHAR(255)),<br />
+&#160;&#160;&#160;&#160;&#160; &#160;&#160;a.class_of.class_name, a.auth_type,<br />
+&#160;&#160;&#160;&#160; &#160;&#160;&#160;CASE WHEN a.is_grantable = 0 THEN 'NO' ELSE 'YES' END<br />
+FROM _db_auth a<br />
+WHERE (CURRENT_USER = 'DBA' OR<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; {a.class_of.owner.name} subseteq (<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SELECT set{CURRENT_USER} + coalesce(sum(set{t.g.name}), set{})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; from db_user u, table(groups) as t(g)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; where u.name = CURRENT_USER ) OR<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; {a.class_of} subseteq (<br />
+SELECT sum(set{au.class_of})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; FROM _db_auth au<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; WHERE {au.grantee.name} subseteq (<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SELECT set{CURRENT_USER} + coalesce(sum(set{t.g.name}), set{})<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; from db_user u, table(groups) as t(g)<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;where u.name = CURRENT_USER ) AND<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;au.auth_type = 'SELECT'));</p>
+<h6>예제</h6>
+<p>다음 예제에서는 이름이 ‘db_a’로 시작되는 클래스의 권한 정보를 검색한다.</p>
+<p class="code">csql&gt; select class_name, auth_type, grantor_name<br />
+csql&gt; from db_auth<br />
+csql&gt; where class_name like 'db_a%'<br />
+csql&gt; order by 1;<br />
+csql&gt; ;xrun<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+&#160; class_name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; auth_type&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; grantor_name<br />
+==================================================================<br />
+&#160; 'db_attr_setdomain_elm'&#160; 'SELECT'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'<br />
+&#160; 'db_attribute'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'SELECT'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'<br />
+&#160; 'db_auth'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'SELECT'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'<br />
+&#160; 'db_authorization'&#160;&#160;&#160;&#160;&#160;&#160; 'EXECUTE'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'<br />
+&#160; 'db_authorization'&#160;&#160;&#160;&#160;&#160;&#160; 'SELECT'&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'DBA'<br />
+&#160; 'db_authorizations'&#160;&#160;&#160;&#160;&#160; 'EXECUTE'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'<br />
+&#160; 'db_authorizations'&#160;&#160;&#160;&#160;&#160; 'SELECT'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DBA'</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

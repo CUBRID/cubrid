@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -87,6 +87,10 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_CACHE_INVALID        0x80000000
 
 
+int au_disable (void);
+void au_enable (int save);
+MOP au_get_public_user (void);
+MOP au_get_dba_user (void);
 
 #define AU_DISABLE(save) \
   do \
@@ -200,6 +204,9 @@ extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
+extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
+					   DB_VALUE * serial,
+					   DB_VALUE * owner);
 
 /* debugging functions */
 extern void au_dump (void);
@@ -263,5 +270,7 @@ extern void au_info_method (MOP class_mop, DB_VALUE * returnval,
 			    DB_VALUE * info);
 extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval,
 				     DB_VALUE * info);
-
+extern int au_check_serial_authorization (MOP serial_object);
+extern const char *au_get_public_user_name (void);
+extern const char *au_get_user_class_name (void);
 #endif /* _AUTHENTICATE_H_ */

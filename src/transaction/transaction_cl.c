@@ -599,7 +599,7 @@ int
 tran_unilaterally_abort (void)
 {
   int error_code = NO_ERROR;
-  char user_name[L_cuserid];
+  char user_name[L_cuserid + 1];
   char host[MAXHOSTNAMELEN];
   int pid;
 

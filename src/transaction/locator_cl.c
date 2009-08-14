@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -78,6 +78,7 @@ struct locator_mflush_cache
 				 */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe one object               */
   LOCATOR_MFLUSH_TEMP_OID *mop_toids;	/* List of objects with temp. OIDs   */
+  MOP mop_tail_toid;
   MOP class_mop;		/* Class_mop of last mflush object   */
   MOBJ class_obj;		/* The class of last mflush object   */
   HFID *hfid;			/* Instance heap of last mflush obj  */
@@ -335,7 +336,10 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
     }
   else
     {
+      assert (cache_lock->implicit_lock >= NULL_LOCK
+	      && ws_get_lock (mop) >= NULL_LOCK);
       lock = lock_Conv[cache_lock->implicit_lock][ws_get_lock (mop)];
+      assert (lock != NA_LOCK);
     }
 
   /*
@@ -458,7 +462,10 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		{
 		  lock = IX_LOCK;
 		}
+
+	      assert (ws_get_lock (mop) >= NULL_LOCK);
 	      lock = lock_Conv[lock][ws_get_lock (mop)];
+	      assert (lock != NA_LOCK);
 	      found = true;
 	      /*
 	       * Cache the location of the current on for future initialization of
@@ -489,7 +496,10 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		{
 		  lock = lockset->reqobj_inst_lock;
 		}
+
+	      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
 	      lock = lock_Conv[lock][ws_get_lock (mop)];
+	      assert (lock != NA_LOCK);
 	      found = true;
 	      lockset->last_reqobj_cached = i;
 	      /*
@@ -544,7 +554,11 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
        */
       lock = ws_get_lock (class_mop);
       lock = locator_to_prefected_lock (lock);
+
+      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
       lock = lock_Conv[lock][ws_get_lock (mop)];
+      assert (lock != NA_LOCK);
+
       /*
        * If a prefetch a class somehow.. I don't have any lock on the root
        * set, the lowest lock on it
@@ -652,12 +666,15 @@ locator_lock (MOP mop, LOCK lock)
 
   class_mop = ws_class_mop (mop);
 
-  if (object == NULL
-      || (current_lock = ws_get_lock (mop)) == NULL_LOCK
-      || (((lock = lock_Conv[lock][current_lock]) != current_lock)
+  current_lock = ws_get_lock (mop);
+  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+
+  if (object == NULL || current_lock == NULL_LOCK
+      || ((lock = lock_Conv[lock][current_lock]) != current_lock
 	  && !OID_ISTEMP (oid)))
     {
       /* We must invoke the transaction object locator on the server */
+      assert (lock != NA_LOCK);
 
       cache_lock.oid = oid;
       cache_lock.lock = lock;
@@ -709,8 +726,11 @@ locator_lock (MOP mop, LOCK lock)
 	  else
 	    {
 	      cache_lock.class_lock = (lock <= S_LOCK) ? IS_LOCK : IX_LOCK;
+
+	      assert (ws_get_lock (class_mop) >= NULL_LOCK);
 	      cache_lock.class_lock =
 		lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
+	      assert (cache_lock.class_lock != NA_LOCK);
 	    }
 	  /* Lock for prefetched instances of the same class */
 	  cache_lock.implicit_lock =
@@ -962,7 +982,9 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
       if (object != NULL)
 	{
 	  /* The object is cached */
+	  assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
 	  lock = lock_Conv[lock][ws_get_lock (mop)];
+	  assert (lock != NA_LOCK);
 	  ws_set_lock (mop, lock);
 	  continue;
 	}
@@ -975,10 +997,13 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
        *    than the requested lock.
        */
 
-      if (object == NULL
-	  || (current_lock = ws_get_lock (mop)) == NULL_LOCK
-	  || (((lock = lock_Conv[lock][current_lock]) != current_lock)
-	      && !OID_ISTEMP (oid)))
+      current_lock = ws_get_lock (mop);
+      assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+      lock = lock_Conv[lock][current_lock];
+      assert (lock != NA_LOCK);
+
+      if (object == NULL || current_lock == NULL_LOCK
+	  || (lock != current_lock && !OID_ISTEMP (oid)))
 	{
 
 	  /*
@@ -1202,8 +1227,11 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 	    }
 
 	  current_lock = ws_get_lock (mop);
-	  if (current_lock == NULL_LOCK
-	      || lock_Conv[lock][current_lock] != current_lock)
+	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+	  lock = lock_Conv[lock][current_lock];
+	  assert (lock != NA_LOCK);
+
+	  if (current_lock == NULL_LOCK || lock != current_lock)
 	    {
 	      error_code = ER_FAILED;
 	      if (er_errid () == 0)
@@ -1324,7 +1352,7 @@ locator_get_rest_objects_classes (LC_LOCKSET * lockset,
 	  break;
 	}
 
-      if (fetch_area != NULL)
+      if (*fetch_area != NULL)
 	{
 	  error_code = locator_cache (*fetch_area, class_mop,
 				      class_obj, NULL, NULL);
@@ -1389,6 +1417,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
   int level;			/* The current listing level */
   int error_code = NO_ERROR;
   int i;
+  LOCK conv_lock;
 
   if (WS_ISVID (mop))
     {
@@ -1425,9 +1454,12 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
    * 3: The object was fetched as part of a composition with the given level
    */
 
-  if (object != NULL
-      && (current_lock = ws_get_lock (mop)) != NULL_LOCK
-      && lock_Conv[lock][current_lock] == current_lock
+  current_lock = ws_get_lock (mop);
+  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+  conv_lock = lock_Conv[lock][current_lock];
+  assert (conv_lock != NA_LOCK);
+
+  if (object != NULL && current_lock != NULL_LOCK && conv_lock == current_lock
       && WS_MOP_GET_COMPOSITION_FETCH (mop))
     {
       level = (int) WS_MOP_GET_PRUNE_LEVEL (mop);
@@ -1602,9 +1634,13 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
 		    }
 		}
 	    }
+
 	  current_lock = ws_get_lock (mop);
-	  if (current_lock == NULL_LOCK
-	      || lock_Conv[lock][current_lock] != current_lock)
+	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+	  conv_lock = lock_Conv[lock][current_lock];
+	  assert (conv_lock != NA_LOCK);
+
+	  if (current_lock == NULL_LOCK || conv_lock != current_lock)
 	    {
 	      error_code = ER_FAILED;
 	      if (er_errid () == 0)
@@ -1689,7 +1725,10 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
 #if defined (SA_MODE) && !defined (CUBRID_DEBUG)
   if (*class_mop != NULL && class_obj != NULL)
     {
+      assert (lock >= NULL_LOCK && ws_get_lock (*class_mop) >= NULL_LOCK);
       lock = lock_Conv[lock][ws_get_lock (*class_mop)];
+      assert (lock != NA_LOCK);
+
       ws_set_lock (*class_mop, lock);
       return NO_ERROR;
     }
@@ -1719,7 +1758,10 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
       current_lock = ws_get_lock (*class_mop);
       if (current_lock != NULL_LOCK)
 	{
+	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
 	  lock = lock_Conv[lock][current_lock];
+	  assert (lock != NA_LOCK);
+
 	  if (lock == current_lock || OID_ISTEMP (class_oid))
 	    {
 	      return NO_ERROR;
@@ -1740,8 +1782,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
   if (locator_get_class (class_oid, class_chn, ws_oid (inst_mop), lock,
 			 false, &fetch_area) != NO_ERROR)
     {
-      error_code = ER_FAILED;
-      goto end;
+      return ER_FAILED;
     }
   /* We were able to acquired the lock. Was the cached class valid ? */
 
@@ -1752,7 +1793,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
       locator_free_copy_area (fetch_area);
       if (error_code != NO_ERROR)
 	{
-	  goto end;
+	  return error_code;
 	}
     }
 
@@ -1761,8 +1802,12 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
    * We need to do this since we don't know if the class was received in
    * the fetch area
    */
-  if (*class_mop != NULL
-      || (*class_mop = ws_mop (class_oid, sm_Root_class_mop)) != NULL)
+  if (*class_mop == NULL)
+    {
+      *class_mop = ws_mop (class_oid, sm_Root_class_mop);
+    }
+
+  if (*class_mop != NULL)
     {
       if (TM_TRAN_ISOLATION () != TRAN_REP_CLASS_REP_INSTANCE
 	  && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE)
@@ -1777,16 +1822,17 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
 	      lock = IS_LOCK;
 	    }
 	}
+
       ws_set_lock (*class_mop, lock);
+      ws_set_class (inst_mop, *class_mop);
     }
-  ws_set_class (inst_mop, *class_mop);
+
   /* There was a failure. Was the transaction aborted ? */
   if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_only_client (false);
     }
 
-end:
   return error_code;
 }
 
@@ -1858,7 +1904,10 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
   if (object != NULL)
     {
       /* The object is cached */
+      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
       lock = lock_Conv[lock][ws_get_lock (mop)];
+      assert (lock != NA_LOCK);
+
       ws_set_lock (mop, lock);
       return LC_EXIST;
     }
@@ -1873,11 +1922,14 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
 
   class_mop = ws_class_mop (mop);
 
-  if (object != NULL
-      && (current_lock = ws_get_lock (mop)) != NULL_LOCK
-      && (((lock = lock_Conv[lock][current_lock]) == current_lock)
+  current_lock = ws_get_lock (mop);
+  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
+
+  if (object != NULL && current_lock != NULL_LOCK
+      && ((lock = lock_Conv[lock][current_lock]) == current_lock
 	  || OID_ISTEMP (oid)))
     {
+      assert (lock != NA_LOCK);
       return LC_EXIST;
     }
 
@@ -1948,8 +2000,13 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
 	    {
 	      cache_lock.class_lock = IX_LOCK;
 	    }
+
+	  assert (cache_lock.class_lock >= NULL_LOCK
+		  && ws_get_lock (class_mop) >= NULL_LOCK);
 	  cache_lock.class_lock =
 	    lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
+	  assert (cache_lock.class_lock != NA_LOCK);
+
 	}
       /* Lock for prefetched instances of the same class */
       cache_lock.implicit_lock =
@@ -2236,6 +2293,11 @@ locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 {
   LOCK lock;			/* Lock to acquire for the above purpose */
   MOBJ class_obj;		/* The desired class                     */
+
+  if (class_mop == NULL)
+    {
+      return NULL;
+    }
 
 #if defined(CUBRID_DEBUG)
   if (ws_class_mop (class_mop) != NULL)
@@ -2543,9 +2605,15 @@ static void
 locator_keep_mops (MOP mop, MOBJ object, void *kmops)
 {
   LOCATOR_LIST_KEEP_MOPS *keep_mops;
+  LOCK lock;
 
   keep_mops = (LOCATOR_LIST_KEEP_MOPS *) kmops;
-  ws_set_lock (mop, lock_Conv[keep_mops->lock][ws_get_lock (mop)]);
+
+  assert (keep_mops->lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
+  lock = lock_Conv[keep_mops->lock][ws_get_lock (mop)];
+  assert (lock != NA_LOCK);
+
+  ws_set_lock (mop, lock);
   if (keep_mops->fun != NULL && object != NULL)
     {
       if (((*keep_mops->fun) (object)) == false)
@@ -2608,7 +2676,9 @@ locator_fun_get_all_mops (MOP class_mop,
     }
   else
     {
+      assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
       lock = lock_Conv[lock][ws_get_lock (class_mop)];
+      assert (lock != NA_LOCK);
     }
 
   /*
@@ -2684,6 +2754,8 @@ locator_fun_get_all_mops (MOP class_mop,
 	      keep_mops.list = (LIST_MOPS *) malloc (size);
 	      if (keep_mops.list == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		  break;
 		}
 	      keep_mops.list->num = 0;
@@ -2693,6 +2765,8 @@ locator_fun_get_all_mops (MOP class_mop,
 	      keep_mops.list = (LIST_MOPS *) realloc (keep_mops.list, size);
 	      if (keep_mops.list == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		  break;
 		}
 	    }
@@ -2788,6 +2862,8 @@ locator_save_nested_mops (LC_LOCKSET * lockset, void *save_mops)
   nested->list = (LIST_MOPS *) malloc (size);
   if (nested->list == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   nested->list->num = 0;
@@ -3262,14 +3338,13 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj,
 	  if (*object_p == NULL)
 	    {
 	      /* an error should have been set */
-	      error_code = ER_FAILED;
 	      if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 		{
-		  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		  break;
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
+	      error_code = ER_FAILED;
 	    }
-	  if (error_code != NO_ERROR)
+	  else
 	    {
 	      ws_cache (*object_p, mop, sm_Root_class_mop);
 	    }
@@ -3571,11 +3646,12 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p,
       class_mop = ws_mop (&class_oid, sm_Root_class_mop);
       if (class_mop == NULL)
 	{
+	  error_code = ER_FAILED;
 	  if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 	    {
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      return error_code;
 	    }
+	  return error_code;
 	}
       *mop_p = ws_mop (&obj->oid, class_mop);
       if (*mop_p == NULL)
@@ -3780,6 +3856,7 @@ locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush)
   assert (mflush != NULL);
 
   mflush->mop_toids = NULL;
+  mflush->mop_tail_toid = NULL;
   mflush->mobjs->start_multi_update = 0;
   mflush->mobjs->end_multi_update = 0;
   mflush->mobjs->num_objs = 0;
@@ -3817,6 +3894,7 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
     }
 
   mflush->mop_toids = NULL;
+  mflush->mop_tail_toid = NULL;
   mflush->mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (mflush->copy_area);
   OID_SET_NULL (&mflush->mobjs->class_oid);
   mflush->mobjs->start_multi_update = 0;
@@ -4482,8 +4560,18 @@ locator_mflush (MOP mop, void *mf)
 	  mop_toid = (LOCATOR_MFLUSH_TEMP_OID *) malloc (sizeof (*mop_toid));
 	  if (mop_toid == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*mop_toid));
 	      return WS_MAP_FAIL;
 	    }
+
+	  assert (mflush->mop_tail_toid != mop);
+
+	  if (mflush->mop_tail_toid == NULL)
+	    {
+	      mflush->mop_tail_toid = mop;
+	    }
+
 	  mop_toid->mop = mop;
 	  mop_toid->obj = mflush->mobjs->num_objs;
 	  mop_toid->next = mflush->mop_toids;
@@ -4572,6 +4660,12 @@ locator_flush_class (MOP class_mop)
   int error_code = NO_ERROR;
   int map_status = WS_MAP_FAIL;
 
+  if (class_mop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (WS_ISDIRTY (class_mop)
       && (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED
 	  || class_obj != NULL))
@@ -4584,6 +4678,7 @@ locator_flush_class (MOP class_mop)
 					      DONT_DECACHE, ONE_MFLUSH);
       if (error_code == NO_ERROR)
 	{
+	  /* current class mop flush */
 	  map_status = locator_mflush (class_mop, &mflush);
 	  if (map_status == WS_MAP_CONTINUE)
 	    {
@@ -4638,6 +4733,12 @@ locator_internal_flush_instance (MOP inst_mop, bool decache)
   int retry_count = 0;
   int chn;
 
+  if (inst_mop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
 retry:
   if (WS_ISDIRTY (inst_mop)
       && (ws_find (inst_mop, &inst) == WS_FIND_MOP_DELETED || inst != NULL))
@@ -4658,24 +4759,29 @@ retry:
 					      decache, ONE_MFLUSH);
       if (error_code == NO_ERROR)
 	{
-	  map_status = ws_map_dirty (locator_mflush, &mflush);
-	  if (map_status == WS_MAP_SUCCESS)
+	  /* current instance mop flush */
+	  map_status = locator_mflush (inst_mop, &mflush);
+	  if (map_status == WS_MAP_CONTINUE)
 	    {
-	      if (mflush.mobjs->num_objs != 0)
+	      map_status = ws_map_dirty (locator_mflush, &mflush);
+	      if (map_status == WS_MAP_SUCCESS)
 		{
-		  error_code = locator_mflush_force (&mflush);
-		  if (error_code == NO_ERROR && chn != -2
-		      && chn == WS_CHN (inst))
+		  if (mflush.mobjs->num_objs != 0)
 		    {
-		      locator_mflush_end (&mflush);
-		      /*
-		       * Make sure that you don't loop more than
-		       * once in this function.
-		       */
-		      if (retry_count < 2)
+		      error_code = locator_mflush_force (&mflush);
+		      if (error_code == NO_ERROR && chn != -2
+			  && chn == WS_CHN (inst))
 			{
-			  retry_count++;
-			  goto retry;
+			  locator_mflush_end (&mflush);
+			  /*
+			   * Make sure that you don't loop more than
+			   * once in this function.
+			   */
+			  if (retry_count < 2)
+			    {
+			      retry_count++;
+			      goto retry;
+			    }
 			}
 		    }
 		}
@@ -5008,8 +5114,13 @@ locator_add_class (MOBJ class_obj, const char *classname)
   LC_FIND_CLASSNAME reserved;
   LOCK lock;
 
-  if (classname && (class_mop = ws_find_class (classname)) != NULL
-      && ws_get_lock (class_mop) != NULL_LOCK)
+  if (classname == NULL)
+    {
+      return NULL;
+    }
+
+  class_mop = ws_find_class (classname);
+  if (class_mop != NULL && ws_get_lock (class_mop) != NULL_LOCK)
     {
       if (!WS_ISMARK_DELETED (class_mop))
 	{
@@ -5074,7 +5185,10 @@ locator_add_class (MOBJ class_obj, const char *classname)
   lock = ws_get_lock (sm_Root_class_mop);
   if (lock != NULL_LOCK)
     {
+      assert (lock >= NULL_LOCK);
       lock = lock_Conv[lock][IX_LOCK];
+      assert (lock != NA_LOCK);
+
       ws_set_lock (sm_Root_class_mop, lock);
     }
   else
@@ -5379,6 +5493,10 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname,
   LC_FIND_CLASSNAME renamed;
 
   /* Do we know about new name ? */
+  if (new_classname == NULL)
+    {
+      return NULL;
+    }
 
   tmp_class_mop = ws_find_class (new_classname);
   if (new_classname != NULL
@@ -5618,7 +5736,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
   int i;
   MOP class_mop = NULL;		/* The mop of a class                       */
   MOBJ class_obj;		/* The class object of above mop            */
-  LOCK current_lock;		/* The lock granted to above class          */
+  LOCK lock;			/* The lock granted to above class          */
   WS_FIND_MOP_STATUS status;
 
   for (i = 0; i < lockhint->num_classes; i++)
@@ -5631,10 +5749,13 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 	      status = ws_find (class_mop, &class_obj);
 	      if (status != WS_FIND_MOP_DELETED && class_obj != NULL)
 		{
-		  current_lock =
-		    lock_Conv[lockhint->classes[i].
-			      lock][ws_get_lock (class_mop)];
-		  ws_set_lock (class_mop, current_lock);
+		  lock = ws_get_lock (class_mop);
+		  assert (lockhint->classes[i].lock >= NULL_LOCK
+			  && lock >= NULL_LOCK);
+		  lock = lock_Conv[lockhint->classes[i].lock][lock];
+		  assert (lock != NA_LOCK);
+
+		  ws_set_lock (class_mop, lock);
 		}
 	    }
 	}
@@ -5666,7 +5787,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 {
   TRAN_ISOLATION isolation;	/* Client isolation level                   */
   MOP class_mop = NULL;		/* The mop of a class                       */
-  MOBJ class_obj;		/* The class object of above mop            */
+  MOBJ class_obj = NULL;	/* The class object of above mop            */
   LOCK current_lock;		/* The lock granted to above class          */
   LC_LOCKHINT *lockhint = NULL;	/* Description of hinted classes to
 				 * lock and fetch */
@@ -5679,6 +5800,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
   int i;
   OID *guessmany_class_oids = NULL;
   int *guessmany_class_chns = NULL;
+  LOCK conv_lock;
 
   all_found = LC_CLASSNAME_EXIST;
   need_call_server = need_flush = false;
@@ -5726,13 +5848,22 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 	   * if there is a lock on the class
 	   */
 
-	  if (class_mop == NULL
-	      || (current_lock = ws_get_lock (class_mop)) == NULL_LOCK
-	      || (((isolation = TM_TRAN_ISOLATION ())
-		   == TRAN_COMMIT_CLASS_COMMIT_INSTANCE
+	  if (class_mop != NULL)
+	    {
+	      current_lock = ws_get_lock (class_mop);
+	      assert (many_locks[i] >= NULL_LOCK
+		      && current_lock >= NULL_LOCK);
+	      conv_lock = lock_Conv[many_locks[i]][current_lock];
+	      assert (conv_lock != NA_LOCK);
+	    }
+
+	  isolation = TM_TRAN_ISOLATION ();
+
+	  if (class_mop == NULL || current_lock == NULL_LOCK
+	      || ((isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE
 		   || isolation == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE)
 		  && (current_lock == S_LOCK || current_lock == IS_LOCK))
-	      || current_lock != lock_Conv[many_locks[i]][current_lock])
+	      || current_lock != conv_lock)
 	    {
 	      need_call_server = true;
 	      continue;
@@ -5753,6 +5884,8 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
     malloc (sizeof (*guessmany_class_oids) * num_classes);
   if (guessmany_class_oids == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (*guessmany_class_oids) * num_classes);
       return LC_CLASSNAME_ERROR;
     }
 
@@ -5765,6 +5898,8 @@ locator_lockhint_classes (int num_classes, const char **many_classnames,
 	  free_and_init (guessmany_class_oids);
 	}
 
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (*guessmany_class_chns) * num_classes);
       return LC_CLASSNAME_ERROR;
     }
 

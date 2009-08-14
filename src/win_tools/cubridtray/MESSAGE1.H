@@ -208,7 +208,6 @@
 #define	LOG_BACKUP			"log_backup"
 #define	SOURCE_ENV			"source_env"
 #define	SQL_LOG				"sql_log"
-#define	SQL_LOG_TIME		"sql_log_time"
 #define	TIME_TO_KILL		"time_to_kill"
 #define	SESSION_TIMEOUT		"session_timeout"
 #define	JOB_QUEUE_SIZE		"job_queue_size"

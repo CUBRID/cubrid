@@ -1,0 +1,117 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>트리거 정의를 위한 가이드라인</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트리거(TRIGGER)\n트리거 생성\n트리거 정의를 위한 가이드라인");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거(TRIGGER)<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_trigger_create_guideline.htm\">트리거 생성<\/a> &nbsp;&gt;&nbsp; 트리거 정의를 위한 가이드라인<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>트리거 정의를 위한 가이드라인</h4>
+<p>트리거 정의로 다양하고 강력한 기능을 만들 수 있다. 트리거를 생성하기 전에 다음과 같은 정의 사항을 고려해야 한다:</p>
+<ul>
+<li class="title">트리거의 조건 영역 표현식이 데이터베이스에 예측할 수 없는 결과(side effect)를 가져오지는 않는가?</li>
+<li class="desc">SQL 문을 예측이 가능한 범위 내에서 사용해야 한다.</li>
+<li class="title">트리거의 실행 영역이 트리거의 이벤트 대상으로 주어진 테이블을 변경하지는 않는가?</li>
+<li class="desc">이러한 유형의 설계가 트리거의 정의에서 사용이 금지되어 있지는 않지만, 무한 루프로 빠지는 트리거가 만들어질 수 있어 주의해서 사용해야 한다. 트리거 실행 영역이 이벤트 대상 테이블을 수정할 때, 같은 트리거가 다시 불려질 수 있다. 또한 <span class="keyword">WHERE</span> 절을 포함하는 문장에 의해 트리거가 발생하면, 해당 트리거는 <span class="keyword">WHERE</span> 절에 의해 수행되는 테이블에는 일반적으로 부작용이 없다.</li>
+<li class="title">트리거가 불필요한 오버헤드를 만들어 내고 있지는 않는가?</li>
+<li class="desc">원하는 동작이 소스 내에서 조금&#160;더 효과적으로 표현될 수 있다면 직접 소스 내에서 구현하도록 한다.</li>
+<li class="title">트리거가 재귀적으로 실행되고 있지는 않는가? &#160;</li>
+<li class="desc">트리거의 실행 영역이 트리거를 부르고 이 트리거가 다시 처음 트리거를 부르면 재귀 루프(recusive loop)가 데이터베이스에 만들어 진다. 재귀 루프가 만들지면, 트리거가 정확히 수행되지 않거나&#160;진행 중인 루프를 단절하기 위해 현재 세션을 강제로 종료해야 할 수도 있다.</li>
+<li class="title">트리거의 정의는 유일한가?</li>
+<li class="desc">동일한 테이블에서 정의된 트리거나, 동일한 실행 영역에서 시작된 트리거는 복구할 수 없는 에러의 원인이 된다. 동일한 테이블에 있는 트리거는 다른 트리거 이벤트를 가져야 한다. 또한,&#160;트리거의 우선순위는 명시적으로 정의되어 있거나 모호하지 않아야 한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

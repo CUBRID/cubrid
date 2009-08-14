@@ -56,7 +56,7 @@ static char *ini_str_trim (char *s);
 static INI_LINE_STATUS ini_parse_line (char *input_line, char *section,
 				       char *key, char *value);
 static const char *ini_get_internal (INI_TABLE * ini, const char *key,
-				     const char *def);
+				     const char *def, int *lineno);
 
 /*
  * ini_dblalloc() - Doubles the allocated size associated to a pointer
@@ -835,13 +835,14 @@ ini_seccmp (const char *key1, const char *key2)
  *   ini(in): INI_TABLE to search
  *   key(in): key to look for
  *   def(in): default value to return if key not found
+ *   lineno(out): line number
  *
  * Note: A key as read from an ini file is given as "section:key"
  *       If the key cannot be found, the pointer passed as 'def' is returned
  *       do not free or modify returned pointer
  */
 static const char *
-ini_get_internal (INI_TABLE * ini, const char *key, const char *def)
+ini_get_internal (INI_TABLE * ini, const char *key, const char *def, int *lineno)
 {
   char *lc_key;
   const char *sval;
@@ -852,7 +853,7 @@ ini_get_internal (INI_TABLE * ini, const char *key, const char *def)
     }
 
   lc_key = ini_str_lower (key);
-  sval = ini_table_get (ini, lc_key, def, NULL);
+  sval = ini_table_get (ini, lc_key, def, lineno);
   return sval;
 }
 
@@ -863,6 +864,7 @@ ini_get_internal (INI_TABLE * ini, const char *key, const char *def)
  *   sec(in): section to look for
  *   key(in): key to look for
  *   def(in): default value to return if key not found
+ *   lineno(out): line number
  *
  * Note: A key as read from an ini file is given as "key"
  *       If the key cannot be found, the pointer passed as 'def' is returned
@@ -870,12 +872,12 @@ ini_get_internal (INI_TABLE * ini, const char *key, const char *def)
  */
 const char *
 ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
-	    const char *def)
+	    const char *def, int *lineno)
 {
   char sec_key[INI_BUFSIZ + 1];
 
   sprintf (sec_key, "%s:%s", sec, key);
-  return ini_get_internal (ini, sec_key, def);
+  return ini_get_internal (ini, sec_key, def, lineno);
 }
 
 /*
@@ -885,15 +887,16 @@ ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
  *   sec(in): section to look for
  *   key(in): key to look for
  *   def(in): default value to return if key not found
+ *   lineno(out): line number
  *
  * Note:
  */
 int
-ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def)
+ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   const char *str;
 
-  str = ini_getstr (ini, sec, key, INI_INVALID_KEY);
+  str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
   if (str == INI_INVALID_KEY)
     {
       return def;
@@ -908,15 +911,16 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def)
  *   sec(in): section to look for
  *   key(in): key to look for
  *   def(in): default value to return if key not found
+ *   lineno(out): line number
  *
  * Note:
  */
 int
-ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def)
+ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   int result;
 
-  result = ini_getint (ini, sec, key, def);
+  result = ini_getint (ini, sec, key, def, lineno);
   if (result <= 0)
     {
       return def;
@@ -934,16 +938,17 @@ ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def)
  *   key(in): key to look for
  *   def(in): default value to return if key not found
  *   min(in): minimum limit
+ *   lineno(out): line number
  *
  * Note:
  */
 int
 ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def,
-		 int min)
+		 int min, int *lineno)
 {
   int result;
 
-  result = ini_getuint (ini, sec, key, def);
+  result = ini_getuint (ini, sec, key, def, lineno);
   if (result < min)
     {
       return min;
@@ -961,16 +966,17 @@ ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def,
  *   key(in): key to look for
  *   def(in): default value to return if key not found
  *   max(in): maximum limit
+ *   lineno(out): line number
  *
  * Note:
  */
 int
 ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
-		 int max)
+		 int max, int *lineno)
 {
   int result;
 
-  result = ini_getuint (ini, sec, key, def);
+  result = ini_getuint (ini, sec, key, def, lineno);
   if (result > max)
     {
       return max;
@@ -986,15 +992,16 @@ ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
  *   sec(in): section to look for
  *   key(in): key to look for
  *   def(in): default value to return if key not found
+ *   lineno(out): line number
  *
  * Note: the conversion may overflow. see strtol().
  */
 int
-ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def)
+ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   const char *str;
 
-  str = ini_getstr (ini, sec, key, INI_INVALID_KEY);
+  str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
   if (str == INI_INVALID_KEY)
     {
       return def;

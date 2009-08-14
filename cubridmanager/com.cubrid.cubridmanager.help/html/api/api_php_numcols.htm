@@ -1,0 +1,129 @@
+﻿
+<html>
+<head>
+<title>cubrid_num_cols</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="cubrid_num_cols" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_num_cols");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_num_cols<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_num_cols</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_num_cols</span> 함수는 수행한 질의 결과의 열 수를 얻는다. 수행한 질의가 <span class="keyword">SELECT</span> 문일 때만 가능하다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_num_cols</span> (int <span class="var">req_handle</span>)</p>
+<ul>
+<li><span class="var">req_handle</span> : 요청 핸들</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : 열의 수</li>
+<li>오류 발생 : -1</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$req = cubrid_execute ($con, "select * from member");<br />
+if ($req) {<br />
+&#160;&#160;$rows_count = cubrid_num_rows ($req);<br />
+&#160;&#160;$cols_count = cubrid_num_cols ($req);<br />
+&#160;&#160;echo "result set rows count : $rows\n";<br />
+&#160;&#160;echo "result set columns count : $cols\n";<br />
+&#160;&#160;cubrid_close_request ($req);<br />
+}</p>
+<h6>관련 항목</h6>
+<ul>
+<li><a href="api_php_execute.htm"><span class="keyword">cubrid_execute</span></a></li>
+<li class="keyword"><a href="api_php_numrows.htm">cubrid_num_rows</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

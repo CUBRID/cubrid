@@ -1,0 +1,144 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 볼륨 구조</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 소개\n시스템 구조\n데이터베이스 볼륨 구조");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"intro.htm\">CUBRID 소개<\/a> &nbsp;&gt;&nbsp; <a href=\"intro_arch_arch.htm\">시스템 구조<\/a> &nbsp;&gt;&nbsp; 데이터베이스 볼륨 구조<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 볼륨 구조</h3>
+<p>아래 그림은 CUBRID 데이터베이스 볼륨의 구조를 도식화한 구성도이다. 이를 참조로 하여 데이터베이스 볼륨을 크게 영구 볼륨, 임시 볼륨, 백업 볼륨으로 분류하고, 각각에 속하는 볼륨 및 특징을 살펴보기로 한다.</p>
+<p><img src="images/volume.jpg" width="561" height="380" border="0" alt="" /></p>
+<h5>영구 볼륨</h5>
+<p>영구 볼륨은&#160;한번 생성되면 영구적으로 존재하는 데이터베이스 볼륨으로서, 볼륨 타입으로는&#160;범용(generic), 데이터(data), 임시(temp), 인덱스(index), 제어(control), 활성 로그(active log), 보관 로그(archive log)가 있다.</p>
+<h6>범용 볼륨</h6>
+<p>사용자는 데이터베이스에 추가할 볼륨 타입을 데이터(data),&#160;임시(temp), 인덱스(index) 중 하나의 용도로 지정하여 효율적으로 관리할 수 있는데, 별도로 데이터 용도를 지정하지 않는 경우에는 범용 볼륨을 지정할 수 있다.</p>
+<h6>데이터 볼륨</h6>
+<p>데이터 볼륨이란, 인스턴스, 테이블, 멀티미디어 데이터 등과 같은 데이터를 저장하기 위한 볼륨이다.</p>
+<h6>임시 볼륨</h6>
+<p>임시 볼륨이란, 질의 처리 및 정렬(sorting)을 수행할 때 일시적으로 사용되는 볼륨이다. 다만, 임시 볼륨은 저장 공간이 임시적으로 생성 및 소멸되는 볼륨이 아니라 영구적으로 공간을 확보한 영구 볼륨 중 하나로서, 데이터가 임시적으로 저장 및 소멸되는 것을 의미한다. 따라서, CUBRID가 재시작하면 임시 볼륨은 초기화되고, 이에 관해 로그 정보는 남기지 않는다.</p>
+<h6>인덱스 볼륨</h6>
+<p>인덱스 볼륨이란, 신속한 질의 처리 또는 무결성 제약 조건(integrity constraints)의 신속한 검증을 위하여 인덱스 정보를 유지하는 볼륨이다.</p>
+<h6>제어 파일</h6>
+<p>제어 파일이란, 데이터베이스 내 존재하는 볼륨의 정보, 백업 정보, 및 로그의 정보를 저장한다.</p>
+<ul>
+<li>볼륨 정보 : 데이터베이스 내 모든 볼륨의 이름과 위치, 그리고 내부 볼륨 식별자를 포함하는 정보로서, 데이터베이스가 재시작될 때 CUBRID는 볼륨 정보 제어 파일을 판독하며, 새로운 데이터베이스 볼륨이 추가될 때에 새로운 엔트리를 볼륨 정보 제어 파일에 기록한다.</li>
+<li>백업 정보 : 정보 볼륨에 대한 모든 백업의 위치는 백업 정보 제어 파일에 기록된다. 이 제어 파일은 로그 파일이 관리되는 곳에 유지된다.</li>
+<li>로그 정보 : 모든 활성 로그와 보관 로그의 이름을 포함하며, 사용자는 로그 정보 제어 파일을 통해 롤백이나 데이터베이스 복구에 필요하지 않은 보관 로그의 정보를 확인할 수 있다. 이러한 로그 정보 제어 파일은 로그 파일과 동일한 위치에서 생성 및 관리된다.</li>
+</ul>
+<p>이와 같이&#160;각각의 제어 파일은 데이터베이스 볼륨의 위치, 백업 정보, 로그 정보를 포함하며 데이터베이스가 재시작될 때 판독되는 파일이므로, 사용자 임의로 변경해서는 안 된다.</p>
+<h6>활성 로그</h6>
+<p>활성 로그(active log)란 데이터베이스의 최근 변경 사항을 포함하는 로그를 의미하며, 데이터베이스에 문제가 발생하는 경우 활성 로그 및 보관 로그를 이용하여 고장 발생 전의 커밋된 시점까지 완전하게 데이터베이스를 복구할 수 있다.</p>
+<h6>보관 로그</h6>
+<p>보관 로그는 최근의 변경 사항을 포함하고 있는 활성 로그(active log) 공간이 모두 사용된 후에 지속적으로 생성되는 로그를 보관하기 위한 볼륨이다. 마치 영구적 임시 볼륨 공간이 소진된 후에 일시적 임시 볼륨이 이용되는 것처럼, 활성 로그 볼륨의 공간이 소진된 후에 비로소 보관 로그 볼륨이 이용된다. 그러나, 일시적 임시 볼륨은 서버 프로세스가 종료될 때 자동 소멸하나 보관 로그 볼륨은 자동 소멸하지 않으므로 <span class="keyword">DBA</span>가 불필요한 보관 로그에 대해서는 수동으로 삭제하여야 한다는 차이점이 있다. <span class="keyword">DBA</span>의 판단 하에 보관 로그 볼륨은 어느 때든 삭제할 수 있다.</p>
+<h5>일시 볼륨</h5>
+<p>일시&#160;볼륨이란, 영구 볼륨과 반대되는 의미이다. 즉, 사용자가 영구 볼륨으로 지정한 공간을 초과하여 데이터가 축적되는 경우에만 일시적으로 마련되는 저장 공간을 일시 볼륨이라 하며, 이는 서버 프로세스가 종료됨에 따라 소멸된다. 이처럼 일시적으로 생성 및 소멸되는 볼륨으로는 일시적 임시 볼륨이 있다.</p>
+<h6>일시적 임시 볼륨</h6>
+<p>영구 볼륨에 속하는 임시 볼륨은 영구적으로 공간을 확보하는 볼륨이며, 일시적 임시 볼륨은&#160;영구적 임시 볼륨으로 지정된 공간이 모두 사용된 후에 시스템에 의해 일시적으로 생성하는 임시 볼륨이다. 따라서, <span class="keyword">DBA</span>는 데이터베이스 운영 상황을 고려하여 적절한 크기의 영구적 임시 볼륨을 확보해야 한다.</p>
+<p>일시적 임시&#160;볼륨은 조인(join)이나 정렬이 수행하거나 인덱스를 생성할 때 필요한 디스크 공간을 확보하는 경우에 일시적으로 생성되며, 이러한 대형 질의의 예로는&#160;1) <span class="keyword">GROUP BY</span>나 <span class="keyword">ORDER BY</span>가 포함된 질의 2) 부질의(subquery)가 포함된 질의, 3) 정렬-병합(sort-merge) 조인이 수행되는 질의, 4) <span class="keyword">CREATE INDEX</span> 문장이 포함된 질의등이 있다.</p>
+<ul>
+<li class="title">일시적 임시 볼륨의 파일명</li>
+<li class="desc">CUBRID의 일시적 임시 볼륨의 파일명은 <span class="var">db_name</span><span class="keyword">_t</span><span class="var">num</span> 형식의 이름을 갖는다. 여기서 <span class="var">db_name</span>은 데이터베이스 이름이고, <span class="var">num</span>은 볼륨 식별자이다. 볼륨 식별자는 32766에서부터 1씩 감소한다.</li>
+<li class="title">일시적 임시 볼륨의 크기 설정</li>
+<li class="desc">일시적 임시 볼륨이 생성되는 개수는 트랜잭션 처리에 필요한 공간의 크기에 따라 시스템이 결정한다. 그러나, 일시적 임시 볼륨의 크기는 사용자가&#160;데이터베이스 파라미터 설정 파일(<span class="keyword">cubrid.conf</span>)의&#160;<span class="keyword">temp_file_max_size_in_pages</span> 파라미터의 값을 설정함으로써 제한할 수 있다. 만약, <span class="keyword">temp_file_max_size_in_pages</span>의 값이 0으로 설정되면 영구적 임시 볼륨이 소진되어도 일시적 임시 볼륨이 생성되지 않을 것이다.</li>
+<li class="title">일시적 임시 볼륨의 저장 위치 설정</li>
+<li class="desc">일시적 임시 볼륨은 기본적으로 첫 번째 데이터베이스 볼륨이 생성된 위치에 만들어진다. 그러나, 사용자가 <span class="keyword">temp_volume_path</span> 파라미터 값을 설정하여 일시적 임시 볼륨이 저장될 다른&#160;디렉터리를 지정할 수 있다.</li>
+<li class="title">일시적 임시 볼륨의 삭제</li>
+<li class="desc">일시적 임시 볼륨은 데이터베이스가 구동 중일때만 일시적으로 존재하며, 서버가 운영 중일때는 일시적 임시 볼륨을 삭제해서는 안 된다. 또한, 데이터베이스 서버가 독립 모드(standalone)로 운영되는 경우에는 서버 클라이언트의 접속이 종료될 때 일시적 임시 볼륨이 삭제되고, 데이터베이스 서버가 클라이언트/서버 모드로 운영되는 경우에는 <span class="keyword">cubrid</span> 유틸리티에 의해 서버 프로세스가 정상적으로 종료될 때 일시적 임시 볼륨이 삭제된다. 만약, 데이터베이스 서버가 비정상적으로 종료된 경우라면 서버가 재시작할 때 일시적 임시 볼륨이 삭제된다.</li>
+</ul>
+<h5>백업 볼륨</h5>
+<p>백업 볼륨은 데이터베이스에 대한 스냅샷으로서, 이러한 백업 볼륨과 로그 볼륨을 기반으로 특정 시점까지 발생한 트랜잭션을 복구할 수 있다.</p>
+<p>사용자는 <span class="keyword">cubrid backupdb</span> 유틸리티를 통해 데이터베이스 복구를 위해 필요한 모든 데이터를 복사할 수 있으며, 데이터베이스 환경 설정 파일(<span class="keyword">cubrid.conf</span>)의 <span class="keyword">backup_volume_max_size_bytes</span> 파라미터 값을 설정하여 백업 볼륨의 크기를 조정할 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

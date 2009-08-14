@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -256,7 +256,8 @@ stats_client_unpack_statistics (char *buf_p)
 
 	  buf_p = or_unpack_domain (buf_p, &btree_stats_p->key_type, 0);
 
-	  if (btree_stats_p->key_type->type->id == DB_TYPE_MIDXKEY)
+	  if (btree_stats_p->key_type != NULL
+	      && btree_stats_p->key_type->type->id == DB_TYPE_MIDXKEY)
 	    {
 	      btree_stats_p->key_size =
 		tp_domain_size (btree_stats_p->key_type->setdomain);
@@ -514,6 +515,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 		   bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
 	  fprintf (file_p, "        Cardinality: %d (", bt_statsp->keys);
 
+	  prefix_p = "";
 	  for (k = 0; k < bt_statsp->key_size; k++)
 	    {
 	      fprintf (file_p, "%s%d", prefix_p, bt_statsp->pkeys[k]);

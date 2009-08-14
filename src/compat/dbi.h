@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -56,8 +56,13 @@ extern int db_auth_logout (void);
 extern int db_login (const char *name, const char *password);
 extern int db_restart (const char *program,
 		       int print_version, const char *volume);
+extern int db_restart_ex (const char *program, const char *db_name,
+			  const char *db_user, const char *db_password,
+			  int client_type);
 extern int db_shutdown (void);
 extern int db_ping_server (int client_val, int *server_val);
+extern int db_disable_modification (void);
+extern int db_enable_modification (void);
 extern int db_commit_transaction (void);
 extern int db_abort_transaction (void);
 extern int db_commit_is_needed (void);
@@ -939,4 +944,5 @@ extern int db_decode_object (const char *string, DB_OBJECT ** object);
 
 extern int db_set_system_parameters (const char *data);
 extern int db_get_system_parameters (char *data, int len);
+extern char *db_get_host_connected (void);
 #endif /* _DBI_H_ */

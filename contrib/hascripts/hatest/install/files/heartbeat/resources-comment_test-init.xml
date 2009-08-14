@@ -1,0 +1,504 @@
+     <resources>
+       <master_slave id="ms_cubrid_DB_1">
+         <meta_attributes id="ms_cubrid_DB_1_meta_attrs">
+           <attributes>
+             <nvpair id="ms_cubrid_DB_1_metaattr_clone_max" name="clone_max" value="2"/>
+             <nvpair id="ms_cubrid_DB_1_metaattr_clone_node_max" name="clone_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_1_metaattr_master_max" name="master_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_1_metaattr_master_node_max" name="master_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_1_metaattr_notify" name="notify" value="true"/>
+             <nvpair id="ms_cubrid_DB_1_metaattr_globally_unique" name="globally_unique" value="false"/>
+             <nvpair name="target_role" id="ms_cubrid_DB_1_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_1" class="ocf" type="cubrid" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_1_db" name="database" value="DB_1"/>
+               <nvpair id="cubrid_DB_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_monitor_master" name="monitor" interval="3" timeout="30" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_1_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_monitor_slave" name="monitor" interval="7" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+           </operations>
+           <meta_attributes id="cubrid_DB_1:0_meta_attrs">
+             <attributes/>
+           </meta_attributes>
+         </primitive>
+         <instance_attributes id="ms_cubrid_DB_1">
+           <attributes/>
+         </instance_attributes>
+       </master_slave>
+       <master_slave id="ms_cubrid_DB_2">
+         <meta_attributes id="ms_cubrid_DB_2_meta_attrs">
+           <attributes>
+             <nvpair id="ms_cubrid_DB_2_metaattr_clone_max" name="clone_max" value="2"/>
+             <nvpair id="ms_cubrid_DB_2_metaattr_clone_node_max" name="clone_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_2_metaattr_master_max" name="master_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_2_metaattr_master_node_max" name="master_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_2_metaattr_notify" name="notify" value="true"/>
+             <nvpair id="ms_cubrid_DB_2_metaattr_globally_unique" name="globally_unique" value="false"/>
+             <nvpair name="target_role" id="ms_cubrid_DB_2_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_2" class="ocf" type="cubrid" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_2_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_2_db" name="database" value="DB_2"/>
+               <nvpair id="cubrid_DB_2_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_2_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_2_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_2_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_monitor_master" name="monitor" interval="3" timeout="30" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_2_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_monitor_slave" name="monitor" interval="7" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+           </operations>
+           <meta_attributes id="cubrid_DB_2:0_meta_attrs">
+             <attributes/>
+           </meta_attributes>
+         </primitive>
+         <instance_attributes id="ms_cubrid_DB_2">
+           <attributes/>
+         </instance_attributes>
+       </master_slave>
+       <master_slave id="ms_cubrid_DB_3">
+         <meta_attributes id="ms_cubrid_DB_3_meta_attrs">
+           <attributes>
+             <nvpair id="ms_cubrid_DB_3_metaattr_clone_max" name="clone_max" value="2"/>
+             <nvpair id="ms_cubrid_DB_3_metaattr_clone_node_max" name="clone_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_3_metaattr_master_max" name="master_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_3_metaattr_master_node_max" name="master_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_3_metaattr_notify" name="notify" value="true"/>
+             <nvpair id="ms_cubrid_DB_3_metaattr_globally_unique" name="globally_unique" value="false"/>
+             <nvpair name="target_role" id="ms_cubrid_DB_3_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_3" class="ocf" type="cubrid" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_3_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_3_db" name="database" value="DB_3"/>
+               <nvpair id="cubrid_DB_3_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_3_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_3_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_3_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_monitor_master" name="monitor" interval="3" timeout="30" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_3_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_monitor_slave" name="monitor" interval="7" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+           </operations>
+           <meta_attributes id="cubrid_DB_3:0_meta_attrs">
+             <attributes/>
+           </meta_attributes>
+         </primitive>
+         <instance_attributes id="ms_cubrid_DB_3">
+           <attributes/>
+         </instance_attributes>
+       </master_slave>
+       <master_slave id="ms_cubrid_DB_4">
+         <meta_attributes id="ms_cubrid_DB_4_meta_attrs">
+           <attributes>
+             <nvpair id="ms_cubrid_DB_4_metaattr_clone_max" name="clone_max" value="2"/>
+             <nvpair id="ms_cubrid_DB_4_metaattr_clone_node_max" name="clone_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_4_metaattr_master_max" name="master_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_4_metaattr_master_node_max" name="master_node_max" value="1"/>
+             <nvpair id="ms_cubrid_DB_4_metaattr_notify" name="notify" value="true"/>
+             <nvpair id="ms_cubrid_DB_4_metaattr_globally_unique" name="globally_unique" value="false"/>
+             <nvpair name="target_role" id="ms_cubrid_DB_4_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_4" class="ocf" type="cubrid" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_4_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_4_db" name="database" value="DB_4"/>
+               <nvpair id="cubrid_DB_4_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_4_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_4_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_4_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_monitor_master" name="monitor" interval="3" timeout="30" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_4_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_monitor_slave" name="monitor" interval="7" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+           </operations>
+           <meta_attributes id="cubrid_DB_4:0_meta_attrs">
+             <attributes/>
+           </meta_attributes>
+         </primitive>
+         <instance_attributes id="ms_cubrid_DB_4">
+           <attributes/>
+         </instance_attributes>
+       </master_slave>
+       <group id="group_cubrid_DB_1_0_ldup_1">
+         <meta_attributes id="group_cubrid_DB_1_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_1_0_ldup_1_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_1_0_ldup_1_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_1_0_ldup_1_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_1_0_lw_1" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_1_0_lw_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_1_0_lw_1_db" name="database" value="DB_1@S1_NODE"/>
+               <nvpair id="cubrid_DB_1_0_lw_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_1_S1_NODE"/>
+               <nvpair id="cubrid_DB_1_0_lw_1_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_1_0_lw_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_1_0_lw_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_1_0_lw_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_1_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_1_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_1_0_la_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_1_0_la_1_db" name="database" value="DB_1@localhost"/>
+               <nvpair id="cubrid_DB_1_0_la_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_1_S1_NODE"/>
+               <nvpair id="cubrid_DB_1_0_la_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_1_0_la_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_1_0_la_1_user" name="user" value="CUBRID_USER"/> </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_1_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_1_0_ldup_1">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_1_1_ldup_0">
+         <meta_attributes id="group_cubrid_DB_1_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_1_1_ldup_0_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_1_1_ldup_0_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_1_1_ldup_0_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_1_1_lw_0" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_1_1_lw_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_1_1_lw_0_db" name="database" value="DB_1@A1_NODE"/>
+               <nvpair id="cubrid_DB_1_1_lw_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_1_A1_NODE"/>
+               <nvpair id="cubrid_DB_1_1_lw_0_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_1_1_lw_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_1_1_lw_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_1_1_lw_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_1_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_1_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_1_1_la_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_1_1_la_0_db" name="database" value="DB_1@localhost"/>
+               <nvpair id="cubrid_DB_1_1_la_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_1_A1_NODE"/>
+               <nvpair id="cubrid_DB_1_1_la_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_1_1_la_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_1_1_la_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_1_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_1_1_ldup_0">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_2_0_ldup_1">
+         <meta_attributes id="group_cubrid_DB_2_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_2_0_ldup_1_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_2_0_ldup_1_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_2_0_ldup_1_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_2_0_lw_1" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_2_0_lw_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_2_0_lw_1_db" name="database" value="DB_2@S1_NODE"/>
+               <nvpair id="cubrid_DB_2_0_lw_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_2_S1_NODE"/>
+               <nvpair id="cubrid_DB_2_0_lw_1_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_2_0_lw_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_2_0_lw_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_2_0_lw_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_2_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_2_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_2_0_la_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_2_0_la_1_db" name="database" value="DB_2@localhost"/>
+               <nvpair id="cubrid_DB_2_0_la_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_2_S1_NODE"/>
+               <nvpair id="cubrid_DB_2_0_la_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_2_0_la_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_2_0_la_1_user" name="user" value="CUBRID_USER"/> </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_2_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_2_0_ldup_1">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_2_1_ldup_0">
+         <meta_attributes id="group_cubrid_DB_2_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_2_1_ldup_0_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_2_1_ldup_0_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_2_1_ldup_0_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_2_1_lw_0" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_2_1_lw_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_2_1_lw_0_db" name="database" value="DB_2@A1_NODE"/>
+               <nvpair id="cubrid_DB_2_1_lw_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_2_A1_NODE"/>
+               <nvpair id="cubrid_DB_2_1_lw_0_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_2_1_lw_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_2_1_lw_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_2_1_lw_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_2_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_2_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_2_1_la_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_2_1_la_0_db" name="database" value="DB_2@localhost"/>
+               <nvpair id="cubrid_DB_2_1_la_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_2_A1_NODE"/>
+               <nvpair id="cubrid_DB_2_1_la_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_2_1_la_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_2_1_la_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_2_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_2_1_ldup_0">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_3_0_ldup_1">
+         <meta_attributes id="group_cubrid_DB_3_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_3_0_ldup_1_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_3_0_ldup_1_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_3_0_ldup_1_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_3_0_lw_1" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_3_0_lw_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_3_0_lw_1_db" name="database" value="DB_3@S1_NODE"/>
+               <nvpair id="cubrid_DB_3_0_lw_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_3_S1_NODE"/>
+               <nvpair id="cubrid_DB_3_0_lw_1_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_3_0_lw_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_3_0_lw_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_3_0_lw_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_3_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_3_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_3_0_la_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_3_0_la_1_db" name="database" value="DB_3@localhost"/>
+               <nvpair id="cubrid_DB_3_0_la_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_3_S1_NODE"/>
+               <nvpair id="cubrid_DB_3_0_la_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_3_0_la_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_3_0_la_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_3_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_3_0_ldup_1">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_3_1_ldup_0">
+         <meta_attributes id="group_cubrid_DB_3_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_3_1_ldup_0_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_3_1_ldup_0_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_3_1_ldup_0_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_3_1_lw_0" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_3_1_lw_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_3_1_lw_0_db" name="database" value="DB_3@A1_NODE"/>
+               <nvpair id="cubrid_DB_3_1_lw_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_3_A1_NODE"/>
+               <nvpair id="cubrid_DB_3_1_lw_0_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_3_1_lw_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_3_1_lw_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_3_1_lw_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_3_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_3_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_3_1_la_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_3_1_la_0_db" name="database" value="DB_3@localhost"/>
+               <nvpair id="cubrid_DB_3_1_la_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_3_A1_NODE"/>
+               <nvpair id="cubrid_DB_3_1_la_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_3_1_la_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_3_1_la_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_3_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_3_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_3_1_ldup_0">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_4_0_ldup_1">
+         <meta_attributes id="group_cubrid_DB_4_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_4_0_ldup_1_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_4_0_ldup_1_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_4_0_ldup_1_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_4_0_lw_1" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_4_0_lw_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_4_0_lw_1_db" name="database" value="DB_4@S1_NODE"/>
+               <nvpair id="cubrid_DB_4_0_lw_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_4_S1_NODE"/>
+               <nvpair id="cubrid_DB_4_0_lw_1_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_4_0_lw_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_4_0_lw_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_4_0_lw_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_4_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_4_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_4_0_la_1_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_4_0_la_1_db" name="database" value="DB_4@localhost"/>
+               <nvpair id="cubrid_DB_4_0_la_1_logpath" name="logpath" value="CUBRID_DATABASES/DB_4_S1_NODE"/>
+               <nvpair id="cubrid_DB_4_0_la_1_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_4_0_la_1_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_4_0_la_1_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_4_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_4_0_ldup_1">
+           <attributes/>
+         </instance_attributes>
+       </group>
+       <group id="group_cubrid_DB_4_1_ldup_0">
+         <meta_attributes id="group_cubrid_DB_4_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair id="group_cubrid_DB_4_1_ldup_0_metaattr_ordered" name="ordered" value="true"/>
+             <nvpair id="group_cubrid_DB_4_1_ldup_0_metaattr_collocated" name="collocated" value="true"/>
+             <nvpair name="target_role" id="group_cubrid_DB_4_1_ldup_0_metaattr_target_role" value="stopped"/>
+           </attributes>
+         </meta_attributes>
+         <primitive id="cubrid_DB_4_1_lw_0" class="ocf" type="cubrid-lw" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_4_1_lw_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_4_1_lw_0_db" name="database" value="DB_4@A1_NODE"/>
+               <nvpair id="cubrid_DB_4_1_lw_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_4_A1_NODE"/>
+               <nvpair id="cubrid_DB_4_1_lw_0_syncmode" name="syncmode" value="sync"/>
+               <nvpair id="cubrid_DB_4_1_lw_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_4_1_lw_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_4_1_lw_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_4_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <primitive id="cubrid_DB_4_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
+           <instance_attributes id="cubrid_DB_4_1_la_0_instance_attrs">
+             <attributes>
+               <nvpair id="cubrid_DB_4_1_la_0_db" name="database" value="DB_4@localhost"/>
+               <nvpair id="cubrid_DB_4_1_la_0_logpath" name="logpath" value="CUBRID_DATABASES/DB_4_A1_NODE"/>
+               <nvpair id="cubrid_DB_4_1_la_0_home" name="home" value="CUBRID_HOME"/>
+               <nvpair id="cubrid_DB_4_1_la_0_dbpath" name="dbpath" value="CUBRID_DATABASES"/>
+               <nvpair id="cubrid_DB_4_1_la_0_user" name="user" value="CUBRID_USER"/>
+             </attributes>
+           </instance_attributes>
+           <operations>
+             <op id="cubrid_DB_4_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_4_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+           </operations>
+         </primitive>
+         <instance_attributes id="group_cubrid_DB_4_1_ldup_0">
+           <attributes/>
+         </instance_attributes>
+       </group>
+     </resources>

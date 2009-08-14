@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -505,8 +505,8 @@ double_to_string (double double_value, int field_width,
 		  bool commas, char conversion)
 {
   char numeric_conversion_string[1024];
-  char precision_string[5];
-  char format_string[15];
+  char precision_string[16];
+  char format_string[32];
   int i, overall_fieldwidth;
 
   if (field_width < 0)
@@ -521,10 +521,8 @@ double_to_string (double double_value, int field_width,
       precision = 0;
     }
 
-  if (!sprintf (precision_string, ".%u", (int) precision))
-    {
-      return (NULL);
-    }
+  snprintf (precision_string, sizeof (precision_string) - 1, ".%u",
+	    (int) precision);
 
   i = 0;
 
@@ -580,6 +578,7 @@ double_to_string (double double_value, int field_width,
 
   format_string[i++] = '*';
   format_string[i] = 0;
+
 
   strcat ((char *) format_string, (char *) precision_string);
   i = strlen (format_string);
@@ -727,18 +726,29 @@ date_as_string (DB_DATE * date_value, int format)
       }
       break;
     case DATE_FORMAT_FULL_TEXT_W_DAY:
-      (void) sprintf (temp_buffer, "%s, %s %d, %04d",
-		      day_of_week_names[db_date_weekday (date_value)],
-		      month_of_year_names[month - 1], day, year);
+      {
+	int dayofweek = db_date_weekday (date_value);
+	if (dayofweek < 0 || dayofweek > 6)
+	  {
+	    return (NULL);
+	  }
+	(void) sprintf (temp_buffer, "%s, %s %d, %04d",
+			day_of_week_names[dayofweek],
+			month_of_year_names[month - 1], day, year);
+      }
       break;
     case DATE_FORMAT_ABREV_TEXT_W_DAY:
       {
 	char day_name[DATE_ABREV_NAME_LENGTH + 1];
 	char month_name[DATE_ABREV_NAME_LENGTH + 1];
 
+	int dayofweek = db_date_weekday (date_value);
+	if (dayofweek < 0 || dayofweek > 6)
+	  {
+	    return (NULL);
+	  }
 	(void) strncpy (day_name,
-			day_of_week_names[db_date_weekday (date_value)],
-			DATE_ABREV_NAME_LENGTH);
+			day_of_week_names[dayofweek], DATE_ABREV_NAME_LENGTH);
 	day_name[DATE_ABREV_NAME_LENGTH] = '\0';
 	(void) strncpy (month_name, month_of_year_names[month - 1],
 			DATE_ABREV_NAME_LENGTH);
@@ -1044,6 +1054,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter)
 
   if (db_bit_string (value, "%X", temp_string, max_length) != CSQL_SUCCESS)
     {
+      free_and_init (temp_string);
       return (NULL);		/* Should never get here */
     }
 
@@ -1068,8 +1079,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
 {
   int cardinality, total_string_length, i;
   char **string_array;
-  char **string_array_holder;
-  char *return_string;
+  char *return_string = NULL;
   DB_VALUE element;
   int set_error;
   DB_SET *set;
@@ -1114,57 +1124,54 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
     {
       cardinality = max_entries;
     }
-
-  if ((string_array =
-       (char **) malloc ((cardinality + 2) * sizeof (char *))) == NULL)
+  string_array = (char **) malloc ((cardinality + 2) * sizeof (char *));
+  if (string_array == NULL)
     {
       return (NULL);
     }
-  else
-    {
-      string_array_holder = string_array;
-    }
+
+  memset (string_array, 0, (cardinality + 2) * sizeof (char *));
+
   total_string_length = cardinality * 2;
   for (i = 0; i < cardinality; i++)
     {
-      if ((set_error = db_set_get (set, i, &element)))
+      set_error = db_set_get (set, i, &element);
+      if (set_error != NO_ERROR)
 	{
-	  free_and_init (string_array_holder);
-	  return (NULL);
+	  goto finalize;
 	}
-      *string_array = csql_db_value_as_string (&element, NULL);
+      string_array[i] = csql_db_value_as_string (&element, NULL);
       db_value_clear (&element);
-      if (*string_array == NULL)
+      if (string_array[i] == NULL)
 	{
-	  if ((*string_array = duplicate_string ("NULL")) == NULL)
+	  string_array[i] = duplicate_string ("NULL");
+	  if (string_array[i] == NULL)
 	    {
-	      goto error;
+	      goto finalize;
 	    }
 	}
-      total_string_length += strlen (*string_array);
-      string_array++;
+      total_string_length += strlen (string_array[i]);
     }				/* for (i = 0; i < cardinality... */
 
-  string_array -= i;
-  if ((return_string = (char *) malloc (total_string_length + 4)) == NULL)
+  return_string = (char *) malloc (total_string_length + 4);
+  if (return_string == NULL)
     {
-      goto error;
+      goto finalize;
     }
+
   if (begin_notation != '\0')
     {
-      (void) sprintf (return_string, "%c%s", begin_notation, *string_array);
+      (void) sprintf (return_string, "%c%s", begin_notation, string_array[0]);
     }
   else
     {
-      (void) strcpy (return_string, *string_array);
+      (void) strcpy (return_string, string_array[0]);
     }
-  free_and_init (*string_array);
-  string_array++;
-  for (i = 1; i < cardinality; i++, string_array++)
+
+  for (i = 1; i < cardinality; i++)
     {
       (void) strcat (return_string, ", ");
-      (void) strcat (return_string, *string_array);
-      free_and_init (*string_array);
+      (void) strcat (return_string, string_array[i]);
     }
   if (end_notation != '\0')
     {
@@ -1173,23 +1180,19 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
       return_string[len++] = end_notation;
       return_string[len] = '\0';
     }
-  free_and_init (string_array_holder);
-  return (return_string);
 
-error:
-  for (i = 1; i < cardinality; i++, string_array++)
+finalize:
+  for (i = 0; i < cardinality; i++)
     {
-      if (*string_array)
-	{
-	  free_and_init (*string_array);
-	}
-      else
+      if (string_array[i] == NULL)
 	{
 	  break;
 	}
+      free_and_init (string_array[i]);
     }
-  free_and_init (string_array_holder);
-  return (NULL);
+  free_and_init (string_array);
+
+  return return_string;
 }
 
 /*

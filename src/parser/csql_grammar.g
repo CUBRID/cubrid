@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -3761,13 +3761,13 @@ create_serial_statement "create serial statement"
 			{
 				stmt->info.serial.serial_name 	= serial_name;
 				stmt->info.serial.increment_val = increment_val;
-				stmt->info.serial.start_val		= start_val;
-				stmt->info.serial.max_val		= max_val;
-				stmt->info.serial.min_val		= min_val;
-				stmt->info.serial.cyclic		= cyclic;
-				stmt->info.serial.no_max		= no_max;
-				stmt->info.serial.no_min		= no_min;
-				stmt->info.serial.no_cyclic		= no_cyclic;
+				stmt->info.serial.start_val	= start_val;
+				stmt->info.serial.max_val	= max_val;
+				stmt->info.serial.min_val	= min_val;
+				stmt->info.serial.cyclic	= cyclic;
+				stmt->info.serial.no_max	= no_max;
+				stmt->info.serial.no_min	= no_min;
+				stmt->info.serial.no_cyclic	= no_cyclic;
 			}
 			pt_push(this_parser, stmt );
 		>>
@@ -3788,12 +3788,13 @@ serial_integer_literal > [PT_NODE *val] "serial integer literal"
 	;
 
 alter_serial_statement  "alter serial statement"
-	:	<< 	PT_NODE *stmt, *serial_name, *increment_val;
+	:	<< 	PT_NODE *stmt, *serial_name, *start_val, *increment_val;
 			PT_NODE *max_val, *min_val;
 			int cyclic = 0, no_cyclic = 0, no_max = 0, no_min = 0;
 			stmt = serial_name = increment_val = max_val = min_val = 0;
 		>>
 		SERIAL identifier << serial_name = pt_pop(this_parser); >>
+		{ START_ WITH serial_integer_literal > [start_val] }
 		{ INCREMENT BY serial_integer_literal > [increment_val] }
 
 		{
@@ -3816,19 +3817,19 @@ alter_serial_statement  "alter serial statement"
 			{
 				stmt->info.serial.serial_name 	= serial_name;
 				stmt->info.serial.increment_val = increment_val;
-				stmt->info.serial.start_val		= 0;
-				stmt->info.serial.max_val		= max_val;
-				stmt->info.serial.min_val		= min_val;
-				stmt->info.serial.cyclic		= cyclic;
-				stmt->info.serial.no_max		= no_max;
-				stmt->info.serial.no_min		= no_min;
-				stmt->info.serial.no_cyclic		= no_cyclic;
+				stmt->info.serial.start_val	= start_val;
+				stmt->info.serial.max_val	= max_val;
+				stmt->info.serial.min_val	= min_val;
+				stmt->info.serial.cyclic	= cyclic;
+				stmt->info.serial.no_max	= no_max;
+				stmt->info.serial.no_min	= no_min;
+				stmt->info.serial.no_cyclic	= no_cyclic;
 
 			}
 			pt_push(this_parser, stmt );
 
-			if ( !increment_val && !max_val && !min_val && cyclic == 0
-					&& no_max == 0 && no_min == 0 && no_cyclic == 0 )
+			if ( !increment_val && !start_val && !max_val && !min_val
+			     && cyclic == 0 && no_max == 0 && no_min == 0 && no_cyclic == 0 )
 			{
 				PT_ERRORmf(this_parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 						   MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0 );
@@ -4493,7 +4494,7 @@ incr_arg_name < [PT_OP_TYPE t] "increment argument name"
                  pt_push(this_parser, expr);
              }
              expr = pt_pop(this_parser);
-             SET_AS_HIDDEN_COLUMN(expr);
+             expr->is_hidden_column = 1;
              pt_push(this_parser, expr);
           >>
         ;
@@ -4944,7 +4945,7 @@ arith_func "expression"
                       and the expr add to select list as hidden expr like that.
                         "SELECT A, INCR(B)+1, C FROM X" => "SELECT A, B+1, C, HIDDEN(INCR(B))" */
                    expr = pt_pop(this_parser);
-                   SET_AS_HIDDEN_COLUMN(expr);
+                   expr->is_hidden_column = 1;
                    hidden_incr_list = parser_append_node(expr, hidden_incr_list);
                    if ((arg1=parser_copy_tree(this_parser, expr->info.expr.arg1)) == NULL)
                        /* OUTOFMEMORY error */;
@@ -5303,8 +5304,7 @@ scal_func "expression"
 		<< if (expr->info.expr.arg2 == NULL) {
 		    expr->info.expr.arg2 =
 		        parser_copy_tree_list(this_parser, expr->info.expr.arg1);
-		    expr->info.expr.arg2->column_number =
-		        -expr->info.expr.arg2->column_number;
+                    expr->info.expr.arg2->is_hidden_column = 1;
 		   }
 		   pt_push(this_parser, expr);
 		>>
@@ -5354,8 +5354,7 @@ scal_func "expression"
 		<< if (expr->info.expr.arg2 == NULL) {
 		    expr->info.expr.arg2 =
 		        parser_copy_tree_list(this_parser, expr->info.expr.arg1);
-		    expr->info.expr.arg2->column_number =
-		        -expr->info.expr.arg2->column_number;
+                    expr->inof.expr.arg2->is_hidden_column = 1;
 		   }
 		   pt_push(this_parser, expr);
 		>>
@@ -5614,8 +5613,7 @@ case_expr "case expression"
 		        parser_new_node(this_parser, PT_VALUE);
 		    if (expr->info.expr.arg2) {
 			expr->info.expr.arg2->type_enum = PT_TYPE_NULL;
-		        expr->info.expr.arg2->column_number =
-		            -expr->info.expr.arg2->column_number;
+                        expr->info.expr.arg2->is_hidden_column = 1;
 		    }
 		   }
 		   pt_push(this_parser, expr);

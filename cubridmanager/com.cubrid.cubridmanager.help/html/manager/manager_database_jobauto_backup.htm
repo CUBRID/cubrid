@@ -1,0 +1,129 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>백업 자동화</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n데이터베이스\n작업 자동화\n백업 자동화");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_architecture.htm\">데이터베이스<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_jobauto_backup.htm\">작업 자동화<\/a> &nbsp;&gt;&nbsp; 백업 자동화<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>백업 자동화</h4>
+<p>데이터베이스에 로그인하면, 접근할 수 있는 백업 자동화를 탐색 트리에서 볼 수 있다.</p>
+<p>CUBRID 매니저 서버를 통해서 주기적으로 백업을&#160;수행하고자 할 경우 백업 자동화를 사용한다.</p>
+<p><img src="images/manager_database_jobauto_node.jpg" border="1" alt="" /></p>
+<h6>백업 자동화 추가</h6>
+<p><img src="images/manager_database_jobauto_backup.jpg" border="0" alt="" /></p>
+<ul>
+<li><strong>백업 ID</strong>: 백업 작업의 이름을 설정한다. 백업 계획이 여러 개일 수 있으므로, 하나의 데이터베이스 내에서는 유일해야 한다.</li>
+<li><strong>백업 수준</strong>: 0, 1, 2 중에서 선택할 수 있다. 0레벨은 전체 백업을 의미하고, 1레벨은 0레벨 백업 이후의 변경 내역만 백업하는 1차 증분 백업(incremental backup)을 의미하며, 2레벨은 1레벨 백업 이후의 변경 내역만 백업하는 2차 증분 백업을 의미한다.</li>
+<li><strong>백업 경로</strong>: 백업 볼륨이 저장된 디렉터리를 설정한다.</li>
+<li><strong>백업 주기</strong>: 백업을 수행할 주기를 매월, 매주, 매일, 특정일&#160;중에서 선택할 수 있다.</li>
+<li><strong>상세 주기</strong>: 선택한 백업 주기를 상세하게 설정할 수 있다.</li>
+<li><strong>백업 시간</strong>: 자동 백업을 수행할 시간을 입력한다. 시간과 분을 각각 입력한다.</li>
+<li><strong>이전 백업 파일 보존</strong>: 현재 데이터베이스의 기존 백업 볼륨 파일을 <span class="keyword">database_directory/backupold</span> 디렉터리에 저장하는 옵션이다.</li>
+<li><strong>보관 로그 볼륨 삭제</strong>: 백업 시, 보관 로그 볼륨들을 삭제한다. 해당 데이터베이스 서버가 복제 마스터 서버로 설정되어 있는 상태에서 보관 로그 볼륨 삭제를 수행하면, 자동으로 복제에 영향이 없는 부분까지만 삭제한다.</li>
+<li><strong>백업 후 데이터베이스 통계 정보 갱신</strong>: 백업 수행 후, 통계 정보를 갱신한다.</li>
+<li><strong>데이터베이스 일관성 검사</strong>: 백업 시, 데이터베이스의 일관성 검사를 수행한다.</li>
+<li><strong>압축 백업 사용</strong>: 백업 시, 압축을 사용한다.</li>
+<li><strong>병렬 백업(스레드 수)</strong>: 백업 시, 몇 개의 스레드를 동시에 이용할 것인지를 설정할 수 있다. 최대값은 CPU 개수만큼 설정하는 것이 적절하며, 디폴트 값은 <span class="keyword">0</span>이다. 디폴트 값으로 설정된 경우 시스템에 의해 자동으로 스레드 개수가 결정된다.</li>
+<li><strong>온라인 백업</strong>: 데이터베이스가 구동 중인 상태에서만 자동 백업을 실행한다. 중지 상태에서는 데이터베이스를 백업하지 않고 에러 로그만 기록한다.</li>
+<li><strong>오프라인 백업</strong>: 데이터베이스가 중단 상태일 때만 자동 백업을 실행한다. 데이터베이스가 구동 중이면&#160;데이터베이스를 강제 중단하고 자동 백업을 수행한 후, 다시 데이터베이스를 구동한다.</li>
+</ul>
+<h6>백업 자동화 로그</h6>
+<p>백업 자동화에서 발생한 오류 로그를 제공한다.</p>
+<p><img src="images/manager_database_jobauto_backuplog.jpg" border="0" alt="" /></p>
+<h6>백업 자동화 편집 / 삭제</h6>
+<p>등록된 백업 자동화 작업을 백업 자동화 추가 시와 동일한 방법으로 편집하거나, 필요없는 백업 자동화 작업을 삭제한다.</p>
+<p>탐색 트리에서 해당 백업 자동화를 마우스 오른쪽 버튼 클릭하여 [백업 자동화 편집] 또는 [백업 자동화 삭제]를 선택한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -63,7 +63,7 @@ struct elo_stream
   char *buffer;			/* buffered data */
   DB_OBJECT *glo;		/* contains the Glo object */
   DB_ELO *elo;			/* pointer to actual elo */
-  long offset;			/* offset within the elo stream */
+  INT64 offset;			/* offset within the elo stream */
   int buffer_pos;		/* position within the data buffer */
   int buffer_size;		/* size of the data buffer */
   int bytes_in_buffer;		/* amount of "good" data in buffer */
@@ -86,19 +86,18 @@ extern const char *elo_get_pathname (DB_ELO * elo);
 extern DB_ELO *elo_set_pathname (DB_ELO * elo, const char *pathname);
 
 /* Primary interface */
-extern FSIZE_T elo_read_from (DB_ELO * elo, const FSIZE_T offset,
-			      const FSIZE_T length, char *buffer,
+extern int elo_read_from (DB_ELO * elo, const INT64 offset,
+			  const int length, char *buffer, DB_OBJECT * glo);
+extern int elo_insert_into (DB_ELO * elo, INT64 offset, int length,
+			    char *buffer, DB_OBJECT * glo);
+extern INT64 elo_get_size (DB_ELO * elo, DB_OBJECT * glo);
+extern INT64 elo_delete_from (DB_ELO * elo, INT64 offset, INT64 length,
 			      DB_OBJECT * glo);
-extern FSIZE_T elo_insert_into (DB_ELO * elo, FSIZE_T offset, FSIZE_T length,
-				char *buffer, DB_OBJECT * glo);
-extern FSIZE_T elo_get_size (DB_ELO * elo, DB_OBJECT * glo);
-extern FSIZE_T elo_delete_from (DB_ELO * elo, FSIZE_T offset, FSIZE_T length,
-				DB_OBJECT * glo);
-extern FSIZE_T elo_append_to (DB_ELO * elo, FSIZE_T length, char *buffer,
-			      DB_OBJECT * glo);
-extern FSIZE_T elo_truncate (DB_ELO * elo, FSIZE_T offset, DB_OBJECT * glo);
-extern FSIZE_T elo_write_to (DB_ELO * elo, FSIZE_T offset, FSIZE_T length,
-			     char *buffer, DB_OBJECT * glo);
+extern int elo_append_to (DB_ELO * elo, int length, char *buffer,
+			  DB_OBJECT * glo);
+extern INT64 elo_truncate (DB_ELO * elo, INT64 offset, DB_OBJECT * glo);
+extern int elo_write_to (DB_ELO * elo, INT64 offset, int length,
+			 char *buffer, DB_OBJECT * glo);
 extern int elo_compress (DB_ELO * elo);
 
 /* Stream interface */
@@ -107,7 +106,7 @@ extern ELO_STREAM *elo_open (DB_OBJECT * glo, const char *mode);
 extern char *elo_gets (char *s, int n, ELO_STREAM * elo_stream);
 extern int elo_close (ELO_STREAM * elo_stream);
 extern int elo_puts (const char *s, ELO_STREAM * elo_stream);
-extern int elo_seek (ELO_STREAM * elo_stream, FSIZE_T offset, int origin);
+extern int elo_seek (ELO_STREAM * elo_stream, INT64 offset, int origin);
 extern int elo_putc (int c, ELO_STREAM * elo_stream);
 extern int elo_getc (ELO_STREAM * elo_stream);
 extern int elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size);

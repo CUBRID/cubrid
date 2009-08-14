@@ -1,0 +1,7 @@
+task:changequeryspec
+token:8ec1ab8a91333c782de200b024f202ed1421b6aee180eb35f4cd8b6186f50bf27926f07dd201b6aa
+dbname:demodb
+vclassname:v_code
+querynumber:1
+queryspec:select code2 as aaa from code
+

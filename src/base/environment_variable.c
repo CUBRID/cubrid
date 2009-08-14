@@ -34,6 +34,7 @@
 #include "stringl.h"
 #endif
 #include "error_code.h"
+#include "error_manager.h"
 #include "environment_variable.h"
 
 /* available root directory symbols; NULL terminated array */
@@ -148,12 +149,16 @@ int
 envvar_set (const char *name, const char *val)
 {
   char buf[_ENVVAR_MAX_LENGTH];
-  char *env_buf = (char *) malloc (_ENVVAR_MAX_LENGTH);
+  int ret;
 
   envvar_name (buf, _ENVVAR_MAX_LENGTH, name);
-  snprintf (env_buf, _ENVVAR_MAX_LENGTH, "%s=%s", buf, val);
+  ret = setenv (buf, val, 1);
+  if (ret != 0)
+    {
+      return ER_FAILED;
+    }
 
-  return (putenv (env_buf) == 0) ? NO_ERROR : ER_FAILED;
+  return NO_ERROR;
 }
 
 /*

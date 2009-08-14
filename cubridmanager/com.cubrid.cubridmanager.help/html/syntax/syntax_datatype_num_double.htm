@@ -1,0 +1,117 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>DOUBLE 또는 DOUBLE PRECISION</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="DOUBLE" />
+<meta name="MS-HKWD" content="DOUBLE PRECISION" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n수치형 데이터  타입\nDOUBLE 또는 DOUBLE  PRECISION");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_num_def.htm\">수치형 데이터  타입<\/a> &nbsp;&gt;&nbsp; DOUBLE 또는 DOUBLE  PRECISION<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>DOUBLE 또는 DOUBLE PRECISION</h4>
+<h6>설명</h6>
+<p><span class="keyword">DOUBLE PRECISION</span> 데이터 타입은 근사치 수치형 타입이다. <span class="keyword">DOUBLE PRECISION</span> 데이터 타입은 2배의 정밀도를 갖는&#160; 부동 소수점 숫자를 갖는다.</p>
+<p>정밀도는 자동으로 <span class="keyword"><a href="syntax_datatype_num_float.htm">FLOAT</a></span>의 정밀도보다 높은데, 허용되는 값의 범위는 <span class="keyword"><a href="syntax_datatype_num_float.htm">FLOAT</a></span>에서와 마찬가지로 사용되고 있는 시스템에 따라 다를 수 있다. 보통 ANSI/IEEE 754-1985 표준을 준수한다. 이에 따르면 -10e+308에서 +10e+308까지의 크기를 저장할 수 있고, 정규화된 수치로는 2.2250738585072014e-308에서 1.7976931348623157e+308까지 표현할 수 있다.</p>
+<p><span class="keyword">DOUBLE PRECISION</span>과 <span class="keyword">DOUBLE</span>은 같은 의미로 사용된다.</p>
+<p class="syntax"><span class="keyword">DOUBLE PRECISION</span></p>
+<h6>참고 사항</h6>
+<ul>
+<li><span class="keyword"><a href="syntax_datatype_num_integer.htm">INTEGER</a></span>와 달리 <span class="keyword">DOUBLE</span>은 근사치를 저장하기 때문에 비교에 사용될 때 그 효과를 주의해야 한다. 예를 들어, 어떤 값을 <span class="keyword">DOUBLE</span>로 변환할 수는 있으나, 그 변환된 값이 변환 전의 값과 정확히 같다고 보증할 수 없다. 따라서, <span class="keyword">DOUBLE</span> 타입의 속성에 조건을 주어 <span class="keyword">SELECT</span>를 수행할 때에는 특정 <span class="keyword">DOUBLE</span> 값과 같은 값을 갖는 조건(즉, 등식 조건)이 아니라 범위를 갖는 조건을 주는 것이 좋다. 이 특징은 앞에서 설명한 <span class="keyword"><a href="syntax_datatype_num_float.htm">FLOAT</a></span> 타입도 마찬가지이다. 이것은 CUBRID만의 특징이 아니라, 근사치 수치형 데이터 타입을 다루는 모든 컴퓨터의 특징이다.</li>
+<li><span class="keyword">DOUBLE</span>의 유효 숫자는 15자리이다.</li>
+</ul>
+<h6>예제</h6>
+<p class="code">DOUBLE에 89.998765431132를 지정하면 8.999876543113200e+01이 저장된다.<br />
+DOUBLE에 -18.256743237573을 지정하면 -1.825674323757300e+01이 저장된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+﻿
+<html>
+<head>
+<title>복제 구현 원칙 및 아키텍처</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 내부 구현\n복제 구현 원칙 및 아키텍처");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_implementation_rules.htm\">복제 내부 구현<\/a> &nbsp;&gt;&nbsp; 복제 구현 원칙 및 아키텍처<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>복제 구현 원칙 및 아키텍처</h4>
+<p>CUBRID의 복제 시스템 설계 및 구현 원칙은 다음과 같다.</p>
+<ul>
+<li>트랜잭션의 일관성이 보장되어야 한다.</li>
+<li>슬레이브 데이터베이스의 다양한 활용을 위해 슬레이브의 스키마 독립성이 제공되어야 한다. 즉, 슬레이브 데이터베이스에 별도의 테이블이나 인덱스를 구축할 수 있어야 한다.</li>
+<li>복제로 인해 마스터 데이터베이스에 미치는 영향을 최소화 해야 한다.</li>
+<li>실시간 복제가 가능해야 한다.</li>
+</ul>
+<p></p>
+<p>따라서 CUBRID의 복제 시스템은 트랜잭션 로그 기반으로 동작하며 마스터 서버와는 별개로 복제 서버가 트랜잭션 로그를 복제 에이전트에게 전달하고 복제 에이전트가 트랜잭션 로그를 분석하여 그 결과를 슬레이브 데이터베이스에 전달하는 구조로 설계되었다.<br clear="all" /></p>
+<p><img width="356" height="228" src="images/image019.jpg" alt="" /></p>
+<p class="caption">복제 시스템 아키텍처</p>
+<p>인스턴스와 스키마 정보는 슬레이브 시스템에 실시간으로 변경 내역이 반영된다. 인덱스, 트리거, 사용자 계정은 슬레이브의 스키마 독립성을 위해 배포 데이터베이스에 변경 내용만 기록하고 슬레이브 데이터베이스에는 반영되지 않는다. 마스터 데이터베이스 시스템에 장애가 생겨 슬레이브 데이터베이스를 마스터 데이터베이스로 교체할 경우 배포 데이터베이스에 기록된 마스터 데이터베이스의 최종 데이터, 스키마, 인덱스는 자동으로 동기화 된다. 나머지 트리거, 사용자 계정은 자동으로 동기화 되지 않는다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

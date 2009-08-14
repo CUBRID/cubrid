@@ -1,0 +1,142 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>TO_TIMESTAMP 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n데이터 타입 변환 함수\nTO_TIMESTAMP 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_to_char.htm\">데이터 타입 변환 함수<\/a> &nbsp;&gt;&nbsp; TO_TIMESTAMP 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>TO_TIMESTAMP 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">TO_TIMESTAMP</span> 함수는 문자열을 날짜-시간 포맷에&#160;맞는&#160;<span class="keyword">TIMESTAMP</span> 타입으로 변환한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">TO_TIMESTAMP</span>(<span class="var">string_argument</span>[, <span class="var">format_argument</span>[,<span class="var">date_lang_string_literal</span>]])<br />
+<br />
+<span class="var">string_argument</span> :<br />
+character strings<br />
+NULL<br />
+<br />
+<span class="var">format_argument</span> :<br />
+character strings (<a href="syntax_operator_to_char.htm#table_date">날짜 포맷</a> 표&#160;참조)<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">date_lang_string_literal</span> : (<a name="table_var" id="table_var"></a><a href="syntax_operator_to_char.htm#table_var">date_lang_string_literal</a> 표&#160;참조)<br />
+'en_US'<br />
+'ko_KR'</p>
+<ul>
+<li><span class="var">string_argument</span> : <span class="keyword">TIMESTAMP</span> 타입으로 변환할 문자열을 지정한다. 값이 <span class="keyword">NULL</span>이면 결과로 <span class="keyword">NULL</span>이 반환된다.</li>
+<li><span class="var">format_argument</span> : 입력 문자열을 해석하는 양식을 지정한다. 값이 <span class="keyword">NULL</span>이면 결과로 <span class="keyword">NULL</span>이 반환된다. 생략되면 기본 포맷인 'HH:MI[:SS] [am|pm] MM/DD/YYYY'를 적용하여 문자열을 해석한다.</li>
+<li><span class="var">date_lang_string_literal</span> : 반환값에 적용할 언어를 지정한다. <span class="keyword">CUBRID_DATE_LANG</span> 환경 변수를 지정하여 수정할 수 있다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은&#160;문자열&#160;기본 포맷을 적용하여 <span class="keyword">TIMESTAMP</span> 타입으로 변환하여 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_TIMESTAMP('10:30:20 AM 12/25/1999') FROM db_root;</p>
+<ul>
+<li class="desc">결과값:&#160;1999-12-25 10:30:20</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 선언한 포맷을 적용하여 문자열을 <span class="keyword">TIMESTAMP</span> 타입으로 변환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TO_TIMESTAMP('YEAR: 1999 MONTH: 12 DAY: 25 HOUR: 10 MINUTE: 30 SECOND: 20','"YEAR:" YYYY "MONTH:" MM "DAY:" DD "HOUR:" HH24 "MINUTE:" MI "SECOND:" SS') FROM db_root;</p>
+<ul>
+<li class="desc">결과값: 1999-12-25 10:30:20</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

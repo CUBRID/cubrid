@@ -96,6 +96,13 @@ bitset_extend (BITSET * dst, int nwords)
   BITSET_CARRIER *words;
 
   words = (BITSET_CARRIER *) malloc (NBYTES (nwords));
+  if (words == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      NBYTES (nwords));
+      return;
+    }
+
   memcpy (words, dst->setp, NBYTES (dst->nwords));
   memset (words + dst->nwords, 0, NBYTES (nwords - dst->nwords));
   dst->nwords = nwords;

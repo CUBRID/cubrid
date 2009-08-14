@@ -47,6 +47,8 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 
+#define MAX_NTRANS (PRM_CSS_MAX_CLIENTS + 1)
+
 #if defined(SERVER_MODE)
 #define LOG_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_LOG, INF_WAIT)
@@ -76,7 +78,7 @@
 #endif /* SERVER_MODE */
 
 #if defined(LOG_DEBUG) && defined(SERVER_MODE)
-#define LOG_CS_OWN()   csect_check_own(CSECT_LOG)
+#define LOG_CS_OWN()   (csect_check_own (CSECT_LOG) == true)
 #else /* LOG_DEBUG && SERVER_MODE */
 #define LOG_CS_OWN()   (true)
 #endif /* LOG_DEBUG && SERVER_MODE */
@@ -265,10 +267,15 @@
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL &&  \
-   logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_REPLICATOR)
+   logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
+
+#if !defined(_DB_ENABLE_REPLICATIONS_)
+#define _DB_ENABLE_REPLICATIONS_
+extern int db_Enable_replications;
+#endif /* _DB_ENABLE_REPLICATIONS_ */
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
@@ -283,7 +290,8 @@ extern int db_Disable_modifications;
 #define CHECK_MODIFICATION_NO_RETURN(error)  \
   if (db_Disable_modifications) {            \
     er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
-    er_log_debug (ARG_FILE_LINE, "db_Disable_modification == 1"); \
+    er_log_debug (ARG_FILE_LINE, "db_Disable_modification = %d\n", \
+		  db_Disable_modifications);  \
     error = ER_DB_NO_MODIFICATIONS;          \
   } else {                                   \
     error = NO_ERROR;                        \
@@ -295,8 +303,6 @@ extern int db_Disable_modifications;
 #define LOG_DEBUG_MSG    (0x0002)
 #define LOG_DEBUG_STAT   (0x0004)
 #define LOG_DEBUG_MUTEX  (0x0008)
-
-#define LOGWR_DEBUG_MSG  (0x0001)
 
 #if defined(LOG_DEBUG)
 #define LOG_MUTEX_LOCK(rv, mutex) log_lock_mutex_debug(ARG_FILE_LINE, #mutex)
@@ -339,7 +345,7 @@ extern int db_Disable_modifications;
 #define MSGCAT_LOG_READ_ERROR_DURING_RESTORE            26
 #define MSGCAT_LOG_INPUT_RANGE_ERROR                    27
 #define MSGCAT_LOG_UPTODATE_ERROR                       28
-
+#define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
 
 typedef enum log_flush LOG_FLUSH;
 enum log_flush
@@ -365,20 +371,11 @@ enum LOG_PSTATUS
   LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
 };
 
-enum LOG_HA_SRVSTAT
-{
-  LOG_HA_SRVSTAT_IDLE = 0,
-  LOG_HA_SRVSTAT_ACTIVE = 1,
-  LOG_HA_SRVSTAT_TO_BE_ACTIVE = 2,
-  LOG_HA_SRVSTAT_STANDBY = 3,
-  LOG_HA_SRVSTAT_TO_BE_STANDBY = 4,
-  LOG_HA_SRVSTAT_DEAD = 5
-};
-
 enum LOG_HA_FILESTAT
 {
   LOG_HA_FILESTAT_CLEAR = 0,
-  LOG_HA_FILESTAT_SYNCHRONIZED = 1
+  LOG_HA_FILESTAT_ARCHIVED = 1,
+  LOG_HA_FILESTAT_SYNCHRONIZED = 2
 };
 
 /*
@@ -707,13 +704,7 @@ struct log_tdes
 				 */
   LOG_LSA repl_insert_lsa;	/* insert target lsa */
   LOG_LSA repl_update_lsa;	/* update target lsa */
-
-#if !defined(WINDOWS)
-  struct
-  {
-    struct repl_savepoint_info *head, *tail;
-  } savepoint_list;
-#endif
+  void *first_save_entry;	/* first save entry for the transaction */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -839,7 +830,7 @@ struct log_header
    * for future growth
    */
 
-  int ha_server_status;
+  int ha_server_state;
   int ha_file_status;
   LOG_LSA eof_lsa;
 };
@@ -964,13 +955,9 @@ enum log_rectype
 					   page so it could be archived
 					   safely. No-op
 					 */
-  LOG_REPLICATION_DATA,		/* Replicaion Rog Record
-				   for record updates
-				 */
-  LOG_REPLICATION_SCHEMA,	/* Replicaion Rog Record
-				   for schema, index, trigger, or system catalog updates
-				 */
-  LOG_UNLOCK_COMMIT,		/* for repl_agent to guarantee the order of  */
+  LOG_REPLICATION_DATA,		/* Replicaion log for insert, delete or update */
+  LOG_REPLICATION_SCHEMA,	/* Replicaion log for schema, index, trigger or system catalog updates */
+  LOG_UNLOCK_COMMIT,		/* for repl_agent to guarantee the order of */
   LOG_UNLOCK_ABORT,		/* transaction commit, we append the unlock info.
 				   before calling lock_unlock_all()
 				 */
@@ -992,8 +979,8 @@ enum log_repl_flush
 typedef struct log_repl LOG_REPL_RECORD;
 struct log_repl
 {
-  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA
-				 *  or LOG_REPLICATION_SCHEMA */
+  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
+  LOG_RCVINDEX rcvindex;
   OID inst_oid;
   LOG_LSA lsa;
   char *repl_data;		/* the content of the replication log record */
@@ -1107,6 +1094,7 @@ struct log_replication
 {
   LOG_LSA lsa;
   int length;
+  int rcvindex;
 };
 
 /* Transaction descriptor */
@@ -1471,6 +1459,7 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      INT64 * db_creation,
 					      float *db_compatibility);
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
+extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_next_append_page (THREAD_ENTRY * thread_p,
 				    LOG_SETDIRTY current_setdirty);
 extern int logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p);
@@ -1486,8 +1475,7 @@ extern void logpb_append_data (THREAD_ENTRY * thread_p, int length,
 			       const char *data);
 extern void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
 				 const LOG_CRUMB * crumbs);
-extern void logpb_end_append (THREAD_ENTRY * thread_p, LOG_FLUSH flush,
-			      bool force_flush);
+extern void logpb_end_append (THREAD_ENTRY * thread_p);
 extern void logpb_remove_append (LOG_TDES * tdes);
 extern void logpb_create_log_info (const char *logname_info,
 				   const char *db_fullname);
@@ -1512,9 +1500,10 @@ extern bool logpb_is_page_in_archive (PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid);
 extern void logpb_decache_archive_info (void);
-extern int logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, 
-					    PAGEID pageid, 
-					    struct log_arv_header *ret_arvhdr);
+extern int logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p,
+					    PAGEID pageid,
+					    struct log_arv_header
+					    *ret_arvhdr);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area,
@@ -1542,10 +1531,6 @@ extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 			 FILEIO_ZIP_METHOD zip_method,
 			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
 			 PAGEID safe_pageid);
-extern int logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
-			   const char *logpath, const char *prefix_logname,
-			   const char *newall_path, bool ask_forpath,
-			   BO_RESTART_ARG * r_args);
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *logpath, const char *prefix_logname,
 			  BO_RESTART_ARG * r_args);
@@ -1725,13 +1710,15 @@ extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,
 extern bool logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
 				bool * continue_checking);
 extern bool log_isinterrupt_tdes (LOG_TDES * tdes, bool clear);
-extern bool
-logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
-			 bool * continue_checking, int tran_index);
+extern bool logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
+				     bool * continue_checking,
+				     int tran_index);
 extern bool logtb_are_any_interrupts (void);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
+extern void logtb_disable_replication (THREAD_ENTRY * thread_p);
+extern void logtb_enable_replication (THREAD_ENTRY * thread_p);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
@@ -1747,19 +1734,6 @@ logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 					      PAGEID * smallest,
 					      PAGEID * largest);
 /* For Debugging */
-extern void logtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
-
-
-/*
- * internal declarations from log_def
- */
-extern int log_any_debug_hooks (void);
-extern int log_docall_during_hook (int *callat);
-
-
-/*
- * internal declarations from log
- */
-extern LOG_LSA *log_start_sysop_logical_undo (LOG_LSA * undo_nxlsa);
+extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 #endif /* _LOG_IMPL_H_ */

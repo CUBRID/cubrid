@@ -1,0 +1,153 @@
+﻿
+<html>
+<head>
+<title>CUBRID 특징</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\nPHP 프로그래밍\nCUBRID 특징");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP 프로그래밍<\/a> &nbsp;&gt;&nbsp; CUBRID 특징<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CUBRID 특징</h4>
+<h6>OID 사용</h6>
+<p>cubrid_execute() 함수에서&#160;CUBRID_INCLUDE_OID 옵션을 업데이트할 수 있는&#160;질의를 함께 사용하면&#160;cubrid_current_oid() 함수를 통해 업데이트된 현재 행의 OID 값을 가져올 수 있다.</p>
+<p class="code">$req = cubrid_execute($con, "select * from person",<br />
+CUBRID_INCLUDE_OID);<br />
+if ($req) {<br />
+while ($row = cubrid_fetch ($req)) {<br />
+echo cubrid_current_oid ($req);<br />
+echo $row[°∞id°±];<br />
+echo $row[°∞name°±];<br />
+}<br />
+cubrid_close_request ($req);<br />
+}</p>
+<p>OID를 사용하여 인스턴스의 모든 속성, 지정한 속성 또는 한 속성의 값을 얻을 수 있다.</p>
+<p>만약 cubrid_get() 함수에 속성을 명시하지 않으면 모든 속성의 값을 반환한다(a). 만약 배열 데이터 타입으로 속성을 명시하면 지정한 속성 값이 들어있는 배열은 연관배열로 반환된다(b). 만약 문자열 타입으로 한 속성을 명시하면 속성의 값이 반환된다(c).</p>
+<p class="code">$attrarray = cubrid_get ($con, $oid); // (a)<br />
+$attrarray = cubrid_get ($con, $oid, array("id", "name")); // (b)<br />
+$attrarray = cubrid_get ($con, $oid, "id"); // (c)<br /></p>
+<p>OID를 사용하여 인스턴스의 속성 값을 갱신할 수도 있다. 하나의 속성의 값을 갱신하려면 속성 이름을 문자열 타입으로 명시하고 값을 명시한다(a). 다중 속성의 값을 설정하려면 속성 명과 값을 연관배열로 명시 해야 한다(b).</p>
+<p class="code">$cubrid_put ($con, $oid, "id", 1); // (a)<br />
+$cubrid_put ($con, $oid, array("id"=&gt;1, "name"=&gt;"Tomas")); // (b)</p>
+<h6>컬렉션 사용</h6>
+<ul>
+<li>컬렉션 데이터 타입은 PHP 배열 데이터 타입을 통해 사용할 수 있고 배열 데이터 타입을 지원하는 PHP 함수를 사용할 수 있다. 다음은 cubrid_fetch() 함수를 사용하여 질의 결과를 가져오는 예제이다.</li>
+</ul>
+<p class="code">$row = cubrid_fetch ($req);<br />
+$col = $row["customer"];<br />
+while (list ($key, $cust) = each ($col)) {<br />
+echo $cust;<br />
+}</p>
+<ul>
+<li>컬렉션 속성의 값도 얻을 수 있다. 다음은 cubrid_col_get() 함수를 사용하여 컬렉션 속성 값을 가져오는 예제이다.</li>
+</ul>
+<p class="code">$tels = cubrid_col_get ($con, $oid, "tels");<br />
+while (list ($key, $tel) = each ($tels)) {<br />
+echo $tel."\n";<br />
+}</p>
+<ul>
+<li>cubrid_set_add() 함수와 cubrid_set_drop() 함수를 사용하면 컬렉션 타입의 값을 직접적으로 갱신할 수 있다.</li>
+</ul>
+<p class="code">$tels = cubrid_col_get ($con, $oid, "tels");<br />
+while (list ($key, $tel) = each ($tels)) {<br />
+$res = cubrid_set_drop ($con, $oid, "tel", $tel);<br />
+}<br />
+cubrid_commit ($con);</p>
+<h6>GLO 사용</h6>
+<p>GLO 데이터 타입은 데이터베이스에 파일을 저장하기 위해 사용된다.</p>
+<p>cubrid_new_glo() 함수를 사용하면&#160;GLO 인스턴스를 생성할 수 있고&#160;생성된 인스턴스에 파일이 저장된다. cubrid_save_to_glo() 함수를 사용하면&#160;명시한 GLO에 파일을 저장할 수 있다.&#160;cubrid_load_from_glo() 함수를 사용하면&#160;GLO 인스턴스로부터 데이터를 읽어올 수 있다. cubrid_ send_glo() 함수를 사용하면&#160;GLO 데이터를 PHP 표준 출력으로 전송할 수 있다.</p>
+<p class="code">$oid = $cubrid_new_glo ($con, "glo", "input.txt");<br />
+$cubrid_load_from_glo ($con, $oid, "output.txt");<br />
+Header ("Content-type: image/jpeg");<br />
+cubrid_send_glo ($con, $oid);</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

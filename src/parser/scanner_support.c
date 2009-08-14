@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -45,7 +45,7 @@
 
 
 int parser_input_host_index = 0;
-int parser_statement_OK;
+int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
 
@@ -65,7 +65,6 @@ pt_makename (const char *name)
 }
 
 
-// fix: column_number for test
 /*
  * pt_parser_line_col () - set line and column of node allocated to
  *                         current parse position
@@ -83,7 +82,7 @@ pt_parser_line_col (PT_NODE * node)
 }
 
 /*
- * pt_nextchar () - called by the scanner 
+ * pt_nextchar () - called by the scanner
  *   return: c the next character from input. -1   at end of file
  */
 int
@@ -95,11 +94,29 @@ pt_nextchar (void)
 
 
 /*
- * pt_get_hint () -
- *   return:
- *   text(in):
- *   hint_table(in):
- *   node(in):
+ * pt_cleanup_hint () - cleanup hint arg_list
+ *   parser(in): parser context
+ *   hint_table(in): hint table to cleanup 
+ */
+void
+pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
+{
+  int i;
+  for (i = 0; hint_table[i].tokens; i++)
+    {
+      if (hint_table[i].arg_list != NULL)
+	{
+	  parser_free_node (parser, hint_table[i].arg_list);
+	  hint_table[i].arg_list = NULL;
+	}
+    }
+}
+
+/*
+ * pt_get_hint () - get hint value from hint table
+ *   text(in): hint text
+ *   hint_table(in): hint info structure list
+ *   node(in): node which will take hint context
  */
 void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
@@ -266,12 +283,11 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 }
 
 /*
- * pt_check_hint () -
- *   return:
- *   text(in):
- *   hint_table(in):
- *   result_hint(in):
- *   prev_is_white_char(in):
+ * pt_check_hint () - search hint comment from hint table
+ *   text(in): hint comment
+ *   hint_table(in): hint info structure list
+ *   result_hint(in): found result
+ *   prev_is_white_char(in): flag indicates prev char
  */
 void
 pt_check_hint (const char *text, PT_HINT hint_table[],

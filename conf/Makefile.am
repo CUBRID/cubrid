@@ -18,5 +18,6 @@
 #
 
 
-confdir = ${prefix}/conf
+confdir = @CONF_DIR@
 conf_DATA = cubrid.conf cubrid_broker.conf
+

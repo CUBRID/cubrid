@@ -484,7 +484,7 @@ meth_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   statement = meth_translate_select (parser, statement, root);
 
-  if (pt_has_error (parser))
+  if (statement == NULL || pt_has_error (parser))
     {
       statement = save_statement;	/* restore to old parse tree */
       *continue_walk = PT_STOP_WALK;
@@ -560,6 +560,11 @@ meth_create_method_list (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   new_method = parser_copy_tree (parser, node);
+  if (new_method == NULL)
+    {
+      return NULL;
+    }
+
   /* don't keep finding this method, since we are copying it */
   new_method->info.method_call.method_name->info.name.spec_id = 0;
 
@@ -671,6 +676,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
   unsigned short derived1_correlation_level, merge_correlation_level;
   PT_NODE *dummy_set_tbl;
 
+  info1.found = 0;
   *continue_walk = PT_LIST_WALK;
 
   if ((spec->node_type != PT_SPEC) || (!spec->info.spec.method_list))
@@ -700,11 +706,23 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
       arg = pt_dbval_to_value (parser, &val);
 
       set = parser_new_node (parser, PT_FUNCTION);
+      if (set == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       set->info.function.function_type = F_SEQUENCE;
       set->info.function.arg_list = arg;
       set->type_enum = PT_TYPE_SEQUENCE;
 
       dummy_set_tbl = parser_new_node (parser, PT_SPEC);
+      if (dummy_set_tbl == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       dummy_set_tbl->info.spec.id = (UINTPTR) dummy_set_tbl;	/* set id */
       dummy_set_tbl->info.spec.derived_table = set;
       dummy_set_tbl->info.spec.derived_table_type = PT_IS_SET_EXPR;
@@ -741,6 +759,12 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* create and fill in table2 of the merge */
   table2 = parser_new_node (parser, PT_SPEC);
+  if (table2 == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   table2->info.spec.id = (UINTPTR) table2;
   table2->info.spec.derived_table = spec->info.spec.method_list;
   spec->info.spec.method_list = NULL;	/* take it out of main tree */
@@ -759,6 +783,12 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* create and fill in the innermost derived statement */
   derived1 = parser_new_node (parser, PT_SELECT);
+  if (derived1 == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   derived1->info.query.q.select.flavor = PT_USER_SELECT;
   derived1->info.query.is_subquery = PT_IS_SUBQUERY;
 
@@ -870,6 +900,12 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* create and fill in table1 of the merge */
   table1 = parser_new_node (parser, PT_SPEC);
+  if (table1 == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   table1->next = table2;
   table1->info.spec.id = (UINTPTR) table1;
   table1->info.spec.derived_table = derived1;
@@ -908,6 +944,12 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* create and fill in the merge node */
   merge = parser_new_node (parser, PT_SELECT);
+  if (merge == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   merge->info.query.q.select.flavor = PT_MERGE;
   merge->info.query.correlation_level = merge_correlation_level;
   merge->info.query.is_subquery = PT_IS_SUBQUERY;
@@ -934,6 +976,12 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
   /* create and fill in the new_spec */
   new_spec = parser_new_node (parser, PT_SPEC);
+  if (new_spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   new_spec->next = spec->next;	/* don't loose the list */
   new_spec->info.spec.id = (UINTPTR) new_spec;
   new_spec->info.spec.derived_table = merge;
@@ -1217,6 +1265,11 @@ static PT_NODE *
 meth_make_unique_range_var (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *node = parser_new_node (parser, PT_NAME);
+  if (node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
 
   node->info.name.original =
     mq_generate_name (parser, "t", &meth_table_number);
@@ -1246,6 +1299,12 @@ meth_gen_as_attr_list (PARSER_CONTEXT * parser, PT_NODE * range_var,
   for (attr = attr_list; attr != NULL; attr = attr->next)
     {
       new_attr = parser_new_node (parser, PT_NAME);
+      if (new_attr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       new_attr->type_enum = attr->type_enum;
       if (attr->data_type)
 	{
@@ -1304,6 +1363,12 @@ meth_replace_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id,
 	    {
 	      /* replace with copy of next node on as_attr_list */
 	      tmp = parser_copy_tree (parser, attr_list);
+	      if (tmp == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return;
+		}
+
 	      tmp->next = arg->next;
 	      if (!prev_node)
 		{
@@ -1413,6 +1478,12 @@ meth_replace_call (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
     {
       /* now we have a method call to replace */
       new_node = parser_copy_tree (parser, lambda->replacement);
+      if (new_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	  return NULL;
+	}
+
       new_node->next = node->next;	/* don't loose the list */
       return new_node;
     }
@@ -2305,6 +2376,12 @@ meth_grab_conj (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 
       /* create a true node to replace the current node */
       true_node = parser_new_node (parser, PT_VALUE);
+      if (true_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       true_node->type_enum = PT_TYPE_LOGICAL;
       true_node->info.value.data_value.i = 1;
 
@@ -2416,6 +2493,12 @@ meth_add_conj (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * new_conj)
   else
     {
       conj = parser_new_node (parser, PT_EXPR);
+      if (conj == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       conj->type_enum = PT_TYPE_LOGICAL;
       conj->info.expr.op = PT_AND;
       conj->info.expr.arg1 = where;

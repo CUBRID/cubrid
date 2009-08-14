@@ -1,0 +1,133 @@
+﻿
+<html>
+<head>
+<title>cubrid_save_to_glo</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_save_to_glo");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_save_to_glo<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_save_to_glo</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_save_to_glo</span> 함수는 원하는 파일을 glo 인스턴스에 저장한다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_save_to_glo</span> (int <span class="var">conn_handle</span>, string <span class="var">oid</span>, string <span class="var">file_name</span>)</p>
+<ul>
+<li><span class="var">conn_handle</span>&#160;: 연결 핸들</li>
+<li><span class="var">oid</span>&#160;: 파일을 저장할 glo 인스턴스의 OID</li>
+<li><span class="var">file_name</span>&#160;: 저장하고 싶은 파일의 이름</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : true</li>
+<li>실패 : false</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$req = cubrid_execute ($con, "select image from person where id=1");<br />
+if ($req) {<br />
+&#160;&#160;&#160;list ($oid) = cubrid_fetch($req);<br />
+&#160;&#160;&#160;cubrid_close_request($req);<br />
+&#160;&#160;&#160;$res = cubrid_save_to_glo ($con, $oid, "input.jpg");<br />
+&#160;&#160;&#160;if ($res) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;echo "image changed successfully";<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<h6>관련 항목</h6>
+<ul>
+<li class="keyword"><a href="api_php_newglo.htm">cubrid_new_glo</a></li>
+<li class="keyword"><a href="api_php_loadfromglo.htm">cubrid_load_from_glo</a></li>
+<li class="keyword"><a href="api_php_sendglo.htm">cubrid_send_glo</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

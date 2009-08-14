@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Keyword = '%s'    Value = %f    Default Value = %f\n
 
 $set 5 MSGCAT_SET_ERROR
+1 Missing message for error code %1$d.
 2 Internal system failure:  no more specific information is available.
 3 Out of virtual memory:  unable to allocate %1$ld memory bytes.
 4 Interrupt.
@@ -273,7 +274,7 @@ $set 5 MSGCAT_SET_ERROR
 209 No attribute or method with name "%1$s" was found.
 210 Internal error: processing object template.
 211 Attribute was deleted while building object template.
-212 Attribute "%1$s" could not be set without violating the UNIQUE contraint.
+212 Attribute "%1$s" could not be set without violating the UNIQUE constraint.
 213 Invalid UNIQUE table entry encountered.
 214 A domain conflict exists on attribute "%1$s".
 215 Attribute with id %1$d not found.
@@ -427,7 +428,7 @@ $set 5 MSGCAT_SET_ERROR
 363 Recvmsg from master socket failed.
 364 Sending a new request to server.
 365 Sending a broadcast message to client.
-366 %1$s
+366 Error from server: %1$s
 367 Server %1$s already exists.
 368 Communication error during connect for %1$s.
 373 Premature EOF during read: %1$d.
@@ -708,26 +709,26 @@ $ LOADDB
 647 Backup "%1$s" does not belong to the given database.
 648 Backup is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
-650 There is not enough stack space to run %1$d threads.
+650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
 652 Wrong offset %1$d was given to split the record of length %2$d stored on slot %3$d
 653 Wrong offset %1$d or length %2$d was given to remove a portion of the data of the record of length %3$d stored on slot %4$d
 654 Wrong offset %1$d or length %2$d was given to overwrite a portion of the data of the record of length %3$d stored on slot %4$d
-655 \nCannot open the event handler configuration file, "%1$s".\n
-656 \nWarning : Null id/name in event handler configuration file, "%1$s", line %2$d\n
-657 \nWarning : Illegal event name, "%1$s",  in event handler configuration file, "%2$s", line %3$d\n
-658 \nWarning : event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d\n
-659 \nCannot access the event handler program, "%1$s"\n
-660 \nCannot open/connect the event handler process, "%1$s"\n
-661 \nFailed to write to the event handler process, "%1$s"\n
-662 \nFailed to initialize event handling mechanism.\n
-663 \nWarning : Line too long in event handler configuration file, "%1$s", line %2$d, truncating.\n
-664 Notification : Database Server up.
-665 \nEvent handler pipe broken, "%1$s"\n
-666 \nWarning : Event Notification Mechanism disabled"\n
-667 Cannot match class '%1$s' with corresponding C++ class.\n
-668 Internal error: Unknown domain type '%1$d'.\n
-669 Server refused client connection : max clients, (%1$d), exceeded\n
+655 Cannot open the event handler configuration file, "%1$s".
+656 Warning : Null id/name in event handler configuration file, "%1$s", line %2$d
+657 Warning : Illegal event name, "%1$s",  in event handler configuration file, "%2$s", line %3$d
+658 Warning : event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
+659 Cannot access the event handler program, "%1$s".
+660 Cannot open/connect the event handler process, "%1$s".
+661 Failed to write to the event handler process, "%1$s".
+662 Failed to initialize event handling mechanism.
+663 Warning : Line too long in event handler configuration file, "%1$s", line %2$d, truncating
+664 Event handling mechanism started.
+665 Event handler pipe broken, "%1$s"
+666 Event handling mechanism stoped.
+667 Cannot match class '%1$s' with corresponding C++ class.
+668 Internal error: Unknown domain type '%1$d'.
+669 Server refused client connection : max clients, (%1$d), exceeded.
 670 Operation would have caused one or more unique constraint violations.
 671 A network read/write error ocurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
 672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
@@ -801,7 +802,7 @@ $ LOADDB
 740 Cannot bind local address... aborting. Winsock error: %1$d.
 741 Accept failed. Winsock error: %1$d.
 742 Sending a broadcast message to client. Winsock error: %1$d.
-743 Internal error registering client handshake.
+743 Failed on handshake between client and server. (peer host %s)
 744 Error in rehashing a proxy/vclass MOP.
 745 Invalid garbage collection phase.
 746 Invalid garbage collection callback.
@@ -899,7 +900,7 @@ $ LOADDB
 838 Cannot open more than %d index scans simultaneously.
 839 "%s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%s".
-841 Server system parameter can be set by only sole client(transaction).
+841 Requested operation can be executed by only sole client(transaction).
 842 Cannot cache lock of object %1$d|%2$d|%3$d.
 843 Bad arguments in %s, a %s was passed.
 844 Unknown isolation(%d) is found. The transaction index is %d.
@@ -948,7 +949,7 @@ $ LOADDB
 895 Invalid stored procedure type: '%s' is the '%s'.
 896 Compression failed. Zip Method: %d (%s), Zip Level: %d (%s)
 897 Decompression failed.
-898 Replication Error: "%1$s"
+898 Replication error: "%1$s"
 899 Invalid partition requests.
 900 Java VM library is not found : %s. \nConsequently, calling java stored procedure is not allowed.
 901 Java VM can not be started: %s. \nConsequently, calling java stored procedure is not allowed.
@@ -1019,10 +1020,16 @@ $ LOADDB
 966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
-
 969 Server bit platform (%1$d) is different from client bit platform (%2$d).
+970 Server HA mode is changed from '%1$s' to '%2$s'.
+971 Program '%1$s' (pid %2$d) connected to database server '%3$s' on the host '%4$s' (port %5$d).
+972 Program '%1$s' (pid %2$d) was connected from the host '%3$s'. (transaction index %4$d)
+973 Server status is %1$s.
+974 Archive log "%1$s" is created to archive pages from %2$d to %3$d.
+975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
+976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
 
-970 Last Error
+977 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1048,6 +1055,7 @@ $set 6 MSGCAT_SET_INTERNAL
 21 Mail -s "Server has been stopped"
 22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s has been stopped on errid = %d. User: %s, pid: %d
+24 er_init: cannot install event handler "%s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 please check syntax at '%s', expecting %s.
@@ -1061,6 +1069,60 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 9 Cannot specify attribute "(%s)" in update privilege clause of grant/revoke statement.
 10 invalid use of keyword '%s', expecting %s.
 11 Token length is too long.
+12 invalid data type
+13 invalid attach statement\n  attach_statement : ATTACH unsigned_integer
+14 invalid prepare statement\n  prepare_statement :  PREPARE {to} COMMIT unsigned_integer
+15 invalid execute statement\n  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 invalid scope statement\n  scope_statement : SCOPE trigger_action { FROM table_spec_list }
+17 invalid set system parameter\n  set_system : SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
+19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
+21 invalid set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
+22 invalid set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
+23 invalid get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+24 invalid get optimization cost\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+25 invalid get transaction isol\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+26 invalid get transaction lock\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
+27 invalid get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 invalid get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+29 invalid get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
+31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
+32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
+33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE}
+34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
+35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+36 invalid groups\n  groups spec : GROUPS identifier {, identifier}*
+37 invalid members\n  member spec : MEMBERS identifier {, identifier}*
+38 invalid password\n  password spec : PASSWORD 'STRING'
+39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+40 missing class spec list
+41 missing identifier list
+42 missing expression
+43 invalid identifier
+44 invalid use of substring\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
+45 invalid use of trim\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
+46 invalid use of cast\n  CAST ( expression AS data_type )
+47 function add_months needs two parameters
+48 octet_length needs one parameter
+49 bit_length needs one parameter
+50 lower needs one parameter
+51 upper needs one parameter
+52 translate needs three parameters
+53 replace needs two or three parameters
+54 invalid use of to_number\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
+55 string bind operator is not '|' but '||'
+56 invalid alter statement
+57 invalid drop statement
+58 invalid create statement
+59 invalid relational operator
+60 equal operator is not '==' but '='
+61 not equal operator is not '!=' but '<>'
+62 invalid minus value (or minus value in list)
+63 duplicated reference rule
+
+
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1173,7 +1235,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 108 Proxy '%s' is already defined on class '%s' of ldb '%s'.
 109 CUBRID does not support proxy's with objects in heterogeneous sets.
 110 Where-clause must be a logical type expression.
-111 Like escape clause must be a literal string.
+111 Like escape clause must be a literal string or a host variable.
 112 Invalid combination of precision (%d) and scale (%d).
 113 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 114 Precision (%d) too large. Maximum precision is %d.
@@ -1256,6 +1318,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 191 The domain of the attribute '%s' having an auto increment constraint is invalid.
 192 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
 193 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
+194 Function %s is undefined or given wrong number of parameter.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
@@ -1442,7 +1505,7 @@ $set 15 MSGCAT_SET_IO
 8      Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %d bytes (%d pages)\n
+   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
 10   Database Name: %s\n\
      Volume Name: %s\n\
         Unit Num: %d\n\
@@ -1528,3 +1591,4 @@ including those from the current backup level and higher.\n
 ** WARNING: Do not use the database until an error-free restore is achieved.\n
 27 Error in input, choose a value between %d and %d.\n
 28 The time(%s) specified must be after the time(%s) of the specified backup.\n
+29 COMMENT: Log archive %s, which contains log pages before %d, is not needed any longer by any HA utilities.\n

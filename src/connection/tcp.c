@@ -1071,42 +1071,6 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
 }
 
 /*
- * css_broadcast_to_client() - send an Out-Of_Band (OOB) data message to a
- *                             client
- *   return:
- *   client_fd(in):
- *   data(in):
- */
-bool
-css_broadcast_to_client (SOCKET client_fd, char data)
-{
-  int rc;
-
-  TPRINTF ("About to send a broadcast byte of %d\n", (int) data);
-  rc = send (client_fd, &data, 1, MSG_OOB);
-  if (rc < 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_BROADCAST_TO_CLIENT, 0);
-      return false;
-    }
-  TPRINTF ("Sent broadcast message of %d bytes\n", rc);
-  return true;
-}
-
-/*
- * css_read_broadcast_information() - Gets broadcast info from server
- *   return:
- *   fd(in):
- *   byte(out):
- */
-int
-css_read_broadcast_information (SOCKET fd, char *byte)
-{
-  return (recv (fd, byte, 1, MSG_OOB));
-}
-
-/*
  * css_shutdown_socket() -
  *   return:
  *   fd(in):
@@ -1248,12 +1212,11 @@ css_fd_down (SOCKET fd)
 }
 
 int
-css_get_max_socket_fds(void)
+css_get_max_socket_fds (void)
 {
   return (int) sysconf (_SC_OPEN_MAX);
 }
 
-#if !defined (WINDOWS)
 #define SET_NONBLOCKING(fd) { \
       int flags = fcntl (fd, F_GETFL); \
       flags |= O_NONBLOCK; \
@@ -1523,4 +1486,55 @@ css_peer_alive (SOCKET sd, int timeout)
       return false;
     }				/* else */
 }
-#endif /* !WINDOWS */
+
+/*
+ * css_get_peer_name() - get the hostname of the peer socket
+ *   return: 0 if success; otherwise errno
+ *   hostname(in): buffer for hostname
+ *   len(in): size of the hostname buffer
+ */
+int
+css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
+{
+  union
+  {
+    struct sockaddr_in in;
+    struct sockaddr_un un;
+  } saddr_buf;
+  struct sockaddr *saddr;
+  socklen_t saddr_len;
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  saddr_len = sizeof (saddr_buf);
+  if (getpeername (sockfd, saddr, &saddr_len) != 0)
+    {
+      return errno;
+    }
+  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+}
+
+/*
+ * css_get_sock_name() - get the hostname of the socket
+ *   return: 0 if success; otherwise errno
+ *   hostname(in): buffer for hostname
+ *   len(in): size of the hostname buffer
+ */
+int
+css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
+{
+  union
+  {
+    struct sockaddr_in in;
+    struct sockaddr_un un;
+  } saddr_buf;
+  struct sockaddr *saddr;
+  socklen_t saddr_len;
+
+  saddr = (struct sockaddr *) &saddr_buf;
+  saddr_len = sizeof (saddr_buf);
+  if (getsockname (sockfd, saddr, &saddr_len) != 0)
+    {
+      return errno;
+    }
+  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+}

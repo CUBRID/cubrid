@@ -1,0 +1,142 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>분할 키 값의 변경에 의한 데이터 이동</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n분할\n분할 관리\n분할 키 값의 변경에 의한 데이터 이동");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition.htm\">분할<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition_manage_retreive.htm\">분할 관리<\/a> &nbsp;&gt;&nbsp; 분할 키 값의 변경에 의한 데이터 이동<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>분할 키 값의 변경에 의한 데이터 이동</h4>
+<h6>설명</h6>
+<p>분할의 분할 키 값이 변경되면&#160;변경된 인스턴스는 분할 표현식에 의해서 다른 분할로 이동할 수 있다.</p>
+<h6>예제</h6>
+<p>다음은 분할 키 값이 변경되어 인스턴스가 다른 분할로 이동하는 것을 보여주는 예제이다.</p>
+<p>event1 분할에 저장되어 있는 황영조 선수의 종목 정보를 athletics에서 Football로 바꾸면&#160;인스턴스가 event3 분할로 이동된다.</p>
+<p class="code">CREATE TABLE athlete2( name VARCHAR(40), event VARCHAR(30) )<br />
+PARTITION BY LIST (event) (<br />
+PARTITION event1 VALUES IN ('Swimming', 'Athletics ' ),<br />
+PARTITION event2 VALUES IN ('Judo', 'Taekwondo','Boxing'),<br />
+PARTITION event3 VALUES IN ('Football', 'Basketball', 'Baseball')<br />
+);<br />
+<br />
+INSERT INTO athlete2 VALUES ('Hwang Young-Cho', 'Athletics');<br />
+INSERT INTO athlete2 VALUES ('Lee Seung-Yuop', 'Baseball');</p>
+<p class="code">csql&gt; SELECT * FROM athlete2__p__event1;<br />
+csql&gt; ;x<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160; name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; event<br />
+============================================<br />
+&#160; 'Hwang Young-Cho'&#160;&#160;&#160;&#160; 'Athletics'<br />
+<br />
+1 rows selected.</p>
+<p class="code">csql&gt; UPDATE athlete2 SET event = 'Football' WHERE name = 'Hwang Young-Cho';<br />
+csql&gt; ;x<br />
+1 rows updated.<br />
+csql&gt; SELECT * FROM athlete2__p__event3;<br />
+csql&gt; ;x<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160; name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; event<br />
+============================================<br />
+&#160; 'Lee Seung-Yuop'&#160;&#160;&#160;&#160;&#160; 'Baseball'<br />
+&#160; 'Hwang Young-Cho'&#160;&#160;&#160;&#160; 'Football'<br />
+&#160; &#160;&#160;<br />
+2 rows selected.</p>
+<h6>주의 사항</h6>
+<ul>
+<li>분할 키 값의 변경에 의한 분할 간 데이터 이동은 내부적으로 삭제와 삽입을 수반하여 성능 저하의 원인이 될 수 있으므로 사용에 주의한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -106,13 +106,13 @@ FILE *debug_Log_fd = NULL;
 
 /* Global variables for argument parsing */
 char *dist_LogPath = (char *) "";	/* the distributor log path */
-const char *dist_Dbname = "";	/* the distributor db name */
-const char *dist_Passwd = "";	/* the password to access dist db */
+char *dist_Dbname = NULL;	/* the distributor db name */
+char *dist_Passwd = NULL;	/* the password to access dist db */
 const char *env_Passwd = "REPL_PASS";
 const char *env_First = "REPL_FIRST";
 int create_Arv = false;
 REPL_ERR *err_Head = NULL;
-const char *log_dump_fn = "";	/* file name of replication copy log */
+char *log_dump_fn = NULL;	/* file name of replication copy log */
 int log_pagesize = 4096;	/* log page size for log dump */
 int retry_Connect = false;	/* try to connect to repl_server forever */
 
@@ -292,13 +292,13 @@ static int repl_ag_get_parameters_internal (int (*func) (DB_QUERY_RESULT *),
 static int repl_ag_get_parameters ();
 static void usage_cubrid_repl_agent (const char *argv0);
 
-static int repl_debug_add_valules (struct debug_string **record_data,
-				   DB_VALUE * value);
+static int repl_debug_add_value (struct debug_string **record_data,
+				 DB_VALUE * value);
 static bool repl_debug_check_data (char *str);
 static int
 repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 			  struct debug_string **record_data);
-static void repl_restart_agent (char *agent_pathname);
+static void repl_restart_agent (char *agent_pathname, bool print_msg);
 
 /*
  * repl_ag_set_copy_log() - Set the end log info
@@ -364,7 +364,7 @@ repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
   int error = NO_ERROR;
   LOG_PAGE *log_page;
   int archive_vol;
-  char archive_path[FILE_PATH_LENGTH];
+  char archive_path[FILE_PATH_LENGTH + 4];
 
   log_page = malloc (minfo->io_pagesize);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, log_page);
@@ -374,20 +374,25 @@ repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
 
   /* If no data page, just return */
   if (offset <= SSIZEOF (COPY_LOG))
-    return REPL_AGENT_IO_ERROR;
+    {
+      free_and_init (log_page);
+      return REPL_AGENT_IO_ERROR;
+    }
+
   offset -= SSIZEOF (COPY_LOG);
 
   /* find out the last page id */
-  error =
-    repl_io_read (vdes, (void *) log_page, offset / minfo->io_pagesize - 1,
-		  minfo->io_pagesize);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+  error = repl_io_read (vdes, (void *) log_page,
+			offset / minfo->io_pagesize - 1, minfo->io_pagesize);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+				  log_page);
 
   minfo->copy_log.last_pageid = log_page->hdr.logical_pageid;
 
   /* find out the first page id */
   error = repl_io_read (vdes, (void *) log_page, 0, minfo->io_pagesize);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+				  log_page);
 
   minfo->copy_log.first_pageid = log_page->hdr.logical_pageid;
 
@@ -396,15 +401,21 @@ repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
   archive_vol = repl_io_open (archive_path, O_RDONLY, 0);
 
   if (archive_vol == NULL_VOLDES)
-    minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+    {
+      minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+    }
   else
     {
       error = repl_io_read (archive_vol, (void *) log_page, 0,
 			    minfo->io_pagesize);
       if (error == NO_ERROR)
-	minfo->copy_log.start_pageid = log_page->hdr.logical_pageid;
+	{
+	  minfo->copy_log.start_pageid = log_page->hdr.logical_pageid;
+	}
       else			/* if the size of archive is 0 */
-	minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+	{
+	  minfo->copy_log.start_pageid = minfo->copy_log.first_pageid;
+	}
       close (archive_vol);
     }
 
@@ -412,8 +423,10 @@ repl_ag_adjust_copy_log (int vdes, MASTER_INFO * minfo)
   error = repl_io_write_copy_log_info (vdes, &(minfo->copy_log),
 				       offset / minfo->io_pagesize,
 				       minfo->io_pagesize);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+				  log_page);
 
+  free_and_init (log_page);
   return NO_ERROR;
 }
 
@@ -588,9 +601,10 @@ repl_ag_valid_page (LOG_PAGE * log_page, int m_idx)
 
   if (log_page->hdr.offset < 0)
     {
-      lsa.pageid = log_page->hdr.logical_pageid - 1;
+      lsa.pageid = log_page->hdr.logical_pageid;
       do
 	{
+	  lsa.pageid--;
 	  prev_page = repl_ag_get_page_buffer (lsa.pageid, m_idx);
 	  if (prev_page == NULL)
 	    {
@@ -867,9 +881,14 @@ repl_log_copy_fromlog (char *rec_type, char *area, LOG_ZIP_SIZE_T length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      copy_length = ((log_offset + rec_length < LOGAREA_SIZE)
+      if (pg == NULL)
+	{
+	  return;
+	}
+
+      copy_length = ((log_offset + rec_length <= LOGAREA_SIZE)
 		     ? rec_length : (LOGAREA_SIZE - log_offset));
-      memcpy (rec_type + area_offset, (char *) (pg)->area + log_offset,
+      memcpy (rec_type + area_offset, (char *) pg->area + log_offset,
 	      copy_length);
       rec_length -= copy_length;
       area_offset += copy_length;
@@ -885,20 +904,24 @@ repl_log_copy_fromlog (char *rec_type, char *area, LOG_ZIP_SIZE_T length,
     {
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (0, log_offset, log_pageid,
 					     pg, release_yn, m_idx);
-      copy_length = ((log_offset + t_length < LOGAREA_SIZE)
+      if (pg == NULL)
+	{
+	  return;
+	}
+
+      copy_length = ((log_offset + t_length <= LOGAREA_SIZE)
 		     ? t_length : (LOGAREA_SIZE - log_offset));
-      memcpy (area + area_offset, (char *) (pg)->area + log_offset,
+      memcpy (area + area_offset, (char *) pg->area + log_offset,
 	      copy_length);
       t_length -= copy_length;
       area_offset += copy_length;
       log_offset += copy_length;
     }
 
-  if (release_yn == 1)
+  if (pg && release_yn == 1)
     {
       repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
     }
-
 }
 
 /*
@@ -957,8 +980,12 @@ repl_ag_get_log_data (struct log_rec *lrec,
 
   pg = pgptr;
   slave_info_p = repl_ag_get_slave_info (NULL);
+  if (slave_info_p == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
-  offset = SSIZEOF (struct log_rec) + lsa->offset;
+  offset = SSIZEOF (struct log_rec) +lsa->offset;
   pageid = lsa->pageid;
 
   REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
@@ -969,9 +996,13 @@ repl_ag_get_log_data (struct log_rec *lrec,
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       if (lrec->type == LOG_DIFF_UNDOREDO_DATA)
-	is_diff = true;
+	{
+	  is_diff = true;
+	}
       else
-	is_diff = false;
+	{
+	  is_diff = false;
+	}
 
       length = SSIZEOF (struct log_undoredo);
       REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (length, offset, pageid,
@@ -990,9 +1021,14 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	      || undoredo->data.rcvindex == match_rcvindex)
 	    {
 	      if (rcvindex)
-		*rcvindex = undoredo->data.rcvindex;
+		{
+		  *rcvindex = undoredo->data.rcvindex;
+		}
+
 	      if (logs)
-		*logs = (void *) undoredo;
+		{
+		  *logs = (void *) undoredo;
+		}
 	    }
 	  else if (logs)
 	    {
@@ -1016,6 +1052,11 @@ repl_ag_get_log_data (struct log_rec *lrec,
 		    }
 
 		  undo_data = (char *) malloc (undo_length);
+		  if (undo_data == NULL)
+		    {
+		      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+		      return REPL_AGENT_MEMORY_ERROR;
+		    }
 
 		  /* get undo data for XOR process */
 		  repl_log_copy_fromlog (NULL, undo_data, undo_length,
@@ -1027,13 +1068,17 @@ repl_ag_get_log_data (struct log_rec *lrec,
 				      undo_length, undo_data))
 			{
 			  if (release_yn == 1)
-			    repl_ag_release_page_buffer (pg->hdr.
-							 logical_pageid,
-							 m_idx);
+			    {
+			      repl_ag_release_page_buffer (pg->hdr.
+							   logical_pageid,
+							   m_idx);
+			    }
 			  REPL_ERR_LOG (REPL_FILE_AGENT,
 					REPL_AGENT_UNZIP_ERROR);
 			  if (undo_data)
-			    free_and_init (undo_data);
+			    {
+			      free_and_init (undo_data);
+			    }
 			  return REPL_AGENT_UNZIP_ERROR;
 			}
 		    }
@@ -1068,9 +1113,14 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	  if (match_rcvindex == 0 || undo->data.rcvindex == match_rcvindex)
 	    {
 	      if (logs)
-		*logs = (void *) undo;
+		{
+		  *logs = (void *) undo;
+		}
+
 	      if (rcvindex)
-		*rcvindex = undo->data.rcvindex;
+		{
+		  *rcvindex = undo->data.rcvindex;
+		}
 	    }
 	  else if (logs)
 	    {
@@ -1094,9 +1144,13 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	  if (match_rcvindex == 0 || redo->data.rcvindex == match_rcvindex)
 	    {
 	      if (logs)
-		*logs = (void *) redo;
+		{
+		  *logs = (void *) redo;
+		}
 	      if (rcvindex)
-		*rcvindex = redo->data.rcvindex;
+		{
+		  *rcvindex = redo->data.rcvindex;
+		}
 	    }
 	  else if (logs)
 	    {
@@ -1109,14 +1163,19 @@ repl_ag_get_log_data (struct log_rec *lrec,
 
     default:
       if (logs)
-	*logs = NULL;
+	{
+	  *logs = NULL;
+	}
       if (release_yn == 1)
-	repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	{
+	  repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	}
 
       return error;
     }
 
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				  undo_data);
 
   if (ZIP_CHECK (temp_length))
     {
@@ -1139,7 +1198,15 @@ repl_ag_get_log_data (struct log_rec *lrec,
 	{
 	  *d_length = 0;
 	  if (release_yn == 1)
-	    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	    {
+	      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	    }
+
+	  if (undo_data)
+	    {
+	      free_and_init (undo_data);
+	    }
+
 	  return REPL_AGENT_MEMORY_ERROR;
 	}
     }
@@ -1161,10 +1228,14 @@ repl_ag_get_log_data (struct log_rec *lrec,
       if (!log_unzip (slave_info_p->redo_unzip_ptr, nLength, *data))
 	{
 	  if (release_yn == 1)
-	    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	    {
+	      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	    }
 	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_UNZIP_ERROR);
 	  if (undo_data)
-	    free_and_init (undo_data);
+	    {
+	      free_and_init (undo_data);
+	    }
 	  return REPL_AGENT_UNZIP_ERROR;
 	}
     }
@@ -1208,13 +1279,18 @@ repl_ag_get_log_data (struct log_rec *lrec,
       if (is_overflow)
 	{
 	  free_and_init (*data);
-	  if ((*data = malloc (length)) == NULL)
+	  *data = malloc (length);
+	  if (*data == NULL)
 	    {
 	      *d_length = 0;
 	      if (release_yn == 1)
-		repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+		{
+		  repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+		}
 	      if (undo_data)
-		free_and_init (undo_data);
+		{
+		  free_and_init (undo_data);
+		}
 	      return REPL_AGENT_MEMORY_ERROR;
 	    }
 	}
@@ -1236,10 +1312,14 @@ repl_ag_get_log_data (struct log_rec *lrec,
   *d_length = length;
 
   if (release_yn == 1)
-    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    {
+      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    }
 
   if (undo_data)
-    free_and_init (undo_data);
+    {
+      free_and_init (undo_data);
+    }
 
   return error;
 }
@@ -1289,7 +1369,8 @@ repl_ag_is_idle (SLAVE_INFO * sinfo, int idx)
 
   for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
     {
-      if (sinfo->masters[idx].repl_lists[i]->tranid != 0)
+      if (sinfo->masters[idx].repl_lists[i]->tranid != 0
+	  && sinfo->masters[idx].repl_lists[i]->repl_tail != NULL)
 	{
 	  return false;
 	}
@@ -1442,25 +1523,30 @@ static int
 repl_ag_apply_delete_log (REPL_ITEM * item)
 {
   DB_OBJECT *class_obj, *obj;
-  int error = NO_ERROR;
+  int error = NO_ERROR, au_save;
 
   /* find out class object by class name */
   class_obj = db_find_class (item->class_name);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, class_obj);
 
   /* find out object by primary key */
-  obj = obj_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
+  obj = obj_repl_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
 
+  AU_SAVE_AND_DISABLE (au_save);
   /* delete this object */
   if (obj)
     {
       error = db_drop (obj);
       if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
 	{
+	  AU_RESTORE (au_save);
+
 	  return REPL_AGENT_CANT_CONNECT_TO_SLAVE;
 	}
       REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
     }
+  AU_RESTORE (au_save);
+
 
   return error;
 }
@@ -1506,7 +1592,7 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
   char *ddl;
   int error = NO_ERROR;
 
-  switch (item->type)
+  switch (item->item_type)
     {
     case CUBRID_STMT_CREATE_CLASS:
     case CUBRID_STMT_ALTER_CLASS:
@@ -1669,6 +1755,11 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   int area_offset;
   int error = NO_ERROR;
 
+  if (logs == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
+
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
   prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
   prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
@@ -1676,6 +1767,18 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   while (!is_end_of_record && !LSA_ISNULL (&current_lsa))
     {
       current_log_page = repl_ag_get_page (current_lsa.pageid, m_idx);
+      if (current_log_page == NULL)
+	{
+	  while (ovf_list_head)
+	    {
+	      ovf_list_data = ovf_list_head;
+	      ovf_list_head = ovf_list_head->next;
+	      free_and_init (ovf_list_data->data);
+	      free_and_init (ovf_list_data);
+	    }
+
+	  return REPL_AGENT_INTERNAL_ERROR;
+	}
       current_log_record =
 	(struct log_rec *) ((char *) current_log_page->area +
 			    current_lsa.offset);
@@ -1695,6 +1798,15 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 	    {
 	      /* malloc failed */
 	      repl_ag_release_page_buffer (current_lsa.pageid, m_idx);
+
+	      while (ovf_list_head)
+		{
+		  ovf_list_data = ovf_list_head;
+		  ovf_list_head = ovf_list_head->next;
+		  free_and_init (ovf_list_data->data);
+		  free_and_init (ovf_list_data);
+		}
+
 	      return REPL_AGENT_MEMORY_ERROR;
 	    }
 	  memset (ovf_list_data, 0, DB_SIZEOF (struct ovf_page_list));
@@ -1741,11 +1853,16 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 		    {
 		      is_end_of_record = true;
 		    }
+		  free_and_init (ovf_list_data->data);
 		  free_and_init (ovf_list_data);
 		}
 	    }
 	  else
 	    {
+	      if (ovf_list_data->data)
+		{
+		  free_and_init (ovf_list_data->data);
+		}
 	      free_and_init (ovf_list_data);
 	    }
 	}
@@ -1813,10 +1930,16 @@ repl_ag_get_relocation_recdes (struct log_rec *lrec,
   if (!LSA_ISNULL (&lsa))
     {
       pg = repl_ag_get_page (lsa.pageid, m_idx);
+      if (pg == NULL)
+	{
+	  return REPL_AGENT_INTERNAL_ERROR;
+	}
+
       if (pg != pgptr)
 	{
 	  release_yn = 1;
 	}
+
       tmp_lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
       if (tmp_lrec->trid != lrec->trid)
 	{
@@ -1824,10 +1947,9 @@ repl_ag_get_relocation_recdes (struct log_rec *lrec,
 	}
       else
 	{
-	  error =
-	    repl_ag_get_log_data (tmp_lrec, &lsa, pg, m_idx,
-				  RVHF_INSERT, &rcvindex, logs,
-				  rec_type, data, d_length);
+	  error = repl_ag_get_log_data (tmp_lrec, &lsa, pg, m_idx,
+					RVHF_INSERT, &rcvindex, logs,
+					rec_type, data, d_length);
 	}
     }
   else
@@ -1895,6 +2017,10 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
   prev_log = *(struct log_undoredo **) logs;
 
   sInfo = repl_ag_get_slave_info (NULL);
+  if (sInfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   log_undo_data = sInfo->undo_unzip_ptr;
   log_unzip_data = sInfo->redo_unzip_ptr;
@@ -1909,9 +2035,13 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 	       || lrec->type == LOG_DIFF_UNDOREDO_DATA))
 	    {
 	      if (lrec->type == LOG_DIFF_UNDOREDO_DATA)
-		bIsDiff = true;
+		{
+		  bIsDiff = true;
+		}
 	      else
-		bIsDiff = false;
+		{
+		  bIsDiff = false;
+		}
 
 	      offset = SSIZEOF (struct log_rec) + lsa.offset;
 	      pageid = lsa.pageid;
@@ -1946,6 +2076,12 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 			    }
 
 			  undo_data = (char *) malloc (undo_length);
+			  if (undo_data == NULL)
+			    {
+			      REPL_ERR_LOG (REPL_FILE_AGENT,
+					    REPL_AGENT_MEMORY_ERROR);
+			      return REPL_AGENT_MEMORY_ERROR;
+			    }
 
 			  repl_log_copy_fromlog (NULL, undo_data,
 						 undo_length, pageid,
@@ -1956,15 +2092,19 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 			      if (!log_unzip
 				  (log_undo_data, undo_length, undo_data))
 				{
-				  if (release_yn == 1)
-				    repl_ag_release_page_buffer (pg->
-								 hdr.
-								 logical_pageid,
-								 m_idx);
+				  if (release_yn == 1 && pg)
+				    {
+				      repl_ag_release_page_buffer (pg->
+								   hdr.
+								   logical_pageid,
+								   m_idx);
+				    }
 				  REPL_ERR_LOG (REPL_FILE_AGENT,
 						REPL_AGENT_UNZIP_ERROR);
 				  if (undo_data)
-				    free_and_init (undo_data);
+				    {
+				      free_and_init (undo_data);
+				    }
 				  return REPL_AGENT_UNZIP_ERROR;
 				}
 			    }
@@ -1999,14 +2139,18 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 			{
 			  if (!log_unzip (log_unzip_data, nLength, *data))
 			    {
-			      if (release_yn == 1)
-				repl_ag_release_page_buffer (pg->hdr.
-							     logical_pageid,
-							     m_idx);
+			      if (release_yn == 1 && pg)
+				{
+				  repl_ag_release_page_buffer (pg->hdr.
+							       logical_pageid,
+							       m_idx);
+				}
 			      REPL_ERR_LOG (REPL_FILE_AGENT,
 					    REPL_AGENT_UNZIP_ERROR);
 			      if (undo_data)
-				free_and_init (undo_data);
+				{
+				  free_and_init (undo_data);
+				}
 			      return REPL_AGENT_UNZIP_ERROR;
 			    }
 			}
@@ -2059,12 +2203,16 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 			}
 
 		      *d_length = length;
-		      if (release_yn == 1)
-			repl_ag_release_page_buffer (pg->hdr.
-						     logical_pageid, m_idx);
+		      if (release_yn == 1 && pg)
+			{
+			  repl_ag_release_page_buffer (pg->hdr.
+						       logical_pageid, m_idx);
+			}
 
 		      if (undo_data)
-			free_and_init (undo_data);
+			{
+			  free_and_init (undo_data);
+			}
 
 		      return error;
 		    }
@@ -2074,23 +2222,29 @@ repl_ag_get_next_update_log (struct log_rec *prev_lrec,
 		   (lrec->type == LOG_COMMIT || lrec->type == LOG_ABORT))
 	    {
 	      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-	      if (release_yn == 1)
-		repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	      if (release_yn == 1 && pg)
+		{
+		  repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+		}
 	      return error;
 	    }
 	  LSA_COPY (&lsa, &lrec->forw_lsa);
 	}
 
-      if (release_yn == 1)
-	repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+      if (release_yn == 1 && pg)
+	{
+	  repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+	}
       pg = repl_ag_get_page (lsa.pageid, m_idx);
       release_yn = 1;
     }
 
-  if (release_yn == 1)
-    repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
-  return error;
+  if (release_yn == 1 && pg)
+    {
+      repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
+    }
 
+  return error;
 }
 
 /*
@@ -2185,7 +2339,8 @@ repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
       return error;
     }
 
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				  area);
 
   recdes->data = (char *) (area);
   recdes->area_size = recdes->length = length;
@@ -2213,24 +2368,30 @@ repl_debug_check_data (char *str)
 }
 
 static int
-repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
+repl_debug_add_value (struct debug_string **record_data, DB_VALUE * value)
 {
   PARSER_VARCHAR *buf;
   PARSER_CONTEXT *parser;
 
   parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return ER_FAILED;
+    }
+
   buf = describe_value (parser, NULL, value);
-  if (record_data == NULL)
+  if (*record_data == NULL)
     {
       (*record_data) =
 	(struct debug_string *) malloc (sizeof (struct debug_string));
-      if (record_data != NULL)
+      if ((*record_data) != NULL)
 	{
 	  (*record_data)->data = NULL;
 	  (*record_data)->length = 0;
 	  (*record_data)->max_length = 0;
 	}
     }
+
   if ((*record_data) != NULL
       && ((*record_data)->max_length
 	  <= ((*record_data)->length + pt_get_varchar_length (buf) + 3)))
@@ -2244,8 +2405,14 @@ repl_debug_add_valules (struct debug_string **record_data, DB_VALUE * value)
 	  (*record_data)->max_length += 10240;
 	}
     }
-  strcat ((*record_data)->data, (const char *) pt_get_varchar_bytes (buf));
-  strcat ((*record_data)->data, ", ");
+
+  if ((*record_data) != NULL && (*record_data)->data)
+    {
+      strcat ((*record_data)->data,
+	      (const char *) pt_get_varchar_bytes (buf));
+      strcat ((*record_data)->data, ", ");
+    }
+
   parser_free_parser (parser);
 
   return NO_ERROR;
@@ -2314,32 +2481,43 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 
       /* skip cache object attribute for foreign key */
       if (att->is_fk_cache_attr)
-	continue;
+	{
+	  continue;
+	}
 
       /* update the column */
       error = dbt_put_internal (def, att->header.name, &value);
       if (error != NO_ERROR)
 	{
+	  if (vars)
+	    {
+	      free_and_init (vars);
+	    }
 	  return error;
 	}
       if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
 	{
-	  repl_debug_add_valules (&debug_record_data, &value);
+	  repl_debug_add_value (&debug_record_data, &value);
 	}
     }
 
   /* round up to a to the end of the fixed block */
   pad = (int) (buf->ptr - start);
   if (pad < sm_class->fixed_size)
-    or_advance (buf, sm_class->fixed_size - pad);
+    {
+      or_advance (buf, sm_class->fixed_size - pad);
+    }
 
   /* skip over the bound bits */
   if (bound_bit_flag)
-    or_advance (buf, OR_BOUND_BIT_BYTES (sm_class->fixed_count));
+    {
+      or_advance (buf, OR_BOUND_BIT_BYTES (sm_class->fixed_count));
+    }
 
   /* process variable length column */
   v_start = buf->ptr;
-  for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count;
+  for (i = sm_class->fixed_count, j = 0;
+       vars && i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
       (*(att->type->readval)) (buf, &value, att->domain, vars[j], true,
@@ -2350,16 +2528,19 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
       error = dbt_put_internal (def, att->header.name, &value);
       if (error != NO_ERROR)
 	{
+	  free_and_init (vars);
 	  return error;
 	}
       if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
 	{
-	  repl_debug_add_valules (&debug_record_data, &value);
+	  repl_debug_add_value (&debug_record_data, &value);
 	}
     }
 
   if (vars != NULL)
-    free_and_init (vars);
+    {
+      free_and_init (vars);
+    }
   return error;
 }
 
@@ -2431,7 +2612,7 @@ repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
   DB_OBJECT *object;
   int i, j, error;
 
-  object = obj_find_object_by_pkey (class_obj, key, AU_FETCH_READ);
+  object = obj_repl_find_object_by_pkey (class_obj, key, AU_FETCH_READ);
   if (object == NULL)
     {
       return er_errid ();
@@ -2455,7 +2636,7 @@ repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 	{
 	  return error;
 	}
-      repl_debug_add_valules (record_data, &value);
+      repl_debug_add_value (record_data, &value);
     }
 
   /* process variable length column */
@@ -2468,7 +2649,7 @@ repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 	{
 	  return error;
 	}
-      repl_debug_add_valules (record_data, &value);
+      repl_debug_add_value (record_data, &value);
     }
 
   return NO_ERROR;
@@ -2487,8 +2668,8 @@ repl_ag_apply_get_object (REPL_ITEM * item)
       return REPL_AGENT_CANT_CONNECT_TO_SLAVE;
     }
 
-  item->record =
-    obj_find_object_by_pkey (class_obj, &item->key, AU_FETCH_UPDATE);
+  item->record = obj_repl_find_object_by_pkey (class_obj, &item->key,
+					       AU_FETCH_UPDATE);
   return NO_ERROR;
 }
 
@@ -2526,42 +2707,53 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   PAGEID old_pageid;
   RECDES recdes;
   unsigned int rcvindex;
-  int error;
+  int error, au_save;
 
   DB_OTMPL *inst_tp = NULL;
   bool ovfyn = false;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   old_pageid = item->lsa.pageid;
   pgptr = repl_ag_get_page (item->lsa.pageid, m_idx);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, pgptr);
 
-  error =
-    repl_ag_get_recdes (&item->lsa, m_idx, pgptr, &recdes, &rcvindex,
-			sinfo->log_data, sinfo->rec_type, &ovfyn);
+  error = repl_ag_get_recdes (&item->lsa, m_idx, pgptr, &recdes, &rcvindex,
+			      sinfo->log_data, sinfo->rec_type, &ovfyn);
   if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
     {
       return error;
     }
   REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 
+  AU_SAVE_AND_DISABLE (au_save);
   if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
     {
+      error = REPL_AGENT_INTERNAL_ERROR;
       goto error_rtn;
     }
 
+#if 0
   /* Why does a next if-statement need? */
   if (rcvindex != RVHF_INSERT && item->record == NULL)
     {
       rcvindex = RVHF_INSERT;
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_RECORD_TYPE_ERROR);
+      repl_error_flush (err_Log_fp, false);
     }
+#endif
 
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
+      error = REPL_AGENT_INTERNAL_ERROR;
       goto error_rtn;
     }
+
   if (rcvindex == RVHF_INSERT)
     {
       inst_tp = dbt_create_object_internal (class_obj);
@@ -2572,40 +2764,49 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
     }
   if (inst_tp == NULL)
     {
+      error = REPL_AGENT_INTERNAL_ERROR;
       goto error_rtn;
     }
 
-  if ((mclass =
-       locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD)) == NULL)
+  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
     {
+      error = REPL_AGENT_INTERNAL_ERROR;
       goto error_rtn;
     }
-  if ((error =
-       repl_disk_to_obj (mclass, &recdes, inst_tp, &item->key)) != NO_ERROR)
+
+  error = repl_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+  if (error != NO_ERROR)
     {
       goto error_rtn;
     }
 
   if (dbt_finish_object (inst_tp) == NULL)
     {
+      error = REPL_AGENT_INTERNAL_ERROR;
       goto error_rtn;
     }
+  AU_RESTORE (au_save);
 
   if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
     {
       repl_debug_object2string (class_obj, &item->key, &debug_workspace_data);
-      if (strcmp (debug_record_data->data, debug_workspace_data->data) != 0)
+      if (debug_workspace_data != NULL)
 	{
-	  fprintf (debug_Log_fd,
-		   "VALUE ERROR: PUT VALUE(%s)\nWORKSPACE(%s)\n",
-		   debug_record_data->data, debug_workspace_data->data);
-	  fflush (debug_Log_fd);
-	}
+	  if (strcmp (debug_record_data->data, debug_workspace_data->data) !=
+	      0)
+	    {
+	      fprintf (debug_Log_fd,
+		       "VALUE ERROR: PUT VALUE(%s)\nWORKSPACE(%s)\n",
+		       debug_record_data->data, debug_workspace_data->data);
+	      fflush (debug_Log_fd);
+	    }
 
-      debug_record_data->data[0] = '\0';
-      debug_record_data->length = (size_t) 0;
-      debug_workspace_data->data[0] = '\0';
-      debug_workspace_data->length = 0;
+	  debug_record_data->data[0] = '\0';
+	  debug_record_data->length = (size_t) 0;
+	  debug_workspace_data->data[0] = '\0';
+	  debug_workspace_data->length = 0;
+	}
     }
 
   if (ovfyn)
@@ -2617,6 +2818,8 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   return NO_ERROR;
 
 error_rtn:
+  AU_RESTORE (au_save);
+
   if (ovfyn)
     {
       free_and_init (recdes.data);
@@ -2680,10 +2883,15 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   char *area;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
+
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
   t_pageid = lsa->pageid;
-  target_offset = SSIZEOF (struct log_rec) + lsa->offset;
+  target_offset = SSIZEOF (struct log_rec) +lsa->offset;
   length = SSIZEOF (struct log_replication);
 
   REPL_LOG_READ_ALIGN (target_offset, t_pageid, log_pgptr2, release_yn,
@@ -2708,7 +2916,8 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			 log_pgptr2, m_idx);
 
   apply = repl_ag_find_apply_list (sinfo, tranid, idx);
-  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
+  REPL_CHECK_ERR_NULL_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				 apply, area);
 
   ptr = area;
   switch (log_type)
@@ -2723,16 +2932,17 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	  {
 	    /* This class should not be replicated */
 	    db_private_free_and_init (NULL, class_name);
-	    pr_clear_value (&apply->repl_tail->key);
 	  }
 	else
 	  {
 	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
-	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
-	    apply->repl_tail->type = PT_UPDATE;
-	    ptr = or_unpack_value (ptr, &apply->repl_tail->key);
-	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	    REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT,
+					    REPL_AGENT_MEMORY_ERROR, area);
+	    ptr = or_unpack_mem_value (ptr, &apply->repl_tail->key);
+	    REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT,
+					    REPL_AGENT_INTERNAL_ERROR, area);
 	    apply->repl_tail->class_name = class_name;
+	    apply->repl_tail->item_type = repl_log->rcvindex;
 	  }
 	break;
       }
@@ -2741,8 +2951,9 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	if (sinfo->masters[idx].all_repl || sinfo->masters[idx].for_recovery)
 	  {
 	    error = repl_ag_add_repl_item (apply, repl_log->lsa);
-	    REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
-	    ptr = or_unpack_int (ptr, &apply->repl_tail->type);
+	    REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT,
+					    REPL_AGENT_INTERNAL_ERROR, area);
+	    ptr = or_unpack_int (ptr, &apply->repl_tail->item_type);
 	    ptr = or_unpack_string (ptr, &apply->repl_tail->class_name);
 	    ptr = or_unpack_string (ptr, &str_value);
 	    db_make_string (&apply->repl_tail->key, str_value);
@@ -2756,6 +2967,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
       }
     }
+  apply->repl_tail->log_type = log_type;
 
   if (release_yn == 1)
     {
@@ -2780,8 +2992,9 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
  *
  *     APPLY thread processes the mutex lock
  */
-time_t
-repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
+int
+repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx,
+			   time_t * time)
 {
   int error = NO_ERROR;
   struct log_donetime *donetime;
@@ -2796,8 +3009,18 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
   pg = pgptr;
 
   REPL_LOG_READ_ALIGN (offset, pageid, pg, release_yn, m_idx);
+  if (pg == NULL)
+    {
+      return error;
+    }
+
   REPL_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (SSIZEOF (*donetime), offset,
 					 pageid, pg, release_yn, m_idx);
+  if (pg == NULL)
+    {
+      return error;
+    }
+
   donetime = (struct log_donetime *) ((char *) pg->area + offset);
 
   if (release_yn == 1)
@@ -2805,7 +3028,8 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx)
       repl_ag_release_page_buffer (pg->hdr.logical_pageid, m_idx);
     }
 
-  return donetime->at_time;
+  *time = donetime->at_time;
+  return NO_ERROR;
 }
 
 /*
@@ -2843,6 +3067,10 @@ repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
   int error = NO_ERROR;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   apply = repl_ag_find_apply_list (sinfo, tranid, idx);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
@@ -2859,6 +3087,7 @@ repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
   commit->type = LOG_UNLOCK_COMMIT;
   LSA_COPY (&commit->log_lsa, lsa);
   commit->tranid = tranid;
+  commit->master_time = -1;
 
   if (sinfo->masters[idx].commit_head == NULL
       && sinfo->masters[idx].commit_tail == NULL)
@@ -2909,6 +3138,10 @@ repl_ag_set_commit_log (int tranid, LOG_LSA * lsa, int idx,
   REPL_COMMIT *commit;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   commit = sinfo->masters[idx].commit_head;
   while (commit)
@@ -3009,7 +3242,10 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
   if (master_time != NULL)
     {
       m_tm_p = localtime (master_time);
-      strftime (time_array_m, 256, "%Y/%m/%d %H:%M:%S", m_tm_p);
+      if (m_tm_p)
+	{
+	  strftime (time_array_m, 256, "%Y/%m/%d %H:%M:%S", m_tm_p);
+	}
     }
   else
     {
@@ -3019,7 +3255,10 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
   if (slave_time != NULL)
     {
       s_tm_p = localtime (slave_time);
-      strftime (time_array_s, 256, "%Y/%m/%d %H:%M:%S", s_tm_p);
+      if (s_tm_p)
+	{
+	  strftime (time_array_s, 256, "%Y/%m/%d %H:%M:%S", s_tm_p);
+	}
     }
   else
     {
@@ -3077,7 +3316,8 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
  *      called by APPLY thread
  */
 int
-repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time)
+repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time,
+			   bool clear_tran)
 {
   SLAVE_INFO *sinfo;
   REPL_COMMIT *commit;
@@ -3086,6 +3326,11 @@ repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time)
   int m_idx;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
+
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
   LSA_SET_NULL (lsa);
@@ -3093,9 +3338,9 @@ repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time)
   commit = sinfo->masters[idx].commit_head;
   if (commit && commit->type == LOG_COMMIT)
     {
-      error =
-	repl_ag_apply_repl_log (commit->tranid, idx,
-				&sinfo->masters[idx].total_rows);
+      error = repl_ag_apply_repl_log (commit->tranid, idx,
+				      &sinfo->masters[idx].total_rows,
+				      clear_tran);
 
       /* compute the delay time and save it ! */
       time (&slave_time);
@@ -3139,6 +3384,10 @@ repl_ag_apply_abort (int idx, int tranid, time_t master_time,
   int m_idx;
 
   sinfo = repl_ag_get_slave_info (NULL);
+  if (sinfo == NULL)
+    {
+      return;
+    }
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
   time (&slave_time);
@@ -3154,33 +3403,50 @@ repl_ag_apply_abort (int idx, int tranid, time_t master_time,
 static void
 repl_write_debug_item_info (REPL_ITEM * item)
 {
+  PARSER_VARCHAR *buf = NULL;
   PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buf;
-  const char *type;
+  const char *type = "unknown";
+
+  if (item->log_type == LOG_REPLICATION_SCHEMA)
+    {
+      type = "SCHEMA";
+    }
+  else if (item->log_type == LOG_REPLICATION_DATA)
+    {
+      switch (item->item_type)
+	{
+	case RVREPL_DATA_DELETE:
+	  type = "DELETE";
+	  break;
+	case RVREPL_DATA_INSERT:
+	  type = "INSERT";
+	  break;
+	case RVREPL_DATA_UPDATE_START:
+	case RVREPL_DATA_UPDATE:
+	case RVREPL_DATA_UPDATE_END:
+	  type = "UPDATE";
+	  break;
+	default:
+	  type = "unknown";
+	  break;
+	}
+    }
 
   parser = parser_create_parser ();
-  buf = describe_value (parser, NULL, &item->key);
-  switch (item->type)
+  if (parser != NULL)
     {
-    case PT_INSERT:
-    case PT_UPDATE:
-      if (LSA_ISNULL (&item->lsa))
-	{
-	  type = "DELETE";
-	}
-      else
-	{
-	  type = "INSERT/UPDATE";
-	}
-      break;
-    default:
-      type = "SCHEMA";
-      break;
+      buf = describe_value (parser, NULL, &item->key);
     }
-  fprintf (debug_Log_fd, "%s:[%s](%d,%d), ", type, pt_get_varchar_bytes (buf),
+
+  fprintf (debug_Log_fd, "%s:[%s](%d,%d), ", type,
+	   buf ? (const char *) pt_get_varchar_bytes (buf) : "",
 	   item->lsa.pageid, item->lsa.offset);
   fflush (debug_Log_fd);
-  parser_free_parser (parser);
+
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
 }
 
 static void
@@ -3201,15 +3467,19 @@ repl_write_debug_apply_info (REPL_APPLY * apply)
 static void
 repl_write_error_db_info (REPL_ITEM * item, int error)
 {
+  PARSER_VARCHAR *buf = NULL;
   PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buf;
   char error_string[1024];
 
   parser = parser_create_parser ();
-  buf = describe_value (parser, NULL, &item->key);
+  if (parser != NULL)
+    {
+      buf = describe_value (parser, NULL, &item->key);
+    }
+
   sprintf (error_string, "[%s,%s] %s", item->class_name,
-	   pt_get_varchar_bytes (buf), db_error_string (1));
-  parser_free_parser (parser);
+	   buf ? (const char *) pt_get_varchar_bytes (buf) : "",
+	   db_error_string (1));
   if (error > 0)
     {
       REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, error, error_string);
@@ -3220,6 +3490,56 @@ repl_write_error_db_info (REPL_ITEM * item, int error)
 			    error_string);
     }
   repl_error_flush (err_Log_fp, false);
+
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+}
+
+static int
+repl_ag_apply_repl_item (REPL_ITEM * item, int idx, int *update_cnt)
+{
+  int error = NO_ERROR;
+
+  if (item->log_type == LOG_REPLICATION_SCHEMA)
+    {
+      error = repl_ag_apply_schema_log (item);
+    }
+  else if (item->log_type == LOG_REPLICATION_DATA)
+    {
+      switch (item->item_type)
+	{
+	case RVREPL_DATA_DELETE:
+	  error = repl_ag_apply_delete_log (item);
+	  break;
+	case RVREPL_DATA_INSERT:
+	case RVREPL_DATA_UPDATE_START:
+	case RVREPL_DATA_UPDATE:
+	case RVREPL_DATA_UPDATE_END:
+	  error = repl_ag_apply_update_log (item, idx);
+	  break;
+	default:
+	  error = REPL_AGENT_RECORD_TYPE_ERROR;
+	  break;
+	}
+    }
+
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
+    {
+      repl_write_debug_item_info (item);
+    }
+
+  if (error == NO_ERROR)
+    {
+      (*update_cnt)++;
+    }
+  else
+    {
+      repl_write_error_db_info (item, error);
+    }
+
+  return error;
 }
 
 /*
@@ -3237,92 +3557,91 @@ repl_write_error_db_info (REPL_ITEM * item, int error)
  *      called by APPLY thread
  */
 int
-repl_ag_apply_repl_log (int tranid, int idx, int *total_rows)
+repl_ag_apply_repl_log (int tranid, int idx, int *total_rows, bool clear_tran)
 {
   SLAVE_INFO *sinfo = repl_ag_get_slave_info (NULL);
   REPL_APPLY *apply;
-  REPL_ITEM *item;
+  REPL_ITEM *item, *multi_update_item = NULL;
   int error = NO_ERROR;
   int update_cnt = 0;
+  bool multi_update_mode = false;
+
+  if (sinfo == NULL)
+    {
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
 
   apply = repl_ag_find_apply_list (sinfo, tranid, idx);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, apply);
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       repl_write_debug_apply_info (apply);
     }
   if (apply->repl_head == NULL)
     {
-      repl_ag_clear_repl_item (apply);
+      repl_ag_clear_repl_item (apply, clear_tran);
       return NO_ERROR;
     }
 
-  /* pass 1: load all objects to memeory */
   item = apply->repl_head;
   while (item && error == NO_ERROR)
     {
-      switch (item->type)
+      if (item->log_type == LOG_REPLICATION_DATA)
 	{
-	case PT_INSERT:
-	case PT_UPDATE:
-	  {
-	    if (!LSA_ISNULL (&item->lsa))	/* update and insert */
-	      {
-		error = repl_ag_apply_get_object (item);
-	      }
-	  }
-	default:		/* schema log */
-	  break;
-	}
-      item = item->next;
-    }
-
-  /* pass 2: apply all objects to slave */
-  item = apply->repl_head;
-  while (item && error == NO_ERROR)
-    {
-      switch (item->type)
-	{
-	case PT_INSERT:
-	case PT_UPDATE:
-	  if (LSA_ISNULL (&item->lsa))
+	  switch (item->item_type)
 	    {
-	      error = repl_ag_apply_delete_log (item);
+	    case RVREPL_DATA_UPDATE_START:
+	      multi_update_mode = true;
+	      multi_update_item = item;
+	      error = repl_ag_apply_get_object (item);
+	      break;
+	    case RVREPL_DATA_UPDATE:
+	      error = repl_ag_apply_get_object (item);
+	      if (!multi_update_mode)
+		{
+		  error = repl_ag_apply_repl_item (item, idx, &update_cnt);
+		}
+	      break;
+	    case RVREPL_DATA_UPDATE_END:
+	      error = repl_ag_apply_get_object (item);
+	      if (multi_update_item != NULL)
+		{
+		  while (multi_update_item != item->next)
+		    {
+		      error = repl_ag_apply_repl_item (multi_update_item, idx,
+						       &update_cnt);
+		      multi_update_item = multi_update_item->next;
+		    }
+		  multi_update_mode = false;
+		}
+	      break;
+	    case RVREPL_DATA_INSERT:
+	    case RVREPL_DATA_DELETE:
+	    default:
+	      error = repl_ag_apply_repl_item (item, idx, &update_cnt);
+	      break;
 	    }
-	  else
-	    {
-	      error = repl_ag_apply_update_log (item, idx);
-	    }
-	  break;
-	default:
-	  error = repl_ag_apply_schema_log (item);
-	  break;
 	}
-      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+      else if (item->log_type == LOG_REPLICATION_SCHEMA)
 	{
-	  repl_write_debug_item_info (item);
-	}
-
-      if (error == NO_ERROR)
-	{
-	  update_cnt++;
+	  error = repl_ag_apply_repl_item (item, idx, &update_cnt);
 	}
       else
 	{
-	  repl_write_error_db_info (item, error);
+	  error = REPL_AGENT_RECORD_TYPE_ERROR;
 	}
       item = item->next;
     }
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd, "END\n");
       fflush (debug_Log_fd);
     }
 
   *total_rows += update_cnt;
-  repl_ag_clear_repl_item (apply);
+  repl_ag_clear_repl_item (apply, clear_tran);
   return error;
 }
 
@@ -3343,11 +3662,16 @@ repl_init_pb (void)
 
   pb = (REPL_PB *) malloc (sizeof (REPL_PB));
   if (pb == NULL)
-    REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+    {
+      REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+    }
 
   pb->log_hdr_buffer = malloc (REPL_DEF_LOG_PAGE_SIZE);
   if (pb->log_hdr_buffer == NULL)
-    REPL_ERR_RETURN_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR);
+    {
+      REPL_ERR_RETURN_NULL_WITH_FREE (REPL_FILE_AGENT,
+				      REPL_AGENT_MEMORY_ERROR, pb);
+    }
 
   pb->log_hdr = NULL;
   pb->log_buffer = NULL;
@@ -3896,30 +4220,42 @@ repl_ag_add_slave_info (int idx)
  *      called by MAIN thread or APPLY thread
  */
 void
-repl_ag_clear_repl_item (REPL_APPLY * repl_list)
+repl_ag_clear_repl_item (REPL_APPLY * repl_list, bool clear_tran)
 {
   REPL_ITEM *repl_item;
   PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
+  PARSER_CONTEXT *parser = NULL;
 
   repl_item = repl_list->repl_head;
+  if (repl_item == NULL && !clear_tran)
+    {
+      return;
+    }
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd, "CLEAR TRAN[%10d] : ", repl_list->tranid);
+      parser = parser_create_parser ();
     }
 
   while (repl_item != NULL)
     {
       repl_list->repl_head = repl_item->next;
-      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+      if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
 	{
-	  parser = parser_create_parser ();
-	  buf = describe_value (parser, NULL, &repl_item->key);
-	  fprintf (debug_Log_fd, "[%s](%d,%d), ",
-		   pt_get_varchar_bytes (buf), repl_item->lsa.pageid,
-		   repl_item->lsa.offset);
-	  parser_free_parser (parser);
+	  if (parser != NULL)
+	    {
+	      buf = describe_value (parser, NULL, &repl_item->key);
+
+	      fprintf (debug_Log_fd, "[%s](%d,%d), ",
+		       (const char *) pt_get_varchar_bytes (buf),
+		       repl_item->lsa.pageid, repl_item->lsa.offset);
+	    }
+	  else
+	    {
+	      fprintf (debug_Log_fd, "[](%d,%d), ",
+		       repl_item->lsa.pageid, repl_item->lsa.offset);
+	    }
 	}
       if (repl_item->class_name != NULL)
 	{
@@ -3930,15 +4266,23 @@ repl_ag_clear_repl_item (REPL_APPLY * repl_list)
       repl_item = repl_list->repl_head;
     }
   repl_list->repl_tail = NULL;
-  LSA_SET_NULL (&repl_list->start_lsa);
 
-  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUE)
+  if (parser != NULL)
+    {
+      parser_free_parser (parser);
+    }
+
+  if (clear_tran)
+    {
+      repl_list->tranid = 0;
+      LSA_SET_NULL (&repl_list->start_lsa);
+    }
+
+  if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd, "END\n");
       fflush (debug_Log_fd);
     }
-
-  repl_list->tranid = 0;	/* set "free" for the reuse */
 }
 
 /*
@@ -3959,7 +4303,8 @@ repl_ag_clear_repl_item (REPL_APPLY * repl_list)
  *      called by APPLY thread
  */
 void
-repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx)
+repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx,
+				   bool clear_tran)
 {
   REPL_APPLY *repl_list;
   REPL_COMMIT *commit;
@@ -3967,7 +4312,10 @@ repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx)
   REPL_COMMIT dumy;
 
   repl_list = repl_ag_find_apply_list (sinfo, tranid, idx);
-  repl_ag_clear_repl_item (repl_list);
+  if (repl_list)
+    {
+      repl_ag_clear_repl_item (repl_list, clear_tran);
+    }
 
   dumy.next = sinfo->masters[idx].commit_head;
   commit = &dumy;
@@ -3977,7 +4325,9 @@ repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx)
 	{
 	  tmp = commit->next;
 	  if (tmp->next == NULL)
-	    sinfo->masters[idx].commit_tail = commit;
+	    {
+	      sinfo->masters[idx].commit_tail = commit;
+	    }
 	  commit->next = tmp->next;
 	  free_and_init (tmp);
 	}
@@ -3988,7 +4338,9 @@ repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid, int idx)
     }
   sinfo->masters[idx].commit_head = dumy.next;
   if (sinfo->masters[idx].commit_head == NULL)
-    sinfo->masters[idx].commit_tail = NULL;
+    {
+      sinfo->masters[idx].commit_tail = NULL;
+    }
 }
 
 /*
@@ -4010,7 +4362,7 @@ repl_ag_clear_slave_info (SLAVE_INFO * sinfo)
 	{
 	  for (i = 0; i < sinfo->masters[j].repl_cnt; i++)
 	    {
-	      repl_ag_clear_repl_item (sinfo->masters[j].repl_lists[i]);
+	      repl_ag_clear_repl_item (sinfo->masters[j].repl_lists[i], true);
 	      free_and_init (sinfo->masters[j].repl_lists[i]);
 	    }
 	  free_and_init (sinfo->masters[j].repl_lists);
@@ -4096,7 +4448,7 @@ repl_ag_shutdown ()
 {
   repl_ag_clear_master_info_all ();
   repl_ag_clear_slave_info_all ();
-  repl_error_flush (err_Log_fp, 0);
+  repl_error_flush (err_Log_fp, false);
   close (repl_Pipe_to_master);
 
   if (err_Log_fp && err_Log_fp != stdout && err_Log_fp)
@@ -4163,40 +4515,63 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
   int error = NO_ERROR;
 
   if (col_cnt < 2)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    {
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
 
-  value = malloc (sizeof (DB_VALUE) * col_cnt);
+  value = (DB_VALUE *) malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				  value);
 
   env_name = DB_GET_STRING (&value[0]);
   env_value = DB_GET_STRING (&value[1]);
 
+  if (env_name == NULL || env_value == NULL)
+    {
+      free_and_init (value);
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
+
   file_path =
     (char *) malloc (strlen (env_value) + strlen (dist_Dbname) + 10);
-  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, file_path);
+  REPL_CHECK_ERR_NULL_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
+				 file_path, value);
 
   if (env_name != NULL && strcmp (env_name, "trail_log") == 0)
     {
       dist_LogPath = (char *) malloc (strlen (env_value) + 1);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR,
-			   dist_LogPath);
+      if (dist_LogPath == NULL)
+	{
+	  repl_error_push (REPL_FILE_AGENT, __LINE__, REPL_AGENT_MEMORY_ERROR,
+			   NULL);
+	  free_and_init (value);
+	  free_and_init (file_path);
+	  return REPL_AGENT_MEMORY_ERROR;
+	}
+
       strcpy (dist_LogPath, env_value);
       sprintf (file_path, "%s/%s.trail", env_value, dist_Dbname);
       trail_File_vdes = repl_ag_open_env_file (file_path);
       if (trail_File_vdes == NULL_VOLDES)
-	REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT,
-			      REPL_AGENT_CANT_READ_TRAIL_LOG, file_path);
+	{
+	  REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT,
+				REPL_AGENT_CANT_READ_TRAIL_LOG, file_path);
+	}
 
       sprintf (file_path, "%s/%s.hist", env_value, dist_Dbname);
       history_fp = fopen (file_path, "a");
       if (history_fp == NULL)
 	{
-	  error = REPL_AGENT_IO_ERROR;
-	  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_IO_ERROR);
+	  repl_error_push (REPL_FILE_AGENT, __LINE__, REPL_AGENT_IO_ERROR,
+			   NULL);
+	  free_and_init (value);
+	  free_and_init (file_path);
+	  return REPL_AGENT_IO_ERROR;
 	}
+
       if (debug_Dump_info != 0)
 	{
 	  sprintf (file_path, "%s/%s.debug", env_value, dist_Dbname);
@@ -4212,32 +4587,42 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
       sprintf (file_path, "%s/%s.err", env_value, dist_Dbname);
       err_Log_fp = fopen (file_path, "a");
       if (err_Log_fp == NULL)
-	err_Log_fp = stdout;
+	{
+	  err_Log_fp = stdout;
+	}
     }
   else if (env_name != NULL && strcmp (env_name, "agent_port") == 0)
     {
       agent_status_port = atoi (env_value);
       if (agent_status_port <= 0)
-	agent_status_port = 33333;
+	{
+	  agent_status_port = 33333;
+	}
     }
   else if (env_name != NULL && strcmp (env_name, "perf_log_size") == 0)
     {
       perf_Log_size = atoi (env_value);
       if (perf_Log_size <= 0)
-	perf_Log_size = 10000;
+	{
+	  perf_Log_size = 10000;
+	}
     }
   else if (env_name != NULL
 	   && strcmp (env_name, "commit_interval_msecs") == 0)
     {
       perf_Commit_msec = atoi (env_value);
       if (perf_Commit_msec < 0)
-	perf_Commit_msec = 10000;
+	{
+	  perf_Commit_msec = 10000;
+	}
     }
   else if (env_name != NULL && strcmp (env_name, "repl_agent_max_size") == 0)
     {
       agent_Max_size = atoi (env_value);
       if (agent_Max_size < 0)
-	agent_Max_size = 50;
+	{
+	  agent_Max_size = 50;
+	}
     }
   else if (env_name != NULL && strcmp (env_name, "retry_connect") == 0)
     {
@@ -4248,10 +4633,13 @@ repl_ag_get_env (DB_QUERY_RESULT * result)
     }
 
   for (i = 0; i < col_cnt; i++)
-    db_value_clear (&value[i]);
+    {
+      db_value_clear (&value[i]);
+    }
 
   free_and_init (value);
   free_and_init (file_path);
+
   return error;
 }
 
@@ -4269,25 +4657,39 @@ static int
 repl_ag_get_master (DB_QUERY_RESULT * result)
 {
   DB_VALUE *value;
-  int idx = repl_Master_num;
+  unsigned int idx = repl_Master_num;
   int i;
   int col_cnt = db_query_column_count (result);
   int error = NO_ERROR;
+  char *tmp_str1, *tmp_str2, *tmp_str3;
 
   if (col_cnt < 11)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    {
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
 
-  if (repl_Master_num > MAX_NUM_OF_MASTERS)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_MASTERS);
+  if (repl_Master_num >= MAX_NUM_OF_MASTERS)
+    {
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_MASTERS);
+    }
 
   value = (DB_VALUE *) malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				  value);
 
-  if ((error = repl_ag_add_master_info (idx)) != NO_ERROR)
-    return error;
+  error = repl_ag_add_master_info (idx);
+  if (error != NO_ERROR)
+    {
+      for (i = 0; i < col_cnt; i++)
+	{
+	  db_value_clear (&value[i]);
+	}
+      free_and_init (value);
+      return error;
+    }
 
   /* set the ID and agent id
    * dbid : the unique number which identify the master db within
@@ -4299,15 +4701,28 @@ repl_ag_get_master (DB_QUERY_RESULT * result)
   mInfo[idx]->dbid = DB_GET_INTEGER (&value[0]);
 
   /* set the connection info of the master db */
-  strcpy (mInfo[idx]->conn.dbname, DB_GET_STRING (&value[1]));
-  strcpy (mInfo[idx]->conn.master_IP, DB_GET_STRING (&value[2]));
+  tmp_str1 = DB_GET_STRING (&value[1]);
+  tmp_str2 = DB_GET_STRING (&value[2]);
+  tmp_str3 = DB_GET_STRING (&value[4]);
+
+  if (tmp_str1 == NULL || tmp_str2 == NULL || tmp_str3 == NULL)
+    {
+      for (i = 0; i < col_cnt; i++)
+	{
+	  db_value_clear (&value[i]);
+	}
+      free_and_init (value);
+      return REPL_AGENT_INTERNAL_ERROR;
+    }
+
+  strcpy (mInfo[idx]->conn.dbname, tmp_str1);
+  strcpy (mInfo[idx]->conn.master_IP, tmp_str2);
   mInfo[idx]->conn.portnum = DB_GET_INTEGER (&value[3]);
   memset (mInfo[idx]->conn.req_buf, 0, COMM_REQ_BUF_SIZE);
 
   /* set the copy log info */
-  strcpy (mInfo[idx]->copylog_path, DB_GET_STRING (&value[4]));
-  sprintf (mInfo[idx]->copylog_path, "%s/%s.copy",
-	   mInfo[idx]->copylog_path, mInfo[idx]->conn.dbname);
+  snprintf (mInfo[idx]->copylog_path, FILE_PATH_LENGTH - 1, "%s/%s.copy",
+	    tmp_str3, mInfo[idx]->conn.dbname);
 
   mInfo[idx]->copy_log.start_pageid = DB_GET_INTEGER (&value[5]);
   mInfo[idx]->copy_log.first_pageid = DB_GET_INTEGER (&value[6]);
@@ -4322,7 +4737,9 @@ repl_ag_get_master (DB_QUERY_RESULT * result)
   repl_Master_num++;
 
   for (i = 0; i < col_cnt; i++)
-    db_value_clear (&value[i]);
+    {
+      db_value_clear (&value[i]);
+    }
   free_and_init (value);
 
   return NO_ERROR;
@@ -4415,6 +4832,7 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
   DB_QUERY_ERROR error_stats;
   DB_VALUE value;
   int result_count = 0, i, j;
+  char *tmp_str;
 
   sprintf (sql_stmt,
 	   "select class_name, start_pageid, start_offset from repl_group where master_dbid = %d and slave_dbid = %d order by class_name",
@@ -4424,7 +4842,8 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
 
   if (db_execute (sql_stmt, &result, &error_stats) >= 0)
     {
-      if ((result_count = db_query_tuple_count (result)) == 0)
+      result_count = db_query_tuple_count (result);
+      if (result_count == 0)
 	{
 	  sinfo->masters[m_idx].class_list = NULL;
 	}
@@ -4446,8 +4865,10 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	      if (sinfo->masters[m_idx].class_list[i].class_name == NULL)
 		{
 		  for (j = 0; j < i; j++)
-		    free_and_init (sinfo->masters[m_idx].class_list[j].
-				   class_name);
+		    {
+		      free_and_init (sinfo->masters[m_idx].class_list[j].
+				     class_name);
+		    }
 		  free_and_init (sinfo->masters[m_idx].class_list);
 
 		  db_query_end (result);
@@ -4464,50 +4885,78 @@ repl_ag_get_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	  if (error == NO_ERROR)
 	    {
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].class_list[result_count].
-		      class_name, DB_GET_STRING (&value));
+	      tmp_str = DB_GET_STRING (&value);
+	      if (tmp_str)
+		{
+		  strcpy (sinfo->masters[m_idx].class_list[result_count].
+			  class_name, tmp_str);
+		}
 	      db_value_clear (&value);
 
 	      error = db_query_get_tuple_value (result, 1, &value);
 	      if (DB_IS_NULL (&value))
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.pageid = -1;
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.pageid = -1;
+		}
 	      else
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.pageid = DB_GET_INT (&value);
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.pageid = DB_GET_INT (&value);
+		}
+
 	      error = db_query_get_tuple_value (result, 2, &value);
 	      if (DB_IS_NULL (&value))
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.offset = -1;
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.offset = -1;
+		}
 	      else
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.offset = DB_GET_INT (&value);
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.offset = DB_GET_INT (&value);
+		}
 
 	      result_count++;
 	    }
 	  while (error == NO_ERROR)
 	    {
 	      if (db_query_next_tuple (result) != DB_CURSOR_SUCCESS)
-		break;
+		{
+		  break;
+		}
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].class_list[result_count].
-		      class_name, DB_GET_STRING (&value));
+	      tmp_str = DB_GET_STRING (&value);
+	      if (tmp_str)
+		{
+		  strcpy (sinfo->masters[m_idx].class_list[result_count].
+			  class_name, tmp_str);
+		}
 	      db_value_clear (&value);
 
 	      error = db_query_get_tuple_value (result, 1, &value);
 	      if (DB_IS_NULL (&value))
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.pageid = -1;
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.pageid = -1;
+		}
 	      else
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.pageid = DB_GET_INT (&value);
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.pageid = DB_GET_INT (&value);
+		}
+
 	      error = db_query_get_tuple_value (result, 2, &value);
 	      if (DB_IS_NULL (&value))
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.offset = -1;
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.offset = -1;
+		}
 	      else
-		sinfo->masters[m_idx].class_list[result_count].
-		  start_lsa.offset = DB_GET_INT (&value);
+		{
+		  sinfo->masters[m_idx].class_list[result_count].
+		    start_lsa.offset = DB_GET_INT (&value);
+		}
 
 	      result_count++;
 	    }
@@ -4613,6 +5062,7 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
   int result_count = 0, i;
   int sum = 0, class_count, pos;
   int idx;
+  char *tmp_str;
 
   class_count = sinfo->masters[m_idx].class_count;
   for (i = 0; i < class_count; i++)
@@ -4641,14 +5091,18 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
     }
 
   if (sum <= 0)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
   sinfo->masters[m_idx].class_list
     = (REPL_GROUP_INFO *) realloc (sinfo->masters[m_idx].class_list,
 				   SSIZEOF (REPL_GROUP_INFO) *
 				   (class_count + sum));
   if (sinfo->masters[m_idx].class_list == NULL)
-    return REPL_AGENT_GET_PARARMETER_FAIL;
+    {
+      return REPL_AGENT_GET_PARARMETER_FAIL;
+    }
 
   pos = 0;
   for (i = 0; i < class_count; i++)
@@ -4656,7 +5110,8 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
       sprintf (sql_stmt,
 	       "select partition_class_name from db_partition where class_name = '%s'",
 	       sinfo->masters[m_idx].class_list[i].class_name);
-      if ((result_count = db_execute (sql_stmt, &result, &error_stats)) > 0)
+      result_count = db_execute (sql_stmt, &result, &error_stats);
+      if (result_count > 0)
 	{
 	  result_count = 0;
 	  error = db_query_first_tuple (result);
@@ -4672,8 +5127,16 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 		}
 
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
-		      DB_GET_STRING (&value));
+	      tmp_str = DB_GET_STRING (&value);
+	      if (tmp_str != NULL)
+		{
+		  strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
+			  tmp_str);
+		}
+	      else
+		{
+		  sinfo->masters[m_idx].class_list[idx].class_name[0] = '\0';
+		}
 	      db_value_clear (&value);
 	      LSA_COPY (&sinfo->masters[m_idx].class_list[idx].start_lsa,
 			&sinfo->masters[m_idx].class_list[i].start_lsa);
@@ -4682,7 +5145,9 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 	  while (error == NO_ERROR)
 	    {
 	      if (db_query_next_tuple (result) != DB_CURSOR_SUCCESS)
-		break;
+		{
+		  break;
+		}
 	      idx = class_count + pos;
 	      sinfo->masters[m_idx].class_list[idx].class_name =
 		(char *) malloc (DB_MAX_IDENTIFIER_LENGTH);
@@ -4693,8 +5158,16 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
 		}
 
 	      error = db_query_get_tuple_value (result, 0, &value);
-	      strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
-		      DB_GET_STRING (&value));
+	      tmp_str = DB_GET_STRING (&value);
+	      if (tmp_str)
+		{
+		  strcpy (sinfo->masters[m_idx].class_list[idx].class_name,
+			  tmp_str);
+		}
+	      else
+		{
+		  sinfo->masters[m_idx].class_list[idx].class_name[0] = '\0';
+		}
 	      db_value_clear (&value);
 	      LSA_COPY (&sinfo->masters[m_idx].class_list[idx].start_lsa,
 			&sinfo->masters[m_idx].class_list[i].start_lsa);
@@ -4713,29 +5186,29 @@ repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo, int m_idx)
   return NO_ERROR;
 }
 
-#define REPL_GET_TRAIL_INFO_INT(arg1, arg2)                                   \
+#define REPL_GET_TRAIL_INFO_INT(arg1, arg2, label)                            \
   do {                                                                        \
     error = db_get(mop, arg1, &mid);                                          \
-    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    REPL_CHECK_ERR_ERROR_GOTO(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO, label); \
     if(DB_IS_NULL(&mid))  arg2 = 0;                                           \
     else arg2 = DB_GET_INTEGER(&mid);                                         \
     db_value_clear(&mid);                                                     \
   } while(0)
 
-#define REPL_GET_TRAIL_INFO_CHAR2BOOL(arg1, arg2)                             \
+#define REPL_GET_TRAIL_INFO_CHAR2BOOL(arg1, arg2, label)                      \
   do {                                                                        \
     error = db_get(mop, arg1, &mid);                                          \
-    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    REPL_CHECK_ERR_ERROR_GOTO(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO, label); \
     c_bool = DB_GET_CHAR(&mid, &dummy);                                       \
-    arg2 = (c_bool[0] == 'y' || c_bool[0] == 'Y') ? true : false;             \
+    arg2 = (c_bool && (c_bool[0] == 'y' || c_bool[0] == 'Y')) ? true : false; \
     db_value_clear(&mid);                                                     \
   } while(0)
-#define REPL_GET_TRAIL_INFO_CHAR(arg1, arg2)                                  \
+#define REPL_GET_TRAIL_INFO_CHAR(arg1, arg2, label)                           \
   do {                                                                        \
     error = db_get(mop, arg1, &mid);                                          \
-    REPL_CHECK_ERR_ERROR(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);     \
+    REPL_CHECK_ERR_ERROR_GOTO(REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO, label); \
     c_bool = DB_GET_CHAR(&mid, &dummy);                                       \
-    arg2 = c_bool[0];                                                         \
+    arg2 = (c_bool) ? c_bool[0] : false;                                      \
     db_value_clear(&mid);                                                     \
   } while(0)
 
@@ -4753,7 +5226,8 @@ static int
 repl_ag_get_slave (DB_QUERY_RESULT * result)
 {
   DB_VALUE *value;
-  int idx = repl_Slave_num, i, m_idx, dummy;
+  unsigned int idx = repl_Slave_num;
+  int i, m_idx, dummy;
   int col_cnt = db_query_column_count (result);
   DB_SET *masters;
   DB_VALUE mid;
@@ -4761,21 +5235,30 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
   int error = NO_ERROR;
   char *c_bool;
   char sql[1024];
+  char *tmp_str1, *tmp_str2, *tmp_str3, *tmp_str4;
 
   if (col_cnt < 7)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    {
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+    }
 
-  if (repl_Slave_num > MAX_NUM_OF_SLAVES)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_SLAVES);
+  if (repl_Slave_num >= MAX_NUM_OF_SLAVES)
+    {
+      REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_TOO_MANY_SLAVES);
+    }
 
   value = malloc (sizeof (DB_VALUE) * col_cnt);
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_MEMORY_ERROR, value);
 
   error = db_query_get_tuple_valuelist (result, col_cnt, value);
-  REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+  REPL_CHECK_ERR_ERROR_WITH_FREE (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+				  value);
 
-  if ((error = repl_ag_add_slave_info (idx)) != NO_ERROR)
-    return error;
+  error = repl_ag_add_slave_info (idx);
+  if (error != NO_ERROR)
+    {
+      goto fail;
+    }
 
   /* set the ID
    * dbid : the unique number which identify the master db within
@@ -4783,12 +5266,24 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
    */
   sInfo[idx]->dbid = DB_GET_INTEGER (&value[0]);
 
+  tmp_str1 = DB_GET_STRING (&value[1]);
+  tmp_str2 = DB_GET_STRING (&value[2]);
+  tmp_str3 = DB_GET_STRING (&value[4]);
+  tmp_str4 = DB_GET_STRING (&value[5]);
+
+  if (tmp_str1 == NULL || tmp_str2 == NULL || tmp_str3 == NULL
+      || tmp_str4 == NULL)
+    {
+      error = REPL_AGENT_INTERNAL_ERROR;
+      goto fail;
+    }
+
   /* set the connection info */
-  strcpy (sInfo[idx]->conn.dbname, DB_GET_STRING (&value[1]));
-  strcpy (sInfo[idx]->conn.master_IP, DB_GET_STRING (&value[2]));
+  strcpy (sInfo[idx]->conn.dbname, tmp_str1);
+  strcpy (sInfo[idx]->conn.master_IP, tmp_str2);
   sInfo[idx]->conn.portnum = DB_GET_INTEGER (&value[3]);
-  strcpy (sInfo[idx]->conn.userid, DB_GET_STRING (&value[4]));
-  strcpy (sInfo[idx]->conn.passwd, DB_GET_STRING (&value[5]));
+  strcpy (sInfo[idx]->conn.userid, tmp_str3);
+  strcpy (sInfo[idx]->conn.passwd, tmp_str4);
 
   /* set the trail info
    * trail info : the info which should be maintained per each
@@ -4800,46 +5295,72 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
    *              {M1, S1}, {M1, S2}, {M2, S2}
    */
   masters = DB_GET_SET (&value[6]);
-  REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_SLAVE_HAS_NO_MASTER,
-		       masters);
+  if (masters == NULL)
+    {
+      repl_error_push (REPL_FILE_AGENT, __LINE__,
+		       REPL_AGENT_SLAVE_HAS_NO_MASTER, NULL);
+      error = REPL_AGENT_SLAVE_HAS_NO_MASTER;
+      goto fail;
+    }
 
   sInfo[idx]->m_cnt = db_set_cardinality (masters);
   if (sInfo[idx]->m_cnt == 0)
-    REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_SLAVE_HAS_NO_MASTER);
+    {
+      repl_error_push (REPL_FILE_AGENT, __LINE__,
+		       REPL_AGENT_SLAVE_HAS_NO_MASTER, NULL);
+      error = REPL_AGENT_SLAVE_HAS_NO_MASTER;
+      goto fail;
+    }
 
   for (i = 0; i < sInfo[idx]->m_cnt; i++)
     {
       sInfo[idx]->masters[i].s_id = sInfo[idx]->dbid;
 
       error = db_set_get (masters, i, &mid);
-      REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);
+      if (error != NO_ERROR)
+	{
+	  repl_error_push (REPL_FILE_AGENT, __LINE__,
+			   REPL_AGENT_INVALID_TRAIL_INFO, NULL);
+	  error = REPL_AGENT_INVALID_TRAIL_INFO;
+	  goto fail;
+	}
 
       mop = db_get_object (&mid);
-      REPL_CHECK_ERR_NULL (REPL_FILE_AGENT,
-			   REPL_AGENT_INVALID_TRAIL_INFO, mop);
+      if (mop == NULL)
+	{
+	  repl_error_push (REPL_FILE_AGENT, __LINE__,
+			   REPL_AGENT_INVALID_TRAIL_INFO, NULL);
+	  error = REPL_AGENT_INVALID_TRAIL_INFO;
+	  goto fail;
+	}
       db_value_clear (&mid);
 
-      REPL_GET_TRAIL_INFO_INT ("master_dbid", sInfo[idx]->masters[i].m_id);
+      REPL_GET_TRAIL_INFO_INT ("master_dbid", sInfo[idx]->masters[i].m_id,
+			       fail);
 
       REPL_GET_TRAIL_INFO_INT ("final_pageid",
-			       sInfo[idx]->masters[i].final_lsa.pageid);
+			       sInfo[idx]->masters[i].final_lsa.pageid, fail);
       REPL_GET_TRAIL_INFO_INT ("final_offset",
-			       sInfo[idx]->masters[i].final_lsa.offset);
+			       sInfo[idx]->masters[i].final_lsa.offset, fail);
       REPL_GET_TRAIL_INFO_INT ("perf_poll_interval",
-			       sInfo[idx]->masters[i].perf_poll_interval);
+			       sInfo[idx]->masters[i].perf_poll_interval,
+			       fail);
       REPL_GET_TRAIL_INFO_INT ("log_apply_interval",
-			       sInfo[idx]->masters[i].log_apply_interval);
+			       sInfo[idx]->masters[i].log_apply_interval,
+			       fail);
       REPL_GET_TRAIL_INFO_INT ("restart_interval",
-			       sInfo[idx]->masters[i].restart_interval);
+			       sInfo[idx]->masters[i].restart_interval, fail);
 
       REPL_GET_TRAIL_INFO_CHAR2BOOL ("all_repl",
-				     sInfo[idx]->masters[i].all_repl);
+				     sInfo[idx]->masters[i].all_repl, fail);
       REPL_GET_TRAIL_INFO_CHAR2BOOL ("index_replication",
 				     sInfo[idx]->masters[i].
-				     index_replication);
+				     index_replication, fail);
       REPL_GET_TRAIL_INFO_CHAR2BOOL ("for_recovery",
-				     sInfo[idx]->masters[i].for_recovery);
-      REPL_GET_TRAIL_INFO_CHAR ("status", sInfo[idx]->masters[i].status);
+				     sInfo[idx]->masters[i].for_recovery,
+				     fail);
+      REPL_GET_TRAIL_INFO_CHAR ("status", sInfo[idx]->masters[i].status,
+				fail);
 
       m_idx = repl_ag_get_master_info_index (sInfo[idx]->masters[i].m_id);
       if (mInfo[m_idx]->copy_log.start_pageid < 0 ||	/* first time to start
@@ -4862,22 +5383,25 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
 		   sInfo[idx]->masters[i].s_id);
 	  error = repl_ag_update_query_execute (sql);
 	  if (error == NO_ERROR)
-	    error = db_commit_transaction ();
+	    {
+	      error = db_commit_transaction ();
+	    }
 	  if (error == NO_ERROR)
 	    {
-	      error =
-		repl_io_write (trail_File_vdes, &sInfo[idx]->masters[i],
-			       sInfo[idx]->masters[i].s_id *
-			       sInfo[idx]->masters[i].m_id,
-			       SIZE_OF_TRAIL_LOG);
+	      error = repl_io_write (trail_File_vdes, &sInfo[idx]->masters[i],
+				     sInfo[idx]->masters[i].s_id *
+				     sInfo[idx]->masters[i].m_id,
+				     SIZE_OF_TRAIL_LOG);
 	    }
 	  if (error != NO_ERROR)
-	    return error;
+	    {
+	      return error;
+	    }
 	}
       else
 	{			/* set the previous repl_count as the current repl_count */
 	  REPL_GET_TRAIL_INFO_INT ("repl_count",
-				   sInfo[idx]->masters[i].total_rows);
+				   sInfo[idx]->masters[i].total_rows, fail);
 	}
 
       if (sInfo[idx]->masters[i].all_repl != true)
@@ -4897,13 +5421,23 @@ repl_ag_get_slave (DB_QUERY_RESULT * result)
       REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INVALID_TRAIL_INFO);
     }
 
-
   repl_Slave_num++;
   for (i = 0; i < col_cnt; i++)
-    db_value_clear (&value[i]);
+    {
+      db_value_clear (&value[i]);
+    }
   free_and_init (value);
 
   return NO_ERROR;
+
+fail:
+  for (i = 0; i < col_cnt; i++)
+    {
+      db_value_clear (&value[i]);
+    }
+  free_and_init (value);
+
+  return error;
 }
 
 /*
@@ -4972,7 +5506,7 @@ repl_ag_get_parameters ()
 				REPL_AGENT_CANT_CONNECT_TO_DIST,
 				(char *) db_error_string (1));
 
-  db_set_client_type (DB_CLIENT_TYPE_LOG_REPLICATOR);
+  db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
   error = db_restart ("repl_agent", 0, dist_Dbname);
   REPL_CHECK_ERR_ERROR_ONE_ARG (REPL_FILE_AGENT,
 				REPL_AGENT_CANT_CONNECT_TO_DIST,
@@ -5043,9 +5577,15 @@ usage_cubrid_repl_agent (const char *argv0)
 }
 
 static void
-repl_restart_agent (char *agent_pathname)
+repl_restart_agent (char *agent_pathname, bool print_msg)
 {
   int pid;
+  int error;
+
+  if (print_msg)
+    {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_RESTART_MESSAGE);
+    }
 
   repl_ag_shutdown ();
   msgcat_final ();
@@ -5057,6 +5597,9 @@ repl_restart_agent (char *agent_pathname)
     }
   else if (pid == 0)
     {
+      /* create a new session */
+      setsid ();
+
       pid = execlp (agent_pathname, "repl_agent", "-d", dist_Dbname, NULL);
       if (pid != 0)
 	{
@@ -5102,6 +5645,10 @@ main (int argc, char **argv)
   };
   const char *env_debug, *env_daemon, *env_first;
 
+  dist_Dbname = strdup ("");
+  dist_Passwd = strdup ("");
+  log_dump_fn = strdup ("");
+
   /*
    * reads the replication parameters ..
    *
@@ -5131,7 +5678,8 @@ main (int argc, char **argv)
   if (utility_initialize () != NO_ERROR)
     {
       REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_CANT_OPEN_CATALOG);
-      return (-1);
+      error = ER_FAILED;
+      goto end;
     }
 
   while (1)
@@ -5149,28 +5697,46 @@ main (int argc, char **argv)
       switch (option_key)
 	{
 	case 'd':
+	  if (dist_Dbname != NULL)
+	    {
+	      free_and_init (dist_Dbname);
+	    }
 	  dist_Dbname = strdup (optarg);
 	  break;
 	case 'p':
+	  if (dist_Passwd != NULL)
+	    {
+	      free_and_init (dist_Passwd);
+	    }
 	  dist_Passwd = strdup (optarg);
 	  break;
 	case 'a':
 	  create_Arv = true;
 	  break;
 	case 'f':
+	  if (log_dump_fn != NULL)
+	    {
+	      free_and_init (log_dump_fn);
+	    }
 	  log_dump_fn = strdup (optarg);
 	  break;
-	case 's':
+	case 's':		/* debugging-purpose option */
 	  log_pagesize = atoi (optarg);
+	  if (log_pagesize < 1 || log_pagesize >= INT_MAX)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
 	  break;
 	case 'h':
 	default:
 	  usage_cubrid_repl_agent (argv[0]);
-	  return -1;
+	  error = ER_FAILED;
+	  goto end;
 	}
     }
 
-  if (strlen (log_dump_fn) > 1)
+  if (log_dump_fn && strlen (log_dump_fn) > 1)
     {
       dump_fp = repl_io_open (log_dump_fn, O_RDONLY, 0);
       if (dump_fp > 0)
@@ -5181,7 +5747,7 @@ main (int argc, char **argv)
       goto error_exit;
     }
 
-  if (strlen (dist_Dbname) < 1)
+  if (dist_Dbname && strlen (dist_Dbname) < 1)
     {
       error = REPL_AGENT_INTERNAL_ERROR;
       usage_cubrid_repl_agent (argv[0]);
@@ -5189,17 +5755,26 @@ main (int argc, char **argv)
     }
 
   env_first = envvar_get (env_First);
-  if (env_first == NULL)
+  if (env_first == NULL && dist_Passwd != NULL)
     {
       envvar_set (env_First, env_First);
       envvar_set (env_Passwd, dist_Passwd);
     }
   else
     {
-      dist_Passwd = envvar_get (env_Passwd);
+      const char *tmp_passwd = NULL;
+
+      if (dist_Passwd != NULL)
+	{
+	  free_and_init (dist_Passwd);
+	}
+
+      tmp_passwd = envvar_get (env_Passwd);
+      dist_Passwd = strdup ((tmp_passwd) ? tmp_passwd : "");
     }
 
-  if ((error = repl_ag_get_parameters ()) != NO_ERROR)
+  error = repl_ag_get_parameters ();
+  if (error != NO_ERROR)
     {
       goto error_exit;
     }
@@ -5217,16 +5792,17 @@ main (int argc, char **argv)
       env_daemon = envvar_get ("NO_DAEMON");
       if (env_daemon == NULL || strcmp (env_daemon, "no") == 0)
 	{
-	  repl_restart_agent (argv[0]);
-	  exit (0);
+	  repl_restart_agent (argv[0], false);
+	  goto end;
 	}
     }
 
-  /* repl_agent flag set to 1 */
-  db_Log_replication_mode = true;
+  /* enable replication for repl_agent */
+  db_Enable_replications++;
 
   /* connect to the master */
-  if ((error = repl_connect_to_master (false, dist_Dbname)) != NO_ERROR)
+  error = repl_connect_to_master (false, dist_Dbname);
+  if (error != NO_ERROR)
     {
       REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_CANT_CONNECT_TO_MASTER);
       goto error_exit;
@@ -5244,8 +5820,21 @@ main (int argc, char **argv)
 error_exit:
   if (restart_Agent)
     {
-      repl_restart_agent (argv[0]);
+      repl_restart_agent (argv[0], true);
     }
 
+end:
+  if (dist_Dbname != NULL)
+    {
+      free_and_init (dist_Dbname);
+    }
+  if (dist_Passwd != NULL)
+    {
+      free_and_init (dist_Passwd);
+    }
+  if (log_dump_fn != NULL)
+    {
+      free_and_init (log_dump_fn);
+    }
   return error;
 }

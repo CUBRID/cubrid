@@ -1,6 +1,6 @@
 
-SRC_DIR=..\debug
-DEST_DIR=cubrid
+SRC_DIR=
+DEST_DIR=
 INSTALL_SCRIPT_DIR=.
 
 all:
@@ -9,7 +9,7 @@ all:
 all_debug: all
 
 clean:
-	cmd /c rmdir $(DEST_DIR) /s /q
+	if exist $(DEST_DIR) cmd /c rmdir $(DEST_DIR) /s /q
 
 install_client:
 	cmd /c $(INSTALL_SCRIPT_DIR)\\install_client.bat "$(SRC_DIR)" "$(DEST_DIR)"

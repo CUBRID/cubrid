@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -455,6 +455,7 @@ static GETOPT_LONG ua_Compact_Option[] = {
 static UTIL_ARG_MAP ua_Paramdump_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {PARAMDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {PARAMDUMP_BOTH_S, {ARG_BOOLEAN}, {0}},
   {PARAMDUMP_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {PARAMDUMP_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
@@ -462,6 +463,7 @@ static UTIL_ARG_MAP ua_Paramdump_Option_Map[] = {
 
 static GETOPT_LONG ua_Paramdump_Option[] = {
   {PARAMDUMP_OUTPUT_FILE_L, 1, 0, PARAMDUMP_OUTPUT_FILE_S},
+  {PARAMDUMP_BOTH_L, 0, 0, PARAMDUMP_BOTH_S},
   {PARAMDUMP_SA_MODE_L, 0, 0, PARAMDUMP_SA_MODE_S},
   {PARAMDUMP_CS_MODE_L, 0, 0, PARAMDUMP_CS_MODE_S},
   {0, 0, 0, 0}
@@ -472,11 +474,6 @@ static UTIL_ARG_MAP ua_Changemode_Option_Map[] = {
   {CHANGEMODE_MODE_S, {ARG_STRING}, {0}},
   {CHANGEMODE_WAIT_S, {ARG_BOOLEAN}, {0}},
   {CHANGEMODE_FORCE_S, {ARG_BOOLEAN}, {0}},
-#if defined(LINUX)
-  {CHANGEMODE_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
-#else
-  {CHANGEMODE_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
-#endif
   {0, {0}, {0}}
 };
 
@@ -484,7 +481,6 @@ static GETOPT_LONG ua_Changemode_Option[] = {
   {CHANGEMODE_MODE_L, 1, 0, CHANGEMODE_MODE_S},
   {CHANGEMODE_WAIT_L, 0, 0, CHANGEMODE_WAIT_S},
   {CHANGEMODE_FORCE_L, 0, 0, CHANGEMODE_FORCE_S},
-  {CHANGEMODE_DBA_PASSWORD_L, 1, 0, CHANGEMODE_DBA_PASSWORD_S},
   {0, 0, 0, 0}
 };
 
@@ -492,37 +488,27 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
-#if defined(LINUX)
-  {COPYLOG_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
-#else
-  {COPYLOG_DBA_PASSWORD_S, {ARG_STRING}, (void *) ""},
-#endif
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Copylog_Option[] = {
   {COPYLOG_LOG_PATH_L, 1, 0, COPYLOG_LOG_PATH_S},
   {COPYLOG_MODE_L, 1, 0, COPYLOG_MODE_S},
-  {COPYLOG_DBA_PASSWORD_L, 1, 0, COPYLOG_DBA_PASSWORD_S},
   {0, 0, 0, 0}
 };
 
 static UTIL_ARG_MAP ua_Applylog_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
-#if defined(LINUX)
-  {APPLYLOG_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
-#else
-  {APPLYLOG_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
-#endif
   {APPLYLOG_TEST_LOG_S, {ARG_INTEGER}, {-1}},
+  {APPLYLOG_MAX_MEM_SIZE_S, {ARG_INTEGER}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Applylog_Option[] = {
   {APPLYLOG_LOG_PATH_L, 1, 0, APPLYLOG_LOG_PATH_S},
-  {APPLYLOG_DBA_PASSWORD_L, 1, 0, APPLYLOG_DBA_PASSWORD_S},
   {APPLYLOG_TEST_LOG_L, 1, 0, APPLYLOG_TEST_LOG_S},
+  {APPLYLOG_MAX_MEM_SIZE_L, 1, 0, APPLYLOG_MAX_MEM_SIZE_S},
   {0, 0, 0, 0}
 };
 

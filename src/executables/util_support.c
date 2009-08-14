@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -318,6 +318,7 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count,
     {
       return ER_FAILED;
     }
+  memset (string_table, 0, sizeof (char *) * num_string_args);
   for (i = 0; index < count; index++, i++)
     {
       string_table[i] = argv[index];
@@ -328,7 +329,8 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count,
   if (need_args_num < num_string_args)
     {
       fprintf (stderr, "'%s' argument is not needed.\n",
-	       string_table[need_args_num]);
+	       string_table[need_args_num] == NULL ?
+	       "" : string_table[need_args_num]);
       return ER_FAILED;
     }
   return NO_ERROR;

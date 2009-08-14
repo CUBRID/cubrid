@@ -1,0 +1,334 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>분할 표현식에 사용될 수 있는 데이터 타입</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n분할\n분할 관리\n분할 표현식에 사용될 수 있는 데이터 타입");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition.htm\">분할<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition_manage_retreive.htm\">분할 관리<\/a> &nbsp;&gt;&nbsp; 분할 표현식에 사용될 수 있는 데이터 타입<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>분할 표현식에 사용할 수 있는 데이터 타입</h4>
+<h6>설명</h6>
+<p>분할 키로 사용할 수 있는 컬럼의 데이터 타입과 사용할 수 없는 데이터 타입은 다음과 같다.</p>
+<table border="1">
+<tr>
+<th>
+<p>사용할 수 있는 데이터 타입</p>
+</th>
+<th>
+<p>사용할 수 없는 데이터 타입</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>CHAR</p>
+<p>VARCHAR</p>
+<p>NCHARN</p>
+<p>CHAR</p>
+<p>VARYING</p>
+<p>INTEGER</p>
+<p>SMALLINT</p>
+<p>DATE</p>
+<p>TIME</p>
+<p>TIMESTAMP</p>
+</td>
+<td>
+<p>FLOAT</p>
+<p>REAL</p>
+<p>DOUBLE</p>
+<p>BIT</p>
+<p>BIT VARYING</p>
+<p>NUMERIC OR DECIMAL</p>
+<p>MONETARY</p>
+<p>SET</p>
+<p>LIST OR SEQUENCE</p>
+<p>MULTISET</p>
+<p>OBJECT</p>
+</td>
+</tr>
+</table>
+<p>다음과 같은 연산자 함수를 분할키에 적용하는 분할 표현식에 사용할 수 있다.</p>
+<table border="1">
+<tr>
+<th colspan="4">
+<p>숫자 관련 연산자 함수</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>+</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>*</p>
+</td>
+<td>
+<p>/</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>MOD</p>
+</td>
+<td>
+<p>STRCAT</p>
+</td>
+<td>
+<p>FLOOR</p>
+</td>
+<td>
+<p>CEIL</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>POWER</p>
+</td>
+<td>
+<p>ROUND</p>
+</td>
+<td>
+<p>ABS</p>
+</td>
+<td>
+<p>TRUNC</p>
+</td>
+</tr>
+<tr>
+<th colspan="4">
+<p>문자열 관련 연산자 함수</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>POSITION</p>
+</td>
+<td>
+<p>SUBSTRING</p>
+</td>
+<td>
+<p>OCTEC_LENGTH</p>
+</td>
+<td>
+<p>BIT_LENGTH</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>CHAR_LENGTH</p>
+</td>
+<td>
+<p>LOWER</p>
+</td>
+<td>
+<p>UPPER</p>
+</td>
+<td>
+<p>TRIM</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>LTRIM</p>
+</td>
+<td>
+<p>RTRIM</p>
+</td>
+<td>
+<p>LPAD</p>
+</td>
+<td>
+<p>RPAD</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>REPLACE</p>
+</td>
+<td>
+<p>TRANSLATE</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<th colspan="4">
+<p>날짜 관련 연산자 함수</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>ADD_MONTH</p>
+</td>
+<td>
+<p>LAST_DAY</p>
+</td>
+<td>
+<p>MONTH_BETWEEN</p>
+</td>
+<td>
+<p>SYS_DATE</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>SYS_TIME</p>
+</td>
+<td>
+<p>SYS_TIMESTAMP</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>TO_DATE</p>
+</td>
+<td>
+<p>TO_NUMBER</p>
+</td>
+<td>
+<p>TO_TIME</p>
+</td>
+<td>
+<p>TO_TIMESTAMP</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>TO_CHAR</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<th colspan="4" height="35">
+<p>기타 관련 연산자 함수</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>EXTRACT</p>
+</td>
+<td>
+<p>CAST</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

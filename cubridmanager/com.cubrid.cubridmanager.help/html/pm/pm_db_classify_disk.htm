@@ -1,0 +1,213 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>디스크 관련 파라미터</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("성능 튜닝\n데이터베이스 서버 설정\n디스크 관련 파라미터");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"pm.htm\">성능 튜닝<\/a> &nbsp;&gt;&nbsp; <a href=\"pm_server_general.htm\">데이터베이스 서버 설정<\/a> &nbsp;&gt;&nbsp; 디스크 관련 파라미터<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>디스크 관련 파라미터</h4>
+<p>다음은 데이터베이스 볼륨 정의 및 파일 저장을 위한 디스크 관련 파라미터로 각 파라미터의 타입과 설정 가능한 값의 범위는 다음과 같다.</p>
+<table border="1">
+<tr>
+<th width="170">
+<p>파라미터 이름</p>
+</th>
+<th width="70">
+<p>타입</p>
+</th>
+<th width="70">
+<p>디폴트 값</p>
+</th>
+<th width="60">
+<p>최소값</p>
+</th>
+<th width="60">
+<p>최대값</p>
+</th>
+</tr>
+<tr>
+<td width="170">
+<p>temp_file_max_size_in_pages</p>
+</td>
+<td width="70">
+<p>int</p>
+</td>
+<td width="70">
+<p>-1</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="170">
+<p>temp_volume_path</p>
+</td>
+<td width="70">
+<p>string</p>
+</td>
+<td width="70">
+<p>NULL</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="170">
+<p>unfill_factor</p>
+</td>
+<td width="70">
+<p>float</p>
+</td>
+<td width="70">
+<p>0.1</p>
+</td>
+<td width="60">
+<p>0.0</p>
+</td>
+<td width="60">
+<p>0.3</p>
+</td>
+</tr>
+<tr>
+<td width="170">
+<p>volume_extension_path</p>
+</td>
+<td width="70">
+<p>string</p>
+</td>
+<td width="70">
+<p>NULL</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+<td width="60">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td height="21" width="170">
+<p>dont_reuse_heap_file</p>
+</td>
+<td height="44" width="70">
+<p>bool</p>
+</td>
+<td height="44" width="70">
+<p>no</p>
+</td>
+<td height="44" width="60">&#160;</td>
+<td height="44" width="60">&#160;</td>
+</tr>
+</table>
+<h6>temp_file_max_size_in_pages</h6>
+<p><span class="keyword">temp_file_max_size_in_pages</span>는&#160;복잡한 질의문이나 정렬 수행을 위하여 사용되는 임시 볼륨을 디스크에 &#160;저장하기 위하여 최대로 할당할 수 있는 페이지 개수를 설정하는 파라미터로 디폴트 값은 <span class="keyword">-1</span>이다. 디폴트 값으로 설정되면 <span class="keyword">temp_volume_path</span> 파라미터에서 지정된 디스크 공간 이내에서 무제한적으로 임시 볼륨이 생성 및 저장되고, 0으로 설정되면 임시 볼륨이 생성되지 않으므로 관리자가 직접 <span class="keyword">cubrid addvoldb</span> 유틸리티를 이용하여 임시 볼륨을 생성해야 한다.</p>
+<h6>temp_volume_path</h6>
+<p><span class="keyword">temp_volume_path</span>는 복잡한 질의문이나 정렬 수행을 위하여 사용되는 임시 볼륨이 생성되는 디렉터리를 지정하는 파라미터로 디폴트 값은 데이터베이스 생성 시에 설정된 볼륨 위치이다.</p>
+<h6>unfill_factor</h6>
+<p><span class="keyword">unfill_factor</span>는&#160;데이터 갱신에 대비하여 힙(heap) 페이지로 할당되는 디스크 공간의 비율을 정의하기 위한 파라미터로 디폴트 값은&#160;<span class="keyword">0.1</span>로&#160;10%의 여유 공간이 설정된다. 원칙적으로, 테이블의 데이터는 물리적인 순서대로 삽입되지만, 데이터가 원래 크기보다 큰 데이터로 갱신되어 해당 페이지의 저장 공간이 부족하면 갱신된 데이터는 다른 페이지에 재배치되어야 하므로 성능이 저하될 수 있다. 이를 방지하기 위하여 <span class="keyword">unfill_factor</span> 파라미터를 통해 힙 페이지&#160;공간 비율을 설정할 수 있고, 최대값은 0.3(30%)까지&#160;허용된다. 한편, 데이터&#160;갱신이 거의 발생하지 않는 데이터베이스에서는 이 파라미터를 0.0으로 설정하여 데이터&#160;갱신을 위한 힙 페이지 공간을 할당하지 않을 수 있고, <span class="keyword">unfill_factor</span>&#160;파라미터의 값이 음수거나 최대값보다 크게 설정되는 경우에는 디폴트 값(<span class="keyword">0.1</span>)이 적용된다.</p>
+<h6>volume_extension_path</h6>
+<p><span class="keyword">volume_extension_path</span>는 자동으로 확장되는 볼륨이 생성되는 디렉터리를 지정하기 위한 파라미터로 디폴트 값은 데이터베이스 생성 시 설정된 볼륨 위치이다.</p>
+<h6 style='line-height:18.0pt'>dont_reuse_heap_file</h6>
+<p style='line-height:18.0pt'><span class="keyword">dont_reuse_heap_file</span>은 테이블 제거로 인해 생성된 빈 공간을 재할당하지 않기 위하여 설정하는 파라미터로 <span lang="EN-US" xml:lang="EN-US">0</span>으로 설정되면 힙 파일 재할당을 수행하고<span lang="EN-US" xml:lang="EN-US">, 1</span>로 설정되면 힙 파일을 재할당하지 않는다<span lang="EN-US" xml:lang="EN-US">.&#160;</span>디폴트 값은 <span class="keyword">0</span>이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

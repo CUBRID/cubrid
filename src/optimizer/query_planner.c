@@ -446,7 +446,13 @@ qo_plan_malloc (QO_ENV * env)
   else
     {
       ++qo_plans_malloced;
-      plan = ALLOCATE (env, QO_PLAN);
+      plan = (QO_PLAN *) malloc (sizeof (QO_PLAN));
+      if (plan == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (QO_PLAN));
+	  return NULL;
+	}
     }
 
   bitset_init (&(plan->sarged_terms), env);
@@ -683,7 +689,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
     }
 
   /* check for plan type */
-  if (plan->plan_type != QO_PLANTYPE_SCAN)
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
     {
       return;			/* nop */
     }
@@ -696,8 +702,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
     }
 
   /* check for index scan plan */
-  if (plan == NULL
-      || plan->plan_type != QO_PLANTYPE_SCAN
+  if (plan->plan_type != QO_PLANTYPE_SCAN
       || plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
       || (env = (plan->info)->env) == NULL
       || (parser = QO_ENV_PARSER (env)) == NULL
@@ -840,12 +845,12 @@ qo_top_plan_new (QO_PLAN * plan)
   PT_NODE *tree, *group_by, *order_by, *orderby_for;
   PT_MISC_TYPE all_distinct;
 
-  if (plan->top_rooted)
+  if (plan == NULL || plan->top_rooted)
     {
       return plan;		/* is already top-level plan - OK */
     }
 
-  if (plan == NULL || plan->info == NULL ||	/* worst plan */
+  if (plan->info == NULL ||	/* worst plan */
       (env = (plan->info)->env) == NULL
       || bitset_cardinality (&((plan->info)->nodes)) < env->Nnodes
       || /* sub-plan */ (tree = QO_ENV_PT_TREE (env)) == NULL)
@@ -1205,6 +1210,10 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method,
   PT_NODE *pt_expr;
 
   plan = qo_plan_malloc (info->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   plan->info = info;
   plan->refcount = 0;
@@ -1269,6 +1278,10 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node, BITSET * pinned_subqueries)
   QO_PLAN *plan;
 
   plan = qo_scan_new (info, node, QO_SCANMETHOD_SEQ_SCAN, pinned_subqueries);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   plan->vtbl = &qo_seq_scan_plan_vtbl;
   plan->plan_un.scan.index = NULL;
@@ -1336,6 +1349,11 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 
   plan =
     qo_scan_new (info, node, QO_SCANMETHOD_INDEX_SCAN, pinned_subqueries);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
   /*
    * This is, in essence, the selectivity of the index.  We
    * really need to do a better job of figuring out the cost of
@@ -1715,7 +1733,8 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 	}
 
       /* check for dummy sort plan */
-      if (order == QO_UNORDERED && subplan->plan_type == QO_PLANTYPE_SORT)
+      if (order == QO_UNORDERED && subplan != NULL
+	  && subplan->plan_type == QO_PLANTYPE_SORT)
 	{
 	  return qo_plan_add_ref (root);
 	}
@@ -1732,7 +1751,16 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 	}
     }
 
+  if (subplan == NULL)
+    {
+      return NULL;
+    }
+
   plan = qo_plan_malloc ((subplan->info)->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   plan->info = subplan->info;
   plan->refcount = 0;
@@ -1984,6 +2012,10 @@ qo_join_new (QO_INFO * info,
   bitset_init (&sarg_out_terms, info->env);
 
   plan = qo_plan_malloc (info->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   QO_ASSERT (info->env, outer != NULL);
   QO_ASSERT (info->env, inner != NULL);
@@ -2508,6 +2540,10 @@ qo_follow_new (QO_INFO * info,
   QO_PLAN *plan;
 
   plan = qo_plan_malloc (info->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   QO_ASSERT (info->env, head_plan != NULL);
 
@@ -2680,6 +2716,10 @@ qo_worst_new (QO_ENV * env)
   QO_PLAN *plan;
 
   plan = qo_plan_malloc (env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
 
   plan->info = NULL;
   plan->refcount = 0;
@@ -3083,11 +3123,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 cost_cmp:
 
   if (a == b || (af == bf && aa == ba))
-    return PLAN_COMP_EQ;
+    {
+      return PLAN_COMP_EQ;
+    }
   if (af <= bf && aa <= ba)
-    return PLAN_COMP_LT;
+    {
+      return PLAN_COMP_LT;
+    }
   if (bf <= af && ba <= aa)
-    return PLAN_COMP_GT;
+    {
+      return PLAN_COMP_GT;
+    }
+
   return PLAN_COMP_UNK;
 #endif /* OLD_CODE */
 }
@@ -3247,7 +3294,7 @@ qo_plan_add_to_free_list (QO_PLAN * plan, void *ignore)
   else
     {
       ++qo_plans_demalloced;
-      DEALLOCATE ((plan->info)->env, plan);
+      free_and_init (plan);
     }
   ++qo_plans_deallocated;
 }
@@ -3307,8 +3354,12 @@ qo_plans_teardown (QO_ENV * env)
   while (qo_plan_free_list)
     {
       QO_PLAN *plan = qo_plan_free_list;
+
       qo_plan_free_list = plan->plan_un.free.link;
-      DEALLOCATE (env, plan);
+      if (plan)
+	{
+	  free_and_init (plan);
+	}
       ++qo_plans_demalloced;
     }
   qo_accumulating_plans = false;
@@ -3483,7 +3534,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan,
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      plan_string = DB_GET_STRING (plan);
+      plan_string = DB_PULL_STRING (plan);
       break;
     default:
       plan_string = "unknown";
@@ -3495,7 +3546,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan,
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      cost_string = DB_GET_STRING (cost);
+      cost_string = DB_PULL_STRING (cost);
       break;
     default:
       cost_string = "d";
@@ -3514,7 +3565,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan,
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       DB_MAKE_ERROR (result, ER_GENERIC_ERROR);
     }
 }
@@ -3888,7 +3939,14 @@ qo_alloc_info (QO_PLANNER * planner,
   int i;
   int EQ;
 
-  info = ALLOCATE (planner->env, QO_INFO);
+  info = (QO_INFO *) malloc (sizeof (QO_INFO));
+  if (info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_INFO));
+      return NULL;
+    }
+
   i = 0;
   EQ = planner->EQ;
 
@@ -3909,15 +3967,28 @@ qo_alloc_info (QO_PLANNER * planner,
   info->cardinality = cardinality;
 
   qo_init_planvec (&info->best_no_order);
+
   /*
    * Set aside an array for ordered plans.  Each element of the array
    * holds a plan that is ordered according to the corresponding
    * equivalence class.
    *
-   * If this NALLOCATE() fails, we'll lose the memory pointed to by
+   * If this malloc() fails, we'll lose the memory pointed to by
    * info.  I'll take the chance.
    */
-  info->planvec = NALLOCATE (info->env, QO_PLANVEC, EQ);
+  info->planvec = NULL;
+  if (EQ > 0)
+    {
+      info->planvec = (QO_PLANVEC *) malloc (sizeof (QO_PLANVEC) * EQ);
+      if (info->planvec == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_PLANVEC) * EQ);
+	  free_and_init (info);
+	  return NULL;
+	}
+    }
+
   for (i = 0; i < EQ; ++i)
     {
       qo_init_planvec (&info->planvec[i]);
@@ -3955,7 +4026,7 @@ qo_free_info (QO_INFO * info)
   bitset_delset (&(info->eqclasses));
   bitset_delset (&(info->projected_segs));
 
-  DEALLOCATE (info->env, info);
+  free_and_init (info);
 
   infos_deallocated++;
 }
@@ -3981,7 +4052,7 @@ qo_detach_info (QO_INFO * info)
 	{
 	  qo_uninit_planvec (&info->planvec[i]);
 	}
-      DEALLOCATE (info->env, info->planvec);
+      free_and_init (info->planvec);
       info->planvec = NULL;
       info->detached = true;
 
@@ -4068,12 +4139,20 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 static int
 qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 {
-  QO_INFO *best_info = info->planner->best_info;
-  QO_EQCLASS *plan_order = plan->order;
+  QO_INFO *best_info;
+  QO_EQCLASS *plan_order;
   QO_PLAN_COMPARE_RESULT cmp;
   bool found_new_best;
 
-  found_new_best = false;	/* init */
+  if (info == NULL || plan == NULL)
+    {
+      return 0;
+    }
+
+  /* init */
+  found_new_best = false;
+  best_info = info->planner->best_info;
+  plan_order = plan->order;
 
   /*
    * If the cost of the new Plan already exceeds the cost of the best
@@ -4156,6 +4235,10 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer, QO_INFO * info,
 
   /* alloc temporary nl-join plan */
   temp = qo_plan_malloc (info->env);
+  if (temp == NULL)
+    {
+      return NULL;
+    }
 
   temp->info = info;
   temp->refcount = 0;
@@ -4949,7 +5032,9 @@ qo_examine_follow (QO_INFO * info,
    */
   entity_spec = path_term->tail->entity_spec;
   if (entity_spec->info.spec.flat_entity_list == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   return qo_check_plan_on_info (info,
 				qo_follow_new (info,
@@ -5107,7 +5192,13 @@ qo_alloc_planner (QO_ENV * env)
   int i;
   QO_PLANNER *planner;
 
-  planner = ALLOCATE (env, QO_PLANNER);
+  planner = (QO_PLANNER *) malloc (sizeof (QO_PLANNER));
+  if (planner == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_PLANNER));
+      return NULL;
+    }
 
   env->planner = planner;
 
@@ -5181,20 +5272,20 @@ qo_planner_free (QO_PLANNER * planner)
 
   if (planner->node_info)
     {
-      DEALLOCATE (planner->env, planner->node_info);
+      free_and_init (planner->node_info);
     }
 
   if (planner->join_info)
     {
-      DEALLOCATE (planner->env, planner->join_info);
+      free_and_init (planner->join_info);
     }
 
   if (planner->cp_info)
     {
-      DEALLOCATE (planner->env, planner->cp_info);
+      free_and_init (planner->cp_info);
     }
 
-  DEALLOCATE (planner->env, planner);
+  free_and_init (planner);
 }
 
 /*
@@ -6395,6 +6486,11 @@ qo_planner_search (QO_ENV * env)
   plan = NULL;
 
   planner = qo_alloc_planner (env);
+  if (planner == NULL)
+    {
+      return NULL;
+    }
+
   qo_info_nodes_init (env);
   qo_plans_init (env);
   plan = qo_search_planner (planner);
@@ -6789,6 +6885,12 @@ qo_search_planner (QO_PLANNER * planner)
   bitset_init (&remaining_subqueries, planner->env);
 
   planner->worst_plan = qo_worst_new (planner->env);
+  if (planner->worst_plan == NULL)
+    {
+      plan = NULL;
+      goto end;
+    }
+
   planner->worst_info = qo_alloc_info (planner,
 				       &nodes, &nodes, &nodes, QO_INFINITY);
   (planner->worst_plan)->info = planner->worst_info;
@@ -6809,21 +6911,19 @@ qo_search_planner (QO_PLANNER * planner)
 	QO_JOIN_INFO_SIZE (&planner->partition[planner->P - 1]);
 
       join_info_bytes = planner->M * sizeof (QO_INFO *);
-
       if (join_info_bytes > 0)
 	{
-	  planner->join_info =
-	    (QO_INFO **) BALLOCATE (planner->env, join_info_bytes);
+	  planner->join_info = (QO_INFO **) malloc (join_info_bytes);
+	  if (planner->join_info == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, join_info_bytes);
+	      plan = NULL;
+	      goto end;
+	    }
 	}
       else
 	{
-	  /* overflow. N is too large */
-	  planner->join_info = NULL;
-	}
-
-      if (planner->join_info == NULL)
-	{
-	  /* memory allocation fail */
 	  plan = NULL;
 	  goto end;
 	}
@@ -6836,7 +6936,21 @@ qo_search_planner (QO_PLANNER * planner)
   /*
    * Add appropriate scan plans for each node.
    */
-  planner->node_info = NALLOCATE (planner->env, QO_INFO *, planner->N);
+  planner->node_info = NULL;
+  if (planner->N > 0)
+    {
+      size_t size = sizeof (QO_INFO *) * planner->N;
+
+      planner->node_info = (QO_INFO **) malloc (size);
+      if (planner->node_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  plan = NULL;
+	  goto end;
+	}
+    }
+
   for (i = 0; i < (signed) planner->N; ++i)
     {
       node = &planner->node[i];
@@ -6849,6 +6963,12 @@ qo_search_planner (QO_PLANNER * planner)
 		       &QO_NODE_EQCLASSES (node),
 		       QO_NODE_SELECTIVITY (node) *
 		       (double) QO_NODE_NCARD (node));
+
+      if (info == NULL)
+	{
+	  plan = NULL;
+	  goto end;
+	}
 
       BITSET_CLEAR (subqueries);
       for (subq_idx = bitset_iterate (&remaining_subqueries, &si);
@@ -6962,7 +7082,17 @@ qo_search_planner (QO_PLANNER * planner)
 
   if (planner->P > 1)
     {
-      planner->cp_info = NALLOCATE (planner->env, QO_INFO *, planner->P);
+      size_t size = sizeof (QO_INFO *) * planner->P;
+
+      planner->cp_info = (QO_INFO **) malloc (size);
+      if (planner->cp_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  plan = NULL;
+	  goto end;
+	}
+
       for (i = 0; i < (signed) planner->P; i++)
 	{
 	  planner->cp_info[i] = NULL;
@@ -7625,7 +7755,8 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 double
 qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  double lhs_selectivity, rhs_selectivity, selectivity = 0.0, total_selectivity;
+  double lhs_selectivity, rhs_selectivity, selectivity =
+    0.0, total_selectivity;
   PT_NODE *node;
 
   QO_ASSERT (env, pt_expr != NULL && pt_expr->node_type == PT_EXPR);

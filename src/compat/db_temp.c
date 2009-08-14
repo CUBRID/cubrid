@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -436,8 +436,9 @@ dbt_add_constraint (DB_CTMPL * def,
 	}
       else
 	{
-	  error = smt_constrain (def, attnames, NULL, name, class_attributes,
-				 attflag, true, NULL, shared_cons_name);
+	  error = smt_add_constraint (def, attnames, NULL, name,
+				      class_attributes, attflag, NULL,
+				      shared_cons_name);
 	}
     }
 
@@ -505,8 +506,8 @@ dbt_drop_constraint (DB_CTMPL * def,
 	}
       else
 	{
-	  error = smt_constrain (def, attnames, NULL, name, class_attributes,
-				 attflag, false, NULL, NULL);
+	  error = smt_drop_constraint (def, attnames, name, class_attributes,
+				       attflag);
 	}
     }
 
@@ -599,9 +600,9 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
     }
   else
     {
-      error =
-	smt_constrain (def, attnames, NULL, name, 0, SM_ATTFLAG_FOREIGN_KEY,
-		       true, &fk_info, shared_cons_name);
+      error = smt_add_constraint (def, attnames, NULL, name, 0,
+				  SM_ATTFLAG_FOREIGN_KEY, &fk_info,
+				  shared_cons_name);
     }
 
 end:
@@ -723,6 +724,7 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
 {
   int error = NO_ERROR;
   int sr_error = NO_ERROR;
+  int au_save;
   SM_ATTRIBUTE *att;
   MOP auto_increment_obj = NULL;
 
@@ -745,9 +747,22 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
   /* remove related auto_increment serial obj if exist */
   if ((error == NO_ERROR) && (auto_increment_obj != NULL))
     {
-      error = obj_delete (auto_increment_obj);
-    }
+      /*
+       * check if user is creator or dba
+       */
+      error = au_check_serial_authorization (auto_increment_obj);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
+      AU_DISABLE (au_save);
+
+      error = obj_delete (auto_increment_obj);
+
+      AU_ENABLE (au_save);
+    }
+exit_on_error:
   return (error);
 }
 

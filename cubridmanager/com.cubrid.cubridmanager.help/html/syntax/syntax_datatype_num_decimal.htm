@@ -1,0 +1,120 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>NUMERIC 또는 DECIMAL</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<meta name="MS-HKWD" content="NUMERIC" />
+<meta name="MS-HKWD" content="DECIMAL" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n수치형 데이터  타입\nNUMERIC 또는 DECIMAL");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_num_def.htm\">수치형 데이터  타입<\/a> &nbsp;&gt;&nbsp; NUMERIC 또는 DECIMAL<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>NUMERIC 또는 DECIMAL</h4>
+<h6>설명</h6>
+<p><span class="keyword">NUMERIC</span> 또는 <span class="keyword">DECIMAL</span> 데이터 타입은 정확한 수치를 나타낸다. 다음과 같이 정밀도와 스케일을 옵션으로 지정하여 정의할 수도 있다.</p>
+<p>정밀도 <span class="var">p</span>가 생략되면 정밀도의 디폴트 값은 15,&#160;스케일 <span class="var">s</span>가 생략되면 스케일의 디폴트 값은 0이다. 정밀도의 최소값은 1이고, 최대값은 38이다.</p>
+<p><span class="keyword">NUMERIC</span>과 <span class="keyword">DECIMAL</span>, 그리고 <span class="keyword">DEC</span>는 같은 의미로 사용된다.</p>
+<p class="syntax"><span class="keyword">NUMERIC</span>(<span class="var">p</span>, [<span class="var">s</span>])</p>
+<h6>참고 사항</h6>
+<ul>
+<li>정밀도는 반드시 스케일 이상이어야 한다.</li>
+<li>정밀도보다 큰 스케일을 설정하면 오류가 발생한다.</li>
+</ul>
+<h6>예제</h6>
+<p class="code">NUMERIC에 55555.3333을 지정하면 55555가 저장됨(스케일 디폴트 값은 0이므로 소수점 뒤의 수치는 모두 절삭됨).<br />
+NUMERIC(5)에 555.33을 지정하면 555가 저장됨(스케일 디폴트 값은 0이므로 소수점 뒤의 수치는 모두 절삭됨).<br />
+NUMERIC(9,4)에 55555.3333을 지정하면 55555.3333가 저장됨.<br />
+NUMERIC(3,4)을 선언하면 오류가 발생됨 (정밀도가 스케일보다 작기 때문에 오류).<br />
+NUMERIC(4,4)에 .533333을 지정하면 .5333가 저장됨(정밀도가 4이므로 소수점 4자리 밑은 절삭됨).</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

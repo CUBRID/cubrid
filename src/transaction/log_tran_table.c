@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -69,9 +69,7 @@
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-#if !defined(WINDOWS)
 #include "replication.h"
-#endif
 #endif
 
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
@@ -163,7 +161,8 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
     }
   else
     {
-      /* Out of memory */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
       return NULL;
     }
   return tdes->topops.stack;
@@ -871,11 +870,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->topops.last = -1;
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
-
-#if !defined(WINDOWS)
-  tdes->savepoint_list.head = NULL;
-  tdes->savepoint_list.tail = NULL;
-#endif
+  tdes->first_save_entry = NULL;
 }
 
 /*
@@ -1463,7 +1458,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id,
 }
 
 /*
- * logtb_dump_trantable - dump the transaction table
+ * xlogtb_dump_trantable - dump the transaction table
  *
  * return: nothing
  *
@@ -1471,7 +1466,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id,
  *              This function is used for debugging purposes.
  */
 void
-logtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
+xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -1558,12 +1553,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->fl_mark_repl_recidx = -1;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
-
-#if !defined (WINDOWS)
-  repl_free_savepoint_info (tdes->savepoint_list.head);
-  tdes->savepoint_list.head = NULL;
-  tdes->savepoint_list.tail = NULL;
-#endif
+  tdes->first_save_entry = NULL;
 }
 
 /*
@@ -1603,10 +1593,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->append_repl_recidx = -1;
   tdes->fl_mark_repl_recidx = -1;
   tdes->repl_records = NULL;
-#if !defined (WINDOWS)
-  tdes->savepoint_list.head = NULL;
-  tdes->savepoint_list.tail = NULL;
-#endif
+  tdes->first_save_entry = NULL;
 }
 
 /*
@@ -2701,15 +2688,45 @@ logtb_has_updated (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_disable_replication -
+ *   return: none
+ */
+void
+logtb_disable_replication (THREAD_ENTRY * thread_p)
+{
+  db_Enable_replications = 0;
+  er_log_debug (ARG_FILE_LINE,
+		"logtb_disable_replication: db_Enable_replications = %d\n",
+		db_Enable_replications);
+}
+
+/*
+ * logtb_enable_replication -
+ *   return: none
+ */
+void
+logtb_enable_replication (THREAD_ENTRY * thread_p)
+{
+  if (PRM_REPLICATION_MODE == true)
+    {
+      db_Enable_replications = 1;
+      er_log_debug (ARG_FILE_LINE,
+		    "logtb_enable_replication: db_Enable_replications = %d\n",
+		    db_Enable_replications);
+    }
+}
+
+/*
  * logtb_disable_update -
  *   return: none
  */
 void
 logtb_disable_update (THREAD_ENTRY * thread_p)
 {
-  er_log_debug (ARG_FILE_LINE,
-		"logtb_disable_update: db_Disable_modification = 1\n");
   db_Disable_modifications = 1;
+  er_log_debug (ARG_FILE_LINE,
+		"logtb_disable_update: db_Disable_modifications = %d\n",
+		db_Disable_modifications);
 }
 
 /*
@@ -2719,9 +2736,13 @@ logtb_disable_update (THREAD_ENTRY * thread_p)
 void
 logtb_enable_update (THREAD_ENTRY * thread_p)
 {
-  er_log_debug (ARG_FILE_LINE,
-		"logtb_enable_update: db_Disable_modification = 0\n");
-  db_Disable_modifications = 0;
+  if (PRM_READ_ONLY_MODE == false)
+    {
+      db_Disable_modifications = 0;
+      er_log_debug (ARG_FILE_LINE,
+		    "logtb_enable_update: db_Disable_modifications = %d\n",
+		    db_Disable_modifications);
+    }
 }
 
 /*
@@ -2788,7 +2809,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
     {
       tdes->isloose_end = true;
       log_Gl.trantable.num_client_loose_end_indices++;
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  const char *str_tmp;
@@ -2812,7 +2833,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   " ends %s recovery actions.\n They will be fully recovered"
 		   " when client user = %s restarts a client ***\n",
 		   tdes->trid, tdes->tran_index, str_tmp,
-		   tdes->client.user_name);
+		   tdes->client.db_user);
 	}
 #endif
     }
@@ -2820,7 +2841,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
     {
       tdes->isloose_end = true;
       log_Gl.trantable.num_prepared_loose_end_indices++;
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  fprintf (stdout,
@@ -2830,7 +2851,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   " needs to attach\n"
 		   "    to this transaction and either commit or abort it."
 		   " ***\n", tdes->trid, tdes->tran_index,
-		   tdes->gtrid, tdes->client.user_name);
+		   tdes->gtrid, tdes->client.db_user);
 	}
 #endif
     }
@@ -2839,7 +2860,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
     {
       tdes->isloose_end = true;
       log_Gl.trantable.num_coord_loose_end_indices++;
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  fprintf (stdout,
@@ -2853,7 +2874,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   " the system ***\n", tdes->trid,
 		   tdes->tran_index,
 		   ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" :
-		    "ABORT"), tdes->client.user_name);
+		    "ABORT"), tdes->client.db_user);
 	}
 #endif
     }

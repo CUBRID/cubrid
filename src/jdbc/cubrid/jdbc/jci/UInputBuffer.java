@@ -59,34 +59,56 @@ class UInputBuffer
   private UTimedInputStream input;
   private int position;
   private int capacity;
+  private byte casinfo[];
   private byte buffer[];
   private int resCode;
+  private final static int CAS_INFO_SIZE = 4;
 
-  UInputBuffer(UTimedInputStream relatedI) throws IOException, UJciException
+  UInputBuffer(UTimedInputStream relatedI, UConnection con) throws IOException, UJciException
   {
     input = relatedI;
     position = 0;
 
-    byte[] byteData = new byte[4];
-    input.read(byteData);
+    int readLen = 0;
+    int totalReadLen = 0;
+    byte[] headerData = new byte[8];
 
-    capacity = UJCIUtil.bytes2int(byteData, 0);
+    while (totalReadLen < 8)
+    {
+        readLen = input.read(headerData, totalReadLen, 8-totalReadLen);
+        if (readLen == -1)
+        {
+            throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+        }
+        totalReadLen = totalReadLen+ readLen;
+    }
+
+    capacity = UJCIUtil.bytes2int(headerData, 0);
 
     if (capacity < 0)
     {
-      capacity = 0;
-      return;
+        capacity = 0;
+        return;
     }
+
+    casinfo = new byte[CAS_INFO_SIZE];
+    System.arraycopy (headerData,4, casinfo, 0, 4);
 
     buffer = new byte[capacity];
     readData();
 
     resCode = readInt();
+    con.setCASInfo(casinfo);
     if (resCode < 0)
     {
       String msg = readString(remainedCapacity(), UJCIManager.sysCharsetName);
       throw new UJciException(UErrorCode.ER_DBMS, resCode, msg);
     }
+  }
+
+  byte[] getCasInfo()
+  {
+    return casinfo;
   }
 
   int getResCode()
@@ -99,7 +121,9 @@ class UInputBuffer
   byte readByte() throws UJciException
   {
     if (position >= capacity)
+    {
       throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+    }
 
     return buffer[position++];
   }

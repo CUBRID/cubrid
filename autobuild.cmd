@@ -4,7 +4,7 @@ JAVA_HOME=/home1/irteam/app/jdk/jdk6
 
 . ./autogen.sh
 
-./configure --prefix=$HOME/deploy
+./configure --prefix=`pwd`/../deploy
 
 make
 

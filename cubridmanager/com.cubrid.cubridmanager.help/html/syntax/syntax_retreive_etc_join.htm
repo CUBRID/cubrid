@@ -1,0 +1,235 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>외부 조인</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 조회\n외부 조인");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_select.htm\">데이터 조회<\/a> &nbsp;&gt;&nbsp; 외부 조인<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>외부 조인</h4>
+<h6>설명</h6>
+<p>조인 질의는 조인 대상 테이블에 공통인 컬럼 값을 기반으로 결과를 만든다. 두 테이블의 조인 결과가 두 테이블에 대해 조인 조건을 모두 만족하는 경우를 <span class="keyword">내부 조인(inner join)</span> 또는 간단히 <span class="keyword">조인(join)</span>이라 한다.</p>
+<p><span class="keyword">외부 조인(outer join)</span>은 질의 결과가 왼쪽 테이블의 모든 인스턴스를 포함(왼쪽 외부 조인)할 수 있고, 오른쪽 테이블의 모든&#160;인스턴스를 포함(오른쪽 외부 조인)할 수 있고, 양쪽&#160;인스턴스를 포함(완전 외부 조인)할 수도 있다. 테이블이 조인 조건을 만족하는 인스턴스를 가지지 않을 때 질의 결과에서 해당 컬럼은 <span class="keyword">NULL</span> 값을 가진다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">FROM</span> <span class="var">table_specification</span> [{, <span class="var">table_specification</span> |<br />
+<span class="var">qualified_join_table_specification</span>}...]<br />
+<span class="var"><br />
+table_specification</span> :<br />
+<span class="var">table_specification</span> [ <span class="var">correlation</span> ]<br />
+<span class="keyword">CLASS</span> <span class="var">table_name</span> [ <span class="var">correlation</span> ]<br />
+<span class="var">subquery</span> <span class="var">correlation</span><br />
+<span class="keyword">TABLE</span> (<span class="var">expression</span>) <span class="var">correlation</span><br />
+<span class="var"><br />
+qualified_join_table_specification</span> :<br />
+[ <span class="keyword">INNER</span> | {<span class="keyword">LEFT</span> | <span class="keyword">RIGHT</span>} [ <span class="keyword">OUTER</span> ] ] <span class="keyword">JOIN</span> <span class="var">table_specification</span> <span class="var">join_condition</span><br />
+<span class="var"><br />
+join_condition</span> :<br />
+<span class="keyword">ON</span> <span class="var">search_condition</span></p>
+<ul>
+<li><span class="var">qualified_join_table_specification</span> :<br />
+{&#160;<span class="keyword">LEFT</span>&#160;| <span class="keyword">RIGHT</span> }&#160;[ <span class="keyword">OUTER</span> ] <span class="keyword">JOIN</span> : <span class="keyword">LEFT</span>는 왼쪽 외부 조인을 수행하는 질의를 만드는데 사용되고, <span class="keyword">RIGHT</span>는 오른쪽 외부 조인을 수행하는 질의를 만드는데 사용된다.</li>
+</ul>
+<p>CUBRID는 완전 외부 조인을 지원하지 않고, 외부 조인에서 조인 조건에 부질의와 하위 컬럼을 포함하는 경로 표현식을 사용할 수 없다.</p>
+<p>외부 조인의 경우 조인 조건은 내부 조인의 경우와는 다른 방법으로 지정된다. 내부 조인의 조인 조건은 <span class="keyword">WHERE</span> 절에 표현되지만, 외부 조인의 경우에는 조인 조건이 <span class="keyword">FROM</span> 절에서 <span class="keyword">ON</span> 키워드 뒤에 나타난다. 다른 검색 조건은 <span class="keyword">WHERE</span> 절이나 <span class="keyword">ON</span> 절에서 사용할 수 있지만 검색 조건이 <span class="keyword">WHERE</span> 절에 있을 때와 <span class="keyword">ON</span> 절에 있을 때 질의 결과가 달라질 수 있다.</p>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은&#160;1950년 이후에 열린 올림픽 중에서 신기록이 세워진 올림픽의 개최년도와 개최국가를 조회하는 예제이다. 다음 질의는 <span class="keyword">history</span> 테이블의 <span class="keyword">host_year</span>가 1950보다 큰 범위에서 값이 존재하는 인스턴스를 가져온다.</li>
+</ul>
+<p class="code">SELECT DISTINCT h.host_year, o.host_nation FROM history h, olympic o<br />
+WHERE h.host_year=o.host_year AND o.host_year&gt;1950;&#160;&#160;<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1968&#160; 'Mexico'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1980&#160; 'U.S.S.R.'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1984&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1988&#160; 'Korea'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'Spain'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'Greece'&#160; &#160;&#160;<br />
+8 rows selected.</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은&#160;1950년 이후에 열린 올림픽에서 신기록이 세워진 올림픽의 개최국가와 개최년도를 조회하되, 신기록이 세워지지 않은 올림픽에 대한 정보도 포함하는 예제이다. 이 예제를 오른쪽 외부 조인 질의로 나타내면 다음과 같다. 이 예제를 보면 <span class="keyword">history</span> 테이블의 <span class="keyword">host_year</span>가 1950보다 큰 범위에서&#160;값이 존재하지 않더라도 모두 포함하여 값을 가져온다. 오른쪽 컬럼&#160;조인 질의이기 때문에 <span class="keyword">host_nation</span>의 모든 인스턴스를 포함한다. 값이 존재하지 않는 <span class="keyword">host_year</span>에 대해서는 <span class="keyword">NULL</span>로 표시된다.</li>
+</ul>
+<p class="code">SELECT DISTINCT h.host_year, o.host_nation<br />
+FROM history h RIGHT OUTER JOIN olympic o ON h.host_year=o.host_year WHERE o.host_year&gt;1950;<br />
+=== &lt;Result of SELECT Command in Line 3&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Canada'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Finland'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Germany'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Italy'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Japan'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1968&#160; 'Mexico'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1980&#160; 'U.S.S.R.'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1984&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1988&#160; 'Korea'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'Spain'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'Greece'&#160; &#160;&#160;<br />
+14 rows selected.</p>
+<ul>
+<li class="title">예제 3</li>
+<li class="desc">오른쪽&#160;외부 조인 질의는 <span class="keyword">FROM</span> 절에서 두 테이블의 위치를 바꾸어&#160;왼쪽 외부 조인 질의로 변환할 수 있다.&#160;이전 예제에서&#160;사용한&#160;오른쪽 외부 조인 질의는 아래와 같이&#160;왼쪽 외부 조인 질의로 표현된다.</li>
+</ul>
+<p class="code">SELECT DISTINCT h.host_year, o.host_nation<br />
+FROM olympic o LEFT OUTER JOIN history h ON h.host_year=o.host_year WHERE o.host_year&gt;1950;<br />
+=== &lt;Result of SELECT Command in Line 3&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Canada'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Finland'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Germany'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Italy'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Japan'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1968&#160; 'Mexico'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1980&#160; 'U.S.S.R.'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1984&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1988&#160; 'Korea'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'Spain'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'Greece'&#160;<br />
+14 rows selected.</p>
+<ul>
+<li class="desc">이 예에서 <span class="keyword">h.host_year=o.host_year</span>는 외부 조인 조건이고 <span class="keyword">o.host_year &gt; 1950</span>은 검색 조건이다. 만약 검색 조건이 <span class="keyword">WHERE</span> 절이 아닌 <span class="keyword">ON</span> 절에서 조인 조건으로 사용될 경우 질의의 의미와 결과는 달라진다. 다음 질의는&#160;<span class="keyword">o.host_year</span>가 1950보다&#160;크지 않은 값도 질의 결과에 포함된다.</li>
+</ul>
+<p class="code">SELECT DISTINCT h.host_year, o.host_nation<br />
+FROM olympic o LEFT OUTER JOIN history h ON h.host_year=o.host_year AND o.host_year&gt;1950;&#160; &#160;&#160;<br />
+=== &lt;Result of SELECT Command in Line 3&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Belgium'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Canada'<br />
+...<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'Greece'<br />
+21 rows selected.</p>
+<ul>
+<li class="title">예제 4</li>
+<li class="desc">외부 조인은 <span class="keyword">WHERE</span> 절에서 <span class="keyword">(+)</span>를 사용해서 표현할 수도 있다. 위의 예는&#160;왼쪽 외부 조인 질의(<span class="keyword">LEFT</span> <span class="keyword">OUTER</span> <span class="keyword">JOIN</span>)를 이용한 예와 동일한 의미를 지닌 질의이다.&#160;<span class="keyword">(+)</span> 구문은 ISO/ANSI 표준이 아니며 모호한 상황을 만들어 낼 수 있으므로 가능하면 표준 구문인 <span class="keyword">LEFT</span> <span class="keyword">OUTER</span> <span class="keyword">JOIN</span>(또는 <span class="keyword">RIGHT</span> <span class="keyword">OUTER</span> <span class="keyword">JOIN</span>)을 사용할 것을 권장한다.</li>
+</ul>
+<p class="code">SELECT DISTINCT h.host_year, o.host_nation FROM history h, olympic o<br />
+WHERE o.host_year=h.host_year(+) AND o.host_year&gt;1950;<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Canada'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Finland'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Germany'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Italy'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; NULL&#160; 'Japan'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1968&#160; 'Mexico'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1980&#160; 'U.S.S.R.'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1984&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1988&#160; 'Korea'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'Spain'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'United States of America'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'Greece'&#160; &#160;&#160;<br />
+14 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

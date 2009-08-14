@@ -1,0 +1,155 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>ORDER BY 절</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 조회\nORDER BY 절");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_retreive_select.htm\">데이터 조회<\/a> &nbsp;&gt;&nbsp; ORDER BY 절<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>ORDER BY 절</h3>
+<h6>설명</h6>
+<p><span class="keyword">ORDER</span> <span class="keyword">BY</span> 절은 질의 결과를 오름차순 또는 내림차순으로 정렬한다. <span class="keyword">ORDER</span> <span class="keyword">BY</span> 절을 사용할 때는&#160;질의문의 마지막에 입력해야 한다. <span class="keyword">ORDER</span> <span class="keyword">BY</span> 절이 지정되지 않은 경우 조회되는 인스턴스의 순서는 질의별로 다양할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">ORDER</span> <span class="keyword">BY</span> <span class="var">sort_spec</span> [ {, <span class="var">sort_spec</span>} ]<br />
+<span class="var">sort_spec</span> :<br />
+<span class="var">integer_literal</span> [ <span class="keyword">ASC</span> | <span class="keyword">DESC</span> ]<br />
+<span class="var">expression</span> [ <span class="keyword">ASC</span> | <span class="keyword">DESC</span> ]<br />
+<span class="var">alias</span> [ <span class="keyword">ASC</span> | <span class="keyword">DESC</span> ]</p>
+<ul>
+<li><span class="var">sort_spec</span> : <span class="var">sort_spec</span>은 하나 이상의&#160;컬럼 이름, 표현식, 별칭, 정수값이 될 수 있다.
+<ul>
+<li><span class="var">integer_literal</span> [ <span class="keyword">ASC</span>| <span class="keyword">DESC</span>] : 정수값 <span class="var">integer_literal</span>은 <span class="keyword">SELECT</span> 절에서 컬럼 또는 표현식의 위치에 대한 참조로 사용된다.</li>
+<li><span class="var">expression</span> [ <span class="keyword">ASC</span>| <span class="keyword">DESC</span>]</li>
+<li><span class="var">alias</span> [ <span class="keyword">ASC</span>| <span class="keyword">DESC</span>]</li>
+</ul>
+</li>
+</ul>
+<p><span class="keyword">ORDER</span> <span class="keyword">BY</span> 절의 각 항목은 쉼표(,)로 구분되어야 한다. <span class="keyword">ORDER</span> <span class="keyword">BY</span> 절의 <span class="var">expression</span> 또는 <span class="var">integer_literal</span>&#160;뒤에 키워드 <span class="keyword">DESC</span>가 지정되지 않은 경우 질의 결과는 오름차순으로 표시된다.</p>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 역대 올림픽의 개최년도와 개최국가 이름으로 조회하되 개최국가를 기준으로&#160;오름차순으로 정렬하는 예제이다. <span class="keyword">ORDER</span> <span class="keyword">BY</span> 뒤의 컬럼을 기준으로 오름차순으로 정렬하여 표시한다. 내림차순으로 정렬하려면 컬럼 뒤에 <span class="keyword">DESC</span>를 붙인다.</li>
+</ul>
+<p class="code">SELECT host_year, host_nation FROM olympic ORDER BY host_nation;&#160;<br />
+=== &lt;Result of SELECT Command in Line 2&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; host_nation<br />
+===================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1956&#160; 'Australia'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1920&#160; 'Belgium'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1976&#160; 'Canada'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1952&#160; 'Finland'<br />
+...<br />
+&#160;25 rows selected.</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은&#160;각 나라의 금메달 획득수에 따라 조회하되 금메달 수가 10개 이상 15개 이하의 국가들에 대해서 조회하고, 같은 금메달 수에 따라서는 국가 코드를 기준으로&#160;오름차순으로 정렬하는&#160;예제이다. 아래의&#160;질의문은 <span class="keyword">ORDER</span> <span class="keyword">BY</span> 절에서 정수 값이 어떻게 사용되는지를 보여준다. <span class="keyword">SELECT</span> 절에 사용된&#160;컬럼 또는 표현식의 위치에 대응되는 정수 값이 질의 결과의 정렬 순서를 결정하는데 사용된다. 정렬 순서를 나타내기 위해 여러 개의 컬럼이 표시되었다.</li>
+</ul>
+<p class="code">SELECT host_year, nation_code, gold FROM participant WHERE gold BETWEEN 10 AND 15<br />
+ORDER BY 3 DESC, 2;<br />
+&#160;=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;&#160;&#160; host_year&#160; nation_code&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; gold<br />
+================================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1996&#160; 'FRA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 15<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'CUB'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 14<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1992&#160; 'ESP'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 13<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'FRA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 13<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2000&#160; 'GER'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 13<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 2004&#160; 'GER'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 13<br />
+...&#160; &#160;&#160;<br />
+20 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

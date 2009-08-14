@@ -1,0 +1,137 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>정의와 특성</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n문자 스트링 데이터 타입\n정의와 특성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">문자 스트링 데이터 타입<\/a> &nbsp;&gt;&nbsp; 정의와 특성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>정의와 특성</h4>
+<h5>정의</h5>
+<p>CUBRID는&#160;네 가지 종류의 문자 스트링(character string)을 지원한다.</p>
+<ul>
+<li>고정길이 문자 스트링 : <span class="keyword">CHAR</span>(<span class="var">n</span>)</li>
+<li>가변길이 문자 스트링 : <span class="keyword">VARCHAR</span>(<span class="var">n</span>)</li>
+<li>고정길이 국가 문자 스트링 : <span class="keyword">NCHAR</span>(<span class="var">n</span>)</li>
+<li>가변길이 국가 문자 스트링 :&#160;<span class="keyword">NCHAR VARYING</span>(<span class="var">n</span>)</li>
+</ul>
+<p>모든 종류의 문자 스트링은 작은 따옴표로 둘러싼다. ANSI 표준에 따라 두 개의 문자 스트링 사이에 공간으로 취급할 수 있는 문자(예: 공백, 탭, 줄바꿈 등)가 있다면, 두 개의 문자 스트링은 연속된 하나의 문자 스트링으로 취급된다. 예를 들어, 아래의 두 문자 스트링은 동일하다.</p>
+<p class="code">'abcdef'<br />
+<br />
+'abc'<br />
+'def'</p>
+<p>작은 따옴표 자체를 문자 스트링에 포함시키려면, 두 개의 작은 따옴표를 연속으로 입력하면 된다. 예를 들어, 아래의 왼쪽 문자 스트링은 실제로 오른쪽과 같이 저장된다.</p>
+<p class="code">&#160;&#160; ''abcde''fghij'&#160;&#160;&#160;&#160;&#160;&#160; 'abcde'fghij</p>
+<p>모든 문자 스트링에 대한 토큰의 최대 크기는 16KB이다. 국가 문자 스트링은 영어 알파벳에서 찾을 수 없는 문자 스트링을 저장할 때 사용한다. 국가 문자 스트링은 앞에 문자 <span class="keyword">N</span>(반드시 대문자)을 덧붙이는 것이 일반 문자 스트링과 다른 점이다. 예를 들어, 다음과 같다.</p>
+<p class="code">&#160;&#160;&#160;N'Härder'</p>
+<h5>특성</h5>
+<h6>길이(Length)</h6>
+<p>문자 스트링의 길이는 문자의 개수로 나타낸다. 고정길이든 가변길이든 문자 스트링의 크기는 속성이 정의될 때 주어진다.</p>
+<p>문자 스트링의 크기가 정의된 최대 길이를 넘어설 때, 넘어서는 부분이 공백문자(ASCII로 32)인 경우에는 이를 절삭하고, 넘어서는 부분이 공백문자가 아닌 경우에는 오류로 처리된다. 고정길이 문자 스트링에 정의된 길이보다 작은 문자 스트링이 저장될 때에는 나머지 부분이 공백문자로 채워진다. 가변길이 문자 스트링의 경우에는 나머지 부분에 공백을 채우지 않고 입력된 문자 스트링만 저장한다.</p>
+<p>문자 스트링의 최대 크기는 1,073,741,823바이트, 혹은 1GB이다. 이보다 더 큰 스트링은 절삭된다. <span class="keyword">CSQL</span> 문장으로 한번에 입력 혹은 출력될 수 있는 스트링의 최대 크기는 16KB에서 8192KB(즉, 8,388,608바이트)까지이다. 국가 문자 스트링의 최대 크기는 일반 문자 스트링의 절반인 536,870,911문자이다. 그 이유는 국가 문자 스트링의 경우 한 문자당 한 바이트 이상이 필요한 경우가 있기 때문이다. 같은 이유로, <span class="keyword">CSQL</span> 문장으로 한번에 입력 혹은 출력될 수 있는 국가 문자 스트링의 최대 크기도 절반인 536,870,911 문자가 된다.</p>
+<h6>문자 코드 세트(Character Code Set)</h6>
+<p>CUBRID는 다음과 같은 문자 코드 세트를 지원한다.</p>
+<ul>
+<li>8-비트 ASCII</li>
+<li>8-비트 ISO 8859-1 Latin</li>
+<li>KSC 5601-1992 (한국어 문자 표준)</li>
+</ul>
+<p>위 문자 세트의 모든 문자가 문자 스트링에 포함될 수 있다(<span class="keyword">NULL</span> 문자는 '\0'로 나타낸다).</p>
+<h6>문자 코드 세트의 정렬(Collating Character Code Set)</h6>
+<p>문자 코드는 코드 세트 내에서 일정한 규칙으로 정렬되어 있다. 이 규칙을 정렬 체계(collation)라 한다. 정렬 체계를 통하여 문자 코드를 비교할 때 왼쪽에서 오른쪽으로 할지, 그 반대로 할지를 결정하고, 마지막에 붙어있는 공백을 비교에서 사용할지 말지 등을 결정한다. 각 문자 코드 세트는 이미 정의된 기본 정렬 체계를 포함하고 있다.<br />
+국가 문자 타입의 경우에는 해당 문자 코드 세트의 인코딩 알고리즘에 따라 정렬 체계가 결정된다.</p>
+<h6>문자 스트링 변환(Character String Coercion)</h6>
+<p>고정길이와 가변길이 문자 스트링 사이에는 두 문자의 길이가 비교 가능할 수 있도록 자동 변환이 된다. 자동 변환은 같은 문자 코드 세트에 속하는 문자 스트링에만 적용된다. 예를 들어, 데이터 타입이&#160;CHAR(5)인 컬럼을 추출하여 데이터 타입이 CHAR(10)인 컬럼에 삽입하는 경우 자동으로 타입이 CHAR(10)으로 변환되어 삽입된다.&#160; 문자 스트링을 명시적으로 변환할 수도 있는데, 이 때에는 <span class="keyword">CAST</span> 연산자를 사용 한다("<a href="syntax_operator_cast.htm">CAST 연산자</a>" 참조).</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

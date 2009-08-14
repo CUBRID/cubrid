@@ -67,18 +67,21 @@ static PT_NODE *pt_get_from_list (const PARSER_CONTEXT * parser,
  *   T_type(in): a DB_TYPE
  */
 static int
-pt_find_size_from_dbtype (const DB_TYPE T_type)
+pt_find_size_from_dbtype (const DB_TYPE db_type)
 {
   PRIM type;
   int size = 0;
 
-  if (T_type != DB_TYPE_NULL)
+  if (db_type != DB_TYPE_NULL)
     {
-      type = PR_TYPE_FROM_ID (T_type);
-      if (!(type->variable_p))
-	size = pr_mem_size (PR_TYPE_FROM_ID (T_type));
+      type = PR_TYPE_FROM_ID (db_type);
+      if (type && !(type->variable_p))
+	{
+	  size = pr_mem_size (type);
+	}
     }
-  return (size);
+
+  return size;
 }
 
 /*
@@ -98,6 +101,7 @@ pt_arity_of_query_type (const DB_QUERY_TYPE * qt)
       cnt++;
       qt = qt->next;
     }
+
   return cnt;
 }
 
@@ -111,8 +115,8 @@ pt_arity_of_query_type (const DB_QUERY_TYPE * qt)
 static char *
 pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  const char *nam;
-  char *res;
+  const char *name;
+  char *res = NULL;
   unsigned int save_custom = parser->custom_print;
 
   while (node && node->node_type == PT_DOT_)
@@ -132,13 +136,12 @@ pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node)
   parser->custom_print = (parser->custom_print
 			  | PT_SUPPRESS_RESOLVED | PT_SUPPRESS_SELECTOR);
 
-  nam = parser_print_tree (parser, node);
+  name = parser_print_tree (parser, node);
   parser->custom_print = save_custom;
 
-  res = (char *) malloc (1 + strlen (nam));
-  if (res)
+  if (name)
     {
-      strcpy (res, nam);
+      res = strdup (name);
     }
 
   return res;
@@ -155,12 +158,16 @@ pt_get_col_type (const PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   if (pt_is_expr_node (node))
     return DB_COL_EXPR;
+
   if (pt_is_value_node (node))
     return DB_COL_VALUE;
+
   if (pt_is_oid_name (node))
     return DB_COL_OID;
+
   if (pt_is_name_node (node))
     return DB_COL_NAME;
+
   if (pt_is_dot_node (node))
     {
       if (node->info.dot.arg2->node_type == PT_FUNCTION ||
@@ -169,8 +176,10 @@ pt_get_col_type (const PARSER_CONTEXT * parser, const PT_NODE * node)
       else
 	return DB_COL_PATH;
     }
+
   if (pt_is_function (node))
     return DB_COL_FUNC;
+
   return DB_COL_OTHER;
 }
 
@@ -334,6 +343,11 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
   char buf[1000];
   char *stmt_string = NULL;
 
+  if (parser == NULL)
+    {
+      return;
+    }
+
   error_node = parser->error_msgs;
   if (statement)
     {
@@ -383,7 +397,7 @@ PT_NODE *
 pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *list, *attr;
-  PT_NODE *arg1, *arg2, *attr1, *attr2, *select_list, *col;
+  PT_NODE *arg1, *arg2, *attr1, *attr2, *select_list, *col, *next;
   int cnt1, cnt2;
   PT_TYPE_ENUM common_type;
 
@@ -437,11 +451,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	  if (cnt1 != pt_length_of_select_list (arg1, INCLUDE_HIDDEN_COLUMNS))
 	    {
 	      /* hidden column is included. get rid of it */
-	      for (col = select_list; col; col = col->next)
+	      for (col = select_list; col && col->next; col = next)
 		{
-		  if (col->next && IS_HIDDEN_COLUMN (col->next))
+		  next = col->next;
+		  if (next->is_hidden_column)
 		    {
-		      parser_free_tree (parser, col->next);
+		      parser_free_tree (parser, next);
 		      col->next = NULL;
 		      break;
 		    }
@@ -577,7 +592,11 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 
   for (q = NULL, tail = NULL; s; s = s->next)
     {
-      if (!IS_HIDDEN_COLUMN (s))
+      if (s->is_hidden_column)
+	{
+	  continue;
+	}
+      else
 	{
 	  t = pt_get_node_title (parser, s, f);
 
@@ -735,17 +754,27 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
 
 		      if (pt_check_path_eq (parser, range_var, node) == 0)
 			{
-			  /* strip off classname.* */
-			  name = strchr (original_name, '.');
-			  if (name == NULL || name[0] == '\0')
+
+
+			  if (original_name)
 			    {
-			      name = original_name;
+			      /* strip off classname.* */
+			      name = strchr (original_name, '.');
+			      if (name == NULL || name[0] == '\0')
+				{
+				  name = original_name;
+				}
+			      else
+				{
+				  name++;
+				}
+			      break;
 			    }
 			  else
 			    {
-			      name++;
+			      name = NULL;
 			    }
-			  break;
+
 			}
 		    }
 		}
@@ -756,23 +785,31 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
 	}
     }
 
-  q->name = (char *) malloc (1 + strlen (name));
-  if (!q->name)
+  if (name)
     {
-      goto error;
+      q->name = strdup (name);
+      if (q->name == NULL)
+	{
+	  goto error;
+	}
     }
-  strcpy ((char *) q->name, name);
+  else
+    {
+      q->name = NULL;
+    }
 
   if (original_name)
     {
-      q->original_name = (char *) malloc (strlen (original_name) + 1);
-      if (!q->original_name)
+      q->original_name = strdup (original_name);
+      if (q->original_name == NULL)
 	{
 	  if (q->name)
-	    free_and_init (q->name);
+	    {
+	      free_and_init (q->name);
+	    }
+
 	  goto error;
 	}
-      strcpy ((char *) q->original_name, original_name);
     }
   else
     {
@@ -944,8 +981,12 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
   int oids_included = 0;
   bool failure = false;
 
-  if (query)
-    oids_included = query->info.query.oids_included;
+  if (query == NULL)
+    {
+      return NULL;
+    }
+
+  oids_included = query->info.query.oids_included;
 
   switch (query->node_type)
     {

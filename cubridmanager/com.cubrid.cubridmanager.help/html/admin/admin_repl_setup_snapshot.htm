@@ -1,0 +1,112 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>스냅샷 동기화</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 설정\n스냅샷 동기화");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_setup.htm\">복제 설정<\/a> &nbsp;&gt;&nbsp; 스냅샷 동기화<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>스냅샷 동기화</h4>
+<p>스냅샷 동기화(<span class="keyword">repl_make_snapshot</span>)는 마스터 데이터베이스의 복제 대상 클래스 중 복제에 참여하지 않던 것을 운영 중에 복제에 추가하고자 할 때 사용하는 유틸리티이다. 적용 대상은 <span class="keyword">repl_make_group</span> 유틸리티로 마스터 데이터베이스의 일부 클래스만 복제하는 슬레이브 데이터베이스이다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">repl_make_snapshot -m</span> <span class="var">masterdb_name</span> <span class="keyword">-s</span> <span class="var">slavedb_name</span> <span class="keyword">-d</span> <span class="var">distdb_name</span> <span class="keyword">-cf</span> <span class="var">classes_file_name</span> [<span class="keyword">-p</span> <span class="var">dist_db_password</span>]</p>
+<ul>
+<li><span class="keyword">–m</span> <span class="var">masterdb_name</span> : 마스터 데이터베이스 이름</li>
+<li><span class="keyword">–s</span> <span class="var">slavedb_name</span> : 슬레이브 데이터베이스 이름</li>
+<li><span class="keyword">–d</span> <span class="var">distdb_name</span> : 배포 데이터베이스 이름</li>
+<li><span class="keyword">–cf</span> <span class="var">classes_file_name</span> : 추가할 클래스 목록에 대한 파일 이름으로, 클래스는 공백 또는 쉼표(,)로 구분</li>
+<li><span class="keyword">–p</span> <span class="var">dist_db_password</span> : 배포 데이터베이스에 대한 <span class="keyword">DBA</span> 암호</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

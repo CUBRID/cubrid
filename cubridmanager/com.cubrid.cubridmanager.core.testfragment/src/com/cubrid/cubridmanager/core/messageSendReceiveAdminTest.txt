@@ -1,0 +1,11 @@
+SendHostMessage:
+id:admin
+password:1
+clientver:8.1.4
+
+
+GetHostMessage:
+task:authenticate
+status:success
+note:none
+token:8ec1ab8a91333c7838c459d4e9e829644ea86d4c6c404cdbf4cd8b6186f50bf27926f07dd201b6aa

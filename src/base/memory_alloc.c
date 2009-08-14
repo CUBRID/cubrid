@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -350,11 +350,12 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 void *
 db_private_alloc (void *thrd, size_t size)
 {
+  void *ptr = NULL;
+
 #if defined (CS_MODE)
   return db_ws_alloc (size);
 #elif defined (SERVER_MODE)
   HL_HEAPID heap_id;
-  void *ptr = NULL;
 
   if (size <= 0)
     return NULL;
@@ -369,6 +370,11 @@ db_private_alloc (void *thrd, size_t size)
   else
     {
       ptr = malloc (size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	}
     }
   return ptr;
 #else /* SA_MODE */
@@ -404,7 +410,13 @@ db_private_alloc (void *thrd, size_t size)
 	}
       else
 	{
-	  return malloc (size);
+	  ptr = malloc (size);
+	  if (ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	    }
+	  return ptr;
 	}
     }
 #endif /* SA_MODE */
@@ -420,11 +432,12 @@ db_private_alloc (void *thrd, size_t size)
 void *
 db_private_realloc (void *thrd, void *ptr, size_t size)
 {
+  void *new_ptr = NULL;
+
 #if defined (CS_MODE)
   return db_ws_realloc (ptr, size);
 #elif defined (SERVER_MODE)
   HL_HEAPID heap_id;
-  void *new_ptr = NULL;
 
   if (size <= 0)
     return NULL;
@@ -439,6 +452,11 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
   else
     {
       new_ptr = realloc (ptr, size);
+      if (new_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	}
     }
   return new_ptr;
 #else /* SA_MODE */
@@ -487,7 +505,13 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 	}
       else
 	{
-	  return realloc (ptr, size);
+	  new_ptr = realloc (ptr, size);
+	  if (new_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	    }
+	  return new_ptr;
 	}
     }
 #endif /* SA_MODE */
@@ -502,14 +526,18 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 void
 db_private_free (void *thrd, void *ptr)
 {
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
+
+  if (ptr == NULL)
+    {
+      return;
+    }
+
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  HL_HEAPID heap_id;
-
-  if (ptr == NULL)
-    return;
-
   heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
 	     css_get_private_heap (NULL));
 
@@ -522,44 +550,33 @@ db_private_free (void *thrd, void *ptr)
       free_and_init (ptr);
     }
 #else /* SA_MODE */
-  if (ptr == NULL)
-    {
-      return;
-    }
 
-  if (!db_on_server)
+  if (private_heap_id == 0)
     {
-      db_ws_free (ptr);
+      free (ptr);
     }
   else
     {
-      if (private_heap_id == 0)
+      PRIVATE_MALLOC_HEADER *h;
+
+      h = private_user2hl_ptr (ptr);
+      if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	{
-	  free (ptr);
+	  /* assertion point */
+	  return;
+	}
+
+      if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
+	{
+	  hl_lea_free (private_heap_id, h);
+	}
+      else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
+	{
+	  db_ws_free (ptr);	/* not h */
 	}
       else
 	{
-	  PRIVATE_MALLOC_HEADER *h;
-
-	  h = private_user2hl_ptr (ptr);
-	  if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
-	    {
-	      /* assertion point */
-	      return;
-	    }
-
-	  if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
-	    {
-	      hl_lea_free (private_heap_id, h);
-	    }
-	  else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
-	    {
-	      db_ws_free (ptr);	/* not h */
-	    }
-	  else
-	    {
-	      return;
-	    }
+	  return;
 	}
     }
 #endif /* SA_MODE */

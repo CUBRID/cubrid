@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -73,10 +73,11 @@ enum
 typedef struct css_critical_section
 {
   MUTEX_T lock;			/* read/write monitor lock */
-  COND_T readers_ok;		/* start waiting readers */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
-  unsigned int waiting_writers;	/* # of waiting writers */
+  unsigned int waiting_writers; /* # of waiting writers */
+  COND_T readers_ok;		/* start waiting readers */
   COND_T writer_ok;		/* start a waiting writer */
+  COND_T promoter_ok;           /* start a waiting promoter */
   THREAD_T owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
 #ifdef CSECT_STATISTICS
@@ -117,9 +118,7 @@ extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
 					   int wait_secs);
 extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 
-#ifdef LOG_DEBUG
-extern bool csect_check_own (int cs_index);
-#endif /* LOG_DEBUG */
+extern int csect_check_own (int cs_index);
 
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)
@@ -129,9 +128,6 @@ extern bool csect_check_own (int cs_index);
 #define csect_exit(a)
 #define csect_enter_critical_section(a,b,c)
 #define csect_exit_critical_section(a)
-
-//#define pgbuf_lock_save_mutex(a)
-//#define pgbuf_unlock_save_mutex(a)
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

@@ -1,0 +1,140 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>SERIAL 생성</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n시리얼\n시리얼 생성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_serial_create.htm\">시리얼<\/a> &nbsp;&gt;&nbsp; 시리얼 생성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>시리얼 생성</h3>
+<p>시리얼(SERIAL)은 고유한 순번을 생성하는 객체이다. 시리얼은 다음과 같은 특성을 갖는다.</p>
+<ul>
+<li>시리얼은 다중 사용자 환경에서 고유한 순번을 생성하는데 용이하다.</li>
+<li>시리얼 번호는 테이블과 독립적으로 생성된다. 따라서 하나 이상의 테이블에 동일한 시리얼을 사용할 수 있다.</li>
+</ul>
+<h6>설명</h6>
+<p><span class="keyword">CREATE SERIAL</span> 문을 이용하여 데이터베이스에 시리얼 객체를 생성한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE SERIAL</span> <span class="var">serial_identifier</span><br />
+[ <span class="keyword">START WITH</span> <span class="var">initial</span> ]<br />
+[ <span class="keyword">INCREMENT BY</span> <span class="var">interval</span>]<br />
+[ <span class="keyword">MINVALUE</span> <span class="var">min</span> | <span class="keyword">NOMINVALUE</span> ]<br />
+[ <span class="keyword">MAXVALUE</span> <span class="var">max</span> | <span class="keyword">NOMAXVALUE</span> ]<br />
+[ <span class="keyword">CYCLE</span> | <span class="keyword">NOCYCLE</span> ]&#160;</p>
+<ul>
+<li><span class="var">serial_identifier</span>&#160;: 생성할 시리얼의 이름을 지정한다.</li>
+<li><span class="keyword">START WITH</span> <span class="var">initial</span> : 처음 생성되는 시리얼 숫자를 지정한다. 이 값은 38자리 이하의 숫자이다. 오름차순 시리얼의 경우 디폴트 값은 시리얼의 최소값이며 내림차순 시리얼의 경우 디폴트 값은 시리얼의 최대값이다.</li>
+<li><span class="keyword">INCREMENT BY</span> <span class="var">interval</span>&#160;: 시리얼 숫자 간의 간격을 지정한다.&#160;<span class="var">interval</span> 값으로 0을 제외한 38자리 이하의 어떤 정수도 지정할 수 있다. <span class="var">interval</span>의 절대값은 <span class="keyword">MAXVALUE</span>와 <span class="keyword">MINVALUE</span>의 차이보다 작아야 한다. 음수가 설정되면 시리얼은 내림차순이 되고 양수가 설정되면 오름차순이 된다. 디폴트 값은 <span class="keyword">1</span>이다.</li>
+<li><span class="keyword">MINVALUE</span>&#160;: 시리얼의 최소값을 지정한다. 이 값은 38자리 이하의 숫자이다. <span class="keyword">MINVALUE</span>는 초기값보다 작거나 같아야 하고 최대값보다 작아야 한다.</li>
+<li><span class="keyword">NOMINVALUE</span> : 오름차순 시리얼에 대해서는 1, 내림차순 시리얼에 대해서는 -(10)<sup>36</sup>이 최소값으로 자동 지정된다.</li>
+<li><span class="keyword">MAXVALUE</span>&#160;: 시리얼의 최대값을 지정한다. 이 값은 38자리&#160;이하의 숫자이다. <span class="keyword">MAXVALUE</span>는 초기값보다 작거나 같아야 하고 최소값보다 커야 한다.</li>
+<li><span class="keyword">NOMAXVALUE</span> :&#160;오름차순 시리얼에 대해서는 (10)<sup>37</sup>, 내림차순 시리얼에 대해서는 -1이 최대값으로 자동 지정된다.</li>
+<li><span class="keyword">CYCLE</span>&#160;: 시리얼 값이 최대 또는 최소값에 도달한 후에 연속적으로 값을 생성하도록 지정한다. 오름차순 시리얼은&#160;최대값에 도달한 후에 다음 값으로 최소값이 생성된다. 내림차순 시리얼은 최소값에 도달한 후에 다음 값으로 최대값이 생성된다.</li>
+<li><span class="keyword">NOCYCLE</span> : 시리얼이 최대 또는 최소값에 도달한 후에 시리얼 값이 더 이상 생성되지 않도록 지정한다. 디폴트 값은 <span class="keyword">NOCYCLE</span>이다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 초기값 1, 증가값 1, 최대 값으로 10<sup>37</sup>으로&#160;지정된&#160;시리얼 객체 <span class="var">order_no</span>를 생성하는 예제이다.</li>
+</ul>
+<p class="code">CREATE SERIAL&#160;order_no;</p>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 초기값 10,000, 증가값 2, 최대 값 20,000으로 지정된&#160;시리얼 객체 <span class="var">idx_no</span>를 생성하는 예제이다.</li>
+</ul>
+<p class="code">CREATE SERIAL idx_no START WITH 10000 INCREMENT BY 2 MAXVALUE 20000;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

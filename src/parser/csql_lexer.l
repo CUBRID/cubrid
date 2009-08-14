@@ -32,7 +32,7 @@
 
 
 
-#define JP_MAX_NAME	256
+#define CSQL_MAXNAME	256
 
 static int parser_yyinput_single_line(char* buff, int max_size);
 static int parser_yyinput_multi_line(char* buff, int max_size);
@@ -41,7 +41,6 @@ static char* parser_c_hint(void);
 static char* parser_line_hint(void);
 static char* parser_quoted_string(char end);
 static void begin_token(char* token);
-static void generate_error_msg(PARSER_ERR_CODE error_code);
 
 extern int yyline;
 extern int yycolumn;
@@ -68,7 +67,7 @@ extern int yycolumn_end;
 \n									{
 										begin_token(yytext); 
 										this_parser->line = yyline++;
-										this_parser->column = yycolumn = yycolumn_end = 0;
+										this_parser->column = yycolumn = yycolumn_end = 1;
 									}
 
 
@@ -152,7 +151,7 @@ extern int yycolumn_end;
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
 [cC][uU][rR][rR][eE][nN][tT]						{ begin_token(yytext);   return CURRENT; }
-[cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][aA]				{ begin_token(yytext);   return CURRENT_DATE; }
+[cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][eE]				{ begin_token(yytext);   return CURRENT_DATE; }
 [cC][uU][rR][rR][eE][nN][tT]_[tT][iI][mM][eE]				{ begin_token(yytext);   return CURRENT_TIME; }
 [cC][uU][rR][rR][eE][nN][tT]_[tT][iI][mM][eE][sS][tT][aA][mM][pP]	{ begin_token(yytext);   return CURRENT_TIMESTAMP; }
 [cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][eE][tT][iI][mM][eE] 		{ begin_token(yytext);   return CURRENT_DATETIME; }
@@ -609,21 +608,46 @@ extern int yycolumn_end;
 "?:"									{ begin_token(yytext);   return PARAM_HEADER; }
 
 
-[0-9]+									{ begin_token(yytext);   
-										if (strlen(yytext) >= 254) 
-											yytext[254] = 0;
+[0-9]+									{ 
+										int i = 0;
+										int len = 0;
 
-										yylval.cptr = pt_makename(yytext);
+										begin_token(yytext);   
+										len = strlen(yytext);
+										if (len >= 254) 
+											yytext[254] = 0;
+		
+										/* loop until len - 1, in case of 0000000000000000000000 */
+										for (i = 0; i < len - 1 && yytext[i] == '0'; i++)
+										;
+
+										yylval.cptr = pt_makename(&yytext[i]);
 										return UNSIGNED_INTEGER; 
 									}
 
 
 
-([0-9]+[Ee][\+\-]?[0-9]+[fF]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fF]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fF]?) 	{ begin_token(yytext);   
-										if (strlen(yytext) >= 254) 
+([0-9]+[Ee][\+\-]?[0-9]+[fF]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fF]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fF]?) 	{
+										char buff[256];
+										int len;
+
+										begin_token(yytext);   
+										len = strlen(yytext);
+										if (len >= 254) 
 											yytext[254] = 0;
-										yylval.cptr = pt_makename(yytext);
-										return UNSIGNED_REAL; 
+
+										if (len < 253 && yytext[len-1] == '.')
+										  {
+										    strncpy(buff, yytext, sizeof(buff));
+										    buff[len] = '0';
+										    buff[len+1] = '\0';
+										    yylval.cptr = pt_makename(buff);
+										  }
+										else
+										  {
+										    yylval.cptr = pt_makename(yytext);
+										  }	
+										return UNSIGNED_REAL;
 									}
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))* { begin_token(yytext);   
@@ -718,153 +742,6 @@ extern int yycolumn_end;
 
 int parser_yyinput_single_mode = 0;
 
-
-static void generate_error_msg(PARSER_ERR_CODE error_code) 
-{
-  PT_NODE* dummy = parser_new_node(this_parser, PT_EXPR);
-  char* ptr;
-
-  char msg[][256] = { 
-    "DUMMY",
-
-    "invalid data type",
-
-    "invalid attach statement\n"
-    "  attach_statement : ATTACH unsigned_integer",
-
-    "invalid prefare statement\n"
-    "  prepare_statement :  PREPARE {to} COMMIT unsigend_integer",
-
-    "invalid execute statement\n"
-    "  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]",
-
-    "invalid scope statement\n"
-    "  scope_statement : SCOPE trigger_action { FROM table_spec_list }",
-
-    "invalid set system paremeter\n"
-    "  set_system : SET SYSTEM PAREMETERS 'STRING' {, 'STRING_N'}*",
-
-    "invalid set transaction\n"
-    "  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n"
-    "                 | SET TRANSACTION LOCK TIMEOUT timeout_spec",
-
-    "invalid set trigger trace\n"
-    "  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]",
-
-    "invalid set trigger depth\n"
-    "  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]",
-
-    "invalid set optimization level\n"
-    "  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]",	// 10
-
-    "invalid set optimization cost\n"
-    "  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_", 
-
-    "invalid get optimization level\n"
-    "  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get optimization cost\n"
-    "  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get transaction isol\n"
-    "  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get transaction lock\n"
-    "  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get trigger trace\n"
-    "  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get trigger depth\n"
-    "  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid get stat\n"
-    "  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}",
-
-    "invalid create index\n"
-    "  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list",
-
-    "invalid create user\n"			// 20
-    "  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }",
-
-    "invalid create trigger\n"
-    "  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n"
-    "    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n"
-    "    EXECUTE {AFTER|DEFERRED} trigger_action",
-
-    "invalid create serial\n"
-    "  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n"
-    "    serial_min_max {CYCLE|NOCYCLE}",
-
-    "invalid create procedure\n"
-    "  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'", 
-
-    "invalid create function\n"
-    "  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'", 
-
-    "invalid groups\n"
-    "  groups spec : GROUPS identifier {, identifier}*",
-
-    "invalid members\n"
-    "  member spec : MEMBERS identifier {, identifier}*",
-
-    "invalid password\n"
-    "  password spec : PASSWORD 'STRING'",
-
-    "missing authorized command list\n"
-    "  authoized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL",
-
-    "missing class spec list",
-    "missing identifier list",			// 30
-    "missing expression",
-    "invalid identifier",
-
-    "invalid use of substring\n"
-    "  SUBSTRING( expression FROM expression FOR expression )\n"
-    "  SUBSTRING( expression FROM expression )",
-
-    "invalid use of trim\n"
-    "  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n"
-    "  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n"
-    "  TRIM ( expression FROM expression )\n"
-    "  TRIM ( expression )",
-
-    "invalid use of cast\n"
-    "  CAST ( expression AS data_type )",
-
-    "function add_months needs two parameters",
-    "octet_length needs one parameters",
-    "bit_length needs one parameters",
-    "lower needs one parameters",
-    "upper needs one parameters",		// 40
-    "translate needs three parameters",
-    "replace needs two or three parameters",
-
-    "invalid use of to_number\n"
-    "  TO_NUMBER ( expression , char_string )\n"
-    "  TO_NUMBER ( expression )",
-
-    "string bind operator is not '|' but '||'",
-    "invalid alter statement",
-    "invalid drop statement",
-    "invalid create statement",
-    "invalid relational operator",
-    "equal operator is not '==' but '='",
-    "not equal operator is not '!=' but '<>'",
-
-    "invalid minus value (or minus value in list)",
-  };
-
-  ptr = msg[error_code - PARSER_ERR_START];
-  
-  if (error_code == INVALID_ID) 
-      PT_ERRORf2(this_parser, dummy, "%s: %s", ptr, yytext);
-  else 
-      PT_ERRORf(this_parser, dummy, "%s", ptr);
-
-  parser_free_tree(this_parser, dummy);
-}
-
 void yyerror_explicit(int line, int column)
 {
   yyerror(NULL);
@@ -872,43 +749,42 @@ void yyerror_explicit(int line, int column)
 }
 
 
-void yyerror(const char* s)
+void yyerror (const char *s)
 {
-  if (!parser_yyinput_single_mode) 
+  YY_FLUSH_BUFFER;
+  parser_statement_OK = 0;
+
+  if (msg_ptr)
     {
-      YY_FLUSH_BUFFER;
-      parser_statement_OK = 0;
-  
-	if (msg_ptr) 
-	  {
-	    generate_error_msg(g_msg[msg_ptr-1]);
-	  }
-	else 
-	  {
-	    const char* cmp_str = ", expecting \'{\'";
-	    const char* cmp_str2 = ", expecting SELECT or \'(\'";
-	    PT_NODE* dummy;
+      PT_NODE *dummy = parser_new_node (this_parser, PT_EXPR);
+      PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX,
+                 g_msg[msg_ptr - 1]);
+      parser_free_tree (this_parser, dummy);
+    }
+  else
+    {
+      const char *cmp_str = ", expecting \'{\'";
+      const char *cmp_str2 = ", expecting SELECT or \'(\'";
+      PT_NODE *dummy;
 
-	    if ( (strlen(s) > strlen(cmp_str)) &&
-		 (strcmp(&s[strlen(s) - strlen(cmp_str)], cmp_str) == 0) )
-	      {
-		*(char*)&s[strlen(s) - strlen(cmp_str)] = 0;
-	      }
-	    else if ( (strlen(s) > strlen(cmp_str2)) &&
-	    	  (strcmp(&s[strlen(s) - strlen(cmp_str2)], cmp_str2) == 0) ) 
-	      {
-		*(char*)&s[strlen(s) - strlen(cmp_str2)] = 0;
-	      }
+      if ((strlen (s) > strlen (cmp_str)) &&
+          (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
+        {
+          *(char *) &s[strlen (s) - strlen (cmp_str)] = 0;
+        }
+      else if ((strlen (s) > strlen (cmp_str2)) &&
+               (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
+        {
+          *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
+        }
 
-	    dummy = parser_new_node(this_parser, PT_EXPR);
-	    if (dummy == NULL) return;
-	    PT_ERRORf(this_parser, dummy, "%s", s);
-	    parser_free_tree(this_parser, dummy);
-	  }
+      dummy = parser_new_node (this_parser, PT_EXPR);
+      if (dummy == NULL)
+        return;
+      PT_ERRORf (this_parser, dummy, "%s", s);
+      parser_free_tree (this_parser, dummy);
     }
 }
-
-
 
 int yywrap()
 {
@@ -981,7 +857,7 @@ static char input_internal()
   if (c == '\n') 
     {
       this_parser->line = yylloc.last_line = yyline++;
-      this_parser->column = yylloc.last_column = yycolumn_end = 0;
+      this_parser->column = yylloc.last_column = yycolumn_end = 1;
     }
   else 
     {
@@ -994,7 +870,7 @@ static char input_internal()
 static char* parser_c_hint()
 {
   char c, c1;
-  char buff[JP_MAXNAME];
+  char buff[CSQL_MAXNAME];
   int i = 0;
   PT_HINT_ENUM hint = PT_HINT_NONE;
 
@@ -1005,20 +881,23 @@ static char* parser_c_hint()
   yylloc.last_line = yyline;
   yylloc.last_column = yycolumn_end;
 
-loop:
-  if ((c = input_internal()) == '+') 
+  if ( i < (CSQL_MAXNAME - 1) && (c = input_internal()) == '+' ) 
     { /* hint */
       buff[i++] = '+';
       while ((c = input_internal()) != '*' && c != 0 && c != -1) 
 	{
-      	  if (i>=JP_MAXNAME) goto loop;
+      	  if (i>=(CSQL_MAXNAME-1))
+	    {
+	      goto consume_comment;
+	    }
+
       	  buff[i++] = c;
 	}
 
       if ((c1 = input_internal()) != '/' && c != 0 && c != -1)
 	{
-      	  unput(c1);
-      	  goto loop;
+	  unput(c1);
+      	  goto consume_comment;
 	}
 
       buff[i] = 0;
@@ -1031,26 +910,28 @@ loop:
 
       return pt_makename(buff);
     }
-  else 
-    { /* comment */
+  else
+    {
       unput(c);
+    }
+
+consume_comment:
       while ((c = input_internal()) != '*' && c != 0 && c != -1);
 
       if ((c1 = input_internal()) != '/' && c != 0 && c != -1)
 	{
       	  unput(c1);
-      	  goto loop;
+      	  goto consume_comment;
 	}
 
       return NULL;
-    }
 }
 
 
 static char* parser_line_hint(void)
 {
   char c;
-  char buff[JP_MAXNAME];
+  char buff[CSQL_MAXNAME];
   int i = 0;
   PT_HINT_ENUM hint = PT_HINT_NONE;
 
@@ -1063,12 +944,12 @@ static char* parser_line_hint(void)
   yylloc.last_column = yycolumn_end;
 
 loop:
-  if ((c = input_internal()) == '+') 
+  if (i < (CSQL_MAXNAME - 1) && (c = input_internal()) == '+') 
     { /* hint */
       buff[i++] = '+';
       while ((c = input_internal()) != '\r' && c != '\n' && c != 0 && c!= -1) 
 	{
-      	  if (i>=JP_MAXNAME) goto loop;
+      	  if (i>=(CSQL_MAXNAME-1)) goto loop;
       	  buff[i++] = c;
 	}
       buff[i] = 0;
@@ -1114,6 +995,11 @@ loop:
       if (i>=size) 
 	{
       	  char* bp_new = parser_allocate_string_buffer(this_parser, size*2, sizeof(char));
+	  if (bp_new == NULL)
+	    {
+	      return NULL;
+	    }
+
       	  memcpy(bp_new, bp, size);
       	  bp = bp_new;
       	  size *= 2;
@@ -1135,6 +1021,11 @@ loop:
       if (i>=size) 
 	{
       	  char* bp_new = parser_allocate_string_buffer(this_parser, size*2, sizeof(char));
+	  if (bp_new == NULL)
+	    {
+	      return NULL;
+	    }
+
       	  memcpy(bp_new, bp, size);
       	  bp = bp_new;
       	  size *= 2;

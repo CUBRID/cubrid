@@ -692,7 +692,9 @@ tp_domain_new (DB_TYPE type)
 
   new_ = (TP_DOMAIN *) area_alloc (tp_Domain_area);
   if (new_ != NULL)
-    domain_init (new_, type);
+    {
+      domain_init (new_, type);
+    }
 
   return new_;
 }
@@ -912,14 +914,23 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 {
   int match = 0;
 
+  if (dom1 == NULL || dom2 == NULL)
+    {
+      return 0;
+    }
+
   /* in the case where their both cached */
   if (dom1 == dom2)
-    return 1;
+    {
+      return 1;
+    }
 
   if ((dom1->type->id != dom2->type->id) &&
       (exact != TP_STR_MATCH
        || !TP_NEAR_MATCH (dom1->type->id, dom2->type->id)))
-    return 0;
+    {
+      return 0;
+    }
 
   /*
    * At this point, either dom1 and dom2 have exactly the same type, or
@@ -2287,7 +2298,9 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
        */
       set = db_get_set (val);
       if (set != NULL)
-	domain = set_get_domain (set);
+	{
+	  domain = set_get_domain (set);
+	}
       else
 	{
 	  /* we need to synthesize a wildcard set domain for this value */
@@ -2361,7 +2374,13 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_VARNCHAR:
 	  /* must find one with a matching precision */
 	  if (dbuf == NULL)
-	    domain = tp_domain_new (value_type);
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
 	  else
 	    {
 	      domain = dbuf;
@@ -2398,14 +2417,23 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 		  domain->precision >= DB_MAX_VARNCHAR_PRECISION)
 		domain->precision = DB_MAX_VARNCHAR_PRECISION;
 	    }
+
 	  if (dbuf == NULL)
-	    domain = tp_domain_cache (domain);
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
 	  break;
 
 	case DB_TYPE_NUMERIC:
 	  /* must find one with a matching precision and scale */
 	  if (dbuf == NULL)
-	    domain = tp_domain_new (value_type);
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
 	  else
 	    {
 	      domain = dbuf;
@@ -2420,12 +2448,19 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * This may not be necessary any more.
 	   */
 	  if (domain->precision == -1)
-	    domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	    {
+	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	    }
+
 	  if (domain->scale == -1)
-	    domain->scale = DB_DEFAULT_NUMERIC_SCALE;
+	    {
+	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
+	    }
 
 	  if (dbuf == NULL)
-	    domain = tp_domain_cache (domain);
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
 	  break;
 
 	case DB_TYPE_POINTER:
@@ -3052,7 +3087,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
    */
   if (value == NULL || domain_list == NULL ||
       (vtype = DB_VALUE_TYPE (value)) == DB_TYPE_NULL)
-    return (TP_DOMAIN *) domain_list;
+    {
+      return (TP_DOMAIN *) domain_list;
+    }
 
 
   if (vtype == DB_TYPE_OID)
@@ -3067,7 +3104,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	       d = d->next)
 	    {
 	      if (d->type->id == DB_TYPE_OBJECT)
-		best = d;
+		{
+		  best = d;
+		}
 	    }
 	}
 #if !defined (SERVER_MODE)
@@ -3082,19 +3121,24 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	  DB_VALUE temp;
 
 	  oid = (OID *) db_get_oid (value);
-	  if (OID_ISNULL (oid))
-	    /* this is the same as the NULL case above */
-	    return (TP_DOMAIN *) domain_list;
-	  else
+	  if (oid)
 	    {
-	      mop = ws_mop (oid, NULL);
-	      db_make_object (&temp, mop);
-	      /*
-	       * we don't have to worry about clearing this since its an
-	       * object
-	       */
-	      value = (const DB_VALUE *) &temp;
-	      vtype = DB_TYPE_OBJECT;
+	      if (OID_ISNULL (oid))
+		{
+		  /* this is the same as the NULL case above */
+		  return (TP_DOMAIN *) domain_list;
+		}
+	      else
+		{
+		  mop = ws_mop (oid, NULL);
+		  db_make_object (&temp, mop);
+		  /*
+		   * we don't have to worry about clearing this since its an
+		   * object
+		   */
+		  value = (const DB_VALUE *) &temp;
+		  vtype = DB_TYPE_OBJECT;
+		}
 	    }
 	}
 #endif /* !SERVER_MODE */
@@ -3160,16 +3204,20 @@ tp_domain_select (const TP_DOMAIN * domain_list,
        * create class bar (b set_of(string, integer, foo));
        * insert into bar (b) values ({insert into foo values (1)});
        */
-      DB_OTMPL *otmpl =
-	(DB_OTMPL *) ((DB_OTMPL *) DB_GET_POINTER (value))->classobj;
+      DB_OTMPL *val_tmpl, *otmpl;
 
-      for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
-	   d = d->next)
+      val_tmpl = (DB_OTMPL *) DB_GET_POINTER (value);
+      if (val_tmpl)
 	{
-	  if (d->type->id == DB_TYPE_OBJECT
-	      && sm_check_class_domain (d, (DB_OBJECT *) otmpl))
+	  otmpl = (DB_OTMPL *) val_tmpl->classobj;
+	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
+	       d = d->next)
 	    {
-	      best = d;
+	      if (d->type->id == DB_TYPE_OBJECT
+		  && sm_check_class_domain (d, (DB_OBJECT *) otmpl))
+		{
+		  best = d;
+		}
 	    }
 	}
     }
@@ -3475,6 +3523,11 @@ tp_null_terminate (const DB_VALUE * src, char **strp, int str_len,
   *do_alloc = false;		/* init */
 
   str = DB_GET_STRING (src);
+  if (str == NULL)
+    {
+      return ER_FAILED;
+    }
+
   str_size = DB_GET_STRING_SIZE (src);
 
   if (str[str_size] == '\0')
@@ -5611,10 +5664,19 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2,
        * there may ba a call for set_compare returning a total
        * ordering some day.
        */
-      status = set_compare (s1, s2, do_coercion);
+      if (s1 && s2)
+	{
+	  status = set_compare (s1, s2, do_coercion);
+	}
+      else
+	{
+	  status = DB_UNK;
+	}
 
       if (coercion)
-	pr_clear_value (&temp);
+	{
+	  pr_clear_value (&temp);
+	}
     }
   return status;
 }
@@ -5646,7 +5708,7 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
   DB_OBJECT *mop;
-  DB_IDENTIFIER *oid;
+  DB_IDENTIFIER *oid1, *oid2;
 
   status = DB_UNK;
   coercion = 0;
@@ -5654,9 +5716,13 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
   if (value1 == NULL || PRIM_IS_NULL (value1))
     {
       if (value2 == NULL || PRIM_IS_NULL (value2))
-	status = (total_order ? DB_EQ : DB_UNK);
+        {
+          status = (total_order ? DB_EQ : DB_UNK);
+        }
       else
-	status = (total_order ? DB_LT : DB_UNK);
+        {
+          status = (total_order ? DB_LT : DB_UNK);
+        }
     }
   else if (value2 == NULL || PRIM_IS_NULL (value2))
     {
@@ -5686,17 +5752,34 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	      if (vtype2 == DB_TYPE_OID)
 		{
 		  mop = db_get_object (v1);
-		  oid = db_get_oid (v2);
-		  return oidcmp (WS_OID (mop), oid);
+		  oid1 = mop ? WS_OID (mop) : NULL;
+		  oid2 = db_get_oid (v2);
+		  if (oid1 && oid2)
+		    {
+		      return oidcmp (oid1, oid2);
+		    }
+		  else
+		    {
+		      return DB_UNK;
+		    }
 		}
 	    }
 	  else if (vtype2 == DB_TYPE_OBJECT)
 	    {
 	      if (vtype1 == DB_TYPE_OID)
 		{
+		  oid1 = db_get_oid (v1);
 		  mop = db_get_object (v2);
-		  oid = db_get_oid (v1);
-		  return oidcmp (oid, WS_OID (mop));
+		  oid2 = mop ? WS_OID (mop) : NULL;
+
+		  if (oid1 && oid2)
+		    {
+		      return oidcmp (oid1, oid2);
+		    }
+		  else
+		    {
+		      return DB_UNK;
+		    }
 		}
 	    }
 
@@ -5755,33 +5838,47 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
 	   * Not correct but will be consistent.
 	   */
 	  if (tp_more_general_type (vtype1, vtype2) > 0)
-	    status = DB_GT;
+	    {
+	      status = DB_GT;
+	    }
 	  else
-	    status = DB_LT;
+	    {
+	      status = DB_LT;
+	    }
 	}
       else
 	{
 	  PR_TYPE *pr_type;
 
 	  pr_type = PR_TYPE_FROM_ID (vtype1);
-	  status = (*(pr_type->cmpval)) (v1, v2,
-					 NULL, 0,
-					 do_coercion, total_order, NULL);
-	  if (status == DB_UNK)
+	  if (pr_type)
 	    {
-	      /* safe guard */
-	      if (pr_type->id == DB_TYPE_MIDXKEY)
+	      status = (*(pr_type->cmpval)) (v1, v2, NULL, 0,
+					     do_coercion, total_order, NULL);
+	      if (status == DB_UNK)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN,
-			  0);
+		  /* safe guard */
+		  if (pr_type->id == DB_TYPE_MIDXKEY)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_MR_NULL_DOMAIN, 0);
+		    }
 		}
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
+	      status = DB_UNK;
 	    }
 	}
 
       if (coercion)
-	pr_clear_value (&temp);
+	{
+	  pr_clear_value (&temp);
+	}
     }
-  return (status);
+
+  return status;
 }
 
 

@@ -55,7 +55,6 @@ void CUCPDetail::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_UCPD_TXT_TIMETOKILL, m_ucpd_txt_time_to_kill);
 	DDX_Control(pDX, IDC_UCPD_TXT_STYPE, m_ucpd_txt_appl_server);
 	DDX_Control(pDX, IDC_UCPD_TXT_STIMEOUT, m_ucpd_txt_session_timeout);
-	DDX_Control(pDX, IDC_UCPD_TXT_SQLTIME, m_ucpd_txt_sql_log_time);
 	DDX_Control(pDX, IDC_UCPD_TXT_SIZELIMIT, m_ucpd_txt_appl_server_max_size);
 	DDX_Control(pDX, IDC_UCPD_TXT_SECURIY_FILE, m_ucpd_txt_access_list);
 	DDX_Control(pDX, IDC_UCPD_TXT_SC, m_ucpd_txt_sc);
@@ -79,7 +78,6 @@ void CUCPDetail::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_UCPD_QUEUESIZE, m_ucpd_job_queue_size);
 	DDX_Control(pDX, IDC_UCPD_STIMEOUT, m_ucpd_session_timeout);
 	DDX_Control(pDX, IDC_UCPD_TIMETOKILL, m_ucpd_time_to_kill);
-	DDX_Control(pDX, IDC_UCPD_SQLTIME, m_ucpd_sql_log_time);
 	DDX_Control(pDX, IDC_UCPD_SQLT_ONOFF, m_ucpd_sql_log);
 	DDX_Control(pDX, IDC_UCPD_ENV_FILE, m_ucpd_source_env);
 	DDX_Control(pDX, IDC_UCPD_LOGBACKUP_ONOFF, m_ucpd_log_backup);
@@ -116,7 +114,6 @@ BEGIN_MESSAGE_MAP(CUCPDetail, CDialog)
 	ON_EN_CHANGE(IDC_UCPD_MAX, OnChangeUcpdMax)
 	ON_EN_CHANGE(IDC_UCPD_SIZELIMIT, OnChangeUcpdSizelimit)
 	ON_EN_CHANGE(IDC_UCPD_LOGDIR, OnChangeUcpdLogdir)
-	ON_EN_CHANGE(IDC_UCPD_SQLTIME, OnChangeUcpdSqltime)
 	ON_EN_CHANGE(IDC_UCPD_SECURIY_FILE, OnChangeUcpdSecuriyFile)
 	ON_EN_CHANGE(IDC_UCPD_ENV_FILE, OnChangeUcpdEnvFile)
 	ON_EN_CHANGE(IDC_UCPD_TIMETOKILL, OnChangeUcpdTimetokill)
@@ -147,7 +144,7 @@ void CUCPDetail::SetDefault(CString broker, CString port, CString shmid)
 	m_tmp_shmid = shmid;
 }
 
-BOOL CUCPDetail::OnInitDialog() 
+BOOL CUCPDetail::OnInitDialog()
 {
 char	tempstr[100];
 
@@ -218,8 +215,6 @@ char	tempstr[100];
 		m_ucpd_sql_log.SetWindowText(theLang.GetMessage(WN_UPD_SQL_LOG_OFF));
 	}
 	m_ucpd_sql_log.SetCheck(m_ucinfo->m_sql_log);
-	m_ucpd_txt_sql_log_time.SetWindowText(theLang.GetMessage(WN_UPD_SQL_LOG_TIME));
-	m_ucpd_sql_log_time.SetWindowText(LPCSTR(m_ucinfo->m_sql_log_time));
 	if (m_ucinfo->m_access_log) {
 		m_ucpd_access_log.SetWindowText(theLang.GetMessage(WN_UPD_ACCESS_LOG_ON));
 	} else {
@@ -255,12 +250,12 @@ char	tempstr[100];
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void CUCPDetail::OnChangeUcpdBname() 
+void CUCPDetail::OnChangeUcpdBname()
 {
 	EnableApply(m_ucpd_broker);
 }
 
-void CUCPDetail::OnUcpdService() 
+void CUCPDetail::OnUcpdService()
 {
 	m_ucinfo->m_service = !m_ucinfo->m_service;
 	if (m_ucinfo->m_service) {
@@ -272,7 +267,7 @@ void CUCPDetail::OnUcpdService()
 	EnableApply();
 }
 
-void CUCPDetail::OnSelchangeServiceType() 
+void CUCPDetail::OnSelchangeServiceType()
 {
 int	sel;
 
@@ -287,47 +282,47 @@ int	sel;
 	EnableApply();
 }
 
-void CUCPDetail::OnChangeUcpdPort() 
+void CUCPDetail::OnChangeUcpdPort()
 {
 	EnableApply(m_ucpd_broker_port);
 }
 
-void CUCPDetail::OnChangeUcpdSmid() 
+void CUCPDetail::OnChangeUcpdSmid()
 {
 	EnableApply(m_ucpd_appl_server_shm_id);
 }
 
-void CUCPDetail::OnUcpdAutoadd() 
+void CUCPDetail::OnUcpdAutoadd()
 {
 	EnableApply();
 }
 
-void CUCPDetail::OnChangeUcpdMin() 
+void CUCPDetail::OnChangeUcpdMin()
 {
 	EnableApply(m_ucpd_min_num_appl_server);
 }
 
-void CUCPDetail::OnChangeUcpdMax() 
+void CUCPDetail::OnChangeUcpdMax()
 {
 	EnableApply(m_ucpd_max_num_appl_server);
 }
 
-void CUCPDetail::OnChangeUcpdSizelimit() 
+void CUCPDetail::OnChangeUcpdSizelimit()
 {
 	EnableApply(m_ucpd_appl_server_max_size);
 }
 
-void CUCPDetail::OnChangeUcpdLogdir() 
+void CUCPDetail::OnChangeUcpdLogdir()
 {
 	CheckFile(m_ucpd_log_dir, false);
 }
 
-void CUCPDetail::OnKillfocusUcpdLogdir() 
+void CUCPDetail::OnKillfocusUcpdLogdir()
 {
 	CheckFile(m_ucpd_log_dir, false);
 }
 
-void CUCPDetail::OnUcpdLogbackupOnoff() 
+void CUCPDetail::OnUcpdLogbackupOnoff()
 {
 	m_ucinfo->m_log_backup = !m_ucinfo->m_log_backup;
 	if (m_ucinfo->m_log_backup) {
@@ -339,7 +334,7 @@ void CUCPDetail::OnUcpdLogbackupOnoff()
 	EnableApply();
 }
 
-void CUCPDetail::OnUcpdSqlTrackingOnoff() 
+void CUCPDetail::OnUcpdSqlTrackingOnoff()
 {
 	m_ucinfo->m_sql_log = !m_ucinfo->m_sql_log;
 	if (m_ucinfo->m_sql_log) {
@@ -351,25 +346,20 @@ void CUCPDetail::OnUcpdSqlTrackingOnoff()
 	EnableApply();
 }
 
-void CUCPDetail::OnChangeUcpdSqltime() 
-{
-	EnableApply(m_ucpd_sql_log_time);
-}
-
-void CUCPDetail::OnUcpdAccessLogOnoff() 
+void CUCPDetail::OnUcpdAccessLogOnoff()
 {
 	m_ucinfo->m_access_log = !m_ucinfo->m_access_log;
 	if (m_ucinfo->m_access_log) {
 		m_ucpd_access_log.SetWindowText("Access LOG ON");
 	} else {
 		m_ucpd_access_log.SetWindowText("Access LOG OFF");
-	}	
+	}
 
 	EnableApply();
 }
 
 
-void CUCPDetail::OnUcpdSecurityOnoff() 
+void CUCPDetail::OnUcpdSecurityOnoff()
 {
 	m_ucinfo->m_security = !m_ucinfo->m_security;
 	if (m_ucinfo->m_security) {
@@ -381,43 +371,43 @@ void CUCPDetail::OnUcpdSecurityOnoff()
 	EnableApply();
 }
 
-void CUCPDetail::OnChangeUcpdSecuriyFile() 
+void CUCPDetail::OnChangeUcpdSecuriyFile()
 {
 	CheckFile(m_ucpd_access_list);
 }
 
-void CUCPDetail::OnKillfocusUcpdSecuriyFile() 
+void CUCPDetail::OnKillfocusUcpdSecuriyFile()
 {
 	CheckFile(m_ucpd_access_list);
 }
 
 
-void CUCPDetail::OnChangeUcpdEnvFile() 
+void CUCPDetail::OnChangeUcpdEnvFile()
 {
 	CheckFile(m_ucpd_source_env);
 }
 
-void CUCPDetail::OnKillfocusUcpdEnvFile() 
+void CUCPDetail::OnKillfocusUcpdEnvFile()
 {
 	CheckFile(m_ucpd_source_env);
 }
 
-void CUCPDetail::OnChangeUcpdTimetokill() 
+void CUCPDetail::OnChangeUcpdTimetokill()
 {
 	EnableApply(m_ucpd_time_to_kill);
 }
 
-void CUCPDetail::OnChangeUcpdStimeout() 
+void CUCPDetail::OnChangeUcpdStimeout()
 {
 	EnableApply(m_ucpd_session_timeout);
 }
 
-void CUCPDetail::OnChangeUcpdQueuesize() 
+void CUCPDetail::OnChangeUcpdQueuesize()
 {
 	EnableApply(m_ucpd_job_queue_size);
 }
 
-void CUCPDetail::OnUcpdApply() 
+void CUCPDetail::OnUcpdApply()
 {
 CString	tempstr;
 
@@ -454,7 +444,6 @@ CString	tempstr;
 	} else {
 		m_ucinfo->m_sql_log = true;
 	}
-	m_ucpd_sql_log_time.GetWindowText(m_ucinfo->m_sql_log_time);
 	if (m_ucpd_access_log.GetCheck() == 0) {
 		m_ucinfo->m_access_log = false;
 	} else {
@@ -475,15 +464,15 @@ CString	tempstr;
 	m_ucpd_session_timeout.GetWindowText(m_ucinfo->m_session_timeout);
 	m_ucpd_job_queue_size.GetWindowText(m_ucinfo->m_job_queue_size);
 
-	CDialog::OnOK();	
+	CDialog::OnOK();
 }
 
-void CUCPDetail::OnUcpdCancel() 
+void CUCPDetail::OnUcpdCancel()
 {
-	CDialog::OnCancel();	
+	CDialog::OnCancel();
 }
 
-void CUCPDetail::OnUcpdMore() 
+void CUCPDetail::OnUcpdMore()
 {
 	if (m_ucinfo->m_appl_server == 1) {
 		if (!m_was) {
@@ -599,10 +588,8 @@ CString	tempStr;
 	m_ucpd_log_dir.GetWindowText(tempStr);
 	if (tempStr.IsEmpty()) return false;
 
-	if (m_ucpd_sql_log.GetCheck() != 0) {
-		m_ucpd_sql_log_time.GetWindowText(tempStr);
-		if (tempStr.IsEmpty()) return false;
-	}
+	m_ucpd_sql_log.GetWindowText(tempStr);
+	if (tempStr.IsEmpty()) return false;
 
 	if (m_ucpd_security.GetCheck() != 0) {
 		m_ucpd_access_list.GetWindowText(tempStr);

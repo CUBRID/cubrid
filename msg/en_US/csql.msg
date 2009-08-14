@@ -39,8 +39,10 @@ valid options:\n\
   -s, --single-line            single line oriented execution\n\
   -c, --command=ARG            CSQL-commands\n\
   -l, --line-output            display each value in a line\n\
+  -r, --read-only              read-only mode\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\
+      --sysadm                 system admin mode\n\
 \n\
 For addtional information, see http://www.cubrid.com\n
 41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
@@ -67,15 +69,11 @@ For addtional information, see http://www.cubrid.com\n
 65 There are no results.
 70 %d rows %s.
 $ These 3 should be blank
-$quote "
-71 ""
-72 ""
-73 ""
-$quote
 75 Automated API tester
 76 Invalid Automated API tester
 79 csql>
 80 csql
+81 sysadm>
 
 145 <Help: Schema of a Class>
 146 none
@@ -160,6 +158,7 @@ $ csql help messages
    ;TRigger [`*'|trigger-name] - display trigger definition.\n\
    ;Get system_parameter       - get the value of a system parameter.\n\
    ;SEt system_parameter=value - set the value of a system parameter.\n\
+   ;PLan [simple/detail/off]   - show query execution plan.\n\
    ;Info <command>             - display internal information.\n\
    ;TIme [ON/OFF]              - enable/disable to display the query\n\
                                  execution time.\n\

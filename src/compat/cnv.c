@@ -608,7 +608,15 @@ us_date_value (int *the_month, int *the_day, int *the_year)
 	  /* Abbreviated year: add current century. */
 	  time_t now = time (NULL);
 	  struct tm *today = localtime (&now);
-	  *the_year += ((today->tm_year + 1900) / 100) * 100;
+
+	  if (today != NULL)
+	    {
+	      *the_year += ((today->tm_year + 1900) / 100) * 100;
+	    }
+	  else
+	    {
+	      bad_value = true;
+	    }
 	}
 
     }
@@ -1203,7 +1211,16 @@ ko_date_value (int *the_month, int *the_day, int *the_year)
 	  /* Abbreviated year: add current century. */
 	  time_t now = time (NULL);
 	  struct tm *today = localtime (&now);
-	  *the_year += ((today->tm_year + 1900) / 100) * 100;
+
+	  if (today != NULL)
+	    {
+	      *the_year += ((today->tm_year + 1900) / 100) * 100;
+	    }
+	  else
+	    {
+	      bad_value = true;
+	      break;
+	    }
 	}
 
       bad_value = cnv_fmt_lex (&token) != FT_DATE_SEPARATOR;
@@ -1296,7 +1313,16 @@ ko_alt_date_value (int *the_month, int *the_day, int *the_year)
 	  /* Abbreviated year: add current century. */
 	  time_t now = time (NULL);
 	  struct tm *today = localtime (&now);
-	  *the_year += ((today->tm_year + 1900) / 100) * 100;
+
+	  if (today != NULL)
+	    {
+	      *the_year += ((today->tm_year + 1900) / 100) * 100;
+	    }
+	  else
+	    {
+	      bad_value = true;
+	      break;
+	    }
 	}
 
       type = cnv_fmt_lex (&token);
@@ -3574,13 +3600,11 @@ fmt_month_string (int month, const char *descriptor)
     {
       month_string = local_short_month_name (month - 1);
     }
-
   else if (mbs_eql (descriptor, "B"))
     {
       month_string = local_long_month_name (month - 1);
     }
-
-  else if (mbs_eql (descriptor, "m"))
+  else				/*if (mbs_eql (descriptor, "m")) */
     {
       static char month_number[2 * MB_LEN_MAX + 1];
       sprintf (month_number, "%02d", month);
@@ -3630,13 +3654,11 @@ fmt_weekday_string (int weekday, const char *descriptor)
     {
       day_string = local_short_weekday_name (weekday);
     }
-
   else if (mbs_eql (descriptor, "A"))
     {
       day_string = local_long_weekday_name (weekday);
     }
-
-  else if (mbs_eql (descriptor, "w"))
+  else				/*if (mbs_eql (descriptor, "w")) */
     {
       static char day_number[MB_LEN_MAX + 1];
       sprintf (day_number, "%d", weekday);
@@ -5017,52 +5039,108 @@ mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
   mfmt->currency = currency_type;
   mfmt->mode = cnv_fmt_number_mode (cnv_currency_zone (currency_type));
 
-  mfmt->format = (wcs_eql (wfmt, FMT_CURRENCY ())
-		  || !wcslen (wfmt)) ? CURRENCY_FIRST :
-    !currency_part ? CURRENCY_NONE : currency_part ==
-    wfmt ? CURRENCY_FIRST : CURRENCY_LAST;
+  if (wcs_eql (wfmt, FMT_CURRENCY ()) || !wcslen (wfmt))
+    {
+      mfmt->format = CURRENCY_FIRST;
+    }
+  else if (currency_part == NULL)
+    {
+      mfmt->format = CURRENCY_NONE;
+    }
+  else if (currency_part == wfmt)
+    {
+      mfmt->format = CURRENCY_FIRST;
+    }
+  else
+    {
+      mfmt->format = CURRENCY_LAST;
+    }
+
   mfmt->thousands = wcsstr (wfmt, FMT_THOUSANDS ()) != NULL;
 
-  integer_part = mfmt->format == CURRENCY_FIRST
-    && wcslen (wfmt) ? currency_part + 1 : wfmt;
+  if (mfmt->format == CURRENCY_FIRST && wcslen (wfmt)
+      && currency_part != NULL)
+    {
+      integer_part = currency_part + 1;
+    }
+  else
+    {
+      integer_part = wfmt;
+    }
+
   if (fraction_part)
     {
       fraction_part++;
     }
-  mfmt->decimal = (fraction_part != NULL || !wcslen (integer_part));
 
+  mfmt->decimal = (fraction_part != NULL || !wcslen (integer_part));
   mfmt->fractional_type = DIGIT_Z;
-  mfmt->fractional_digits =
-    (fraction_part ? wcsspn (fraction_part, FMT_Z ())
-     : (mfmt->decimal ? (mfmt->fractional_type = DIGIT_9, 2) : 0));
+
+  if (fraction_part)
+    {
+      mfmt->fractional_digits = wcsspn (fraction_part, FMT_Z ());
+    }
+  else if (mfmt->decimal)
+    {
+      mfmt->fractional_type = DIGIT_9;
+      mfmt->fractional_digits = 2;
+    }
+  else
+    {
+      mfmt->fractional_digits = 0;
+    }
+
   if (fraction_part && !mfmt->fractional_digits)
     {
-      mfmt->fractional_type =
-	(mfmt->fractional_digits =
-	 wcsspn (fraction_part,
-		 FMT_9 ()))? DIGIT_9 : (mfmt->fractional_digits =
-					wcsspn (fraction_part,
-						FMT_STAR ()))?
-	DIGIT_STAR : DIGIT_Z;
+      mfmt->fractional_digits = wcsspn (fraction_part, FMT_9 ());
+      if (mfmt->fractional_digits)
+	{
+	  mfmt->fractional_type = DIGIT_9;
+	}
+      else
+	{
+	  mfmt->fractional_digits = wcsspn (fraction_part, FMT_STAR ());
+	  if (mfmt->fractional_digits)
+	    {
+	      mfmt->fractional_type = DIGIT_STAR;
+	    }
+	  else
+	    {
+	      mfmt->fractional_type = DIGIT_Z;
+	    }
+	}
     }
 
   mfmt->integral_type = DIGIT_Z;
-  if (!((mfmt->integral_digits =
-	 wcsspn (integer_part,
-		 WCSCAT (idc, FMT_Z (),
-			 FMT_THOUSANDS ())) - mfmt->thousands) > 0))
-    {
 
-      mfmt->integral_type =
-	((mfmt->integral_digits =
-	  wcsspn (integer_part,
-		  WCSCAT (idc, FMT_9 (),
-			  FMT_THOUSANDS ())) - mfmt->thousands) >
-	 0) ? DIGIT_9 : ((mfmt->integral_digits =
-			  wcsspn (integer_part,
-				  WCSCAT (idc, FMT_STAR (),
-					  FMT_THOUSANDS ())) -
-			  mfmt->thousands) > 0) ? DIGIT_STAR : DIGIT_Z;
+  mfmt->integral_digits =
+    wcsspn (integer_part, WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ()))
+    - mfmt->thousands;
+
+  if (mfmt->integral_digits <= 0)
+    {
+      mfmt->integral_digits =
+	wcsspn (integer_part, WCSCAT (idc, FMT_9 (), FMT_THOUSANDS ()))
+	- mfmt->thousands;
+
+      if (mfmt->integral_digits > 0)
+	{
+	  mfmt->integral_type = DIGIT_9;
+	}
+      else
+	{
+	  mfmt->integral_digits =
+	    wcsspn (integer_part, WCSCAT (idc, FMT_STAR (), FMT_THOUSANDS ()))
+	    - mfmt->thousands;
+	  if (mfmt->integral_digits > 0)
+	    {
+	      mfmt->integral_type = DIGIT_STAR;
+	    }
+	  else
+	    {
+	      mfmt->integral_type = DIGIT_Z;
+	    }
+	}
     }
 }
 
@@ -6197,9 +6275,8 @@ nfmt_integral_value (FORMAT_DIGIT digit_type,
   int nfound;
   int error;
 
-  error =
-    nfmt_integral_digits (digit_type, ndigits, sign_required,
-			  thousands, the_value, &nfound);
+  error = nfmt_integral_digits (digit_type, ndigits, sign_required,
+				thousands, the_value, &nfound);
   if (!error && ndigits)
     {
       /* Too many digits? */
@@ -6470,8 +6547,8 @@ nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits, char *the_value)
  * the_numeric(out) :
  */
 static const char *
-num_fmt_value (FLOAT_FORMAT * ffmt,
-	       const char *string, DB_VALUE * the_numeric)
+num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
+	       DB_VALUE * the_numeric)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -6489,8 +6566,8 @@ num_fmt_value (FLOAT_FORMAT * ffmt,
       /* Get value of integer part. */
       error = nfmt_integral_value (ffmt->integral_type,
 				   ffmt->integral_digits,
-				   ffmt->sign_required,
-				   ffmt->thousands, temp);
+				   ffmt->sign_required, ffmt->thousands,
+				   temp);
 
       if (error && error != CNV_ERR_MISSING_INTEGER)
 	{
@@ -6528,7 +6605,7 @@ num_fmt_value (FLOAT_FORMAT * ffmt,
 		  break;
 		}
 
-	      strcat (temp, fraction_part);
+	      strncat (temp, fraction_part, sizeof (temp) - precision - 1);
 	      precision += strlen (fraction_part);
 	      scale = strlen (fraction_part);
 	      type = cnv_fmt_lex (&token);
@@ -7114,11 +7191,7 @@ db_value_string (const DB_VALUE * value, const char *format,
       break;
 
     case DB_TYPE_TIME:
-      if (value != NULL)
-	{
-	  error = db_time_string (DB_GET_TIME (value), format, string,
-				  max_size);
-	}
+      error = db_time_string (DB_GET_TIME (value), format, string, max_size);
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -8733,22 +8806,28 @@ db_datetime_string (const DB_DATETIME * the_datetime,
 	  value_string = fmt_monthday_string (day, token.text);
 	  break;
 	case FT_WEEKDAY:
-	  weekday = db_date_weekday ((DB_DATE *) & the_date);
+	  db_date_encode (&the_date, month, day, year);
+	  weekday = db_date_weekday ((DB_DATE *) (&the_date));
 	  value_string = fmt_weekday_string (weekday, token.text);
 	  break;
 	case FT_TIME:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = fmt_time_string (&the_time, token.text);
 	  break;
 	case FT_SECOND:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = fmt_second_string (&the_time, token.text);
 	  break;
 	case FT_MILLISECOND:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = fmt_second_string (&the_time, token.text);
 	  break;
 	case FT_HOUR:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = fmt_hour_string (&the_time, token.text);
 	  break;
 	case FT_MINUTE:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = fmt_minute_string (&the_time, token.text);
 	  break;
 	case FT_ZONE:
@@ -8756,6 +8835,7 @@ db_datetime_string (const DB_DATETIME * the_datetime,
 	  value_string = "";
 	  break;
 	case FT_AM_PM:
+	  db_time_encode (&the_time, hour, minute, second);
 	  value_string = local_am_pm_string (&the_time);
 	  break;
 	default:

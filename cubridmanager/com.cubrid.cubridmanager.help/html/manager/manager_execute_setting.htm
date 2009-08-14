@@ -1,0 +1,124 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>실행 환경 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\nCUBRID 매니저 실행\n실행 환경 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_execute_setting.htm\">CUBRID 매니저 실행<\/a> &nbsp;&gt;&nbsp; 실행 환경 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CUBRID 매니저 서버 환경 설정</h3>
+<p>CUBRID 매니저 서버의 환경 설정 파일은 <span class="keyword">$CUBRID/conf</span>에 위치하며, 파일 이름은 <span class="keyword">cm.conf</span>이다.</p>
+<p>CUBRID 매니저의 환경 설정 파일에서 주석은 "#"으로 처리되며, 매개 변수 이름과 값이 저장된다. 매개 변수 이름과 값 사이에는 공백으로 구분한다. <span class="keyword">cm.conf</span>에서 설정할 수 있는 매개 변수는 다음과 같다.</p>
+<h6>cm_port</h6>
+<p>CUBRID 매니저 서버와 클라이언트 사이의 통신 포트를 설정하는 매개 변수로, 디폴트 값은 <span class="keyword">8001</span>로 설정된다. <span class="keyword">cm_port</span>는 <span class="keyword">cub_auto</span>가 사용하는 포트이며, <span class="keyword">cm_js</span>는 자동으로 <span class="keyword">cm_port</span>로 설정한 값보다 1만큼&#160;큰 값을 사용한다. 예를 들어, <span class="keyword">cm_port</span>가 8001로 설정된 경우 <span class="keyword">cub_auto</span>는 8001 포트를 사용하고, <span class="keyword">cub_js</span>는 8002 포트를 사용한다. 따라서 방화벽이 설정된 환경에서 CUBRID 매니저를 구동하려면 반드시 실제로 사용되는 두 개의 포트를 열어야 한다.</p>
+<h6>monitor_interval</h6>
+<p><span class="keyword">cub_auto</span>의 모니터링 주기를 초 단위로 설정하는 매개 변수로, 디폴트&#160;값은 <span class="keyword">5</span>이다.</p>
+<h6>allow_user_multi_connection</h6>
+<p class="desc">CUBRID 매니저 서버에 클라이언트가 중복 접속하는 것을 허용하기 위한 매개 변수로, 디폴트 값은 <span class="keyword">YES</span>이다. 따라서 CUBRID 매니저 서버에는 두 개 이상의 CUBRID 매니저 클라이언트가 접속할 수 있으며, 같은 사용자 이름으로 접속할 수도 있다.</p>
+<h6>execute_diag</h6>
+<p>CUBRID 매니저가 제공하는 데이터베이스 서버 상태 모니터링 기능을 활성화하기 위한 매개 변수로, 기본 값은 <span class="keyword">OFF</span>이다. 브로커 진단 기능은 이 매개 변수에 영향을 받지 않고 항상 활성화된다.</p>
+<h6>server_long_query_time</h6>
+<p>서버의 진단 항목 중 <span class="keyword">slow_query</span> 항목을 설정할 경우 몇 초 이상을 늦은 질의로 판별할지 결정하는 매개 변수로, 기본 값은 <span class="keyword">10</span>이다. 서버에서 수행된 질의 수행 시간이 매개 변수 설정 값보다 큰 경우, <span class="keyword">slow_query</span>의 개수가 증가한다.</p>
+<h6>cm_target</h6>
+<p>브로커와 데이터베이스 서버가 분리된 구조에서 매니저의 메뉴를 해당 서비스에 맞게 출력할 목적으로 지원되는 매개 변수이다. 디폴트 값은 브로커와 데이터베이스 서버가 같이 설치되어 있는 환경을 의미하며, 다음과 같이 설정할 수 있다.</p>
+<ul>
+<li><span class="keyword">cm_target broker, server</span> : 브로커와 데이터베이스 서버가 같이 있을 경우</li>
+<li><span class="keyword">cm_target broker</span> : 브로커만 있을 경우</li>
+<li><span class="keyword">cm_target server</span> : 데이터베이스 서버만 있을 경우</li>
+</ul>
+<p>브로커만 설정하면&#160;매니저에서 브로커 관련 메뉴만 출력되고, 데이터베이스 서버만 설정하면 서버 관련 메뉴만 출력된다.</p>
+<p>탐색 트리에서 호스트를 마우스 오른쪽 버튼 클릭하고 [속성]을 선택하면, 설정된 정보를 [호스트 정보]에서 확인할 수 있다.</p>
+<p><img src="images/manager_execute_setting_hostinfo.png" width="491" height="223" border="0" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

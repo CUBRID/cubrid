@@ -423,25 +423,28 @@ static char **
 get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
 {
   int i;
-  char **val;			/* temporary array for values */
-  int *len;			/* temporary array for lengths */
+  char **val = NULL;		/* temporary array for values */
+  int *len = NULL;		/* temporary array for lengths */
   DB_VALUE db_value;
   CUBRID_STMT_TYPE stmt_type = result_info->curr_stmt_type;
   DB_QUERY_RESULT *result = result_info->query_result;
   int num_attrs = result_info->num_attrs;
 
   val = (char **) malloc (sizeof (char *) * num_attrs);
-  len = (int *) malloc (sizeof (int) * num_attrs);
-  if (val == NULL || len == NULL)
+  if (val == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
       goto error;
     }
-  for (i = 0; i < num_attrs; i++)
+  memset (val, 0, sizeof (char *) * num_attrs);
+
+  len = (int *) malloc (sizeof (int) * num_attrs);
+  if (len == NULL)
     {
-      val[i] = (char *) NULL;
-      len[i] = 0;
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      goto error;
     }
+  memset (len, 0, sizeof (int) * num_attrs);
 
   (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
 
@@ -573,7 +576,9 @@ error:
       free_and_init (val);
     }
   if (len != NULL)
-    free_and_init (len);
+    {
+      free_and_init (len);
+    }
   return ((char **) NULL);
 }
 

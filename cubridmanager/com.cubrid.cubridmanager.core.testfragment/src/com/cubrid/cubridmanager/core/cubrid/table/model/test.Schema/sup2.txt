@@ -1,0 +1,18 @@
+CREATE TABLE "sup2"
+CLASS ATTRIBUTE(
+"float" smallint DEFAULT 1
+)
+(
+"bigint" bigint,
+"numeric1" numeric(15,0) AUTO_INCREMENT NOT NULL UNIQUE,
+"numeric2" numeric(17,2) DEFAULT 12.50 NOT NULL,
+"float" float DEFAULT 12 NOT NULL,
+"date" date DEFAULT DATE'12/12/2009',
+"smallint2" smallint,
+"cache" sup1,
+PRIMARY KEY("numeric1","numeric2"),
+FOREIGN KEY ("smallint2") REFERENCES "sup1"("smallint") ON DELETE RESTRICT ON UPDATE RESTRICT ON CACHE OBJECT cache
+);
+CREATE  INDEX ON "sup2"("bigint" ASC,"numeric1" ASC);
+CREATE  REVERSE UNIQUE INDEX ON "sup2"("numeric2","float");
+CREATE  REVERSE INDEX "ri_sup2_numeric1_float" ON "sup2"("numeric1","float");

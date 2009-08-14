@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -85,16 +85,18 @@ extern int smt_set_attribute_default (SM_TEMPLATE * template_,
 				      const char *name,
 				      int class_attribute, DB_VALUE * value);
 
-extern int smt_drop_constraint (SM_TEMPLATE * template_,
-				const char *constraint_name,
-				SM_ATTRIBUTE_FLAG constraint);
+extern int smt_add_constraint (SM_TEMPLATE * template_,
+			       const char **att_names, const int *asc_desc,
+			       const char *name, int class_attribute,
+			       SM_ATTRIBUTE_FLAG constraint,
+			       SM_FOREIGN_KEY_INFO * fk_info,
+			       char *shared_cons_name);
 
-extern int smt_constrain (SM_TEMPLATE * template_, const char **att_names,
-			  const int *asc_desc,
-			  const char *name, int class_attribute,
-			  SM_ATTRIBUTE_FLAG constraint, int on_or_off,
-			  SM_FOREIGN_KEY_INFO * fk_info,
-			  char *shared_cons_name);
+extern int smt_drop_constraint (SM_TEMPLATE * template_,
+				const char **att_names,
+				const char *constraint_name,
+				int class_attribute,
+				SM_ATTRIBUTE_FLAG constraint);
 
 extern int smt_add_index (SM_TEMPLATE * template_, const char *name,
 			  int on_or_off);
@@ -183,7 +185,10 @@ extern int smt_drop_query_spec (SM_TEMPLATE * template_, const int index);
 extern int smt_reset_query_spec (SM_TEMPLATE * template_);
 extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query,
 				  const int index);
+
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);
+#endif
 
 /* Object_id functions */
 extern int smt_set_object_id (SM_TEMPLATE * template_, DB_NAMELIST * id_list);

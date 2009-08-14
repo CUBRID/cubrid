@@ -1,0 +1,35 @@
+     <constraints>
+       <rsc_location id="loc_cubrid_nbd_0_ldup_1" rsc="group_cubrid_nbd_0_ldup_1">
+         <rule id="nonprefered_loc_cubrid_nbd_0_ldup_1:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v1.cub"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd_0_ldup_1:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v1.cub"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="loc_cubrid_nbd_1_ldup_0" rsc="group_cubrid_nbd_1_ldup_0">
+         <rule id="nonprefered_loc_cubrid_nbd_1_ldup_0:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v2.cub"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd_1_ldup_0:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v2.cub"/>
+         </rule>
+       </rsc_location>
+
+       <rsc_location id="loc_cubrid_mbd_0_ldup_1" rsc="group_cubrid_mbd_0_ldup_1">
+         <rule id="nonprefered_loc_cubrid_mbd_0_ldup_1:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v1.cub"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_mbd_0_ldup_1:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v1.cub"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="loc_cubrid_mbd_1_ldup_0" rsc="group_cubrid_mbd_1_ldup_0">
+         <rule id="nonprefered_loc_cubrid_mbd_1_ldup_0:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v2.cub"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_mbd_1_ldup_0:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v2.cub"/>
+         </rule>
+       </rsc_location>
+     </constraints>

@@ -1,0 +1,219 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<item name="주석" url="syntax/csql_syntaxtype_comment.htm" />
+<item name="식별자" url="syntax/csql_syntaxtype_identifier.htm" />
+<item name="예약어" url="syntax/csql_syntaxtype_keyword.htm" />
+<book name="데이터 타입" >
+  <book name="문자 스트링 데이터 타입" >
+    <item name="정의와 특성" url="syntax/syntax_datatype_string_def.htm" />
+    <item name="CHAR(n)" url="syntax/syntax_datatype_string_char.htm" />
+    <item name="VARCHAR(n)" url="syntax/syntax_datatype_string_varchar.htm" />
+    <item name="STRING" url="syntax/syntax_datatype_string_string.htm" />
+    <item name="NCHAR(n)" url="syntax/syntax_datatype_string_nchar.htm" />
+    <item name="NCHAR  VARYING(n)" url="syntax/syntax_datatype_string_ncharvarying.htm" />
+  </book>
+  <book name="비트 스트링 데이터  타입" >
+    <item name="정의와 특성" url="syntax/syntax_datatype_bit_def.htm" />
+    <item name="BIT(n)" url="syntax/syntax_datatype_bit_bit.htm" />
+    <item name="BIT  VARYING(n)" url="syntax/syntax_datatype_bit_bitvarying.htm" />
+  </book>
+  <book name="수치형 데이터  타입" >
+    <item name="정의와 특성" url="syntax/syntax_datatype_num_def.htm" />
+    <item name="INTEGER" url="syntax/syntax_datatype_num_integer.htm" />
+    <item name="SMALLINT" url="syntax/syntax_datatype_num_smallint.htm" />
+    <item name="BIGINT" url="syntax/syntax_datatype_num_bigint.htm" />
+    <item name="NUMERIC 또는 DECIMAL" url="syntax/syntax_datatype_num_decimal.htm" />
+    <item name="FLOAT 또는 REAL" url="syntax/syntax_datatype_num_float.htm" />
+    <item name="DOUBLE 또는 DOUBLE  PRECISION" url="syntax/syntax_datatype_num_double.htm" />
+    <item name="MONETARY" url="syntax/syntax_datatype_num_monetary.htm" />
+  </book>
+  <book name="날짜/시간  데이터 타입" >
+    <item name="정의와 특성" url="syntax/syntax_datatype_date_def.htm" />
+    <item name="DATE" url="syntax/syntax_datatype_date_date.htm" />
+    <item name="TIME" url="syntax/syntax_datatype_date_time.htm" />
+    <item name="TIMESTAMP" url="syntax/syntax_datatype_date_timestamp.htm" />
+    <item name="DATETIME" url="syntax/syntax_datatype_date_datetime.htm" />
+  </book>
+  <book name="집합형 데이터 타입" >
+    <item name="정의와 특성" url="syntax/syntax_datatype_collection_def.htm" />
+    <item name="SET" url="syntax/syntax_datatype_collection_set.htm" />
+    <item name="MULTISET" url="syntax/syntax_datatype_collection_multiset.htm" />
+    <item name="LIST 또는 SEQUENCE" url="syntax/syntax_datatype_collection_list.htm" />
+  </book>
+</book>
+<book name="연산자와 함수" >
+  <item name="관계 연산자" url="syntax/syntax_operator_rel.htm" />
+  <book name="산술 연산자" >
+    <item name="산술 연산자" url="syntax/syntax_operator_math.htm" />
+    <item name="문자열 연산" url="syntax/syntax_operator_math_bit.htm" />
+    <item name="수치 연산" url="syntax/syntax_operator_math_numeric.htm" />
+    <item name="날짜/시간 연산" url="syntax/syntax_operator_math_date.htm" />
+  </book>
+  <item name="집합 연산자" url="syntax/syntax_operator_collection.htm" />
+  <book name="포함 연산자" >
+    <item name="포함 연산자" url="syntax/syntax_operator_contain_contain.htm" />
+    <item name="SETEQ 연산자" url="syntax/syntax_operator_contain_seteq.htm" />
+    <item name="SETNEQ 연산자" url="syntax/syntax_operator_contain_setneq.htm" />
+    <item name="SUPERSET 연산자" url="syntax/syntax_operator_contain_superset.htm" />
+    <item name="SUPERSETEQ 연산자" url="syntax/syntax_operator_contain_superseteq.htm" />
+    <item name="SUBSET 연산자" url="syntax/syntax_operator_contain_subset.htm" />
+    <item name="SUBSETEQ 연산자" url="syntax/syntax_operator_contain_subseteq.htm" />
+  </book>
+  <item name="CAST 연산자" url="syntax/syntax_operator_cast.htm" />
+  <item name="EXTRACT 연산자" url="syntax/syntax_operator_extract.htm" />
+  <book name="스트링  함수와 연산자" >
+    <item name="병합 연산자" url="syntax/syntax_operator_strfunc_concat.htm" />
+    <item name="LENGTH  함수" url="syntax/syntax_operator_strfunc_length.htm" />
+    <item name="CHAR_LENGTH  함수" url="syntax/syntax_operator_strfunc_charlength.htm" />
+    <item name="BIT_LENGTH  함수" url="syntax/syntax_operator_strfunc_bitlength.htm" />
+    <item name="OCTET_LENGTH 함수" url="syntax/syntax_operator_strfunc_octetlength.htm" />
+    <item name="UPPER 함수" url="syntax/syntax_operator_strfunc_upper.htm" />
+    <item name="LOWER 함수" url="syntax/syntax_operator_strfunc_lower.htm" />
+    <item name="TRIM 함수" url="syntax/syntax_operator_strfunc_trim.htm" />
+    <item name="LTRIM 함수" url="syntax/syntax_operator_strfunc_ltrim.htm" />
+    <item name="RTRIM 함수" url="syntax/syntax_operator_strfunc_rtrim.htm" />
+    <item name="LPAD 함수" url="syntax/syntax_operator_strfunc_lpad.htm" />
+    <item name="RPAD 함수" url="syntax/syntax_operator_strfunc_rpad.htm" />
+    <item name="LIKE 함수" url="syntax/syntax_operator_strfunc_like.htm" />
+    <item name="CHR 함수" url="syntax/syntax_operator_strfunc_chr.htm" />
+    <item name="POSITION 함수" url="syntax/syntax_operator_strfunc_position.htm" />
+    <item name="INSTR 함수" url="syntax/syntax_operator_strfunc_instr.htm" />
+    <item name="REPLACE 함수" url="syntax/syntax_operator_strfunc_replace.htm" />
+    <item name="TRANSLATE 함수" url="syntax/syntax_operator_strfunc_trans.htm" />
+    <item name="SUBSTR 함수" url="syntax/syntax_operator_strfunc_substr.htm" />
+    <item name="SUBSTRING 함수" url="syntax/syntax_operator_strfunc_substring.htm" />
+  </book>
+  <book name="수치 연산 함수" >
+    <item name="RANDOM/RAND 함수" url="syntax/syntax_operator_numfunc_rand.htm" />
+    <item name="DRANDOM/DRAND 함수" url="syntax/syntax_operator_numfunc_drand.htm" />
+    <item name="ROUND 함수" url="syntax/syntax_operator_numfunc_round.htm" />
+    <item name="CEIL 함수" url="syntax/syntax_operator_numfunc_ceil.htm" />
+    <item name="FLOOR 함수" url="syntax/syntax_operator_numfunc_floor.htm" />
+    <item name="MOD 함수" url="syntax/syntax_operator_numfunc_mod.htm" />
+    <item name="POWER 함수" url="syntax/syntax_operator_numfunc_power.htm" />
+    <item name="ABS 함수" url="syntax/syntax_operator_numfunc_abs.htm" />
+    <item name="SIGN 함수" url="syntax/syntax_operator_numfunc_sign.htm" />
+    <item name="TRUNC 함수" url="syntax/syntax_operator_numfunc_trunc.htm" />
+  </book>
+  <book name="날짜/시간 함수" >
+    <item name="ADD_MONTH 함수" url="syntax/syntax_operator_datefunc_addmonth.htm" />
+    <item name="MONTHS_BETWEEN 함수" url="syntax/syntax_operator_datefunc_between.htm" />
+    <item name="LAST_DAY 함수" url="syntax/syntax_operator_datefunc_lastday.htm" />
+    <item name="SYS_DATE(SYSDATE, CURRENT_DATE) 함수" url="syntax/syntax_operator_datefunc_sysdate.htm" />
+    <item name="SYS_TIME(SYSTIME, CURRENT_TIME) 함수" url="syntax/syntax_operator_datefunc_systime.htm" />
+    <item name="SYS_TIMESTAMP(SYSTIMESTAMP, CURRENT_TIMESTAMP) 함수" url="syntax/syntax_operator_datefunc_systimestamp.htm" />
+    <item name="SYS_DATETIME(SYSDATETIME, CURRENT_DATETIME) 함수" url="syntax/syntax_operator_datefunc_sysdatetime.htm" />
+  </book>
+  <book name="데이터 타입 변환 함수" >
+    <item name="TO_CHAR 함수" url="syntax/syntax_operator_to_char.htm" />
+    <item name="TO_NUMBER 함수" url="syntax/syntax_operator_to_number.htm" />
+    <item name="TO_DATE 함수" url="syntax/syntax_operator_to_date.htm" />
+    <item name="TO_TIME 함수" url="syntax/syntax_operator_to_time.htm" />
+    <item name="TO_TIMESTAMP 함수" url="syntax/syntax_operator_to_timestamp.htm" />
+    <item name="TO_DATETIME 함수" url="syntax/syntax_operator_to_datetime.htm" />
+  </book>
+  <book name="집계 함수" >
+    <item name="MIN 함수" url="syntax/syntax_operator_multi_min.htm" />
+    <item name="MAX 함수" url="syntax/syntax_operator_multi_max.htm" />
+    <item name="SUM 함수" url="syntax/syntax_operator_multi_sum.htm" />
+    <item name="AVG 함수" url="syntax/syntax_operator_multi_avg.htm" />
+    <item name="VARIANCE 함수" url="syntax/syntax_operator_multi_variance.htm" />
+    <item name="STDDEV 함수" url="syntax/syntax_operator_multi_stddev.htm" />
+  </book>
+  <book name="조건/비교 관련 함수와 연산자" >
+    <item name="CASE" url="syntax/syntax_operator_cond_case.htm" />
+    <item name="NULLIF와 COALESCE" url="syntax/syntax_operator_cond_nullif.htm" />
+    <item name="NVL, NVL2 함수" url="syntax/syntax_operator_cond_nvl.htm" />
+    <item name="DECODE 함수" url="syntax/syntax_operator_cond_decode.htm" />
+    <item name="GREATEST 함수" url="syntax/syntax_operator_cond_greatest.htm" />
+    <item name="LEAST 함수" url="syntax/syntax_operator_cond_least.htm" />
+  </book>
+  <book name="사용자명 함수" >
+    <item name="CURRENT_USER 또는 USER 함수" url="syntax/syntax_operator_user_current.htm" />
+  </book>
+  <book name="클릭 카운터 함수" >
+    <item name="INCR과 DECR 함수" url="syntax/syntax_operator_counter_incr.htm" />
+  </book>
+  <book name="ROWNUM 함수" >
+    <item name="ROWNUM, INST_NUM() 함수" url="syntax/syntax_operator_counter_rownum.htm" />
+    <item name="GROUPBY_NUM 함수" url="syntax/syntax_operator_counter_groupbynum.htm" />
+    <item name="ORDERBY_NUM 함수" url="syntax/syntax_operator_counter_orderbynum.htm" />
+  </book>
+</book>
+<book name="데이터 조회" >
+  <item name="SELECT 절" url="syntax/syntax_retreive_select.htm" />
+  <item name="FROM 절" url="syntax/syntax_retreive_from.htm" />
+  <item name="WHERE 절" url="syntax/syntax_retreive_where.htm" />
+  <item name="GROUP BY HAVING 절" url="syntax/syntax_retreive_group.htm" />
+  <item name="ORDER BY 절" url="syntax/syntax_retreive_order.htm" />
+  <item name="USING INDEX 절" url="syntax/syntax_retreive_index.htm" />
+  <item name="외부 조인" url="syntax/syntax_retreive_etc_join.htm" />
+  <item name="부질의(subquery)" url="syntax/syntax_retreive_etc_sub.htm" />
+</book>
+<book name="질의 최적화" >
+  <item name="통계 정보 갱신" url="syntax/syntax_retreive_opt_statistics.htm" />
+  <item name="SQL 힌트 사용" url="syntax/syntax_retreive_opt_hint.htm" />
+  <item name="쿼리 실행 계획 보기" url="syntax/syntax_retreive_opt_plan.htm" />
+</book>
+<book name="테이블 조작" >
+<chunk name="테이블 조작" ref="whtdata4.xml" />
+</book>
+<book name="데이터 조작" >
+  <book name="데이터 생성" >
+    <item name="INSERT INTO(구문)" url="syntax/syntax_instance_create_syntax.htm" />
+    <item name="질의를 이용한 INSERT" url="syntax/syntax_instance_create_query.htm" />
+    <item name="부질의를 이용한 INSERT" url="syntax/syntax_instance_create_sub.htm" />
+  </book>
+  <item name="데이터 갱신(UPDATE)" url="syntax/syntax_instance_update.htm" />
+  <item name="데이터 삭제(DELETE)" url="syntax/syntax_instance_delete.htm" />
+</book>
+<book name="가상 테이블(VIEW) " >
+  <book name="가상 테이블 생성" >
+    <item name="CREATE VIEW(구문)" url="syntax/syntax_view_create_syntax.htm" />
+    <item name="수정 가능한 VIEW의 생성 조건" url="syntax/syntax_view_create_cond.htm" />
+  </book>
+  <book name="가상 테이블 변경" >
+    <item name="가상 테이블 이름 변경" url="syntax/syntax_view_mod_rename.htm" />
+    <item name="새로운 질의 추가" url="syntax/syntax_view_mod_add.htm" />
+    <item name="정의된 질의 변경" url="syntax/syntax_view_mod_alter.htm" />
+    <item name="질의 삭제" url="syntax/syntax_view_mod_delete.htm" />
+  </book>
+  <item name="가상 테이블 삭제" url="syntax/syntax_view_delete.htm" />
+</book>
+<book name="인덱스(INDEX)" >
+  <item name="인덱스 생성" url="syntax/syntax_index_create.htm" />
+  <item name="인덱스 삭제" url="syntax/syntax_index_delete.htm" />
+  <item name="인덱스 변경" url="syntax/syntax_index_mod.htm" />
+</book>
+<book name="트랜잭션 관리" >
+<chunk name="트랜잭션 관리" ref="whtdata5.xml" />
+</book>
+<book name="트리거(TRIGGER)" >
+<chunk name="트리거(TRIGGER)" ref="whtdata6.xml" />
+</book>
+<book name="메소드" >
+<chunk name="메소드" ref="whtdata7.xml" />
+</book>
+<book name="멀티미디어 데이터 관리" >
+<chunk name="멀티미디어 데이터 관리" ref="whtdata8.xml" />
+</book>
+<book name="분할" >
+<chunk name="분할" ref="whtdata9.xml" />
+</book>
+<book name="시리얼" >
+<chunk name="시리얼" ref="whtdata10.xml" />
+</book>
+<book name="접근 권한 부여 구문" >
+<chunk name="접근 권한 부여 구문" ref="whtdata11.xml" />
+</book>
+<book name="Java 저장 함수/프로시저" >
+<chunk name="Java 저장 함수/프로시저" ref="whtdata12.xml" />
+</book>
+<book name="CUBRID SQL 구문" >
+<chunk name="CUBRID SQL 구문" ref="whtdata13.xml" />
+</book>
+<book name="CUBRID 시스템 카탈로그" >
+<chunk name="CUBRID 시스템 카탈로그" ref="whtdata14.xml" />
+</book>
+
+</tocdata>

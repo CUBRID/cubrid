@@ -418,7 +418,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_INCR:
     case T_DECR:
-      if (peek_right == NULL || PRIM_IS_NULL (peek_right))
+      if (DB_IS_NULL (peek_right))
 	{
 	  /* an instance does not exist to do increment */
 	  PRIM_SET_NULL (arithptr->value);
@@ -454,7 +454,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_INSTR:
-      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -466,7 +466,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_POSITION:
-      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -478,7 +478,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_SUBSTRING:
-      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -666,7 +666,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_MONTHS_BETWEEN:
-      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -775,7 +775,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (DB_GET_INT (peek_third) == 1)
+      else if (peek_third && DB_GET_INT (peek_third) == 1)
 	{
 	  peek_right->domain.general_info.type = DB_TYPE_NULL;
 	  if (db_to_number (peek_left, 0, arithptr->value) != NO_ERROR)

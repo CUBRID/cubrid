@@ -111,22 +111,20 @@ char tempstr[100];
 	if (ucinfo->m_appl_server == NO_CAS) {
 		sprintf(tempstr, "%s", ucinfo->m_session_timeout);
 		m_ucm_list.SetItemText(position, 6, tempstr);
-		sprintf(tempstr, "%s(%s)", ucinfo->m_sql_log ? ON : OFF,
-			                       ucinfo->m_sql_log_time);
+		sprintf(tempstr, "%s", ucinfo->m_sql_log ? ON : OFF);
 		m_ucm_list.SetItemText(position, 7, tempstr);
 	} else {
-		sprintf(tempstr, "%s(%s)", ucinfo->m_session ? ON : OFF,
-								   ucinfo->m_session_timeout);
+		sprintf(tempstr, "%s", ucinfo->m_session ? ON : OFF,
+			ucinfo->m_session_timeout);
 		m_ucm_list.SetItemText(position, 6, tempstr);
-		sprintf(tempstr, "%s(%s)", ucinfo->m_sql_log ? ON : OFF,
-			                       ucinfo->m_sql_log_time);
+		sprintf(tempstr, "%s", ucinfo->m_sql_log ? ON : OFF);
 		m_ucm_list.SetItemText(position, 7, tempstr);
 	}
 
 	SetTimer(1030, 2*1000, NULL);
 }
 
-BOOL CMonitor::OnInitDialog() 
+BOOL CMonitor::OnInitDialog()
 {
 CUCInfo	*ucinfo;
 
@@ -153,7 +151,7 @@ CUCInfo	*ucinfo;
 			DisplayItem(ucinfo, i);
 		}
 	}
-	
+
 	m_ucm_onoff.EnableWindow(false);
 	m_ucm_monitor.EnableWindow(false);
 
@@ -161,13 +159,13 @@ CUCInfo	*ucinfo;
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void CMonitor::OnClickUcmList(NMHDR* pNMHDR, LRESULT* pResult) 
+void CMonitor::OnClickUcmList(NMHDR* pNMHDR, LRESULT* pResult)
 {
 CUCInfo	*ucinfo;
 int	index;
 
 	index = m_ucm_list.GetNextItem(-1, LVNI_ALL | LVNI_SELECTED);
-	if (index == -1) { 
+	if (index == -1) {
 		m_ucm_monitor.EnableWindow(false);
 		m_ucm_onoff.EnableWindow(false);
 		m_ucm_onoff.SetWindowText(theLang.GetMessage(WN_UCM_SERVICE));
@@ -185,16 +183,16 @@ int	index;
 	}
 }
 
-void CMonitor::OnDblclkUcmList(NMHDR* pNMHDR, LRESULT* pResult) 
+void CMonitor::OnDblclkUcmList(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	OnUcmMonitor();
 //	*pResult = 0;
 }
 
-void CMonitor::OnUcmMonitor() 
+void CMonitor::OnUcmMonitor()
 {
 CUCInfo	*ucinfo;
-	
+
 	m_index = m_ucm_list.GetNextItem( -1, LVNI_ALL | LVNI_SELECTED);
 	if (m_index == -1) return;
 
@@ -207,8 +205,8 @@ CUCInfo	*ucinfo;
 
 	if (!m_detail[m_index]) {
 		m_detail[m_index] = new CUCMDetail();
-		m_detail[m_index]->SetBroker(ucinfo->m_broker, 
-								     ucinfo->m_appl_server, 
+		m_detail[m_index]->SetBroker(ucinfo->m_broker,
+								     ucinfo->m_appl_server,
 								  	 ucinfo->m_auto_add_appl_server,
 									 ucinfo->m_min_num_appl_server,
 									 ucinfo->m_max_num_appl_server,
@@ -221,13 +219,13 @@ CUCInfo	*ucinfo;
 	}
 }
 
-void CMonitor::OnUcmServiceOnoff() 
+void CMonitor::OnUcmServiceOnoff()
 {
 #ifdef UNICAS_ON
 CUCInfo	*ucinfo;
 char	err_msg[100];
 int		rc;
-	
+
 	m_index = m_ucm_list.GetNextItem( -1, LVNI_ALL | LVNI_SELECTED);
 	if (m_index == -1) return;
 
@@ -256,18 +254,18 @@ int		rc;
 #endif
 }
 
-void CMonitor::OnUcmEnd() 
+void CMonitor::OnUcmEnd()
 {
 	KillTimer(1030);
-//	CDialog::OnOK();	
+//	CDialog::OnOK();
 	m_parent->SendMessage(WM_STOPMONITOR, 0, 0);
 }
 
-void CMonitor::OnClose() 
+void CMonitor::OnClose()
 {
 	KillTimer(1030);
 	m_parent->SendMessage(WM_STOPMONITOR, 0, 0);
-	
+
 //	CDialog::OnClose();
 }
 

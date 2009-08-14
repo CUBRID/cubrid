@@ -1,0 +1,4 @@
+task:optimizedb
+status:failure
+note:Unknown class "notexistclassname".
+

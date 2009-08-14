@@ -83,7 +83,8 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
       if (strncmp (strbuf, CUBRID_PASS_OPEN_TAG, CUBRID_PASS_OPEN_TAG_LEN) ==
 	  0)
 	{
-	  strcpy (cur_user, strbuf + CUBRID_PASS_OPEN_TAG_LEN);
+	  snprintf (cur_user, sizeof (cur_user) - 1, "%s", strbuf
+		    + CUBRID_PASS_OPEN_TAG_LEN);
 	  if (cur_user[0] == '\0')
 	    continue;
 	  num_dbmt_user++;
@@ -95,27 +96,34 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 	    }
 
 	  /* user name set */
-	  strcpy (user_info[num_dbmt_user - 1].user_name, cur_user);
+	  strncpy (user_info[num_dbmt_user - 1].user_name, cur_user,
+		   DBMT_USER_NAME_LEN);
 	  dbinfo = NULL;
 	  num_dbinfo = 0;
 	  continue;
 	}
 
       if (cur_user[0] == '\0')
-	continue;
+	{
+	  continue;
+	}
 
       if (strncmp (strbuf, CUBRID_PASS_CLOSE_TAG, CUBRID_PASS_CLOSE_TAG_LEN)
 	  == 0)
 	{
 	  if (strcmp (strbuf + CUBRID_PASS_CLOSE_TAG_LEN, cur_user) != 0)
 	    {
-	      strcpy (_dbmt_error,
-		      conf_get_dbmt_file2 (FID_DBMT_CUBRID_PASS, strbuf));
+	      strcpy (_dbmt_error, conf_get_dbmt_file2 (FID_DBMT_CUBRID_PASS,
+							strbuf));
 	      retval = ERR_FILE_INTEGRITY;
 	      goto read_dbmt_user_error;
 	    }
-	  user_info[num_dbmt_user - 1].dbinfo = dbinfo;
-	  user_info[num_dbmt_user - 1].num_dbinfo = num_dbinfo;
+	  if (user_info != NULL)
+	    {
+	      user_info[num_dbmt_user - 1].dbinfo = dbinfo;
+	      dbinfo = NULL;
+	      user_info[num_dbmt_user - 1].num_dbinfo = num_dbinfo;
+	    }
 	  cur_user[0] = '\0';
 	}
       else
@@ -135,6 +143,12 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
     }
   fclose (fp);
   fp = NULL;
+
+  if (dbinfo != NULL)
+    {
+      free (dbinfo);
+      dbinfo = NULL;
+    }
 
   if (num_dbmt_user < 1)
     {
@@ -167,7 +181,9 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 	{
 	  if (strcmp (tok[0], dbmt_user->user_info[i].user_name) == 0)
 	    {
-	      strcpy (dbmt_user->user_info[i].user_passwd, tok[1]);
+	      snprintf (dbmt_user->user_info[i].user_passwd,
+			sizeof (dbmt_user->user_info[i].user_passwd) - 1,
+			"%s", tok[1]);
 	      break;
 	    }
 	}
@@ -178,8 +194,14 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
   return ERR_NO_ERROR;
 
 read_dbmt_user_error:
-  if (fp)
-    fclose (fp);
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
+  if (user_info != NULL)
+    {
+      free (user_info);
+    }
   dbmt_user_free (dbmt_user);
   uRemoveLockFile (lock_fd);
   return retval;
@@ -251,12 +273,22 @@ dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 
 void
 dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, const char *dbname,
-		      const char *auth, const char *uid, const char *passwd)
+		      const char *auth, const char *uid, const char *passwd,
+		      const char *broker_address)
 {
   strncpy (dbinfo->dbname, dbname, sizeof (dbinfo->dbname) - 1);
   strncpy (dbinfo->auth, auth, sizeof (dbinfo->auth) - 1);
   strncpy (dbinfo->uid, uid, sizeof (dbinfo->uid) - 1);
   strncpy (dbinfo->passwd, passwd, sizeof (dbinfo->passwd) - 1);
+  if (broker_address == NULL)
+    {
+      dbinfo->broker_address[0] = '\0';
+    }
+  else
+    {
+      strncpy (dbinfo->broker_address, broker_address,
+	       sizeof (dbinfo->broker_address) - 1);
+    }
 }
 
 void
@@ -275,13 +307,15 @@ void
 dbmt_user_db_auth_str (T_DBMT_USER_DBINFO * dbinfo, char *buf)
 {
   if ((strcmp (dbinfo->dbname, "unicas") == 0) ||
-      strcmp (dbinfo->dbname, "dbcreate") == 0)
+      (strcmp (dbinfo->dbname, "dbcreate") == 0) ||
+      (strcmp (dbinfo->dbname, "statusmonitorauth") == 0))
     {
       strcpy (buf, dbinfo->auth);
     }
   else
     {
-      sprintf (buf, "%s;%s;%s", dbinfo->auth, dbinfo->uid, dbinfo->passwd);
+      sprintf (buf, "%s;%s;%s;%s", dbinfo->auth, dbinfo->uid, dbinfo->passwd,
+	       dbinfo->broker_address);
     }
 }
 
@@ -367,7 +401,7 @@ dbmt_user_add_dbinfo (T_DBMT_USER_INFO * usrinfo, T_DBMT_USER_DBINFO * dbinfo)
 static int
 get_dbmt_user_dbinfo (char *strbuf, T_DBMT_USER_DBINFO * usr_dbinfo)
 {
-  char *dbinfo[2], *user_info[3];
+  char *dbinfo[2], *user_info[4];
 
   memset (usr_dbinfo, 0, sizeof (T_DBMT_USER_DBINFO));
 
@@ -375,17 +409,18 @@ get_dbmt_user_dbinfo (char *strbuf, T_DBMT_USER_DBINFO * usr_dbinfo)
     return -1;
 
   if ((strcmp (dbinfo[0], "unicas") == 0) ||
-      (strcmp (dbinfo[0], "dbcreate") == 0))
+      (strcmp (dbinfo[0], "dbcreate") == 0) ||
+      (strcmp (dbinfo[0], "statusmonitorauth") == 0))
     {
       user_info[0] = dbinfo[1];
-      user_info[1] = user_info[2] = (char *) "";
+      user_info[1] = user_info[2] = user_info[3] = (char *) "";
     }
   else
     {
-      if (string_tokenize2 (dbinfo[1], user_info, 3, ';') < 0)
+      if (string_tokenize2 (dbinfo[1], user_info, 4, ';') < 0)
 	return -1;
     }
   dbmt_user_set_dbinfo (usr_dbinfo, dbinfo[0], user_info[0], user_info[1],
-			user_info[2]);
+			user_info[2], user_info[3]);
   return 0;
 }

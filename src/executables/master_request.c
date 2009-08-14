@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -39,6 +39,7 @@
 #include <netinet/in.h>
 #endif /* ! WINDOWS */
 
+#include "system_parameter.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
 #include "error_manager.h"
@@ -119,6 +120,10 @@ static void css_process_kill_master (void);
 static void css_process_request_count_info (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 static void css_process_shutdown (char *time_buffer);
+static void css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
+					    unsigned short request_id,
+					    char *server_name);
+
 
 /*
  * css_send_command_to_server()
@@ -372,55 +377,59 @@ static void
 css_process_server_list_info (CSS_CONN_ENTRY * conn,
 			      unsigned short request_id)
 {
-  int bufsize = 0;
-  char *buffer = NULL, *ptr;
+  int bufsize = 0, required_size;
+  char *buffer = NULL;
   SOCKET_QUEUE_ENTRY *temp;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
+	  temp->name != NULL &&
 	  temp->name[0] != '-' &&
 	  temp->name[0] != '+' && temp->name[0] != '&')
 	{
+	  required_size = 0;
 
-	  bufsize += strlen (SERVER_FORMAT_STRING);
-	  bufsize += strlen (temp->name);
-	  if (temp->version_string)
+	  required_size += strlen (SERVER_FORMAT_STRING);
+	  required_size += strlen (temp->name);
+	  if (temp->version_string != NULL)
 	    {
-	      bufsize += strlen (temp->version_string);
+	      required_size += strlen (temp->version_string);
 	    }
-	  bufsize += 5;		/* length of pid string */
+	  required_size += 5;	/* length of pid string */
+
+	  bufsize += required_size;
+
+	  if (buffer == NULL)
+	    {
+	      buffer = malloc (bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  return;
+		}
+	      buffer[0] = '\0';
+	    }
+	  else
+	    {
+	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
+	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  free_and_init (oldbuffer);
+		  return;
+		}
+	    }
+
+	  snprintf (buffer + strlen (buffer), required_size,
+		    SERVER_FORMAT_STRING, temp->name,
+		    (temp->version_string ==
+		     NULL ? "?" : temp->version_string), temp->pid);
 	}
     }
 
-  if (bufsize > 0)
-    {
-      buffer = (char *) malloc (bufsize);
-    }
-  if (bufsize == 0 || buffer == NULL)
+  if (buffer == NULL)
     {
       return;
-    }
-
-  buffer[0] = '\0';
-  ptr = buffer;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
-	  temp->name[0] != '-' &&
-	  temp->name[0] != '+' && temp->name[0] != '&')
-	{
-
-	  sprintf (ptr, SERVER_FORMAT_STRING,
-		   temp->name,
-		   (temp->version_string ==
-		    NULL ? "?" : temp->version_string), temp->pid);
-
-	  ptr += strlen (ptr);
-	}
     }
 
   if (css_send_data (conn, request_id,
@@ -442,51 +451,57 @@ static void
 css_process_driver_list_info (CSS_CONN_ENTRY * conn,
 			      unsigned short request_id)
 {
-  int bufsize = 0;
-  char *buffer = NULL, *ptr;
+  int bufsize = 0, required_size;
+  char *buffer = NULL;
   SOCKET_QUEUE_ENTRY *temp;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name && temp->name[0] == '-')
+	  temp->name != NULL && temp->name[0] == '-')
 	{
+	  required_size = 0;
 
-	  bufsize += strlen (DRIVER_FORMAT_STRING);
-	  bufsize += strlen (temp->name);
-	  if (temp->version_string)
+	  required_size += strlen (DRIVER_FORMAT_STRING);
+	  required_size += strlen (temp->name);
+	  if (temp->version_string != NULL)
 	    {
-	      bufsize += strlen (temp->version_string);
+	      required_size += strlen (temp->version_string);
 	    }
-	  bufsize += 5;		/* length of pid string */
+	  required_size += 5;	/* length of pid string */
+
+	  bufsize += required_size;
+
+	  if (buffer == NULL)
+	    {
+	      buffer = malloc (bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  return;
+		}
+	      buffer[0] = '\0';
+	    }
+	  else
+	    {
+	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
+	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  free_and_init (oldbuffer);
+		  return;
+		}
+	    }
+
+	  snprintf (buffer + strlen (buffer), required_size,
+		    DRIVER_FORMAT_STRING, temp->name + 1,
+		    (temp->version_string ==
+		     NULL ? "?" : temp->version_string), temp->pid);
 	}
     }
 
-  if (bufsize > 0)
-    {
-      buffer = (char *) malloc (bufsize);
-    }
-  if (bufsize == 0 || buffer == NULL)
+  if (buffer == NULL)
     {
       return;
-    }
-
-  buffer[0] = '\0';
-  ptr = buffer;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name && temp->name[0] == '-')
-	{
-
-	  sprintf (ptr, DRIVER_FORMAT_STRING,
-		   temp->name + 1,
-		   (temp->version_string ==
-		    NULL ? "?" : temp->version_string), temp->pid);
-
-	  ptr += strlen (ptr);
-	}
     }
 
   if (css_send_data (conn, request_id,
@@ -507,67 +522,75 @@ css_process_driver_list_info (CSS_CONN_ENTRY * conn,
 static void
 css_process_repl_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
-  int bufsize = 0;
+  int bufsize = 0, required_size;
   char *buffer = NULL;
-  char *ptr;
   SOCKET_QUEUE_ENTRY *temp;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name && (temp->name[0] == '&' || temp->name[0] == '+'))
+	  temp->name != NULL && (temp->name[0] == '&'
+				 || temp->name[0] == '+'))
 	{
+	  required_size = 0;
+
 	  if (temp->name[0] == '&')
 	    {
-	      bufsize += strlen (REPL_AGENT_FORMAT_STRING);
+	      required_size += strlen (REPL_AGENT_FORMAT_STRING);
 	    }
 	  else
 	    {
-	      bufsize += strlen (REPL_SERVER_FORMAT_STRING);
+	      required_size += strlen (REPL_SERVER_FORMAT_STRING);
 	    }
-	  bufsize += strlen (temp->name);
-	  if (temp->version_string)
+	  required_size += strlen (temp->name);
+	  if (temp->version_string != NULL)
 	    {
-	      bufsize += strlen (temp->version_string);
+	      required_size += strlen (temp->version_string);
 	    }
-	  bufsize += 5;		/* length of pid string */
+	  required_size += 5;	/* length of pid string */
+
+	  bufsize += required_size;
+
+	  if (buffer == NULL)
+	    {
+	      buffer = malloc (bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  return;
+		}
+	      buffer[0] = '\0';
+	    }
+	  else
+	    {
+	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
+	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  free_and_init (oldbuffer);
+		  return;
+		}
+	    }
+
+	  if (temp->name[0] == '&')
+	    {
+	      snprintf (buffer + strlen (buffer), required_size,
+			REPL_AGENT_FORMAT_STRING, temp->name + 1,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	    }
+	  else
+	    {
+	      snprintf (buffer + strlen (buffer), required_size,
+			REPL_SERVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	    }
 	}
     }
 
-  if (bufsize > 0)
-    {
-      buffer = (char *) malloc (bufsize);
-    }
-  if (bufsize == 0 || buffer == NULL)
+  if (buffer == NULL)
     {
       return;
-    }
-
-  buffer[0] = '\0';
-  ptr = buffer;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name && (temp->name[0] == '&' || temp->name[0] == '+'))
-	{
-	  if (temp->name[0] == '&')
-	    {
-	      sprintf (ptr, REPL_AGENT_FORMAT_STRING,
-		       temp->name + 1,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	    }
-	  else
-	    {
-	      sprintf (ptr, REPL_SERVER_FORMAT_STRING,
-		       temp->name + 1,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	    }
-
-	  ptr += strlen (ptr);
-	}
     }
 
   if (css_send_data (conn, request_id,
@@ -588,84 +611,94 @@ css_process_repl_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 static void
 css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
-  int bufsize = 0;
+  int bufsize = 0, required_size;
   char *buffer = NULL;
-  char *ptr;
   SOCKET_QUEUE_ENTRY *temp;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
-	  && temp->name)
+	  && temp->name != NULL)
 	{
+	  required_size = 0;
+
 	  switch (temp->name[0])
 	    {
 	    case '-':
-	      bufsize += strlen (DRIVER_FORMAT_STRING);
+	      required_size += strlen (DRIVER_FORMAT_STRING);
 	      break;
 	    case '+':
-	      bufsize += strlen (REPL_SERVER_FORMAT_STRING);
+	      required_size += strlen (REPL_SERVER_FORMAT_STRING);
 	      break;
 	    case '&':
-	      bufsize += strlen (REPL_AGENT_FORMAT_STRING);
+	      required_size += strlen (REPL_AGENT_FORMAT_STRING);
 	      break;
 	    default:
-	      bufsize += strlen (SERVER_FORMAT_STRING);
+	      required_size += strlen (SERVER_FORMAT_STRING);
 	      break;
 	    }
-	  bufsize += strlen (temp->name);
-	  if (temp->version_string)
+	  required_size += strlen (temp->name);
+	  if (temp->version_string != NULL)
 	    {
-	      bufsize += strlen (temp->version_string);
+	      required_size += strlen (temp->version_string);
 	    }
-	  bufsize += 5;		/* length of pid string */
+	  required_size += 5;	/* length of pid string */
+
+	  bufsize += required_size;
+
+	  if (buffer == NULL)
+	    {
+	      buffer = malloc (bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  return;
+		}
+	      buffer[0] = '\0';
+	    }
+	  else
+	    {
+	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
+	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      if (buffer == NULL)
+		{
+		  free_and_init (oldbuffer);
+		  return;
+		}
+	    }
+
+	  switch (temp->name[0])
+	    {
+	    case '-':
+	      snprintf (buffer + strlen (buffer), required_size,
+			DRIVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	      break;
+	    case '+':
+	      snprintf (buffer + strlen (buffer), required_size,
+			REPL_SERVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	      break;
+	    case '&':
+	      snprintf (buffer + strlen (buffer), required_size,
+			REPL_AGENT_FORMAT_STRING, temp->name + 1,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	      break;
+	    default:
+	      snprintf (buffer + strlen (buffer), required_size,
+			SERVER_FORMAT_STRING, temp->name,
+			(temp->version_string ==
+			 NULL ? "?" : temp->version_string), temp->pid);
+	      break;
+	    }
 	}
     }
 
-  if (bufsize > 0)
-    {
-      buffer = (char *) malloc (bufsize);
-    }
-  if (bufsize == 0 || buffer == NULL)
+  if (buffer == NULL)
     {
       return;
-    }
-
-  buffer[0] = '\0';
-  ptr = buffer;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
-	  && temp->name)
-	{
-	  switch (temp->name[0])
-	    {
-	    case '-':
-	      sprintf (ptr, DRIVER_FORMAT_STRING, temp->name + 1,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	      break;
-	    case '+':
-	      sprintf (ptr, REPL_SERVER_FORMAT_STRING, temp->name + 1,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	      break;
-	    case '&':
-	      sprintf (ptr, REPL_AGENT_FORMAT_STRING, temp->name + 1,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	      break;
-	    default:
-	      sprintf (ptr, SERVER_FORMAT_STRING, temp->name,
-		       (temp->version_string ==
-			NULL ? "?" : temp->version_string), temp->pid);
-	      break;
-	    }
-
-
-	  ptr += strlen (ptr);
-	}
     }
 
   if (css_send_data (conn, request_id,
@@ -691,12 +724,12 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
   int timeout;
   SOCKET_QUEUE_ENTRY *temp;
   char buffer[MASTER_TO_SRV_MSG_SIZE];
-  char *time_buffer;
+  char *time_buffer = NULL;
   int time_size = 0;
   int rc;
 
-  if ((rc = css_receive_data (conn, request_id, &time_buffer, &time_size))
-      == NO_ERRORS)
+  rc = css_receive_data (conn, request_id, &time_buffer, &time_size);
+  if (rc == NO_ERRORS && time_buffer != NULL)
     {
       timeout = ntohl ((int) *(int *) time_buffer);
       free_and_init (time_buffer);
@@ -743,7 +776,11 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       css_cleanup_info_connection (conn);
     }
-  free_and_init (server_name);
+
+  if (time_buffer != NULL)
+    {
+      free_and_init (time_buffer);
+    }
 }
 
 /*
@@ -775,7 +812,6 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
-	  free_and_init (server_name);
 	  return;
 	}
     }
@@ -787,7 +823,6 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       css_cleanup_info_connection (conn);
     }
-  free_and_init (server_name);
 }
 
 /*
@@ -854,7 +889,6 @@ css_process_kill_repl_process (CSS_CONN_ENTRY * conn,
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
-	  free_and_init (server_name);
 	  return;
 	}
     }
@@ -866,7 +900,6 @@ css_process_kill_repl_process (CSS_CONN_ENTRY * conn,
     {
       css_cleanup_info_connection (conn);
     }
-  free_and_init (server_name);
 }
 
 /*
@@ -917,7 +950,6 @@ css_process_shutdown (char *time_buffer)
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   timeout = ntohl ((int) *(int *) time_buffer);
-  free_and_init (time_buffer);
 
   memset (buffer, 0, sizeof (buffer));
   sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1015,6 +1047,86 @@ css_process_stop_shutdown (void)
 }
 
 /*
+ * css_process_get_server_ha_mode
+ *   return: none
+ *   conn(in)
+ *   request_id(in)
+ *   server_name(in/out)
+ */
+static void
+css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
+				unsigned short request_id, char *server_name)
+{
+  SOCKET_QUEUE_ENTRY *temp;
+  char ha_state_str[64];
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+  int len, rc;
+  int response, ha_state;
+
+  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+    {
+      if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0))
+	{
+	  css_send_command_to_server (temp, SERVER_GET_HA_MODE);
+
+	  len =
+	    css_readn (temp->conn_ptr->fd, (char *) &response,
+		       sizeof (int), -1);
+	  if (len < 0)
+	    {
+	      return;
+	    }
+
+	  ha_state = htonl (response);
+
+	  if (ha_state == HA_SERVER_STATE_NA)
+	    {
+	      sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_CHANGEMODE,
+					       CHANGEMODE_MSG_NOT_HA_MODE));
+	    }
+	  else if ((ha_state >= HA_SERVER_STATE_IDLE)
+		   && (ha_state <= HA_SERVER_STATE_DEAD))
+	    {
+	      strncpy (ha_state_str,
+		       css_ha_server_state_string (ha_state),
+		       sizeof (ha_state_str) - 1);
+	      sprintf (buffer,
+		       msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_CHANGEMODE,
+				       CHANGEMODE_MSG_SERVER_MODE),
+		       temp->name, ha_state_str);
+	    }
+	  else
+	    {
+	      sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_CHANGEMODE,
+					       CHANGEMODE_MSG_BAD_MODE),
+		       "unknown");
+
+	    }
+
+	  if (css_send_data (conn, request_id, buffer,
+			     strlen (buffer) + 1) != NO_ERRORS)
+	    {
+	      css_cleanup_info_connection (conn);
+	    }
+	  return;
+	}
+    }
+
+  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_MASTER,
+				   MASTER_MSG_SERVER_NOT_FOUND), server_name);
+
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
+      NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+}
+
+/*
  * css_process_info_request() - information server main loop
  *   return: none
  *   conn(in)
@@ -1026,7 +1138,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   int buffer_size;
   int request;
   unsigned short request_id;
-  char *buffer;
+  char *buffer = NULL;
 
   rc = css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
@@ -1035,6 +1147,10 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  && css_receive_data (conn, request_id, &buffer,
 			       &buffer_size) != NO_ERRORS)
 	{
+	  if (buffer != NULL)
+	    {
+	      free_and_init (buffer);
+	    }
 	  css_cleanup_info_connection (conn);
 	  return;
 	}
@@ -1062,20 +1178,29 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  css_process_driver_list_info (conn, request_id);
 	  break;
 	case (KILL_SLAVE_SERVER):
-	  css_process_kill_slave (conn, request_id, buffer);
+	  if (buffer != NULL)
+	    {
+	      css_process_kill_slave (conn, request_id, buffer);
+	    }
 	  break;
 	case (KILL_MASTER_SERVER):
 	  css_process_kill_master ();
 	  break;
 	case (START_SHUTDOWN):
-	  css_process_shutdown (buffer);
+	  if (buffer != NULL)
+	    {
+	      css_process_shutdown (buffer);
+	    }
 	  css_process_kill_master ();
 	  break;
 	case (CANCEL_SHUTDOWN):
 	  css_process_stop_shutdown ();
 	  break;
 	case (KILL_SERVER_IMMEDIATE):
-	  css_process_kill_immediate (conn, request_id, buffer);
+	  if (buffer != NULL)
+	    {
+	      css_process_kill_immediate (conn, request_id, buffer);
+	    }
 	  break;
 	case (GET_REPL_COUNT):
 	  css_process_repl_count_info (conn, request_id);
@@ -1090,14 +1215,31 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  css_process_all_list_info (conn, request_id);
 	  break;
 	case (KILL_REPL_SERVER):
-	  css_process_kill_repl_process (conn, request_id, buffer);
+	  if (buffer != NULL)
+	    {
+	      css_process_kill_repl_process (conn, request_id, buffer);
+	    }
+	  break;
+	case (GET_SERVER_HA_MODE):
+	  if (buffer != NULL)
+	    {
+	      css_process_get_server_ha_mode (conn, request_id, buffer);
+	    }
 	  break;
 	default:
+	  if (buffer != NULL)
+	    {
+	      free_and_init (buffer);
+	    }
 	  return;
 	}
     }
   else
     {
       css_cleanup_info_connection (conn);
+    }
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
     }
 }

@@ -1,0 +1,138 @@
+﻿
+<html>
+<head>
+<title>마스터 데이터베이스 교체(자동)</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 설정\n마스터 데이터베이스 교체(자동)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_setup.htm\">복제 설정<\/a> &nbsp;&gt;&nbsp; 마스터 데이터베이스 교체(자동)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>마스터 데이터베이스 교체(자동)</h4>
+<p>자동 교체 방식은 수동 교체 방식에 비해 좀 더 빠르고 편리하게 슬레이브 데이터베이스를 마스터 데이터베이스로 교체할 수 있는 방법이다. 교체 작업은&#160;<span class="keyword">repl_check_sync</span>와 <span class="keyword">repl_change_master</span> 유틸리티를 사용하여 진행한다.&#160;슬레이브 데이터베이스의 복제 파라미터 옵션 중 <span class="keyword">for_recovery</span>가 'Y'로 설정된 것만 자동 교체가 가능하다.</p>
+<p>슬레이브 데이터베이스를 만들 때&#160;모든 클래스의 소유권이 복제 사용자로 변경된다. 따라서 <span class="keyword">for_recovery</span>에서도 권한 변경은 복제되지 않고, 사용자 추가 및 삭제 그리고 그룹 추가 및 삭제 등만 복제된다. 슬레이브 데이터베이스를 마스터 데이터베이스로 교체한 후 사용자별 권한은 <span class="keyword">DBA</span>가 설정해야 한다. 트리거 역시 일괄적으로 슬레이브 데이터베이스에서 비활성화 되어 있으므로, 마스터 데이터베이스로 교체 후 <span class="keyword">DBA</span>가 활성화시켜 주어야 한다.</p>
+<h5>슬레이브 데이터베이스의 동기화 상태 점검(<span class="keyword">repl_check_sync</span>)</h5>
+<p>마스터 데이터베이스에 장애가 발생하면 슬레이브 데이터베이스 중 하나를 마스터 데이터베이스로 교체해야 한다.&#160;이 때 가장 우선 해야&#160;할 일은 모든 슬레이브 데이터베이스 간의 동기화 상태와 동기화가 완료되었는지를 점검하는 것이다. <span class="keyword">repl_check_sync</span> 유틸리티는 현재 구성된 슬레이브 데이터베이스의 동기화 상태를 점검한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">repl_check_sync</span> <span class="var">dist_db_name.config</span> [<span class="keyword">–p</span> <span class="var">passwd</span>]</p>
+<ul>
+<li><span class="var">dist_db_name.config</span> : 배포 데이터베이스 구성 로그 파일</li>
+<li><span class="keyword">-p</span> <span class="var">passwd</span> : 배포 데이터베이스에 대한 <span class="keyword">DBA</span> 암호.</li>
+<li>dist_db_name.config 파일 규격 : 라인별로 <span class="keyword">cubrid repl_agent</span> 호스트 기록(hostname port_id)</li>
+</ul>
+<h6>예제</h6>
+<p class="code">&#160;192.168.2.100 5627<br />
+&#160;192.168.2.200 5627</p>
+<p>실행 결과는 슬레이브 데이터베이스별로 최종 반영된 로그 번호를 출력한다.</p>
+<p>결과:</p>
+<p>agent_ip&#160; status&#160;&#160; log number&#160;&#160;&#160; last_updated_time</p>
+<p>1.1.1.1&#160;&#160;&#160; A&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1234/110&#160;&#160;&#160;&#160; 15:30:30<br />
+1.1.1.2&#160;&#160;&#160; A&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1234/123&#160;&#160;&#160;&#160; 15:29:30<br />
+1.1.1.3&#160;&#160;&#160; A&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1234/123&#160;&#160;&#160;&#160; 15:28:30<br />
+1.1.1.4&#160;&#160;&#160; A&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1234/123&#160;&#160;&#160;&#160; 15:27:30<br />
+1.1.1.5&#160;&#160;&#160; A&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 1234/123&#160;&#160;&#160;&#160; 15:26:30</p>
+<p>출력 결과 중 status는 다음과 같은 정보로 구성된다.</p>
+<p>A : Active(복제 진행 중)</p>
+<p>F : First(처음 복제 시작)</p>
+<p>I : Idle(휴식 -&#160;복제 내용 없음)</p>
+<h5>슬레이브 데이터베이스를 마스터 데이터베이스로 교체(<span class="keyword">repl_change_master</span>)</h5>
+<p><span class="keyword">repl_check_sync</span> 유틸리티를 통해 최종 동기화 상태를 확인한 후 슬레이브 데이터베이스를 마스터 데이터베이스로 교체하기 위해서 트리거, 계정 정보 등을 원본과 동일하게 변경해야 한다. <span class="keyword">repl_change_master</span> 유틸리티는 배포 데이터베이스의 마스터 데이터베이스에 대한 정보를 기준으로 지정된 슬레이브 데이터베이스를 마스터 데이터베이스로 변환시킨다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">repl_change_master</span> <span class="var">servers_info_file</span></p>
+<ul>
+<li><span class="var">servers_info_file</span> 파일 규격 : 라인별로 배포 데이터베이스 정보 기록(dist_name dist_host dist_passwd)</li>
+</ul>
+<h6>예제</h6>
+<p class="code">&#160;distdb1 192.168.2.100 admin<br />
+&#160;distdb2 192.168.2.200 admin</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

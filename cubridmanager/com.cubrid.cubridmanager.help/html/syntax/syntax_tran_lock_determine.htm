@@ -1,0 +1,373 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>잠금 허용 여부 결정</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n트랜잭션 관리\n잠금 프로토콜\n잠금 허용 여부 결정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_intro.htm\">트랜잭션 관리<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_tran_lock_intro.htm\">잠금 프로토콜<\/a> &nbsp;&gt;&nbsp; 잠금 허용 여부 결정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>잠금 허용 여부 결정</h4>
+<p>CUBRID는 수행되는 연산에 기초하여 획득할 필요가 있는 잠금을 결정한다. 사용자는 결코 획득할 잠금의 유형을 CUBRID에 지시할 수 없다. 잠금은 다른 트랜잭션이 요구된 데이터에 대한 잠금을 가지고 있는지, 그렇다면 그 트랜잭션이 가지고 있는 잠금 모드가 어떤 것인지에 따라 허용될 수 있다. 예를 들어 다른 트랜잭션이 원하는 데이터에 대한 배타 잠금을 가지고 있는 경우 요구되는 잠금은 요청한 트랜잭션에서는 허용될 수 없다.</p>
+<p>아래의 잠금 호환성 테이블은 허용된 잠금이 어떤 요구된 잠금과 호환가능한지를 보여준다. 이 테이블은 트랜잭션 T1에서 현재 M1 모드의 잠금을 가지고 있을 때 M2 모드의 잠금이 트랜잭션 T2에서 허용될 수 있지 없는지를 나타낸다. 예를 들어 트랜잭션 T1이 <span class="keyword">X_LOCK</span>을 가지고 있을 때 어떤 모드의 잠금도 다른 트랜잭션에 허용되지 않는다. 이 트랜잭션은 그 <span class="keyword">X_LOCK</span>이 해제될 때까지 대기 상태로 가야 한다. 그러나 트랜잭션 T1이 <span class="keyword">S_LOCK</span>을 가지고 있을 때 다른 트랜잭션 T2에는 <span class="keyword">IS_LOCK</span>또는 <span class="keyword">S_LOCK</span>이 허용된다. N/A는 '해당 없음'을 의미한다.</p>
+<p class="caption-table">잠금 호환성</p>
+<table border="1">
+<tr>
+<th rowspan="2" colspan="2">&#160;</th>
+<th colspan="7">
+<p>잠금 유지자(lock holder)</p>
+</th>
+</tr>
+<tr>
+<th width="80">
+<p>NULL_LOCK</p>
+</th>
+<th width="80">
+<p>IS_LOCK</p>
+</th>
+<th width="80">
+<p>S_LOCK</p>
+</th>
+<th width="80">
+<p>IX_LOCK</p>
+</th>
+<th width="80">
+<p>SIX_LOCK</p>
+</th>
+<th width="80">
+<p>U_LOCK</p>
+</th>
+<th width="80">
+<p>X_LOCK</p>
+</th>
+</tr>
+<tr>
+<th width="80" rowspan="7">
+<p>잠금 요청자</p>
+<p>(lock requester)</p>
+</th>
+<th width="80">
+<p>NULL_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>IS_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>S_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>IX_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>SIX_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>U_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>N/A</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+<tr>
+<th width="80">
+<p>X_LOCK</p>
+</th>
+<td width="80">
+<p>TRUE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+<td width="80">
+<p>FALSE</p>
+</td>
+</tr>
+</table>
+<ul>
+<li><span class="keyword">NULL_LOCK</span> :&#160;아무 잠금도 없는 상태.</li>
+<li><span class="keyword">IS_LOCK</span> :&#160;의도 공유 잠금.</li>
+<li class="desc">시스템은 클래스의 인스턴스 정의(스키마 정의)를 읽는 것은 허용하기 위해 클래스에 대해 <span class="keyword">IS_LOCK</span>을 획득한다. 이 잠금은 클래스의 인스턴스에 대한 공유 잠금(<span class="keyword">S_LOCK</span>)을 획득하여 몇몇의 인스턴스를 읽도록 허용한다. 클래스의 인스턴스에 공유잠금(<span class="keyword">S_LOCK</span>)이 허용될 때마다 <span class="keyword">IS_LOCK</span>도 클래스에 허용된다. 클래스에 대한 <span class="keyword">IS_LOCK</span>은 다른 트랜잭션이 클래스의 모든 인스턴스를 갱신하거나 인스턴스의 클래스 정의(스키마 정의)를 갱신하는 것을 방지한다.</li>
+<li class="desc">인스턴스에 대한 <span class="keyword">IS_LOCK</span>은 절대로 획득할 수 없는데, 그 이유는 인스턴스가 CUBRID 프로토콜에서 가장 작은 단위이기 때문이다.</li>
+<li><span class="keyword">IX_LOCK</span> : 의도 배타 잠금.</li>
+<li class="desc">시스템은 클래스의 인스턴스 정의(스키마 정의)를 읽는 것은 허용하기 위해 클래스에 대해 <span class="keyword">IX_LOCK</span>을 획득한다. 이 잠금은 클래스의 인스턴스에 대한 배타 잠금(공유 잠금)을 획득하여 클래스의 몇몇 인스턴스를 갱신하는 것(읽는 것)을 허용한다. <span class="keyword">X_LOCK</span>이 클래스의 인스턴스에 허용될 때마다 <span class="keyword">IX_LOCK</span>도 클래스에 대해 허용된다. 클래스에 대한 <span class="keyword">IX_LOCK</span>은 다른 트랜잭션이 인스턴스의 클래스 정의(스키마 정의)를 갱신하고 클래스의 모든 인스턴스를 읽거나 갱신하는 것을 방지한다.</li>
+<li class="desc">인스턴스에 대한 <span class="keyword">IX_LOCK</span>은 절대로 획득할 수 없는데, 그 이유는 인스턴스가 CUBRID 프로토콜에서 가장 작은 단위이기 때문이다.</li>
+<li><span class="keyword">S_LOCK</span> :&#160;공유 잠금.</li>
+<li class="desc">시스템은 클래스 인스턴스의 클래스 정의(스키마 정의)를 읽는 것은 허용하기 위해 클래스에 대해 <span class="keyword">S_LOCK</span>을 획득한다. 이 잠금은 또한 모든 인스턴스에 대한 <span class="keyword">S_LOCK</span> 획득 없이 클래스의 모든 인스턴스를 읽도록 허용한다. 클래스에 대한 <span class="keyword">S_LOCK</span>은 다른 트랜잭션이 인스턴스의 스키마 정의와 클래스의 인스턴스의 어떤 값도 갱신할 수 없도록 방지한다.</li>
+<li class="desc">시스템은 인스턴스를 읽기 위해 그 인스턴스에 대해 <span class="keyword">S_LOCK</span>을 획득한다. 이 경우 <span class="keyword">IS_LOCK</span>은 인스턴스의 클래스에 대해 획득되어야 한다.</li>
+<li><span class="keyword">X_LOCK</span> :&#160;배타 잠금.</li>
+<li class="desc">시스템은 클래스 인스턴스의 클래스 정의(스키마 정의)를 갱신하는 것을 허용하기 위해 클래스에 대해 <span class="keyword">X_LOCK</span>을 획득한다. 이 잠금은 인스턴스에 대한 <span class="keyword">X_LOCK</span> (<span class="keyword">S_LOCK</span>)을 획득할 필요없이 클래스의 모든 인스턴스를 갱신하는 것(읽는 것)을 허용한다. 클래스에 대한 <span class="keyword">X_LOCK</span>은 다른 트랜잭션이 클래스 정의와 클래스의 어떤 인스턴스 값도 읽거나 갱신할 수 없도록 보호한다.</li>
+<li class="desc">시스템은 인스턴스를 갱신하기 위해 그 인스턴스에 대한 <span class="keyword">X_LOCK</span>을 획득한다. 이 경우 <span class="keyword">IX_LOCK</span>은 인스턴스의 클래스에 대해 획득되어야 한다.</li>
+<li><span class="keyword">SIX_LOCK</span> :&#160;공유 의도 배타 잠금.</li>
+<li class="desc">이 잠금은 <span class="keyword">S_LOCK</span>과 <span class="keyword">IX_LOCK</span>의 조합으로써 클래스에 대해 획득된다. 이 잠금은 클래스 인스턴스의 클래스 정의(스키마 정의)를 읽는 것과 인스턴스에 대한 <span class="keyword">S_LOCK</span> 획득 없이 클래스의 모든 인스턴스를 읽는 것을 허용한다. 또한 이 인스턴스에 대한 <span class="keyword">X_LOCK</span>을 획득하여 클래스의 몇몇 인스턴스를 갱신하는 것을 허용한다.</li>
+<li class="desc">인스턴스에 대한 <span class="keyword">SIX_LOCK</span>은 절대로 획득할 수 없는데, 그 이유는 인스턴스가 CUBRID 프로토콜에서 가장 작은 단위이기 때문이다.</li>
+</ul>
+<ul>
+<li><span class="keyword">U_LOCK</span> :&#160;갱신 잠금. &#160;</li>
+<li class="desc"><span class="keyword">DELETE</span> 문 또는 <span class="keyword">UPDATE</span> 문의 수행은 삭제 또는 갱신하고자 하는 인스턴스들을 검색하여 읽은 후에, 그 인스턴스를 삭제하거나 그 인스턴스의 일부 값을 갱신한다. 인스턴스를 읽을 때에는 <span class="keyword">S_LOCK</span>을 획득하고, 그 인스턴스가 삭제 또는 갱신의 대상이 되면 <span class="keyword">X_LOCK</span>을 획득한다. 이 방식에서 동일한 인스턴스를 삭제 또는 갱신하고자 하는 트랜잭션이 두 개일 때, 둘 다 <span class="keyword">S_LOCK</span>을 획득한 상태에서 <span class="keyword">X_LOCK</span>을 요청하면 되면 두 트랜잭션은 교착 상태에 빠지게 된다.</li>
+<li class="desc"><span class="keyword">U_LOCK</span> 모드를 사용하면 이러한 교착 상태를 피할 수 있다. 삭제 또는 갱신의 목적으로 인덱스를 검색하여 인스턴스를 읽는 경우 <span class="keyword">S_LOCK</span> 대신 <span class="keyword">U_LOCK</span>을 획득하고, 그 인스턴스를 삭제 또는 갱신하는 경우 <span class="keyword">X_LOCK</span>을 획득한다. <span class="keyword">U_LOCK</span>은 서로 호환되지 않아서 동일 인스턴스에 대해 동시에 둘 이상의 트랜잭션이 <span class="keyword">U_LOCK</span>을 획득할 수 없어기 때문에&#160;트랜잭션들이 교착 상태에 빠지지 않고 직렬적으로 수행될 수 있다. 삭제 또는 갱신 목적으로 인덱스 검색을 통해 인스턴스를 검색하는 경우, 첫째 단계에서 인덱스 검색을 통해 키 범위와 키 필터를 만족하는 각 OID를 구하여 <span class="keyword">U_LOCK</span>을 획득하며, 둘째 단계로 이들 중 삭제 또는 갱신 조건까지 만족하는 각 OID에 대하여 <span class="keyword">X_LOCK</span>을 획득한다. 첫째 단계에서 <span class="keyword">U_LOCK</span>을 획득하였지만 둘째 단계에서 데이터 필터조건을 만족하지 못하여 <span class="keyword">X_LOCK</span>을 획득하지 못한 OID들에 대해서는 그 OID들에 잡혀 있는 <span class="keyword">U_LOCK</span>을 모두 트랜잭션 격리 수준에 따라 <span class="keyword">S_LOCK</span>으로 강등시키거나 해제한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 격리 수준을 <span class="keyword">REPEATABLE READ CLASS</span> with <span class="keyword">READ COMMITTED INSTANCES</span> 로 설정하였고, <span class="keyword">AUTOCOMMIT</span>을 OFF 로 (;autocommit off) 설정한 상태이다.</p>
+<p>두 사용자가 동시에 동일한 클래스에 접근하려고 시도한다고 가정하자. T1은 한 클래스의 데이터에 질의를 할 필요가 있고 반면에 T2는 이미 T1이 질의문에 선택한 속성 중 하나를 갱신하고 있다. (T2 에서 ------ 1st 까지 실행)</p>
+<p>User 1 (T1):</p>
+<p class="code">;autocommit off<br />
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ CLASS, READ COMMITTED INSTANCES;<br />
+select host_year, nation_code, gold from participant where gold &gt; 10 and host_year &gt;= 2000;<br />
+;xrun</p>
+<p>User 2 (T2):</p>
+<p class="code">;autocommit off&#160;<br />
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ CLASS, READ COMMITTED INSTANCES;<br />
+update participant<br />
+set gold = 11<br />
+where nation_code = 'KOR' and host_year=2000;<br />
+;xrun<br />
+------ 1st<br />
+update participant<br />
+set gold = 29<br />
+where nation_code = 'RUS' and host_year=2004;<br />
+&#160;<br />
+update participant<br />
+set gold = 37<br />
+where nation_code = 'USA' and host_year=2004;<br />
+commit work;<br />
+;xrun</p>
+<p>이 경우 일관성을 유지하기 위해 데이터에 접근 가능할 때까지 트랜잭션 T1을 대기시킨다. 트랜잭션 T2에서 갱신된 인스턴스는 T2가 커밋된 후에 트랜잭션 T1에서 읽기가 가능하다. 트랜잭션 T2가 커밋되거나 롤백되자마자 CUBRID는 트랜잭션 T2가 획득한 잠금을 해제하고 트랜잭션 T1이 계속 진행할 수 있게 허용한다. 트랜잭션 T2에서 있었던 변경이 영구화되면 트랜잭션 T1은 갱신된 데이터에 접근할 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

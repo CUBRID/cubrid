@@ -49,6 +49,10 @@
 #include "glo_class.h"
 #include "elo_holder.h"
 #include "elo_class.h"
+#include "locator.h"
+#include "locator_cl.h"
+#include "schema_manager.h"
+
 
 #define UNDO_LIST_SIZE 1024;
 
@@ -365,6 +369,9 @@ static int get_disk_compatibility_level (const char *db_path,
 /* add bigint, datetime info */
 static int add_new_data_type (void);
 
+/* add db_ha_info class */
+static int add_new_classes (void);
+
 /* rebuild index */
 static int read_rebuilt_index_list (FILE * log_fp,
 				    REBUILT_INDEX_LIST ** done_list);
@@ -449,10 +456,9 @@ fix_all_glo_data ()
   int i, count, error = NO_ERROR;
 
   printf ("start to fix glo header\n");
-  glo_class_p = db_find_class ("glo");
+  glo_class_p = db_find_class (GLO_CLASS_NAME);
   if (glo_class_p == NULL)
     {
-      printf ("%s\n", db_error_string (3));
       return db_error_code ();
     }
 
@@ -488,7 +494,8 @@ fix_all_glo_data ()
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      count * sizeof (GLO_UNDO_LIST));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
   memset (glo_undo_info, 0, count * sizeof (GLO_UNDO_LIST));
   glo_undo_info_count = count;
@@ -510,21 +517,23 @@ fix_all_glo_data ()
 	      elo = glo_get_glo_from_holder (tmp_obj->op);
 	      if (elo == NULL)
 		{
-		  return ER_FAILED;
+		  continue;
 		}
 	      error = glo_fix_dir_pages (i, &elo->loid);
 	      if (error != NO_ERROR)
 		{
-		  return error;
+		  db_objlist_free (glo_objects);
+		  goto end;
 		}
 	    }
 	  db_objlist_free (glo_objects);
 	}
     }
 
+end:
   db_objlist_free (all_classes);
 
-  return NO_ERROR;
+  return error;
 }
 
 static GLO_UNDO_INFO *
@@ -619,7 +628,6 @@ static int
 undo_fix_all_glo_data ()
 {
   GLO_UNDO_INFO *undo_info;
-  PAGE_PTR page_ptr;
   int i, error;
 
   for (i = 0; i < glo_undo_info_count; i++)
@@ -648,10 +656,10 @@ glo_copy_dirheader (LARGEOBJMGR_DIRHEADER * new_dir_header_p,
 {
   new_dir_header_p->loid = old_dir_header_p->loid;
   new_dir_header_p->index_level = old_dir_header_p->index_level;
-  new_dir_header_p->tot_length = (FSIZE_T) old_dir_header_p->tot_length;
+  new_dir_header_p->tot_length = (INT64) old_dir_header_p->tot_length;
   new_dir_header_p->tot_slot_cnt = old_dir_header_p->tot_length;
   new_dir_header_p->goodvpid_fordata = old_dir_header_p->goodvpid_fordata;
-  new_dir_header_p->pg_tot_length = (FSIZE_T) old_dir_header_p->pg_tot_length;
+  new_dir_header_p->pg_tot_length = (INT64) old_dir_header_p->pg_tot_length;
   new_dir_header_p->pg_act_idxcnt = old_dir_header_p->pg_act_idxcnt;
   new_dir_header_p->pg_lastact_idx = old_dir_header_p->pg_lastact_idx;
   new_dir_header_p->next_vpid = old_dir_header_p->next_vpid;
@@ -735,11 +743,6 @@ glo_dir_allocpage (LARGEOBJMGR_DIRSTATE * ds, VPID * vpid)
       return NULL;
     }
 
-  /*
-   * NOTE: we fetch the page as old since it was initialized during the
-   * allocation by largeobjmgr_initdir_newpage, therfore, we care about the current
-   * content of the page.
-   */
   page_ptr = pgbuf_fix (NULL, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
@@ -1029,10 +1032,6 @@ static int
 glo_append_dir_entry (int index, LARGEOBJMGR_DIRSTATE * ds,
 		      LARGEOBJMGR_DIRENTRY * entry)
 {
-  LARGEOBJMGR_DIRHEADER *current_hdr;
-  LARGEOBJMGR_DIRENTRY *tmp_entry;
-  PAGE_PTR page_ptr;
-  int idx, tot_length;
   int error = NO_ERROR;
   int delta;
 
@@ -1154,6 +1153,11 @@ glo_fix_dir_pages (int index, LOID * loid)
   VPID next_vpid;
   int error = NO_ERROR;
 
+  if (loid->vpid.pageid == NULL_PAGEID)
+    {
+      return error;
+    }
+
   error = glo_load_dir_pages (index, loid);
   if (error != NO_ERROR)
     {
@@ -1184,6 +1188,11 @@ glo_fix_dir_pages (int index, LOID * loid)
   while (!VPID_ISNULL (&next_vpid))
     {
       page_ptr = glo_get_page (index, &next_vpid, OLD_PAGE);
+      if (page_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
 
       old_dirheader = (OLD_DIRHEADER *) page_ptr;
 
@@ -1241,10 +1250,10 @@ glo_get_glo_from_holder (DB_OBJECT * glo_instance_p)
   int rc, save;
   DB_ELO *glo_p = NULL;
 
-  AU_DISABLE (save);
+  save = au_disable ();
 
   rc = db_get (glo_instance_p, GLO_CLASS_HOLDER_NAME, &value);
-  if (rc != 0)
+  if (rc != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
       goto end;
@@ -1253,12 +1262,15 @@ glo_get_glo_from_holder (DB_OBJECT * glo_instance_p)
   glo_holder_p = DB_GET_OBJECT (&value);
   if (glo_holder_p == NULL)
     {
-      printf ("%s\n", db_error_string (3));
+      if (db_error_code () != NO_ERROR)
+	{
+	  printf ("%s\n", db_error_string (3));
+	}
       goto end;
     }
 
   rc = db_get (glo_holder_p, GLO_HOLDER_GLO_NAME, &value);
-  if (rc != 0)
+  if (rc != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
       goto end;
@@ -1267,7 +1279,10 @@ glo_get_glo_from_holder (DB_OBJECT * glo_instance_p)
   glo_p = DB_GET_ELO (&value);
   if (glo_p == NULL)
     {
-      printf ("%s\n", db_error_string (3));
+      if (db_error_code () != NO_ERROR)
+	{
+	  printf ("%s\n", db_error_string (3));
+	}
       goto end;
     }
 
@@ -1277,17 +1292,18 @@ glo_get_glo_from_holder (DB_OBJECT * glo_instance_p)
     }
 
 end:
-  AU_ENABLE (save);
+  au_enable (save);
   return (glo_p);
 }
 
+#if 0
 static int
 fix_glo_methods ()
 {
   DB_OBJECT *glo_class;
   int save;
 
-  AU_DISABLE (save);
+  save = au_disable ();
 
   printf ("start to fix glo methods\n");
 
@@ -1302,21 +1318,45 @@ fix_glo_methods ()
 			  db_get_type_name (DB_TYPE_BIGINT),	/*position */
 			  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
+  def_instance_signature (glo_class, GLO_METHOD_DELETE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  db_get_type_name (DB_TYPE_BIGINT),	/*length */
+			  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
   def_instance_signature (glo_class, GLO_METHOD_TRUNCATE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 			  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
   def_instance_signature (glo_class, GLO_METHOD_SIZE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 			  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
+  def_instance_signature (glo_class, GLO_METHOD_COPY_TO, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+  def_instance_signature (glo_class, GLO_METHOD_COPY_FROM, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
   def_instance_signature (glo_class, GLO_METHOD_POSITION, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
 			  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
-  AU_ENABLE (save);
+  def_instance_signature (glo_class, GLO_METHOD_LIKE_SEARCH, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  db_get_type_name (DB_TYPE_STRING),	/*search str */
+			  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+  def_instance_signature (glo_class, GLO_METHOD_REG_SEARCH, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  db_get_type_name (DB_TYPE_STRING),	/*search str */
+			  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+  def_instance_signature (glo_class, GLO_METHOD_BINARY_SEARCH, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+			  db_get_type_name (DB_TYPE_STRING),	/*search str */
+			  db_get_type_name (DB_TYPE_INTEGER),	/*str length */
+			  NULL, NULL, NULL, NULL, NULL, NULL);
+
+  au_enable (save);
 
   db_commit_transaction ();
 
   return NO_ERROR;
 }
+#endif
 
 static int
 fix_active_log_header (const char *log_path, char *undo_page)
@@ -1374,6 +1414,10 @@ fix_active_log_header (const char *log_path, char *undo_page)
       new.bkinfo[i].io_numpages = old->bkinfo[i].io_numpages;
     }
 
+  new.ha_server_state = -1;
+  new.ha_file_status = -1;
+  LSA_SET_NULL (&(new.eof_lsa));
+
   FSEEK_AND_CHECK (fp, sizeof (FILEIO_PAGE_RESERVED), SEEK_SET, log_path);
   FWRITE_AND_CHECK (&new, sizeof (struct log_header), 1, fp, log_path);
   FFLUSH_AND_CHECK (fp, log_path);
@@ -1387,26 +1431,26 @@ fix_volume_header (const char *vol_path, char *undo_page)
 {
   FILE *fp = NULL;
   OLD_DISK_VAR_HEADER *old;
-  DISK_VAR_HEADER *new;
+  DISK_VAR_HEADER *new_hd;
   FILEIO_PAGE *iopage;
   char page[IO_MAX_PAGE_SIZE];
   INT32 save_warnat;
   INT32 save_db_creation;
 
-  FOPEN_AND_CHECK (fp, vol_path, "r+");
+  FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FREAD_AND_CHECK (page, sizeof (char), IO_PAGESIZE, fp, vol_path);
 
   memcpy (undo_page, page, IO_PAGESIZE);
 
   iopage = (FILEIO_PAGE *) page;
   old = (OLD_DISK_VAR_HEADER *) iopage->page;
-  new = (DISK_VAR_HEADER *) iopage->page;
+  new_hd = (DISK_VAR_HEADER *) iopage->page;
 
   save_warnat = old->warnat;
   save_db_creation = old->db_creation;
 
-  new->warnat = save_warnat;
-  new->db_creation = save_db_creation;
+  new_hd->warnat = save_warnat;
+  new_hd->db_creation = save_db_creation;
 
   rewind (fp);
   FWRITE_AND_CHECK (page, sizeof (char), IO_PAGESIZE, fp, vol_path);
@@ -1423,7 +1467,7 @@ undo_fix_volume_header (const char *vol_path, char *undo_page)
 {
   FILE *fp = NULL;
 
-  FOPEN_AND_CHECK (fp, vol_path, "r+");
+  FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FWRITE_AND_CHECK (undo_page, sizeof (char), IO_PAGESIZE, fp, vol_path);
   FFLUSH_AND_CHECK (fp, vol_path);
   FCLOSE_AND_CHECK (fp, vol_path);
@@ -1442,14 +1486,16 @@ get_disk_compatibility_level (const char *db_path,
   struct old_log_header *old_header;
   FILEIO_PAGE *iopage;
   char page[IO_MAX_PAGE_SIZE];
+  char scan_format[32];
 
   fileio_make_volume_info_name (vol_info_path, db_path);
 
   FOPEN_AND_CHECK (vol_info_fp, vol_info_path, "r");
 
+  sprintf (scan_format, "%%d %%%ds", (int) (sizeof (vol_path) - 1));
   while (true)
     {
-      if (fscanf (vol_info_fp, "%d %s", &volid, vol_path) != 2)
+      if (fscanf (vol_info_fp, scan_format, &volid, vol_path) != 2)
 	{
 	  printf ("active log volume infomation is not found.\n");
 	  fclose (vol_info_fp);
@@ -1492,6 +1538,7 @@ fix_volume_and_log_header (const char *db_path)
   char vol_info_path[PATH_MAX], vol_path[PATH_MAX], *undo_page;
   FILE *vol_info_fp = NULL;
   int volid = NULL_VOLID;
+  char scan_format[32];
 
   fileio_make_volume_info_name (vol_info_path, db_path);
 
@@ -1507,9 +1554,10 @@ fix_volume_and_log_header (const char *db_path)
       return ER_FAILED;
     }
 
+  sprintf (scan_format, "%%d %%%ds", (int) (sizeof (vol_path) - 1));
   while (true)
     {
-      if (fscanf (vol_info_fp, "%d %s", &volid, vol_path) != 2)
+      if (fscanf (vol_info_fp, scan_format, &volid, vol_path) != 2)
 	{
 	  break;
 	}
@@ -1705,6 +1753,15 @@ fix_all_file_header (void)
   VFID vfid, *tracker_vfid;
   char *undo_page;
 
+  file_undo_count = 0;
+  file_undo_list_length = UNDO_LIST_SIZE;
+  file_undo_info = (FILE_UNDO_INFO *) calloc (file_undo_list_length,
+					      sizeof (FILE_UNDO_INFO));
+  if (file_undo_info == NULL)
+    {
+      return ER_FAILED;
+    }
+
   tracker_vfid = file_get_tracker_vfid ();
 
   undo_page = make_file_header_undo_page (tracker_vfid);
@@ -1724,14 +1781,6 @@ fix_all_file_header (void)
       return ER_FAILED;
     }
 
-  file_undo_count = 0;
-  file_undo_list_length = UNDO_LIST_SIZE;
-  file_undo_info = (FILE_UNDO_INFO *) calloc (file_undo_list_length,
-					      sizeof (FILE_UNDO_INFO));
-  if (file_undo_info == NULL)
-    {
-      return ER_FAILED;
-    }
 
   for (i = 0; i < num_files; i++)
     {
@@ -1864,7 +1913,7 @@ add_new_data_type (void)
       return ER_FAILED;
     }
 
-  AU_DISABLE (au_save);
+  au_save = au_disable ();
 
   for (i = 0; i < sizeof (new_types) / sizeof (DB_TYPE); i++)
     {
@@ -1892,11 +1941,443 @@ add_new_data_type (void)
     }
 
 error:
-  AU_ENABLE (au_save);
+  au_enable (au_save);
 
   if (error_code == NO_ERROR)
     {
       error_code = db_commit_transaction ();
+    }
+  return error_code;
+}
+
+static int
+new_db_serial (void)
+{
+  MOP class_mop, public_user, dba_user;
+  SM_TEMPLATE *def;
+  char domain_string[32];
+  unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
+  DB_VALUE default_value;
+  int error_code = NO_ERROR;
+  const char *index_col_names[] = { "name", NULL };
+
+  def = smt_def_class (CT_SERIAL_NAME);
+  if (def == NULL)
+    {
+      return er_errid ();
+    }
+
+  error_code = smt_add_attribute (def, "name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code =
+    smt_add_attribute (def, "owner", au_get_user_class_name (), NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  sprintf (domain_string, "numeric(%d,0)", DB_MAX_NUMERIC_PRECISION);
+  numeric_coerce_int_to_num (1, num);
+  DB_MAKE_NUMERIC (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
+
+  error_code = smt_add_attribute (def, "current_val", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = smt_set_attribute_default (def, "current_val", 0,
+					  &default_value);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "increment_val", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = smt_set_attribute_default (def, "increment_val", 0,
+					  &default_value);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "max_val", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "min_val", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  DB_MAKE_INTEGER (&default_value, 0);
+
+  error_code = smt_add_attribute (def, "cyclic", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "started", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = smt_set_attribute_default (def, "started", 0, &default_value);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "class_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "att_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_class_method (def, "change_serial_owner",
+				     "au_change_serial_owner_method");
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = dbt_add_constraint (def, DB_CONSTRAINT_PRIMARY_KEY, NULL,
+				   index_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "current_val", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "increment_val", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "max_val", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "min_val", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_finish_class (def, &class_mop);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      return er_errid ();
+    }
+
+  dba_user = au_get_dba_user ();
+  error_code = au_change_owner (class_mop, dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  public_user = au_get_public_user ();
+  error_code = au_grant (public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_mark_system_class (class_mop, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+new_db_ha_apply_info (void)
+{
+  MOP class_mop, public_user, dba_user;
+  SM_TEMPLATE *def;
+  int error_code = NO_ERROR;
+  const char *index_col_names[] = { "db_name", "copied_log_path", NULL };
+
+  class_mop = db_find_class (CT_HA_APPLY_INFO_NAME);
+  if (class_mop != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  def = smt_def_class (CT_HA_APPLY_INFO_NAME);
+  if (def == NULL)
+    {
+      return er_errid ();
+    }
+
+  error_code = smt_add_attribute (def, "db_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "db_creation_time", "datetime", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "copied_log_path", "varchar(4096)",
+				  NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "page_id", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "offset", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "log_record_time", "datetime", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "last_access_time", "datetime", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "status", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "insert_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "update_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "delete_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "schema_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "commit_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "fail_counter", "bigint", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "required_page_id", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "start_time", "datetime", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add constraints */
+  error_code = dbt_add_constraint (def, DB_CONSTRAINT_UNIQUE, NULL,
+				   index_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "db_name", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "copied_log_path", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "page_id", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = dbt_constrain_non_null (def, "offset", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_finish_class (def, &class_mop);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      return er_errid ();
+    }
+
+  dba_user = au_get_dba_user ();
+  error_code = au_change_owner (class_mop, dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  public_user = au_get_public_user ();
+  error_code = au_grant (public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_mark_system_class (class_mop, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+add_new_classes (void)
+{
+  MOP class_mop;
+  int au_save;
+  int error_code = NO_ERROR;
+  char sql_stmt[LINE_MAX];
+
+  au_save = au_disable ();
+
+  /*
+   * change old db_serial to new db_serial
+   */
+  class_mop = db_find_class (CT_SERIAL_NAME);
+  if (class_mop == NULL)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+
+  error_code = db_rename_class (class_mop, "old_" CT_SERIAL_NAME);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = new_db_serial ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  snprintf (sql_stmt, LINE_MAX, "INSERT INTO %s SELECT * FROM %s;",
+	    CT_SERIAL_NAME, "old_" CT_SERIAL_NAME);
+  error_code = db_execute (sql_stmt, NULL, NULL);
+  if (error_code < 0)
+    {
+      goto error;
+    }
+
+  error_code = db_drop_class (class_mop);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /*
+   * add db_ha_info class
+   */
+
+  error_code = new_db_ha_apply_info ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+error:
+  au_enable (au_save);
+
+  if (error_code == NO_ERROR)
+    {
+      db_commit_transaction ();
+    }
+  else
+    {
+      db_abort_transaction ();
     }
   return error_code;
 }
@@ -1910,7 +2391,7 @@ read_rebuilt_index_list (FILE * log_fp, REBUILT_INDEX_LIST ** done_list)
 
   while (!feof (log_fp))
     {
-      fscanf (log_fp, "%s %s\n", class_name, con_name);
+      fscanf (log_fp, "%1023s %1023s\n", class_name, con_name);
       node = (REBUILT_INDEX_LIST *) malloc (sizeof (REBUILT_INDEX_LIST));
       if (node == NULL)
 	{
@@ -2016,6 +2497,11 @@ rebuild_index (char *log_file, bool is_log_file_exist)
   if (is_log_file_exist)
     {
       log_fp = fopen (log_file, "r+");
+      if (log_fp == NULL)
+	{
+	  return ER_FAILED;
+	}
+
       if (!feof (log_fp))
 	{
 	  read_rebuilt_index_list (log_fp, &done_list);
@@ -2024,6 +2510,11 @@ rebuild_index (char *log_file, bool is_log_file_exist)
   else
     {
       log_fp = fopen (log_file, "w");
+      if (log_fp == NULL)
+	{
+	  return ER_FAILED;
+	}
+
       done_list = NULL;
     }
 
@@ -2081,8 +2572,7 @@ rebuild_index (char *log_file, bool is_log_file_exist)
 		(char **) malloc ((attr_count + 1) * sizeof (char *));
 	      if (save_att_names == NULL)
 		{
-		  fclose (log_fp);
-		  return ER_FAILED;
+		  goto error;
 		}
 
 	      for (j = 0, attr = cons->attributes; *attr; j++, attr++)
@@ -2093,7 +2583,6 @@ rebuild_index (char *log_file, bool is_log_file_exist)
 
 	      strcpy (save_con_name, cons->name);
 	      save_con_type = db_constraint_type (cons);
-
 	      error =
 		db_drop_constraint (class->op, cons->type, cons->name,
 				    NULL, false);
@@ -2102,8 +2591,7 @@ rebuild_index (char *log_file, bool is_log_file_exist)
 		{
 		  printf ("drop constraint(%s, %s): error = %d\n",
 			  classname, save_con_name, error);
-		  fclose (log_fp);
-		  return ER_FAILED;
+		  goto error;
 		}
 
 	      db_commit_transaction ();
@@ -2116,20 +2604,18 @@ rebuild_index (char *log_file, bool is_log_file_exist)
 		{
 		  printf ("add constraint(%s, %s): error = %d\n",
 			  classname, save_con_name, error);
-		  fclose (log_fp);
-		  return ER_FAILED;
+		  goto error;
 		}
 
 	      db_commit_transaction ();
 
-	      if (save_att_names)
+	      if (save_att_names != NULL)
 		{
 		  for (j = 0; j < attr_count; j++)
 		    {
-		      free (save_att_names[j]);
+		      free_and_init (save_att_names[j]);
 		    }
-		  free (save_att_names);
-		  save_att_names = NULL;
+		  free_and_init (save_att_names);
 		}
 
 	      printf ("%s: %s\n", classname, save_con_name);
@@ -2139,13 +2625,44 @@ rebuild_index (char *log_file, bool is_log_file_exist)
 	      break;
 	    }
 
-	  free (constraint_name_to_rebuild[i]);
-	  constraint_name_to_rebuild[i] = NULL;
+	  free_and_init (constraint_name_to_rebuild[i]);
 	}
     }
 
   fclose (log_fp);
+
+  if (done_list != NULL)
+    {
+      free_rebuilt_index_list (done_list);
+    }
+
   return NO_ERROR;
+
+error:
+  fclose (log_fp);
+
+  for (i = 0; i < rebuild_count; i++)
+    {
+      if (constraint_name_to_rebuild[i] != NULL)
+	{
+	  free_and_init (constraint_name_to_rebuild[i]);
+	}
+    }
+
+  if (save_att_names != NULL)
+    {
+      for (j = 0; j < attr_count; j++)
+	{
+	  free_and_init (save_att_names[j]);
+	}
+      free_and_init (save_att_names);
+    }
+
+  if (done_list != NULL)
+    {
+      free_rebuilt_index_list (done_list);
+    }
+  return ER_FAILED;
 }
 
 static int
@@ -2173,7 +2690,7 @@ get_db_full_path (const char *db_name, char *db_full_path)
       return ER_FAILED;
     }
 
-  COMPOSE_FULL_NAME (db_full_path, db->pathname, db_name);
+  COMPOSE_FULL_NAME (db_full_path, PATH_MAX, db->pathname, db_name);
 
   return NO_ERROR;
 }
@@ -2239,12 +2756,15 @@ main (int argc, char *argv[])
 	}
     }
 
-  sysprm_set_to_default ("data_buffer_pages");
+  /* tuning system parameters */
+  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
-  if (db_restart (argv[0], true, db_name) != NO_ERROR)
+  if (db_restart (argv[0], TRUE, db_name) != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
 
@@ -2261,6 +2781,7 @@ main (int argc, char *argv[])
       printf ("start to fix file header\n");
       if (fix_all_file_header () != NO_ERROR
 	  || add_new_data_type () != NO_ERROR
+	  || add_new_classes () != NO_ERROR
 	  || fix_all_glo_data () != NO_ERROR)
 	{
 	  if (undo_fix_all_glo_data () != NO_ERROR)
@@ -2307,13 +2828,6 @@ main (int argc, char *argv[])
       else
 	{
 	  printf ("start to rebuild index\n");
-	}
-
-      if (fix_glo_methods () != NO_ERROR)
-	{
-	  printf ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  return EXIT_FAILURE;
 	}
 
       if (rebuild_index (log_file, is_log_file_exist) != NO_ERROR)

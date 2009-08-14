@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -215,9 +215,9 @@ extern int heap_classrepr_dump_anyfixed (void);
 #endif /* DEBUG_CLASSREPR_CACHE */
 extern int heap_manager_initialize (void);
 extern int heap_manager_finalize (void);
-extern OID *heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
+extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 OID * oid, int expected_length);
-extern OID *heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
+extern int heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
 						const HFID * hfid, OID * oid,
 						int expected_length,
 						OID * class_oid);

@@ -1,0 +1,134 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>복제 시스템 구조와 용어</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 개념\n복제 시스템 구조와 용어");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">복제 개념<\/a> &nbsp;&gt;&nbsp; 복제 시스템 구조와 용어<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>복제 시스템 구조와 용어</h4>
+<p>CUBRID 복제 시스템의 구성은 다음 그림과 같다.</p>
+<p>복제 대상이 되는 원본 데이터베이스를 마스터 데이터베이스(master database)라 하고, 원본 데이터베이스가 복제되어 채워지는 데이터베이스를 슬레이브 데이터베이스(slave database)라 부른다. 마스터 데이터베이스는 일반 데이터베이스로서 읽기/쓰기 등 모든 연산이 허용되나, 슬레이브 데이터베이스는 읽기 연산만 허용한다.</p>
+<p><img src="images/image001.jpg" height="239" width="356" alt="" /></p>
+<p class="caption">CUBRID 복제 시스템의 구성</p>
+<ol>
+<li>복제가 설정되면, 마스터에 위치하는 복제 서버(replication server)는 마스터 데이터베이스의 트랜잭션 로그를 읽는다.</li>
+<li>복제 서버는 트랜잭션 로그 중 복제와 관련된 정보만으로 복제 로그(replication log)를 만들어, 배포 시스템(distributor)에 위치하는 복제 에이전트(replication agent)에 전달한다. 배포 시스템은 마스터 호스트나 슬레이브 호스트에 설정될 수도 있으나, 가용성을 최대한 확보하기 위하여 별도의 호스트에 설정할 수도 있다.</li>
+<li>복제 에이전트는 배포 데이터베이스(distributor database)를 읽어 들여, 마스터로부터 받은 복제 로그를 어느 슬레이브에 어떻게 복제할 것인지를 판단한다. 배포 데이터베이스는 CUBRID 데이터베이스의 하나로서, 복제 구성에 관한 모든 메타데이터를 관리한다.</li>
+<li>복제 에이전트는 복제 서버에서 받은 복제 로그를 일단 디스크에 저장한다.</li>
+<li>배포 데이터베이스에 지정된 슬레이브 데이터베이스에 복제 로그를 배포하여, 슬레이브 데이터베이스에 마스터 데이터베이스의 변경 사항을 반영하게 된다. 이 과정에서 각 슬레이브 데이터베이스에 반영한 상태를 추적하기 위하여 추적 로그(trail log)를 관리하고, 배포 중 발생한 모든 오류를 오류 로그(error log)에 저장한다.</li>
+</ol>
+<p>CUBRID 복제 시스템을 구성하는 각 요소를 정리하면 다음과 같다.</p>
+<h6>마스터 데이터베이스</h6>
+<p>일반적인 CUBRID 데이터베이스로서, 복제의 대상이 되는 원본 데이터베이스라 할 수 있다. CUBRID 복제는 비동기식(asynchronous)이기 때문에 마스터 데이터베이스의 운영은 복제 시스템 설정에 영향을 받지 않는다(비동기식, 동기식 복제에 대한 더 자세한 설명은 차후에 설명한다). 슬레이브 데이터베이스와 달리 마스터 데이터베이스는 읽기, 쓰기 등 모든 데이터베이스 연산이 허용된다.</p>
+<h6>트랜잭션 로그</h6>
+<p>트랜잭션 로그는 복제 시스템과 무관하게 마스터 데이터베이스의 트랜잭션 무결성과 장애 발생시 데이터베이스를 복구하여 가용성을 보장하는 데 사용한다. 복제 시스템은 마스터 데이터베이스에 발생한 모든 변경 정보를 트랜잭션 로그를 통하여 알아 낸다.</p>
+<h6>복제 서버</h6>
+<p>복제 서버는 복제가 설정되었을 때, 마스터 데이터베이스의 트랜잭션 로그를 분석하여 복제 배포를 위해 필요한 복제 로그를 생성하고, 이를 배포 서버 호스트의 복제 에이전트에 전송한다. CUBRID의 복제 서버는 <span class="keyword">cubrid repl_server</span>라는 명령어로 지원된다. 이 명령어를 사용하는 상세한 방법은 이 장에서 차후에 설명한다.</p>
+<h6>배포 시스템</h6>
+<p>마스터의 복제 서버에 받은 복제 로그를 슬레이브에 복제하는 시스템으로서, 복제 에이전트, 배포 데이터베이스, 그리고 연관된 몇 가지 로그 파일로 구성된다. 배포 서버는 마스터 호스트 혹은 슬레이브 호스트에 설정될 수도 있고, 장애 발생시 가용성을 높이고, 성능을 높이기 위하여 별도의 호스트에 설정할 수도 있다.</p>
+<h6>복제 에이전트</h6>
+<p>복제 서버에서 전송된 복제 로그를 이용하여 실제로 복제 작업을 수행하는 프로세스이다. 하나의 마스터에 대하여 여러 개의 슬레이브가 설정될 수 있기 때문에 복제 에이전트는 먼저, 복제 서버에 받은 복제 로그를 파일에 저장한다. 이어서, 복제 에이전트는 배포 데이터베이스에 설정된 모든 슬레이브 데이터베이스에 복제 로그를 반영한다. CUBRID의 복제 에이전트는 <span class="keyword">cubrid repl_agent</span>라는 명령어로 지원된다. 이 명령어를 사용하는 상세한 방법은 이 장에서 차후에 설명한다.</p>
+<h6>배포 데이터베이스</h6>
+<p>배포 시스템의 복제 에이전트로 하여금 마스터와 슬레이브 배치 정보를 알려주는 데이터베이스로서, <span class="related-link">CUBRID</span> 데이터베이스의 하나로 관리된다. 배포 데이터베이스의 스키마를 비롯한 상세한 정보는 이 장에서 차후에 설명한다.</p>
+<h6>복제 로그</h6>
+<p>마스터의 복제 서버로부터 받은 로그를 파일에 저장한 것으로서, &lt;master_db_name&gt;.copy의 형식의 이름을 갖는다. 복제 로그의 크기는 마스터의 변경 양에 따라 달라질 수 있기 때문에, 복제를 설정할 때, 배포 시스템은 복제 로그를 저장할 수 있을 정도의 충분한 디스크 공간을 확보하고 있어야 한다.</p>
+<h6>추적 로그</h6>
+<p>추적 로그는 복제 에이전트가 실제로 복제를 수행하면서 각 슬레이브 데이터베이스 별로 최종 적용된 로그 순차 번호 등 배포의 진행 상태를 기록하는 파일이다. 추적 로그는 복제 에이전트마다 하나의 파일로 관리되는데, &lt;dist_db_name&gt;.trail의 형식의 이름을 갖는다</p>
+<h6>오류 로그</h6>
+<p>오류 로그는 복제 에이전트가 복제를 실행하면서 발생하는 모든 오류를 기록하는 파일로서, &lt;dist_db_name&gt;.err의 형식의 이름을 갖는다.</p>
+<h6>슬레이브 데이터베이스</h6>
+<p>복제의 목적지라 할 수 있는 데이터베이스로서, 마스터의 변경이 복제 시스템에 의하여 자동적으로 반영되는 데이터베이스이다. 마스터 데이터베이스와 달리, 슬레이브 데이터베이스는 읽기 연산에만 사용될 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

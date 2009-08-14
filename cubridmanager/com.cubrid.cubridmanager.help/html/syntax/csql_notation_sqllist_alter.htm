@@ -1,0 +1,147 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>ALTER문</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID SQL 구문\nSQL 문 목록\nALTER 문");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">CUBRID SQL 구문<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">SQL 문 목록<\/a> &nbsp;&gt;&nbsp; ALTER 문<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>ALTER 문</h4>
+<h5>&lt;<span class="var">alter statement</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">alter class statement</span>&gt;<br />
+| &lt;<span class="var">alter trigger statement</span>&gt;<br />
+| &lt;<span class="var">alter serial statement</span>&gt;</p>
+<h5>&lt;<span class="var">alter class statement</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ALTER</span> [ &lt;<span class="var">class type</span>&gt; ] &lt;<span class="var">class name</span>&gt; &lt;<span class="var">alter clause</span>&gt;</p>
+<h5>&lt;<span class="var">alter clause</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ADD</span> &lt;<span class="var">alter add</span>&gt; [ <span class="keyword">INHERIT</span> &lt;<span class="var">resolution comma list</span>&gt; ]<br />
+| <span class="keyword">DROP</span> &lt;<span class="var">alter drop</span>&gt; [ <span class="keyword">INHERIT</span> &lt;<span class="var">resolution comma list</span>&gt; ]<br />
+| <span class="keyword">CHANGE</span> &lt;<span class="var">alter change</span>&gt;<br />
+| <span class="keyword">RENAME</span> &lt;<span class="var">alter rename</span>&gt; [ <span class="keyword">INHERIT</span> &lt;<span class="var">resolution comma list</span>&gt; ]</p>
+<h5>&lt;<span class="var">alter add</span>&gt;</h5>
+<p class="syntax"><span class="keyword">CLASS ATTRIBUTE</span> &lt;<span class="var">attribute definition comma list</span>&gt;<br />
+| [ <span class="keyword">ATTRIBUTE</span> | <span class="keyword">COLUMN</span> ] &lt;<span class="var">class constraint or attribute definition comma list</span>&gt;<br />
+| <span class="keyword">SUPERCLASS</span> &lt;<span class="var">class name comma list</span>&gt;<br />
+| <span class="keyword">QUERY</span> &lt;<span class="var">query statement</span>&gt;<br /></p>
+<h5>&lt;<span class="var">alter drop</span>&gt;</h5>
+<p class="syntax">[ <span class="keyword">ATTRIBUTE</span> | <span class="keyword">COLUMN</span> ] &lt;<span class="var">attribute name comma list</span>&gt;<br />
+| <span class="keyword">CONSTRAINT</span> &lt;<span class="var">constraint name</span>&gt;<br />
+| <span class="keyword">SUPERCLASS</span> &lt;<span class="var">class name comma list</span>&gt;</p>
+<h5>&lt;<span class="var">alter change</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">attribute default comma list</span>&gt;<br />
+| <span class="keyword">QUERY</span> [ &lt;<span class="var">unsigned integer literal</span>&gt; ] &lt;<span class="var">query statement</span>&gt;</p>
+<h5>&lt;<span class="var">attribute default</span>&gt;</h5>
+<p class="syntax">[ <span class="keyword">CLASS</span> ] &lt;<span class="var">attribute name</span>&gt; <span class="keyword">DEFAULT</span> &lt;<span class="var">value specification</span>&gt;</p>
+<h5>&lt;<span class="var">alter rename</span>&gt;</h5>
+<p class="syntax">[ <span class="keyword">ATTRIBUTE</span> | <span class="keyword">COLUMN</span> ] [ <span class="keyword">CLASS</span> ] &lt;<span class="var">attribute name</span>&gt; <span class="keyword">AS</span> &lt;<span class="var">attribute name</span>&gt;</p>
+<h5>&lt;<span class="var">alter trigger statement</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ALTER</span> <span class="keyword">TRIGGER</span> &lt;<span class="var">trigger name</span>&gt; &lt;<span class="var">trigger status or priority</span>&gt;</p>
+<h5>&lt;<span class="var">trigger status or priority</span>&gt;</h5>
+<p class="syntax"><span class="keyword">STATUS</span> { <span class="keyword">ACTIVE</span> | <span class="keyword">INACTIVE</span> }<br />
+| <span class="keyword">PRIORITY</span> &lt;<span class="var">trigger key</span>&gt;</p>
+<h5>&lt;<span class="var">alter serial statement</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ALTER</span> <span class="keyword">SERIAL</span> &lt;<span class="var">serial name</span>&gt; [ <span class="keyword">INCREMENT</span> <span class="keyword">BY</span> &lt;<span class="var">integer literal</span>&gt; ] [ <span class="keyword">START WITH</span> &lt;<span class="var">integer literal</span>&gt; ]<br />
+[ <span class="keyword">MINVALUE</span> &lt;<span class="var">integer literal</span>&gt; | <span class="keyword">NOMINVALUE</span>]<br />
+[ <span class="keyword">MAXVALUE</span> &lt;<span class="var">integer literal</span>&gt; | <span class="keyword">MAXVALUE</span>] [ <span class="keyword">CYCLE</span> | <span class="keyword">NOCYCLE</span> ]</p>
+<h5>예제</h5>
+<p class="code">ALTER CLASS procedings ADD SUPERCLASS reports<br />
+INHERIT editor OF reports;</p>
+<p class="code">ALTER CLASS employee ADD ATTRIBUTE<br />
+name string,<br />
+age integer DEFAULT 20;</p>
+<p class="code">ALTER CLASS employee DROP name, age;</p>
+<p class="code">ALTER CLASS employee CHANGE age DEFAULT 30;</p>
+<p class="code">ALTER CLASS employee DROP CONSTRAINT unique_age;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

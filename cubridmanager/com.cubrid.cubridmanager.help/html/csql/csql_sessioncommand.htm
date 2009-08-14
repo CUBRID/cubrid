@@ -1,0 +1,377 @@
+﻿
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>세션 명령어</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CSQL 인터프리터\n세션 명령어");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"csql.htm\">CSQL 인터프리터<\/a> &nbsp;&gt;&nbsp; 세션 명령어<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>세션 명령어</h2>
+<p>CSQL 인터프리터에는 SQL 문 이외에 CSQL 인터프리터를 제어하는 특별한 명령어가 있으며 이를 세션 명령어라고 한다. 모든 세션 명령어는 반드시 세미콜론(;)으로 시작해야 한다.</p>
+<h6>세션 명령어</h6>
+<p><span class="keyword">;help</span>를 입력하여 CSQL 인터프리터에서 지원되는 세션 명령어를 확인할 수 있다. 세션 명령어를 전부 입력하지 않고 대문자로 표시된 글자까지만 입력해도 CSQL 인터프리터는 세션 명령어를 인식한다. 세션 명령어는 대소문자를 구분하지 않는다.</p>
+<p class="code">CUBRID SQL Interpreter<br />
+Type `;help' for help messages.<br />
+csql&gt; ;help<br />
+=== &lt;Help: Session Command Summary&gt; ===<br />
+&#160;&#160;&#160;All session commands should be prefixed by `;' and only blanks/tabs<br />
+&#160;&#160;&#160;can precede the prefix. Capitalized characters represent the minimum<br />
+&#160;&#160;&#160;abbreviation that you need to enter to execute the specified command.<br />
+&#160;&#160;&#160;;REad &#160;&#160;[&lt;file-name&gt;] &#160;&#160;&#160;&#160;&#160;&#160;- read a file into command buffer.<br />
+&#160;&#160;&#160;;Write &#160;[&lt;file-name&gt;] &#160;&#160;&#160;&#160;&#160;&#160;- (over)write command buffer into a file.<br />
+&#160;&#160;&#160;;APpend [&lt;file-name&gt;] &#160;&#160;&#160;&#160;&#160;&#160;- append command buffer into a file.<br />
+&#160;&#160;&#160;;PRINT &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- print command buffer.<br />
+&#160;&#160;&#160;;SHELL &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- invoke shell.<br />
+&#160;&#160;&#160;;CD &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- change current working directory.<br />
+&#160;&#160;&#160;;EXit &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- exit program.<br />
+&#160;&#160;&#160;;CLear &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- clear command buffer.<br />
+&#160;&#160;&#160;;EDIT &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- invoke system editor with command buffer.<br />
+&#160;&#160;&#160;;List &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display the content of command buffer.<br />
+&#160;&#160;&#160;;RUn &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- execute sql in command buffer.<br />
+&#160;&#160;&#160;;Xrun &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- execute sql in command buffer, and clear the command buffer.<br />
+&#160;&#160;&#160;;COmmit &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- commit the current transaction.<br />
+&#160;&#160;&#160;;ROllback &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- roll back the current transaction.<br />
+&#160;&#160;&#160;;AUtocommit [ON|OFF] &#160;&#160;&#160;&#160;&#160;&#160;&#160;- enable/disable auto commit mode.<br />
+&#160;&#160;&#160;;SHELL_Cmd &#160;[shell-cmd] &#160;&#160;&#160;&#160;- set default shell, editor, print and pager<br />
+&#160;&#160;&#160;;EDITOR_Cmd [editor-cmd] &#160;&#160;&#160;&#160;&#160;command to new one, or display the current<br />
+&#160;&#160;&#160;;PRINT_Cmd &#160;[print-cmd] &#160;&#160;&#160;&#160;&#160;&#160;one, respectively.<br />
+&#160;&#160;&#160;;PAger_cmd &#160;[pager-cmd]<br />
+&#160;&#160;&#160;;DATE &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display the local time, date.<br />
+&#160;&#160;&#160;;DATAbase &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display the name of database being accessed.<br />
+&#160;&#160;&#160;;SChema class-name &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display schema information of a class.<br />
+&#160;&#160;&#160;;SYntax [sql-cmd-name] &#160;&#160;&#160;&#160;&#160;- display syntax of a command.<br />
+&#160;&#160;&#160;;TRigger [`*'|trigger-name] - display trigger definition.<br />
+&#160;&#160;&#160;;Get system_parameter &#160;&#160;&#160;&#160;&#160;&#160;- get the value of a system parameter.<br />
+&#160;&#160;&#160;;SEt system_parameter=value - set the value of a system parameter.<br />
+&#160;&#160;&#160;;PLan [simple/detail/off] &#160;&#160;- show query execution plan. &#160;<br />
+&#160;&#160;&#160;;Info &lt;command&gt; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display internal information.<br />
+&#160;&#160;&#160;;TIme [ON/OFF] &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- enable/disable to display the query execution time.<br />
+&#160;&#160;&#160;;HISTORYList &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display list of the executed queries.<br />
+&#160;&#160;&#160;;HISTORYRead &lt;history_num&gt; &#160;- read entry on the history number into command buffer.<br />
+&#160;&#160;&#160;;HElp &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;- display this help message.<br />
+csql&gt;</p>
+<h6>옵션</h6>
+<ul>
+<li class="title">파일에서 SQL 구문 읽기(;Read)</li>
+<li class="desc"><span class="keyword">;Read</span> 명령어는 파일의 내용을 명령어 버퍼로 읽는 세션 명령어로 지정된 입력 파일에 저장된 SQL 명령어들을 실행하는데 사용할 수 있다. 버퍼에 올려진 파일 내용을 보기 위해서는 <span class="keyword">;List</span> 명령어를 사용한다.</li>
+</ul>
+<p class="code">csql&gt; ;r nation.sql<br />
+The file has been read into the command buffer.<br />
+csql&gt; ;list<br />
+insert into "sport_event" ("event_code", "event_name", "gender_type", "num_player") values<br />
+(20001, Archery Individual', 'M', 1);<br />
+insert into "sport_event" ("event_code", "event_name", "gender_type", "num_player") values<br />
+20002, 'Archery Individual', 'W', 1);<br />
+....</p>
+<ul>
+<li class="title">파일에 SQL 구문 저장(;Write)</li>
+<li class="desc"><span class="keyword">;Write</span>는 명령어 버퍼의 내용을 파일에 저장하는 세션 명령어로 사용자가 CSQL 인터프리터에서 입력 혹은 수정한 SQL 명령어를 파일에 저장할 때 사용된다.</li>
+</ul>
+<p class="code">csql&gt; ;w outfile<br />
+Command buffer has been saved.</p>
+<ul>
+<li class="title">파일에 덧붙이기(;APpend)</li>
+<li class="desc">현재 명령어 버퍼의 내용을 출력 파일인 <span class="keyword">outfile</span>에 추가한다.</li>
+</ul>
+<p class="code">csql&gt; ;ap outfile<br />
+Command buffer has been saved.</p>
+<ul>
+<li class="title">셸 명령어를 실행(;SHELL)</li>
+<li class="desc"><span class="keyword">;SHELL</span> 세션 명령어로 외부 셸을&#160;호출할 수 있다. CSQL 인터프리터가 실행된 환경에서 새로운 셸이 시작되고, 셸을 마치면 다시 CSQL 인터프리터로 돌아온다. 만약에 <span class="keyword">;SHELL_Cmd</span> 명령어로 수행할 셸 명령어가 지정되어 있다면 셸을 구동하여 지정된 명령어를 실행하고 CSQL 인터프리터로 복귀하게 된다.</li>
+</ul>
+<p class="code">csql&gt; ;shell<br />
+% Is -al<br />
+total 2088<br />
+drwxr-xr-x 16&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:51 .<br />
+drwxr-xr-x&#160; 6&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 ..<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 02:49 audit<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 bin<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 conf<br />
+drwxr-xr-x&#160; 4&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:14 cubridmanager<br />
+% exit<br />
+csql&gt;</p>
+<ul>
+<li class="title">셸 명령어 등록(;SHELL_Cmd)</li>
+<li class="desc"><span class="keyword">;SHELL_Cmd</span>를 사용하여 <span class="keyword">;SHELL</span> 세션 명령어로 실행할 셸 명령어를 등록한다. 등록된 명령어를 실행하기 위해서는 예제와 같이&#160;<span class="keyword">;shell</span> 명령어를 입력한다.</li>
+</ul>
+<p class="code">csql&gt; ;shell_c ls -la<br />
+csql&gt; ;shell<br />
+total 2088<br />
+drwxr-xr-x 16&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:51 .<br />
+drwxr-xr-x&#160; 6&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 ..<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 02:49 audit<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 bin<br />
+drwxr-xr-x&#160; 2&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:17 conf<br />
+drwxr-xr-x&#160; 4&#160;DBA cubrid&#160;&#160; 4096 Jul 29 16:14 cubridmanager<br />
+csql&gt;</p>
+<ul>
+<li class="title">현재 작업 디렉터리 변경(;CD)</li>
+<li class="desc">CSQL 인터프리터를 실행한 현재 작업 디렉터리를 지정된 디렉터리로 변경한다. 경로를 지정하지 않으면&#160;홈 디렉터리로 변경된다.</li>
+</ul>
+<p class="code">csql&gt; ;cd /home1/DBA/CUBRID<br />
+Current directory changed to&#160; /home1/DBA/CUBRID.</p>
+<ul>
+<li class="title">CSQL 인터프리터 종료(;EXit)</li>
+<li class="desc">CSQL 인터프리터를 종료한다.</li>
+</ul>
+<p class="code">csql&gt; ;ex</p>
+<ul>
+<li class="title">명령어 버퍼 초기화(;CLear)</li>
+<li class="desc"><span class="keyword">;CLear</span> 세션 명령어는 명령어 버퍼의 내용을 초기화한다.</li>
+</ul>
+<p class="code">csql&gt; ;cl<br />
+csql&gt; ;list</p>
+<ul>
+<li class="title">명령어 버퍼의 내용 보여주기(;List)</li>
+<li class="desc">현재까지 입력 수정된 명령어 버퍼의 내용을&#160;화면에 출력하기 위해서는 <span class="keyword">;List</span> 세션 명령어를 사용한다. 명령어 버퍼는 사용자의 SQL 입력, <span class="keyword">;Read</span> 명령어, <span class="keyword">;Edit</span> 명령어 등으로 수정될 수 있다.</li>
+</ul>
+<p class="code">csql&gt; ;l</p>
+<ul>
+<li class="title">SQL 문 실행(;RUn)</li>
+<li class="desc">명령어 버퍼에 있는 SQL 문을 실행하는 명령어이다. 다음에서 설명하는 <span class="keyword">;Xrun</span> 세션 명령어와 달리 질의 실행 후에도 버퍼는 초기화되지 않는다.</li>
+</ul>
+<p class="code">csql&gt; ;ru</p>
+<ul>
+<li class="title">SQL 문 실행 후 명령어 버퍼 초기화(;Xrun)</li>
+<li class="desc">명령어 버퍼에 있는 SQL 문을 실행하는 명령어이다. 질의 실행 후 명령어의 버퍼는 초기화된다.</li>
+</ul>
+<p class="code">csql&gt; ;x</p>
+<ul>
+<li class="title">트랜잭션 승인(;COmmit)</li>
+<li class="desc">현재 수행되고 있는 트랜잭션을 승인(commit)하는 세션 명령어이다. CSQL 인터프리터가 자동 승인(auto-commit) 모드로 수행되고 있지 않았을 경우에 수행 중이던 트랜잭션에서 변경된 내용이 데이터베이스에 반영된다. 자동 승인(auto-commit) 모드인 경우는 <span class="keyword">;Run</span>과 <span class="keyword">;Xrun</span> 세션 명령어로 실행할 때마다 트랜잭션이 자동으로 승인된다.</li>
+</ul>
+<p class="code">csql&gt; ;co<br />
+Current transaction has been committed.</p>
+<ul>
+<li class="title">트랜잭션 철회(;ROllback)</li>
+<li class="desc">현재 수행되고 있는 트랜잭션을 철회(rollback)하는 세션 명령어이다. <span class="keyword">;COmmit</span>과 마찬가지로 자동 승인(auto-commit) 모드가 아닐 경우에 의미가 있다.</li>
+</ul>
+<p class="code">csql&gt; ;ro<br />
+Current transaction has been rolled back.</p>
+<ul>
+<li class="title">자동 승인 모드 설정(;AUtocommit)</li>
+<li class="desc">자동 승인(auto-commit) 모드를&#160;<span class="keyword">ON</span> 또는 <span class="keyword">OFF</span>로 설정하는 명령어이다. 만약, <span class="keyword">ON</span> 또는 <span class="keyword">OFF</span>를 지정하지 않으면 현재 설정된 값을 보여준다. 참고로 CSQL 인터프리터는 기본으로 자동 승인 모드로 실행된다.</li>
+</ul>
+<p class="code">csql&gt; ;au off<br />
+AUTOCOMMIT IS OFF</p>
+<ul>
+<li class="title">현재 날짜 출력(;DATE)</li>
+<li class="desc"><span class="keyword">;DATE</span>는 CSQL 인터프리터에서 현재 날짜 및 시간 정보를 출력한다.</li>
+</ul>
+<p class="code">csql&gt; ;date<br />
+&#160;&#160;&#160;&#160; Tue July 29 18:58:12 KST 2008</p>
+<ul>
+<li class="title">대상 데이터베이스 이름 출력(;DATAbase)</li>
+<li class="desc">CSQL 인터프리터가 작업 중인 데이터베이스 이름을 출력하는 명령어이다.</li>
+</ul>
+<p class="code">csql&gt; ;data<br />
+&#160;&#160;&#160;&#160;&#160; demodb</p>
+<ul>
+<li class="title">지정한 클래스의 스키마 정보 출력(;SChema)</li>
+<li class="desc"><span class="keyword">;SChema</span> 세션 명령어로 지정한 클래스의 스키마 정보를 확인할 수 있다. 해당 클래스의 이름, 속성명, 제약 사항 등의 정보가 출력된다.</li>
+</ul>
+<p class="code">csql&gt; ;sc event<br />
+=== &lt;Help: Schema of a Class&gt; ===<br />
+&#160;&lt;Class Name&gt;<br />
+&#160;&#160;&#160;&#160; event<br />
+&#160;&lt;Attributes&gt;<br />
+&#160;&#160;&#160;&#160; code&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; INTEGER NOT NULL<br />
+&#160;&#160;&#160;&#160; sports&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CHARACTER VARYING(50)<br />
+&#160;&#160;&#160;&#160;&#160;name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;CHARACTER VARYING(50)<br />
+&#160;&#160;&#160;&#160;&#160;gender&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CHARACTER(1)<br />
+&#160;&#160;&#160;&#160; players&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;INTEGER<br />
+&#160;&lt;Constraints&gt;<br />
+&#160;&#160;&#160;&#160; PRIMARY KEY pk_event_event_code ON event (code)</p>
+<ul>
+<li class="title">구문 규칙 출력(;SYntax)</li>
+<li class="desc">지정한 SQL 구문의 규칙을 출력하는 명령어이다. 특정한 구문을 지정하지 않으면 정의된 모든 구문과 해당 구문의 규칙을 보여준다.</li>
+</ul>
+<p class="code">csql&gt; ;sy alter<br />
+=== &lt;Help: Command Syntax&gt; ===<br />
+&#160;&lt;Name&gt;<br />
+&#160;&#160; ALTER<br />
+&#160;&lt;Description&gt;<br />
+Change the definition of a class or virtual class.<br />
+&#160;&lt;Syntax&gt;<br />
+&lt;alter&gt; ::= ALTER [ &lt;class_type&gt; ] &lt;class_name&gt; &lt;alter_clause&gt; ;<br />
+&lt;class_type&gt; ::= CLASS | TABLE | VCLASS | VIEW<br />
+&lt;alter_clause&gt; ::= ADD &lt;alter_add&gt; [ INHERIT &lt;resolution_comma_list&gt; ] |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; DROP &lt;alter_drop&gt; [ INHERIT &lt;resolution_comma_list&gt; ] |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; RENAME &lt;alter_rename&gt; [ INHERIT &lt;resolution_comma_list&gt; ] |<br />
+&gt;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CHANGE &lt;alter_change&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; INHERIT &lt;resolution_comma_list&gt;<br />
+&lt;alter_add&gt; ::= [ ATTRIBUTE | COLUMN ] &lt;class_element_comma_list&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; CLASS ATTRIBUTE &lt;attribute_definition_comma_list&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; FILE &lt;file_name_comma_list&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; METHOD &lt;method_definition_comma_list&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; QUERY &lt;select_statement&gt; |<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; SUPERCLASS &lt;class_name_comma_list&gt;<br />
+......</p>
+<ul>
+<li class="title">트리거 출력(;TRriger)</li>
+<li class="desc">지정한 트리거 명을 검색하여 출력하는 명령어이다. 트리거 명을 지정하지 않으면 정의된 모든 트리거를 보여준다.</li>
+</ul>
+<p class="code">csql&gt; ;tr<br />
+=== &lt;Help: All Triggers&gt; ===<br />
+&#160;&#160;&#160;&#160; glo_delete_contents<br /></p>
+<ul>
+<li class="title">파라미터 값 확인(;Get)</li>
+<li class="desc"><span class="keyword">;Get</span> 세션 명령어를 이용해 현재 CSQL 인터프리터에 설정된 파라미터 값을 확인할 수 있다. 지정된 파라미터 명이 정확하지 않으면 오류가 발생한다.</li>
+</ul>
+<p class="code">csql&gt; ;g isolation_level<br />
+=== Get Param Input ===<br />
+isolation_level=4</p>
+<ul>
+<li class="title">&#160;파라미터 값 설정(;SEt)</li>
+<li class="desc">특정 파라미터의 값을 설정하기 위해서는 <span class="keyword">;Set</span> 세션 명령어를 사용한다. 클라이언트 파라미터에 대해서만 값을 변경할 수 있으며, 서버 파라미터는 변경할 수 없다는 점에 주의한다.</li>
+</ul>
+<p class="code">csql&gt; ;se block_ddl_statement=1<br />
+=== Set Param Input ===<br />
+block_ddl_statement=1</p>
+<ul>
+<li class="title">질의 실행 계획 보기 수준 설정(;PLan)</li>
+<li class="desc"><span class="keyword">;PLan</span> 세션 명령어는 질의 실행 계획 보기의 수준을 설정한다. 수준은 <span class="keyword">simple</span>, <span class="keyword">detail</span>, <span class="keyword">off</span>로 지정한다. 각 설정값의 의미는 다음과 같다.
+<ul>
+<li><span class="keyword">off</span>&#160;: 질의 실행 계획을 출력하지 않음</li>
+<li><span class="keyword">simple</span> :&#160;질의 실행 계획을 단순하게 출력함. (OPT LEVEL=257)</li>
+<li><span class="keyword">detail</span>&#160;:&#160;질의 실행 계획을 자세하게 출력함. (OPT LEVEL=513)</li>
+</ul>
+</li>
+</ul>
+<ul>
+<li class="title">정보 출력(;Info)</li>
+<li class="desc"><span class="keyword">;Info</span> 세션 명령어는 스키마, 트리거, 작업 환경, 잠금, 통계 등의 정보를 확인할 수 있는 명령어이다.</li>
+</ul>
+<p class="code">csql&gt; ;i lock<br />
+*** Lock Table Dump ***<br />
+&#160;Lock Escalation at = 100000, Run Deadlock interval = 1<br />
+Transaction (index&#160; 0, unknown, unknown@unknown|-1)<br />
+Isolation REPEATABLE CLASSES AND READ UNCOMMITTED INSTANCES<br />
+State TRAN_ACTIVE<br />
+Timeout_period -1<br />
+......</p>
+<ul>
+<li class="title">질의 수행 시간을 출력(;TIme)</li>
+<li class="desc"><span class="keyword">;TIme</span> 세션 명령어로 질의를&#160;수행한 시간을 출력하도록 설정할 수 있다. <span class="keyword">ON</span> 혹은 <span class="keyword">OFF</span>로 지정하며 인자가 없을 경우에는 현재 설정값을 보여준다.</li>
+</ul>
+<p class="code">csql&gt; ;ti ON<br />
+csql&gt; ;ti<br />
+TIME IS ON</p>
+<ul>
+<li class="title">질의 수행 이력 확인(;HISTORYList)</li>
+<li class="desc">이전에 수행된 명령어(입력 내용)을 수행 번호를 포함한 리스트로 보여준다.</li>
+</ul>
+<p class="code">csql&gt; ;historyl<br />
+----&lt; 1 &gt;----<br />
+select * from nation;<br />
+----&lt; 2 &gt;----<br />
+select * from athlete;</p>
+<ul>
+<li class="title">지정된 수행 번호에 해당하는 입력 내용을 버퍼로 불러오기(;HISTORYRead)</li>
+<li class="desc"><span class="keyword">;HISTORYRead</span> 세션 명령어를 사용해 지정된 <span class="keyword">;HISTORYList</span>에서 확인한 수행 번호에 해당하는 내용을 명령어 버퍼로 불러올 수 있다. 해당 SQL 문을 직접 입력한 것과 같은 상태이므로 바로 <span class="keyword">;ru</span> 나 <span class="keyword">;x</span>를 입력할 수 있다.</li>
+</ul>
+<p class="code">csql&gt; ;historyr 1</p>
+<ul>
+<li class="title">기본 편집기를 호출(;EDIT)</li>
+<li class="desc">지정된 편집기를 호출하는 세션 명령어이다. 기본 편집기는 <span class="keyword">vi</span>이며, 다른 편집기로 지정하기 위해서는 <span class="keyword">;editor_cmd</span> 명령어를 이용한다.</li>
+</ul>
+<p class="code">csql&gt; ;edit</p>
+<ul>
+<li class="title">편집기 설정(;EDITOR_Cmd)</li>
+<li class="desc"><span class="keyword">;edit</span> 세션 명령어에서 사용될 편집기를 변경한다. 예제와 같이 기본 편집기인 <span class="keyword">vi</span> 대신에 <span class="keyword">emacs</span> 편집기로 설정한 후, <span class="keyword">emacs</span> 편집기를 호출할 수 있다.</li>
+</ul>
+<p class="code">csql&gt; ;editor_c emacs<br />
+csql&gt; ;edit</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

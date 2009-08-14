@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -49,22 +49,28 @@
 #define	TRUE			1
 #define	FALSE			0
 
-#define WRITE_ADMIN_LOG(log_file, msg)		\
-	do {					\
-	  FILE		*log_fp;		\
-	  struct tm	ct;			\
-	  time_t	cur_time = time(NULL);	\
-	  log_fp = fopen(log_file, "a");	\
-	  if (log_fp == NULL) {			\
-	    printf("cannot open admin log file [%s]\n", log_file);	\
-	  }					\
-	  else {				\
-	    ct = *localtime(&cur_time);		\
-	    fprintf(log_fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year+1900, ct.tm_mon+1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, msg);	\
-	    fclose(log_fp);			\
-	  }					\
-	} while (0)
+static void
+admin_log_write (const char *log_file, const char *msg)
+{
+  FILE *fp;
+  struct tm *ct;
+  time_t ts;
 
+  fp = fopen (log_file, "a");
+  if (fp != NULL)
+    {
+      ts = time (NULL);
+      ct = localtime (&ts);
+      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n",
+               ct->tm_year + 1900, ct->tm_mon + 1, ct->tm_mday,
+               ct->tm_hour, ct->tm_min, ct->tm_sec, msg);
+      fclose (fp);
+    }
+  else
+    {
+      printf ("cannot open admin log file [%s]\n", log_file);
+    }
+}
 
 int
 main (int argc, char **argv)
@@ -81,12 +87,13 @@ main (int argc, char **argv)
       return 0;
     }
 
-  ut_cd_work_dir ();
-
-  err =
-    broker_config_read (br_info, &num_broker, &master_shm_id, admin_log_file);
+  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
+			    admin_log_file, 0, NULL);
   if (err < 0)
     return -1;
+
+  /* change the working directory to $CUBRID/bin */
+  ut_cd_work_dir ();
 
   if (argc < 2)
     goto usage;
@@ -134,14 +141,13 @@ main (int argc, char **argv)
 	    }
 	  else
 	    {
-	      WRITE_ADMIN_LOG (admin_log_file, "start");
+	      admin_log_write (admin_log_file, "start");
 	    }
 	}
       else
 	{
-	  printf
-	    ("Error: CUBRID Broker is already running with shared memory key '%x'.\n",
-	     master_shm_id);
+	  printf ("Error: CUBRID Broker is already running "
+		  "with shared memory key '%x'.\n", master_shm_id);
 	  uw_shm_detach (shm_br);
 	}
     }
@@ -154,7 +160,7 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  WRITE_ADMIN_LOG (admin_log_file, "stop");
+	  admin_log_write (admin_log_file, "stop");
 	}
     }
   else if (strcasecmp (argv[1], "add") == 0)
@@ -172,7 +178,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "add %s", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "restart") == 0)
@@ -190,7 +196,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "restart %s %s", argv[2], argv[3]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "drop") == 0)
@@ -207,7 +213,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "drop %s", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "on") == 0)
@@ -224,7 +230,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "%s on", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "off") == 0)
@@ -241,7 +247,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "%s off", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "suspend") == 0)
@@ -258,7 +264,7 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "%s suspend", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "resume") == 0)
@@ -275,7 +281,24 @@ main (int argc, char **argv)
       else
 	{
 	  sprintf (msg_buf, "%s resume", argv[2]);
-	  WRITE_ADMIN_LOG (admin_log_file, msg_buf);
+	  admin_log_write (admin_log_file, msg_buf);
+	}
+    }
+  else if (strcasecmp (argv[1], "reset") == 0)
+    {
+      if (argc < 3)
+	{
+	  printf ("%s reset <broker-name>\n", argv[0]);
+	  return -1;
+	}
+      if (admin_broker_reset_cmd (master_shm_id, argv[2]) < 0)
+	{
+	  printf ("%s\n", admin_err_msg);
+	}
+      else
+	{
+	  sprintf (msg_buf, "%s reset", argv[2]);
+	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
   else if (strcasecmp (argv[1], "job_first") == 0)
@@ -319,6 +342,17 @@ main (int argc, char **argv)
 	    }
 	}
     }
+  else if (strcasecmp (argv[1], "info") == 0)
+    {
+      if (admin_broker_info_cmd (master_shm_id) < 0)
+        {
+          printf ("%s\n", admin_err_msg);
+        }
+      else
+        {
+          admin_log_write (admin_log_file, "info");
+        }
+    }
   else
     {
       goto usage;
@@ -327,8 +361,8 @@ main (int argc, char **argv)
   return 0;
 
 usage:
-  printf
-    ("%s (start | stop | add | drop | restart | on | off | suspend | resume | job_first)\n",
-     argv[0]);
+  printf ("%s (start | stop | add | drop | restart"
+	  " | on | off | suspend | resume | reset | job_first | info)\n",
+	  argv[0]);
   return -1;
 }

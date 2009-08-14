@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -50,11 +50,7 @@
 #define DEFAULT_AUTOSTART_UNICAS 0	/* no */
 /* Reject multi connection with "ALL USER" */
 
-#ifdef DIAG_DEVEL
 #define NUM_DBMT_FILE	28
-#else
-#define NUM_DBMT_FILE	24
-#endif
 
 const char *autobackup_conf_entry[AUTOBACKUP_CONF_ENTRY_NUM] = {
   "dbname", "backupid", "path", "period_type", "period_date", "time",
@@ -104,14 +100,11 @@ static T_DBMT_FILE_INFO dbmt_file[NUM_DBMT_FILE] = {
   {FID_LOCK_SVR_LOG, DBMT_TMP_DIR, "cmlog.lock"},
   {FID_LOCK_DBMT_PASS, DBMT_TMP_DIR, "cmpass.lock"},
   {FID_UC_AUTO_RESTART_LOG, DBMT_LOG_DIR, "casautorestart.log"},
-  {FID_PSERVER_PID_LOCK, DBMT_TMP_DIR, "cmauto.pid.lock"}
-#ifdef DIAG_DEVEL
-  ,
+  {FID_PSERVER_PID_LOCK, DBMT_TMP_DIR, "cmauto.pid.lock"},
   {FID_DIAG_ACTIVITY_LOG, DBMT_CONF_DIR, "diagactivitylog.conf"},
   {FID_DIAG_STATUS_TEMPLATE, DBMT_CONF_DIR, "diagstatustemplate.conf"},
   {FID_DIAG_ACTIVITY_TEMPLATE, DBMT_CONF_DIR, "diagactivitytemplate.conf"},
   {FID_DIAG_SERVER_PID, DBMT_LOG_DIR, "diag.pid"}
-#endif
 };
 
 sys_config sco;
@@ -183,7 +176,7 @@ uReadSystemConfig (void)
       if (cbuf[0] == '\0' || cbuf[0] == '#')
 	continue;
 
-      if (sscanf (cbuf, "%s %s", ent_name, ent_val) < 2)
+      if (sscanf (cbuf, "%127s %127s", ent_name, ent_val) < 2)
 	continue;
 
       if (strcasecmp (ent_name, "cm_port") == 0)
@@ -379,7 +372,7 @@ auto_conf_delete (T_DBMT_FILE_ID fid, char *dbname)
 
   while (fgets (strbuf, sizeof (strbuf), infp))
     {
-      if (sscanf (strbuf, "%s", conf_dbname) < 1)
+      if (sscanf (strbuf, "%127s", conf_dbname) < 1)
 	continue;
       if (strcmp (dbname, conf_dbname) != 0)
 	fputs (strbuf, outfp);
@@ -413,7 +406,7 @@ auto_conf_rename (T_DBMT_FILE_ID fid, char *src_dbname, char *dest_dbname)
 
   while (fgets (strbuf, sizeof (strbuf), infp))
     {
-      if (sscanf (strbuf, "%s", conf_dbname) < 1)
+      if (sscanf (strbuf, "%127s", conf_dbname) < 1)
 	continue;
       if (strcmp (conf_dbname, src_dbname) == 0)
 	{

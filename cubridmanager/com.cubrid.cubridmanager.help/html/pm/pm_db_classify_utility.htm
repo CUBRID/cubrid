@@ -1,0 +1,184 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>유틸리티 관련 파라미터</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("성능 튜닝\n데이터베이스 서버 설정\n유틸리티 관련 파라미터");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"pm.htm\">성능 튜닝<\/a> &nbsp;&gt;&nbsp; <a href=\"pm_server_general.htm\">데이터베이스 서버 설정<\/a> &nbsp;&gt;&nbsp; 유틸리티 관련 파라미터<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>유틸리티 관련 파라미터</h4>
+<p>다음은 CUBRID에서 사용되는 유틸리티와 관련된 파라미터로 각 파라미터의 타입과 설정 가능한 값의 범위는 다음과 같다.</p>
+<table border="1">
+<tr>
+<th>
+<p>파라미터 이름</p>
+</th>
+<th>
+<p>타입</p>
+</th>
+<th>
+<p>디폴트 값</p>
+</th>
+<th>
+<p>최소값</p>
+</th>
+<th>
+<p>최대값</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>compactdb_page_reclaim_only</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>0</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>csql_history_num</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>50</p>
+</td>
+<td>
+<p>1</p>
+</td>
+<td>
+<p>200</p>
+</td>
+</tr>
+<tr>
+<td height="13">
+<p>backup_volume_max_size_bytes</p>
+</td>
+<td height="29">
+<p>int</p>
+</td>
+<td height="29">
+<p>-1</p>
+</td>
+<td height="29">
+<p>1024*32</p>
+</td>
+<td height="29">
+<p>&#160;</p>
+</td>
+</tr>
+</table>
+<h6>compactdb_page_reclaim_only</h6>
+<p><span class="keyword">compactdb_page_reclaim_only</span>는 <span class="keyword">compactdb</span> 유틸리티와 관련된 파라미터로 이미 할당된 저장 영역의 OID를 재사용하기 위하여 이미 삭제된 객체의 저장 영역을 정리하는 유틸리티이다.&#160;<span class="keyword">compactdb</span>&#160;유틸리티에 의해 저장 영역이 재정렬되는 작업은 3단계로 구분할 수 있으며, <span class="keyword">compactdb_page_reclaim_only</span> 파라미터를 통해 재정렬 작업의 단위를 선택할 수 있다. 디폴트 값인 <span class="keyword">0</span>으로 설정하면 1, 2, 3단계를 모두 수행하므로 데이터 단위, 테이블 단위, 파일 단위로 저장 영역을 재정렬한다. 1로 설정하면 1단계를 생략하므로 테이블 및 파일 단위로 저장 영역을 재정렬하고, 2로 설정하면 1, 2단계를 생략하므로 파일 단위로만 저장 영역을 재정렬한다.</p>
+<ul>
+<li>1단계 : 데이터 단위로&#160;저장 영역을 재정렬한다.</li>
+<li>2단계 : 테이블 단위로 저장 영역을 재정렬한다.</li>
+<li>3단계 : 파일 단위(heap file)로 저장 영역을 재정렬한다.</li>
+</ul>
+<h6>csql_history_num</h6>
+<p><span class="keyword">csql_history_num</span>은 CSQL 인터프리터와 관련된 파라미터로 CSQL 인터프리터 내에서 히스토리 내역으로 저장되는 SQL 문의 개수를 설정하는 파라미터이다. 디폴트 값은 <span class="keyword">50</span>이다.</p>
+<h6 style='line-height:18.0pt'>backup_volume_max_size_bytes</h6>
+<p style='line-height:18.0pt'><span class="keyword">backup_volume_max_size_bytes</span>는 <span class="keyword">cubrid backupdb</span> 유틸리티에 의해 생성되는 백업 볼륨의 최대 크기를 바이트 단위로 설정하는 파라미터이다<span lang="EN-US" xml:lang="EN-US">.</span> 디폴트 값인 <span class="keyword">-1</span>로 설정하면 생성되는 백업 볼륨의 크기가 무제한으로 허용되며<span lang="EN-US" xml:lang="EN-US">,</span> 파라미터가 설정되지 않으면 저장 매체의 한도 용량까지 백업 볼륨의 크기가 허용된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

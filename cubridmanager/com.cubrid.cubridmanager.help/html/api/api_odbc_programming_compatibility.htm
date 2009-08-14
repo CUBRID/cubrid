@@ -1,0 +1,254 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>하위 호환성</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nODBC API\nODBC 프로그래밍\n하위 호환성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_odbc_programming_driver.htm\">ODBC API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_odbc_programming_driver.htm\">ODBC 프로그래밍<\/a> &nbsp;&gt;&nbsp; 하위 호환성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>하위 호환성</h4>
+<p>다음은 ODBC 3.x 드라이버의 하위 호환성 지원에 따라 ODBC 2.x 함수 중 ODBC 3.x에서 지원하지 않는 함수 대신에 어떤 함수가 지원되는지를 나타낸다.</p>
+<p class="caption-table">ODBC 2.x 함수</p>
+<table border="1">
+<thead>
+<tr>
+<th width="200">
+<p>ODBC 2.x 함수</p>
+</th>
+<th width="150">
+<p>ODBC 3.x 함수</p>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width="200">
+<p>SQLAllocConnect</p>
+</td>
+<td width="150">
+<p>SQLAllocHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLAllocEnv</p>
+</td>
+<td width="150">
+<p>SQLAllocHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLAllocStmt</p>
+</td>
+<td width="150">
+<p>SQLAllocHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLBindParam</p>
+</td>
+<td width="150">
+<p>SQLBindParameter</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLColAttributes</p>
+</td>
+<td width="150">
+<p>SQLColAttribute</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLError</p>
+</td>
+<td width="150">
+<p>SQLGetDiagRec</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLFreeConnect</p>
+</td>
+<td width="150">
+<p>SQLFreeHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLFreeEnv</p>
+</td>
+<td width="150">
+<p>SQLFreeHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLFreeStmt with SQL_DROP</p>
+</td>
+<td width="150">
+<p>SQLFreeHandle</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLGetConnectOption</p>
+</td>
+<td width="150">
+<p>SQLGetConnectAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLGetStmtOption</p>
+</td>
+<td width="150">
+<p>SQLGetStmtAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLParamOptions</p>
+</td>
+<td width="150">
+<p>SQLSetStmtAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLSetConnectOption</p>
+</td>
+<td width="150">
+<p>SQLSetConnectAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLSetParam</p>
+</td>
+<td width="150">
+<p>SQLBindParameter</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLSetScrollOption</p>
+</td>
+<td width="150">
+<p>SQLSetStmtAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLSetStmtOption</p>
+</td>
+<td width="150">
+<p>SQLSetStmtAttr</p>
+</td>
+</tr>
+<tr>
+<td width="200">
+<p>SQLTransact</p>
+</td>
+<td width="150">
+<p>SQLEndTran</p>
+</td>
+</tr>
+</tbody>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

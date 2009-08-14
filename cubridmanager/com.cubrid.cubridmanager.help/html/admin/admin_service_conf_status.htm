@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>서비스 상태 관리</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID 제어\nCUBRID 서비스\n서비스 상태 관리");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_conf_command.htm\">CUBRID 제어<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_service_conf_register.htm\">CUBRID 서비스<\/a> &nbsp;&gt;&nbsp; 서비스 상태 관리<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>서비스 상태 관리</h4>
+<p>등록된 마스터 프로세스, 데이터베이스 서버 및 복제 서버의 상태를 확인하기 위하여 다음과 같이 입력한다.</p>
+<p class="code">% $ cubrid service status<br />
+@ cubrid master status<br />
+++ cubrid master is running.<br />
+@ cubrid server status<br />
+<br />
+&#160;Server testdb (rel 8.2, pid 31059)<br />
+&#160;Server demodb (rel 8.2, pid 30950)<br />
+<br />
+@ cubrid broker status<br />
+<br />
+NAME &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;PID &#160;&#160;&#160;PORT &#160;&#160;&#160;AS &#160;&#160;&#160;JQ &#160;REQ &#160;TPS &#160;OPS&#160;&#160;AUTO &#160;&#160;&#160;SES &#160;&#160;&#160;SQLL &#160;&#160;&#160;CONN<br />
+=====================================================================================<br />
+* query_editor &#160;336 &#160;&#160;30000 &#160;&#160;&#160;&#160;5&#160;&#160;&#160;&#160;&#160;&#160;0&#160;&#160;0 &#160;&#160;--- &#160;---&#160;&#160;&#160;ON &#160;&#160;&#160;&#160;OFF &#160;&#160;&#160;&#160;ON:A AUTO<br />
+* broker1&#160;&#160;&#160;&#160;&#160;&#160;&#160;5100 &#160;33000 &#160;&#160;&#160;&#160;5&#160;&#160;&#160;&#160;&#160;&#160;0&#160;&#160;0 &#160;&#160;---&#160;&#160;---&#160;&#160;&#160;ON &#160;&#160;&#160;&#160;OFF &#160;&#160;&#160;&#160;ON:A AUTO<br />
+<br />
+@ cubrid manager server status<br />
+++ cubrid manager server is not running.<br />
+@ cubrid replication status</p>
+<p>만약, 마스터 프로세스가&#160;중지된 상태라면, 다음과 같은 메시지가 출력된다.</p>
+<p class="code">% cubrid service status<br />
+@ cubrid master status<br />
+++ cubrid master is not running.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

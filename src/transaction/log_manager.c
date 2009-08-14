@@ -69,10 +69,8 @@
 #include "job_queue.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
-
-#if !defined(WINDOWS)
+#include "object_print.h"
 #include "replication.h"
-#endif
 
 #if !defined(SERVER_MODE)
 #undef MUTEX_INIT
@@ -164,12 +162,6 @@ static int log_initialize_internal (THREAD_ENTRY * thread_p,
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
-static void log_append_run_postpone (THREAD_ENTRY * thread_p,
-				     LOG_RCVINDEX rcvindex,
-				     LOG_DATA_ADDR * addr,
-				     const VPID * rcv_vpid, int length,
-				     const void *data,
-				     const LOG_LSA * ref_lsa);
 static void log_append_client_name (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static LOG_LSA *log_get_savepoint_lsa (THREAD_ENTRY * thread_p,
 				       const char *savept_name,
@@ -811,8 +803,8 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     {
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_create");
     }
-  if (logpb_initialize_log_names
-      (thread_p, db_fullname, logpath, prefix_logname) != NO_ERROR)
+  if (logpb_initialize_log_names (thread_p, db_fullname, logpath,
+				  prefix_logname) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_create");
     }
@@ -984,12 +976,12 @@ log_set_no_logging (void)
     {
       log_No_logging = true;
       error_code = NO_ERROR;
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG && log_No_logging)
 	{
 	  fprintf (stdout, "**Running without logging**\n");
 	}
-#endif /* LOGRV_TRACE */
+#endif /* NDEBUG */
     }
 
 #else /* SA_MODE */
@@ -1037,8 +1029,13 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 	{
 	  log_zip_undo = log_zip_alloc (LOGAREA_SIZE, true);
 	  log_zip_redo = log_zip_alloc (LOGAREA_SIZE, true);
-	  log_data_ptr = (char *) malloc ((LOGAREA_SIZE + sizeof (int)) * 2);
 	  log_data_length = ((LOGAREA_SIZE + sizeof (int)) * 2);
+	  log_data_ptr = (char *) malloc (log_data_length);
+	  if (log_data_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, log_data_length);
+	    }
 
 	  if (log_zip_undo == NULL || log_zip_redo == NULL
 	      || log_data_ptr == NULL)
@@ -1051,6 +1048,10 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      if (log_zip_redo)
 		{
 		  log_zip_free (log_zip_redo);
+		}
+	      if (log_data_ptr)
+		{
+		  free_and_init (log_data_ptr);
 		}
 	    }
 	  else
@@ -1069,12 +1070,12 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 				  false);
 
   log_No_logging = PRM_LOG_NO_LOGGING;
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG && log_No_logging)
     {
       fprintf (stdout, "**Running without logging**\n");
     }
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 }
 
 /*
@@ -1585,6 +1586,12 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
 
   abort_thread_running =
     (int *) malloc (sizeof (int) * log_Gl.trantable.num_total_indices);
+  if (abort_thread_running == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (int) * log_Gl.trantable.num_total_indices);
+      return;
+    }
   memset (abort_thread_running, 0,
 	  sizeof (int) * log_Gl.trantable.num_total_indices);
 
@@ -1609,8 +1616,11 @@ loop:
 					      log_abort_by_tdes,
 					      (CSS_THREAD_ARG) tdes,
 					      -1 /* implicit: DEFAULT */ );
-	      css_add_to_job_queue (job_entry);
-	      abort_thread_running[i] = 1;
+	      if (job_entry != NULL)
+		{
+		  css_add_to_job_queue (job_entry);
+		  abort_thread_running[i] = 1;
+		}
 
 	      repeat_loop = true;
 	    }
@@ -1790,6 +1800,21 @@ log_final (THREAD_ENTRY * thread_p)
 
   log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
+  if (log_zip_support)
+    {
+      if (log_zip_undo)
+	{
+	  log_zip_free (log_zip_undo);
+	}
+      if (log_zip_redo)
+	{
+	  log_zip_free (log_zip_redo);
+	}
+      if (log_data_ptr)
+	{
+	  free_and_init (log_data_ptr);
+	}
+    }
 }
 
 /*
@@ -2058,9 +2083,9 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   /* END append */
 
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2251,7 +2276,7 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       logpb_append_data (thread_p, length, (char *) data);
     }
 
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   LOG_CS_EXIT ();
 }
@@ -2431,9 +2456,9 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2711,9 +2736,9 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   /* END append */
 
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2906,7 +2931,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   LOG_CS_EXIT ();
 }
@@ -3106,9 +3131,9 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   /* END append */
 
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -3410,7 +3435,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   logpb_append_data (thread_p, length, (char *) data);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   LOG_CS_EXIT ();
 }
@@ -3473,7 +3498,17 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       rcv.offset = addr->offset;
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
-      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+
+      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
+	{
+	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
+	}
+      else
+	{
+	  assert (RV_fun[rcvindex].redofun != NULL);
+	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	}
+
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
       return;
@@ -3503,10 +3538,20 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       rcv.offset = addr->offset;
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
-      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-      if (skipredo == false)
+
+      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
 	{
-	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
+	  assert (skipredo == true);
+	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
+	}
+      else
+	{
+	  assert (RV_fun[rcvindex].redofun != NULL);
+	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	  if (skipredo == false)
+	    {
+	      log_append_redo_data (thread_p, rcvindex, addr, length, data);
+	    }
 	}
 
       return;
@@ -3562,7 +3607,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   logpb_append_data (thread_p, length, (char *) data);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   /*
    * Note: The lsa of the page is not set for postpone log records since
@@ -3598,7 +3643,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
  *     1)       The only type of logging accepted by this function is page
  *              operation level logging, thus, an address must be given.
  */
-static void
+void
 log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			 LOG_DATA_ADDR * addr, const VPID * rcv_vpid,
 			 int length, const void *data,
@@ -3673,7 +3718,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       logpb_append_data (thread_p, length, (char *) data);
 
       /* END append */
-      logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
 
       LOG_CS_EXIT ();
     }
@@ -3767,7 +3812,7 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RECTYPE compensate_type,
   logpb_append_data (thread_p, length, (char *) data);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   /* Go back to our undo link */
   LSA_COPY (&tdes->undo_nxlsa, &prev_lsa);
@@ -3812,7 +3857,7 @@ log_append_logical_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*logical_comp));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   /* Go back to our undo link */
   LSA_COPY (&tdes->undo_nxlsa, undo_nxlsa);
@@ -3842,7 +3887,7 @@ log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   logpb_start_append (thread_p, logrec_type, tdes);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 }
 
 /*
@@ -3859,6 +3904,10 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return;
+    }
 
   LOG_CS_ENTER (thread_p);
 
@@ -3875,7 +3924,9 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 
   /* END append */
   /* need to flush because LWT must deliver the log header page to the remote */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -4066,7 +4117,7 @@ log_append_client_name (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, LOG_USERNAME_MAX);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 }
 
 /*
@@ -4159,7 +4210,9 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
        * coordination WAL rule for the client. Thus, the log has to be permanent
        */
 
-      logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      assert (LOG_CS_OWN ());
 
       if (tdes->topops.last >= 0)
 	{
@@ -4268,7 +4321,7 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
        * the transaction is committed.
        */
 
-      logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
 
       if (tdes->topops.last >= 0)
 	{
@@ -4371,19 +4424,11 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   logpb_append_data (thread_p, length, savept_name);
 
   /* END append */
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
 
   LOG_CS_EXIT ();
-
-#if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
-    {
-      (void) repl_add_savepoint_info (thread_p, savept_name);
-    }
-#endif
-
   return &tdes->savept_lsa;
 }
 
@@ -4679,7 +4724,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        */
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      /* for CC(Click Counter) : at here */
@@ -4714,6 +4759,10 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
       else
 	{
+	  repl_log_abort_after_lsa (tdes,
+				    &(tdes->topops.stack[tdes->topops.last].
+				      lastparent_lsa));
+
 	  /* Abort the top system operation */
 	  tdes->state = TRAN_UNACTIVE_ABORTED;
 	  log_rollback (thread_p, tdes,
@@ -5005,9 +5054,10 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_posp));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, true);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5049,9 +5099,10 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_posp));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5088,9 +5139,10 @@ log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_client));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5127,9 +5179,10 @@ log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_client));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5171,9 +5224,10 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_client));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5215,9 +5269,10 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_client));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
-
+  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -5271,13 +5326,14 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	      log = (struct log_replication *) LOG_APPEND_PTR ();
 	      LSA_COPY (&log->lsa, &repl_rec->lsa);
 	      log->length = repl_rec->length;
+	      log->rcvindex = repl_rec->rcvindex;
 	      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*log));
 
 	      /* insert a data */
 	      logpb_append_data (thread_p, repl_rec->length,
 				 repl_rec->repl_data);
 
-	      logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+	      logpb_end_append (thread_p);
 	      repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
 	    }
 
@@ -5308,8 +5364,7 @@ log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   logpb_start_append (thread_p, iscommitted, tdes);
   log_Gl.writer_info.skip_flush = true;
-  logpb_end_append (thread_p, (iscommitted == LOG_UNLOCK_COMMIT) ?
-		    LOG_NEED_FLUSH : LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
   log_Gl.writer_info.skip_flush = false;
 
   LOG_CS_EXIT ();
@@ -5352,9 +5407,11 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       log_Stat.commit_count++;
 
-      logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+      logpb_end_append (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+      assert (LOG_CS_OWN ());
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  time_t xxtime = time (NULL);
@@ -5365,13 +5422,13 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
 		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
 	}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
     }
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
-      logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
-#if defined(LOGRV_TRACE)
+      logpb_end_append (thread_p);
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  time_t xxtime = time (NULL);
@@ -5382,7 +5439,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
 		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
 	}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
     }
 
 }
@@ -5406,6 +5463,10 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
 
   for (t = tdes->modified_class_list; t; t = t->next)
     {
@@ -5419,6 +5480,8 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
       t = (MODIFIED_CLASS_ENTRY *) malloc (sizeof (MODIFIED_CLASS_ENTRY));
       if (t == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (MODIFIED_CLASS_ENTRY));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       COPY_OID (&t->class_oid, class_oid);
@@ -5593,13 +5656,17 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
        * Close any query cursors at this moment too.
        * Release all locks
        */
-      spage_free_saved_spaces (thread_p, tdes->trid);
+      if (tdes->first_save_entry != NULL)
+	{
+	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	  tdes->first_save_entry = NULL;
+	}
 
       (void) file_new_declare_as_old (thread_p, NULL);
 
       log_free_modifed_class_list (thread_p, tdes, false);
 
-      if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+      if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  log_append_repl_info (thread_p, tdes, true);
@@ -5639,7 +5706,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       /*
        * We are not logging, and changes were done
        */
-      spage_free_saved_spaces (thread_p, tdes->trid);
+      if (tdes->first_save_entry != NULL)
+	{
+	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	  tdes->first_save_entry = NULL;
+	}
 
       (void) file_new_declare_as_old (thread_p, NULL);
 
@@ -5708,8 +5779,11 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       log_free_modifed_class_list (thread_p, tdes, true);
 
-      spage_free_saved_spaces (thread_p, tdes->trid);
-
+      if (tdes->first_save_entry != NULL)
+	{
+	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	  tdes->first_save_entry = NULL;
+	}
       lock_unlock_all (thread_p);
 
       /* Are there any loose ends to be done in the client ? */
@@ -5729,7 +5803,11 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        */
       (void) file_new_declare_as_old (thread_p, NULL);
 
-      spage_free_saved_spaces (thread_p, tdes->trid);
+      if (tdes->first_save_entry != NULL)
+	{
+	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	  tdes->first_save_entry = NULL;
+	}
 
       lock_unlock_all (thread_p);
       /* There is no need to create a new transaction identifier */
@@ -6190,14 +6268,6 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
    * get undefined and cannot get call by the user any longer.
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
-
-#if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE)
-    {
-      (void) repl_log_abort_to_savepoint (thread_p, savepoint_name);
-    }
-#endif
-
   return state;
 }
 
@@ -6265,7 +6335,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					LOG_2PC_COMMIT_INFORM_PARTICPS, tdes);
 
 		    /* Finish the append operation and flush the log */
-		    logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+		    logpb_end_append (thread_p);
+		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+		    assert (LOG_CS_OWN ());
 
 		    LOG_CS_EXIT ();
 		  }
@@ -6286,7 +6358,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					LOG_2PC_ABORT_INFORM_PARTICPS, tdes);
 
 		    /* finish the append operation and flush the log */
-		    logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+		    logpb_end_append (thread_p);
+		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+		    assert (LOG_CS_OWN ());
 
 		    LOG_CS_EXIT ();
 		  }
@@ -6395,7 +6469,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
 	  time_t xxtime = time (NULL);
@@ -6409,7 +6483,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		   log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset,
 		   ctime (&xxtime));
 	}
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
       logtb_clear_tdes (thread_p, tdes);
     }
   else
@@ -6505,7 +6579,7 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_result));
 
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   /* Remember last partial result */
   LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
@@ -7103,7 +7177,9 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*run_client));
 
   /* END append */
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
+  assert (LOG_CS_OWN ());
 
   LOG_CS_EXIT ();
 }
@@ -7580,6 +7656,46 @@ log_ascii_dump (FILE * out_fp, int length, void *data)
     }
 }
 
+static void
+log_repl_data_dump (FILE * out_fp, int length, void *data)
+{
+  char *ptr;
+  char *class_name;
+  DB_VALUE value;
+  PARSER_VARCHAR *buf;
+  PARSER_CONTEXT *parser;
+
+  ptr = data;
+  ptr = or_unpack_string_nocopy (ptr, &class_name);
+  ptr = or_unpack_value (ptr, &value);
+
+  parser = parser_create_parser ();
+  if (parser != NULL)
+    {
+      buf = describe_value (parser, NULL, &value);
+      fprintf (out_fp, "C[%s] K[%s]\n", class_name,
+	       pt_get_varchar_bytes (buf));
+      parser_free_parser (parser);
+    }
+  pr_clear_value (&value);
+}
+
+static void
+log_repl_schema_dump (FILE * out_fp, int length, void *data)
+{
+  char *ptr;
+  int statement_type;
+  char *class_name;
+  char *sql;
+
+  ptr = data;
+  ptr = or_unpack_int (ptr, &statement_type);
+  ptr = or_unpack_string_nocopy (ptr, &class_name);
+  ptr = or_unpack_string_nocopy (ptr, &sql);
+
+  fprintf (out_fp, "C[%s] S[%s]\n", class_name, sql);
+}
+
 /*
  * log_dump_data - DUMP DATA STORED IN LOG
  *
@@ -7646,6 +7762,8 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length,
       ptr = (char *) malloc (length);
       if (ptr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, length);
 	  return;
 	}
       /* Copy the data */
@@ -8139,6 +8257,9 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp,
 			     LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   struct log_replication *repl_log;
+  int length;
+  const char *type;
+  void (*dump_function) (FILE *, int, void *);
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa,
 				    log_page_p);
@@ -8146,10 +8267,41 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp,
     (struct log_replication *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Target log lsa = %d|%d\n", repl_log->lsa.pageid,
 	   repl_log->lsa.offset);
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-  log_dump_data (thread_p, out_fp, repl_log->length, log_lsa, log_page_p,
-		 log_ascii_dump, NULL);
+  length = repl_log->length;
 
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
+
+  switch (repl_log->rcvindex)
+    {
+    case RVREPL_DATA_INSERT:
+      type = "RVREPL_DATA_INSERT";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DATA_UPDATE_START:
+      type = "RVREPL_DATA_UPDATE_START";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DATA_UPDATE:
+      type = "RVREPL_DATA_UPDATE";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DATA_UPDATE_END:
+      type = "RVREPL_DATA_UPDATE_END";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DATA_DELETE:
+      type = "RVREPL_DATA_DELETE";
+      dump_function = log_repl_data_dump;
+      break;
+    default:
+      type = "RVREPL_SCHEMA";
+      dump_function = log_repl_schema_dump;
+      break;
+    }
+  fprintf (out_fp, "T[%s] ", type);
+
+  log_dump_data (thread_p, out_fp, length, log_lsa, log_page_p, dump_function,
+		 NULL);
   return log_page_p;
 }
 
@@ -8671,7 +8823,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
   LOG_CS_ENTER (thread_p);
   log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
-  logtb_dump_trantable (thread_p, out_fp);
+  xlogtb_dump_trantable (thread_p, out_fp);
   logpb_dump (out_fp);
   logpb_force (thread_p);
   logpb_flush_header (thread_p);
@@ -8742,6 +8894,10 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
       if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
 	{
 	  fprintf (out_fp, " Error reading page %d... Quit\n", lsa.pageid);
+	  if (log_dump_ptr != NULL)
+	    {
+	      log_zip_free (log_dump_ptr);
+	    }
 	  return;
 	}
       /*
@@ -8904,7 +9060,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
  */
 
 /*
- * log_rollback_rec - EXECUTE AN UNDO DURING NORMAL PROCESSING
+ * log_rollback_record - EXECUTE AN UNDO DURING NORMAL PROCESSING
  *
  * return: nothing
  *
@@ -8957,7 +9113,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_NULL_RECOVERY_FUNCTION, 1, rcvindex);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback_rec");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_rollback_record");
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -9000,7 +9157,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       if (area == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rollback_rec");
+			     "log_rollback_record");
 	  if (rcv->pgptr != NULL)
 	    {
 	      pgbuf_unfix (thread_p, rcv->pgptr);
@@ -9023,7 +9180,15 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       else
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rollback_rec");
+			     "log_rollback_record");
+	  if (area != NULL)
+	    {
+	      free_and_init (area);
+	    }
+	  if (rcv->pgptr != NULL)
+	    {
+	      pgbuf_unfix (thread_p, rcv->pgptr);
+	    }
 	  return;
 	}
     }
@@ -9067,7 +9232,11 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  if (log_start_system_op (thread_p) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rollback_rec");
+				 "log_rollback_record");
+	      if (area != NULL)
+		{
+		  free_and_init (area);
+		}
 	      if (rcv->pgptr != NULL)
 		{
 		  pgbuf_unfix (thread_p, rcv->pgptr);
@@ -9103,7 +9272,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  if (rv_err != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_rec: SYSTEM ERROR... Transaction %d, "
+			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
 			    "Log record %d|%d, rcvindex = %s, "
 			    "was not undone due to error (%d)\n",
 			    tdes->tran_index, log_lsa->pageid,
@@ -9135,6 +9304,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (rcv_vpid->volid));
     }
+
   if (area != NULL)
     {
       free_and_init (area);
@@ -9895,22 +10065,41 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			      rcv.data = area;
 			    }
 
-			  /*
-			   * Write the corresponding run postpone record for
-			   * the postpone action
-			   */
-			  log_append_run_postpone (thread_p, rcvindex,
-						   &rvaddr, &rcv_vpid,
-						   rcv.length, rcv.data,
-						   &ref_lsa);
 
+			  /*
+			   * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
+			   * Don't append same log like others.
+			   * because it modify two pages (volume header & bit map)
+			   * so, we must append two WAL logs for each page later
+			   * (after below RV_fun call ends successfully)
+			   */
 			  /* Now call the REDO recovery function */
 			  if (rcv.pgptr != NULL
 			      || (rcv_vpid.volid == NULL_VOLID
 				  && rcv_vpid.pageid == NULL_PAGEID))
 			    {
-			      (void) (*RV_fun[rcvindex].redofun) (thread_p,
-								  &rcv);
+			      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
+				{
+				  (void)
+				    disk_rv_alloctable_with_volheader
+				    (thread_p, &rcv, &ref_lsa);
+				}
+			      else
+				{
+				  /*
+				   * Write the corresponding run postpone record for
+				   * the postpone action
+				   */
+				  log_append_run_postpone (thread_p, rcvindex,
+							   &rvaddr, &rcv_vpid,
+							   rcv.length,
+							   rcv.data,
+							   &ref_lsa);
+
+				  /* Now call the REDO recovery function */
+				  (void) (*RV_fun[rcvindex].
+					  redofun) (thread_p, &rcv);
+				}
 			    }
 			  else
 			    {
@@ -9923,6 +10112,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				      fileio_get_volume_label (rcv_vpid.
 							       volid));
 			    }
+
 			  if (area != NULL)
 			    {
 			      free_and_init (area);
@@ -10466,6 +10656,8 @@ log_realloc_data_ptr (int *data_length, int length)
       log_data_ptr = (char *) malloc (length);
       if (log_data_ptr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, length);
 	  *data_length = 0;
 	  return false;
 	}

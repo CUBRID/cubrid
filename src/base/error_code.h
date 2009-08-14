@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -789,9 +789,9 @@
 #define ER_EV_WRITE_HANDLER                         -661
 #define ER_EV_INIT                                  -662
 #define ER_EV_TRUNC                                 -663
-#define ER_EV_SERVER_STARTED                        -664
+#define ER_EV_STARTED                               -664
 #define ER_EV_BROKEN_PIPE                           -665
-#define ER_EV_OFF                                   -666
+#define ER_EV_STOPPED                               -666
 
 #define ER_CPLUS_NO_CLASS_MATCH                     -667
 #define ER_CPLUS_UNKNOWN_DOMAIN                     -668
@@ -808,7 +808,7 @@
 
 #define ER_CFG_READ_DATABASES                       -675
 #define ER_CFG_FIND_DATABASE                        -676
-#define ER_BO_HOSTS_CONNECT                         -677
+#define ER_BO_CONNECT_FAILED                        -677
 #define ER_BO_CLIENT_INIT_INTERNAL                  -678
 
 #define ER_CPLUS_TRANSACTION_BEGUN_TWICE            -679
@@ -1037,7 +1037,8 @@
 
 #define ER_PRM_BAD_VALUE                            -839
 #define ER_PRM_CANNOT_CHANGE                        -840
-#define ER_PRM_NOT_SOLE_TRAN                        -841
+
+#define ER_NOT_SOLE_TRAN                            -841
 
 #define ER_LC_LOCK_CACHE_ERROR                      -842
 
@@ -1195,6 +1196,18 @@
 
 #define ER_NET_DIFFERENT_BIT_PLATFORM               -969
 
-#define ER_LAST_ERROR                               -970
+#define ER_CSS_SERVER_HA_MODE_CHANGE                -970
+
+#define ER_BO_CONNECTED_TO                          -971
+#define ER_BO_CLIENT_CONNECTED                      -972
+#define ER_BO_SERVER_STATUS                         -973
+
+#define ER_LOG_ARCHIVE_CREATED                      -974
+
+#define ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION       -975
+
+#define ER_FILE_TABLE_OVERFLOW                      -976
+
+#define ER_LAST_ERROR                               -977
 
 #endif /* _ERROR_CODE_H_ */

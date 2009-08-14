@@ -459,6 +459,12 @@ qo_rewrite_as_derived (PARSER_CONTEXT * parser, PT_NODE * root,
 
   path_spec = *path_spec_ptr;
   new_spec = parser_copy_tree (parser, path_spec);
+  if (new_spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "copy tree");
+      return;
+    }
+
   conjunct = new_spec->info.spec.path_conjuncts;
   new_spec->info.spec.path_conjuncts = NULL;
 
@@ -469,6 +475,12 @@ qo_rewrite_as_derived (PARSER_CONTEXT * parser, PT_NODE * root,
        * This will be the case for outer path expressions 2 or more deep.
        */
       query = parser_copy_tree (parser, root->info.spec.derived_table);
+      if (query == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "copy tree");
+	  return;
+	}
+
       new_root = query->info.query.q.select.from;
       parser_free_tree (parser, query->info.query.q.select.list);
     }
@@ -479,6 +491,13 @@ qo_rewrite_as_derived (PARSER_CONTEXT * parser, PT_NODE * root,
        */
       new_root = parser_copy_tree (parser, root);
       query = parser_new_node (parser, PT_SELECT);
+
+      if (query == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return;
+	}
+
       query->info.query.q.select.from = new_root;
       query->info.query.correlation_level = 0;
     }
@@ -2199,12 +2218,15 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 
 		  /* not found; add new attribute */
-		  if (!attr)
+		  if (attr == NULL)
 		    {
 		      attr = pt_point (parser, arg1);
-		      attr->line_number = 1;	/* set attribute count */
+		      if (attr != NULL)
+			{
+			  attr->line_number = 1;	/* set attribute count */
 
-		      attr_list = parser_append_node (attr_list, attr);
+			  attr_list = parser_append_node (attr_list, attr);
+			}
 		    }
 		}
 
@@ -2220,12 +2242,16 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 
 		  /* not found; add new attribute */
-		  if (!attr)
+		  if (attr == NULL)
 		    {
 		      attr = pt_point (parser, arg2);
-		      attr->line_number = 1;	/* set attribute count */
 
-		      attr_list = parser_append_node (attr_list, attr);
+		      if (attr != NULL)
+			{
+			  attr->line_number = 1;	/* set attribute count */
+
+			  attr_list = parser_append_node (attr_list, attr);
+			}
 		    }
 		}
 	    }
@@ -2449,6 +2475,11 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  DB_MAKE_INTEGER (&value, truefalse);
 	  fold = pt_dbval_to_value (parser, &value);
+	  if (fold == NULL)
+	    {
+	      return;
+	    }
+
 	  fold->type_enum = node->type_enum;
 	  fold->info.value.location = node->info.expr.location;
 	  pr_clear_value (&value);
@@ -2506,7 +2537,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
     {
       arg2 = arg2->info.expr.arg1;
     }
-  find_const = pt_is_const (arg2);
+  find_const = pt_is_const_expr_node (arg2);
   find_attr = pt_is_attr (start->info.expr.arg2);
 
   /* search CNF list */
@@ -2533,7 +2564,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 		{
 		  arg2 = arg2->info.expr.arg1;
 		}
-	      if (pt_is_const (arg2))
+	      if (pt_is_const_expr_node (arg2))
 		{
 		  /* found 'attr op const' term */
 		  break;
@@ -2670,6 +2701,12 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 		  /* make a single false node */
 		  node = parser_new_node (parser, PT_VALUE);
+		  if (node == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return;
+		    }
+
 		  node->type_enum = PT_TYPE_LOGICAL;
 		  node->info.value.data_value.i = 0;
 		  node->info.value.location = location;
@@ -2711,6 +2748,12 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 		  /* make a single false node and append it to WHERE list */
 		  node = parser_new_node (parser, PT_VALUE);
+		  if (node == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return;
+		    }
+
 		  node->type_enum = PT_TYPE_LOGICAL;
 		  node->info.value.data_value.i = 0;
 		  node->info.value.location = location;
@@ -2868,6 +2911,12 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 		      /* lower value */
 		      lower = parser_new_node (parser, PT_VALUE);
+		      if (lower == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return;
+			}
+
 		      lower->type_enum = arg2->type_enum;
 		      new_str = pt_append_varchar (parser, NULL, str);
 		      new_str->length = i;
@@ -2879,6 +2928,12 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 		      /* upper value */
 		      upper = parser_new_node (parser, PT_VALUE);
+		      if (upper == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return;
+			}
+
 		      upper->type_enum = arg2->type_enum;
 		      new_str = pt_append_varchar (parser, NULL, str);
 		      new_str->length = i;
@@ -2891,6 +2946,12 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 		      /* BETWEEN_GE_LT node */
 		      between_and = parser_new_node (parser, PT_EXPR);
+		      if (between_and == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return;
+			}
+
 		      between_and->type_enum = PT_TYPE_LOGICAL;
 		      between_and->info.expr.op = PT_BETWEEN_GE_LT;
 		      between_and->info.expr.arg1 = lower;
@@ -4271,6 +4332,12 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	      /* make a single false node */
 	      node = parser_new_node (parser, PT_VALUE);
+	      if (node == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return;
+		}
+
 	      node->type_enum = PT_TYPE_LOGICAL;
 	      node->info.value.data_value.i = 0;
 	      node->info.value.location = location;
@@ -4312,6 +4379,12 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	      /* make a single false node and append it to WHERE list */
 	      node = parser_new_node (parser, PT_VALUE);
+	      if (node == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return;
+		}
+
 	      node->type_enum = PT_TYPE_LOGICAL;
 	      node->info.value.data_value.i = 0;
 	      node->info.value.location = location;
@@ -4359,8 +4432,15 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
 	  || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
 	{
-	  info.id = ((spec->info.spec.join_type == PT_JOIN_LEFT_OUTER) ?
-		     spec->info.spec.id : prev_spec->info.spec.id);
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+	    {
+	      info.id = spec->info.spec.id;
+	    }
+	  else if (prev_spec != NULL)
+	    {
+	      info.id = prev_spec->info.spec.id;
+	    }
+
 	  info.appears = false;
 	  nullable_cnt = 0;
 
@@ -4570,7 +4650,7 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 static PT_NODE *
 qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
+  PT_NODE *new_query;
   PT_NODE *range, *spec, *temp, *node;
   PT_NODE **head;
   int i = 0;
@@ -4582,6 +4662,12 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
    * We are now copying the query and updating the spec_id references
    */
   spec = parser_new_node (parser, PT_SPEC);
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   spec->info.spec.derived_table = parser_copy_tree (parser, query);
   spec->info.spec.derived_table =
     mq_reset_ids_in_statement (parser, spec->info.spec.derived_table);
@@ -4589,6 +4675,13 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
   spec->info.spec.range_var = range;
   spec->info.spec.id = (UINTPTR) spec;
   range->info.name.spec_id = (UINTPTR) spec;
+
+  new_query = parser_new_node (parser, PT_SELECT);
+  if (new_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
 
   new_query->info.query.q.select.from = spec;
 
@@ -4611,9 +4704,9 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
       spec->info.spec.as_attr_list =
 	parser_append_node (node, spec->info.spec.as_attr_list);
       /* keep out hidden columns from derived select list */
-      if (query->info.query.order_by && IS_HIDDEN_COLUMN (temp))
+      if (query->info.query.order_by && temp->is_hidden_column)
 	{
-	  SET_AS_NORMAL_COLUMN (temp);	/* change to normal */
+	  temp->is_hidden_column = 0;
 	}
       else
 	{
@@ -4654,7 +4747,7 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 static PT_NODE *
 qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *t_node, *tmp, *derived;
+  PT_NODE *t_node, *next, *derived;
 
   switch (node->node_type)
     {
@@ -4672,22 +4765,20 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 	    }
 
-	  if (!t_node)
+	  if (t_node == NULL)
 	    {
 	      parser_free_tree (parser, node->info.query.order_by);
 	      node->info.query.order_by = NULL;
 
-	      t_node = node->info.query.q.select.list;
-	      if (t_node)
+	      for (t_node = node->info.query.q.select.list;
+		   t_node && t_node->next; t_node = next)
 		{
-		  for (tmp = t_node; tmp->next; tmp = tmp->next)
+		  next = t_node->next;
+		  if (next->is_hidden_column)
 		    {
-		      if (IS_HIDDEN_COLUMN (tmp->next))
-			{
-			  parser_free_tree (parser, tmp->next);
-			  tmp->next = NULL;
-			  break;
-			}
+		      parser_free_tree (parser, next);
+		      t_node->next = NULL;
+		      break;
 		    }
 		}
 	    }
@@ -4698,10 +4789,15 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 	  for (t_node = node->info.query.q.select.list;
 	       t_node; t_node = t_node->next)
 	    {
-	      if (IS_HIDDEN_COLUMN (t_node))
+	      if (t_node->is_hidden_column)
 		{
 		  /* make derived query */
 		  derived = qo_rewrite_query_as_derived (parser, node);
+		  if (derived == NULL)
+		    {
+		      break;
+		    }
+
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
 		  derived->info.query.q.select.flavor =
 		    node->info.query.q.select.flavor;
@@ -4915,8 +5011,11 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      else
 		cnf_node->info.expr.op = PT_EQ;
 
-	      new_attr = new_attr->next;
-	      cnf_node->info.expr.arg2->next = NULL;
+	      if (new_attr != NULL)
+		{
+		  new_attr = new_attr->next;
+		  cnf_node->info.expr.arg2->next = NULL;
+		}
 
 	      /* save, cut-off link */
 	      save_next = cnf_node->next;
@@ -4928,6 +5027,12 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		   arg1 = arg1->next, new_attr = new_attr->next)
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
+		  if (tmp == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return NULL;
+		    }
+
 		  tmp->info.expr.arg1 = arg1;
 		  tmp->info.expr.arg2 = new_attr;
 		  if (PT_IS_SET_TYPE (new_attr))
@@ -4961,17 +5066,35 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		{
 		  /* if it is composite query, rewrite to simple query */
 		  arg2 = qo_rewrite_query_as_derived (parser, arg2);
+		  if (arg2 == NULL)
+		    {
+		      return NULL;
+		    }
+
 		  /* set as uncorrelated subquery */
 		  arg2->info.query.q.select.flavor = PT_USER_SELECT;
 		  arg2->info.query.is_subquery = PT_IS_SUBQUERY;
 		  arg2->info.query.correlation_level = 0;
+
 		  /* free old composite query */
 		  parser_free_tree (parser, cnf_node->info.expr.arg2);
 		  cnf_node->info.expr.arg2 = arg2;
 		  select_list = pt_get_select_list (parser, arg2);
 		}
+
+	      if (select_list == NULL)
+		{
+		  return NULL;
+		}
+
 	      /* convert select list of subquery to MIN()/MAX() */
 	      new_func = parser_new_node (parser, PT_FUNCTION);
+	      if (new_func == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return NULL;
+		}
+
 	      new_func->info.function.function_type =
 		((op_type == PT_GT_SOME || op_type == PT_GE_SOME) ?
 		 PT_MIN : PT_MAX);
@@ -5021,6 +5144,12 @@ qo_add_next_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
   PT_NODE *host_var;
 
   host_var = parser_new_node (parser, PT_HOST_VAR);
+  if (host_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   host_var->type_enum = value->type_enum;
   host_var->expected_domain = value->expected_domain;
   host_var->data_type = parser_copy_tree (parser, value->data_type);
@@ -5279,38 +5408,27 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		}
 	    }
 	}
-      if (node->info.query.q.select.where)
-	{
-	  wherep = &node->info.query.q.select.where;
-	}
-      if (node->info.query.q.select.having)
-	{
-	  havingp = &node->info.query.q.select.having;
-	}
+      wherep = &node->info.query.q.select.where;
+      havingp = &node->info.query.q.select.having;
       break;
+
     case PT_UPDATE:
-      if (node->info.update.search_cond)
-	{
-	  wherep = &node->info.update.search_cond;
-	}
+      wherep = &node->info.update.search_cond;
       break;
+
     case PT_DELETE:
-      if (node->info.delete_.search_cond)
-	{
-	  wherep = &node->info.delete_.search_cond;
-	}
+      wherep = &node->info.delete_.search_cond;
       break;
+
     case PT_INSERT:
       if (node->info.insert.value_clause == NULL
 	  || node->info.insert.value_clause->node_type != PT_SELECT)
 	{
 	  return node;
 	}
-      if (node->info.insert.value_clause->info.query.q.select.where)
-	{
-	  wherep = &node->info.insert.value_clause->info.query.q.select.where;
-	}
+      wherep = &node->info.insert.value_clause->info.query.q.select.where;
       break;
+
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -5322,6 +5440,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 					  node->info.query.q.union_.arg2);
       /* no WHERE clause */
       return node;
+
     case PT_EXPR:
       switch (node->info.expr.op)
 	{
@@ -5357,6 +5476,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	}
       /* no WHERE clause */
       return node;
+
     case PT_FUNCTION:
       switch (node->info.function.function_type)
 	{
@@ -5427,15 +5547,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*havingp)
 	*havingp = pt_cnf (parser, *havingp);
 
-      /* in HAVING clause, move non-aggregate terms to WHERE clause
+      /* in HAVING clause with GROUP BY,
+       * move non-aggregate terms to WHERE clause
        */
-      if (node->node_type == PT_SELECT && node->info.query.q.select.having)
+      if (node->node_type == PT_SELECT
+	  && node->info.query.q.select.group_by && *havingp)
 	{
 	  PT_NODE *prev, *cnf, *next;
 	  PT_AGG_INFO info;
 
 	  prev = NULL;		/* init */
-	  for (cnf = node->info.query.q.select.having; cnf; cnf = next)
+	  for (cnf = *havingp; cnf; cnf = next)
 	    {
 	      next = cnf->next;	/* save and cut-off link */
 	      cnf->next = NULL;
@@ -5457,7 +5579,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		   */
 		  if (!prev)
 		    {		/* very the first node */
-		      node->info.query.q.select.having = next;
+		      *havingp = next;
 		    }
 		  else
 		    {
@@ -5466,8 +5588,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 		  /* add cnf node to WHERE clause
 		   */
-		  node->info.query.q.select.where =
-		    parser_append_node (node->info.query.q.select.where, cnf);
+		  *wherep = parser_append_node (*wherep, cnf);
 		}
 	      else
 		{		/* do noting and go ahead */

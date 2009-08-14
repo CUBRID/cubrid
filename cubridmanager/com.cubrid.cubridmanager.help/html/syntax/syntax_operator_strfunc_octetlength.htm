@@ -1,0 +1,120 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>OCTET_LENGTH 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n스트링  함수와 연산자\nOCTET_LENGTH 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_strfunc_concat.htm\">스트링  함수와 연산자<\/a> &nbsp;&gt;&nbsp; OCTET_LENGTH 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>OCTET_LENGTH 함수</h4>
+<h6>설명</h6>
+<p>스트링의 길이를 바이트 단위로 얻고자 할 때 <span class="keyword">OCTET_LENGTH</span> 함수를 사용할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">OCTET_LENGTH</span> ( <span class="var">octet_length_operand</span> )<br />
+<br />
+<span class="var">octet_length_operand</span> :bit string<br />
+character string<br />
+<span class="keyword">NULL</span></p>
+<ul>
+<li><span class="var">octet_length_operand</span> :&#160;길이를 바이트 단위로 얻고자 하는 문자열 또는 비트열을 지정한다. 값이 <span class="keyword">NULL</span>이면 <span class="keyword">NULL</span>을 반환한다. 비트열의 비트 단위 길이가 8의 배수가 아닌 경우, 결과는 8의 배수 단위로 올림된 결과가 반환된다. 예를 들어, 8비트 비트열은 1을, 9비트 비트열은 2를 반환한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 문자열 'Cubrid'의 길이를 바이트 단위로 반환하는 예제이다.</p>
+<p class="code">SELECT OCTET_LENGTH ('Cubrid')<br />
+FROM db_root;</p>
+<p>결과값: 6</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+﻿<?xml version='1.0' encoding='utf-8' ?>
+<tocdata>
+<item name="개요" url="syntax/syntax_catalog_intro.htm" />
+<book name="시스템 카탈로그 클래스" >
+  <item name="시스템 카탈로그 클래스" url="syntax/syntax_catalog_class_class.htm" />
+  <item name="_db_class" url="syntax/syntax_catalog_class_dbclass.htm" />
+  <item name="_db_attribute" url="syntax/syntax_catalog_class_dbattribute.htm" />
+  <item name="_db_domain" url="syntax/syntax_catalog_class_dbdomain.htm" />
+  <item name="_db_method" url="syntax/syntax_catalog_class_dbmethod.htm" />
+  <item name="_db_meth_sig" url="syntax/syntax_catalog_class_dbmethsig.htm" />
+  <item name="_db_meth_arg" url="syntax/syntax_catalog_class_dbmetharg.htm" />
+  <item name="_db_meth_file" url="syntax/syntax_catalog_class_dbmethfile.htm" />
+  <item name="_db_query_spec" url="syntax/syntax_catalog_class_dbqueryspec.htm" />
+  <item name="_db_index" url="syntax/syntax_catalog_class_dbindex.htm" />
+  <item name="_db_index_key" url="syntax/syntax_catalog_class_dbindexkey.htm" />
+  <item name="_db_auth" url="syntax/syntax_catalog_class_dbauth.htm" />
+  <item name="_db_data_type" url="syntax/syntax_catalog_class_dbdatatype.htm" />
+  <item name="_db_partition" url="syntax/syntax_catalog_class_dbpartition.htm" />
+  <item name="_db_stored_procedure" url="syntax/syntax_catalog_class_dbstoredprocedure.htm" />
+  <item name="_db_stored_procedure_args" url="syntax/syntax_catalog_class_dbstoredprocedureargs.htm" />
+  <item name="db_user" url="syntax/syntax_catalog_class_dbuser.htm" />
+  <item name="db_authorization" url="syntax/syntax_catalog_class_dbauthorization.htm" />
+  <item name="db_trigger" url="syntax/syntax_catalog_class_dbtrigger.htm" />
+</book>
+<book name="시스템 카탈로그 가상 클래스" >
+  <item name="시스템 카탈로그 가상 클래스" url="syntax/syntax_catalog_vclass_vclass.htm" />
+  <item name="DB_CLASS" url="syntax/syntax_catalog_vclass_dbclass.htm" />
+  <item name="DB_DIRECT_SUPER_CLASS" url="syntax/syntax_catalog_vclass_dbdirectsuperclass.htm" />
+  <item name="DB_VCLASS" url="syntax/syntax_catalog_vclass_dbvclass.htm" />
+  <item name="DB_ATTRIBUTE" url="syntax/syntax_catalog_vclass_dbattribute.htm" />
+  <item name="DB_ATTR_SETDOMAIN_ELM" url="syntax/syntax_catalog_vclass_dbattrsetdomainelm.htm" />
+  <item name="DB_METHOD" url="syntax/syntax_catalog_vclass_dbmethod.htm" />
+  <item name="DB_METH_ARG" url="syntax/syntax_catalog_vclass_dbmetharg.htm" />
+  <item name="DB_METH_ARG_SETDOMAIN_ELM" url="syntax/syntax_catalog_vclass_dbmethargsetdomainelm.htm" />
+  <item name="DB_METH_FILE" url="syntax/syntax_catalog_vclass_dbmethfile.htm" />
+  <item name="DB_INDEX" url="syntax/syntax_catalog_vclass_dbindex.htm" />
+  <item name="DB_INDEX_KEY" url="syntax/syntax_catalog_vclass_dbindexkey.htm" />
+  <item name="DB_AUTH" url="syntax/syntax_catalog_vclass_dbauth.htm" />
+  <item name="DB_TRIG" url="syntax/syntax_catalog_vclass_dbtrig.htm" />
+  <item name="DB_PARTITION" url="syntax/syntax_catalog_vclass_dbpartition.htm" />
+  <item name="DB_STORED_PROCEDURE" url="syntax/syntax_catalog_vclass_dbstoredprocedure.htm" />
+  <item name="DB_STORED_PROCEDURE_ARGS" url="syntax/syntax_catalog_vclass_dbstoredprocedureargs.htm" />
+</book>
+<item name="카탈로그 클래스/가상 클래스 사용 권한" url="syntax/syntax_catalog_authorization.htm" />
+<item name="카탈로그 정보의 일관성" url="syntax/syntax_catalog_consistency.htm" />
+<item name="카탈로그에 대한 질의" url="syntax/syntax_catalog_query.htm" />
+
+</tocdata>

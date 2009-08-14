@@ -65,8 +65,8 @@ int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
-bool db_Log_replication_mode = false;
 #endif
+int db_Enable_replications = 0;
 int db_Disable_modifications = 0;
 
 static int transfer_string (char *dst, int *xflen, int *outlen,
@@ -516,6 +516,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.datetime.date = DB_DATE_MAX;
       value->data.datetime.time = DB_TIME_MAX;
       value->domain.general_info.is_null = 0;
+      break;
     case DB_TYPE_DATE:
       value->data.date = DB_DATE_MAX;
       value->domain.general_info.is_null = 0;
@@ -597,15 +598,14 @@ int
 db_string_truncate (DB_VALUE * value, const int precision)
 {
   int error = NO_ERROR;
+  DB_VALUE src_value;
+  char *string, *val_str;
 
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_STRING:
       if (DB_GET_STRING_LENGTH (value) > precision)
 	{
-	  DB_VALUE src_value;
-	  char *string;
-
 	  string = (char *) malloc (precision);
 	  if (string == NULL)
 	    {
@@ -615,13 +615,18 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	    }
 	  else
 	    {
-	      strncpy (string, DB_GET_STRING (value), precision);
-	      db_make_varchar (&src_value, precision, string, precision);
+	      val_str = DB_GET_STRING (value);
+	      if (val_str != NULL)
+		{
+		  strncpy (string, val_str, precision);
+		  db_make_varchar (&src_value, precision, string, precision);
 
-	      pr_clear_value (value);
-	      (*(tp_String.setval)) (value, &src_value, true);
+		  pr_clear_value (value);
+		  (*(tp_String.setval)) (value, &src_value, true);
 
-	      pr_clear_value (&src_value);
+		  pr_clear_value (&src_value);
+		}
+
 	      free (string);
 	    }
 	}
@@ -784,6 +789,8 @@ db_value_is_null (const DB_VALUE * value)
 void *
 db_value_eh_key (DB_VALUE * value)
 {
+  DB_OBJECT *obj;
+
   CHECK_1ARG_NULL (value);
 
   switch (value->domain.general_info.type)
@@ -791,7 +798,15 @@ db_value_eh_key (DB_VALUE * value)
     case DB_TYPE_STRING:
       return DB_GET_STRING (value);
     case DB_TYPE_OBJECT:
-      return WS_OID ((DB_GET_OBJECT (value)));
+      obj = DB_GET_OBJECT (value);
+      if (obj == NULL)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  return WS_OID (obj);
+	}
     default:
       return &value->data;
     }
@@ -2990,6 +3005,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen,
   DB_DATA_STATUS data_status;
   DB_TYPE db_type;
   int error_code;
+  char *tmp_val_str;
 
   if (c_type == DB_TYPE_C_BIT)
     {
@@ -3007,11 +3023,17 @@ transfer_bit_string (char *buf, int *xflen, int *outlen,
       *xflen = DB_GET_STRING_LENGTH (&tmp_value);
       if (data_status == DATA_STATUS_TRUNCATED)
 	{
-	  *outlen = DB_GET_STRING_LENGTH (src);
+	  if (outlen != NULL)
+	    {
+	      *outlen = DB_GET_STRING_LENGTH (src);
+	    }
 	}
 
-      memcpy (buf,
-	      DB_GET_STRING (&tmp_value), DB_GET_STRING_SIZE (&tmp_value));
+      tmp_val_str = DB_GET_STRING (&tmp_value);
+      if (tmp_val_str != NULL)
+	{
+	  memcpy (buf, tmp_val_str, DB_GET_STRING_SIZE (&tmp_value));
+	}
 
       error_code = db_value_clear (&tmp_value);
     }
@@ -3463,6 +3485,11 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 	const char *s = DB_GET_STRING (value);
 	int n = DB_GET_STRING_SIZE (value);
 
+	if (s == NULL)
+	  {
+	    goto invalid_args;
+	  }
+
 	switch (c_type)
 	  {
 	  case DB_TYPE_C_INT:
@@ -3820,8 +3847,8 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		{
 		  goto invalid_args;
 		}
-	      error_code = db_value_get (&v,
-					 c_type, buf, buflen, xflen, outlen);
+	      error_code = db_value_get (&v, c_type, buf, buflen, xflen,
+					 outlen);
 	      pr_clear_value (&v);
 	    }
 	    break;
@@ -3841,8 +3868,8 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
 		{
 		  goto invalid_args;
 		}
-	      error_code = db_value_get (&v,
-					 c_type, buf, buflen, xflen, outlen);
+	      error_code = db_value_get (&v, c_type, buf, buflen, xflen,
+					 outlen);
 	      pr_clear_value (&v);
 	    }
 	    break;

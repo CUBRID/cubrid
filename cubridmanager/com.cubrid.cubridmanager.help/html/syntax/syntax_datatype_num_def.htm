@@ -1,0 +1,128 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>정의와 특성</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n수치형 데이터  타입\n정의와 특성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_num_def.htm\">수치형 데이터  타입<\/a> &nbsp;&gt;&nbsp; 정의와 특성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>정의와 특성</h4>
+<h5>정의</h5>
+<p>수치형 데이터 타입은 정확한(exact) 형태와 근사치(approximate) 형태로 나누어 진다. 정확한 수치형 데이터 타입은 정확하고 일관된 값을 가져야 하는 경우에 사용된다. 대부분의 재무 관련 계산과 분석은 정확성을 위해 시스템이 자동적으로 유효숫자를 조정하지 못하도록 정확한 수치형 데이터 타입을 사용하는 것이 보통이다.</p>
+<p>CUBRID가 지원하는 정확한 수치형 데이터 타입은 다음과 같다.</p>
+<ul>
+<li><span class="keyword">NUMERIC</span>(혹은 <span class="keyword">DECIMAL</span>)</li>
+<li><span class="keyword">INTEGER</span></li>
+<li class="keyword">SMALLINT</li>
+<li class="keyword">BIGINT</li>
+</ul>
+<p>CUBRID가 지원하는 근사치 형태의 수치형 데이터 타입은 다음과 같다.</p>
+<ul>
+<li><span class="keyword">FLOAT</span>(혹은 <span class="keyword">REAL</span>)</li>
+<li><span class="keyword">DOUBLE PRECISION</span></li>
+<li><span class="keyword">MONETARY</span></li>
+</ul>
+<p>이들 데이터 타입은 리터럴 값으로는 서로 같아도 시스템이 해석하는 값으로는 서로 다를 수 있다는 측면에서 근사치로 간주된다. 예를 들어 하나의 속성은 <span class="keyword">FLOAT</span>로, 또 하나의 속성은 <span class="keyword">DOUBLE</span>로 한 후, 두 속성에 같은 리터럴 값을 저장하여도 시스템이 비교할 때 서로 다르게 판단할 수 있다.</p>
+<p><span class="keyword">FLOAT</span>, <span class="keyword">DOUBLE PRECISION</span> 그리고 <span class="keyword">MONETARY</span>를 저장하려면 각각 4, 8, 12바이트가 필요하다.</p>
+<h5>특성</h5>
+<h6>정밀도와 스케일(Precision and Scaling)</h6>
+<p>수치형 데이터 타입의 정밀도(precision)는 그 값이 유지할 수 있는 유효한 자릿수로 정의된다. 이는 정확한 수치형이든 근사치 수치형이든 마찬가지이다.</p>
+<p>스케일(scale)은 소수점 이하의 자릿수를 나타내는데, 정확한 수치형에서만 의미가 있다. 정확한 수치형으로 선언된 속성은 항상 고정된 정밀도와 스케일을 갖게 된다. <span class="keyword">NUMERIC</span>(또는 <span class="keyword">DECIMAL</span>) 데이터 타입은 항상 최소한 한 자리의 정밀도를 갖는다. 그리고, 스케일의 범위는 0과 선언된 정밀도 사이여야 한다. 스케일이 정밀도보다 클 수는 없다. <span class="keyword">INTEGER</span>나 <span class="keyword">SMALLINT</span>, <span class="keyword">BIGINT</span> 데이터 타입에서는 스케일은 0이고(즉, 소수점 이하가 없음), 정밀도는 시스템에 의해 고정된다.</p>
+<h6>수치형 리터럴(Numeric Literals)</h6>
+<p>수치형 값을 입력하기 위해서는 특별한 기호가 사용될 수 있는데, 플러스(+)는 양수를, 마이너스(-)는 음수를 나타내는 데 사용한다. 과학용 표기법이 사용될 수도 있다. 화폐 값을 표현하기 위하여 시스템에 지정된 통화 기호를 사용할 수도 있다. 수치형 리터럴로 표현 가능한 최대 정밀도는 255이다.</p>
+<h6>수치형 변환(Numeric Coercions)</h6>
+<p>모든 수치형 데이터 타입은 상호 비교 가능하고, 이를 위해 서로 공통된 수치형 데이터 타입으로 자동 변환이 이루어 진다. 명시적인 변환은 <span class="keyword">CAST</span> 연산자를 이용해야 한다. 서로 다른 수치형 데이터가 서로 정렬되거나, 수식에서 계산될 때에는 시스템에 의하여 자동으로 변환된다. 예를 들어, <span class="keyword">FLOAT</span> 타입의 속성 값과 <span class="keyword">INTEGER</span> 타입의 속성 값을 더하게 되면, 시스템이 자동적으로 <span class="keyword">INTEGER</span> 속성 값을 가장 근사한 <span class="keyword">FLOAT</span> 값으로 변환한 후 덧셈을 수행한다.</p>
+<p class="note"><span class="notice-title">주의</span> CUBRID 2008 R2.0 미만의 버전에서 입력된 상수가 <span class="keyword">INTEGER</span> 범위를 넘어서면 <span class="keyword">NUMERIC</span>으로 처리되었지만, CUBRID 2008 R2.0에서는 <span class="keyword">BIGINT</span>로 처리된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

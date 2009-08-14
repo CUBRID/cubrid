@@ -1,0 +1,359 @@
+﻿
+body {
+	font-family: "맑은 고딕", 굴림;
+	font-size: 75%;
+	line-height: 1.7em;
+	margin-bottom: 1.0em;
+	background-color: #ffffff;
+	margin-left: 1.5em;
+}
+h1 {
+	font-size: 200%;
+	margin-top: 1.0em;
+	margin-bottom: 1.5em;
+	color: #333333;
+}
+h2 {
+	font-size: 170%;
+	font-weight: bold;
+	margin-top: 1.5 em;
+	margin-bottom: 1.5em;
+	margin-left: -1.7em;
+	margin-right: -1.0em;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	text-indent: 1.7em;
+	background-color: #3080D5;
+	color: #ffffff;
+}
+h3 {
+	font-size: 170%;
+	font-weight: bold;
+	margin-top: 1.5 em;
+	margin-bottom: 1.5em;
+	margin-left: -1.7em;
+	margin-right: -1.0em;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	text-indent: 1.7em;
+	background-color: #3080D5;
+	color: #ffffff;
+}
+h4 {
+	font-size: 170%;
+	font-weight: bold;
+	margin-top: 1.5 em;
+	margin-bottom: 1.5em;
+	margin-left: -1.7em;
+	margin-right: -1.0em;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	text-indent: 1.7em;
+	background-color: #3080D5;
+	color: #ffffff;
+}
+h5 {
+	font-size: 140%;
+	font-weight: bold;
+	margin-top: 3.0em;
+	margin-bottom: 2.0em;
+	margin-left: -1.5em;
+	padding-top: 10px;
+	padding-bottom: 5px;
+	text-indent: 1.5em;
+	color: #2A559B;
+}
+h6 {
+	margin-top: 3.0em;
+	margin-bottom: 1.5em;
+	font-size: 130%;
+	font-weight: bold;
+	color: #835142;
+}
+p {
+	margin-top: 1.0 em;
+	margin-bottom: 1.0em;
+}
+p.copyright {
+	color: #5c5c5c;
+	font: Verdana;
+	margin-bottom: 0;
+	margin-top: 2.0 em;
+	text-align: center;
+}
+p.label {
+	margin-left: 1.0em;
+	font-family: "Arial ";
+	font-weight: bold;
+	color: #835142;
+	margin-bottom: 0.8em;
+}
+p.definition {
+	margin-top: 0.25em;
+	margin-left: 2.0em;
+}
+p.bookmark-link {
+	margin-top: 0.25em;
+	margin-left: 2.0em;
+}
+.related-title {
+	margin-top: 2.5em;
+	margin-left: -1.7em;
+	margin-right: -1.0em;
+	margin-bottom: 2.0em;
+	color: #535353;
+	background-color: rgb(228, 228, 228);
+	padding: 3px;
+	font-weight: bold;
+	text-indent: 1.8em;
+}
+.related-link {
+	margin-top: 0.25em;
+	margin-left: 1.0em;
+}
+.caption {
+	font-weight: bold;
+	margin-top: -0.7 em;
+	margin-bottom: 2.5 em;
+}
+.caption-table {
+	margin-bottom: 0.5 em;
+	font-weight: bold;
+}
+ol {
+	margin-top: 0.5 em;
+	margin-bottom: 0;
+	margin-left: 2.0em;
+	padding-left: 0em;
+	margin-right: 2.0em;
+}
+ul {
+	margin-top: 0.5em;
+	margin-bottom: 0;
+	list-style-type: disc;
+	margin-left: 1.5em;
+	padding-left: 0em;
+	margin-right: 1.5em;
+}
+li {
+	margin-top: 0.7em;
+	margin-left: 1.2em;
+}
+li.title {
+	font-weight: bold;
+	font-size: 110%;
+	list-style-type: square;
+	margin-left: 0.5em;
+	margin-top: 3.0em;
+	margin-bottom: 1.0em;
+}
+li.desc {
+	list-style-type: none;
+	margin-top: 0.5em;
+}
+ol li.NumberTitle {
+	margin-top: 0.5em;
+	font-weight: bold;
+}
+li ol li {
+	font-weight: normal;
+	margin-top: 0.5em;
+	margin-left: 0.4em;
+}
+li ul li {
+	list-style-type: circle;
+	font-weight: normal;
+	margin-top: 0.5em;
+	margin-left: 0.4em;
+}
+li.caption-up {
+	list-style: none;
+	margin-top: 0.5em;
+	margin-bottom: -0.7em;
+	font-weight: bold;
+}
+.list-title {
+	font-weight: bold;
+}
+.code {
+	font-family: "Courier New", 굴림체;
+	font-size: 90%;
+	margin-left: 2.3em;
+	line-height: 1.5em;
+	background-color: rgb(228, 228, 228);
+	margin-top: 0.7em;
+	padding: 0.5em;
+}
+.codep {
+	font-family: "Courier New", 굴림체;
+	font-size: 90%;
+	margin-top: -0.3em;
+	margin-bottom: -0.3em;
+	margin-left: 2.3em;
+	padding: 0.5em;
+	line-height: 1.0em;
+	background-color: rgb(228, 228, 228);
+}
+.output {
+	font-family: 굴림체;
+	font-size: 90%;
+	margin-left: 2.3em;
+	line-height: 1.3em;
+	background-color: rgb(228, 228, 228);
+	margin-top: 0.7em;
+	padding: 0.5em;
+}
+.syntax {
+	font-family: "Courier New", 굴림체;
+	font-size: 90%;
+	margin-left: 2.3em;
+	line-height: 1.8em;
+	background-color: #F3F2D7;
+	margin-top: 0.7em;
+	padding: 0.5em;
+}
+.syntaxp {
+	font-family: "Courier New", 굴림체;
+	font-size: 90%;
+	margin-top: -0.3em;
+	margin-bottom: -0.3em;
+	margin-left: 2.3em;
+	padding: 0.5em;
+	line-height: 1.3em;
+	background-color: #F3F2D7;
+}
+.codeheader {
+	font-family: "Courier New";
+	font-size: 75%;
+	margin-top: 2.5em;
+	font-weight: bold;
+	background: #EEEEEE;
+}
+.keyword {
+	font-weight: Bold;
+}
+.var {
+	font-style: italic;
+}
+.comment {
+	font-family: "맑은 고딕";
+}
+strong {
+	font-weight:bold;
+}
+.note {
+	margin-top: 1.5em;
+	margin-bottom: 1.5em;
+	padding-top: 1.0em;
+	padding-bottom: 1.0em;
+	border-bottom-style: solid;
+	border-top-style: solid;
+	border-top-width: 1px;
+	border-bottom-width: 1px;
+	border-top-color: #A9A9A9;
+	border-bottom-color: #A9A9A9;
+}
+.note-title {
+	font-weight: bold;
+	padding-right: 1.2em;
+}
+.notice-title {
+	font-weight: bold;
+	padding-right: 1.2em;
+}
+a.navigation {
+	color: #ffffff;text-decoration: none;
+}
+div.navigation {
+	margin-left: -1.8em;
+	margin-right: -0.8em;
+	text-align: right;
+	padding: 1px;
+	background-color: rgb(133, 133, 133);
+}
+div.note {
+	border-bottom-style: solid;
+	border-top-style: solid;
+	border-top-width: 1px;
+	border-bottom-width: 1px;
+	border-top-color: #A9A9A9;
+	border-bottom-color: #A9A9A9;
+}
+div.note p {
+	margin-top: -0.2em;
+}
+table {
+	margin-bottom: 2.0em;
+	font-size: 95%;
+	border-collapse: collapse;
+	border-top-color: rgb(187, 148, 59);
+	border-left-color: rgb(187, 148, 59);
+	border-right-color: rgb(187, 148, 59);
+	border-bottom-color: rgb(187, 148, 59);
+}
+th {
+	white-space: nowrap;
+	font-color: white;
+	padding-top: 0.5em;
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+	background-color: rgb(246, 243, 217);
+}
+td {
+	padding-left: 0.5em;
+	padding-right: 0 em;
+	valign: top;
+}
+table p {
+	padding: 0.2 em;
+	line-height: 1.5em;
+	margin-top: 0em;
+	margin-bottom: 0.2em;
+}
+table li {
+	margin-top: 0em;
+	margin-bottom: 0em;
+}
+.dropdown {
+	font-weight: normal;
+	top: 5pt;
+	font-size: 100%;text-decoration: none;
+}
+.dropdown:hover {
+	text-decoration: underline;
+}
+.glossary {
+	color: #008C00;
+	text-decoration: underline;
+}
+.glossary:hover {
+	text-decoration: underline;
+}
+.glossarydef {
+	color: #008C00;
+	text-decoration: none;
+}
+.expall {
+	text-align: Right;
+	margin-top: 1em;
+	margin-bottom: 0;
+}
+.expanded {
+	font-weight: normal;
+}
+.collapsed {
+	display: none;
+}
+P.Preformatted {
+	line-height: normal;
+	x-text-tab-stops: repeat 1in;
+	white-space: nowrap;
+	padding-right: 0.5em;
+	padding-left: 1.0em;
+	color: #416681;
+	font-size: 90%;
+	margin-bottom: 1em;
+	margin-top: 0.5em;
+	background-color: #F2F0E5;
+	font-family: "Courier New";
+}

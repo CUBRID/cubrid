@@ -1,0 +1,344 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>기타 파라미터</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("성능 튜닝\n데이터베이스 서버 설정\n기타 파라미터");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"pm.htm\">성능 튜닝<\/a> &nbsp;&gt;&nbsp; <a href=\"pm_server_general.htm\">데이터베이스 서버 설정<\/a> &nbsp;&gt;&nbsp; 기타 파라미터<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>기타 파라미터</h4>
+<p>다음은 기타 파라미터 정보로 각 파라미터의 타입과 설정 가능한 값의 범위는 다음과 같다.</p>
+<table border="1">
+<tr>
+<th width="150">
+<p>파라미터 이름</p>
+</th>
+<th width="70">
+<p>타입</p>
+</th>
+<th width="70">
+<p>디폴트 값</p>
+</th>
+<th width="50">
+<p>최소값</p>
+</th>
+<th width="50">
+<p>최대값</p>
+</th>
+</tr>
+<tr>
+<td colspan="1" rowspan="1" width="150">
+<p>service</p>
+</td>
+<td colspan="1" rowspan="1" width="70">
+<p>string</p>
+</td>
+<td colspan="1" rowspan="1" width="70">
+<p>&#160;</p>
+</td>
+<td colspan="1" rowspan="1" width="50">
+<p>&#160;</p>
+</td>
+<td colspan="1" rowspan="1" width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td colspan="1" rowspan="1" width="150">
+<p>server</p>
+</td>
+<td colspan="1" rowspan="1" width="70">
+<p>string</p>
+</td>
+<td colspan="1" rowspan="1" width="70">
+<p>&#160;</p>
+</td>
+<td colspan="1" rowspan="1" width="50">
+<p>&#160;</p>
+</td>
+<td colspan="1" rowspan="1" width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>replication</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>no</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>index scan_in_oid_order</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>no</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>single_byte_compare</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>no</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>insert_execution_mode</p>
+</td>
+<td width="70">
+<p>int</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td width="50">
+<p>1</p>
+</td>
+<td width="50">
+<p>7</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>java_stored_procedure</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>no</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>pthread_scope_process</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>yes</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>auto_restart_server</p>
+</td>
+<td width="70">
+<p>bool</p>
+</td>
+<td width="70">
+<p>yes</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+<td width="50">
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>index_unfill_factor</p>
+</td>
+<td width="70">
+<p>float</p>
+</td>
+<td width="70">
+<p>0.20</p>
+</td>
+<td width="50">
+<p>0</p>
+</td>
+<td width="50">
+<p>0.35</p>
+</td>
+</tr>
+</table>
+<h6>service</h6>
+<p><span class="keyword">service</span>는 CUBRID 서비스 시작 시 자동으로 시작하는 프로세스를 등록하는 파라미터로 <span class="keyword">server</span>, <span class="keyword">broker</span>, <span class="keyword">manager</span>의 세 종류 프로세스가 있다. 일반적으로 <span class="keyword">service=server,broker,manager</span>와 같이 세 종류 프로세스를 모두 등록한다.</p>
+<ul>
+<li>파라미터 값으로 <span class="keyword">server</span>가 설정되면 <span class="keyword">@server</span> 파라미터에서 지정한 데이터베이스 프로세스를 시작한다.</li>
+<li>파라미터 값으로 <span class="keyword">broker</span>가 설정되면 브로커 프로세스를 시작한다.</li>
+<li>파라미터 값으로 <span class="keyword">manager</span>가 설정되면 매니저 프로세스를 시작한다.</li>
+</ul>
+<h6>server</h6>
+<p><span class="keyword">server</span>는 CUBRID 서비스 시작 시 자동으로 시작하는 데이터베이스 서버 프로세스를 등록하는 파라미터이다.</p>
+<h6>replication</h6>
+<p><span class="keyword">replication</span>은 데이터베이스 복제 기능을 활성화시키는 파라미터이다. 디폴트 값인 <span class="keyword">no</span>로 설정하면 복제 기능이 비활성화되고, yes로 설정하면 복제 기능이 활성화된다. 복제 기능이 활성화되면 해당 데이터베이스는 복제 로그를 생성하는 복제 마스터 서버의 역할을 수행한다.</p>
+<h6>index scan_in_oid_order</h6>
+<p><span class="keyword">index scan_in_oid_order</span>는 인덱스를 스캔한 후 검색 결과 데이터를 가져오는 순서를 OID 순으로 지정하기 위한 파라미터이다. 디폴트 값인 <span class="keyword">no</span>로 설정하면 데이터 순서대로 결과를 가져오고, yes로 설정하면 OID 순서대로 결과를 가져온다.</p>
+<h6>single_byte_compare</h6>
+<p><span class="keyword">single_byte_compare</span>은 스트링 비교(string compare)를 1바이트 단위로 수행하기 위한 파라미터이다. 디폴트 값인 <span class="keyword">no</span>로 설정하면 2바이트 단위로 스트링 비교를 수행하고, yes로 설정하면 1바이트 단위로 스트링 비교를 수행한다. 즉, 유니코드를 사용할 때 오류 없이 데이터를 검색할 수 있다.</p>
+<h6>insert_execution_mode</h6>
+<p><span class="keyword">insert_execution_mode</span>는 1부터 7까지 실행 모드가 있다. 쿼리는 클라이언트에서 실행 계획을 짜서 서버에서 수행을 하는데, 서버 측에서 바로 삽입(server side insert)하기 위한 파라미터이다. 설정된 실행 모드는 서버 측에서 바로 수행하게 되며, 설정되지 않은 실행 모드는 클라이언트에서 수행하게 된다. 실행 모드를 위한 <span class="keyword">INSERT</span> 문의 종류는 다음의 3가지이다.</p>
+<ul>
+<li><span class="keyword">INSERT_SELECT</span> : <span class="keyword">INSERT</span> 문에서 <span class="keyword">SELECT</span> 문을 이용하는 경우.</li>
+</ul>
+<p class="code">INSERT INTO code2(s_name, f_name) SELECT s_name, f_name from code;</p>
+<ul>
+<li><span class="keyword">INSERT_VALUES</span> : 보통 사용하는 <span class="keyword">INSERT</span> 문.</li>
+</ul>
+<p class="code">INSERT INTO code2(s_name, f_name) VALUES ('S', 'Silver');</p>
+<ul>
+<li><span class="keyword">INSERT_DEFAULT</span> : 디폴트 값이 있는 컬럼을 <span class="keyword">INSERT</span> 문에서 생략하여 디폴트 값이 기본으로 들어가는 경우.</li>
+</ul>
+<p class="code">CREATE TABLE code2(s_name char(1) DEFAULT '_', f_name varchar(40));<br />
+INSERT INTO code2(f_name) VALUES('Mixed');</p>
+<p>각 실행모드는 다음의 값을 가진다.</p>
+<ul>
+<li><span class="keyword">INSERT_SELECT</span> = 1</li>
+<li><span class="keyword">INSERT_VALUES</span> = 2</li>
+<li><span class="keyword">INSERT_DEFAULT</span> = 4</li>
+</ul>
+<p>위의 실행 모드의 값을 더한 합이 설정하고자 하는 실행 모드이다.</p>
+<ul>
+<li>예1) <span class="keyword">INSERT_SELECT</span>와 <span class="keyword">INSERT_VALUES</span>를 서버 측에서 실행하고자 하는 경우, <span class="keyword">insert_execution_mode</span>는 3이다. (1 + 2 = 3)</li>
+<li>예2) <span class="keyword">INSERT_SELECT</span>와 <span class="keyword">INSERT_DEFAULT</span>를 서버 측에서 실행하고자 하는 경우, <span class="keyword">insert_execution_mode</span>는 5이다. (1 + 4 = 5)</li>
+</ul>
+<h6>java_stored_procedure</h6>
+<p><span class="keyword">java_stored_procedure</span>는&#160;Java 가상 머신(Java Virtual Machine, JVM)을 실행하여 Java 저장&#160;프로시저(Java stored procedure)를 사용하게 하기 위한 파라미터이다. 디폴트 값인 <span class="keyword">no</span>로 설정하며 JVM이 실행되지 않고, yes로 설정하면 JVM이 실행되어 Java 저장&#160;프로시저(Java stored procedure)를 사용할 수 있다. 따라서, Java 저장 프로시저를 사용할 계획이 있는 경우에는 파라미터를 yes로 설정해야 한다.</p>
+<h6 style='line-height:18.0pt'>pthread_scope_process</h6>
+<p style='line-height:18.0pt'><span class="keyword">pthread_scope_process</span>는 스레드의 경쟁 범위를 설정하는 파라미터로 <span lang="EN-US" xml:lang="EN-US">AIX</span> 시스템에서만 적용된다<span lang="EN-US" xml:lang="EN-US">. no</span>로 설정하면 경쟁 범위가 <span class="keyword">PTHREAD_SCOPE_SYSTEM</span>이 되고<span lang="EN-US" xml:lang="EN-US">, yes</span>로 설정하면 <span class="keyword">PTHREAD_SCOPE_PROCESS</span>가 된다<span lang="EN-US" xml:lang="EN-US">.</span> 디폴트 값은 <span class="keyword">yes</span>이다<span lang="EN-US" xml:lang="EN-US">.</span></p>
+<h6 style='line-height:18.0pt'>auto_restart_server</h6>
+<p style='line-height:18.0pt'><span class="keyword">auto_restart_server</span>는 데이터베이스 서버 프로세스에 심각한 오류가 발생해서 프로세스가 중단될 경우에 자동으로 재시작할 것인가를 지정하는 파라미터이다<span lang="EN-US" xml:lang="EN-US">.</span> <span class="keyword">auto_restart_server</span><span lang="EN-US" xml:lang="EN-US">를 yes</span>로 설정하면 서버 프로세스는 정상적인 <span lang="EN-US" xml:lang="EN-US">종료</span> 절차<span lang="EN-US" xml:lang="EN-US">(CUBRID 서버의</span> <span class="keyword">STOP</span> <span lang="EN-US" xml:lang="EN-US">명령</span><span lang="EN-US" xml:lang="EN-US">)</span>가 아닌 잘못 중단된 경우에 자동으로 재시작한다.</p>
+<h6>index_unfill_factor</h6>
+<p>최초 인덱스 생성 후 <span class="keyword">INSERT</span>나 <span class="keyword">UPDATE</span>를 실행할 때 인덱스 페이지가 꽉 차서 여유 공간이 없으면 인덱스 페이지 노드의 분할(split)이 발생하게 되는데, 이는 오퍼레이션 시간을 증가시켜 성능에 영향을 미친다. <span class="keyword">index_unfill_factor</span>는 인덱스를 생성할 때 각 인덱스 페이지 노드의 여유 공간을 확보하는 비율을 지정하는 파라미터이다. <span class="keyword">index_unfill_factor</span> 설정값은 인덱스를 처음 생성할 때만 적용되며, 페이지에 지정된 빈 공간의 비율을 동적으로 유지하지 않는다. 값의 범위는 0부터 0.35까지이고 디폴트값은 <span class="keyword">0.20</span>이다.</p>
+<p>인덱스를 생성할 때 인덱스의 페이지 노드에 여유 공간이 없이(<span class="keyword">index_unfill_factor</span>=0) 생성한다면, 추가로 삽입할 때마다 매번 인덱스 페이지 노드의 분할이 발생하여 성능에 영향을 끼치게 된다.</p>
+<p><span class="keyword">index_unfill_factor</span> 값이 크면 인덱스 생성 시 노드 여유 공간을 많이 확보한다. 따라서 최초 인덱스 생성 후 노드 여유 공간이 꽉 찰 때까지 상대적으로 긴 시간 동안 인덱스 노드의 분할이 발생하지 않으므로, 상대적으로 성능이 나을 수 있다.</p>
+<p>이 값이 작으면 인덱스 생성 시 노드 여유 공간이 작기 때문에, 인덱스 노드의 여유 공간이 금방 꽉 차게 될 가능성이 높으므로, 상대적으로 <span class="keyword">INSERT</span>나 <span class="keyword">UPDATE</span>에 의한 인덱스 노드 분할의 발생&#160;가능성이 높다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

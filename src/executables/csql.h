@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <locale.h>
 
+#include "porting.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "util_func.h"
@@ -46,8 +47,6 @@
 #include "memory_alloc.h"
 
 #if defined(WINDOWS)
-#define snprintf        _snprintf
-#define fileno(stream)  _fileno(stream)
 #define isatty(stream)	_isatty(stream)
 #endif /* WINDOWS */
 
@@ -91,13 +90,11 @@ enum
   CSQL_RESULT_STMT_TITLE_FORMAT = 63,
   CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT = 65,
   CSQL_ROWS = 70,
-  CSQL_LANG_PROMPT_PREFIX = 71,
-  CSQL_LANG_NAME_PREFIX = 72,
-  CSQL_LANG_PRODUCT_PREFIX = 73,
   CSQL_ARG_AUTO = 75,
   CSQL_ARG_AUTO_HELP = 76,
-  CSQL_CSQL_PROMPT_NAME = 79,
-  CSQL_CSQL_NAME = 80,
+  CSQL_PROMPT = 79,
+  CSQL_NAME = 80,
+  CSQL_SYSADM_PROMPT = 81,
 
   CSQL_HELP_SCHEMA_TITLE_TEXT = 145,
   CSQL_HELP_NONE_TEXT = 146,
@@ -215,6 +212,7 @@ typedef enum
 /* More environment stuff */
   S_CMD_SET_PARAM,
   S_CMD_GET_PARAM,
+  S_CMD_PLAN_DUMP,
   S_CMD_ECHO,
   S_CMD_DATE,
   S_CMD_TIME,
@@ -224,6 +222,7 @@ typedef enum
   S_CMD_CLR_HISTO,
   S_CMD_DUMP_HISTO,
   S_CMD_DUMP_CLR_HISTO,
+
 /* cmd history stuffs */
   S_CMD_HISTORY_READ,
   S_CMD_HISTORY_LIST
@@ -239,7 +238,7 @@ enum
 typedef struct
 {
   const char *db_name;
-  char *user_name;
+  const char *user_name;
   const char *passwd;
   const char *in_file_name;
   const char *out_file_name;
@@ -249,9 +248,11 @@ typedef struct
   bool single_line_execution;
   bool column_output;
   bool line_output;
+  bool read_only;
   bool auto_commit;
   bool nopager;
   bool continue_on_error;
+  bool sysadm;
 #if defined(CSQL_NO_LONGGING)
   bool no_logging;
 #endif				/* CSQL_NO_LONGGING */

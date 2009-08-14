@@ -65,35 +65,6 @@
 #define QO_ERROR2(code, x, y)
 #endif /* USE_ER_SET */
 
-#ifdef ALLOCATE
-#undef ALLOCATE
-#endif /* ALLOCATE */
-
-#ifdef NALLOCATE
-#undef NALLOCATE
-#endif /* NALLOCATE */
-
-#ifdef DEALLOCATE
-#undef DEALLOCATE
-#endif /* DEALLOCATE */
-
-#define ALLOCATE(env, x) \
-    (x *)malloc(sizeof(x))
-
-#define NALLOCATE(env, x, n) \
-    ((n) ? (x *)malloc((n) * sizeof(x)) \
-     : NULL)
-
-#define BALLOCATE(env, s) \
-    ((s > 0) ? malloc((s)) \
-     : NULL)
-
-#define DEALLOCATE(env, p) \
-    do { \
-	if (p) \
-	    free_and_init(p); \
-    } while (0)
-
 #define DB_INTEGRAL_TYPE(t)	(qo_type_qualifiers[(t)] & _INT)
 #define DB_NUMERIC_TYPE(t)	(qo_type_qualifiers[(t)] & _NUM)
 #define _INT	0x1

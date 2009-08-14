@@ -1,0 +1,135 @@
+﻿
+<html>
+<head>
+<title>cubrid_move_cursor</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_move_cursor");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_move_cursor<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_move_cursor</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_move_cursor</span> 함수는 req_handle에 대한 현재의 커서 위치를 origin에서 정한 방향으로 offset 인수에 지정한 값만큼 이동한다. origin은 결과의 처음(CUBRID_CURSOR_FIRST), 결과의 현재 위치(CUBRID_CURSOR_CURRENT), 결과의 끝(CUBRID_CURSOR_LAST)를 사용할 수 있고, 만약 origin을 지정하지 않을 경우 기본값으로 CUBRID_CURSOR_CURRENT를 사용한다.</p>
+<p>만약 커서의 이동 값이 결과의 범위를 벗어날 경우, 커서는 결과의 범위가 끝난 다음의 위치로 이동하게 된다. 예를 들어 크기가 10인 결과에서 커서를 20의 위치로 움직이게 되면 11번째 위치로 이동한 후, CUBRID_NO_MORE_DATA를 반환한다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_move_cursor</span> (int <span class="var">req_handle</span>, int <span class="var">offset</span>[, int <span class="var">origin</span>])</p>
+<ul>
+<li><span class="var">req_handle</span> : 요청 핸들</li>
+<li><span class="var">offset</span>&#160;: 커서를 움직일 개수</li>
+<li><span class="var">origin</span>&#160;: 커서를 움직일 기준<br />
+CUBRID_CURSOR_FIRST,<br />
+CUBRID_CURSOR_CURRENT,<br />
+CUBRID_CURSOR_LAST</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>CUBRID_CURSOR_SUCCESS</li>
+<li>실패 : CUBRID_ NO_MORE_DATA</li>
+</ul>
+<h6>예제</h6>
+<p class="code">cubrid_move_cursor ($req_handle, 1, CUBRID_CURSOR_FIRST); &#160;<br />
+// 처음의 위치로 커서를 이동한다.<br />
+$row = cubrid_fetch ($req_handle);<br />
+echo $row["id"], $row["name"];<br />
+<br />
+cubrid_move_cursor ($req_handle, 1, CUBRID_CURSOR_LAST); &#160;<br />
+// 커서의 위치를 끝으로 이동한다.<br />
+$row = cubrid_fetch ($req_handle);<br />
+echo $row["id"], $row["name"];</p>
+<h6>관련 항목</h6>
+<ul>
+<li><a href="api_php_execute.htm"><span class="keyword">cubrid_execute</span></a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

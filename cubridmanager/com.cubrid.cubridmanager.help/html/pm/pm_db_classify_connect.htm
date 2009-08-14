@@ -1,0 +1,182 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>접속 관련 파라미터</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("성능 튜닝\n데이터베이스 서버 설정\n접속 관련 파라미터");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"pm.htm\">성능 튜닝<\/a> &nbsp;&gt;&nbsp; <a href=\"pm_server_general.htm\">데이터베이스 서버 설정<\/a> &nbsp;&gt;&nbsp; 접속 관련 파라미터<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>접속 관련 파라미터</h4>
+<p>다음은 데이터베이스 서버와 관련된 파라미터로 각 파라미터의 타입과 설정 가능한 값의 범위는 다음과 같다.</p>
+<table border="1">
+<tr>
+<th>
+<p>파라미터 이름</p>
+</th>
+<th>
+<p>타입</p>
+</th>
+<th>
+<p>디폴트 값</p>
+</th>
+<th>
+<p>최소값</p>
+</th>
+<th>
+<p>최대값</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>cubrid_port_id</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>1523</p>
+</td>
+<td>
+<p>1</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>db_hosts</p>
+</td>
+<td>
+<p>string</p>
+</td>
+<td>
+<p>NULL</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+<td>
+<p>&#160;</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>max_client</p>
+</td>
+<td>
+<p>int</p>
+</td>
+<td>
+<p>50</p>
+</td>
+<td>
+<p>10</p>
+</td>
+<td>
+<p>1024</p>
+</td>
+</tr>
+</table>
+<h6>cubrid_port_id</h6>
+<p><span class="keyword">cubrid_port_id</span>는&#160;마스터 프로세스가 사용하는 포트를 설정하기 위한 파라미터로 디폴트 값은 <span class="keyword">1523</span>이다. CUBRID를 설치한 서버에서 이미 1523 포트를 사용하고 있거나, 방화벽에 의해 1523 포트가 차단된 경우에는 마스터 프로세스가 정상적으로 구동할 수 없으므로, 마스터 서버와 연결할 수 없다는 에러 메시지가 나타날 수 있다. 이와 같이 포트 충돌이 발생하는 경우, 관리자는 서버 환경을 고려하여 <span class="keyword">cubrid_port_id</span>의&#160;설정값을 변경해야 한다.</p>
+<h6>db_hosts</h6>
+<p><span class="keyword">db_hosts</span>는&#160;클라이언트에서 연결할 수 있는 데이터베이스 서버 호스트의 목록 및 연결 순서를&#160;지정하기 위한 파라미터이다. 서버 호스트 목록은 한 개 이상의 서버 호스트 이름을 나열하며, 각 호스트는 이름 사이에 공백 또는 콜론(:) 기호를 사용하여 구분한다. 이 때, 중복되거나 존재하지 않는 호스트 이름은 무시된다.</p>
+<p>다음은 <span class="keyword">db_hosts</span> 파라미터의 설정값을 보여주는 예제로 <span class="keyword">host1</span>, <span class="keyword">host2</span>, <span class="keyword">host3</span>의 순서대로 연결이 시도된다.</p>
+<p class="code">db_hosts="hosts1:hosts2:hosts3"</p>
+<p>한편, 클라이언트는 서버 연결을 위하여&#160;데이터베이스 위치 정보 파일(<span class="keyword">databases.txt</span>)을 참조하여 지정된 서버 호스트에 1차적으로 연결을 시도한다. 연결이 실패하면 데이터베이스 설정 파일(<span class="keyword">cubrid.conf</span>)의 <span class="keyword">db_hosts</span> 파라미터의 설정값을 참조하여 2차적으로 지정된 서버 호스트 중 첫 번째 서버 호스트에 연결을 시도한다.</p>
+<h6>max_clients</h6>
+<p><span class="keyword">max_clients</span>는 데이터베이스 서버에 동시 연결을 허용하는 클라이언트(일반적으로 브로커 프로세스)의 최대 수를 지정하기 위한 파라미터이다. 즉, <span class="keyword">max_clients</span> 파라미터는 동시에 수행하고 있는 트랜잭션의 수를 의미한다. 이 파라미터의 디폴트 값은 <span class="keyword">50</span>이다. 하지만, 서버를 사용하는 동시 사용자 수를 고려하여 적절한 값으로 개수를 제한하는 것이 필요하다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

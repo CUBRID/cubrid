@@ -1,0 +1,45 @@
+     <resources>
+       <master_slave id="ms_cubrid_nbd1">
+         <meta_attributes id="ms_cubrid_nbd1_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="ms_cubrid_nbd1_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </master_slave>
+       <master_slave id="ms_cubrid_nbd2">
+         <meta_attributes id="ms_cubrid_nbd2_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="ms_cubrid_nbd2_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </master_slave>
+       <group id="group_cubrid_nbd1_0_ldup_1">
+         <meta_attributes id="group_cubrid_nbd1_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="group_cubrid_nbd1_0_ldup_1_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </group>
+       <group id="group_cubrid_nbd1_1_ldup_0">
+         <meta_attributes id="group_cubrid_nbd1_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="group_cubrid_nbd1_1_ldup_0_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </group>
+       <group id="group_cubrid_nbd2_0_ldup_1">
+         <meta_attributes id="group_cubrid_nbd2_0_ldup_1_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="group_cubrid_nbd2_0_ldup_1_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </group>
+       <group id="group_cubrid_nbd2_1_ldup_0">
+         <meta_attributes id="group_cubrid_nbd2_1_ldup_0_meta_attrs">
+           <attributes>
+             <nvpair name="target_role" id="group_cubrid_nbd2_1_ldup_0_metaattr_target_role" value="started"/>
+           </attributes>
+         </meta_attributes>
+       </group>
+     </resources>
+

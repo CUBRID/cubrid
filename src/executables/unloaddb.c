@@ -137,6 +137,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   sprintf (er_msg_file, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+
   /*
    * Open db
    */

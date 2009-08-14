@@ -57,6 +57,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "log_comm.h"
+#include "log_writer.h"
 #include "lock_manager.h"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
@@ -150,17 +151,17 @@ struct log_buffer
 				 */
   PAGEID phy_pageid;		/* Physical pageid for the active log portion */
   int fcnt;			/* Fix count */
-  int dirty;			/* Is page dirty */
-  int recently_freed;		/* Reference value 0/1 used by the clock
-				 * algorithm
-				 */
   int ipool;			/* Buffer pool index. Used to optimize the Clock
 				 * algorithm and to find the address of buffer given
 				 * the page address
 				 */
-
+  bool dirty;			/* Is page dirty */
+  bool recently_freed;		/* Reference value 0/1 used by the clock
+				 * algorithm
+				 */
   bool flush_running;		/* Is page beging flushed ? */
 
+  int dummy_for_align;		/* Dummy field for 8byte alignment of log page */
   LOG_PAGE logpage;		/* The actual buffered log page */
 };
 
@@ -201,7 +202,6 @@ struct log_pb_global_data
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
-static const int LOG_MIN_NBUFFERS = 3;
 #define LOG_MAX_NUM_CONTIGUOUS_BUFFERS \
   ((unsigned int)(INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
 
@@ -234,9 +234,9 @@ static struct log_buffer *logpb_replace (THREAD_ENTRY * thread_p,
 static LOG_PAGE *logpb_fix_page (THREAD_ENTRY * thread_p, PAGEID pageid,
 				 int fetch_mode);
 static bool logpb_is_dirty (LOG_PAGE * log_pgptr);
-#if defined(LOGRV_TRACE)|| defined(CUBRID_DEBUG)
+#if !defined(NDEBUG)
 static bool logpb_is_any_dirty (void);
-#endif /* LOGRV_TRACE */
+#endif /* !NDEBUG */
 #if defined(CUBRID_DEBUG)
 static bool logpb_is_any_fix (void);
 #endif /* CUBRID_DEBUG */
@@ -313,6 +313,9 @@ static void logpb_reset_clock_hand (int buffer_index);
 static void logpb_move_next_clock_hand (void);
 static void logpb_unfix_page (struct log_buffer *bufptr);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p);
+
+static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session,
+				     time_t stop_at, time_t backup_time);
 
 #if 0
 static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
@@ -1040,7 +1043,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, PAGEID pageid, int fetch_mode)
       return NULL;
     }
 
-  return (LOG_PAGE *) & (log_bufptr->logpage);
+  assert (((UINTPTR) (log_bufptr->logpage.area) % 8) == 0);
+  return &(log_bufptr->logpage);
 
 error:
 
@@ -1130,7 +1134,7 @@ logpb_is_dirty (LOG_PAGE * log_pgptr)
   return is_dirty;
 }
 
-#if defined(LOGRV_TRACE) || defined(CUBRID_DEBUG)
+#if !defined(NDEBUG)
 /*
  * logpb_is_any_dirty - FIND IF ANY LOG BUFFER IS DIRTY
  *
@@ -1163,7 +1167,7 @@ logpb_is_any_dirty (void)
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
   return ret;
 }
-#endif /* LOGRV_TRACE || CUBRID_DEBUG */
+#endif /* !NDEBUG || CUBRID_DEBUG */
 
 #if defined(CUBRID_DEBUG)
 /*
@@ -1649,7 +1653,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
 
   logpb_initialize_backup_info ();
 
-  loghdr->ha_server_status = -1;
+  loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
   loghdr->ha_file_status = -1;
   LSA_SET_NULL (&loghdr->eof_lsa);
 
@@ -2219,6 +2223,30 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logpb_fetch_start_append_page_new - FETCH THE NEW START APPEND PAGE
+ *
+ * return: Pointer to the page or NULL
+ */
+LOG_PAGE *
+logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
+{
+  assert (LOG_CS_OWN ());
+
+  log_Gl.append.delayed_free_log_pgptr = NULL;
+  log_Gl.append.log_pgptr = logpb_fix_page (thread_p,
+					    log_Gl.hdr.append_lsa.pageid,
+					    NEW_PAGE);
+  if (log_Gl.append.log_pgptr == NULL)
+    {
+      return NULL;
+    }
+
+  LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.hdr.append_lsa);
+
+  return log_Gl.append.log_pgptr;
+}
+
+/*
  * logpb_next_append_page - Fetch next append page
  *
  * return: nothing
@@ -2586,7 +2614,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       return 0;
     }
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   {
     const char *env_value;
     int verbose_dump = -1;
@@ -2624,9 +2652,6 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       goto error;
     }
 #endif /* CUBRID_DEBUG */
-
-
-
 
   /*
    * Add an end of log marker to detect the end of the log.
@@ -2695,7 +2720,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
   /* It changes the status of waiting log writer threads and wakes them up */
-  if (PRM_HA_MODE == true && !writer_info->skip_flush)
+  if (PRM_HA_MODE != HA_MODE_OFF && !writer_info->skip_flush)
     {
       assert (hold_flush_mutex == false);
       LOG_CS_DEMOTE (thread_p);
@@ -2939,7 +2964,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   assert (!logpb_is_any_dirty ());
 #endif /* CUBRID_DEBUG */
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG && logpb_is_any_dirty () == true)
     {
       er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer"
@@ -3029,7 +3054,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   hold_flush_mutex = false;
 
 #if defined(SERVER_MODE)
-  if (PRM_HA_MODE == true && !writer_info->skip_flush)
+  if (PRM_HA_MODE != HA_MODE_OFF && !writer_info->skip_flush)
     {
       /* It waits until all log writer threads are done */
       MUTEX_LOCK (rv, writer_info->flush_end_mutex);
@@ -3065,11 +3090,6 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   return 1;
 
 error:
-  /*
-   * *****
-   */
-  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-		     "logpb_flush_all_append_pages");
 
   if (hold_lpb_mutex)
     {
@@ -3079,6 +3099,9 @@ error:
     {
       LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
     }
+
+  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+		     "logpb_flush_all_append_pages");
 
   return error_code;
 }
@@ -3122,9 +3145,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
+direct_flush:
+
   assert (LOG_CS_OWN ());
 
-direct_flush:
   /* While archiving,
    * log_Gl.append.log_pgptr == NULL
    * So, log_cs must not be released.
@@ -3164,20 +3188,20 @@ direct_flush:
   assert (!LOG_CS_OWN ());
 #endif /* LOG_DEBUG */
 
-  MUTEX_LOCK (rv, css_Log_flush_thread.lock);
+  MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
 
-  if (css_Log_flush_thread.is_valid == false)
+  if (thread_Log_flush_thread.is_valid == false)
     {
       flush_type = LOG_FLUSH_DIRECT;
-      MUTEX_UNLOCK (css_Log_flush_thread.lock);
+      MUTEX_UNLOCK (thread_Log_flush_thread.lock);
       LOG_CS_ENTER (thread_p);
       goto direct_flush;
     }
 
   if (!LOG_IS_GROUP_COMMIT_ACTIVE () || (flush_type == LOG_FLUSH_FORCE))
     {
-      css_Log_flush_thread.is_log_flush_force = true;
-      COND_SIGNAL (css_Log_flush_thread.cond);
+      thread_Log_flush_thread.is_log_flush_force = true;
+      COND_SIGNAL (thread_Log_flush_thread.cond);
 
 #if (LOG_DEBUG & LOG_DEBUG_MSG)
       er_log_debug (ARG_FILE_LINE,
@@ -3187,7 +3211,7 @@ direct_flush:
     }
 
   MUTEX_LOCK (rv, group_commit_info->gc_mutex);
-  MUTEX_UNLOCK (css_Log_flush_thread.lock);
+  MUTEX_UNLOCK (thread_Log_flush_thread.lock);
 
   if (!PRM_LOG_ASYNC_COMMIT || (flush_type == LOG_FLUSH_FORCE))
     {
@@ -3441,32 +3465,34 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 
       /* Does data fit completely in current page ? */
       if ((ptr + length) >= last_ptr)
-	while (length > 0)
-	  {
-	    if (ptr >= last_ptr)
-	      {
-		/*
-		 * Get next page and set the current one dirty
-		 */
-		logpb_next_append_page (thread_p, LOG_SET_DIRTY);
-		ptr = LOG_APPEND_PTR ();
-		last_ptr = LOG_LAST_APPEND_PTR ();
-	      }
-	    /* Find the amount of contiguous data that can be copied */
-	    if (ptr + length >= last_ptr)
-	      {
-		copy_length = CAST_BUFLEN (last_ptr - ptr);
-	      }
-	    else
-	      {
-		copy_length = length;
-	      }
-	    memcpy (ptr, data, copy_length);
-	    ptr += copy_length;
-	    data += copy_length;
-	    length -= copy_length;
-	    log_Gl.hdr.append_lsa.offset += copy_length;
-	  }
+	{
+	  while (length > 0)
+	    {
+	      if (ptr >= last_ptr)
+		{
+		  /*
+		   * Get next page and set the current one dirty
+		   */
+		  logpb_next_append_page (thread_p, LOG_SET_DIRTY);
+		  ptr = LOG_APPEND_PTR ();
+		  last_ptr = LOG_LAST_APPEND_PTR ();
+		}
+	      /* Find the amount of contiguous data that can be copied */
+	      if (ptr + length >= last_ptr)
+		{
+		  copy_length = CAST_BUFLEN (last_ptr - ptr);
+		}
+	      else
+		{
+		  copy_length = length;
+		}
+	      memcpy (ptr, data, copy_length);
+	      ptr += copy_length;
+	      data += copy_length;
+	      length -= copy_length;
+	      log_Gl.hdr.append_lsa.offset += copy_length;
+	    }
+	}
       else
 	{
 	  memcpy (ptr, data, length);
@@ -3582,7 +3608,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
  *              for a log_commit record).
  */
 void
-logpb_end_append (THREAD_ENTRY * thread_p, LOG_FLUSH flush, bool force_flush)
+logpb_end_append (THREAD_ENTRY * thread_p)
 {
   struct log_rec *log_rec;	/* The log record */
   PAGEID initial_pageid;	/* remember starting log page */
@@ -3630,18 +3656,6 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_FLUSH flush, bool force_flush)
   else
     {
       logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
-    }
-
-  if (flush == LOG_NEED_FLUSH)
-    {
-      if (force_flush)
-	{
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
-	}
-      else
-	{
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-	}
     }
 }
 
@@ -3736,25 +3750,23 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
   FILE *fp;			/* Pointer to file */
   char *catmsg;
   const char *db_name = db_fullname;
-  int error_code;
+  int error_code = NO_ERROR;
 
   /* Create the information file */
   fp = fopen (logname_info, "w");
   if (fp != NULL)
     {
       fclose (fp);
-      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_LOGINFO_COMMENT));
+      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			       MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_COMMENT);
       if (db_name == NULL)
 	{
 	  db_name = log_Db_fullname;
 	}
-      error_code = logpb_dump_log_info (logname_info, false, catmsg,
-					CUBRID_MAGIC_LOG_INFO, db_name);
       if (catmsg)
 	{
-	  free_and_init (catmsg);
+	  error_code = logpb_dump_log_info (logname_info, false, catmsg,
+					    CUBRID_MAGIC_LOG_INFO, db_name);
 	}
       if (error_code != NO_ERROR)
 	{
@@ -3784,6 +3796,11 @@ logpb_dump_log_info (const char *logname_info, int also_stdout,
 {
   FILE *fp;			/* Pointer to file                   */
   va_list ap;			/* Point to each unnamed arg in turn */
+  time_t log_time;
+  struct tm log_tm;
+  struct tm *log_tm_p = &log_tm;
+  struct timeval tv;
+  char time_array[256];
 
   va_start (ap, fmt);
 
@@ -3800,11 +3817,31 @@ logpb_dump_log_info (const char *logname_info, int also_stdout,
       va_end (ap);
       return ER_LOG_MOUNT_FAIL;
     }
+
+  log_time = time (NULL);
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  log_tm_p = localtime_r (&log_time, &log_tm);
+#else /* SERVER_MODE && !WINDOWS */
+  log_tm_p = localtime (&log_time);
+#endif /* SERVER_MODE && !WINDOWS */
+  if (log_tm_p == NULL)
+    {
+      strcpy (time_array, "00/00/00 00:00:00.000");
+    }
+  else
+    {
+      gettimeofday (&tv, NULL);
+      snprintf (time_array +
+		strftime (time_array, 128, "%m/%d/%y %H:%M:%S", log_tm_p),
+		255, ".%03ld", tv.tv_usec / 1000);
+    }
+  fprintf (fp, "Time: %s - ", time_array);
+
   (void) vfprintf (fp, fmt, ap);
   fflush (fp);
   fclose (fp);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   if (also_stdout && PRM_LOG_TRACE_DEBUG)
     {
       va_start (ap, fmt);
@@ -4134,6 +4171,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname,
   int read_int_volid;
   VOLID num_vols = 0;
   bool start_scan = false;
+  char format_string[64];
 
   if (db_fullname != NULL)
     {
@@ -4153,9 +4191,11 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname,
       return -1;
     }
 
+  sprintf (format_string, "%%d %%%ds", PATH_MAX - 1);
   while (true)
     {
-      if (fscanf (volinfo_fp, "%d %s", &read_int_volid, vol_fullname) != 2)
+      if (fscanf (volinfo_fp, format_string, &read_int_volid,
+		  vol_fullname) != 2)
 	{
 	  break;
 	}
@@ -4242,6 +4282,10 @@ logpb_to_physical_pageid (PAGEID logical_pageid)
 	}
 
       phy_pageid++;
+      if (phy_pageid > LOGPB_ACTIVE_NPAGES)
+	{
+	  phy_pageid %= LOGPB_ACTIVE_NPAGES;
+	}
     }
 
   return phy_pageid;
@@ -4450,13 +4494,14 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
   bool has_guess_arvnum = false;
   bool first_time = true;
   int error_code = NO_ERROR;
+  char format_string[64];
 
   aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, MAX_ALIGNMENT);
 
   assert (LOG_CS_OWN ());
   assert (log_pgptr != NULL);
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG)
     fprintf (stdout, "\n **log_fetch_from_archive has been called on"
 	     " pageid = %d ** \n", pageid);
@@ -4503,8 +4548,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      arvhdr = (struct log_arv_header *) arv_hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime ((time_t) arvhdr->db_creation,
-				(time_t) log_Gl.hdr.db_creation) != 0)
+		  if (difftime64 ((time_t) arvhdr->db_creation,
+				  (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
 		      /*
 		       * This volume does not belong to the database. For now, assume
@@ -4533,6 +4578,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
       arvhdr = &log_Gl.archive.hdr;
       *arv_num = arvhdr->arv_num;
     }
+
+  sprintf (format_string, "%%%ds", PATH_MAX - 1);
 
   log_Gl.archive.vdes = NULL_VOLDES;
   while (true)
@@ -4777,7 +4824,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 						   MSGCAT_SET_LOG,
 						   MSGCAT_LOG_NEWLOCATION));
 		  if (fgets (line_buf, PATH_MAX, stdin) == 0
-		      || (sscanf (line_buf, "%s", arv_name) != 1))
+		      || (sscanf (line_buf, format_string, arv_name) != 1))
 		    {
 		      fileio_make_log_archive_name (arv_name,
 						    log_Archive_path,
@@ -4814,9 +4861,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      arvhdr = (struct log_arv_header *) arv_hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime
-		      ((time_t) arvhdr->db_creation,
-		       (time_t) log_Gl.hdr.db_creation) != 0)
+		  if (difftime64 ((time_t) arvhdr->db_creation,
+				  (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
 		      /*
 		       * This volume does not belong to the database. For now, assume
@@ -4884,11 +4930,12 @@ logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
   bool has_guess_arvnum = false;
   bool first_time = true;
   int error_code = NO_ERROR;
+  char format_string[64];
 
 /* TODO: check if it is in LOG_CS(), not LOG_CS_READ_MODE() */
   assert (LOG_CS_OWN ());
 
-#if defined(LOGRV_TRACE)
+#if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG)
     fprintf (stdout, "\n **log_fetch_from_archive has been called on"
 	     " pageid = %d ** \n", pageid);
@@ -4937,8 +4984,8 @@ logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      arvhdr = (struct log_arv_header *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime (arvhdr->db_creation,
-				log_Gl.hdr.db_creation) != 0)
+		  if (difftime64 (arvhdr->db_creation,
+				  log_Gl.hdr.db_creation) != 0)
 		    {
 		      /*
 		       * This volume does not belong to the database. For now, assume
@@ -4967,6 +5014,8 @@ logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
       arvhdr = &log_Gl.archive.hdr;
       arv_num = arvhdr->arv_num;
     }
+
+  sprintf (format_string, "%%%ds", PATH_MAX - 1);
 
   //log_Gl.archive.vdes = NULL_VOLDES;
   while (true)
@@ -5213,7 +5262,7 @@ logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 						   MSGCAT_SET_LOG,
 						   MSGCAT_LOG_NEWLOCATION));
 		  if (fgets (line_buf, PATH_MAX, stdin) == 0
-		      || (sscanf (line_buf, "%s", arv_name) != 1))
+		      || (sscanf (line_buf, format_string, arv_name) != 1))
 		    {
 		      fileio_make_log_archive_name (arv_name,
 						    log_Archive_path,
@@ -5250,7 +5299,7 @@ logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      arvhdr = (struct log_arv_header *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime (arvhdr->db_creation, log_Gl.hdr.db_creation)
+		  if (difftime64 (arvhdr->db_creation, log_Gl.hdr.db_creation)
 		      != 0)
 		    {
 		      /*
@@ -5317,7 +5366,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-  int error_code;
+  int error_code = NO_ERROR;
   LOG_FLUSH_TYPE old_flush_type;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
@@ -5356,6 +5405,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     {
       goto error;
     }
+  memset (malloc_arv_hdr_pgptr, 0, IO_PAGESIZE);
 
   /* Must force the log here to avoid nasty side effects */
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
@@ -5450,7 +5500,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	   * log_Gl.flushed_lsa_lower_bound becomes NULL_LSA,
 	   * So, we need to call pgbuf_flush_check_point()
 	   */
-	  if (!BO_ISSERVER_RESTARTED ())
+	  if (!BO_IS_SERVER_RESTARTED ())
 	    {
 	      pgbuf_flush_check_point (thread_p, &smallest_lsa,
 				       &newsmallest_lsa);
@@ -5660,26 +5710,74 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     }
 #endif
 
+#if 0
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3,
+	  arv_name, arvhdr->fpageid, last_pageid);
+#endif
+
   /* Cast the archive information. May be used again */
 
   log_Gl.archive.hdr = *arvhdr;	/* Copy of structure */
   log_Gl.archive.vdes = vdes;
 
-  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_LOGINFO_ARCHIVE));
-
-  error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
-				    log_Gl.hdr.nxarv_num - 1, arv_name,
-				    arvhdr->fpageid, last_pageid);
+  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			   MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ARCHIVE);
   if (catmsg)
     {
-      free_and_init (catmsg);
+      error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
+					log_Gl.hdr.nxarv_num - 1, arv_name,
+					arvhdr->fpageid, last_pageid);
     }
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
       goto error;
     }
+
+#if defined(SERVER_MODE)
+  if (PRM_HA_MODE != HA_MODE_OFF)
+    {
+      PAGEID min_fpageid = logwr_get_min_copied_fpageid ();
+      if (min_fpageid != NULL_PAGEID)
+	{
+	  int unneeded_arvnum;
+	  if (min_fpageid >= arvhdr->fpageid)
+	    {
+	      unneeded_arvnum = arvhdr->arv_num - 1;
+	    }
+	  else
+	    {
+	      struct log_arv_header min_arvhdr;
+	      if (logpb_fetch_header_from_archive (thread_p, min_fpageid,
+						   &min_arvhdr) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      unneeded_arvnum = min_arvhdr.arv_num - 1;
+	    }
+	  if (unneeded_arvnum >= 0)
+	    {
+	      char unneeded_logarv_name[PATH_MAX];
+	      fileio_make_log_archive_name (unneeded_logarv_name,
+					    log_Archive_path, log_Prefix,
+					    unneeded_arvnum);
+
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME);
+	      if (catmsg)
+		{
+		  error_code =
+		    logpb_dump_log_info (log_Name_info, true, catmsg,
+					 unneeded_logarv_name, min_fpageid);
+		}
+	      if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
+		{
+		  goto error;
+		}
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
 
   free_and_init (malloc_arv_hdr_pgptr);
   flush_info->flush_type = old_flush_type;
@@ -5966,13 +6064,16 @@ logpb_append_archives_removed_to_log_info (int first, int last,
 
   if (info_reason != NULL)
     {
-      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_LOGINFO_REMOVE_REASON));
+      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			       MSGCAT_SET_LOG,
+			       MSGCAT_LOG_LOGINFO_REMOVE_REASON);
+      if (catmsg == NULL)
+	{
+	  return;
+	}
 
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix,
 				    last);
-
       if (first == last)
 	{
 	  error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
@@ -5986,10 +6087,6 @@ logpb_append_archives_removed_to_log_info (int first, int last,
 	  error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
 					    first, logarv_name_first,
 					    last, logarv_name, info_reason);
-	}
-      if (catmsg)
-	{
-	  free_and_init (catmsg);
 	}
       if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	{
@@ -6022,6 +6119,10 @@ logpb_append_archives_delete_pend_to_log_info (int first, int last)
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 			   MSGCAT_SET_LOG,
 			   MSGCAT_LOG_LOGINFO_ARCHIVES_NEEDED_FOR_RESTORE);
+  if (catmsg == NULL)
+    {
+      return;
+    }
 
   fileio_make_log_archive_name (logarv_name, log_Archive_path,
 				log_Prefix, last);
@@ -6394,7 +6495,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   flush_info->flush_type = LOG_FLUSH_DIRECT;
 
 #if defined(SERVER_MODE)
-  if (BO_ISSERVER_RESTARTED () && log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
+  if (BO_IS_SERVER_RESTARTED () && log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
       flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
@@ -6465,7 +6566,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /* MARK THE CHECKPOINT PROCESS */
   logpb_start_append (thread_p, LOG_START_CHKPT, tdes);
-  logpb_end_append (thread_p, LOG_DONT_NEED_FLUSH, false);
+  logpb_end_append (thread_p);
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
@@ -6687,7 +6788,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * reflects the new location of the last checkpoint log record
    */
 
-  logpb_end_append (thread_p, LOG_NEED_FLUSH, true);
+  logpb_end_append (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  assert (LOG_CS_OWN ());
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
@@ -6767,13 +6870,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	{
 	  /* Remove the log archives at this point */
 	  log_Gl.hdr.last_arv_num_for_syscrashes = -1;
-	  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_MEDIACRASH_NOT_IMPORTANT));
-	  logpb_remove_archive_logs (thread_p, catmsg);
+	  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_LOG,
+				   MSGCAT_LOG_MEDIACRASH_NOT_IMPORTANT);
 	  if (catmsg)
 	    {
-	      free_and_init (catmsg);
+	      logpb_remove_archive_logs (thread_p, catmsg);
 	    }
 	}
       else
@@ -6784,15 +6886,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
 					    log_Prefix,
 					    log_Gl.hdr.nxarv_num - 1);
-	      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED));
-	      error_code = logpb_dump_log_info (log_Name_info, true,
-						catmsg, logarv_name);
-
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED);
 	      if (catmsg)
 		{
-		  free_and_init (catmsg);
+		  error_code = logpb_dump_log_info (log_Name_info, true,
+						    catmsg, logarv_name);
 		}
 	    }
 	  else
@@ -6805,16 +6905,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 					    log_Prefix,
 					    log_Gl.hdr.nxarv_num - 1);
 
-	      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED));
-	      error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
-						logarv_name_first,
-						logarv_name);
-
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED);
 	      if (catmsg)
 		{
-		  free_and_init (catmsg);
+		  error_code =
+		    logpb_dump_log_info (log_Name_info, true, catmsg,
+					 logarv_name_first, logarv_name);
 		}
 	    }
 	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
@@ -7319,7 +7417,7 @@ loop:
 		      (thread_p, allbackup_path))
 		    {
 		      io_bkup_hdr_p = session.bkup.bkuphdr;
-		      tmp_time = (time_t) io_bkup_hdr_p->at_time;
+		      tmp_time = (time_t) io_bkup_hdr_p->start_time;
 		      sprintf (old_bkpath,
 			       msgcat_message (MSGCAT_CATALOG_CUBRID,
 					       MSGCAT_SET_LOG,
@@ -7518,9 +7616,9 @@ loop:
 
   if (last_arv_needed >= first_arv_needed)
     {
-      error_code =
-	logpb_backup_needed_archive_logs (thread_p, &session,
-					  first_arv_needed, last_arv_needed);
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session,
+						     first_arv_needed,
+						     last_arv_needed);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -7536,6 +7634,23 @@ loop:
 #endif /* SERVER_MODE */
 
   LOG_CS_ENTER (thread_p);
+
+#if defined(SERVER_MODE)
+  /* backup the archive logs created during backup existing archive logs */
+  if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
+    {
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session,
+						     last_arv_needed + 1,
+						     log_Gl.hdr.nxarv_num - 1);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      last_arv_needed = log_Gl.hdr.nxarv_num - 1;
+    }
+#endif
+
   flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   /*
@@ -7585,7 +7700,8 @@ loop:
   logpb_initialize_backup_info ();
 
   /* Save additional info and metrics from this backup */
-  log_Gl.hdr.bkinfo[backup_level].bkup_attime = session.bkup.bkuphdr->at_time;
+  log_Gl.hdr.bkinfo[backup_level].bkup_attime =
+    session.bkup.bkuphdr->start_time;
 
   switch (backup_level)
     {
@@ -7631,13 +7747,12 @@ loop:
 
   if (delete_unneeded_logarchives != false)
     {
-      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN));
-      logpb_remove_archive_to_page_id (thread_p, catmsg, safe_pageid);
+      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			       MSGCAT_SET_LOG,
+			       MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
-	  free_and_init (catmsg);
+	  logpb_remove_archive_to_page_id (thread_p, catmsg, safe_pageid);
 	}
     }
 
@@ -7660,15 +7775,14 @@ loop:
       if (PRM_LOG_MEDIA_FAILURE_SUPPORT == false)
 	{
 	  /* Remove the log archives at this point */
-	  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED));
-	  logpb_remove_archive_logs_internal (unneeded_arv_low,
-					      unneeded_arv_high, catmsg,
-					      false);
+	  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_LOG,
+				   MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED);
 	  if (catmsg)
 	    {
-	      free_and_init (catmsg);
+	      logpb_remove_archive_logs_internal (unneeded_arv_low,
+						  unneeded_arv_high, catmsg,
+						  false);
 	    }
 	}
       else
@@ -7678,15 +7792,13 @@ loop:
 	    {
 	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
 					    log_Prefix, unneeded_arv_low);
-	      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_LOGINFO_NOTPENDING_ARCHIVE_COMMENT));
-	      error_code = logpb_dump_log_info (log_Name_info, true,
-						catmsg, logarv_name);
-
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_NOTPENDING_ARCHIVE_COMMENT);
 	      if (catmsg)
 		{
-		  free_and_init (catmsg);
+		  error_code = logpb_dump_log_info (log_Name_info, true,
+						    catmsg, logarv_name);
 		}
 	    }
 	  else
@@ -7699,16 +7811,14 @@ loop:
 					    log_Prefix,
 					    log_Gl.hdr.nxarv_num - 1);
 
-	      catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_LOGINFO_MULT_NOTPENDING_ARCHIVES_COMMENT));
-	      error_code = logpb_dump_log_info (log_Name_info, false, catmsg,
-						logarv_name_first,
-						logarv_name);
-
+	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_LOGINFO_MULT_NOTPENDING_ARCHIVES_COMMENT);
 	      if (catmsg)
 		{
-		  free_and_init (catmsg);
+		  error_code =
+		    logpb_dump_log_info (log_Name_info, false, catmsg,
+					 logarv_name_first, logarv_name);
 		}
 	    }
 	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
@@ -7833,7 +7943,41 @@ logpb_update_backup_volume_info (const char *bkupinfo_file_name)
 }
 
 /*
- * logpb_xrestore - Restore volume from its backup
+ * logpb_check_stop_at_time - Check if the stopat time is valid
+ *
+ * return: NO_ERROR if valid, ER_FAILED otherwise
+ *
+ *   session(in):
+ *   stop_at(in):
+ *   backup_time(in):
+ */
+static int
+logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session,
+			  time_t stop_at, time_t backup_time)
+{
+  char ctime_buf1[64], ctime_buf2[64];
+
+  if (stop_at < backup_time)
+    {
+      strcpy (ctime_buf1, ctime (&stop_at));
+      strcpy (ctime_buf2, ctime (&backup_time));
+
+      ctime_buf1[strlen (ctime_buf1) - 1] = 0;	/* strip '\n' */
+      ctime_buf2[strlen (ctime_buf2) - 1] = 0;
+
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_UPTODATE_ERROR),
+	       ctime_buf1, ctime_buf2);
+
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * logpb_restore - Restore volume from its backup
  *
  * return: NO_ERROR if all OK, ER status otherwise
  *
@@ -7860,10 +8004,9 @@ logpb_update_backup_volume_info (const char *bkupinfo_file_name)
  *     be recreated without updating the header of the volumes.
  */
 int
-logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
-		const char *logpath, const char *prefix_logname,
-		const char *newall_path, bool ask_forpath,
-		BO_RESTART_ARG * r_args)
+logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
+	       const char *logpath, const char *prefix_logname,
+	       BO_RESTART_ARG * r_args)
 {
   FILEIO_BACKUP_SESSION session_storage;
   FILEIO_BACKUP_SESSION *session = NULL;
@@ -7875,8 +8018,6 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   char from_volbackup[PATH_MAX];	/* Name of the backup volume
 					 * (FROM)
 					 */
-  char vol_basename[PATH_MAX];	/* Base name of a volume      */
-  char ctime_buf1[64], ctime_buf2[64];
   VOLID to_volid;
   int retry;
   struct stat stbuf;
@@ -7884,14 +8025,12 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 					 * information/directory file
 					 */
   int another_vol;
-  int vol_nbytes;
   INT64 db_creation;
   INT64 bkup_match_time = 0;
   PGLENGTH db_iopagesize;
   float db_compatibility;
   PGLENGTH bkdb_iopagesize;
   float bkdb_compatibility;
-  int askoption;
   FILEIO_RESTORE_PAGE_CACHE pages_cache;
   FILEIO_BACKUP_LEVEL try_level;
   bool first_time = true;
@@ -7906,8 +8045,9 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
   const char *verbose_file;
-  time_t tmp_time;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  char format_string[64];
+  INT64 backup_time;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -7916,10 +8056,12 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   LOG_CS_ENTER (thread_p);
   flush_info->flush_type = LOG_FLUSH_DIRECT;
+  pages_cache.ht = NULL;
+  pages_cache.heap_id = HL_NULL_HEAPID;
 
-  if (logpb_find_header_parameters
-      (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
-       &db_creation, &db_compatibility) == -1)
+  if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
+				    prefix_logname, &db_iopagesize,
+				    &db_creation, &db_compatibility) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       db_creation = 0;
@@ -7966,13 +8108,15 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
   pages_cache.heap_id = db_create_fixed_heap (sizeof (VPID),
 					      LOG_BKUP_HASH_NUM_PAGEIDS);
-  if (pages_cache.heap_id == 0)
+  if (pages_cache.heap_id == HL_NULL_HEAPID)
     {
       error_code = ER_FAILED;
       flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
+
+  sprintf (format_string, "%%%ds", PATH_MAX - 1);
 
   while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL
 	 && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -8058,7 +8202,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					       MSGCAT_SET_LOG,
 					       MSGCAT_LOG_NEWLOCATION));
-	      if (scanf ("%s", from_volbackup) != 1)
+	      if (scanf (format_string, from_volbackup) != 1)
 		{
 		  /* Cannot access backup file.. Restore from backup is cancelled */
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8123,20 +8267,16 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
       /* User only wants information about the backup */
       if (r_args->printtoc)
 	{
-	  if (fileio_list_restore (thread_p, db_fullname, from_volbackup,
-				   &bkdb_iopagesize, &bkdb_compatibility,
-				   try_level, r_args->newvolpath) == NO_ERROR)
-	    {
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
-	      LOG_CS_EXIT ();
-	      return NO_ERROR;
-	    }
-	  else
-	    {
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
-	      LOG_CS_EXIT ();
-	      return ER_FAILED;
-	    }
+	  error_code = fileio_list_restore (thread_p, db_fullname,
+					    from_volbackup, &bkdb_iopagesize,
+					    &bkdb_compatibility, try_level,
+					    r_args->newvolpath);
+
+	  flush_info->flush_type = LOG_FLUSH_NORMAL;
+	  mht_destroy (pages_cache.ht);
+	  db_destroy_fixed_heap (pages_cache.heap_id);
+	  LOG_CS_EXIT ();
+	  return error_code;
 	}
 
       printtoc = (r_args->printtoc) ? false : true;
@@ -8159,45 +8299,38 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  goto error;
 	}
 
-      memset (session_storage.bkup.log_path, 0,
-	      FILEIO_MAX_BACKUP_PATH_LENGTH);
-      if (logpath)
-	{
-	  strncpy (session_storage.bkup.log_path, logpath,
-		   FILEIO_MAX_BACKUP_PATH_LENGTH);
-	}
+      memset (session_storage.bkup.log_path, 0, PATH_MAX);
+      strncpy (session_storage.bkup.log_path, logpath, PATH_MAX);
 
       session = &session_storage;
 
-      if (first_time && r_args->restore_upto_bktime)
+      if (first_time)
 	{
-	  r_args->stopat = (time_t) session->bkup.bkuphdr->at_time;
-	}
-
-      if (first_time && r_args->stopat > 0)
-	{			/* up-to-date < backup time --> stop */
-	  if (r_args->stopat < session->bkup.bkuphdr->at_time)
+	  if (r_args->restore_upto_bktime)
 	    {
-	      strcpy (ctime_buf1, ctime (&r_args->stopat));
-	      tmp_time = (time_t) session->bkup.bkuphdr->at_time;
-	      strcpy (ctime_buf2, ctime (&tmp_time));
-	      ctime_buf1[strlen (ctime_buf1) - 1] = 0;	/* strip '\n' */
-	      ctime_buf2[strlen (ctime_buf2) - 1] = 0;
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_UPTODATE_ERROR),
-		       ctime_buf1, ctime_buf2);
-	      if (fileio_finish_restore (session) == NO_ERROR)
+	      r_args->stopat = (time_t) session->bkup.bkuphdr->end_time;
+	    }
+	  else if (r_args->stopat > 0)
+	    {
+	      if (session->bkup.bkuphdr->end_time > 0)
 		{
-		  flush_info->flush_type = LOG_FLUSH_NORMAL;
-		  LOG_CS_EXIT ();
-		  return NO_ERROR;
+		  backup_time = session->bkup.bkuphdr->end_time;
 		}
 	      else
 		{
+		  backup_time = session->bkup.bkuphdr->start_time;
+		}
+
+	      if (logpb_check_stop_at_time (session, r_args->stopat,
+					    (time_t) backup_time) != NO_ERROR)
+		{
+		  error_code = fileio_finish_restore (session);
+
 		  flush_info->flush_type = LOG_FLUSH_NORMAL;
+		  mht_destroy (pages_cache.ht);
+		  db_destroy_fixed_heap (pages_cache.heap_id);
 		  LOG_CS_EXIT ();
-		  return ER_FAILED;
+		  return error_code;
 		}
 	    }
 	}
@@ -8294,7 +8427,7 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	{
 	  another_vol =
 	    fileio_get_next_restore_file (thread_p, session, to_volname,
-					  &to_volid, &vol_nbytes);
+					  &to_volid);
 	  if (another_vol == 1)
 	    {
 	      if (session->verbose_fp)
@@ -8364,92 +8497,6 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  remember_pages = false;
 		}
 
-	      /*
-	       * Currently, we only allow you to change the path of volumes
-	       * The log files cannot be changed.
-	       */
-
-	      if (ask_forpath == true)
-		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-						   MSGCAT_SET_LOG,
-						   MSGCAT_LOG_STARTS));
-		  fprintf (stdout,
-			   "Database Volume/file %s\n"
-			   "with volid = %d and approximately %d bytes is\n"
-			   "going to be restored.\n"
-			   "Type one of the following options to continue.\n",
-			   to_volname, to_volid, vol_nbytes);
-		  fprintf (stdout,
-			   "0 to quit\n"
-			   "1 to continue with the same pathname\n"
-			   "2 to change location of volume");
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-						   MSGCAT_SET_LOG,
-						   MSGCAT_LOG_STARTS));
-		  if (scanf ("%d", &askoption) != 1)
-		    {
-		      askoption = 0;
-		    }
-		  switch (askoption)
-		    {
-		    case 0:	/* quit */
-		    default:
-		      error_expected = true;
-		      success = ER_FAILED;
-		      break;
-
-		    case 1:	/* continue with same path */
-		      break;
-
-		    case 2:	/* Change the path */
-		      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-						       MSGCAT_SET_LOG,
-						       MSGCAT_LOG_NEWLOCATION));
-		      if (scanf ("%s", to_volname) != 1)
-			{
-			  success = ER_FAILED;
-			}
-		      break;
-		    }
-		}
-	      else if (newall_path != NULL)
-		{
-		  nopath_name = fileio_get_base_file_name (to_volname);
-		  strncpy (vol_basename, nopath_name, PATH_MAX);
-		  strncpy (to_volname, newall_path, PATH_MAX);
-		  strcat (to_volname, vol_basename);
-		}
-
-	      if (LOG_DBFIRST_VOLID == to_volid
-		  && (ask_forpath == true || newall_path != NULL))
-		{
-		  /*
-		   * Check if any of the cached names has been changed
-		   */
-		  if (strcmp (to_volname, db_fullname) != 0)
-		    {
-		      /*
-		       * The location of the database has been change, indicate that to
-		       * the caller as well.
-		       */
-
-		      /*
-		       * strcpy(db_fullname, to_volname);
-		       */
-		      error_code = logpb_initialize_log_names (thread_p,
-							       db_fullname,
-							       logpath,
-							       prefix_logname);
-		      if (error_code != NO_ERROR)
-			{
-			  flush_info->flush_type = LOG_FLUSH_NORMAL;
-			  LOG_CS_EXIT ();
-			  goto error;
-			}
-		    }
-		}
-
 	      success = fileio_restore_volume (thread_p, session,
 					       to_volname, verbose_to_volname,
 					       prev_volname, &pages_cache,
@@ -8463,6 +8510,29 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    {
 	      success = ER_FAILED;
 	      break;
+	    }
+	}
+
+      /* if the device type is FILEIO_BACKUP_VOL_DEVICE, the end time of backup
+       * is loaded during the last fileio_get_next_restore_file() call,
+       * so we must check if the stopat time is valid.
+       */
+      if (first_time && session->bkup.dtype == FILEIO_BACKUP_VOL_DEVICE)
+	{
+	  if (r_args->restore_upto_bktime)
+	    {
+	      r_args->stopat = (time_t) session->bkup.bkuphdr->end_time;
+	    }
+	  else if (r_args->stopat > 0
+		   && logpb_check_stop_at_time (session, r_args->stopat,
+						(time_t) session->bkup.
+						bkuphdr->end_time) !=
+		   NO_ERROR)
+	    {
+	      flush_info->flush_type = LOG_FLUSH_NORMAL;
+	      LOG_CS_EXIT ();
+	      error_code = ER_FAILED;
+	      goto error;
 	    }
 	}
 
@@ -8489,32 +8559,34 @@ logpb_xrestore (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 
   /* rename logactive tmp to logactive */
-  if ((r_args->restore_upto_bktime)
-      && (stat (log_Name_active, &stat_buf) != 0)
-      && (stat (lgat_tmpname, &stat_buf) == 0))
+  if (stat (log_Name_active, &stat_buf) != 0
+      && stat (lgat_tmpname, &stat_buf) == 0)
     {
       rename (lgat_tmpname, log_Name_active);
     }
 
   unlink (lgat_tmpname);
 
-  if (session->verbose_fp)
+  if (session != NULL)
     {
-      restore_end_time = time (NULL);
-      fprintf (session->verbose_fp, "- restore end time: %s\n",
-	       ctime (&restore_end_time));
-      fprintf (session->verbose_fp,
-	       "[ Database(%s) Restore (level = %d) end ]\n", boot_db_name (),
-	       r_args->level);
-    }
+      if (session->verbose_fp)
+	{
+	  restore_end_time = time (NULL);
+	  fprintf (session->verbose_fp, "- restore end time: %s\n",
+		   ctime (&restore_end_time));
+	  fprintf (session->verbose_fp,
+		   "[ Database(%s) Restore (level = %d) end ]\n",
+		   boot_db_name (), r_args->level);
+	}
 
-  if (fileio_finish_restore (session) == NO_ERROR)
-    {
-      error_code = NO_ERROR;
-    }
-  else
-    {
-      error_code = ER_FAILED;
+      if (fileio_finish_restore (session) == NO_ERROR)
+	{
+	  error_code = NO_ERROR;
+	}
+      else
+	{
+	  error_code = ER_FAILED;
+	}
     }
 
   flush_info->flush_type = LOG_FLUSH_NORMAL;
@@ -8567,13 +8639,15 @@ error:
       fileio_abort_restore (session);
     }
 
-  if (pages_cache.ht)
+  if (pages_cache.ht != NULL)
     {
       mht_destroy (pages_cache.ht);
     }
 
-  if (pages_cache.heap_id)
-    db_destroy_fixed_heap (pages_cache.heap_id);
+  if (pages_cache.heap_id != HL_NULL_HEAPID)
+    {
+      db_destroy_fixed_heap (pages_cache.heap_id);
+    }
 
   if (lgat_vdes != NULL_VOLDES)
     {
@@ -8591,32 +8665,6 @@ error:
     }
 
   return error_code;
-}
-
-/*
- * logpb_restore - Restore volume from its backup
- *
- * return: error code
- *
- *   db_fullname(in): Full name of the database
- *   logpath(in): Directory where the log volumes reside
- *   prefix_logname(in):
- *   r_args(in):
- *
- * NOTE: Restore a database from its backup files. This function is run
- *              without recovery. The logs must be applied to the restored
- *              volume to finish the full restore process. This is not done
- *              here since the database may have other volumes to restore.
- *
- *              This function must be run offline.
- */
-int
-logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
-	       const char *logpath, const char *prefix_logname,
-	       BO_RESTART_ARG * r_args)
-{
-  return logpb_xrestore (thread_p, db_fullname, logpath, prefix_logname, NULL,
-			 false, r_args);
 }
 
 /*
@@ -8775,15 +8823,17 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path,
   struct stat stat_buf;
 #endif
   int error_code = NO_ERROR;
+  char format_string[64];
 
   current_vlabel = fileio_get_volume_label (volid);
+  sprintf (format_string, "%%d %%%ds %%%ds", PATH_MAX - 1, PATH_MAX - 1);
 
   /*
    * If a file for paths was given, get the name of the "to" volume from it
    */
   if (where_paths_fp != NULL)
     {
-      if (fscanf (where_paths_fp, "%d %s %s",
+      if (fscanf (where_paths_fp, format_string,
 		  &from_volid, from_volname, to_volname) != 3)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -9043,6 +9093,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   bool stop_eof = false;
   char *catmsg;
   int error_code;
+  char format_string[64];
 
   db_creation = time (NULL);
 
@@ -9074,15 +9125,12 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
 
-  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_LOGINFO_ACTIVE));
-
-  error_code = logpb_dump_log_info (to_volname, false, catmsg,
-				    to_volname, log_Gl.hdr.npages + 1);
+  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			   MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg)
     {
-      free_and_init (catmsg);
+      error_code = logpb_dump_log_info (to_volname, false, catmsg,
+					to_volname, log_Gl.hdr.npages + 1);
     }
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
@@ -9250,13 +9298,15 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
    */
 
   fileio_make_volume_info_name (to_volname, to_db_fullname);
+  sprintf (format_string, "%%d %%%ds", PATH_MAX - 1);
+
   to_volinfo_fp = fopen (to_volname, "r");
   if (to_volinfo_fp != NULL)
     {
       volid = NULL_VOLID;
       while (true)
 	{
-	  if (fscanf (to_volinfo_fp, "%d %s", &fromfile_volid,
+	  if (fscanf (to_volinfo_fp, format_string, &fromfile_volid,
 		      to_volname) != 2)
 	    {
 	      stop_eof = true;
@@ -9369,6 +9419,7 @@ error:
    * Rewind the volume information to destroy any created volumes if any
    */
 
+  sprintf (format_string, "%%*d %%%ds", PATH_MAX - 1);
   if (to_volinfo_fp != NULL)
     {
       fclose (to_volinfo_fp);
@@ -9377,7 +9428,7 @@ error:
 	{
 	  while (true)
 	    {
-	      if (fscanf (to_volinfo_fp, "%*d %s", to_volname) != 1)
+	      if (fscanf (to_volinfo_fp, format_string, to_volname) != 1)
 		{
 		  break;
 		}
@@ -9656,29 +9707,25 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
 
-  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_LOGINFO_COMMENT_FROM_RENAMED));
-  error_code = logpb_dump_log_info (to_volname, false, catmsg,
-				    log_Db_fullname);
+  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			   MSGCAT_SET_LOG,
+			   MSGCAT_LOG_LOGINFO_COMMENT_FROM_RENAMED);
   if (catmsg)
     {
-      free_and_init (catmsg);
+      error_code = logpb_dump_log_info (to_volname, false, catmsg,
+					log_Db_fullname);
     }
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
       goto error;
     }
 
-  catmsg = strdup (msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_LOGINFO_ACTIVE));
-
-  error_code = logpb_dump_log_info (to_volname, false, catmsg,
-				    to_volname, log_Gl.hdr.npages + 1);
+  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			   MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg)
     {
-      free_and_init (catmsg);
+      error_code = logpb_dump_log_info (to_volname, false, catmsg,
+					to_volname, log_Gl.hdr.npages + 1);
     }
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
@@ -9897,6 +9944,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   int read_int_volid;
   int i;
   int error_code = NO_ERROR;
+  char format_string[64];
 
   /*
    * FIRST: Destroy data volumes of the database.
@@ -10000,12 +10048,14 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
 
       fileio_make_volume_info_name (vol_fullname, db_fullname);
+      sprintf (format_string, "%%d %%%ds", PATH_MAX - 1);
+
       db_volinfo_fp = fopen (vol_fullname, "r");
       if (db_volinfo_fp != NULL)
 	{
 	  while (true)
 	    {
-	      if (fscanf (db_volinfo_fp, "%d %s", &read_int_volid,
+	      if (fscanf (db_volinfo_fp, format_string, &read_int_volid,
 			  vol_fullname) != 2)
 		{
 		  break;
@@ -10326,7 +10376,7 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 
 #if defined(SERVER_MODE)
       boot_donot_shutdown_server_at_exit ();
-      boot_Server_up = DOWN;
+      boot_server_status (BOOT_SERVER_DOWN);
 #else /* SERVER_MODE */
       /*
        * The following crap is added to the standalone version to avoid the
@@ -10740,9 +10790,11 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
       if (logpb_writev_append_pages (thread_p, &flush_info->toflush[loop], 1)
 	  == NULL)
 	{
+	  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
+	  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_flush_pages_bg");
-	  goto error;
+	  return;
 	}
 
       bufptr->flush_running = false;
@@ -10784,8 +10836,11 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   return;
 
 error:
-  return;
 
+  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
+  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
+
+  return;
 }
 
 /*

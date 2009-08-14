@@ -417,8 +417,15 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p,
 				   DB_VALUE * value_p, bool is_copy)
 {
   PR_TYPE *pr_type;
-  DB_TYPE type = domain_p->type->id;
+  DB_TYPE type;
 
+  pr_type = domain_p->type;
+  if (pr_type == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  type = pr_type->id;
   if (value_flag == V_UNBOUND)
     {
       db_value_domain_init (value_p, type, domain_p->precision,
@@ -433,13 +440,6 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p,
     }
 
   /* for all other types, we can use the prim routines */
-  pr_type = domain_p->type;
-
-  if (pr_type == NULL)
-    {
-      return ER_FAILED;
-    }
-
   if ((*(pr_type->readval))
       (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
     {
@@ -648,7 +648,7 @@ cursor_get_oid_from_vobj (OID * current_oid_p, int length)
 	{
 	  object_p = vid_base_instance (tmp_object_p);
 
-	  if (!WS_ISVID (object_p))
+	  if (object_p && !WS_ISVID (object_p))
 	    {
 	      current_oid_p = WS_OID (object_p);
 	    }

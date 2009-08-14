@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -394,6 +394,11 @@ qdata_push_oid_stack (OID * oid_p, OID ** oid_stack_p, int *top_p,
   OID *tmp;
   int top, size;
 
+  if (oid_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
   top = *top_p;
   size = *size_p;
 
@@ -511,25 +516,25 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
     {
       goto error;
     }
-  COPY_OID (&child_cls0, DB_GET_OID (&dbval_tmp));
+  COPY_OID (&child_cls0, DB_PULL_OID (&dbval_tmp));
 
   if (db_seq_get (child_classes, 1, &dbval_tmp) != NO_ERROR)
     {
       goto error;
     }
-  COPY_OID (&child_cls1, DB_GET_OID (&dbval_tmp));
+  COPY_OID (&child_cls1, DB_PULL_OID (&dbval_tmp));
 
   if (db_seq_get (child_classes, 2, &dbval_tmp) != NO_ERROR)
     {
       goto error;
     }
-  COPY_OID (&child_cls2, DB_GET_OID (&dbval_tmp));
+  COPY_OID (&child_cls2, DB_PULL_OID (&dbval_tmp));
 
   if (db_seq_get (child_classes, 3, &dbval_tmp) != NO_ERROR)
     {
       goto error;
     }
-  COPY_OID (&child_cls3, DB_GET_OID (&dbval_tmp));
+  COPY_OID (&child_cls3, DB_PULL_OID (&dbval_tmp));
 
   /* child0's attrid should be NULL and we'll ignore it in any case */
   if (db_seq_get (child_attrids, 1, &dbval_tmp) != NO_ERROR)
@@ -615,7 +620,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	    }
 
 	  tmp_class = DB_GET_OID (&dbval_tmp);
-	  if (OID_EQ (&parent_class, tmp_class))
+	  if (tmp_class && OID_EQ (&parent_class, tmp_class))
 	    {
 	      /* grab the parent attrid which is the attribute for
 	       * the children
@@ -698,7 +703,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	      continue;
 	    }
 
-	  COPY_OID (&child_oid, DB_GET_OID (&dbval_tmp));
+	  COPY_OID (&child_oid, DB_PULL_OID (&dbval_tmp));
 
 	  scn =
 	    heap_get_with_class_oid (thread_p, &child_oid, &child_recdes_peek,
@@ -750,7 +755,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	      /* ignore NULL children */
 	      if (!DB_IS_NULL (child_attr))
 		{
-		  if (qdata_push_oid_stack (DB_GET_OID (child_attr),
+		  if (qdata_push_oid_stack (DB_PULL_OID (child_attr),
 					    &work_stack, &work_top,
 					    &work_size) != NO_ERROR)
 		    {
@@ -792,7 +797,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	      /* ignore NULL children */
 	      if (!DB_IS_NULL (child_attr))
 		{
-		  if (qdata_push_oid_stack (DB_GET_OID (child_attr),
+		  if (qdata_push_oid_stack (DB_PULL_OID (child_attr),
 					    &work_stack, &work_top,
 					    &work_size) != NO_ERROR)
 		    {
@@ -848,7 +853,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 		    }
 
 		  /* replace the child with his child */
-		  COPY_OID (&child_oid, DB_GET_OID (child_attr));
+		  COPY_OID (&child_oid, DB_PULL_OID (child_attr));
 
 		  if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
 		      NO_ERROR)
@@ -888,8 +893,7 @@ qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 		    {
 		      goto error;
 		    }
-		  tmp_class = DB_GET_OID (&dbval_tmp);
-		  if (OID_EQ (&child_class, tmp_class))
+		  if (OID_EQ (&child_class, DB_PULL_OID (&dbval_tmp)))
 		    {
 		      valid_result = 1;
 		    }
@@ -1082,7 +1086,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
   int child_attrid, valid_result;
   int attr_cache_inited = 0, scn_cache_inited = 0;
   int child_attr_cache_inited = 0, child_scn_cache_inited = 0;
-  OID *obj, child_class, *tmp_class, parent_cls0;
+  OID *obj, child_class, parent_cls0;
   OID parent_oid, parent_class;
   DB_SEQ *res_seq = NULL, *child_classes, *child_attrids;
   DB_SEQ *parent_classes, *parent_attrids, *result_classes;
@@ -1130,7 +1134,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
     {
       goto error;
     }
-  COPY_OID (&parent_cls0, DB_GET_OID (&dbval_tmp));
+  COPY_OID (&parent_cls0, DB_PULL_OID (&dbval_tmp));
   if (db_seq_get (parent_attrids, 0, &dbval_tmp) != NO_ERROR)
     {
       goto error;
@@ -1196,8 +1200,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	    {
 	      goto error;
 	    }
-	  tmp_class = DB_GET_OID (&dbval_tmp);
-	  if (OID_EQ (&child_class, tmp_class))
+	  if (OID_EQ (&child_class, DB_PULL_OID (&dbval_tmp)))
 	    {
 	      /* grab the child attrid which is the attribute for
 	       * the parent
@@ -1249,7 +1252,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	  continue;
 	}
 
-      COPY_OID (&parent_oid, DB_GET_OID (parent));
+      COPY_OID (&parent_oid, DB_PULL_OID (parent));
 
       /* Does the parent need special processing? */
       if (heap_scancache_start (thread_p, &scn_cache, NULL, NULL, true,
@@ -1326,7 +1329,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	    }
 
 	  /* replace the parent with his parent */
-	  COPY_OID (&parent_oid, DB_GET_OID (parent));
+	  COPY_OID (&parent_oid, DB_PULL_OID (parent));
 
 	  if (heap_attrinfo_clear_dbvalues (&attr_cache) != NO_ERROR)
 	    {
@@ -1374,8 +1377,7 @@ qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	    {
 	      goto error;
 	    }
-	  tmp_class = DB_GET_OID (&dbval_tmp);
-	  if (OID_EQ (&parent_class, tmp_class))
+	  if (OID_EQ (&parent_class, DB_PULL_OID (&dbval_tmp)))
 	    {
 	      valid_result = 1;
 	    }
@@ -1708,7 +1710,8 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p,
 
       OR_BUF_INIT (buf, val_p, val_size);
 
-      if ((*(pr_type->writeval)) (&buf, dbval_p) != NO_ERROR)
+      if (pr_type == NULL
+	  || (*(pr_type->writeval)) (&buf, dbval_p) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -5699,7 +5702,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 		    DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   DB_TYPE type1, type2;
-  int error;
+  int error = NO_ERROR;
 
   if (domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
     {
@@ -5775,7 +5778,10 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
+      if (dbval1_p != NULL && dbval2_p != NULL)
+	{
+	  error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
+	}
       break;
 
     case DB_TYPE_MULTISET:
@@ -5806,7 +5812,8 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_FAILED;
+      error = ER_FAILED;
+      break;
     }
 
   if (error != NO_ERROR)
@@ -5980,9 +5987,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
        * fetch operand value. aggregate regulator variable should only
        * contain constants
        */
-      if (fetch_copy_dbval
-	  (thread_p, &agg_p->operand, val_desc_p, NULL, NULL, NULL,
-	   &dbval) != NO_ERROR)
+      if (fetch_copy_dbval (thread_p, &agg_p->operand, val_desc_p, NULL, NULL,
+			    NULL, &dbval) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6151,6 +6157,12 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	      pr_clear_value (agg_p->value2);
 	      dbval_type = DB_VALUE_DOMAIN_TYPE (agg_p->value);
 	      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	      if (pr_type_p == NULL)
+		{
+		  pr_clear_value (&dbval);
+		  return ER_FAILED;
+		}
+
 	      (*(pr_type_p->setval)) (agg_p->value, &dbval, true);
 	      (*(pr_type_p->setval)) (agg_p->value2, &sqr_val, true);
 	    }
@@ -6239,7 +6251,7 @@ int
 qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 				   AGGREGATE_TYPE * agg_p, HFID * hfid_p)
 {
-  int oid_count, null_count, key_count;
+  int oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
 
   if (!agg_p->flag_agg_optimize)
@@ -6413,6 +6425,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      /* scan list file, accumulating total for sum/avg */
 	      if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
 		{
+		  qfile_close_list (thread_p, list_id_p);
+		  qfile_destroy_list (thread_p, list_id_p);
 		  return ER_FAILED;
 		}
 
@@ -6442,6 +6456,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 					       -1, true, NULL, 0) != NO_ERROR)
 		    {
 		      qfile_close_scan (thread_p, &scan_id);
+		      qfile_close_list (thread_p, list_id_p);
+		      qfile_destroy_list (thread_p, list_id_p);
 		      return ER_FAILED;
 		    }
 
@@ -6454,6 +6470,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			{
 			  pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
 			  return ER_FAILED;
 			}
 		    }
@@ -6465,6 +6483,13 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
 		      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+		      if (tmp_pr_type == NULL)
+			{
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  return ER_FAILED;
+			}
 
 		      if (agg_p->function == PT_STDDEV
 			  || agg_p->function == PT_VARIANCE)
@@ -6477,6 +6502,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			    {
 			      pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
 			      return ER_FAILED;
 			    }
 
@@ -6498,6 +6525,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			    {
 			      pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
 			      return ER_FAILED;
 			    }
 
@@ -6511,6 +6540,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			      pr_clear_value (&dbval);
 			      pr_clear_value (&sqr_val);
 			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
 			      return ER_FAILED;
 			    }
 			}
@@ -6523,6 +6554,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			  NO_ERROR)
 			{
 			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
 			  return ER_FAILED;
 			}
 		    }
@@ -6722,17 +6755,20 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
     {
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
       type_p = PR_TYPE_FROM_ID (dbval_type);
-      if (type_p->lengthval == NULL)
+      if (type_p)
 	{
-	  val_size = type_p->disksize;
-	}
-      else
-	{
-	  val_size = (*(type_p->lengthval)) (dbval_p, 1);
-	}
+	  if (type_p->lengthval == NULL)
+	    {
+	      val_size = type_p->disksize;
+	    }
+	  else
+	    {
+	      val_size = (*(type_p->lengthval)) (dbval_p, 1);
+	    }
 
-      align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
-      tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
+	  align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
+	  tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
+	}
     }
 
   return tuple_value_size;
@@ -6792,7 +6828,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p,
 	   i < value_count; i++, value_list = value_list->next)
 	{
 	  domain_p = list_id_p->type_list.domp[i];
-	  if (domain_p == NULL)
+	  if (domain_p == NULL || domain_p->type == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
@@ -7098,7 +7134,8 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p,
     }
 
   offset = DB_GET_INTEGER (offset_dbval_p);
-  if (offset >= SSIZEOF (generic_func_ptrs))
+  if (offset >=
+      (SSIZEOF (generic_func_ptrs) / SSIZEOF (generic_func_ptrs[0])))
     {
       goto error;
     }
@@ -7191,7 +7228,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  instance_oid_p = DB_GET_OID (val_p);
+  instance_oid_p = DB_PULL_OID (val_p);
   if (heap_get_class_oid (thread_p, instance_oid_p, &class_oid) == NULL)
     {
       return ER_FAILED;

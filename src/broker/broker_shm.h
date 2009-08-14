@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -78,7 +78,7 @@
 		  while (((AS_INFO)->con_status_lock[LOCK_WAITER] == TRUE) &&  \
 		  	 ((AS_INFO)->con_status_lock_turn == LOCK_WAITER))  \
 		  {							\
-		    SLEEP_MILISEC(0, 1);                                \
+		    SLEEP_MILISEC(0, 10);                                \
 		  }	\
 		} while (0)
 
@@ -153,7 +153,7 @@ struct t_appl_server_info
   int session_id;		/* the session id (uw,v3) */
   int cas_log_reset;
   char service_flag;
-  char session_keep;
+  char reset_flag;
   char uts_status;		/* flag whether the uts is busy or idle */
   char clt_major_version;
   char clt_minor_version;
@@ -191,12 +191,16 @@ struct t_appl_server_info
   char con_status_lock_turn;
   char cookie_str[MAX_CRYPT_STR_LENGTH];
   char log_msg[SHM_LOG_MSG_SIZE];
-#ifdef DIAG_DEVEL
   INT64 num_requests_received;
   INT64 num_transactions_processed;
-  INT64 num_query_processed;
-#endif
+  INT64 num_queries_processed;
+  INT64 num_long_queries;
+  INT64 num_long_transactions;
+  INT64 num_error_queries;
   char auto_commit_mode;
+  char database_name[32];
+  char database_host[MAXHOSTNAMELEN + 1];
+  time_t last_connect_time;
 };
 
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;
@@ -210,8 +214,10 @@ struct t_shm_appl_server
   char sql_log2;
   char statement_pooling;
   char sql_log_single_line;
+  char access_mode;
   char jdbc_cache;
   char jdbc_cache_only_hint;
+  char cci_pconnect;
   int jdbc_cache_life_time;
 
 #if defined(WINDOWS)
@@ -229,11 +235,12 @@ struct t_shm_appl_server
   int appl_server_max_size;
   int session_timeout;
   int num_appl_server;
-  int sql_log_time;
   int suspend_mode;
   int max_string_length;
   int job_queue_size;
   int sql_log_max_size;
+  int long_query_time;
+  int long_transaction_time;
   INT64 dummy1;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   INT64 dummy2;

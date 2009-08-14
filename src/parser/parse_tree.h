@@ -480,10 +480,6 @@
         (p)->custom_print = save_custom;                        \
     } while (0)
 
-#define IS_HIDDEN_COLUMN(n)     ((n)->column_number < 0)
-#define SET_AS_HIDDEN_COLUMN(n) ((n)->column_number = -((n)->column_number))
-#define SET_AS_NORMAL_COLUMN(n) ((n)->column_number = -((n)->column_number))
-
 #define CAST_POINTER_TO_NODE(p)                          \
     do {                                                 \
         while ((p) && (p)->node_type == PT_POINTER) {    \
@@ -491,6 +487,7 @@
         }                                                \
     } while (0)
 
+#define PT_EMPTY	INT_MAX
 
 /*
  Enumerated types of parse tree statements
@@ -950,6 +947,7 @@ typedef enum
   PT_CONSTRAIN_UNKNOWN = 7000,
   PT_CONSTRAIN_PRIMARY_KEY,
   PT_CONSTRAIN_FOREIGN_KEY,
+  PT_CONSTRAIN_NULL,
   PT_CONSTRAIN_NOT_NULL,
   PT_CONSTRAIN_UNIQUE,
   PT_CONSTRAIN_CHECK
@@ -2244,6 +2242,7 @@ struct parser_node
   unsigned clt_cache_reusable:1;	/* client cache is reusable */
   unsigned use_plan_cache:1;	/* used for plan cache */
   unsigned use_query_cache:1;
+  unsigned is_hidden_column:1;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -2336,10 +2335,7 @@ struct parser_context
   unsigned dont_prt_xasl:1;	/* used only in pt_to_read_prod as src for
 				 * setting dont_prt just before pt_ldb_print.
 				 */
-  unsigned dont_flush:1;	/* asserted to avoid flushing
-				 * xlocked relational proxies about to be
-				 * fetched: causes infinite recursion PR8116.
-				 */
+  unsigned dont_flush:1;	/* asserted to avoid flushing */
   unsigned abort:1;		/* this flag is for aborting a transaction */
   /* if deadlock occurs during query execution */
   unsigned set_host_var:1;	/* 1 iff the user has set host variables */

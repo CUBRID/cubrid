@@ -435,7 +435,7 @@ static int
 uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
 {
   FILE *conf_file;
-  char cbuf[1024], file_path[1024];
+  char cbuf[1024], file_path[PATH_MAX];
   char *cubrid_home;
   char ent_name[128], ent_val[128];
 
@@ -457,7 +457,7 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
       return -1;
     }
 
-  sprintf (file_path, "%s/conf/cm.conf", cubrid_home);
+  snprintf (file_path, sizeof (file_path), "%s/conf/cm.conf", cubrid_home);
 
   conf_file = fopen (file_path, "r");
 
@@ -470,13 +470,17 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
       return -1;
     }
 
-  while (fgets (cbuf, 1024, conf_file))
+  while (fgets (cbuf, sizeof (cbuf), conf_file))
     {
+      char format[1024];
+
       linetrim (cbuf);
       if (cbuf[0] == '\0' || cbuf[0] == '#')
 	continue;
 
-      if (sscanf (cbuf, "%s %s", ent_name, ent_val) < 2)
+      snprintf (format, sizeof (format), "%%%ds %%%ds",
+		(int) sizeof (ent_name), (int) sizeof (ent_val));
+      if (sscanf (cbuf, format, ent_name, ent_val) < 2)
 	continue;
 
       if (strcasecmp (ent_name, "Execute_diag") == 0)
@@ -516,8 +520,10 @@ get_volumedir (char *vol_dir, const char *dbname)
   char cbuf[PATH_MAX * 2];
   char volname[MAX_SERVER_NAMELENGTH];
 
-  if (!vol_dir || !dbname)
-    return -1;
+  if (vol_dir == NULL || dbname == NULL)
+    {
+      return -1;
+    }
 
   envpath = envvar_get ("DATABASES");
   if (envpath == NULL || strlen (envpath) == 0)
@@ -532,9 +538,13 @@ get_volumedir (char *vol_dir, const char *dbname)
       return -1;
     }
 
-  while (fgets (cbuf, 1024, databases_txt))
+  while (fgets (cbuf, sizeof (cbuf), databases_txt))
     {
-      if (sscanf (cbuf, "%s %s %*s %*s", volname, vol_dir) < 2)
+      char format[1024];
+      snprintf (format, sizeof (format), "%%%ds %%%ds %%*s %%*s",
+		(int) sizeof (volname), PATH_MAX);
+
+      if (sscanf (cbuf, format, volname, vol_dir) < 2)
 	continue;
 
       if (strcmp (volname, dbname) == 0)

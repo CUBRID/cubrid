@@ -110,6 +110,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   TP_DOMAIN *key_type;
   bool partition_savepoint = false;
 
+  CHECK_MODIFICATION_ERROR ();
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -424,11 +426,15 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  return er_errid ();
 		}
 
-	      error =
-		pt_coerce_value (parser, d, d, pt_desired_type, p->data_type);
-	      if (error != NO_ERROR)
+	      if (d != NULL)
 		{
-		  break;
+		  error =
+		    pt_coerce_value (parser, d, d, pt_desired_type,
+				     p->data_type);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
 		}
 
 	      pt_evaluate_tree (parser, d, &dest_val);
@@ -1234,6 +1240,8 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *entity_list, *entity;
   int grant_option;
 
+  CHECK_MODIFICATION_ERROR ();
+
   user_list = statement->info.grant.user_list;
   auth_cmd_list = statement->info.grant.auth_cmd_list;
   spec_list = statement->info.grant.spec_list;
@@ -1301,6 +1309,8 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *spec_list, *s_list, *spec;
   PT_NODE *entity_list, *entity;
 
+  CHECK_MODIFICATION_ERROR ();
+
   user_list = statement->info.revoke.user_list;
   auth_cmd_list = statement->info.revoke.auth_cmd_list;
   spec_list = statement->info.revoke.spec_list;
@@ -1357,15 +1367,48 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password;
   const char *group_name, *member_name;
 
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  if (statement == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   user = NULL;
   node = statement->info.create_user.user_name;
-  user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (node == NULL || node->node_type != PT_NAME
+      || node->info.name.original == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_AU_MISSING_OR_INVALID_USER, 0);
+      return ER_AU_MISSING_OR_INVALID_USER;
+    }
+
+  user_name = node->info.name.original;
 
   /* first, check if user_name is in group or member clause */
   for (node = statement->info.create_user.groups;
        node != NULL; node = node->next)
     {
-      group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+
+      if (node == NULL || node->node_type != PT_NAME
+	  || node->info.name.original == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_AU_MISSING_OR_INVALID_USER, 0);
+	  return ER_AU_MISSING_OR_INVALID_USER;
+	}
+
+      group_name = node->info.name.original;
       if (strcasecmp (user_name, group_name) == 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
@@ -1378,6 +1421,13 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
        node != NULL; node = node->next)
     {
       member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+      if (member_name == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
+	}
+
       if (strcasecmp (user_name, member_name) == 0 ||
 	  strcasecmp (member_name, AU_PUBLIC_USER_NAME) == 0)
 	{
@@ -1392,10 +1442,24 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
        node != NULL; node = node->next)
     {
       group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+      if (group_name == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
+	}
+
       for (node2 = statement->info.create_user.members;
 	   node2 != NULL; node2 = node2->next)
 	{
 	  member_name = (node2 && IS_NAME (node2)) ? GET_NAME (node2) : NULL;
+	  if (member_name == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_INVALID_ARGUMENTS, 0);
+	      return ER_OBJ_INVALID_ARGUMENTS;
+	    }
+
 	  if (strcasecmp (group_name, member_name) == 0)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
@@ -1405,7 +1469,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  if (!parser || !statement || !user_name)
+  if (parser == NULL || statement == NULL || user_name == NULL)
     {
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
@@ -1454,7 +1518,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 	  node = statement->info.create_user.members;
 	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	  if (error == NO_ERROR && member_name)
+	  if (error == NO_ERROR && member_name != NULL)
 	    {
 	      do
 		{
@@ -1471,9 +1535,10 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  member_name = (node
 				 && IS_NAME (node)) ? GET_NAME (node) : NULL;
 		}
-	      while (error == NO_ERROR && member_name);
+	      while (error == NO_ERROR && member_name != NULL);
 	    }
 	}
+
       if (error != NO_ERROR)
 	{
 	  if (user && exists == 0)
@@ -1500,6 +1565,22 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user;
   PT_NODE *node;
   const char *user_name;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  if (statement == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
 
   node = statement->info.create_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
@@ -1536,6 +1617,22 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user;
   PT_NODE *node;
   const char *user_name, *password;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
+  if (statement == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
 
   node = statement->info.alter_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
@@ -1610,6 +1707,8 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity;
   PT_NODE *entity_list;
 
+  CHECK_MODIFICATION_ERROR ();
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -1661,6 +1760,8 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   int error = NO_ERROR;
   const char *new_name, *old_name;
   DB_OBJECT *old_class;
+
+  CHECK_MODIFICATION_ERROR ();
 
   if (PRM_BLOCK_DDL_STATEMENT)
     {
@@ -1734,10 +1835,20 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
 
   nnames = pt_length_of_list (statement->info.index.column_names);
   attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
-  asc_desc = (int *) malloc ((nnames) * sizeof (int));
-  if (attnames == NULL || asc_desc == NULL)
+  if (attnames == NULL)
     {
-      return er_errid ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (nnames + 1) * sizeof (char *));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  asc_desc = (int *) malloc ((nnames) * sizeof (int));
+  if (asc_desc == NULL)
+    {
+      free_and_init (attnames);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      nnames * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   for (c = statement->info.index.column_names, i = 0; c != NULL;
@@ -1802,6 +1913,8 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *cls;
   DB_OBJECT *obj;
 
+  CHECK_MODIFICATION_ERROR ();
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
@@ -1831,6 +1944,8 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   PT_NODE *cls;
   DB_OBJECT *obj;
+
+  CHECK_MODIFICATION_ERROR ();
 
   if (PRM_BLOCK_DDL_STATEMENT)
     {
@@ -1903,9 +2018,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_ATTRIBUTE **attp;
   int attnames_allocated;
 
-  attnames = NULL;
-  asc_desc = NULL;
-  attnames_allocated = 0;
+  CHECK_MODIFICATION_ERROR ();
 
   if (PRM_BLOCK_DDL_STATEMENT)
     {
@@ -1913,6 +2026,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      0);
       return ER_AU_AUTHORIZATION_FAILURE;
     }
+
+  attnames = NULL;
+  asc_desc = NULL;
+  attnames_allocated = 0;
 
   cls = statement->info.index.indexed_class;
   if (!cls)
@@ -1973,7 +2090,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
 	  if (attnames == NULL)
 	    {
-	      return er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (nnames + 1) * sizeof (char *));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  attnames_allocated = 1;
 	  for (i = 0, attp = idx->attributes; *attp; i++, attp++)
@@ -1987,10 +2107,20 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       nnames = pt_length_of_list (statement->info.index.column_names);
       attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
-      asc_desc = (int *) malloc ((nnames) * sizeof (int));
-      if (attnames == NULL || asc_desc == NULL)
+      if (attnames == NULL)
 	{
-	  return er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (nnames + 1) * sizeof (char *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      asc_desc = (int *) malloc ((nnames) * sizeof (int));
+      if (asc_desc == NULL)
+	{
+	  free_and_init (attnames);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, nnames * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       for (c = statement->info.index.column_names, i = 0; c != NULL;
@@ -2193,6 +2323,15 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   int save;
   SM_CLASS *smclass;
 
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
+
   pinfo = hash_parts = newparts = hashtail = NULL;
   parts = parts_save = fmin = NULL;
 
@@ -2378,8 +2517,12 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{
-		  hashtail->next = newparts;
+		  if (hashtail != NULL)
+		    {
+		      hashtail->next = newparts;
+		    }
 		}
+
 	      hashtail = newparts;
 	    }
 	  error = NO_ERROR;
@@ -3301,7 +3444,7 @@ do_clear_partition_cache (PARTITION_INSERT_CACHE * pic)
     {
       if (picnext->val)
 	{
-	  pr_clear_value (picnext->val);
+	  pr_free_value (picnext->val);
 	}
       tmp = picnext;
       picnext = picnext->next;
@@ -3367,14 +3510,10 @@ do_init_partition_select (MOP classobj, PARTITION_SELECT_INFO ** psi)
     {
       error = db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype);
       if (error != NO_ERROR
-	  ||
-	  ((error =
-	    db_get (smclass->partition_of, PARTITION_ATT_PEXPR,
-		    &pexpr)) != NO_ERROR)
-	  ||
-	  ((error =
-	    db_get (smclass->partition_of, PARTITION_ATT_PVALUES,
-		    &pattr)) != NO_ERROR))
+	  || ((error = db_get (smclass->partition_of, PARTITION_ATT_PEXPR,
+			       &pexpr)) != NO_ERROR)
+	  || ((error = db_get (smclass->partition_of, PARTITION_ATT_PVALUES,
+			       &pattr)) != NO_ERROR))
 	{
 	  goto end_partition;
 	}
@@ -3431,9 +3570,9 @@ do_clear_partition_select (PARTITION_SELECT_INFO * psi)
       return;
     }
 
-  pr_clear_value (psi->ptype);
-  pr_clear_value (psi->pattr);
-  pr_clear_value (psi->pexpr);
+  pr_free_value (psi->ptype);
+  pr_free_value (psi->pattr);
+  pr_free_value (psi->pexpr);
 
   free_and_init (psi);
 }
@@ -3510,8 +3649,15 @@ find_partition_attr (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       if (node->info.name.spec_id == ppi->spec)
 	{
-	  if (intl_mbs_casecmp
-	      (node->info.name.original, DB_GET_STRING (ppi->attr)) == 0)
+	  const char *mbs2 = DB_GET_STRING (ppi->attr);
+	  if (mbs2 == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PARTITION_WORK_FAILED, 0);
+	      return NULL;
+	    }
+
+	  if (intl_mbs_casecmp (node->info.name.original, mbs2) == 0)
 	    {
 	      ppi->wrkmap |= PATTR_KEY;
 	    }
@@ -4589,6 +4735,11 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 
 	case PT_BETWEEN:
 	case PT_NOT_BETWEEN:
+	  if (expr->info.expr.arg2 == NULL)
+	    {
+	      return 0;
+	    }
+
 	  lval = pt_value_to_db (ppi->parser,	/* BETWEEN .. AND */
 				 expr->info.expr.arg2->info.expr.arg1);
 	  if (lval == NULL)
@@ -4634,6 +4785,11 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 	  break;
 
 	case PT_IS_IN:
+	  if (lval == NULL)
+	    {
+	      return 0;
+	    }
+
 	  setsize = set_size (lval->data.set);
 	  if (setsize <= 0)
 	    {
@@ -4692,6 +4848,12 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 		  rst = 0;
 		  break;
 		}
+
+	      if (lval == NULL)
+		{
+		  break;
+		}
+
 	      if (set_find_seq_element (lval->data.set, minval, 0) < 0)
 		{
 		  break;	/* not found */
@@ -4909,6 +5071,10 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
   bool support_op = true;
 
   condeval = parser_copy_tree_list (ppi->parser, cond);
+  if (condeval == NULL)
+    {
+      return false;
+    }
 
   if (condeval->info.expr.arg2
       && condeval->info.expr.arg2->node_type != PT_VALUE)
@@ -4924,10 +5090,16 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
 	}
       if (condeval->info.expr.arg2->node_type != PT_VALUE)
 	{
-	  condeval->info.expr.arg2 = pt_semantic_type (ppi->parser,
-						       condeval->info.expr.
-						       arg2, NULL);
+	  PT_NODE *node = pt_semantic_type (ppi->parser,
+					    condeval->info.expr.arg2, NULL);
+	  if (node == NULL)
+	    {
+	      return false;
+	    }
+
+	  condeval->info.expr.arg2 = node;
 	}
+
       if (condeval->info.expr.arg2->node_type == PT_HOST_VAR)
 	{
 	  return true;
@@ -4939,10 +5111,8 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
     {
       parser_free_tree (ppi->parser, ppi->parser->error_msgs);
       ppi->parser->error_msgs = NULL;
-      if (condeval)
-	{
-	  parser_free_tree (ppi->parser, condeval);
-	}
+      parser_free_tree (ppi->parser, condeval);
+
       return false;
     }
 
@@ -4984,10 +5154,8 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
       break;
     }
 
-  if (condeval)
-    {
-      parser_free_tree (ppi->parser, condeval);
-    }
+  parser_free_tree (ppi->parser, condeval);
+
   return false;
 }
 
@@ -5342,8 +5510,18 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 
 	  enode = parser_parse_string (expr_parser, DB_GET_STRING (&pexpr));
-	  pi.expr = (*enode)->info.query.q.select.list;
-	  if (enode && *enode && pi.expr)
+	  if (enode == NULL)
+	    {
+	      goto clear_loop;
+	    }
+
+
+	  if (*enode != NULL)
+	    {
+	      pi.expr = (*enode)->info.query.q.select.list;
+	    }
+
+	  if (pi.expr)
 	    {
 	      pi.parser = parser;
 	      pi.attr = &attr;
@@ -5775,8 +5953,13 @@ do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
     }
 
   enode = parser_parse_string (expr_parser, DB_GET_STRING (&pexpr));
+  if (enode == NULL || *enode == NULL)
+    {
+      goto work_end;
+    }
+
   expr = (*enode)->info.query.q.select.list;
-  if (!enode || !*enode || !expr)
+  if (expr == NULL)
     {
       goto work_end;
     }
@@ -6076,7 +6259,7 @@ do_is_partitioned_classobj (int *is_partition,
 	      != NO_ERROR
 	      || db_get (DB_GET_OBJECT (&pclassof), PARTITION_ATT_CLASSOF,
 			 &classobj) != NO_ERROR
-	      || au_fetch_class (DB_GET_OBJECT (&classobj), &smclass,
+	      || au_fetch_class (DB_PULL_OBJECT (&classobj), &smclass,
 				 AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 	    {
 	      goto partition_failed;
@@ -6278,6 +6461,15 @@ do_drop_partition (MOP class_, int drop_sub_flag)
   int au_save;
   MOP delobj, delpart;
   int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (PRM_BLOCK_DDL_STATEMENT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
+	      0);
+      return ER_AU_AUTHORIZATION_FAILURE;
+    }
 
   if (!class_)
     {
@@ -6489,8 +6681,15 @@ do_is_partition_changed (PARSER_CONTEXT * parser, SM_CLASS * smclass,
 	{
 	  goto end_partition;
 	}
-      nameptr = DB_GET_STRING (&attrname);
 
+      if (DB_IS_NULL (&attrname))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
+		  0);
+	  goto end_partition;
+	}
+
+      nameptr = DB_PULL_STRING (&attrname);
       /* partition key column search */
       valptr = list_values;
       flag_prc = 0;
@@ -6787,7 +6986,8 @@ adjust_partition_range (DB_OBJLIST * objs)
 	   (DB_VALUE_SLIST *) malloc (sizeof (DB_VALUE_SLIST))) == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  sizeof (DB_VALUE_SLIST));
 	  break;
 	}
       new_range->partition_of = subclass->partition_of;
@@ -7089,7 +7289,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
     {
       goto fail_end;
     }
-  keyname_str = DB_GET_STRING (&keyname);
+  keyname_str = DB_PULL_STRING (&keyname);
   strncpy (keycol, keyname_str, DB_MAX_IDENTIFIER_LENGTH);
   error = NO_ERROR;
 
@@ -7486,7 +7686,7 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	  def_val =
 	    atts->info.attr_def.data_default->info.data_default.default_value;
 	  def_val = pt_semantic_check (parser, def_val);
-	  if (pt_has_error (parser))
+	  if (pt_has_error (parser) || def_val == NULL)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      return er_errid ();
@@ -7553,7 +7753,7 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	{
 	  if (atts->info.attr_def.auto_increment)
 	    {
-	      if (!db_Log_replication_mode)
+	      if (db_Enable_replications <= 0)
 		{
 		  error = do_create_auto_increment_serial (parser,
 							   &auto_increment_obj,
@@ -8497,6 +8697,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *class_obj = NULL;
   const char *class_name;
+
+  CHECK_MODIFICATION_ERROR ();
 
   if (PRM_BLOCK_DDL_STATEMENT)
     {

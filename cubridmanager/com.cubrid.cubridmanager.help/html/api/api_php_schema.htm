@@ -1,0 +1,691 @@
+﻿
+<html>
+<head>
+<title>cubrid_schema</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_schema");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_schema<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_schema</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_schema</span> 함수는 데이터베이스의 원하는 스키마 정보를 얻어온다. 만약 특정 클래스와 관련된 정보를 얻기 위해서는 <span class="var">class_name</span>, 특정 속성과 관련된 정보(현재 CUBRID_SCH_ATTR_PRIVILEGE에서만 사용)를 얻기 위해서는 <span class="var">attr_name</span>을 지정해 주어야 한다.</p>
+<h6>구문</h6>
+<p class="syntax">mixed <span class="keyword">cubrid_schema</span> (int <span class="var">conn_handle</span>, int <span class="var">schema_type</span>[, string <span class="var">class_name</span>[, string <span class="var">attr_name</span>]])</p>
+<ul>
+<li><span class="var">conn_handle</span> &#160;: 연결 핸들</li>
+<li><span class="var">schema_type&#160;:</span> 얻고 싶은 스키마 종류</li>
+<li><span class="var">class_name&#160;:</span> 스키마를 얻어오려고 하는 클래스</li>
+<li><span class="var">attr_name&#160;:</span> 스키마를 얻어오려고 하는 속성</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>성공 : 스키마 정보가 들어있는 배열</li>
+<li>실패 : -1</li>
+</ul>
+<p><span class="keyword">cubrid_schema</span>의 결과는 2차원 배열형( 열(연관배열) * 행(수치배열) )으로 반환되며, 스키마의 종류와 각 스키마의 종류에 따라 반환되는 결과 배열의 열 구성은 다음과 같다.</p>
+<table border="1" width="80%">
+<tr>
+<th width="200">
+<p>스키마</p>
+</th>
+<th width="70">
+<p>컬럼 번호</p>
+</th>
+<th>
+<p>컬럼 이름</p>
+</th>
+<th>
+<p>값</p>
+</th>
+</tr>
+<tr>
+<td width="200" rowspan="2">
+<p>CUBRID_SCH_CLASS</p>
+</td>
+<td width="70">1</td>
+<td>NAME</td>
+<td>
+<p>0 : System class</p>
+<p>1 : vclass</p>
+<p>2 : class</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>TYPE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="2">
+<p>CUBRID_SCH_VCLASS</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>NAME</p>
+</td>
+<td>1 : vclass</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>TYPE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200">
+<p>CUBRID_SCH_QUERY_SPEC</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>QUERY_SPEC</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="12">
+<p>CUBRID_SCH_ATTRIBUTE</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>ATTR_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>DOMAIN</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>SCALE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>4</p>
+</td>
+<td>
+<p>PRECISION</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>5</p>
+</td>
+<td>
+<p>INDEXED</p>
+</td>
+<td>
+<p>1 : indexed</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>6</p>
+</td>
+<td>
+<p>NON NULL</p>
+</td>
+<td>
+<p>1 : non null</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>7</p>
+</td>
+<td>
+<p>SHARED</p>
+</td>
+<td>
+<p>1 : shared</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>8</p>
+</td>
+<td>
+<p>UNIQUE</p>
+</td>
+<td>
+<p>1 : unique</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>9</p>
+</td>
+<td>
+<p>DEFAULT</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>10</p>
+</td>
+<td>
+<p>ATTR_ORDER</p>
+</td>
+<td>
+<p>base : 1</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>11</p>
+</td>
+<td>
+<p>CLASS_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>12</p>
+</td>
+<td>
+<p>SOURCE_CLASS</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="12">CUBRID_SCH_CLASS_ATTRIBUTE</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>ATTR_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>DOMAIN</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>SCALE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>4</p>
+</td>
+<td>
+<p>PRECISION</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>5</p>
+</td>
+<td>
+<p>INDEXED</p>
+</td>
+<td>
+<p>1 : indexed</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>6</p>
+</td>
+<td>
+<p>NON NULL</p>
+</td>
+<td>
+<p>1 : non null</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>7</p>
+</td>
+<td>
+<p>SHARED</p>
+</td>
+<td>
+<p>1 : shared</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>8</p>
+</td>
+<td>
+<p>UNIQUE</p>
+</td>
+<td>
+<p>1 : unique</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>9</p>
+</td>
+<td>
+<p>DEFAULT</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>10</p>
+</td>
+<td>
+<p>ATTR_ORDER</p>
+</td>
+<td>
+<p>base : 1</p>
+</td>
+</tr>
+<tr>
+<td width="70">
+<p>11</p>
+</td>
+<td>
+<p>CLASS_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>12</p>
+</td>
+<td>
+<p>SOURCE_CLASS</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="3">
+<p>CUBRID_SCH_METHOD</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>RET_DOMAIN</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>ARG_DOMAIN</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200">
+<p>CUBRID_SCH_METHOD_FILE</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>METHOD_FILE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="2">
+<p>CUBRID_SCH_SUPERCLASS</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>CLASS_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>TYPE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="2">
+<p>CUBRID_SCH_SUBCLASS</p>
+</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>CLASS_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>TYPE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="3">
+<p>CUBRID_SCH_CONSTRAINT</p>
+</td>
+<td width="70">1</td>
+<td>
+<p>TYPE</p>
+</td>
+<td>
+<p>0 : unique</p>
+<p>1 : index</p>
+</td>
+</tr>
+<tr>
+<td width="70">2</td>
+<td>
+<p>NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">3</td>
+<td>
+<p>ATTR_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="10">CUBRID_SCH_TRIGGER</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>STATUS</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>EVENT</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>4</p>
+</td>
+<td>
+<p>TARGET_CLASS</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>5</p>
+</td>
+<td>TARGET_ATTR</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>6</p>
+</td>
+<td>ACTION_TIME</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>7</p>
+</td>
+<td>ACTION</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>8</p>
+</td>
+<td>PRIORITY</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>9</p>
+</td>
+<td>
+<p>CONDITION_TIME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>10</p>
+</td>
+<td>
+<p>CONDITION</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="3">CUBRID_SCH_CLASS_PRIVILEGE</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>CLASS_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>PREVILEGE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>GRANTABLE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="200" rowspan="3">CUBRID_SCH_ATTR_PRIVILEGE</td>
+<td width="70">
+<p>1</p>
+</td>
+<td>
+<p>ATT_NAME</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>2</p>
+</td>
+<td>
+<p>PREVILEGE</p>
+</td>
+<td>&#160;</td>
+</tr>
+<tr>
+<td width="70">
+<p>3</p>
+</td>
+<td>
+<p>GRANTABLE</p>
+</td>
+<td>&#160;</td>
+</tr>
+</table>
+<h6>예제</h6>
+<p class="code">$attrs = cubrid_schema ($con, CUBRID_SCH_ATTRIBUTE, "person");<br />
+while (list($key, $value) = each($attrs)) {<br />
+&#160;&#160;&#160;echo $value["NAME"];<br />
+&#160;&#160;&#160;echo $value["DOMAIN"];<br />
+}</p>
+<h6>관련 항목</h6>
+<ul>
+<li class="keyword"><a href="api_php_newglo.htm">cubrid_new_glo</a></li>
+<li class="keyword"><a href="api_php_loadfromglo.htm">cubrid_load_from_glo</a></li>
+<li class="keyword"><a href="api_php_sendglo.htm">cubrid_send_glo</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

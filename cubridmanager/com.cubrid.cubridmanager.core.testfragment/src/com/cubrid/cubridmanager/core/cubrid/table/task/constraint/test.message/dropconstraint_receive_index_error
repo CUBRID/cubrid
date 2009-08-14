@@ -1,0 +1,4 @@
+task:dropconstraint
+status:failure
+note:INDEX authorization failure.
+

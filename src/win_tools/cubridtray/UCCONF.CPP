@@ -77,7 +77,7 @@ char			*token, *value;
 		}
 		if (ucinfo) m_List.AddTail(ucinfo);
 		unicasconf.Close();
-	} 
+	}
 
 	return true;
 }
@@ -98,7 +98,7 @@ int		count;
 	unicasconf.Rename(m_unicasconf, m_unicasconf_old);
 
 	if (!unicasconf.Open(m_unicasconf, CFile::modeCreate | CFile::modeWrite, &e)) return false;
-	
+
 	element.Format("%%%% %-23s %s\n", MASTER_SHM_ID, m_master_shm_id);
 	element.MakeUpper();
 	unicasconf.WriteString(LPCSTR(element));
@@ -113,7 +113,7 @@ int		count;
 		ucinfo->Compose(unicasconf);
 		unicasconf.WriteString("\n\n");
 	}
-	
+
 	unicasconf.Close();
 
 	return true;
@@ -138,7 +138,6 @@ CUCInfo::CUCInfo()
 	m_log_backup = false;
 	m_source_env = "CUBRID.env";
 	m_sql_log = true;
-	m_sql_log_time = "60";
 	m_time_to_kill = "3";
 	m_session_timeout = "60";
 	m_job_queue_size = "30";
@@ -156,7 +155,7 @@ CUCInfo::CUCInfo()
 	m_set_cookie = true;
 	m_file_upload_temp_dir = "tmp";
 	m_file_upload_delimiter = "^^^";
-	
+
 	m_compress_size = "3";
 	m_priority_gap = "10";
 
@@ -232,8 +231,6 @@ bool	comment = false;
 		} else if (!strcmp(value, OFF)) {
 			m_sql_log = false;
 		}
-	} else if (!strcmp(token, SQL_LOG_TIME)) {
-		m_sql_log_time = value;
 	} else if (!strcmp(token, TIME_TO_KILL)) {
 		m_time_to_kill = value;
 	} else if (!strcmp(token, SESSION_TIMEOUT)) {
@@ -309,7 +306,7 @@ CString	element;
 	element.Format("%% %-23s\n", m_broker);
 	element.MakeUpper();
 	unicasconf.WriteString(LPCSTR(element));
-	
+
 	element.Format("%-23s %s\n", SERVICE, m_service ? ON : OFF);
 	element.MakeUpper();
 	unicasconf.WriteString(LPCSTR(element));
@@ -365,10 +362,6 @@ CString	element;
 	unicasconf.WriteString(LPCSTR(element));
 
 	element.Format("%-23s %s\n", SQL_LOG, m_sql_log ? "ON" : "OFF");
-	element.MakeUpper();
-	unicasconf.WriteString(LPCSTR(element));
-
-	element.Format("%-23s %s\n", SQL_LOG_TIME, m_sql_log_time);
 	element.MakeUpper();
 	unicasconf.WriteString(LPCSTR(element));
 

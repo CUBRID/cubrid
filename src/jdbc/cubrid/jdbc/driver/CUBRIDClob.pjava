@@ -198,14 +198,13 @@ public class CUBRIDClob extends CUBRIDOID implements Clob
     SQLException
   {
     int glo_start_pos;
-     ;
 
     int read_len = read_clob_part ((int) pos, 10);
 
     if (read_len <= 0)
       {
-	glo_start_pos =
-	  clobByteLength + (int) pos - clobPos - clobData.length () + 1;
+	glo_start_pos = (clobByteLength 
+	                 + (int) pos - clobPos - clobData.length () + 1);
       }
     else
       {
@@ -311,18 +310,18 @@ public class CUBRIDClob extends CUBRIDOID implements Clob
 
   private void glo_read () throws SQLException
   {
-    int read_len =
-      gloRead (gloNextReadPos, READ_BYTE_BUFFER_SIZE, byteBuffer, 0);
+    int read_len = gloRead (gloNextReadPos, READ_BYTE_BUFFER_SIZE, 
+                            byteBuffer, 0);
 
-      gloNextReadPos += read_len;
+    gloNextReadPos += read_len;
 
     if (read_len < READ_BYTE_BUFFER_SIZE)
         end_of_glo = true;
     else
         end_of_glo = false;
 
-    StringBuffer sb =
-      new StringBuffer (bytes2string (byteBuffer, 0, read_len));
+    StringBuffer sb = new StringBuffer (bytes2string (byteBuffer, 
+                                        0, read_len));
 
     if (end_of_glo == true)
       {
@@ -331,8 +330,7 @@ public class CUBRIDClob extends CUBRIDOID implements Clob
       }
     else
       {
-	gloNextReadPos -=
-	  string2bytes (sb.substring (sb.length () - 1)).length;
+	gloNextReadPos -= string2bytes (sb.substring (sb.length () - 1)).length;
 	sb.setLength (sb.length () - 1);
       }
 

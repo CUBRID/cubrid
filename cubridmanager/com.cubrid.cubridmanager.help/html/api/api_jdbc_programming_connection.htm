@@ -1,0 +1,121 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>연결 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nJDBC API\nJDBC 프로그래밍\n연결 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_jdbc_programming_driver.htm\">JDBC 프로그래밍<\/a> &nbsp;&gt;&nbsp; 연결 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>연결 설정</h4>
+<p><span class="keyword">DriverManager</span>는 JDBC 드라이버를 관리하기 위한 기본적인 서비스이며, 데이터베이스 드라이버를 선택하고 새로운 데이터베이스 연결을 생성하는 기능을 한다. CUBRID JDBC 드라이버가 등록되어 있다면 <span class="keyword">DriverManager.getConnection</span>(<span class="var">db-url</span>, <span class="var">user-id</span>, <span class="var">password</span>) 메소드를 호출하여 데이터베이스에 접속한다. <span class="keyword">getConnection</span> 메소드는 <span class="keyword">Connection</span> 객체를 반환한다. 그리고 그것은 질의 실행과 명령문 실행 그리고 트랜잭션의 커밋 또는 롤백에 사용된다. URL 구성은 다음과 같다.</p>
+<p><span class="keyword">jdbc</span>:<span class="keyword">cubrid</span>:[<span class="var">hostname</span>|<span class="var">ipaddr</span>]:[<span class="var">port</span>]:[<span class="var">dbname</span>]:[<span class="var">userid</span>]:[<span class="var">password</span>]</p>
+<p class="code">String url = "jdbc:cubrid:210.216.33.250:43300:demodb:::";<br />
+String userid = "";<br />
+String password = "";<br />
+&#160;<br />
+try {<br />
+&#160;&#160;&#160;Connection conn =<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;DriverManager.getConnection(url,userid,password);<br />
+&#160;&#160;&#160;// Do something with the Connection<br />
+<br />
+&#160;&#160;&#160;...<br />
+<br />
+&#160;&#160;&#160;} catch (SQLException e) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("SQLException:" + e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("SQLState: " + e.getSQLState());<br />
+&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;...</p>
+<p class="note"><span class="note-title">참고</span> 트랜잭션 롤백 요청을 하는 rollback 메소드는 서버가 롤백&#160;작업을 완료한 후 종료된다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>SETNEQ 연산자</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n포함 연산자\nSETNEQ 연산자");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_contain_contain.htm\">포함 연산자<\/a> &nbsp;&gt;&nbsp; SETNEQ 연산자<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SETNEQ 연산자</h4>
+<h6>설명</h6>
+<p><span class="keyword">SETNEQ</span> 연산자는 한 컬렉션 값이 다른 컬렉션 값과 같지 않은지 알려준다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="var">collection_operand</span> <span class="keyword">SETNEQ</span> <span class="var">collection_operand</span></p>
+<p><span class="var">collection_operand</span>는 항상 하나의 컬렉션 값이 되어야 한다. 첫 번째 <span class="var">collection_operand</span>가 생성하는 컬렉션이 두 번째 <span class="var">collection_operand</span>의 값과 같은지 비교된다. 두 컬렉션의 원소들이 같은지 하나씩 하나씩 검사한다.</p>
+<h6>예제</h6>
+<p>집합 {'baseball', 'soccer'}와는 다른 sports 집합을 갖는 모든 city_name을 조회한다. 결과로 공집합도 포함한다.</p>
+<p class="code">csql&gt; select city_name,sports from city where sports setneq {'baseball','soccer'};<br />
+csql&gt; ;x<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 3&gt; ===<br />
+&#160;<br />
+&#160;&#160;city_name &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;sports<br />
+============================================<br />
+&#160;&#160;'Seoul' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'baseball', 'basketball', 'bowling', 'golf', 'soccer'}<br />
+&#160;&#160;'Busan' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'baseball', 'basketball', 'scuba', 'soccer'}<br />
+&#160;&#160;'Gwangju' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'baseball', 'basketball', 'soccer'}<br />
+&#160;&#160;'Incheon' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'baseball', 'basketball', 'golf'}<br />
+&#160;&#160;'Suwon' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'basketball', 'soccer'}<br />
+&#160;&#160;'Pyongchang' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'ski', 'snowboard'}<br />
+&#160;&#160;'Jeju' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'golf', 'scuba', 'tennis'}<br />
+&#160;&#160;'Cheonan' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{}<br />
+&#160;&#160;'Anyang' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;{'soccer'}</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

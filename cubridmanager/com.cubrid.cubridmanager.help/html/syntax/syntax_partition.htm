@@ -1,0 +1,112 @@
+﻿
+<html>
+<head>
+<title>분할이란?</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n분할\n분할이란?");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition.htm\">분할<\/a> &nbsp;&gt;&nbsp; 분할이란?<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>분할이란?</h2>
+<p>분할 기법(partitioning)은 하나의 테이블을 여러 독립적인 논리적 단위로 분할하는 기법이다. 분할 기법에서 사용하는 분할된 단위를 분할(partition)이라 한다. 분할은 주로 관리의 편의(manageability), 성능(performance), 가용성(availability)의 목적으로 사용한다. 분할을 적용함으로써 얻을 수 있는 효과는 다음과 같다.</p>
+<ul>
+<li>대용량 테이블의 관리 향상</li>
+<li>데이터 조회 시 접근 범위를 줄임으로써 성능 향상</li>
+<li>디스크 I/O를 분산함으로써 성능 향상 및 물리적 부하 감소</li>
+<li>여러 분할로 나눔으로써 전체 데이터의 훼손 가능성 감소 및 가용성 향상</li>
+<li>스토리지 비용의 최적화</li>
+</ul>
+<p>CUBRID는 영역 분할(Range Partitioning), 해시 분할(Hash Partitioning), 리스트 분할(List Partitioning)의 세 가지 분할을 제공한다.</p>
+<p>한 테이블이 가질 수 있는 최대 분할 수는 1024이다. 테이블의 각 분할은 그 테이블의 서브 테이블로 생성된다. 분할 정의를 통해 생성된 서브 테이블은 사용자가 임의로 내용을 변경하거나 삭제할 수 없다. 서브 테이블의 이름은 'class_name__p__partition_name'의 형식으로 시스템 테이블에 등록된다. 데이터베이스 사용자는 db_class 가상 테이블과 db_partition 가상 테이블에서 분할의 정보를 확인할 수 있다. 또 다른 확인 방법은&#160;CUBRID 매니저나 CSQL 인터프리터의 ;sc &lt;테이블명&gt; 명령을 사용하는 것이다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>CREATE VIEW (구문)</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n가상 테이블(VIEW) \n가상 테이블 생성\nCREATE VIEW(구문)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_view_create_syntax.htm\">가상 테이블(VIEW) <\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_view_create_syntax.htm\">가상 테이블 생성<\/a> &nbsp;&gt;&nbsp; CREATE VIEW(구문)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CREATE VIEW (구문)</h4>
+<p>가상 테이블은 물리적으로 존재하지 않는 가상의 테이블로써 기존의 테이블이나 또다른 가상 테이블에 대한 질의문의 형태로 정의된다. CUBRID에서는 가상 테이블을 나타낼 때 <span class="keyword">VIEW</span> 또는 <span class="keyword">VCLASS</span> 를 사용할 수 있다.</p>
+<h6>설명</h6>
+<p><span class="keyword">CREATE&#160;VIEW</span> 구문을 이용하여 가상 테이블을 생성한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">CREATE</span>&#160;[ <span class="keyword">VIEW</span> | <span class="keyword">VCLASS</span>&#160;] <span class="var">view_name</span><br />
+[ { <span class="keyword">UNDER</span> | <span class="keyword">AS SUBCLASS OF</span> } <span class="var">super_vclass_name</span> [ {, <span class="var">super_vclass_name</span> }_ ] ]<br />
+[ <span class="keyword">CLASS ATTRIBUTE</span> ( <span class="var">class_attr_definition</span> [ {, <span class="var">class_attr_definition</span> }_ ] ) ] [ ( <span class="var">view_attr_definition</span> [ { , <span class="var">view_attr_definition</span> }_ ] ) ]<br />
+[ <span class="keyword">METHOD</span> <span class="var">method_definition</span> [ { , <span class="var">method_definition</span> }_ ] ]<br />
+[ <span class="keyword">FILE</span> <span class="var">path_name</span> [ { , <span class="var">path_name</span> }_ ] ]<br />
+[ <span class="keyword">INHERIT</span> <span class="var">resolution_list</span> ]<br />
+[ <span class="keyword">AS</span> <span class="var">query_specification</span>&#160;<br />
+[ { <span class="keyword">UNION ALL</span> <span class="var">query_specification</span> }_ ] ]<br />
+[ <span class="keyword">WITH CHECK OPTION</span>] [ ; ]<br />
+<br />
+<span class="var">super_vclass_name</span> :<br />
+[ <span class="var">user_name</span>.]<span class="var">classname</span><br />
+<br />
+<span class="var">class_attr_definition</span> :<br />
+<span class="var">attribute_name datatype</span> [ <span class="keyword">DEFAULT</span> <span class="var">value</span> ]<br />
+[ <span class="keyword">NOT NULL</span> ]<br />
+<br />
+<span class="var">view_attr_definition</span> :<br />
+<span class="var">column_name</span> [ <span class="var">datatype</span> ] [ { <span class="keyword">SHARED</span> [ <span class="var">value</span> ]<br />
+[ <span class="keyword">NOT NULL</span> ] | <span class="keyword">DEFAULT</span> <span class="var">value</span> } ]</p>
+<ul>
+<li><span class="var">view_name</span> : 생성하려는 가상 테이블의 이름을 지정한다.</li>
+<li><span class="var">query_specification</span>&#160;:&#160;&#160;가상 테이블의 질의를 정의한다. 질의 명세 부분은 정의된 순서에 따라 정수 값의 번호가 부여된다.</li>
+<li><span class="var">view_attr_definition</span>
+<ul>
+<li><span class="var">column_name</span> : 가상 테이블의 컬럼을 정의한다.</li>
+<li><span class="var">datatype</span>&#160;: 컬럼의 데이터 타입을 정의한다.</li>
+</ul>
+</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 2004년도 올림픽에 출전한 선수 이름과 획득메달을 보여주는 가상 테이블 game_2004를&#160;생성하는 예제이다.</p>
+<p class="code">CREATE VIEW game_2004 (name varchar(40), medal char(6) default 'none')<br />
+AS SELECT a.name, g.medal<br />
+FROM game g, athlete a<br />
+WHERE g.host_year = 2004 AND g.athlete_code =&#160; a.code ;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

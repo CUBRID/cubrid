@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -48,10 +48,10 @@
 #define MAX_INSERT_BUFFER_SIZE 4096
 
 static char *esm_open (char *name);
-static FSIZE_T esm_insert_helper (const int fd, const FSIZE_T loc,
-				  char *string, const FSIZE_T len);
-static FSIZE_T esm_delete_helper (const int fd, const FSIZE_T len,
-				  const FSIZE_T loc);
+static int esm_insert_helper (const int fd, const INT64 loc,
+			      char *string, const int len);
+static INT64 esm_delete_helper (const int fd, const INT64 loc,
+				const INT64 len);
 
 /*
  * esm_open() -
@@ -64,31 +64,33 @@ static char *
 esm_open (char *name)
 {
   static char pathname[PATH_MAX];
-  char *return_path;
+  char *return_path = NULL;
 
   /* avoid using realpath if we have an embedded environment varialbe, it gets
    * confused.
    */
-  if (name != NULL && name[0] == '$')
+  if (name != NULL)
     {
-      return_path = name;
-    }
-  else
-    {
-      return_path = realpath (name, pathname);
-      if (return_path == NULL)
+      if (name[0] == '$')
 	{
-	  if (errno == ENOENT)
+	  return_path = name;
+	}
+      else
+	{
+	  return_path = realpath (name, pathname);
+	  if (return_path == NULL)
 	    {
-	      return_path = pathname;
-	    }
-	  else
-	    {
-	      return_path = name;
+	      if (errno == ENOENT)
+		{
+		  return_path = pathname;
+		}
+	      else
+		{
+		  return_path = name;
+		}
 	    }
 	}
     }
-
   /* next two lines perform environment variable expansion */
 
   /* next two lines are blocked because return_path was already expanded. */
@@ -132,10 +134,10 @@ esm_destroy (char *pathname)
  *
  */
 
-FSIZE_T
+INT64
 esm_get_size (char *pathname)
 {
-  FSIZE_T offset;
+  INT64 offset;
   int fd;
 
   if (pathname == NULL)
@@ -163,11 +165,10 @@ esm_get_size (char *pathname)
  *
  */
 
-FSIZE_T
-esm_read (char *pathname, const FSIZE_T offset, const FSIZE_T size,
-	  char *buffer)
+int
+esm_read (char *pathname, const INT64 offset, const int size, char *buffer)
 {
-  FSIZE_T rc;
+  int rc;
   int fd;
 
   if (pathname == NULL)
@@ -184,7 +185,7 @@ esm_read (char *pathname, const FSIZE_T offset, const FSIZE_T size,
       close (fd);
       return (-1);
     }
-  rc = read (fd, buffer, size);
+  rc = (int) read (fd, buffer, size);
   close (fd);
   return (rc);
 }
@@ -201,11 +202,10 @@ esm_read (char *pathname, const FSIZE_T offset, const FSIZE_T size,
  *
  */
 
-FSIZE_T
-esm_write (char *pathname, const FSIZE_T offset, const FSIZE_T size,
-	   char *buffer)
+int
+esm_write (char *pathname, const INT64 offset, const int size, char *buffer)
 {
-  FSIZE_T rc;
+  int rc;
   int fd;
 
   if (pathname == NULL)
@@ -224,7 +224,7 @@ esm_write (char *pathname, const FSIZE_T offset, const FSIZE_T size,
       close (fd);
       return (-1);
     }
-  rc = write (fd, buffer, size);
+  rc = (int) write (fd, buffer, size);
   close (fd);
   return (rc);
 }
@@ -239,11 +239,10 @@ esm_write (char *pathname, const FSIZE_T offset, const FSIZE_T size,
  *  len(in) : length of data to insert into the file
  */
 
-static FSIZE_T
-esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
-		   const FSIZE_T len)
+static int
+esm_insert_helper (const int fd, const INT64 loc, char *string, const int len)
 {
-  char *temp_buffer;
+  char temp_buffer[MAX_INSERT_BUFFER_SIZE];
   off_t file_size, delta, seek_loc;
   int buf_size, rc;
 
@@ -256,17 +255,13 @@ esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
       delta = file_size - loc;
       if (delta > MAX_INSERT_BUFFER_SIZE)
 	{
-	  temp_buffer = (char *) malloc (buf_size = MAX_INSERT_BUFFER_SIZE);
+	  buf_size = MAX_INSERT_BUFFER_SIZE;
 	}
       else
 	{
-	  temp_buffer = (char *) malloc (buf_size = (int) delta);
+	  buf_size = (int) delta;
 	}
-      if (temp_buffer == NULL)
-	{
-	  close (fd);
-	  return (-1);
-	}
+
       seek_loc = file_size - buf_size;
       while (delta > 0)
 	{
@@ -285,17 +280,17 @@ esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
 	    }
 
 	  lseek (fd, seek_loc, SEEK_SET);
-	  buf_size = read (fd, temp_buffer, buf_size);
+	  buf_size = (int) read (fd, temp_buffer, buf_size);
 	  if (buf_size <= 0)
 	    {
 	      break;
 	    }
+
 	  lseek (fd, seek_loc + len, SEEK_SET);
 	  write (fd, temp_buffer, buf_size);
 	  seek_loc -= buf_size;
 	  delta -= buf_size;
 	}
-      free_and_init (temp_buffer);
     }
 
   if (lseek (fd, loc, SEEK_SET) < 0)
@@ -303,6 +298,7 @@ esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
       close (fd);
       return (-1);
     }
+
   rc = write (fd, string, len);
   if (rc < 0)
     {
@@ -325,9 +321,8 @@ esm_insert_helper (const int fd, const FSIZE_T loc, char *string,
  *
  */
 
-FSIZE_T
-esm_insert (char *pathname, const FSIZE_T offset, const FSIZE_T size,
-	    char *buffer)
+int
+esm_insert (char *pathname, const INT64 offset, const int size, char *buffer)
 {
   int fd;
 
@@ -350,12 +345,12 @@ esm_insert (char *pathname, const FSIZE_T offset, const FSIZE_T size,
  *                       we will simply truncate the file
  *      return: returns the size of data deleted
  *  fd(in) : file descriptor of the file
- *  len(in) : the data to delete from the file
  *  loc(in) : length of data to delete from the file
+ *  len(in) : the data to delete from the file
  */
 
-static FSIZE_T
-esm_delete_helper (const int fd, const FSIZE_T len, const FSIZE_T loc)
+static INT64
+esm_delete_helper (const int fd, const INT64 loc, const INT64 len)
 {
   char *temp_buffer;
   off_t file_size, read_loc, write_loc;
@@ -366,21 +361,24 @@ esm_delete_helper (const int fd, const FSIZE_T len, const FSIZE_T loc)
 
   if (file_size - loc > len)
     {
-      temp_buffer = (char *) malloc (buf_size = MAX_INSERT_BUFFER_SIZE);
+      buf_size = MAX_INSERT_BUFFER_SIZE;
+      temp_buffer = (char *) malloc (buf_size);
       if (temp_buffer == NULL)
 	{
 	  close (fd);
 	  return (-1);
 	}
       write_loc = loc;
-      lseek (fd, read_loc = loc + len, SEEK_SET);
+      read_loc = loc + len;
+      lseek (fd, read_loc, SEEK_SET);
       while (read_loc < file_size)
 	{
-	  buf_size = read (fd, temp_buffer, buf_size);
+	  buf_size = (int) read (fd, temp_buffer, buf_size);
 	  lseek (fd, write_loc, SEEK_SET);
 	  write (fd, temp_buffer, buf_size);
 	  write_loc += buf_size;
-	  lseek (fd, read_loc += buf_size, SEEK_SET);
+	  read_loc += buf_size;
+	  lseek (fd, read_loc, SEEK_SET);
 	}
       free_and_init (temp_buffer);
       ftruncate (fd, write_loc);
@@ -388,7 +386,7 @@ esm_delete_helper (const int fd, const FSIZE_T len, const FSIZE_T loc)
       return (len);
     }				/* Truncate file here */
   ftruncate (fd, loc);
-  return ((FSIZE_T) (file_size - loc));
+  return ((INT64) (file_size - loc));
 }
 
 /*
@@ -401,8 +399,8 @@ esm_delete_helper (const int fd, const FSIZE_T len, const FSIZE_T loc)
  *
  */
 
-FSIZE_T
-esm_delete (char *pathname, FSIZE_T offset, const FSIZE_T size)
+INT64
+esm_delete (char *pathname, INT64 offset, const INT64 size)
 {
   int fd;
 
@@ -417,7 +415,8 @@ esm_delete (char *pathname, FSIZE_T offset, const FSIZE_T size)
     {
       return (-1);
     }
-  return (esm_delete_helper (fd, size, offset));
+
+  return (esm_delete_helper (fd, offset, size));
 }
 
 /*
@@ -428,37 +427,40 @@ esm_delete (char *pathname, FSIZE_T offset, const FSIZE_T size)
  *
  */
 
-FSIZE_T
-esm_truncate (char *pathname, const FSIZE_T offset)
+INT64
+esm_truncate (char *pathname, const INT64 offset)
 {
   int rc;
   int fd;
-  FSIZE_T lsize;
+  INT64 lsize;
 
   if (pathname == NULL)
     {
       return (-1);
     }
+
   fd = open (esm_open (pathname),
 	     O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
   if (fd < 0)
     {
       return (-1);
     }
+
   lsize = esm_get_size (pathname);
   if (lsize < 0)
     {
       return (-1);
     }
+
   rc = ftruncate (fd, offset);
   close (fd);
 
-  if (rc == 0)
+  if (rc != 0)
     {
-      return (lsize - offset);
+      return rc;
     }
 
-  return (rc);
+  return (lsize - offset);
 }
 
 /*
@@ -472,8 +474,8 @@ esm_truncate (char *pathname, const FSIZE_T offset)
  *
  */
 
-FSIZE_T
-esm_append (char *pathname, const FSIZE_T size, char *buffer)
+int
+esm_append (char *pathname, const int size, char *buffer)
 {
   int rc;
   int fd;
@@ -489,7 +491,7 @@ esm_append (char *pathname, const FSIZE_T size, char *buffer)
       return (-1);
     }
   lseek (fd, (off_t) 0, SEEK_END);
-  rc = write (fd, buffer, size);
+  rc = (int) write (fd, buffer, size);
   close (fd);
   return (rc);
 }

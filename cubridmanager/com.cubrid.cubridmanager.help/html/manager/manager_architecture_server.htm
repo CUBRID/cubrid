@@ -1,0 +1,110 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>CUBRID 매니저 구조</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\nCUBRID 매니저 소개\nCUBRID 매니저 구조");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_architecture_server.htm\">CUBRID 매니저 소개<\/a> &nbsp;&gt;&nbsp; CUBRID 매니저 구조<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CUBRID 매니저 구조</h3>
+<p>CUBRID 매니저의 구조는 아래&#160;그림과 같다. 데이터베이스 서버와 브로커가 설치된 호스트에 CUBRID 매니저 서버가 동작하고, 이 CUBRID 매니저 서버에 CUBRID 매니저 클라이언트가 접속한다.</p>
+<p>CUBRID 매니저 서버는 <span class="keyword">cub_auto</span> 프로세스와 <span class="keyword">cub_js</span> 프로세스로 구성된다. CUBRID 매니저 클라이언트에서 CUBRID 매니저 서버에 접속하기 위해서는 반드시 CUBRID 매니저 서버가 구동되어 있어야 하며, <span class="keyword">cub_auto</span>&#160;프로세스와 <span class="keyword">cub_js</span>&#160;프로세스와 상응하는 네트워크(TCP/IP) 포트가 설정되어 있어야 한다. 질의를 수행하기 위해서는 JDBC 연결을 위한 브로커도 구동되어 있어야 한다.</p>
+<ul>
+<li><span class="keyword">cub_auto</span> 프로세스는 CUBRID 매니저 클라이언트 사용자의 인증처리 및 주기적인 자동화 작업과 진단 정보를 수집하는 기능을 수행한다.</li>
+<li><span class="keyword">cub_js</span> 프로세스는 CUBRID 매니저 클라이언트로부터 전송된 사용자의 요구를 수행한다.</li>
+</ul>
+<p><img src="images/manager_architecture_server.png" border="0" alt="" /></p>
+<p>서버 구동에 대한 상세한 정보는 <a href="manager_execute_setting.htm">CUBRID 매니저 서버 환경 설정</a>을 참고한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

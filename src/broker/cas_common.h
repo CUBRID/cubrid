@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -38,7 +38,7 @@
 #define makestring(x) makestring1(x)
 
 #define MAX_SERVER_H_ID         256
-#define MAX_BIND_VALUE          1024
+#define MAX_BIND_VALUE          10240
 #define MAX_QUERY_LEN           100000
 #define CAS_RUNNER_CONF         "cas_runner.conf"
 #define CAS_RUNNER_CONF_ENV     "CAS_RUNNER_CONF"
@@ -48,10 +48,6 @@
 
 #define TRUE	1
 #define FALSE	0
-
-#define TRAN_NOT_AUTOCOMMIT     0
-#define TRAN_AUTOCOMMIT 	1
-#define TRAN_AUTOROLLBACK 	2
 
 #define INT_STR_LEN     16
 
@@ -158,15 +154,6 @@
 	} while (0)
 #endif
 
-#if defined(WINDOWS)
-#define TIMEVAL_MAKE(X)         _ftime(X)
-#define TIMEVAL_GET_SEC(X)      ((int) ((X)->time))
-#define TIMEVAL_GET_MSEC(X)     ((int) ((X)->millitm))
-#else
-#define TIMEVAL_MAKE(X)         gettimeofday(X, NULL)
-#define TIMEVAL_GET_SEC(X)      ((int) ((X)->tv_sec))
-#define TIMEVAL_GET_MSEC(X)     ((int) (((X)->tv_usec) / 1000))
-#endif
 
 #if defined(WINDOWS)
 #define READ_FROM_SOCKET(fd, buf, size)         recv(fd, buf, size, 0)
@@ -180,12 +167,6 @@
 #define THREAD_FUNC     void
 #else
 #define THREAD_FUNC     void*
-#endif
-
-#if defined(WINDOWS)
-typedef struct _timeb T_TIMEVAL;
-#else
-typedef struct timeval T_TIMEVAL;
 #endif
 
 #if defined(WINDOWS) || defined(SOLARIS) || defined(HPUX)

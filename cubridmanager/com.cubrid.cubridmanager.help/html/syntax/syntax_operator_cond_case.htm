@@ -1,0 +1,155 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>CASE</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="CASE" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n조건/비교 관련 함수와 연산자\nCASE");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_cond_case.htm\">조건/비교 관련 함수와 연산자<\/a> &nbsp;&gt;&nbsp; CASE<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>CASE</h4>
+<h6>설명</h6>
+<p><span class="keyword">CASE</span> 수식은 CUBRID 문장 내에서 조건에 따라서 변하는 값을 얻고자 할 때 사용된다. <span class="keyword">CASE</span> 수식은 하나 또는 그 이상의 비교 수식과 값 수식이나 쿼리를 참인지 비교한다. 참이면 정해진 수식이나 <span class="keyword">NULL</span> 값을 반환한다.</p>
+<h6>구문</h6>
+<p><span class="keyword">CASE</span> 수식 문법으로 다음과 같은 네 가지 형태가 지원된다.</p>
+<p class="syntax"><span class="keyword">CASE</span> <span class="var">control_expression simple_when_list</span><br />
+[ <span class="var">else_clause</span> ]<br />
+<span class="keyword">END</span><br />
+<span class="keyword">CASE</span> <span class="var">searched_when_list</span><br />
+[ <span class="var">else_clause</span> ]<br />
+<span class="keyword">END</span><br />
+<span class="keyword">NULLIF</span> ( <span class="var">expression_comma_list</span> )<br />
+<span class="keyword">COALESCE</span> ( <span class="var">expression_comma_list</span> )<br />
+<br />
+<span class="var">simple_when</span> :<br />
+<span class="keyword">WHEN</span> <span class="var">expression</span> <span class="keyword">THEN</span> <span class="var">result</span><br />
+<br />
+<span class="var">searched_when</span> :<br />
+<span class="keyword">WHEN</span> <span class="var">search_condition</span> <span class="keyword">THEN</span> <span class="var">result</span><br />
+<br />
+<span class="var">else_clause</span> :<br />
+<span class="keyword">ELSE</span> <span class="var">result</span><br />
+<br />
+<span class="var">result</span> :<br />
+<span class="var">expression</span> | <span class="keyword">NULL</span></p>
+<p><span class="keyword">CASE</span> 문은 하나 또는 그 이상의 <span class="var">simple_when</span> 절이나 하나 또는 그 이상의 <span class="var">searched_when</span> 절을 포함한다. <span class="keyword"><a href="syntax_operator_cond_nullif.htm">NULLIF</a></span>와 <span class="keyword"><a href="syntax_operator_cond_nullif.htm">COALESCE</a></span> 문장은 특정 형태의 조건식으로 사용될 수 있다. 각각의 <span class="keyword">CASE</span> 문장에서 모든 <span class="keyword">WHEN</span> 절은 <span class="var">simple_when</span> 절 형태이거나 <span class="var">searched_when</span> 절 형태를 가져야 하며 이 둘을 함께 사용할 수는 없다. <span class="keyword">CASE</span> 문은 반드시 키워드 <span class="keyword">END</span>로 끝나야 한다.</p>
+<p>처음으로 <span class="keyword">WHEN</span> 절의 조건이 만족되는 <span class="keyword">THEN</span> 절의 수식 값이 <span class="keyword">CASE</span> 수식의 값이 된다. <span class="var">simple_when</span> 절은 <span class="keyword">WHEN</span> 수식의 값이 <span class="keyword">CASE</span> 문의 <span class="var">control_expression</span>의 값과 같을 때 만족된다. <span class="var">searched_when</span> 절은 해당 <span class="var">search_condition</span>이 참이 되면 만족된다. 어떠한 <span class="keyword">WHEN</span> 절도 만족되지 않으면, <span class="keyword">ELSE</span> 절의 값이 <span class="keyword">CASE</span> 수식의 값이 된다. <span class="keyword">ELSE</span> 절이 생략된 경우에는 <span class="keyword">ELSE NULL</span> 절이 주어진 것으로 가정한다.</p>
+<p><span class="var">simple_when</span> 절을 사용한 <span class="keyword">CASE</span> 수식을 사용하기 위해서는 모든 <span class="keyword">WHEN</span> 절의 수식이 가지는 데이터 타입이 <span class="var">control_expression</span>의 데이터 타입과 비교 가능해야 한다. 마찬가지로 모든 <span class="keyword">THEN</span> 절의 수식의 데이터 타입 역시 비교 가능해야 한다. 하지만, <span class="keyword">WHEN</span> 절과 <span class="keyword">THEN</span> 절의 데이터 타입이 서로 비교 가능해야 할 필요는 없다.</p>
+<p><span class="keyword">CASE</span> 수식이 반환하는 값의 데이터 타입은 다음과 같은 규칙에 따라 <span class="keyword">THEN</span> 절과 선택 사항인 <span class="keyword">ELSE</span> 절의 데이터 타입에 좌우된다.</p>
+<ul>
+<li>
+<p>모든 <span class="keyword">THEN</span> 절의 데이터 타입이 같으면, 해당 타입이 <span class="keyword">CASE</span> 문의 데이터 타입이 된다.</p>
+</li>
+<li>
+<p><span class="keyword">THEN</span> 절의 데이터 타입이 같지 않지만 비교 가능한 경우에는, <span class="keyword">THEN</span> 절의 데이터 타입 중 가장 일반적인 타입이 <span class="keyword">CASE</span> 문의 데이터 타입이 된다.</p>
+</li>
+<li>
+<p>어느 하나라도 <span class="keyword">THEN</span> 절의 타입이 가변 길이의 문자 스트링&#160;또는 비트 스트링인 경우, 결과는 가변 길이가 된다. 가변 길이 스트링이 하나도 쓰이지 않은 경우에는 가장 긴 길이를 가지는 문자 스트링&#160;또는 비트 스트링이 결과로 반환된다.</p>
+</li>
+<li>
+<p>모든 <span class="keyword">THEN</span> 절의 타입이 근사값으로 표현되는 수치형이 아니면 결과로 정확한 수치형이 반환된다. 소수점 이하 자릿수는 가장 큰 소수점 이하 자릿수로 결정된다.</p>
+</li>
+</ul>
+<p>결과의 자릿수는 <span class="keyword">CASE</span> 문의 모든 <span class="keyword">THEN</span> 절에서 명시된 것들의 가장 작은 것부터 가장 큰 것까지 모두를 포함할 수 있도록 결정된다.&#160;&#160;</p>
+<h6>예제</h6>
+<p>다음은 선수의 성별이 M이면 'MAN'을 W면 'WOMAN'을 출력하는 예제이다.</p>
+<p class="code">SELECT name,<br />
+CASE WHEN gender = 'M' THEN 'MAN'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;WHEN gender = 'W' THEN 'WOMAN'<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;END as GENDER<br />
+FROM athlete;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

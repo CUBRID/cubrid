@@ -1,0 +1,208 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>표현식</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID SQL 구문\n표현식");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"csql_notation_sqllist_list.htm\">CUBRID SQL 구문<\/a> &nbsp;&gt;&nbsp; 표현식<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>표현식</h3>
+<h5>&lt;<span class="var">expression</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">term</span>&gt; [ { + | - | '||' } <span class="var">term</span> ]...</p>
+<h5>&lt;<span class="var">term</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">factor</span>&gt; [ { * | / } &lt;<span class="var">factor</span>&gt; ]</p>
+<h5>&lt;<span class="var">factor</span>&gt;</h5>
+<p class="syntax">[ + | - ] &lt;<span class="var">primary</span>&gt;</p>
+<h5>&lt;<span class="var">primary</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">value specification</span>&gt;<br />
+| &lt;<span class="var">path expression</span>&gt;<br />
+| &lt;<span class="var">aggregate function</span>&gt;<br />
+| &lt;<span class="var">set expression</span>&gt;<br />
+| &lt;<span class="var">subquery</span>&gt;<br />
+| &lt;<span class="var">insert statement</span>&gt;<br />
+| ( &lt;<span class="var">expression</span>&gt; )<br />
+| &lt;<span class="var">arithmetic function</span>&gt;<br />
+| &lt;<span class="var">character function</span>&gt;<br />
+| &lt;<span class="var">scalar function</span>&gt;<br />
+| &lt;<span class="var">class function</span>&gt;<br />
+| &lt;<span class="var">cast function</span>&gt;<br />
+| &lt;<span class="var">extract function</span>&gt;<br />
+| &lt;<span class="var">instance number function</span>&gt;<br />
+| &lt;<span class="var">orderby number function</span>&gt;</p>
+<h5>&lt;<span class="var">path expression</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">path element</span>&gt; [ . &lt;<span class="var">path element</span>&gt; ]...<br />
+| <span class="keyword">CLASS</span> &lt;<span class="var">class name</span>&gt; . &lt;<span class="var">path element</span>&gt; [ . &lt;<span class="var">path element</span>&gt; ]...</p>
+<h5>&lt;<span class="var">path element</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">attribute name</span>&gt;<br />
+| &lt;<span class="var">attribute name</span>&gt; &lt;<span class="var">identifier</span>&gt;<br />
+| &lt;<span class="var">method call</span>&gt;</p>
+<h5>&lt;<span class="var">aggregate function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">COUNT</span>(*)<br />
+| <span class="keyword">COUNT</span> ( [ &lt;<span class="var">qualifier</span>&gt; ] &lt;<span class="var">path expression</span>&gt; )<br />
+| { <span class="keyword">AVG</span> | <span class="keyword">MAX</span> | <span class="keyword">MIN</span>| <span class="keyword">SUM</span> | <span class="keyword">STDDEV</span> | <span class="keyword">VARIANCE</span> } ( { <span class="keyword">DISTINCT</span> | <span class="keyword">UNIQUE</span> } &lt;<span class="var">path expression</span>&gt; )<br />
+| { <span class="keyword">AVG</span> | <span class="keyword">MAX</span> | <span class="keyword">MIN</span> | <span class="keyword">SUM</span> | <span class="keyword">STDDEV</span> | <span class="keyword">VARIANCE</span> } ( [ <span class="keyword">ALL</span> ] &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">GROUPBY_NUM</span>()</p>
+<h5>&lt;<span class="var">set expression</span>&gt;</h5>
+<p class="syntax">[ &lt;<span class="var">set specifier</span>&gt; ] &lt;<span class="var">subquery</span>&gt;<br />
+| [ &lt;<span class="var">set specifier</span>&gt; ] '{' [ &lt;<span class="var">expression comma list</span>&gt; ] '}'</p>
+<h5>&lt;<span class="var">set specifier</span>&gt;</h5>
+<p class="syntax"><span class="keyword">SET</span><br />
+| <span class="keyword">MULTISET</span><br />
+| { <span class="keyword">SEQUENCE</span> | <span class="keyword">LIST</span> }<br /></p>
+<h5>&lt;arithmetic function&gt;</h5>
+<p class="syntax"><span class="keyword">MOD</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; )</p>
+<h5>&lt;<span class="var">character function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">POSITION</span> ( &lt;<span class="var">expression</span>&gt; <span class="keyword">IN</span> &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">SUBSTRING</span> (&lt;<span class="var">expression</span>&gt; <span class="keyword">FROM</span> &lt;<span class="var">expression</span>&gt; [ <span class="keyword">FOR</span> &lt;<span class="var">expression</span>&gt; ] )<br />
+| <span class="keyword">OCTET_LENGTH</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">BIT_LENGTH</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">CHAR_LENGTH</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">LOWER</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">UPPER</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">TRANSLATE</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">REPLACE</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt;] )<br />
+| <span class="keyword">UPPER</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt;] )<br />
+| <span class="keyword">RPAD</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt;] )<br />
+| <span class="keyword">LTRIM</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt;] )<br />
+| <span class="keyword">RTRIM</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt;] )<br />
+| <span class="keyword">TRIM</span> ( [ [ <span class="keyword">LEADING</span> | <span class="keyword">TRAILING</span> | <span class="keyword">BOTH</span> ] [ &lt;<span class="var">expression</span>&gt; ] <span class="keyword">FROM</span> ] &lt;<span class="var">expression</span>&gt; )</p>
+<h5>&lt;<span class="var">scalar function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ADD_MONTHS</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">LAST_DAY</span> ( &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">MONTHS_BETWEEN</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">SYS_DATE</span><br />
+| <span class="keyword">SYS_DATETIME</span><br />
+| <span class="keyword">SYS_TIME</span><br />
+| <span class="keyword">SYS_TIMESTAMP</span><br />
+| <span class="keyword">TO_CHAR</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt; [, {'en_US' | 'ko_KR'}] ] )<br />
+| <span class="keyword">TO_DATE</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt; [, {'en_US' | 'ko_KR'}] ] )<br />
+| <span class="keyword">TO_DATETIME</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt; [, {'en_US' | 'ko_KR'}] ] )<br />
+| <span class="keyword">TO_TIME</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt; [, {'en_US' | 'ko_KR'}] ] )<br />
+| <span class="keyword">TO_TIMESTAMP</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression</span>&gt; [, {'en_US' | 'ko_KR'}] ] )<br />
+| <span class="keyword">TO_NUMBER</span> ( &lt;<span class="var">expression</span>&gt; [ , &lt;<span class="var">expression&gt;</span> ] )</p>
+<h5>&lt;<span class="var">class function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">CLASS</span> ( &lt;<span class="var">class name</span>&gt; )</p>
+<h5>&lt;<span class="var">cast function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">CAST</span> ( &lt;<span class="var">expression</span>&gt; <span class="keyword">AS</span> &lt;<span class="var">data type</span>&gt; )</p>
+<h5>&lt;<span class="var">case expression</span>&gt;</h5>
+<p class="syntax"><span class="keyword">CAST</span> &lt;<span class="var">expression</span>&gt; &lt;<span class="var">simple when clause</span>&gt; [ &lt;<span class="var">case else clause</span>&gt; ] <span class="keyword">END</span><br />
+| <span class="keyword">CASE</span> &lt;<span class="var">searched when clause</span>&gt; [ &lt;<span class="var">case else clause</span>&gt; ] <span class="keyword">END</span><br />
+| <span class="keyword">NULLIF</span> ( &lt;<span class="var">expression</span>&gt; , &lt;<span class="var">expression</span>&gt; )<br />
+| <span class="keyword">COALESCE</span> ( &lt;<span class="var">expression comma list</span>&gt; )</p>
+<h5>&lt;<span class="var">simple when clause</span>&gt;</h5>
+<p class="syntax"><span class="keyword">WHEN</span> &lt;<span class="var">expression</span>&gt; <span class="keyword">THEN</span> &lt;<span class="var">result</span>&gt;</p>
+<h5>&lt;<span class="var">searched when clause</span>&gt;</h5>
+<p class="syntax"><span class="keyword">WHEN</span> &lt;<span class="var">search condition</span>&gt; <span class="keyword">THEN</span> &lt;<span class="var">result</span>&gt;</p>
+<h5>&lt;<span class="var">case else clause</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ELSE</span> &lt;<span class="var">result</span>&gt;</p>
+<h5>&lt;<span class="var">result</span>&gt;</h5>
+<p class="syntax">&lt;<span class="var">expression</span>&gt;<br />
+| <span class="keyword">NULL</span></p>
+<h5>&lt;<span class="var">extract function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">EXTRACT</span> ( &lt;<span class="var">extract field</span>&gt; <span class="keyword">FROM</span> &lt;<span class="var">expression</span>&gt; )</p>
+<h5>&lt;<span class="var">extract field</span>&gt;</h5>
+<p class="syntax"><span class="keyword">YEAR</span><br />
+| <span class="keyword">MONTH</span><br />
+| <span class="keyword">DAY</span><br />
+| <span class="keyword">HOUR</span><br />
+| <span class="keyword">MINUTE</span><br />
+| <span class="keyword">SECOND</span><br />
+| <span class="keyword">MILLISECOND</span></p>
+<h5>&lt;<span class="var">instance number function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ROWNUM</span><br />
+| <span class="keyword">INST_NUM</span>()</p>
+<h5>&lt;<span class="var">orderby number function</span>&gt;</h5>
+<p class="syntax"><span class="keyword">ORDERBY_NUM</span>()</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

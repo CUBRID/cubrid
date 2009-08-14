@@ -239,6 +239,12 @@ extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 				int flush_data_pages);
+extern void log_append_run_postpone (THREAD_ENTRY * thread_p,
+				     LOG_RCVINDEX rcvindex,
+				     LOG_DATA_ADDR * addr,
+				     const VPID * rcv_vpid, int length,
+				     const void *data,
+				     const LOG_LSA * ref_lsa);
 
 /*
  * FOR DEBUGGING

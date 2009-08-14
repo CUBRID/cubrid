@@ -70,6 +70,7 @@
 			     bool prev_is_white_char);
   extern void pt_get_hint (const char *text, PT_HINT hint_table[],
 			   PT_NODE * node);
+  extern void pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[]);
 
   extern void pt_parser_line_col (PT_NODE * node);
 

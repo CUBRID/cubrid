@@ -85,13 +85,16 @@ static int get_domain (SM_TEMPLATE * tmp, const char *domain_string,
 static int check_domain_class_type (SM_TEMPLATE * template_,
 				    DB_OBJECT * domain_classobj);
 static SM_TEMPLATE *def_class_internal (const char *name, int class_type);
-static int smt_add_constraint (SM_TEMPLATE * template_,
-			       SM_CONSTRAINT_TYPE type,
-			       const char *constraint_name,
-			       SM_ATTRIBUTE ** atts,
-			       const int *asc_desc,
-			       SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name);
+static int smt_add_constraint_to_property (SM_TEMPLATE * template_,
+					   SM_CONSTRAINT_TYPE type,
+					   const char *constraint_name,
+					   SM_ATTRIBUTE ** atts,
+					   const int *asc_desc,
+					   SM_FOREIGN_KEY_INFO * fk_info,
+					   char *shared_cons_name);
+static int smt_drop_constraint_from_property (SM_TEMPLATE * template_,
+					      const char *constraint_name,
+					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_,
 				  const char *constraint_name,
 				  SM_ATTRIBUTE ** atts, int n_atts,
@@ -608,13 +611,16 @@ get_domain_internal (SM_TEMPLATE * tmp,
       if (domain_string[0] == '*')
 	{
 	  if (check_internal)
-	    ERROR1 (error, ER_SM_DOMAIN_NOT_A_CLASS, domain_string);
+	    {
+	      ERROR1 (error, ER_SM_DOMAIN_NOT_A_CLASS, domain_string);
+	    }
 	  else
 	    {
 	      type = pr_find_type (domain_string);
 	      if (type)
-		domain = tp_domain_construct (type->id, (DB_OBJECT *) 0, 0, 0,
-					      (TP_DOMAIN *) 0);
+		{
+		  domain = tp_domain_construct (type->id, NULL, 0, 0, NULL);
+		}
 	    }
 	}
       else
@@ -625,8 +631,11 @@ get_domain_internal (SM_TEMPLATE * tmp,
 
   if (domain != NULL)
     {
-      if ((error = resolve_class_domain (tmp, domain)) != NO_ERROR)
-	domain = NULL;
+      error = resolve_class_domain (tmp, domain);
+      if (error != NO_ERROR)
+	{
+	  domain = NULL;
+	}
     }
   else
     {
@@ -635,7 +644,7 @@ get_domain_internal (SM_TEMPLATE * tmp,
 
   *domainp = domain;
 
-  return (error);
+  return error;
 }
 
 static int
@@ -662,6 +671,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
   SM_CLASS *class_;
   DB_VALUE ldb1, ldb2;
   int same_ldb;
+  char *ldb1_str, *ldb2_str;
 
   /* If its a class, the domain can only be "object" or another class */
   if (template_->class_type == SM_CLASS_CT)
@@ -702,10 +712,11 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 					 SM_PROPERTY_LDB_NAME, &ldb2) > 0)
 		    {
 		      /* is it appropriate to use case insensitive comparison here ? */
-		      if (DB_GET_STRING (&ldb1) != NULL
-			  && DB_GET_STRING (&ldb2) != NULL
-			  && COMPARE_LDB_NAMES (DB_GET_STRING (&ldb1),
-						DB_GET_STRING (&ldb2)) == 0)
+		      ldb1_str = DB_GET_STRING (&ldb1);
+		      ldb2_str = DB_GET_STRING (&ldb2);
+
+		      if (ldb1_str != NULL && ldb2_str != NULL
+			  && COMPARE_LDB_NAMES (ldb1_str, ldb2_str) == 0)
 			{
 			  same_ldb = 1;
 			}
@@ -931,14 +942,17 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
 				  &domain)) == NO_ERROR)
 	{
 
-	  if (domain->type->id != DB_TYPE_OBJECT
-	      || (error = check_domain_class_type (template_,
-						   domain->class_mop)) ==
-	      NO_ERROR)
+	  if (domain
+	      && (domain->type->id != DB_TYPE_OBJECT
+		  || (error = check_domain_class_type (template_,
+						       domain->class_mop))
+		  == NO_ERROR))
 	    {
 	      att = classobj_make_attribute (name, domain->type, name_space);
 	      if (att == NULL)
-		error = er_errid ();
+		{
+		  error = er_errid ();
+		}
 	      else
 		{
 		  /* Flag this attribute as new so that we can initialize
@@ -1038,55 +1052,61 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
   SM_ATTRIBUTE *att;
   TP_DOMAIN *newdomain;
 
-  if ((error = smt_find_attribute (template_, name, class_attribute, &att))
-      == NO_ERROR)
+  error = smt_find_attribute (template_, name, class_attribute, &att);
+  if (error != NO_ERROR)
     {
-      if ((att->domain == NULL) || !pr_is_set_type (att->domain->type->id))
-	ERROR1 (error, ER_SM_DOMAIN_NOT_A_SET, name);
-      else
+      return error;
+    }
+
+  if ((att->domain == NULL) || !pr_is_set_type (att->domain->type->id))
+    {
+      ERROR1 (error, ER_SM_DOMAIN_NOT_A_SET, name);
+    }
+  else
+    {
+      error = get_domain (template_, domain_string, &domain);
+      if (error == NO_ERROR && domain != NULL)
 	{
-	  if ((error =
-	       get_domain (template_, domain_string, &domain)) == NO_ERROR)
+	  if (pr_is_set_type (domain->type->id))
 	    {
-	      if (pr_is_set_type (domain->type->id))
-		ERROR1 (error, ER_SM_NO_NESTED_SETS, name);
-	      else
+	      ERROR1 (error, ER_SM_NO_NESTED_SETS, name);
+	    }
+	  else
+	    {
+	      /*  We need to make sure that we don't update a cached domain
+	       *  since we may not be the only one pointing to it.  If the
+	       *  domain is cached, make a copy of it, update it, then cache it.
+	       */
+	      if (att->domain->is_cached)
 		{
-		  /*  We need to make sure that we don't update a cached domain
-		   *  since we may not be the only one pointing to it.  If the
-		   *  domain is cached, make a copy of it, update it, then cache it.
-		   */
-		  if (att->domain->is_cached)
+		  newdomain = tp_domain_copy (att->domain, false);
+		  if (newdomain)
 		    {
-		      newdomain = tp_domain_copy (att->domain, false);
-		      if (newdomain)
+		      error = tp_domain_add (&newdomain->setdomain, domain);
+		      if (error != NO_ERROR)
 			{
-			  error =
-			    tp_domain_add (&newdomain->setdomain, domain);
-			  if (error != NO_ERROR)
-			    {
-			      tp_domain_free (newdomain);
-			    }
-			  else
-			    {
-			      newdomain = tp_domain_cache (newdomain);
-			      att->domain = newdomain;
-			    }
+			  tp_domain_free (newdomain);
 			}
 		      else
 			{
-			  error = er_errid ();
+			  newdomain = tp_domain_cache (newdomain);
+			  att->domain = newdomain;
 			}
 		    }
 		  else
 		    {
-		      error = tp_domain_add (&att->domain->setdomain, domain);
+		      error = er_errid ();
 		    }
+		}
+	      else
+		{
+		  error = tp_domain_add (&att->domain->setdomain, domain);
 		}
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -1206,21 +1226,18 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 }
 
 /*
- * smt_drop_constraint() - Drop the named constraint from the template property
- *     list.  There are three types of constraints, indexes(which are not
- *     manipulated using templates), NOT NULL and UNIQUE,
- *     PRIMARY KEY Consequently, this function will only process UNIQUE,
- *     PRIMARY KEY constraints.
+ * smt_drop_constraint_from_property() - Drop the named constraint from the
+ *                                       template property list.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
  *   constraint_name(in): constraint name
  *   constraint(in):
  */
 
-int
-smt_drop_constraint (SM_TEMPLATE * template_,
-		     const char *constraint_name,
-		     SM_ATTRIBUTE_FLAG constraint)
+static int
+smt_drop_constraint_from_property (SM_TEMPLATE * template_,
+				   const char *constraint_name,
+				   SM_ATTRIBUTE_FLAG constraint)
 {
   int error = NO_ERROR;
   DB_VALUE oldval, newval;
@@ -1262,9 +1279,8 @@ smt_drop_constraint (SM_TEMPLATE * template_,
 
 
 /*
- * smt_add_constraint() - Add the named constraint to the template property list
- *     Note: UNIQUE's are the only named constraint which are added
- *     via templates.
+ * smt_add_constraint_to_property() - Add the named constraint to the
+ *                                    template property list
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
  *   type(in):
@@ -1276,12 +1292,13 @@ smt_drop_constraint (SM_TEMPLATE * template_,
  */
 
 static int
-smt_add_constraint (SM_TEMPLATE * template_,
-		    SM_CONSTRAINT_TYPE type,
-		    const char *constraint_name,
-		    SM_ATTRIBUTE ** atts,
-		    const int *asc_desc,
-		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name)
+smt_add_constraint_to_property (SM_TEMPLATE * template_,
+				SM_CONSTRAINT_TYPE type,
+				const char *constraint_name,
+				SM_ATTRIBUTE ** atts,
+				const int *asc_desc,
+				SM_FOREIGN_KEY_INFO * fk_info,
+				char *shared_cons_name)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1301,8 +1318,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
   if (error == NO_ERROR)
     {
       if (classobj_put_index (&(template_->properties), type,
-			      constraint_name, atts, asc_desc, NULL, fk_info,
-			      shared_cons_name) == ER_FAILED)
+			      constraint_name, atts, asc_desc, NULL,
+			      fk_info, shared_cons_name) == ER_FAILED)
 	{
 	  error = er_errid ();
 	}
@@ -1502,8 +1519,8 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	  if (cache_attr->type->id != DB_TYPE_OBJECT ||
 	      !OID_EQ (&cache_attr->domain->class_oid, ws_oid (ref_clsop)))
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME,
-		      1, ref_cls_name);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_SM_INVALID_NAME, 1, ref_cls_name);
 	    }
 	}
       else if (error == ER_SM_INVALID_NAME)
@@ -1531,76 +1548,46 @@ err:
 }
 
 /*
- * smt_constrain() - Sets the integrity constraint flags for an attribute.
- *    Once enabled, the constraint can be disabled by calling this
- *    function with zero as the on_or_off argument value.
+ * smt_drop_constraint() - Drops the integrity constraint flags for an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
  *   att_names(in): array of attribute names
- *   asc_desc(in): asc/desc info list
- *   constraint_name(in): Constraint name.  Currently, unique constraints
- *   		      are named but NOT NULL constraints are not.
+ *   constraint_name(in): Constraint name.
  *   class_attribute(in): non-zero if we're looking for class attributes
  *   constraint(in): constraint identifier
- *   on_or_off(in): non-zero if constraint is to be turned on
- *   fk_info(in):
- *   shared_cons_name(in):
  */
 
 int
-smt_constrain (SM_TEMPLATE * template_, const char **att_names,
-	       const int *asc_desc,
-	       const char *constraint_name, int class_attribute,
-	       SM_ATTRIBUTE_FLAG constraint, int on_or_off,
-	       SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name)
+smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
+		     const char *constraint_name, int class_attribute,
+		     SM_ATTRIBUTE_FLAG constraint)
 {
   int error = NO_ERROR;
-  SM_ATTRIBUTE **atts = NULL, *attr;
-  int i, j, n_atts;
+  SM_ATTRIBUTE *not_null_attr[1], *pk_attr;
   SM_CLASS_CONSTRAINT *pk;
+  int n_atts;
 
-  /*
-   *  If we are dropping a unique constraint by name, the attribute
-   *  names are not neccessary so don't check for them.
-   */
-  if (!(on_or_off) && SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY (constraint))
+  if (!(SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY (constraint)
+	|| constraint == SM_ATTFLAG_NON_NULL))
     {
-      if (constraint == SM_ATTFLAG_PRIMARY_KEY)
-	{
-	  pk =
-	    classobj_find_cons_primary_key (template_->current->constraints);
-	  if (pk->fk_info
-	      && classobj_is_pk_referred (template_->op, pk->fk_info, true))
-	    {
-	      ERROR0 (error, ER_FK_CANT_DROP_PK_REFERRED);
-	      return error;
-	    }
-	}
+      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
+      return error;
+    }
 
-      error = smt_drop_constraint (template_, constraint_name, constraint);
-
-      if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
+  if (constraint == SM_ATTFLAG_PRIMARY_KEY)
+    {
+      pk = classobj_find_cons_primary_key (template_->current->constraints);
+      if (pk->fk_info
+	  && classobj_is_pk_referred (template_->op, pk->fk_info, true))
 	{
-	  FOR_ATTRIBUTES (template_->attributes, attr)
-	  {
-	    if (attr->flags & SM_ATTFLAG_PRIMARY_KEY)
-	      {
-		attr->flags &= ~SM_ATTFLAG_PRIMARY_KEY;
-		attr->flags &= ~SM_ATTFLAG_NON_NULL;
-	      }
-	  }
+	  ERROR0 (error, ER_FK_CANT_DROP_PK_REFERRED);
+	  return error;
 	}
     }
-  else
+  else if (constraint == SM_ATTFLAG_NON_NULL)
     {
-
-      /*
-       *  Count the number of attributes.
-       *  Allocate pointer array.
-       *  Retrieve attributes.
-       */
       n_atts = 0;
-      if (att_names)
+      if (att_names != NULL)
 	{
 	  while (att_names[n_atts] != NULL)
 	    {
@@ -1608,225 +1595,270 @@ smt_constrain (SM_TEMPLATE * template_, const char **att_names,
 	    }
 	}
 
-      if (n_atts > 0)
+      if (n_atts != 1)
 	{
-	  atts =
-	    (SM_ATTRIBUTE **) malloc ((n_atts + 1) * sizeof (SM_ATTRIBUTE *));
-	  if (atts == NULL)
-	    {
-	      error = er_errid ();
-	    }
+	  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
+	  return error;
+	}
+    }
 
-	  for (i = 0; i < n_atts && error == NO_ERROR; i++)
+  error = smt_drop_constraint_from_property (template_, constraint_name,
+					     constraint);
+
+  if (error == NO_ERROR)
+    {
+      if (constraint == SM_ATTFLAG_PRIMARY_KEY)
+	{
+	  for (pk_attr = template_->attributes; pk_attr != NULL;
+	       pk_attr = (SM_ATTRIBUTE *) pk_attr->header.next)
 	    {
-	      error = smt_find_attribute (template_, att_names[i],
-					  class_attribute, &atts[i]);
-	      if (error == NO_ERROR
-		  && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
+	      if (pk_attr->flags & SM_ATTFLAG_PRIMARY_KEY)
 		{
-		  /* prevent to create index on TEXT attribute */
-		  if (sm_has_text_domain (atts[i], 0))
-		    {
-		      if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
-			{
-			  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
-				  rel_major_release_string ());
-			}
-		    }
+		  pk_attr->flags &= ~SM_ATTFLAG_PRIMARY_KEY;
+		  pk_attr->flags &= ~SM_ATTFLAG_NON_NULL;
 		}
 	    }
-	  atts[i] = NULL;
+	}
+      else if (constraint == SM_ATTFLAG_NON_NULL)
+	{
+	  error = smt_find_attribute (template_, att_names[0],
+				      class_attribute, &not_null_attr[0]);
 
-	  /* check that there are no duplicate attr defs in given list */
-	  for (i = 0; i < n_atts && error == NO_ERROR; i++)
+	  if (error == NO_ERROR)
 	    {
-	      for (j = i + 1; j < n_atts; j++)
+	      if (not_null_attr[0]->flags & constraint)
 		{
-		  /* can not check attr-id, because is not yet assigned */
-		  if (intl_mbs_casecmp
-		      (atts[i]->header.name, atts[j]->header.name) == 0)
-		    {
-		      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED,
-			      atts[i]->header.name);
-		    }
+		  not_null_attr[0]->flags &= ~constraint;
+		}
+	      else
+		{
+		  ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND, "NON_NULL");
+		}
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
+ * smt_add_constraint() - Adds the integrity constraint flags for an attribute.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   template(in/out): schema template
+ *   att_names(in): array of attribute names
+ *   asc_desc(in): asc/desc info list
+ *   constraint_name(in): Constraint name.
+ *   class_attribute(in): non-zero if we're looking for class attributes
+ *   constraint(in): constraint identifier
+ *   fk_info(in):
+ *   shared_cons_name(in):
+ */
+
+int
+smt_add_constraint (SM_TEMPLATE * template_, const char **att_names,
+		    const int *asc_desc, const char *constraint_name,
+		    int class_attribute, SM_ATTRIBUTE_FLAG constraint,
+		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name)
+{
+  int error = NO_ERROR;
+  SM_ATTRIBUTE **atts = NULL;
+  int i, j, n_atts, atts_size;
+
+  n_atts = 0;
+  if (att_names != NULL)
+    {
+      while (att_names[n_atts] != NULL)
+	{
+	  n_atts++;
+	}
+    }
+
+  if (n_atts == 0)
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  atts_size = (n_atts + 1) * (int) sizeof (SM_ATTRIBUTE *);
+  atts = (SM_ATTRIBUTE **) malloc (atts_size);
+  if (atts == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, atts_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < n_atts && error == NO_ERROR; i++)
+    {
+      error = smt_find_attribute (template_, att_names[i],
+				  class_attribute, &atts[i]);
+      if (error == NO_ERROR && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
+	{
+	  /* prevent to create index on TEXT attribute */
+	  if (sm_has_text_domain (atts[i], 0))
+	    {
+	      if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
+		{
+		  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
+			  rel_major_release_string ());
+		}
+	    }
+	}
+    }
+  atts[i] = NULL;
+
+  /* check that there are no duplicate attr defs in given list */
+  for (i = 0; i < n_atts && error == NO_ERROR; i++)
+    {
+      for (j = i + 1; j < n_atts; j++)
+	{
+	  /* can not check attr-id, because is not yet assigned */
+	  if (intl_mbs_casecmp
+	      (atts[i]->header.name, atts[j]->header.name) == 0)
+	    {
+	      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED,
+		      atts[i]->header.name);
+	    }
+	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      free_and_init (atts);
+      return error;
+    }
+
+  /*
+   *  Process constraint
+   */
+
+  if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
+    {
+      /*
+       *  Check for possible errors
+       *
+       *    - We do not allow UNIQUE constraints on any attribute of
+       *      a virtual or proxy class.
+       *    - We do not allow UNIQUE constraints on shared attributes.
+       *    - We only allow unique constraints on indexable data types.
+       */
+      if (template_->class_type != SM_CLASS_CT)
+	{
+	  ERROR0 (error, ER_SM_UNIQUE_ON_VCLASS);
+	}
+
+      for (i = 0; i < n_atts && error == NO_ERROR; i++)
+	{
+	  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE ||
+	      class_attribute)
+	    {
+	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, att_names[i]);
+	    }
+	  else
+	    {
+	      if (!tp_valid_indextype (atts[i]->type->id))
+		{
+		  ERROR1 (error, ER_SM_INVALID_UNIQUE_TYPE,
+			  atts[i]->type->name);
 		}
 	    }
 	}
 
       /*
-       *  Process constraint
+       * No errors were found, drop or add the unique constraint
        */
       if (error == NO_ERROR)
 	{
+	  /*
+	   *  Add the unique constraint.  The drop case was taken care
+	   *  of at the beginning of this function.
+	   */
+	  error = smt_add_constraint_to_property (template_,
+						  SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT
+						  (constraint),
+						  constraint_name, atts,
+						  asc_desc, NULL,
+						  shared_cons_name);
 
-	  if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
+	  if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
 	    {
-
-	      /*
-	       *  Check for possible errors
-	       *
-	       *    - We do not allow UNIQUE constraints on any attribute of
-	       *      a virtual or proxy class.
-	       *    - We do not allow UNIQUE constraints on shared attributes.
-	       *    - We only allow unique constraints on indexable data types.
-	       */
-	      if (template_->class_type != SM_CLASS_CT)
+	      for (i = 0; i < n_atts; i++)
 		{
-		  if (on_or_off)
-		    {
-		      ERROR0 (error, ER_SM_UNIQUE_ON_VCLASS);
-		    }
-		}
-
-	      for (i = 0; i < n_atts && error == NO_ERROR; i++)
-		{
-		  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE ||
-		      class_attribute)
-		    {
-		      if (on_or_off)
-			{
-			  ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND,
-				  att_names[i]);
-			}
-		    }
-		  else
-		    {
-		      if (!tp_valid_indextype (atts[i]->type->id))
-			{
-			  if (on_or_off)
-			    {
-			      ERROR1 (error, ER_SM_INVALID_UNIQUE_TYPE,
-				      atts[i]->type->name);
-			    }
-			}
-		    }
-		}
-
-	      /*
-	       * No errors were found, drop or add the unique constraint
-	       */
-	      if (error == NO_ERROR)
-		{
-		  /*
-		   *  Add the unique constraint.  The drop case was taken care
-		   *  of at the beginning of this function.
-		   */
-		  error = smt_add_constraint (template_,
-					      SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT
-					      (constraint), constraint_name,
-					      atts, asc_desc, NULL,
-					      shared_cons_name);
-
-		  if (error == NO_ERROR
-		      && constraint == SM_ATTFLAG_PRIMARY_KEY)
-		    {
-		      for (i = 0; i < n_atts; i++)
-			{
-			  atts[i]->flags |= SM_ATTFLAG_PRIMARY_KEY;
-			  atts[i]->flags |= SM_ATTFLAG_NON_NULL;
-			}
-		    }
+		  atts[i]->flags |= SM_ATTFLAG_PRIMARY_KEY;
+		  atts[i]->flags |= SM_ATTFLAG_NON_NULL;
 		}
 	    }
-
-	  else if (constraint == SM_ATTFLAG_FOREIGN_KEY)
-	    {
-	      if (template_->class_type != SM_CLASS_CT)
-		{
-		  if (on_or_off)
-		    {
-		      ERROR0 (error, ER_FK_CANT_ON_VCLASS);	/* TODO */
-		    }
-		}
-
-	      for (i = 0; i < n_atts && error == NO_ERROR; i++)
-		{
-		  if (!tp_valid_indextype (atts[i]->type->id))
-		    {
-		      if (on_or_off)
-			{
-			  ERROR1 (error, ER_SM_INVALID_INDEX_TYPE,
-				  atts[i]->type->name);
-			}
-		    }
-		}
-
-	      error = smt_check_foreign_key (template_, constraint_name,
-					     atts, n_atts, fk_info);
-	      if (error == NO_ERROR)
-		{
-		  error =
-		    smt_add_constraint (template_, SM_CONSTRAINT_FOREIGN_KEY,
-					constraint_name, atts, asc_desc,
-					fk_info, shared_cons_name);
-		}
-	    }
-
-	  else if (constraint == SM_ATTFLAG_NON_NULL)
-	    {
-
-	      /*
-	       *  We do not support NOT NULL constraints for;
-	       *    - normal (not class and shared) attributes of virtual
-	       *      or proxy classes
-	       *    - multiple attributes
-	       *    - class attributes without default value
-	       */
-	      if (n_atts != 1)
-		{
-		  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
-		}
-	      else if (template_->class_type != SM_CLASS_CT
-		       && atts[0]->header.name_space == ID_ATTRIBUTE)
-		{
-		  ERROR0 (error, ER_SM_NOT_NULL_ON_VCLASS);
-		}
-	      else if (class_attribute && DB_IS_NULL (&(atts[0]->value)))
-		{
-		  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
-		}
-	      else
-		{
-		  if (on_or_off)
-		    {
-		      if (atts[0]->flags & constraint)
-			{
-			  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, "NON_NULL");
-			}
-		      else
-			{
-			  atts[0]->flags |= constraint;
-			}
-		    }
-		  else
-		    {
-		      if (atts[0]->flags & constraint)
-			{
-			  atts[0]->flags &= ~constraint;
-			}
-		      else
-			{
-			  ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND,
-				  "NON_NULL");
-			}
-		    }
-		}
-	    }
-
-	  /* Unknown constraint type */
-	  else
-	    {
-	      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
-	    }
-
 	}
     }
-
-
-  if (atts)
+  else if (constraint == SM_ATTFLAG_FOREIGN_KEY)
     {
-      free_and_init (atts);
+      if (template_->class_type != SM_CLASS_CT)
+	{
+	  ERROR0 (error, ER_FK_CANT_ON_VCLASS);	/* TODO */
+	}
+
+      for (i = 0; i < n_atts && error == NO_ERROR; i++)
+	{
+	  if (!tp_valid_indextype (atts[i]->type->id))
+	    {
+	      ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, atts[i]->type->name);
+	    }
+	}
+
+      error = smt_check_foreign_key (template_, constraint_name,
+				     atts, n_atts, fk_info);
+      if (error == NO_ERROR)
+	{
+	  error =
+	    smt_add_constraint_to_property (template_,
+					    SM_CONSTRAINT_FOREIGN_KEY,
+					    constraint_name, atts,
+					    asc_desc, fk_info,
+					    shared_cons_name);
+	}
     }
+  else if (constraint == SM_ATTFLAG_NON_NULL)
+    {
+
+      /*
+       *  We do not support NOT NULL constraints for;
+       *    - normal (not class and shared) attributes of virtual
+       *      or proxy classes
+       *    - multiple attributes
+       *    - class attributes without default value
+       */
+      if (n_atts != 1)
+	{
+	  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
+	}
+      else if (template_->class_type != SM_CLASS_CT
+	       && atts[0]->header.name_space == ID_ATTRIBUTE)
+	{
+	  ERROR0 (error, ER_SM_NOT_NULL_ON_VCLASS);
+	}
+      else if (class_attribute && DB_IS_NULL (&(atts[0]->value)))
+	{
+	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
+	}
+      else
+	{
+	  if (atts[0]->flags & constraint)
+	    {
+	      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, "NON_NULL");
+	    }
+	  else
+	    {
+	      atts[0]->flags |= constraint;
+	    }
+	}
+    }
+  else
+    {
+      /* Unknown constraint type */
+      ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
+    }
+
+  free_and_init (atts);
 
   return (error);
 }
@@ -1858,12 +1890,14 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
   int error = NO_ERROR;
   SM_METHOD *method;
   SM_METHOD_SIGNATURE *sig;
-  char iname[SM_MAX_IDENTIFIER_LENGTH + 2];
+  char iname[SM_MAX_IDENTIFIER_LENGTH * 2 + 2];
   SM_METHOD **methlist = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
   if (!sm_check_name (name))
-    error = er_errid ();	/* return error set by call */
+    {
+      error = er_errid ();	/* return error set by call */
+    }
 
   else
     {
@@ -1882,14 +1916,16 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
 	}
     }
 
-  if (error == NO_ERROR)
+  if (error == NO_ERROR && methlist != NULL)
     {
       method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (*methlist, name);
       if (method == NULL)
 	{
 	  method = classobj_make_method (name, name_space);
 	  if (method == NULL)
-	    return er_errid ();
+	    {
+	      return er_errid ();
+	    }
 	  method->class_mop = template_->op;
 	  WS_LIST_APPEND (methlist, method);
 	}
@@ -1904,26 +1940,38 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
       /* NEED TO CHECK FOR IDENTIFIER LENGTH OVERFLOW !!! */
 
       if (function != NULL)
-	sprintf (iname, "%s", function);
+	{
+	  sprintf (iname, "%s", function);
+	}
       else
 	{
 	  if (template_->name != NULL)
-	    sprintf (iname, "%s_%s", template_->name, name);
+	    {
+	      sprintf (iname, "%s_%s", template_->name, name);
+	    }
 	  else if (template_->op != NULL)
-	    sprintf (iname, "%s_%s", sm_class_name (template_->op), name);
+	    {
+	      sprintf (iname, "%s_%s", sm_class_name (template_->op), name);
+	    }
 	  else
-	    /* this should be an error */
-	    sprintf (iname, "%s_%s", "unknown_class", name);
+	    {
+	      /* this should be an error */
+	      sprintf (iname, "%s_%s", "unknown_class", name);
+	    }
 	}
       /* implementation names are case sensitive */
       sig = (SM_METHOD_SIGNATURE *) NLIST_FIND (method->signatures, iname);
       if (sig != NULL)
-	ERROR2 (error, ER_SM_SIGNATURE_EXISTS, name, function);
+	{
+	  ERROR2 (error, ER_SM_SIGNATURE_EXISTS, name, function);
+	}
       else
 	{
 	  sig = classobj_make_method_signature (iname);
 	  if (sig == NULL)
-	    return er_errid ();
+	    {
+	      return er_errid ();
+	    }
 	  WS_LIST_APPEND (&method->signatures, sig);
 	}
     }
@@ -1981,8 +2029,8 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
 
   if (class_method)
     method =
-      (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods,
-						    name);
+      (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
+						    class_methods, name);
   else
     method =
       (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods, name);
@@ -2045,26 +2093,32 @@ smt_assign_argument_domain (SM_TEMPLATE * template_,
   SM_METHOD_SIGNATURE *sig;
   SM_METHOD_ARGUMENT *arg;
 
-  if ((error = find_argument (template_, name, class_method, implementation,
-			      index, true, &method, &sig, &arg)) == NO_ERROR)
+  error = find_argument (template_, name, class_method, implementation,
+			 index, true, &method, &sig, &arg);
+  if (error == NO_ERROR)
     {
-      if ((domain_string == NULL) && (domain == (DB_DOMAIN *) 0))
+      if ((domain_string == NULL) && (domain == NULL))
 	{
 	  /* no domain given, reset the domain list */
 	  arg->domain = NULL;
 	}
-      else if ((error = get_domain (template_, domain_string, &domain))
-	       == NO_ERROR)
+      else
 	{
-	  if ((arg->type != NULL) && (arg->type != domain->type))
+	  error = get_domain (template_, domain_string, &domain);
+
+	  if (error == NO_ERROR && domain != NULL)
 	    {
-	      /* changing the domain, automatically reset the domain list */
-	      arg->domain = NULL;
+	      if ((arg->type != NULL) && (arg->type != domain->type))
+		{
+		  /* changing the domain, automatically reset the domain list */
+		  arg->domain = NULL;
+		}
+	      arg->type = domain->type;
+	      arg->domain = domain;
 	    }
-	  arg->type = domain->type;
-	  arg->domain = domain;
 	}
     }
+
   return (error);
 }
 
@@ -2133,7 +2187,9 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
   char real_new_name[SM_MAX_IDENTIFIER_LENGTH];
 
   if (!sm_check_name (name) || !sm_check_name (new_name))
-    error = er_errid ();	/* return error set by call */
+    {
+      error = er_errid ();	/* return error set by call */
+    }
   else
     {
       sm_downcase_name (new_name, real_new_name, SM_MAX_IDENTIFIER_LENGTH);
@@ -2250,13 +2306,19 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
       if (error == NO_ERROR)
 	{
 	  if (att->header.name_space == ID_SHARED_ATTRIBUTE)
-	    ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+	    {
+	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+	    }
 	  else
 	    {
 	      if (att->flags & SM_ATTFLAG_PRIMARY_KEY)
-		ERROR1 (error, ER_SM_ATTRIBUTE_PRIMARY_KEY_MEMBER, name);
+		{
+		  ERROR1 (error, ER_SM_ATTRIBUTE_PRIMARY_KEY_MEMBER, name);
+		}
 	      else if (att->is_fk_cache_attr)
-		ERROR1 (error, ER_FK_CANT_DROP_CACHE_ATTR, name);	/* TODO */
+		{
+		  ERROR1 (error, ER_FK_CANT_DROP_CACHE_ATTR, name);	/* TODO */
+		}
 	      else
 		{
 		  WS_LIST_REMOVE (&template_->attributes, att);
@@ -2265,14 +2327,18 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	    }
 	}
       else
-	error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	{
+	  error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	}
       break;
     case ID_SHARED_ATTRIBUTE:
       error = smt_find_attribute (template_, name, false, &att);
       if (error == NO_ERROR)
 	{
 	  if (att->header.name_space != ID_SHARED_ATTRIBUTE)
-	    ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+	    {
+	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+	    }
 	  else
 	    {
 	      WS_LIST_REMOVE (&template_->attributes, att);
@@ -2280,7 +2346,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	    }
 	}
       else
-	error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	{
+	  error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	}
       break;
     case ID_CLASS_ATTRIBUTE:
       error = smt_find_attribute (template_, name, true, &att);
@@ -2290,7 +2358,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	  classobj_free_attribute (att);
 	}
       else
-	error = check_alias_delete (template_, name, ID_CLASS, error);
+	{
+	  error = check_alias_delete (template_, name, ID_CLASS, error);
+	}
       break;
     case ID_METHOD:
       error = find_method (template_, name, false, &method);
@@ -2300,7 +2370,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	  classobj_free_method (method);
 	}
       else
-	error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	{
+	  error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	}
       break;
     case ID_CLASS_METHOD:
       error = find_method (template_, name, true, &method);
@@ -2310,7 +2382,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	  classobj_free_method (method);
 	}
       else
-	error = check_alias_delete (template_, name, ID_CLASS, error);
+	{
+	  error = check_alias_delete (template_, name, ID_CLASS, error);
+	}
       break;
     case ID_INSTANCE:
       /* look at both attributes and methods for a name match */
@@ -2327,7 +2401,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	    {
 	      att = (SM_ATTRIBUTE *) thing;
 	      if (att->flags & SM_ATTFLAG_PRIMARY_KEY)
-		ERROR1 (error, ER_SM_ATTRIBUTE_PRIMARY_KEY_MEMBER, name);
+		{
+		  ERROR1 (error, ER_SM_ATTRIBUTE_PRIMARY_KEY_MEMBER, name);
+		}
 	      else
 		{
 		  WS_LIST_REMOVE (&template_->attributes, att);
@@ -2336,7 +2412,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	    }
 	}
       else
-	error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	{
+	  error = check_alias_delete (template_, name, ID_INSTANCE, error);
+	}
       break;
     case ID_CLASS:
       /* look at both attributes and methods for a name match */
@@ -2356,7 +2434,9 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	    }
 	}
       else
-	error = check_alias_delete (template_, name, ID_CLASS, error);
+	{
+	  error = check_alias_delete (template_, name, ID_CLASS, error);
+	}
       break;
     default:
       ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
@@ -2718,23 +2798,29 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
   char realname[SM_MAX_IDENTIFIER_LENGTH];
   char realalias[SM_MAX_IDENTIFIER_LENGTH];
 
+  if (name == NULL)
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
   /* hack, if the alias name is the same as the component name, get rid
      of it.  The system won't allow aliases that have the same name
      as an inherited component (i.e. you can't shadow with an alias).
    */
   if (alias != NULL && SM_COMPARE_NAMES (name, alias) == 0)
-    alias = NULL;
+    {
+      alias = NULL;
+    }
 
   if (alias != NULL && !sm_check_name (alias))
-    error = er_errid ();
-
+    {
+      error = er_errid ();
+    }
   else
     {
-      if (name != NULL)
-	{
-	  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-	  name = realname;
-	}
+      sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+      name = realname;
 
       if (alias != NULL)
 	{
@@ -2742,14 +2828,13 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 	  alias = realalias;
 	}
 
-      if ((error =
-	   check_local_definition (template_, name, alias,
-				   name_space)) == NO_ERROR)
+      error = check_local_definition (template_, name, alias, name_space);
+      if (error == NO_ERROR)
 	{
 
 	  /* make sure the super class actually has a component with this name */
-	  if (!check_resolution_name
-	      (super_class, name, (name_space == ID_CLASS) ? 1 : 0))
+	  if (!check_resolution_name (super_class, name,
+				      (name_space == ID_CLASS) ? 1 : 0))
 	    {
 	      /* need "attribute or method" not found */
 	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
@@ -2757,9 +2842,13 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 	  else
 	    {
 	      if (name_space == ID_INSTANCE)
-		reslist = &template_->resolutions;
+		{
+		  reslist = &template_->resolutions;
+		}
 	      else
-		reslist = &template_->class_resolutions;
+		{
+		  reslist = &template_->class_resolutions;
+		}
 
 	      /* look for an explicit resolution from a this or a different class,
 	         place this in "chosen".
@@ -2772,9 +2861,13 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		  if (SM_COMPARE_NAMES (res->name, name) == 0)
 		    {
 		      if (res->alias == NULL)
-			chosen = res;
+			{
+			  chosen = res;
+			}
 		      else if (res->class_mop == super_class)
-			prev_alias = res;
+			{
+			  prev_alias = res;
+			}
 		    }
 		}
 
@@ -2787,7 +2880,9 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		         give it the specified alias */
 		      chosen->alias = ws_copy_string (alias);
 		      if (chosen->alias == NULL)
-			error = er_errid ();
+			{
+			  error = er_errid ();
+			}
 		    }
 		  else if (prev_alias != NULL)
 		    {
@@ -2796,16 +2891,19 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		      db_ws_free ((char *) prev_alias->alias);
 		      prev_alias->alias = ws_copy_string (alias);
 		      if (prev_alias->alias == NULL)
-			error = er_errid ();
+			{
+			  error = er_errid ();
+			}
 		    }
 		  else
 		    {
 		      SM_RESOLUTION *res;
-		      res =
-			classobj_make_resolution (super_class, name, alias,
-						  name_space);
+		      res = classobj_make_resolution (super_class, name,
+						      alias, name_space);
 		      if (res == NULL)
-			error = er_errid ();
+			{
+			  error = er_errid ();
+			}
 		      /* we need to add a new entry with the alias */
 		      WS_LIST_APPEND (reslist, res);
 		    }
@@ -2818,11 +2916,12 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		      if (prev_alias == NULL)
 			{
 			  SM_RESOLUTION *res;
-			  res =
-			    classobj_make_resolution (super_class, name,
-						      alias, name_space);
+			  res = classobj_make_resolution (super_class, name,
+							  alias, name_space);
 			  if (res == NULL)
-			    error = er_errid ();
+			    {
+			      error = er_errid ();
+			    }
 			  /* we need to add a new entry */
 			  WS_LIST_APPEND (reslist, res);
 			}
@@ -2848,6 +2947,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 	    }
 	}
     }
+
   return (error);
 }
 
@@ -3120,10 +3220,15 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
        file != NULL && found == NULL; file = file->next, i++)
     {
       if (index == i)
-	found = file;
+	{
+	  found = file;
+	}
       else
-	prev = file;
+	{
+	  prev = file;
+	}
     }
+
   if (found == NULL)
     {
       error = ER_SM_QUERY_SPEC_NOT_FOUND;
@@ -3135,20 +3240,33 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
       if (prev == NULL)
 	{
 	  def->query_spec = classobj_make_query_spec (query);
+	  if (def->query_spec == NULL)
+	    {
+	      return er_errid ();
+	    }
 	  def->query_spec->next = found->next;
 	}
       else
 	{
 	  prev->next = classobj_make_query_spec (query);
+	  if (prev->next == NULL)
+	    {
+	      return er_errid ();
+	    }
 	  prev->next->next = found->next;
 	}
+
       classobj_free_query_spec (found);
       if (def->class_type == SM_LDBVCLASS_CT)
-	def->flag = CACHE_UPDATE;
+	{
+	  def->flag = CACHE_UPDATE;
+	}
     }
+
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * smt_downcase_all_class_info()
  *   return: none
@@ -3173,6 +3291,11 @@ smt_downcase_all_class_info (void)
 	{
 	  class_ =
 	    (SM_CLASS *) locator_fetch_class (lmops->mops[c], DB_FETCH_WRITE);
+
+	  if (class_ == NULL)
+	    {
+	      return;
+	    }
 
 	  FOR_ATTRIBUTES (class_->attributes, a)
 	    DOWNCASE_NAME (a->header.name, name_buf);
@@ -3199,3 +3322,4 @@ smt_downcase_all_class_info (void)
       locator_free_list_mops (lmops);
     }
 }
+#endif

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -33,8 +33,8 @@ main (int argc, char *argv[])
 #if defined (NDEBUG)
   fprintf (stdout, "\n%s (%s)\n\n", rel_name (), rel_build_number ());
 #else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s debug) \n\n", rel_name (),
-	   rel_build_number ());
+  fprintf (stdout, "\n%s (%s) (%d debug build) \n\n", rel_name (),
+	   rel_build_number (), rel_bit_platform ());
 #endif /* !NDEBUG */
   return 0;
 }

@@ -18,6 +18,6 @@
 #
 
 
-demodir = ${prefix}/demo
+demodir = @DEMO_DIR@
 demo_DATA = demodb_objects demodb_schema
 demo_SCRIPTS =  make_cubrid_demo.sh

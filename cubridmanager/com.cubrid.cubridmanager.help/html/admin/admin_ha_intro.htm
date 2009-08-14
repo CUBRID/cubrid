@@ -1,0 +1,113 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>개요</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body bgcolor="white" text="black" link="blue" vlink="purple" alink="red"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\nCUBRID HA\n개요");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_ha_intro.htm\">CUBRID HA<\/a> &nbsp;&gt;&nbsp; 개요<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>개요</h3>
+<p>High Availability(HA)란, 하드웨어, 소프트웨어, 네트워크 등에 장애가 발생하여도 지속적인 서비스를 제공해 주는 기능이다. 이 기능은 하루 24시간 1년 내내 서비스를 제공해야 하는 네트워킹 컴퓨팅 부분에서 필수적인 요소이다. HA시스템은 두 대 이상의 서버 시스템으로 구성하여 시스템 구성 요소 중의 한 요소에 장애가 발생하여도 중단 없는 서비스를 제공할 수 있다.</p>
+<p>High Availability 기능을 CUBRID에 적용한 것이 CUBRID HA 기능이며, CUBRID HA 기능은 여러 서버 시스템에서 데이터베이스를 항상 동기화된 상태로 유지하여 서비스를 제공한다. 또한 서비스를 수행중인 시스템에 예상치 못한 장애가 발생하였을 경우에는 자동으로 다른 시스템이 서비스를 수행하도록 하여 서비스 중단 시간을 최소화한다.</p>
+<p>CUBRID의 HA 기능은 shared-nothing 구조이며, 마스터 데이터베이스 서버로부터 슬레이브 데이터베이스 서버로의 데이터 동기화를 위해 다음 두 단계를 수행한다.</p>
+<ol>
+<li>마스터 데이터베이스서버에서 생성되는 트랜잭션 로그를 실시간으로 다른 node에 복제하는 트랜잭션 로그 다중화 단계</li>
+<li>실시간으로 복제되는 트랜잭션 로그를 분석하여 슬레이브 데이터베이스 서버로 데이터를 반영하는 트랜잭션 로그 반영 단계</li>
+</ol>
+<p>CUBRID HA 기능은 이 두 단계를 수행하여 마스터 데이터베이스와 슬레이브 데이터베이스 사이에 항상 동기화된 데이터를 유지할 수 있도록 한다. 따라서, 서비스를 제공 중이던 마스터 데이터베이스 서버에 예상치 못한 장애가 발생하였을 경우 슬레이브 데이터베이스 서버가 마스터 데이터베이스 서버를 대신하여 중단 없는 서비스를 제공할 수 있다. 장애 복구 후에도 동기화 과정이 자동으로 수행되어 항상 동일한 데이터가 유지된다.</p>
+<p>CUBRID HA 기능은 시스템과 CUBRID의 상태를 실시간으로 감시하고 장애 발생시 자동으로 절체를 수행하기 위하여 Linux-HA 프로젝트의 Heartbeat 솔루션을 사용하며 Heartbeat은 CUBRID 서버가 동작하는 모든 시스템에 설치되어 동작한다.</p>
+<p class="note"><span class="note-title">참고</span>복제 기능과 마찬가지로 기본 키가 설정된 테이블의 로그를 다중화할 수 있다.</p>
+<p class="note"><span class="notice-title">주의</span>CUBRID HA 기능은 Unix 계열에서만 지원한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

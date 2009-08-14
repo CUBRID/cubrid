@@ -537,10 +537,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\connection\oob_handler.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\connection\wintcp.c"
 					>
 				</File>

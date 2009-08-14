@@ -66,20 +66,17 @@
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "object_representation.h"
-#if !defined (SERVER_MODE)
-#include "boot_cl.h"
-#endif /* !SERVER_MODE */
 #include "message_catalog.h"
 #include "release_string.h"
 #include "environment_variable.h"
 #if defined (SERVER_MODE)
 #include "thread_impl.h"
-#endif /* SERVER_MODE */
+#else /* SERVER_MODE */
+#include "transaction_cl.h"
+#endif /* !SERVER_MODE */
 #include "critical_section.h"
 #include "error_manager.h"
-#if !defined(CS_MODE)
 #include "error_code.h"
-#endif /* !CS_MODE */
 #include "stack_dump.h"
 #include "log_impl.h"
 
@@ -112,22 +109,21 @@ syslog (long priority, const char *message, ...)
  * catalog, because they must be avilable if the message catalog is not
  * available.
  */
-static const char *english_er_severity[] =
-  { "WARNING", "ERROR", "SYNTAX ERROR", "FATAL ERROR", "NOTIFICATION" };
+static const char *er_severity_string[] =
+  { "FATAL ERROR", "ERROR", "SYNTAX ERROR", "WARNING", "NOTIFICATION" };
 
 static const char *er_unknown_severity = "Unknown severity level";
 
-static const char **er_severity_string = english_er_severity;
-
 #define ER_SEVERITY_STRING(severity) \
-    ( ( ((severity) >= ER_WARNING_SEVERITY) && 	\
-        ((severity) <= ER_MAX_SEVERITY)    ) ?	\
+    ( ( ((severity) >= ER_FATAL_ERROR_SEVERITY) && \
+        ((severity) <= ER_MAX_SEVERITY) ) ? \
      er_severity_string[severity] : er_unknown_severity )
 
 #define ER_ERROR_WARNING_STRING(severity) \
-    ( ( ((severity) > ER_WARNING_SEVERITY) && 	\
-        ((severity) <= ER_MAX_SEVERITY)    ) ?	\
+    ( ( ((severity) >= ER_FATAL_ERROR_SEVERITY) && \
+        ((severity) < ER_WARNING_SEVERITY) ) ? \
      er_severity_string[ER_ERROR_SEVERITY] : "" )
+
 
 /*
  * Message sets within the er.msg catalog.  Set #1 comprises the system
@@ -158,12 +154,6 @@ static const char **er_severity_string = english_er_severity;
   free((area)); \
     } while(0)
 #endif /* SERVER_MODE */
-
-
-#if !defined (CS_MODE)
-/* Used to point to the database name held in boot_sr.c(bo_Dbfullname[]) */
-static const char *er_Db_fullname = NULL;
-#endif /* !CS_MODE */
 
 
 /*
@@ -201,7 +191,8 @@ enum er_msg_no
   ER_LOG_DEBUG_NOTIFY,
   ER_STOP_MAIL_SUBJECT,
   ER_STOP_MAIL_BODY,
-  ER_STOP_SYSLOG
+  ER_STOP_SYSLOG,
+  ER_EVENT_HANDLER
 };
 
 static const char *er_builtin_msg[] = {
@@ -261,17 +252,19 @@ static const char *er_builtin_msg[] = {
   /* ER_STOP_MAIL_BODY */
   "--->>>\n%s has been stopped at your request when the following error was set:\nerrid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---",
   /* ER_STOP_SYSLOG */
-  "%s has been stopped on errid = %d. User: %s, pid: %d"
+  "%s has been stopped on errid = %d. User: %s, pid: %d",
+  /* ER_EVENT_HANDLER */
+  "er_init: cannot install event handler \"%s\""
 };
 static char *er_cached_msg[sizeof (er_builtin_msg) / sizeof (const char *)];
 static bool er_is_cached_msg = false;
 
-/** NAME OF TEXT AND LOG MESSAGE FILES  **/
+/* Error log message file related */
 static char er_Log_file_name[PATH_MAX];
 static const char *er_Msglog_file_name = NULL;
 static FILE *er_Msglog = NULL;
 
-static ER_FMT_CACHE er_cache;
+static ER_FMT er_fmt_list[(-ER_LAST_ERROR) + 1];
 #if !defined (SERVER_MODE)
 static ER_MSG ermsg = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
 static ER_MSG *er_Msg = NULL;
@@ -280,10 +273,21 @@ static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;
 
+/* Event handler related */
+static FILE *er_Event_pipe = NULL;
+static bool er_event_started = false;
+static jmp_buf er_Event_jmp_buf;
+static SIGNAL_HANDLER_FUNCTION saved_sig_handler;
+
 /* Other supporting global variables */
 static bool er_hasalready_initiated = false;
 static bool er_isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
+
+static void er_evnet_sigpipe_handler (int sig);
+static void er_event (void);
+static int er_event_init (void);
+static void er_event_final (void);
 
 static FILE *er_file_open (const char *path);
 static bool er_file_isa_null_device (const char *path);
@@ -297,7 +301,8 @@ static int er_start (THREAD_ENTRY * th_entry);
 static int er_start (void);
 #endif /* SERVER_MODE */
 
-static bool er_is_enable_call_stack_dump (int err_id);
+static void er_call_stack_dump_on_error (int err_id);
+static void er_notify_event_on_error (int err_id);
 static int er_set_internal (int severity, const char *file_name,
 			    const int line_no, int err_id, int num_args,
 			    bool include_os_error, va_list * ap_ptr);
@@ -307,7 +312,7 @@ static void er_stop_on_error (void);
 static int er_study_spec (const char *conversion_spec, char *simple_spec,
 			  int *position, int *width, int *va_class);
 static void er_study_fmt (ER_FMT * fmt);
-static int er_estimate_size (ER_FMT * fmt, va_list * ap);
+static size_t er_estimate_size (ER_FMT * fmt, va_list * ap);
 static ER_FMT *er_find_fmt (int err_id);
 static void er_init_fmt (ER_FMT * fmt);
 static void er_clear_fmt (ER_FMT * fmt);
@@ -315,23 +320,20 @@ static void er_clear_fmt (ER_FMT * fmt);
 static int er_make_room (int size, THREAD_ENTRY * th_entry);
 #else /* SERVER_MODE */
 static int er_make_room (int size);
-static void er_init_cache (void);
-static void er_clear_cache (void);
 #endif /* SERVER_MODE */
 static void er_internal_msg (ER_FMT * fmt, int code, int msg_num);
 static void *er_malloc_helper (int size, const char *file, int line);
 static void er_emergency (const char *file, int line, const char *fmt, ...);
 static int er_vsprintf (ER_FMT * fmt, va_list * ap);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-#if !defined(CS_MODE)
-static const char *er_dbname (void);
-#endif /* !CS_MODE */
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /* vector of functions to call when an error is set */
-static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] =
-  { NULL, er_log, er_log, er_log, er_log };
+static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
+  er_log,			/* ER_FATAL_ERROR_SEVERITY */
+  er_log,			/* ER_ERROR_SEVERITY */
+  er_log,			/* ER_SYNTAX_ERROR_SEVERITY */
+  er_log,			/* ER_WARNING_SEVERITY */
+  er_log			/* ER_NOTIFICATION_SEVERITY */
+};
 
 
 /*
@@ -342,6 +344,196 @@ const char *
 er_msglog_filename (void)
 {
   return er_Msglog_file_name;
+}
+
+
+/*
+ * er_event_sigpipe_handler
+ */
+static void
+er_evnet_sigpipe_handler (int sig)
+{
+  _longjmp (er_Event_jmp_buf, 1);
+}
+
+/*
+ * er_event - Notify a error event to the handler
+ *   return: none
+ */
+static void
+er_event (void)
+{
+  int err_id, severity, nlevels, line_no;
+  const char *file_name, *msg;
+
+  if (er_Event_pipe == NULL || er_event_started == false)
+    {
+      return;
+    }
+
+  /* Get the most detailed error message available */
+  er_all (&err_id, &severity, &nlevels, &line_no, &file_name, &msg);
+
+#if !defined(WINDOWS)
+  saved_sig_handler =
+    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+#endif /* not WINDOWS */
+  if (_setjmp (er_Event_jmp_buf) == 0)
+    {
+      fprintf (er_Event_pipe, "%d %s %s\n", err_id,
+	       ER_SEVERITY_STRING (severity), msg);
+      fflush (er_Event_pipe);
+    }
+  else
+    {
+      er_event_started = false;
+      if (er_hasalready_initiated)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
+		  PRM_EVENT_HANDLER);
+	}
+      if (er_Event_pipe != NULL)
+	{
+	  fclose (er_Event_pipe);
+	  er_Event_pipe = NULL;
+	}
+    }
+#if !defined(WINDOWS)
+  os_set_signal_handler (SIGPIPE, saved_sig_handler);
+#endif /* not WINDOWS */
+}
+
+/*
+ * er_evnet_init
+ */
+static int
+er_event_init (void)
+{
+  int error = NO_ERROR;
+  const char *msg;
+
+#if !defined(WINDOWS)
+  saved_sig_handler =
+    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+#endif /* not WINDOWS */
+  if (_setjmp (er_Event_jmp_buf) == 0)
+    {
+      er_event_started = false;
+      if (er_Event_pipe != NULL)
+	{
+	  if (er_hasalready_initiated)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EV_STOPPED,
+		      0);
+	    }
+	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				-ER_EV_STOPPED);
+	  fprintf (er_Event_pipe, "%d %s %s", ER_EV_STOPPED,
+		   ER_SEVERITY_STRING (ER_NOTIFICATION_SEVERITY),
+		   (msg ? msg : "?"));
+
+	  fflush (er_Event_pipe);
+	  pclose (er_Event_pipe);
+	  er_Event_pipe = NULL;
+	}
+
+      er_Event_pipe = popen (PRM_EVENT_HANDLER, "w");
+      if (er_Event_pipe != NULL)
+	{
+	  if (er_hasalready_initiated)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EV_STARTED,
+		      0);
+	    }
+	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				-ER_EV_STARTED);
+	  fprintf (er_Event_pipe, "%d %s %s", ER_EV_STARTED,
+		   ER_SEVERITY_STRING (ER_NOTIFICATION_SEVERITY),
+		   (msg ? msg : "?"));
+
+	  fflush (er_Event_pipe);
+	  er_event_started = true;
+	}
+      else
+	{
+	  if (er_hasalready_initiated)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_CONNECT_HANDLER,
+		      1, PRM_EVENT_HANDLER);
+	    }
+	  error = ER_EV_CONNECT_HANDLER;
+	}
+    }
+  else
+    {
+      if (er_hasalready_initiated)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
+		  PRM_EVENT_HANDLER);
+	}
+      if (er_Event_pipe != NULL)
+	{
+	  fclose (er_Event_pipe);
+	  er_Event_pipe = NULL;
+	}
+      error = ER_EV_BROKEN_PIPE;
+    }
+#if !defined(WINDOWS)
+  os_set_signal_handler (SIGPIPE, saved_sig_handler);
+#endif /* not WINDOWS */
+
+  return error;
+}
+
+/*
+ * er_event_final
+ */
+static void
+er_event_final (void)
+{
+  const char *msg;
+
+#if !defined(WINDOWS)
+  saved_sig_handler =
+    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+#endif /* not WINDOWS */
+  if (_setjmp (er_Event_jmp_buf) == 0)
+    {
+      er_event_started = false;
+      if (er_Event_pipe != NULL)
+	{
+	  if (er_hasalready_initiated)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EV_STOPPED,
+		      0);
+	    }
+	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				-ER_EV_STOPPED);
+	  fprintf (er_Event_pipe, "%d %s %s", ER_EV_STOPPED,
+		   ER_SEVERITY_STRING (ER_NOTIFICATION_SEVERITY),
+		   (msg ? msg : "?"));
+
+	  fflush (er_Event_pipe);
+	  pclose (er_Event_pipe);
+	  er_Event_pipe = NULL;
+	}
+    }
+  else
+    {
+      if (er_hasalready_initiated)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EV_BROKEN_PIPE, 1,
+		  PRM_EVENT_HANDLER);
+	}
+      if (er_Event_pipe != NULL)
+	{
+	  fclose (er_Event_pipe);
+	  er_Event_pipe = NULL;
+	}
+    }
+#if !defined(WINDOWS)
+  os_set_signal_handler (SIGPIPE, saved_sig_handler);
+#endif /* not WINDOWS */
 }
 
 /*
@@ -361,9 +553,7 @@ int
 er_init (const char *msglog_file_name, int exit_ask)
 {
   unsigned int i;
-#if defined (SERVER_MODE)
   int r;
-#endif /* SERVER_MODE */
 
 #if defined (SA_MODE)
   /*
@@ -376,14 +566,6 @@ er_init (const char *msglog_file_name, int exit_ask)
     }
 #endif /* SA_MODE */
 
-  if (PRM_ER_LOG_WARNING)
-    {
-      /* if we want warnings logged to the error log */
-      er_Fnlog[0] = er_log;
-    }
-
-  er_severity_string = english_er_severity;
-
   for (i = 0; i < DIM (er_builtin_msg); i++)
     {
       if (er_cached_msg[i] && er_cached_msg[i] != er_builtin_msg[i])
@@ -393,21 +575,18 @@ er_init (const char *msglog_file_name, int exit_ask)
       er_cached_msg[i] = (char *) er_builtin_msg[i];
     }
 
-#if defined (SERVER_MODE)
-  for (i = 0; i < DIM (er_cache.fmt); i++)
+  assert (DIM (er_fmt_list) > abs (ER_LAST_ERROR));
+
+  for (i = 0; i < abs (ER_LAST_ERROR); i++)
     {
-      er_init_fmt (&er_cache.fmt[i]);
+      er_init_fmt (&er_fmt_list[i]);
     }
-  er_cache.timestamp = 0;
 
   r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
   if (r != NO_ERROR)
     {
       return ER_FAILED;
     }
-#else /* SERVER_MODE */
-  er_init_cache ();
-#endif /* SERVER_MODE */
 
   switch (exit_ask)
     {
@@ -448,7 +627,7 @@ er_init (const char *msglog_file_name, int exit_ask)
 	{
 	  strncpy (er_Log_file_name, msglog_file_name, PATH_MAX - 1);
 	}
-      er_Log_file_name[PATH_MAX] = '\0';
+      er_Log_file_name[PATH_MAX - 1] = '\0';
       er_Msglog_file_name = er_Log_file_name;
     }
   else
@@ -457,6 +636,18 @@ er_init (const char *msglog_file_name, int exit_ask)
     }
 
   er_hasalready_initiated = true;
+
+  /*
+   * Install event handler
+   */
+  if (PRM_EVENT_HANDLER != NULL && *PRM_EVENT_HANDLER != '\0')
+    {
+      if (er_event_init () != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_EVENT_HANDLER],
+			PRM_EVENT_HANDLER);
+	}
+    }
 
   csect_exit (CSECT_ER_LOG_FILE);
 
@@ -483,14 +674,14 @@ er_file_open (const char *path)
 	{
 	  if (mkdir (dir, 0777) < 0 && errno == ENOENT)
 	    {
-	      free (tpath);
+	      free_and_init (tpath);
 	      tpath = strdup (dir);
 	      continue;
 	    }
 	}
       break;
     }
-  free (tpath);
+  free_and_init (tpath);
 
   /* note: in "a+" mode, output is alwarys appended */
   fp = fopen (path, "r+");
@@ -572,9 +763,9 @@ er_start (THREAD_ENTRY * th_entry)
   if (er_hasalready_initiated == false)
     {
       (void) er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK);
+      if (er_hasalready_initiated == false)
+	return ER_FAILED;
     }
-  while (!er_hasalready_initiated)
-    ;
   if (th_entry->er_Msg != NULL)
     {
       fprintf (stderr, er_cached_msg[ER_ER_HEADER], __LINE__);
@@ -595,6 +786,11 @@ er_start (THREAD_ENTRY * th_entry)
   th_entry->er_Msg->nargs = 0;
 
   r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  if (r != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   /* Define message log file */
   if (logfile_opened == false)
     {
@@ -629,7 +825,7 @@ er_start (THREAD_ENTRY * th_entry)
 
   /*
    * Message catalog may be initialized by msgcat_init() during bootstrap.
-   * But, try once more to call msgcat_init() becuase there could be
+   * But, try once more to call msgcat_init() because there could be
    * an exception case that get here before bootstrap.
    */
   if (msgcat_init () != NO_ERROR)
@@ -690,7 +886,9 @@ er_start (void)
   /* Make sure that the behavior of the module has been defined */
 
   if (er_hasalready_initiated == false)
-    (void) er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK);
+    {
+      (void) er_init (PRM_ER_LOG_FILE, PRM_ER_EXIT_ASK);
+    }
 
   /*
    * If the error module has already been initialized, shutted down
@@ -698,7 +896,9 @@ er_start (void)
    */
 
   if (er_Msg != NULL)
-    er_final ();
+    {
+      er_final ();
+    }
 
   er_Msg = &ermsg;
   er_Msg->err_id = NO_ERROR;
@@ -803,6 +1003,12 @@ er_final (bool do_global_final)
   THREAD_ENTRY *th_entry;
 
   r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  if (r != NO_ERROR)
+    {
+      return;
+    }
+
+  er_event_final ();
 
   if (do_global_final == false)
     {
@@ -823,7 +1029,7 @@ er_final (bool do_global_final)
 	    sizeof (th_entry->er_emergency_buf);
 	  if (th_entry->er_Msg->args)
 	    {
-	      free (th_entry->er_Msg->args);
+	      free_and_init (th_entry->er_Msg->args);
 	    }
 	  th_entry->er_Msg->nargs = 0;
 
@@ -842,7 +1048,10 @@ er_final (bool do_global_final)
 	  logfile_opened = false;
 	}
 
-      /* er_clear_cache(); I leave this function to the system. */
+      for (i = 0; i < DIM (er_fmt_list); i++)
+	{
+	  er_clear_fmt (&er_fmt_list[i]);
+	}
 
       for (i = 0; i < DIM (er_cached_msg); i++)
 	{
@@ -854,6 +1063,7 @@ er_final (bool do_global_final)
 	}
     }
 exit:
+  er_hasalready_initiated = false;
   r = csect_exit (CSECT_ER_LOG_FILE);
 }
 
@@ -868,6 +1078,8 @@ er_final (void)
 {
   unsigned int i;
 
+  er_event_final ();
+
   if (er_Msg != NULL)
     {
       er_stack_clear ();
@@ -878,10 +1090,14 @@ er_final (void)
       er_Msg->msg_area_size = sizeof (er_emergency_buf);
       if (er_Msg->args)
 	{
-	  free (er_Msg->args);
+	  free_and_init (er_Msg->args);
 	}
       er_Msg->nargs = 0;
-      er_clear_cache ();
+
+      for (i = 0; i < DIM (er_fmt_list); i++)
+	{
+	  er_clear_fmt (&er_fmt_list[i]);
+	}
 
       er_Msg = NULL;
     }
@@ -894,6 +1110,8 @@ er_final (void)
 	  er_cached_msg[i] = (char *) er_builtin_msg[i];
 	}
     }
+
+  er_hasalready_initiated = false;
 }
 #endif /* SERVER_MODE */
 
@@ -1027,21 +1245,59 @@ er_set_with_oserror (int severity, const char *file_name, const int line_no,
 }
 
 /*
- * is_for_call_stack_dump - is the error identifier set for call stack
- *                          dump on error
- *   return: true or false
+ * er_notify_event_on_error - notify event
+ *   return: none
  *   err_id(in):
  */
-static bool
-er_is_enable_call_stack_dump (int err_id)
+static void
+er_notify_event_on_error (int err_id)
 {
+  assert (err_id != NO_ERROR);
+
+  err_id = abs (err_id);
+  if (PRM_EVENT_ACTIVATION)
+    {
+      if (PRM_EVENT_ACTIVATION[err_id] == true)
+	{
+	  er_event ();
+	}
+    }
+}
+
+/*
+ * er_call_stack_dump_on_error - call stack dump
+ *   return: none
+ *   err_id(in):
+ */
+static void
+er_call_stack_dump_on_error (int err_id)
+{
+  assert (err_id != NO_ERROR);
+
+  err_id = abs (err_id);
   if (PRM_CALL_STACK_DUMP_ON_ERROR)
     {
-      return !PRM_CALL_STACK_DUMP_DEACTIVE_ERRORS[abs (err_id)];
+      if (PRM_CALL_STACK_DUMP_DEACTIVATION)
+	{
+	  if (PRM_CALL_STACK_DUMP_DEACTIVATION[err_id] == false)
+	    {
+	      er_dump_call_stack (er_Msglog);
+	    }
+	}
+      else
+	{
+	  er_dump_call_stack (er_Msglog);
+	}
     }
   else
     {
-      return PRM_CALL_STACK_DUMP_ACTIVE_ERRORS[abs (err_id)];
+      if (PRM_CALL_STACK_DUMP_ACTIVATION)
+	{
+	  if (PRM_CALL_STACK_DUMP_ACTIVATION[err_id] == true)
+	    {
+	      er_dump_call_stack (er_Msglog);
+	    }
+	}
     }
 }
 
@@ -1064,8 +1320,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 {
   va_list ap;
   const char *os_error;
-  int new_size;
+  size_t new_size;
   ER_FMT *er_fmt = NULL;
+  int r;
 #if defined (SERVER_MODE)
   ER_MSG *er_Msg;
   THREAD_ENTRY *th_entry;
@@ -1091,6 +1348,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   if (er_Msg == NULL)
     (void) er_start ();
 #endif /* SERVER_MODE */
+
   /* Initialize the area... */
   er_Msg->err_id = err_id;
   er_Msg->severity = severity;
@@ -1109,6 +1367,13 @@ er_set_internal (int severity, const char *file_name, const int line_no,
        */
       return ER_FAILED;
     }
+
+  if (err_id >= ER_FAILED || err_id <= ER_LAST_ERROR)
+    {
+      assert (0);		/* invalid error id */
+      err_id = ER_FAILED;	/* invalid error id handling */
+    }
+
 
   /*
    * Be sure that we have the same number of arguments before calling
@@ -1163,14 +1428,20 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   /*
    * Call the logging function if any
    */
-  if (er_Fnlog[severity] != NULL)
+  if (severity <= PRM_ER_LOG_LEVEL && er_Fnlog[severity] != NULL)
     {
-      (*er_Fnlog[severity]) ();
-
-      /* call stack dump */
-      if (er_is_enable_call_stack_dump (err_id))
+      r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+      if (r == NO_ERROR)
 	{
-	  er_dump_call_stack (er_Msglog);
+	  (*er_Fnlog[severity]) ();
+
+	  /* call stack dump */
+	  er_call_stack_dump_on_error (err_id);
+
+	  /* event handler */
+	  er_notify_event_on_error (err_id);
+
+	  csect_exit (CSECT_ER_LOG_FILE);
 	}
     }
 
@@ -1179,7 +1450,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
    * purposes?
    */
   if (PRM_ER_STOP_ON_ERROR == err_id)
-    er_stop_on_error ();
+    {
+      er_stop_on_error ();
+    }
 
   return NO_ERROR;
 }
@@ -1197,15 +1470,8 @@ er_stop_on_error (void)
   int exit_requested;
 
 #if !defined (WINDOWS)
-  char user_name[L_cuserid];
-
-  if (getuserid (user_name, L_cuserid) == NULL)
-    {
-      strcpy (user_name, "???");
-    }
-
   syslog (LOG_ALERT, er_cached_msg[ER_STOP_SYSLOG],
-	  rel_name (), er_errid (), user_name, getpid ());
+	  rel_name (), er_errid (), cuserid (NULL), getpid ());
 #endif /* !WINDOWS */
   (void) fprintf (stderr, "%s", er_cached_msg[ER_ER_ASK]);
   if (scanf ("%d", &exit_requested) != 1)
@@ -1275,19 +1541,14 @@ er_log (void)
 
       if (!er_isa_null_device)
 	{
-	  ret = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
-	  if (ret == NO_ERROR)
-	    {
-	      er_Msglog = er_file_backup (er_Msglog, er_Msglog_file_name);
+	  er_Msglog = er_file_backup (er_Msglog, er_Msglog_file_name);
 
-	      if (er_Msglog == NULL)
-		{
-		  er_Msglog = stderr;
-		  er_log_debug (ARG_FILE_LINE,
-				er_cached_msg[ER_LOG_MSGLOG_WARNING],
-				er_Msglog_file_name);
-		}
-	      csect_exit (CSECT_ER_LOG_FILE);
+	  if (er_Msglog == NULL)
+	    {
+	      er_Msglog = stderr;
+	      er_log_debug (ARG_FILE_LINE,
+			    er_cached_msg[ER_LOG_MSGLOG_WARNING],
+			    er_Msglog_file_name);
 	    }
 	}
       else
@@ -1315,12 +1576,17 @@ er_log (void)
 #else /* SERVER_MODE && !WINDOWS */
   er_tm_p = localtime (&er_time);
 #endif /* SERVER_MODE && !WINDOWS */
-  strftime (time_array, 256, "%c", er_tm_p);
-  gettimeofday (&tv, NULL);
-  time_array[255] = '\0';
-  snprintf (time_array +
-	    strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
-	    ".%03ld", tv.tv_usec / 1000);
+  if (er_tm_p == NULL)
+    {
+      strcpy (time_array, "00/00/00 00:00:00.000");
+    }
+  else
+    {
+      gettimeofday (&tv, NULL);
+      snprintf (time_array +
+		strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
+		".%03ld", tv.tv_usec / 1000);
+    }
 
   more_info_p = (char *) "";
 
@@ -1375,12 +1641,6 @@ er_log (void)
 		      ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
 		      more_info_p, msg);
       (void) fflush (er_Msglog);
-      if (severity == ER_NOTIFICATION_SEVERITY)
-	(void) syslog (LOG_ALERT, er_cached_msg[ER_LOG_SYSLOG_WRAPPER],
-		       getpid (),
-		       ER_SEVERITY_STRING (severity),
-		       ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
-		       msg);
     }
   else
     {
@@ -1389,12 +1649,6 @@ er_log (void)
 		      line_no, ER_ERROR_WARNING_STRING (severity), err_id,
 		      tran_index, more_info_p, msg);
       (void) fflush (er_Msglog);
-      if (severity == ER_NOTIFICATION_SEVERITY)
-	(void) syslog (LOG_ALERT, er_cached_msg[ER_LOG_SYSLOG_WRAPPER_D],
-		       getpid (),
-		       ER_SEVERITY_STRING (severity), file_name, line_no,
-		       ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
-		       msg);
     }
 
   /* Flush the message so it is printed immediately */
@@ -1594,13 +1848,21 @@ er_msg ()
     {
       (void) er_clear ();
     }
-  if (!th_entry->er_Msg->msg_area[0])
+
+  if (th_entry->er_Msg == NULL)
+    {
+      return NULL;
+    }
+
+  if (th_entry->er_Msg->msg_area[0] == '\0')
     {
       strncpy (th_entry->er_Msg->msg_area, er_cached_msg[ER_ER_MISSING_MSG],
 	       th_entry->er_Msg->msg_area_size);
       th_entry->er_Msg->msg_area[th_entry->er_Msg->msg_area_size - 1] = '\0';
     }
+
   return th_entry->er_Msg->msg_area;
+
 #else /* SERVER_MODE */
   if (er_Msg == NULL)
     {
@@ -1685,7 +1947,10 @@ er_print (void)
 #else /* SERVER_MODE && !WINDOWS */
   er_tm_p = localtime (&er_time);
 #endif /* SERVER_MODE && !WINDOWS */
-  strftime (time_array_p, 256, "%c", er_tm_p);
+  if (er_tm_p)
+    {
+      strftime (time_array_p, 256, "%c", er_tm_p);
+    }
 
 #if defined (SERVER_MODE)
   tran_index = thread_get_current_tran_index ();
@@ -1711,7 +1976,6 @@ er_print (void)
 
 }
 
-#if !defined(NDEBUG)
 /*
  * er_log_debug - Print debugging message to the log file
  *   return: none
@@ -1723,7 +1987,7 @@ er_print (void)
  * Note:
  */
 void
-er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
   FILE *out;
@@ -1742,6 +2006,10 @@ er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 #endif /* SERVER_MODE */
 
   r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  if (r != NO_ERROR)
+    {
+      return;
+    }
 
   if (er_Msg == NULL)
     {
@@ -1772,12 +2040,17 @@ er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 #else /* SERVER_MODE && !WINDOWS */
       er_tm_p = localtime (&er_time);
 #endif /* SERVER_MODE && !WINDOWS */
-      strftime (time_array, 256, "%c", er_tm_p);
-      gettimeofday (&tv, NULL);
-      time_array[255] = '\0';
-      snprintf (time_array +
-		strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255,
-		".%03ld", tv.tv_usec / 1000);
+      if (er_tm_p == NULL)
+	{
+	  strcpy (time_array, "00/00/00 00:00:00.000");
+	}
+      else
+	{
+	  gettimeofday (&tv, NULL);
+	  snprintf (time_array +
+		    strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p),
+		    255, ".%03ld", tv.tv_usec / 1000);
+	}
 
       (void) fprintf (out, er_cached_msg[ER_LOG_DEBUG_NOTIFY], time_array,
 		      file_name, line_no);
@@ -1791,7 +2064,6 @@ er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   csect_exit (CSECT_ER_LOG_FILE);
 }
-#endif /* NDEBUG */
 
 /*
  * er_get_area_error - Flatten error information into an area
@@ -1860,7 +2132,7 @@ int
 er_set_area_error (void *server_area)
 {
   char *ptr;
-  int err_id, severity, length;
+  int err_id, severity, length, r;
 #if defined (SERVER_MODE)
   ER_MSG *er_Msg;
   THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
@@ -1912,10 +2184,16 @@ er_set_area_error (void *server_area)
     }
 
   /* Call the logging function if any */
-  if (er_Fnlog[severity] != NULL)
+  if (severity <= PRM_ER_LOG_LEVEL && er_Fnlog[severity] != NULL)
     {
-      (*er_Fnlog[severity]) ();
+      r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+      if (r == NO_ERROR)
+	{
+	  (*er_Fnlog[severity]) ();
+	  csect_exit (CSECT_ER_LOG_FILE);
+	}
     }
+
   return er_Msg->err_id;
 }
 
@@ -2010,9 +2288,9 @@ er_stack_pop (void)
 #endif /* SERVER_MODE */
   if (old_msg->args)
     {
-      free (old_msg->args);
+      free_and_init (old_msg->args);
     }
-  free (old_msg);
+  free_and_init (old_msg);
 
   return NO_ERROR;
 }
@@ -2047,13 +2325,13 @@ er_stack_clear (void)
 #endif /* SERVER_MODE */
   if (next_msg->args)
     {
-      free (next_msg->args);
+      free_and_init (next_msg->args);
     }
   save_stack = next_msg->stack;
   *next_msg = *er_Msg;
   next_msg->stack = save_stack;
 
-  free (er_Msg);
+  free_and_init (er_Msg);
 #if defined  SERVER_MODE
   th_entry->er_Msg = next_msg;
 #else /* SERVER_MODE */
@@ -2310,7 +2588,7 @@ er_study_fmt (ER_FMT * fmt)
 		return;
 	      memcpy (new_spec, fmt->spec, fmt->spec_top * sizeof (ER_SPEC));
 	      if (fmt->spec != fmt->spec_buf)
-		free (fmt->spec);
+		free_and_init (fmt->spec);
 	      fmt->spec = new_spec;
 	      fmt->spec_top = (n + 1);
 	    }
@@ -2361,11 +2639,11 @@ er_study_fmt (ER_FMT * fmt)
  *
  * DOESN'T AFFECT THE CALLER'S VIEW OF THE VA_LIST.
  */
-static int
+static size_t
 er_estimate_size (ER_FMT * fmt, va_list * ap)
 {
   int i, n, width;
-  int len;
+  size_t len;
   va_list args;
   const char *str;
 
@@ -2448,103 +2726,65 @@ er_find_fmt (int err_id)
 {
   const char *msg;
   ER_FMT *fmt;
-  int msg_length, slot, slot_age;
-  unsigned int i;
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
-#endif /* SERVER_MODE */
+  int msg_length;
+  int r;
 
-  er_cache.timestamp++;
-#if defined (SERVER_MODE)
-  /* when timestamp(int) overflows */
-  if (er_cache.timestamp < 0)
+  if (err_id < ER_FAILED && err_id > ER_LAST_ERROR)
     {
-      er_cache.timestamp = 1;
-      for (i = 0; i < DIM (er_cache.fmt); i++)
-	er_cache.fmt[i].age = er_cache.timestamp++;
+      fmt = &er_fmt_list[-err_id];
     }
-#endif /* SERVER_MODE */
-
-  /* * See if we have already cached the ER_FMT for this message id.  */
-  for (i = 0; i < DIM (er_cache.fmt); i++)
+  else
     {
-      if (er_cache.fmt[i].err_id == err_id)
+      assert (0);
+      fmt = &er_fmt_list[-ER_FAILED];
+    }
+
+  if (fmt->fmt == NULL)
+    {
+      r = csect_enter (NULL, CSECT_ER_MSG_CACHE, INF_WAIT);
+      if (r != NO_ERROR)
 	{
-	  /*
-	   * Record the fact that we have recently asked for this
-	   * message, so it won't get evicted quite so easily.
-	   */
-	  er_cache.fmt[i].age = er_cache.timestamp;
-	  return &er_cache.fmt[i];
+	  return NULL;
 	}
-    }
 
-  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -err_id);
-  if (msg == NULL || msg[0] == '\0')
-    {
-      er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_ER_LOG_MISSING_MSG],
-		    err_id);
-      msg = er_cached_msg[ER_ER_MISSING_MSG];
-    }
-  msg_length = strlen (msg);
-
-  /*
-   * Now find a cache slot in which to store the info about this
-   * message.  If the cache is full, kick out the entry that has been
-   * used least recently.
-   */
-  slot = 0;
-  slot_age = er_cache.fmt[0].age;
-  for (i = 0; i < DIM (er_cache.fmt); i++)
-    {
-      if (er_cache.fmt[i].age == 0)
-	{			/* Unused */
-	  slot = i;
-	  break;
-	}
-      else if (er_cache.fmt[i].age < slot_age)
+      /* check one more time */
+      if (fmt->fmt != NULL)
 	{
-	  slot = i;
-	  slot_age = er_cache.fmt[i].age;
+	  csect_exit (CSECT_ER_MSG_CACHE);
+	  return fmt;
 	}
-    }
 
-  fmt = &er_cache.fmt[slot];
+      msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -err_id);
+      if (msg == NULL || msg[0] == '\0')
+	{
+	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_ER_LOG_MISSING_MSG],
+			err_id);
+	  msg = er_cached_msg[ER_ER_MISSING_MSG];
+	}
 
-  fmt->err_id = err_id;
-  fmt->age = er_cache.timestamp;
+      msg_length = strlen (msg);
 
-  /*
-   * Try to reuse the area allocated for the previous format string, if
-   * possible.
-   */
-#if !defined (SERVER_MODE)
-  if (msg_length > fmt->fmt_length)
-    {
-#endif /* !SERVER_MODE */
-      if (fmt->fmt && fmt->must_free)
-	free ((char *) fmt->fmt);
       fmt->fmt = (char *) ER_MALLOC (msg_length + 1);
       if (fmt->fmt == NULL)
 	{
-#if defined (SERVER_MODE)
-	  er_internal_msg (fmt, th_entry->er_Msg->err_id, ER_ER_MISSING_MSG);
-#else /* SERVER_MODE */
-	  er_internal_msg (fmt, er_Msg->err_id, ER_ER_MISSING_MSG);
-#endif /* SERVER_MODE */
+	  er_internal_msg (fmt, err_id, ER_ER_MISSING_MSG);
+	  csect_exit (CSECT_ER_MSG_CACHE);
 	  return NULL;
 	}
+
       fmt->fmt_length = msg_length;
       fmt->must_free = 1;
-#if !defined (SERVER_MODE)
-    }
-#endif /* !SERVER_MODE */
-  strcpy (fmt->fmt, msg);
 
-  /*
-   * Now study the format specs and squirrel away info about them.
-   */
-  er_study_fmt (fmt);
+      strcpy (fmt->fmt, msg);
+
+      /*
+       * Now study the format specs and squirrel away info about them.
+       */
+      er_study_fmt (fmt);
+      fmt->err_id = err_id;
+
+      csect_exit (CSECT_ER_MSG_CACHE);
+    }
 
   return fmt;
 }
@@ -2558,7 +2798,6 @@ static void
 er_init_fmt (ER_FMT * fmt)
 {
   fmt->err_id = 0;
-  fmt->age = 0;
   fmt->fmt = NULL;
   fmt->fmt_length = 0;
   fmt->must_free = 0;
@@ -2577,7 +2816,7 @@ er_clear_fmt (ER_FMT * fmt)
 {
   if (fmt->fmt && fmt->must_free)
     {
-      free (fmt->fmt);
+      free_and_init (fmt->fmt);
     }
   fmt->fmt = NULL;
   fmt->fmt_length = 0;
@@ -2585,7 +2824,7 @@ er_clear_fmt (ER_FMT * fmt)
 
   if (fmt->spec && fmt->spec != fmt->spec_buf)
     {
-      free (fmt->spec);
+      free_and_init (fmt->spec);
     }
   fmt->spec = fmt->spec_buf;
   fmt->spec_top = DIM (fmt->spec_buf);
@@ -2610,47 +2849,6 @@ er_internal_msg (ER_FMT * fmt, int code, int msg_num)
   fmt->must_free = 0;
 }
 
-
-#if !defined (SERVER_MODE)
-/*
- * er_init_cache -
- *   return: none
- */
-static void
-er_init_cache (void)
-{
-  unsigned int i;
-
-  for (i = 0; i < DIM (er_cache.fmt); i++)
-    {
-      er_init_fmt (&er_cache.fmt[i]);
-    }
-
-  er_cache.timestamp = 0;
-}
-
-/*
- * er_clear_cache -
- *   return: none
- */
-static void
-er_clear_cache (void)
-{
-  unsigned int i;
-  ER_FMT *fmt;
-  int r;
-
-  r = csect_enter (NULL, CSECT_ER_MSG_CACHE, INF_WAIT);
-
-  for (i = 0; i < DIM (er_cache.fmt); i++)
-    {
-      fmt = &er_cache.fmt[i];
-      er_clear_fmt (fmt);
-      er_init_fmt (fmt);
-    }
-  csect_exit (CSECT_ER_MSG_CACHE);
-}
-#endif /* !SERVER_MODE */
 
 
 #if defined (SERVER_MODE)
@@ -2777,7 +2975,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
    * stuff.
    */
   sprintf (er_Msg->msg_area, er_cached_msg[ER_ER_HEADER], line);
-  limit = er_Msg->msg_area_size - strlen (er_Msg->msg_area);
+  limit = er_Msg->msg_area_size - strlen (er_Msg->msg_area) - 1;
 
   va_start (args, fmt);
 
@@ -2849,51 +3047,6 @@ er_emergency (const char *file, int line, const char *fmt, ...)
   er_log ();
 }
 
-#if defined (SERVER_MODE)
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * check_cache_consistency -
- *   return:
- *   fmt(in/out):
- */
-int
-check_cache_consistency (ER_FMT * fmt)
-{
-  int i;
-  int r = 1;
-  ER_FMT tmp_fmt;
-
-  tmp_fmt.err_id = fmt->err_id;
-  tmp_fmt.spec_top = DIM (tmp_fmt.spec_buf);
-  tmp_fmt.spec = tmp_fmt.spec_buf;
-  tmp_fmt.fmt_length = strlen (fmt->fmt);
-  tmp_fmt.fmt = (char *) ER_MALLOC (tmp_fmt.fmt_length + 1);
-  strcpy (tmp_fmt.fmt, fmt->fmt);
-  er_study_fmt (&tmp_fmt);
-
-  /*if(tmp_fmt.fmt_length != fmt->fmt_length || */
-  if (tmp_fmt.nspecs != fmt->nspecs || tmp_fmt.spec_top != fmt->spec_top)
-    {
-      r = 0;
-    }
-
-  for (i = 0; i < tmp_fmt.nspecs; i++)
-    {
-      if (tmp_fmt.spec[i].code != fmt->spec[i].code)
-	{
-	  r = 0;
-	}
-    }
-
-  if (tmp_fmt.fmt)
-    {
-      free (tmp_fmt.fmt);
-    }
-
-  return r;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif /* SERVER_MODE */
 
 /*
  * er_vsprintf -
@@ -2956,7 +3109,7 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       int size;
 
       if (er_Msg->args)
-	free (er_Msg->args);
+	free_and_init (er_Msg->args);
       size = fmt->nspecs * sizeof (ER_VA_ARG);
       er_Msg->args = (ER_VA_ARG *) ER_MALLOC (size);
       if (er_Msg->args == NULL)
@@ -3106,59 +3259,3 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 
   return NO_ERROR;
 }
-
-#if !defined(CS_MODE)
-
-/*
- * er_save_dbname - Save a pointer to the variable holding the database name
- *   return: none
- *   dbname(in):
- *   arg2(in):
- *
- * Note: Initializes the global er_Db_fullname to the pointer.
- */
-void
-er_save_dbname (const char *dbname)
-{
-  er_Db_fullname = dbname;
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * er_dbname - Returns a pointer to the database name string
- *   return: a local pointer to the saved database name
- *
- * Note: Strips off the leading path name
- */
-static const char *
-er_dbname ()
-{
-  const char *nopath_name;
-
-  if (!er_Db_fullname || !(*er_Db_fullname))
-    {
-      return (NULL);
-    }
-  nopath_name = strrchr (er_Db_fullname, PATHSLASH);
-#if defined (WINDOWS)
-  {
-    char *nn_tmp = (char *) strrchr (er_Db_fullname, '/');
-    if (nopath_name < nn_tmp)
-      {
-	nopath_name = nn_tmp;
-      }
-  }
-#endif /* WINDOWS */
-  if (nopath_name == NULL)
-    {
-      nopath_name = er_Db_fullname;
-    }
-  else
-    {
-      nopath_name++;		/* Skip to the name */
-    }
-
-  return nopath_name;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif /* !CS_MODE */

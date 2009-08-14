@@ -44,9 +44,6 @@ static const int REPL_LOG_INFO_ALLOC_SIZE = 100;
 #if defined(SERVER_MODE) || defined(SA_MODE)
 static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size,
 				bool need_realloc);
-#if !defined(WINDOWS)
-static REPL_SAVEPOINT_INFO *repl_alloc_savepoint_info (const char *sp_name);
-#endif
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -196,7 +193,9 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
       tdes->repl_records = (LOG_REPL_RECORD *) malloc (i);
       if (tdes->repl_records == NULL)
 	{
-	  REPL_ERROR (error, "can't allocate memory");
+	  error = ER_REPL_ERROR;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
+		  "can't allocate memory");
 	  return error;
 	}
       tdes->num_repl_records = arr_size;
@@ -209,7 +208,9 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
 	realloc (tdes->repl_records, i * DB_SIZEOF (LOG_REPL_RECORD));
       if (tdes->repl_records == NULL)
 	{
-	  REPL_ERROR (error, "can't allocate memory");
+	  error = ER_REPL_ERROR;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
+		  "can't allocate memory");
 	  return error;
 	}
       k = tdes->num_repl_records;
@@ -260,6 +261,10 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
 
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
@@ -276,7 +281,9 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
     }
 
   if (find == false)
-    er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
+    {
+      er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
+    }
 
   return error;
 }
@@ -295,10 +302,9 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 int
-repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
-		 OID * inst_oid,
-		 LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue)
+repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
+		 LOG_RECTYPE log_type, LOG_RCVINDEX rcvindex,
+		 DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -308,8 +314,11 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
   int error = NO_ERROR;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
 
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
@@ -328,25 +337,56 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid,
 
   repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = log_type;
+
+  repl_rec->rcvindex = rcvindex;
+  if (rcvindex == RVREPL_DATA_UPDATE)
+    {
+      switch (repl_info)
+	{
+	case REPL_INFO_TYPE_STMT_START:
+	  repl_rec->rcvindex = RVREPL_DATA_UPDATE_START;
+	  break;
+	case REPL_INFO_TYPE_STMT_END:
+	  repl_rec->rcvindex = RVREPL_DATA_UPDATE_END;
+	  break;
+	case REPL_INFO_TYPE_STMT_NORMAL:
+	default:
+	  break;
+	}
+
+    }
   COPY_OID (&repl_rec->inst_oid, inst_oid);
 
   /* make the common info for the data replication */
   if (log_type == LOG_REPLICATION_DATA)
     {
       class_name = heap_get_class_name (thread_p, (const OID *) class_oid);
+      if (class_name == NULL)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_REPL_ERROR;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
+		      "can't get class_name");
+	    }
+	  return error;
+	}
       repl_rec->length = or_packed_string_length (class_name);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
 	{
-	  REPL_ERROR (error, "can't allocate memory");
+	  error = ER_REPL_ERROR;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
+		  "can't allocate memory");
 	  return error;
 	}
       repl_rec->repl_data = ptr;
 
       ptr = or_pack_string (ptr, class_name);
-      ptr = or_pack_value (ptr, key_dbvalue);
+      ptr = or_pack_mem_value (ptr, key_dbvalue);
       db_value_clear (key_dbvalue);
       free_and_init (class_name);
     }
@@ -434,8 +474,11 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   int error = NO_ERROR;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
 
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
@@ -454,6 +497,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
 
   repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
   repl_rec->repl_type = LOG_REPLICATION_SCHEMA;
+  repl_rec->rcvindex = RVREPL_SCHEMA;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
 
@@ -464,7 +508,9 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   repl_rec->length += or_packed_string_length (tdes->client.db_user);
   if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
     {
-      REPL_ERROR (error, "can't allocate memory");
+      error = ER_REPL_ERROR;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
+	      "can't allocate memory");
       return error;
     }
   ptr = repl_rec->repl_data;
@@ -548,205 +594,32 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
   return;
 }
 
-#if !defined(WINDOWS)
 /*
- * repl_alloc_savepoint_info -
+ * repl_log_abort_after_lsa -
  *
  * return:
  *
- *   sp_name(in): save point name
- *
- */
-static REPL_SAVEPOINT_INFO *
-repl_alloc_savepoint_info (const char *sp_name)
-{
-  REPL_SAVEPOINT_INFO *sp_info =
-    (REPL_SAVEPOINT_INFO *) malloc (sizeof (REPL_SAVEPOINT_INFO));
-
-  if (sp_info)
-    {
-      sp_info->sp_name = strdup (sp_name);
-      if (sp_info->sp_name == NULL)
-	{
-	  free (sp_info);
-	  return NULL;
-	}
-      sp_info->log_rec_start_idx = 0;
-      sp_info->next = NULL;
-    }
-
-  return sp_info;
-}
-
-/*
- * repl_free_savepoint_info -
- *
- * return:
- *
- *   node (in) :
- *
- */
-void
-repl_free_savepoint_info (REPL_SAVEPOINT_INFO * node)
-{
-  REPL_SAVEPOINT_INFO *next_node;
-
-  while (node)
-    {
-      next_node = node->next;
-
-      if (node->sp_name)
-	{
-	  free (node->sp_name);
-	}
-      free_and_init (node);
-
-      node = next_node;
-    }
-}
-
-/*
- * repl_add_savepoint_info -
- *
- * return:
- *
- *   thread_p (in) :
- *   sp_name (in) :
+ *   tdes (in) :
+ *   start_lsa (in) :
  *
  */
 int
-repl_add_savepoint_info (THREAD_ENTRY * thread_p, const char *sp_name)
+repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 {
-  int error;
-  LOG_TDES *tdes;
-  REPL_SAVEPOINT_INFO *new_sp_info, *node, *prev_node;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  /* check sp_name already exist in the savepoint list */
-  new_sp_info = prev_node = NULL;
-  for (node = tdes->savepoint_list.head; node; node = node->next)
-    {
-      if (strcmp (node->sp_name, sp_name) == 0)
-	{
-	  if (prev_node)
-	    {
-	      prev_node->next = node->next;
-	    }
-	  else
-	    {
-	      tdes->savepoint_list.head = node->next;
-	    }
-
-	  node->next = NULL;
-	  new_sp_info = node;
-	  break;
-	}
-      prev_node = node;
-    }
-
-  if (new_sp_info == NULL)
-    {
-      new_sp_info = repl_alloc_savepoint_info (sp_name);
-
-      if (new_sp_info == NULL)
-	{
-	  REPL_ERROR (error, "can't allocate memory");
-	  return error;
-	}
-    }
-
-  new_sp_info->log_rec_start_idx = tdes->cur_repl_record + 1;
-
-  if (tdes->savepoint_list.head == NULL)
-    {
-      tdes->savepoint_list.head = new_sp_info;
-    }
-  else
-    {
-      tdes->savepoint_list.tail->next = new_sp_info;
-    }
-
-  tdes->savepoint_list.tail = new_sp_info;
-  return NO_ERROR;
-}
-
-/*
- * repl_log_abort_to_savepoint -
- *
- * return:
- *
- *   thread_p (in) :
- *   sp_name (in) :
- *
- */
-int
-repl_log_abort_to_savepoint (THREAD_ENTRY * thread_p, const char *sp_name)
-{
-  LOG_TDES *tdes;
-  REPL_SAVEPOINT_INFO *sp_info, *prev_sp_info;
   LOG_REPL_RECORD *repl_rec_arr;
-  int start_idx, i, error;
+  int i;
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (tdes == NULL)
+  repl_rec_arr = tdes->repl_records;
+  for (i = 0; i < tdes->cur_repl_record; i++)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  prev_sp_info = NULL;
-
-  for (sp_info = tdes->savepoint_list.head; sp_info; sp_info = sp_info->next)
-    {
-      if (strcmp (sp_info->sp_name, sp_name) == 0)
+      if (LSA_GT (&repl_rec_arr[i].lsa, start_lsa))
 	{
-	  start_idx = sp_info->log_rec_start_idx;
-	  repl_free_savepoint_info (sp_info);
-	  if (prev_sp_info)
-	    {
-	      prev_sp_info->next = NULL;
-	    }
-	  else
-	    {
-	      tdes->savepoint_list.head = NULL;
-	    }
-	  tdes->savepoint_list.tail = prev_sp_info;
-
-	  break;
-	}
-      prev_sp_info = sp_info;
-    }
-
-  if (sp_info == NULL)
-    {
-      REPL_ERROR (error, "can't find savepoint name");
-      return error;
-    }
-
-  if (start_idx <= tdes->cur_repl_record)
-    {
-      repl_rec_arr = tdes->repl_records;
-      for (i = start_idx; i <= tdes->cur_repl_record; i++)
-	{
-	  repl_rec_arr[i - 1].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	  repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
 	}
     }
 
   return NO_ERROR;
 }
-#endif
 
 #if defined(CUBRID_DEBUG)
 /*

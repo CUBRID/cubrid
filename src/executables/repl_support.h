@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -92,7 +92,7 @@ extern int port_Num;
 
 #define REPL_DEBUG_ERROR_DETAIL           0x00000001
 #define REPL_DEBUG_LOG_DUMP               0x00000002
-#define REPL_DEBUG_AGENT_STATUE           0x00000004
+#define REPL_DEBUG_AGENT_STATUS           0x00000004
 #define REPL_DEBUG_VALUE_DUMP             0x00000008
 #define REPL_DEBUG_VALUE_CHECK            0x00000010
 
@@ -121,6 +121,12 @@ extern int port_Num;
 /* push the error message, return NULL */
 #define REPL_ERR_RETURN_NULL(file_id, code) do {                        \
       repl_error_push(file_id, __LINE__, code, NULL);                   \
+      return NULL;                                                      \
+  } while(0)
+
+#define REPL_ERR_RETURN_NULL_WITH_FREE(file_id, code, mem) do {         \
+      repl_error_push(file_id, __LINE__, code, NULL);                   \
+      if ((mem)) free_and_init((mem));                                  \
       return NULL;                                                      \
   } while(0)
 
@@ -160,6 +166,22 @@ extern int port_Num;
       }                                                                 \
    } while(0)
 
+#define REPL_CHECK_ERR_ERROR_GOTO(file_id, code, label) do {            \
+      if(error != NO_ERROR) {                                           \
+         repl_error_push(file_id, __LINE__, code, NULL);                \
+         error = code;                                                  \
+         goto label;                                                    \
+      }                                                                 \
+   } while(0)
+
+#define REPL_CHECK_ERR_ERROR_WITH_FREE(file_id, code, mem) do {         \
+      if(error != NO_ERROR) {                                           \
+        repl_error_push(file_id, __LINE__, code, NULL);                 \
+        if ((mem)) free_and_init((mem));                                \
+        return code;                                                    \
+      }                                                                 \
+   } while(0)
+
 #define REPL_CHECK_ERR_ERROR_ONE_ARG(file_id, code, arg) do {           \
       if(error != NO_ERROR) {                                           \
          repl_error_push(file_id, __LINE__, code, arg);                 \
@@ -188,6 +210,14 @@ extern int port_Num;
 #define REPL_CHECK_ERR_NULL(file_id, code, ptr) do {                    \
       if(ptr == NULL) {                                                 \
          repl_error_push(file_id, __LINE__, code, NULL);                \
+         return code;                                                   \
+      }                                                                 \
+   } while(0)
+
+#define REPL_CHECK_ERR_NULL_WITH_FREE(file_id, code, ptr, mem) do {     \
+      if(ptr == NULL) {                                                 \
+         repl_error_push(file_id, __LINE__, code, NULL);                \
+         if ((mem)) free_and_init((mem));                               \
          return code;                                                   \
       }                                                                 \
    } while(0)

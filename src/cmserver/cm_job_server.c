@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -104,6 +104,7 @@ CtrlHandler (DWORD fdwCtrlType)
 static void
 term_handler (int signo)
 {
+  g_pidfile_path[sizeof (g_pidfile_path) - 1] = '\0';
   if (strlen (g_pidfile_path) > 0)
     unlink (g_pidfile_path);
   exit (0);
@@ -364,7 +365,7 @@ is_conflict (char *task_entered, char *dbname_entered)
 	{
 	  FILE *infile;
 	  char strbuf[512];
-	  char task_running[128], dbname_running[128];
+	  char task_running[512], dbname_running[512];
 
 #if defined(WINDOWS)
 	  sprintf (strbuf, "%s/%s", sco.dbmt_tmp_dir, data.cFileName);
@@ -459,11 +460,20 @@ service_start (void)
       cli_request = nv_create (5, NULL, "\n", ":", "\n");
       cli_response = nv_create (5, NULL, "\n", ":", "\n");
 
+      if ((cli_request == NULL) || (cli_response == NULL))
+	{
+	  nv_destroy (cli_request);
+	  nv_destroy (cli_response);
+	  break;
+	}
+
       clilen = sizeof (cli_addr);
       newsockfd = accept (fserver_sockfd, (struct sockaddr *) &cli_addr,
 			  &clilen);
       if (newsockfd < 0)
 	{
+	  nv_destroy (cli_request);
+	  nv_destroy (cli_response);
 	  continue;
 	}
 
@@ -521,6 +531,12 @@ service_start (void)
       if (childpid > 0)
 	{
 	  thr_arg = (T_THR_ARG *) malloc (sizeof (T_THR_ARG));
+	  if (thr_arg == NULL)
+	    {
+	      nv_destroy (cli_request);
+	      nv_destroy (cli_response);
+	      break;
+	    }
 	  strcpy (thr_arg->req_filename, req_filename);
 	  strcpy (thr_arg->res_filename, res_filename);
 	  thr_arg->childpid = childpid;
@@ -754,20 +770,30 @@ main (int argc, char **argv)
       else
 	{
 	  pidfile = fopen (tmpfile, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
-
-	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH))
-	      || (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
+	  if (pidfile == NULL)
 	    {
-	      /* fprintf (start_log_fp, "Previous pid file found. Removing and proceeding ...\n"); */
-	      unlink (tmpfile);
-	      start_fserver ();
+	      fprintf (start_log_fp,
+		       "Error : pid file exists, but can not open it[%s]",
+		       tmpfile);
 	    }
 	  else
 	    {
-	      fprintf (start_log_fp,
-		       "Error : Server[pid=%d] already running.\n", pidnum);
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+
+	      if (((kill (pidnum, 0) < 0) && (errno == ESRCH))
+		  || (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
+		{
+		  /* fprintf (start_log_fp, "Previous pid file found. Removing and proceeding ...\n"); */
+		  unlink (tmpfile);
+		  start_fserver ();
+		}
+	      else
+		{
+		  fprintf (start_log_fp,
+			   "Error : Server[pid=%d] already running.\n",
+			   pidnum);
+		}
 	    }
 	}
     }
@@ -785,14 +811,21 @@ main (int argc, char **argv)
       else
 	{
 	  pidfile = fopen (tmpfile, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
+	  if (pidfile != NULL)
+	    {
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+	    }
 
 	  /* fprintf (start_log_fp, "Stopping server process with pid %d\n", pidnum); */
-	  if ((kill (pidnum, SIGTERM)) < 0)
-	    fprintf (start_log_fp, "Error : Failed to stop the server.\n");
+	  if ((pidfile == NULL) || ((kill (pidnum, SIGTERM)) < 0))
+	    {
+	      fprintf (start_log_fp, "Error : Failed to stop the server.\n");
+	    }
 	  else
-	    unlink (tmpfile);
+	    {
+	      unlink (tmpfile);
+	    }
 	}
     }
   else if (strcmp (ars_cmd, "getpid") == 0)
@@ -809,11 +842,13 @@ main (int argc, char **argv)
       else
 	{
 	  pidfile = fopen (tmpfile, "rt");
-	  fscanf (pidfile, "%d", &pidnum);
-	  fclose (pidfile);
-
-	  if (((kill (pidnum, 0) < 0) && (errno == ESRCH)) ||
-	      (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
+	  if (pidfile != NULL)
+	    {
+	      fscanf (pidfile, "%d", &pidnum);
+	      fclose (pidfile);
+	    }
+	  if (pidfile == NULL || ((kill (pidnum, 0) < 0) && (errno == ESRCH))
+	      || (is_cmserver_process (pidnum, FSERVER_MODULE_NAME) == 0))
 	    {
 	      exit (1);
 	    }

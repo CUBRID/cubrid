@@ -907,16 +907,22 @@ dl_find_daemon (DYNAMIC_LOADER * this_)
   path = (char *) envvar_root ();
   if (path && path[0] != '\0')
     {
-      int len;
+      int buf_len;
+      char *buf = this_->daemon.daemon_name;
+      int buf_size = sizeof (this_->daemon.daemon_name);
 
-      strcpy (this_->daemon.daemon_name, path);
-      len = strlen (this_->daemon.daemon_name);
-      if (len && this_->daemon.daemon_name[len - 1] != '/')
+      strncpy (buf, path, buf_size);
+      buf_len = strnlen (buf, buf_size);
+
+      if (buf_len && buf[buf_len - 1] != '/' && buf_len < buf_size - 1)
 	{
-	  strcat (this_->daemon.daemon_name, "/");
+	  buf[buf_len] = '/';
+	  buf[buf_len + 1] = '\0';
+	  buf_len++;
 	}
-      strcat (this_->daemon.daemon_name, DAEMON_NAME);
-      if (access (this_->daemon.daemon_name, X_OK) == 0)
+
+      strncat (buf, DAEMON_NAME, buf_size - buf_len);
+      if (access (buf, X_OK) == 0)
 	{
 	  return;
 	}

@@ -437,11 +437,11 @@ method_invoke_for_server (unsigned int rc,
 		   */
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
-		  db_Disable_modifications++;
+		  db_disable_modification ();
 		  error = obj_send_array (DB_GET_OBJECT (values_p[0]),
 					  meth_sig_p->method_name,
 					  &value, &values_p[1]);
-		  db_Disable_modifications--;
+		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
 		}
 	    }
@@ -450,11 +450,11 @@ method_invoke_for_server (unsigned int rc,
 	      /* java stored procedure call */
 	      turn_on_auth = 0;
 	      AU_ENABLE (turn_on_auth);
-	      db_Disable_modifications++;
+	      db_disable_modification ();
 	      error = jsp_call_from_server (&value, values_p,
 					    meth_sig_p->method_name,
 					    meth_sig_p->no_method_args);
-	      db_Disable_modifications--;
+	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
 	    }
 

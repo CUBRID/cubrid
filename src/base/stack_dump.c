@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -242,13 +242,15 @@ er_dump_call_stack (FILE * outfp)
 }
 
 #elif defined(LINUX)
+static int er_resolve_function_name (const void *address,
+				     const char *lib_file_name, char *buffer,
+				     int buffer_size);
 
 #if __WORDSIZE == 32
 
 #include <stdio.h>
 #include <string.h>
 
-#define __USE_GNU
 #include <ucontext.h>
 #include <dlfcn.h>
 
@@ -258,45 +260,6 @@ er_dump_call_stack (FILE * outfp)
 #define PEEK_DATA(addr)	(*(size_t *)(addr))
 #define MAXARGS		6
 #define BUFFER_SIZE     1024
-
-static int er_resolve_function_name (const void *address,
-				     const char *lib_file_name, char *buffer,
-				     int buffer_size);
-
-static int
-er_resolve_function_name (const void *address, const char *lib_file_name_p,
-			  char *buffer, int buffer_size)
-{
-  FILE *output;
-  char cmd_line[BUFFER_SIZE];
-  char *func_name_p, *pos;
-
-  snprintf (cmd_line, sizeof (cmd_line),
-	    "addr2line -f -C -e $(which %s) %p 2>/dev/null",
-	    lib_file_name_p, address);
-
-  output = popen (cmd_line, "r");
-  if (!output)
-    {
-      return ER_FAILED;
-    }
-
-  func_name_p = fgets (buffer, buffer_size - 1, output);
-  if (!func_name_p || !func_name_p[0])
-    {
-      pclose (output);
-      return ER_FAILED;
-    }
-
-  pos = strchr (func_name_p, '\n');
-  if (pos)
-    {
-      pos[0] = '\0';
-    }
-
-  pclose (output);
-  return NO_ERROR;
-}
 
 /*
  * er_dump_call_stack - dump call stack
@@ -312,7 +275,7 @@ er_dump_call_stack (FILE * outfp)
   int i, nargs;
   Dl_info dl_info;
   const char *func_name_p;
-  const void *func_addr_p;
+  const void *func_addr_p = NULL;
   char buffer[BUFFER_SIZE];
 
   if (getcontext (&ucp) < 0)
@@ -334,6 +297,10 @@ er_dump_call_stack (FILE * outfp)
 	{
 	  func_addr_p = (void *) ((size_t) ((const char *) return_addr) -
 				  (size_t) dl_info.dli_fbase);
+	}
+      else
+	{
+	  func_addr_p = (void *) return_addr;
 	}
 
       if (dl_info.dli_sname)
@@ -393,28 +360,16 @@ er_dump_call_stack (FILE * outfp)
 #else /* __WORDSIZE == 32 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-
-#include <ucontext.h>
 #include <dlfcn.h>
+#include <execinfo.h>
 
 #include "error_code.h"
 #include "stack_dump.h"
 
-#define PEEK_DATA(addr) (*(size_t *)(addr))
-#define MAXARGS         6
+#define MAX_TRACE       32
 #define BUFFER_SIZE     1024
-
-static int er_resolve_function_name (const void *address,
-				     const char *lib_file_name, char *buffer,
-				     int buffer_size);
-
-static int
-er_resolve_function_name (const void *address, const char *lib_file_name_p,
-			  char *buffer, int buffer_size)
-{
-  return NO_ERROR;
-}
 
 /*
  * er_dump_call_stack - dump call stack
@@ -424,11 +379,90 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p,
 void
 er_dump_call_stack (FILE * outfp)
 {
-  return;
+  void *return_addr[MAX_TRACE];
+  int i, trace_count;
+  Dl_info dl_info;
+  const char *func_name_p;
+  const void *func_addr_p;
+  char buffer[BUFFER_SIZE];
+
+  trace_count = backtrace (return_addr, MAX_TRACE);
+
+  for (i = 0; i < trace_count; i++)
+    {
+      if (dladdr (return_addr[i], &dl_info) == 0)
+	{
+	  break;
+	}
+
+      if (dl_info.dli_fbase >= (const void *) 0x40000000)
+	{
+	  func_addr_p = (void *) ((size_t) ((const char *) return_addr[i]) -
+				  (size_t) dl_info.dli_fbase);
+	}
+      else
+	{
+	  func_addr_p = return_addr[i];
+	}
+
+      if (dl_info.dli_sname)
+	{
+	  func_name_p = dl_info.dli_sname;
+	}
+      else
+	{
+	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname,
+					buffer, sizeof (buffer)) == NO_ERROR)
+	    {
+	      func_name_p = buffer;
+	    }
+	  else
+	    {
+	      func_name_p = "???";
+	    }
+	}
+
+      fprintf (outfp, "%s(%p): %s\n", dl_info.dli_fname, func_addr_p,
+	       func_name_p);
+    }
+
+  fflush (outfp);
 }
+#endif /* __WORDSIZE == 32 */
 
-#endif
+static int
+er_resolve_function_name (const void *address, const char *lib_file_name_p,
+			  char *buffer, int buffer_size)
+{
+  FILE *output;
+  char cmd_line[BUFFER_SIZE];
+  char *func_name_p, *pos;
 
+  snprintf (cmd_line, sizeof (cmd_line),
+	    "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
+
+  output = popen (cmd_line, "r");
+  if (!output)
+    {
+      return ER_FAILED;
+    }
+
+  func_name_p = fgets (buffer, buffer_size - 1, output);
+  if (!func_name_p || !func_name_p[0])
+    {
+      pclose (output);
+      return ER_FAILED;
+    }
+
+  pos = strchr (func_name_p, '\n');
+  if (pos)
+    {
+      pos[0] = '\0';
+    }
+
+  pclose (output);
+  return NO_ERROR;
+}
 #else /* LINUX */
 
 #include <stdio.h>

@@ -1,0 +1,283 @@
+﻿
+<html>
+<head>
+<title>OID와 컬렉션 사용</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body lang="KO" xml:lang="KO"><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nODBC API\nODBC 프로그래밍\nOID와 컬렉션 사용");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_odbc_programming_driver.htm\">ODBC API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_odbc_programming_driver.htm\">ODBC 프로그래밍<\/a> &nbsp;&gt;&nbsp; OID와 컬렉션 사용<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>OID와 컬렉션 사용</h4>
+<p>ODBC는 관계형 DBMS에 맞게 설계되었다. 그러므로 CUBRID ODBC는 CUBRID의 OID와 컬렉션과 같은 일부 객체지향 특징을 지원하지 않는다. CUBRID는 관계형 데이터 모델과 객체지향 데이터 모델을 통합한 객체관계형 DBMS이기 때문이다.</p>
+<h6>OID 사용</h6>
+<p>CUBRID ODBC 드라이버는 OID를 string (char(32))으로 간주하므로 OID를 포함하는 <span class="keyword">INSERT</span>, <span class="keyword">UPDATE</span>, <span class="keyword">DELETE</span>를 아래와 같이 사용할 수 있다. OID string을 사용할 때는 반드시 작은 따옴표 ('')처리가 필요하다. 다음 예제의 member 속성의 도메인은 객체(OID)와 같다.</p>
+<p class="code">insert into foo(member) values('@12|34|56')<br />
+delete from foo where member = '@12|34|56'<br />
+update foo set age = age + 1 where member = '@12|34|56'</p>
+<h6>컬렉션 사용</h6>
+<p>컬렉션 타입 : <span class="keyword">SET</span>, <span class="keyword">MULTISET</span>, <span class="keyword">SEQUENCE</span> 세가지가 있다. CUBRID ODBC 드라이버는 컬렉션을 string(longvarchar)으로 간주한다.&#160;컬렉션은 <span class="keyword">SELECT</span> 질의에서 "{value_1, value_2, ... value_n}"와 같이 중괄호 안의 쉼표를 이용해 각 요소를 구분하여 획득한다.</p>
+<p class="caption-table">CUBRID와 ODBC의 데이터 타입 Mapping</p>
+<table border="1">
+<tbody>
+<tr>
+<th width="150">
+<p>CUBRID 데이터 타입</p>
+</th>
+<th width="250">
+<p>ODBC 데이터 타입</p>
+</th>
+</tr>
+<tr>
+<td width="150">
+<p>Char</p>
+</td>
+<td width="250">
+<p>SQL_CHAR</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Varchar</p>
+</td>
+<td width="250">
+<p>SQL_VARCHAR</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>String</p>
+</td>
+<td width="250">
+<p>SQL_LONGVARCHAR</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Nchar</p>
+</td>
+<td width="250">
+<p>SQL_CHAR</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Varnchar</p>
+</td>
+<td width="250">
+<p>SQL_VARCHAR</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Bit</p>
+</td>
+<td width="250">
+<p>SQL_BINARY</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>varying bit</p>
+</td>
+<td width="250">
+<p>SQL_VARBINARY</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Numeric</p>
+</td>
+<td width="250">
+<p>SQL_NUMERIC</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Int</p>
+</td>
+<td width="250">
+<p>SQL_INTEGER</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Short</p>
+</td>
+<td width="250">
+<p>SQL_SMALLINT</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Float</p>
+</td>
+<td width="250">
+<p>SQL_FLOAT</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Double</p>
+</td>
+<td width="250">
+<p>SQL_DOUBLE</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Bigint</p>
+</td>
+<td width="250">
+<p>SQL_BIGINT</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Date</p>
+</td>
+<td width="250">
+<p>SQL_TYPE_DATE</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Time</p>
+</td>
+<td width="250">
+<p>SQL_TYPE_TIME</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Timestamp</p>
+</td>
+<td width="250">
+<p>SQL_TYPE_TIMESTAMP</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Datetime</p>
+</td>
+<td width="250">
+<p>SQL_TYPE_TIMESTAMP</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Monetary</p>
+</td>
+<td width="250">
+<p>SQL_DOUBLE</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>Oid</p>
+</td>
+<td width="250">
+<p>SQL_CHAR(32)</p>
+</td>
+</tr>
+<tr>
+<td width="150">
+<p>set, multiset, sequence</p>
+</td>
+<td width="250">
+<p>SQL_VARCHAR(MAX_STRING_LENGTH)</p>
+</td>
+</tr>
+</tbody>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

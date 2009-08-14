@@ -1,0 +1,139 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>포함 연산자</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n포함 연산자\n포함 연산자");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_contain_contain.htm\">포함 연산자<\/a> &nbsp;&gt;&nbsp; 포함 연산자<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>포함 연산자</h4>
+<h6>설명</h6>
+<p>포함 연산자는 집합 값들을 비교하는데 사용된다. 예를 들어, 동질의 또는 이질의 도메인을 가지는 집합 값 속성을 포함 연산자를 이용하여 특정 집합 값과 비교할 수 있다.</p>
+<p>부질의 결과를 비교 집합으로 사용할 수 있다. 집합 값이 아닌 속성으로부터 집합 값을 만들어 내기 위해서는, <span class="keyword">SET</span>(<span class="var">subquery</span>)과 같이 부질의에 적절한 집합 타입 키워드를 붙여야 한다. 부질의 내의 속성이 집합 값 속성이면, 집합 타입 키워드 없이 일반 부질의 구문을 그대로 사용할 수 있다. 다만, 이 경우에 부질의는 그 결과로 하나의 집합만을 반환해야 한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="var">collection_operand &#160;containment_operator &#160;collection_operand</span><br />
+<br />
+<span class="var">collection_operand</span>:<br />
+• <span class="var">set</span><br />
+• <span class="var">multiset</span><br />
+• <span class="var">sequence</span>(또는 <span class="var">list</span>)<br />
+• <span class="keyword">NULL</span><br />
+<br />
+<span class="var">containment_operator</span>:<br />
+• <span class="keyword">SETEQ</span><br />
+• <span class="keyword">SETNEQ</span><br />
+• <span class="keyword">SUPERSET</span><br />
+• <span class="keyword">SUBSET</span><br />
+• <span class="keyword">SUPERSETEQ</span><br />
+• <span class="keyword">SUBSETEQ</span></p>
+<p>집합 포함 수식의 피연산자들이 서로 다른 컬렉션 타입이면, 두 컬렉션 모두 연산 적용 전에 <span class="keyword">MULTISET</span>으로 변환된다.</p>
+<p>포함 연산자는 두 개의 수식으로부터 또는 하나의 수식과 하나의 부질의로부터 생성된 두 개의 <span class="keyword">SET</span> 또는 <span class="keyword">MULTISET</span>을 비교하는데 사용된다. 이때, 수식은 하나의 집합 값 속성(SET-valued attribute)이거나, 집합 연산자(SET operator)를 지닌 산술 수식(arithmetic expression)이거나, 중괄호로 둘러싸인 상수 값 리스트로 표현된 집합이다. <span class="keyword">SETEQ</span>와 <span class="keyword">SETNEQ</span>는 <span class="keyword">SET</span>, <span class="keyword">MULTISET</span>, <span class="keyword">SEQUENCE</span>(또는 <span class="keyword">LIST</span>)에 대해서 모두 사용할 수 있으며, <span class="keyword">SUPERSET</span>, <span class="keyword">SUPERSETEQ</span>, <span class="keyword">SUBSET</span>, <span class="keyword">SUBSETEQ</span>는 <span class="keyword">SET</span>과 <span class="keyword">MULTISET</span>에 대해서만 사용할 수 있다. 부질의가 비교에 포함되는 경우에는, 해당 부질의는 하나의 집합 값 속성만을 조회해야 한다.</p>
+<p>요소의 타입이 오브젝트인 경우 오브젝트의 내용이 아닌 객체 식별자(OID)에 대해 비교한다. 예를 들어, 같은 속성 값을 가지는, OID가 다른 두 오브젝트는 서로 다른 것으로 간주된다.</p>
+<p>수식 내의 피연산자 가운데 하나라도 <span class="keyword">NULL</span>이 포함되면, 결과 역시 <span class="keyword">NULL</span>이 반환된다.</p>
+<p>포함 연산자를 설명하기 위해 다음의 테이블과 데이터가 생성되어 있다고 가정한다.</p>
+<p class="code">create table city (city_name varchar(30) primary key, sports set varchar(20));<br />
+insert into city values ('Seoul', {'baseball','basketball','golf', 'bowling', 'soccer'});<br />
+insert into city values ('Busan', {'baseball','basketball','soccer','scuba'});<br />
+insert into city values ('Daejeon', {'baseball','soccer'});<br />
+insert into city values ('Gwangju', {'baseball','soccer','basketball'});<br />
+insert into city values ('Incheon', {'baseball','basketball','golf'});<br />
+insert into city values ('Suwon', {'soccer','basketball'});<br />
+insert into city values ('Anyang', {'soccer'});<br />
+insert into city values ('Pyongchang', {'ski','snowboard'});<br />
+insert into city values ('Jeju', {'tennis','golf','scuba'});<br />
+insert into city values ('Cheonan', {});</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

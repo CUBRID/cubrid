@@ -1,0 +1,18 @@
+     <constraints>
+       <rsc_location id="location_cubrid_nbd_0_logdup1" rsc="group_cubrid_nbd_0_logdup1">
+         <rule id="nonprefered_location_ubrid_nbd_0_logdup1:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v1.cub"/>
+         </rule>
+         <rule id="prefered_location_ubrid_nbd_0_logdup1:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v1.cub"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="location_cubrid_nbd_1_logdup0" rsc="group_cubrid_nbd_1_logdup0">
+         <rule id="nonprefered_location_ubrid_nbd_1_logdup0:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="cdnt10v2.cub"/>
+         </rule>
+         <rule id="prefered_location_ubrid_nbd_1_logdup0:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="cdnt10v2.cub"/>
+         </rule>
+       </rsc_location>
+     </constraints>

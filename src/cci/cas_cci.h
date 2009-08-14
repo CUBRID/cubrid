@@ -158,6 +158,13 @@ extern "C"
 #define SSIZEOF(val) ((ssize_t) sizeof(val))
 #endif
 
+/* for cci auto_comit mode support */
+  enum
+  {
+    CCI_AUTOCOMMIT_FALSE = 0,
+    CCI_AUTOCOMMIT_TRUE
+  };
+
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/
@@ -240,7 +247,7 @@ extern "C"
     CCI_A_TYPE_BIGINT,
     CCI_A_TYPE_LAST = CCI_A_TYPE_BIGINT,
 
-    CCI_A_TYTP_LAST = CCI_A_TYPE_LAST /* typo but backward compatibility */
+    CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;
 
   typedef enum
@@ -555,6 +562,7 @@ extern "C"
  ************************************************************************/
 
 #if !defined(CAS)
+
   extern void cci_init (void);
   extern void cci_end (void);
 

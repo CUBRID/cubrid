@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>컬럼의 디폴트 값 변경</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n테이블 조작\n테이블 변경\n컬럼의 디폴트 값 변경");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_create_syntax.htm\">테이블 조작<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_mod_rename.htm\">테이블 변경<\/a> &nbsp;&gt;&nbsp; 컬럼의 디폴트 값 변경<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>컬럼의 디폴트 값 변경</h4>
+<h6>설명</h6>
+<p><span class="keyword">ALTER</span> 구문의 <span class="keyword">CHANGE</span>&#160;예약어를 사용하여 디폴트 값이 없는 컬럼의 디폴트 값을 지정하거나 기존의 디폴트 값을 변경할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">ALTER</span> [ <span class="var">table_type</span> ] <span class="var">table_name</span><br />
+<span class="keyword">CHANGE</span> [ <span class="keyword">CLASS</span> ] <span class="var">attribute_name</span> <span class="keyword">DEFAULT</span> <span class="var">value</span>&#160;<br />
+&#160;[ { , [ <span class="keyword">CLASS</span> ] <span class="var">attribute_name</span> <span class="keyword">DEFAULT</span> <span class="var">value</span> }_ ] [ ; ]<br />
+<br />
+<span class="var">table_type</span>:<br />
+[<span class="keyword">TABLE</span> | <span class="keyword">CLASS</span>]<br />
+[<span class="keyword">VIEW</span> | <span class="keyword">VCLASS</span>]</p>
+<ul>
+<li><span class="var">table_type</span> : 변경할 테이블의&#160;종류를 일반 테이블과 가상 테이블 중 하나를 지정한다.</li>
+<li><span class="var">table_name</span> : 변경할 컬럼을 가지는 테이블의 이름을 지정한다.</li>
+<li><span class="var">attribute_name</span> : 새로운 디폴트 값을 적용할 컬럼의 이름을 지정한다.</li>
+<li><span class="var">value</span> : 변경할 디폴트 값을 지정한다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 athlete 테이블의&#160;gender 컬럼의 디폴트 값을 변경하는 예제이다.</p>
+<p>gender 컬럼은 디폴트 값이 없으므로 첫 번째 질의를 통해서 디폴트 값을 'M'으로 설정할 수 있으며, 두 번째 질의로 gender 컬럼의 디폴트 값을&#160;'W'로 변경한다.</p>
+<p class="code">ALTER&#160;TABLE&#160;athlete CHANGE&#160;gender DEFAULT 'M';<br />
+ALTER TABLE athlete CHANGE&#160;gender DEFAULT 'W';</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

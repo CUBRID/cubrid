@@ -1,0 +1,27 @@
+#
+#	Authentication file.  Must be mode 600
+#
+#
+#	Must have exactly one auth directive at the front.
+#	auth	send authentication using this method-id
+#
+#	Then, list the method and key that go with that method-id
+#
+#	Available methods: crc sha1, md5.  Crc doesn't need/want a key.
+#
+#	You normally only have one authentication method-id listed in this file
+#
+#	Put more than one to make a smooth transition when changing auth
+#	methods and/or keys.
+#
+#
+#	sha1 is believed to be the "best", md5 next best.
+#
+#	crc adds no security, except from packet corruption.
+#		Use only on physically secure networks.
+#
+auth 1
+#1 crc
+#2 sha1 HI!
+#3 md5 Hello!
+1 sha1 cubrid ha test~!

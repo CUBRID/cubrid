@@ -1,0 +1,116 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>수퍼클래스 추가</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n테이블 조작\n클래스 상속\n수퍼클래스 추가");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_create_syntax.htm\">테이블 조작<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_table_inherit_intro.htm\">클래스 상속<\/a> &nbsp;&gt;&nbsp; 수퍼클래스 추가<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>수퍼클래스 추가</h4>
+<h6>설명</h6>
+<p>클래스의 상속은 클래스에 수퍼클래스를 추가하여 확장할 수 있다. 이미 존재하는 클래스에 수퍼클래스를 추가하여 두 클래스 사이에 관계를 생성한다. 수퍼클래스를 추가한다는 것이 새로운 클래스를 추가한다는 것을 의미하지는 않는다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">ALTER</span> [ <span class="var">class_type</span> ] <span class="var">class_name</span><br />
+<span class="keyword">ADD SUPERCLASS</span> [ <span class="var">user_name</span>.]<span class="var">class_name</span> [ { , [ <span class="var">user_name</span>.]<span class="var">class_name</span> }_ ]<br />
+[ <span class="keyword">INHERIT</span> <span class="var">resolution</span> [ {, <span class="var">resolution</span> }_ ] ] [ ; ]<br />
+<br />
+<span class="var">resolution</span>:<br />
+[ <span class="keyword">CLASS</span> ] <span class="var">attr_mthd_name</span> <span class="keyword">OF</span> <span class="var">superclass_name</span> [ <span class="keyword">AS</span> <span class="var">alias</span> ]</p>
+<p>수퍼클래스를 추가할 클래스의 이름을 첫 번째 <span class="var">class_name</span>에 지정한다. 위 구문을 사용하여 수퍼클래스의 속성과 메소드를 상속할 수 있다.</p>
+<p>새로운 수퍼클래스를 추가할 경우 이름 충돌이 발생할 수 있다. 데이터베이스 시스템의 의해서 이름 충돌이 자동으로 해결될 수 없는 경우, <span class="keyword">INHERIT</span> 구문을 사용하여 수퍼클래스에서 상속받을 속성이나 메소드를 지정할 수 있다. 충돌이 발생한 속성이나 메소드를 모두 상속 받기 위해서는 별칭을 사용할 수 있다. 수퍼클래스에서 발생하는 이름 충돌에 대한 자세한 설명은 <a href="syntax_table_conflict_intro.htm">클래스 충돌 해결</a>을 참조한다.</p>
+<h6>예제</h6>
+<p>demodb에 포함되어 있는 event 클래스를 상속하여 female_event 클래스를 생성한다면 다음과 같은 클래스 생성 문장이 수행된다.</p>
+<p class="code">CREATE CLASS female_event UNDER event;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -103,10 +103,12 @@ main (int argc, char *argv[])
 
   cli_request = nv_create (5, NULL, "\n", ":", "\n");
   cli_response = nv_create (5, NULL, "\n", ":", "\n");
-
-  nv_readfrom (cli_request, in_file);
-  ut_process_request (cli_request, cli_response);
-  nv_writeto (cli_response, out_file);
+  if ((cli_request != NULL) && (cli_response != NULL))
+    {
+      nv_readfrom (cli_request, in_file);
+      ut_process_request (cli_request, cli_response);
+      nv_writeto (cli_response, out_file);
+    }
 
   nv_destroy (cli_request);
   nv_destroy (cli_response);
@@ -136,7 +138,6 @@ ut_process_request (nvplist * req, nvplist * res)
   dbname = nv_get_val (req, "dbname");
 
   task_code = ut_get_task_info (task, &access_log_flag, &task_func);
-#ifdef DIAG_DEVEL
   switch (task_code)
     {
       /* case TS_ANALYZECASLOG: */
@@ -145,7 +146,6 @@ ut_process_request (nvplist * req, nvplist * res)
       nv_init (res, 5, NULL, "\n", ":DIAG_DEL:", "END__DIAGDATA\n");
       break;
     }
-#endif
 
   /* insert task,status,note to the front of response */
   nv_add_nvp (res, "task", task);
@@ -180,7 +180,10 @@ ut_process_request (nvplist * req, nvplist * res)
   sprintf (_dbmt_error, "?");	/* prevent to have null string */
   if (task_code == TS_UNDEFINED)
     {
-      strcpy (_dbmt_error, task);
+      if (task != NULL)
+	{
+	  strcpy (_dbmt_error, task);
+	}
       retval = ERR_UNDEFINED_TASK;
     }
   else
@@ -205,7 +208,7 @@ _ut_get_dbaccess (nvplist * req, char *dbid, char *dbpasswd)
 {
   nvplist *ud = NULL;
   char strbuf[1024];
-  char *task, *id, *svrtype, *clientip, *dbname;
+  char *task, *id, *svrtype, *clientip, *dbname, *value;
   char *tok[3];
   char _dbmt_error[1024];
 
@@ -233,17 +236,23 @@ _ut_get_dbaccess (nvplist * req, char *dbid, char *dbpasswd)
       nv_destroy (ud);
       return 0;
     }
-  strcpy (strbuf, nv_get_val (ud, dbname));
-
-  string_tokenize2 (strbuf, tok, 3, ';');
-
-  if (tok[1] == NULL)
-    dbid[0] = '\0';
-  else
+  value = nv_get_val (ud, dbname);
+  if (value != NULL)
     {
-      strcpy (dbid, tok[1]);
+      strcpy (strbuf, value);
+
+      string_tokenize2 (strbuf, tok, 3, ';');
+
+      if (tok[1] == NULL)
+	{
+	  dbid[0] = '\0';
+	}
+      else
+	{
+	  strcpy (dbid, tok[1]);
+	}
+      uDecrypt (PASSWD_LENGTH, tok[2], dbpasswd);
     }
-  uDecrypt (PASSWD_LENGTH, tok[2], dbpasswd);
 
   nv_destroy (ud);
   return 1;
@@ -431,12 +440,12 @@ ut_validate_token (nvplist * req)
 	{
 	  while (fgets (strbuf, sizeof (strbuf), infile))
 	    {
-	      if (sscanf (strbuf, "%s %s", ip_t, port_t) < 2)
+	      if (sscanf (strbuf, "%19s %9s", ip_t, port_t) < 2)
 		continue;
 	      if (uStringEqual (ip, ip_t))
 		{
 		  retval = 1;
-		  sscanf (strbuf, "%*s %*s %*s %*s %s", cli_ver);
+		  sscanf (strbuf, "%*s %*s %*s %*s %14s", cli_ver);
 		  nv_add_nvp (req, "_CLIENT_VERSION", cli_ver);
 		  break;
 		}

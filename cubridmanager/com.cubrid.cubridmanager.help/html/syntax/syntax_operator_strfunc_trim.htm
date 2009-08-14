@@ -1,0 +1,143 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>TRIM 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n스트링  함수와 연산자\nTRIM 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_strfunc_concat.htm\">스트링  함수와 연산자<\/a> &nbsp;&gt;&nbsp; TRIM 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>TRIM 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">TRIM</span> 함수는 문자열의 앞과 뒤에 위치한&#160;특정&#160;문자들을 제거한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">TRIM</span> ( [ [ <span class="keyword">LEADING</span> | <span class="keyword">TRAILING</span> | <span class="keyword">BOTH</span> ]<br />
+&#160;&#160;[ <span class="var">trim_character_set</span> ] <span class="keyword">FROM</span> ] <span class="var">trim_operand</span> )<span class="var">trim_character_set</span> :<br />
+<span class="var"><br />
+trim_character_set</span> :<br />
+character string<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">trim_operand</span> :<br />
+character string literal<br />
+string valued attribute<br />
+<span class="keyword">NULL</span></p>
+<ul>
+<li><span class="var">trim_character_set</span> : 선택 사항인 <span class="var">trim_character_set</span>는 <span class="var">trim_operand</span>에 의해 지정되는 문자열의 처음 그리고/또는 마지막 부분에서 제거할 문자들을 나타낸다. <span class="var">trim_character_set</span>에 값을 지정하지 않으면, 하나의 공백문자(' ')가 자동으로 지정된다.</li>
+<li><span class="var">trim_operand</span> : 값이 <span class="keyword">NULL</span>이면 <span class="keyword">NULL</span>이 반환된다.</li>
+<li>문자열의 어느 부분에서 제거할 것인가를 명시하기 위해서 <span class="keyword">LEADING</span>, <span class="keyword">TRAILING</span>, 또는 <span class="keyword">BOTH</span> 키워드를 선택 사항으로 지정할 수 있다. 아무런 키워드도 주어지지 않으면, <span class="keyword">BOTH</span>가 사용된다.</li>
+<li><span class="var">trim_character</span>와 <span class="var">trim_operand</span>의 문자열은 같은 문자 코드 세트를 가져야 한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li class="title">예제 1</li>
+<li class="desc">다음은 문자열의 앞과 뒤에서 문자 i를 제거하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TRIM ('i' FROM 'iiiiiOlympic')<br />
+FROM db_root;</p>
+<ul>
+<li class="desc">결과 값: Olympic</li>
+</ul>
+<ul>
+<li class="title">예제 2</li>
+<li class="desc">다음은 문자열의 앞에서만 문자 i를 제거하는 예제이다.</li>
+</ul>
+<p class="code">SELECT TRIM (LEADING 'i' FROM 'iiiiiOlympiciiiii')<br />
+FROM db_root;</p>
+<ul>
+<li class="desc">결과 값: Olympiciiiii</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

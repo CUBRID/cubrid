@@ -121,6 +121,7 @@ public class UStatement
   private int cursorPosition;
   private int executeResult;
   private UResultTuple tuples[];
+  private int numQueriesExecuted;
 
   private UError errorHandler;
 
@@ -677,31 +678,8 @@ public class UStatement
           && !(relatedConnection.getAutoCommit() == true && relatedConnection
               .brokerInfoStatementPooling() == false))
       {
-        // if (relatedConnection.delayed_close_handle <= 0)
-        // relatedConnection.delayed_close_handle = serverHandler;
-        // else {
-        synchronized (relatedConnection)
-        {
-          outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
-          // outBuffer.addInt(relatedConnection.delayed_close_handle);
-          outBuffer.addInt(serverHandler);
-
-          UInputBuffer inBuffer;
-          inBuffer = relatedConnection.send_recv_msg();
-        }
-        // relatedConnection.delayed_close_handle = serverHandler;
-        // }
+        relatedConnection.deferred_close_handle.add(new Integer(serverHandler));
       }
-    }
-    catch (UJciException e)
-    {
-      e.toUError(errorHandler);
-      return;
-    }
-    catch (IOException e)
-    {
-      errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-      return;
     }
     finally
     {
@@ -2716,13 +2694,19 @@ public class UStatement
 
   private void readResultInfo(UInputBuffer inBuffer) throws UJciException
   {
-    resultInfo = new UResultInfo[inBuffer.readInt()];
+    numQueriesExecuted = inBuffer.readInt();
+    resultInfo = new UResultInfo[numQueriesExecuted];
     for (int i = 0; i < resultInfo.length; i++)
     {
       resultInfo[i] = new UResultInfo(inBuffer.readByte(), inBuffer.readInt());
       resultInfo[i].setResultOid(inBuffer.readOID(relatedConnection.cubridcon));
       resultInfo[i].setSrvCacheTime(inBuffer.readInt(), inBuffer.readInt());
     }
+  }
+
+  public int getNumQueriesExecuted()
+  {
+    return numQueriesExecuted;
   }
 
   public int getServerHandle()

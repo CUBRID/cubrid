@@ -61,19 +61,6 @@
 #include "wintcp.h"
 #endif
 
-#define SR_CLASS_NAME           CT_SERIAL_NAME
-
-#define SR_ATT_NAME             "name"
-#define SR_ATT_OWNER            "owner"
-#define SR_ATT_CURRENT_VAL      "current_val"
-#define SR_ATT_INCREMENT_VAL    "increment_val"
-#define SR_ATT_MAX_VAL          "max_val"
-#define SR_ATT_MIN_VAL          "min_val"
-#define SR_ATT_CYCLIC           "cyclic"
-#define SR_ATT_STARTED          "started"
-#define SR_ATT_CLASS_NAME       "class_name"
-#define SR_ATT_ATT_NAME         "att_name"
-
 #define MAX_LINE_LEN            4096
 
 #define COMMENT_CHAR            '-'
@@ -96,18 +83,10 @@ extern int log_default_input_for_archive_log_location;
 
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 
-static int sr_define_serial_class (void);
 static int parse_user_define_line (char *line, FILE * output_file);
 static int parse_user_define_file (FILE * user_define_file,
 				   FILE * output_file);
 static int parse_up_to_date (char *up_to_date, struct tm *time_date);
-
-#define LOCAL_CHECK_ERROR(EI) { \
-  if ((EI) != NO_ERROR) { \
-    er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (EI), 0); \
-    return (EI); \
-  } \
-}
 
 
 /*
@@ -145,96 +124,6 @@ util_admin_version (const char *argv0)
 	   exec_name, VERSION);
 }
 
-/*
- * sr_define_serial_class()
- *   return: NO_ERROR if success
- */
-static int
-sr_define_serial_class ()
-{
-  DB_OBJECT *serial_class = NULL;
-  DB_OBJECT *user;
-  DB_VALUE value, num_value;
-  char domain_str[32];
-  const char *attr_list[] = { SR_ATT_NAME, NULL };
-  DB_DATA_STATUS data_stat;
-  int error_status = NO_ERROR;
-
-  er_clear ();
-
-  /* create db_serial class */
-  if ((serial_class = db_create_class (SR_CLASS_NAME)) == NULL)
-    LOCAL_CHECK_ERROR (er_errid ());
-
-  /* add attributes */
-  error_status = db_add_attribute (serial_class, SR_ATT_NAME,
-				   db_get_type_name (DB_TYPE_STRING), NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_OWNER,
-				   AU_USER_CLASS_NAME, NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  /* define serial's value domain */
-  sprintf (domain_str, "numeric(%d, 0)", DB_MAX_NUMERIC_PRECISION);
-
-  DB_MAKE_INTEGER (&value, 1);
-  db_value_domain_init (&num_value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION,
-			0);
-  (void) numeric_db_value_coerce_to_num (&value, &num_value, &data_stat);
-  error_status = db_add_attribute (serial_class, SR_ATT_CURRENT_VAL,
-				   domain_str, &num_value);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_INCREMENT_VAL,
-				   domain_str, &num_value);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_MAX_VAL,
-				   domain_str, NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_MIN_VAL,
-				   domain_str, NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  DB_MAKE_INTEGER (&value, 0);
-  error_status = db_add_attribute (serial_class, SR_ATT_CYCLIC,
-				   "integer", &value);
-  LOCAL_CHECK_ERROR (error_status);
-
-  DB_MAKE_INTEGER (&value, 0);
-  error_status = db_add_attribute (serial_class, SR_ATT_STARTED,
-				   "integer", &value);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_CLASS_NAME,
-				   db_get_type_name (DB_TYPE_STRING), NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_attribute (serial_class, SR_ATT_ATT_NAME,
-				   db_get_type_name (DB_TYPE_STRING), NULL);
-  LOCAL_CHECK_ERROR (error_status);
-
-  error_status = db_add_constraint (serial_class, DB_CONSTRAINT_PRIMARY_KEY,
-				    NULL, (const char **) attr_list, 0);
-  LOCAL_CHECK_ERROR (error_status);
-
-  if (locator_has_heap (serial_class) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* find public user to grant */
-  if ((user = db_find_user (AU_PUBLIC_USER_NAME)) == NULL)
-    LOCAL_CHECK_ERROR (ERR_MM_FINDING_PUBLIC);
-
-  db_grant (user, serial_class,
-	    (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE
-	     | DB_AUTH_DELETE | DB_AUTH_ALTER), FALSE);
-
-  return NO_ERROR;
-}
 
 /*
  * parse_user_define_line() - parse user information
@@ -420,9 +309,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   log_page_count =
     utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_COUNT_S);
 
-  sysprm_set_to_default ("data_buffer_pages");
-  sysprm_set_force ("max_plan_cache_entries", "-1");
-
   if (database_name == 0 || database_name[0] == 0 ||
       utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -486,6 +372,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  /* tuning system parameters */
+  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, "-1");
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
@@ -504,15 +395,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sr_define_serial_class () != NO_ERROR)
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_CREATEDB,
-				       CREATEDB_MSG_FAILURE));
-      fprintf (stderr, "%s\n", db_error_string (3));
-      db_shutdown ();
-      goto error_exit;
-    }
   esm_define_esm_classes ();
   sm_mark_system_classes ();
 
@@ -612,10 +494,15 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool force_delete;
 
-  output_file_name =
-    utility_get_option_string_value (arg_map, DELETE_OUTPUT_FILE_S, 0);
   database_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_delete_usage;
+    }
+
+  output_file_name =
+    utility_get_option_string_value (arg_map, DELETE_OUTPUT_FILE_S, 0);
   force_delete =
     utility_get_option_bool_value (arg_map, DELETE_DELETE_BACKUP_S);
 
@@ -623,8 +510,6 @@ deletedb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_delete_usage;
     }
-
-  sysprm_set_to_default ("data_buffer_pages");
 
   if (output_file_name == NULL)
     {
@@ -652,6 +537,10 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* tuning system parameters */
+  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -820,6 +709,8 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
@@ -878,6 +769,11 @@ renamedb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   dest_db_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  if (src_db_name == NULL || dest_db_name == NULL)
+    {
+      goto print_rename_usage;
+    }
+
   ext_path =
     utility_get_option_string_value (arg_map, RENAME_EXTENTED_VOLUME_PATH_S,
 				     0);
@@ -890,8 +786,6 @@ renamedb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_rename_usage;
     }
-
-  sysprm_set_to_default ("data_buffer_pages");
 
   if (check_database_name (src_db_name) || check_database_name (dest_db_name))
     {
@@ -915,6 +809,10 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* tuning system parameters */
+  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -968,6 +866,11 @@ installdb (UTIL_FUNCTION_ARG * arg)
   bool cfg_added = false;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_install_usage;
+    }
+
   server_name =
     utility_get_option_string_value (arg_map, INSTALL_SERVER_NAME_S, 0);
   db_path = utility_get_option_string_value (arg_map, INSTALL_FILE_PATH_S, 0);
@@ -1014,6 +917,8 @@ installdb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1079,6 +984,11 @@ copydb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   dest_db_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  if (src_db_name == NULL || dest_db_name == NULL)
+    {
+      goto print_copy_usage;
+    }
+
   server_name =
     utility_get_option_string_value (arg_map, COPY_SERVER_NAME_S, 0);
   db_path = utility_get_option_string_value (arg_map, COPY_FILE_PATH_S, 0);
@@ -1094,8 +1004,6 @@ copydb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_copy_usage;
     }
-
-  sysprm_set_to_default ("data_buffer_pages");
 
   if (check_database_name (src_db_name) || check_database_name (dest_db_name))
     {
@@ -1113,6 +1021,10 @@ copydb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* tuning system parameters */
+  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1159,6 +1071,11 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   DB_OBJECT *class_mop;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_optimize_usage;
+    }
+
   class_name =
     utility_get_option_string_value (arg_map, OPTIMIZE_CLASS_NAME_S, 0);
 
@@ -1177,6 +1094,8 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1246,9 +1165,15 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   DIAGDUMP_TYPE diag;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_diag_usage;
+    }
+
   diag = utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
-  if (utility_get_option_string_table_size (arg_map) != 1)
+  if (diag != DIAGDUMP_LOG
+      && utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_diag_usage;
     }
@@ -1261,6 +1186,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1330,23 +1257,47 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps the content of log */
       int isforward, start_logpageid, dump_npages, desired_tranid;
-      char yn[2];
-      do
+      if (diag == DIAGDUMP_ALL
+	  || utility_get_option_string_table_size (arg_map) == 1)
 	{
-	  printf ("\n");
-	  printf ("isforward (1 or 0) ? ");
-	  scanf ("%d", &isforward);
-	  printf ("start_logpageid (-1 for the first/last page) ? ");
-	  scanf ("%d", &start_logpageid);
-	  printf ("dump_npages (-1 for all pages) ? ");
-	  scanf ("%d", &dump_npages);
-	  printf ("desired_tranid (-1 for all transactions) ? ");
-	  scanf ("%d", &desired_tranid);
-	  printf ("log_dump(%d, %d, %d, %d) (y/n) ? ",
-		  isforward, start_logpageid, dump_npages, desired_tranid);
-	  scanf ("%1s", yn);
+	  char yn[2];
+	  do
+	    {
+	      printf ("\n");
+	      printf ("isforward (1 or 0) ? ");
+	      scanf ("%d", &isforward);
+	      printf ("start_logpageid (-1 for the first/last page) ? ");
+	      scanf ("%d", &start_logpageid);
+	      printf ("dump_npages (-1 for all pages) ? ");
+	      scanf ("%d", &dump_npages);
+	      printf ("desired_tranid (-1 for all transactions) ? ");
+	      scanf ("%d", &desired_tranid);
+	      printf ("log_dump(%d, %d, %d, %d) (y/n) ? ",
+		      isforward, start_logpageid, dump_npages,
+		      desired_tranid);
+	      scanf ("%1s", yn);
+	    }
+	  while (yn[0] != 'y');
 	}
-      while (yn[0] != 'y');
+      else if (utility_get_option_string_table_size (arg_map) == 5)
+	{
+	  isforward =
+	    atoi (utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 1));
+	  start_logpageid =
+	    atoi (utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 2));
+	  dump_npages =
+	    atoi (utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 3));
+	  desired_tranid =
+	    atoi (utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 4));
+	}
+      else
+	{
+	  goto print_diag_usage;
+	}
       printf ("\n*** DUMP OF LOG ***\n");
       xlog_dump (NULL, stdout, isforward, start_logpageid, dump_npages,
 		 desired_tranid);
@@ -1375,6 +1326,11 @@ patchdb (UTIL_FUNCTION_ARG * arg)
   bool recreate_log;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_patch_usage;
+    }
+
   recreate_log =
     utility_get_option_bool_value (arg_map, PATCH_RECREATE_LOG_S);
 
@@ -1404,6 +1360,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION )
 /*
  * estimatedb_data() - estimatedb_data main routine
  *   return: EXIT_SUCCES/EXIT_FAILURE
@@ -1448,7 +1405,9 @@ print_estimate_data_usage:
 	   basename (arg->argv0));
   return EXIT_FAILURE;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined(ENABLE_UNUSED_FUNCTION )
 /*
  * estimatedb_index() - restoredb main routine
  *   return: 0 : success
@@ -1621,6 +1580,7 @@ print_estimate_index_usage:
 	   basename (arg->argv0));
   return EXIT_FAILURE;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * alterdbhost() - restoredb main routine
@@ -1639,6 +1599,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   const char *log_prefix;
+  int num_hosts;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1646,6 +1607,11 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
     }
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_alterdbhost_usage;
+    }
+
   host_name =
     utility_get_option_string_value (arg_map, ALTERDBHOST_HOST_S, 0);
 
@@ -1697,8 +1663,8 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 	  goto error;
 	}
     }
-
-  if (dir != NULL && (db = cfg_find_db_list (dir, db_name)) == NULL)
+  db = cfg_find_db_list (dir, db_name);
+  if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      db_name);
@@ -1707,7 +1673,8 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 
   /* Compose the full name of the database and find location of logs */
   log_prefix = fileio_get_base_file_name (db_name);
-  COMPOSE_FULL_NAME (BO_DB_FULLNAME, db->pathname, db_name);
+  COMPOSE_FULL_NAME (BO_DB_FULLNAME, sizeof (BO_DB_FULLNAME),
+		     db->pathname, db_name);
 
   /* System is not restarted. Read the header from disk */
   logpb_initialize_log_names (NULL, BO_DB_FULLNAME, db->logpath, log_prefix);
@@ -1725,22 +1692,11 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       goto error;
     }
 
-  /* Now update the entry in the database table */
-  if (db == NULL)
+  if (db->hosts != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
-	      db_name);
-      goto error;
+      cfg_free_hosts (db->hosts);
     }
-  else
-    {
-      int num_hosts;
-      if (db->hosts != NULL)
-	{
-	  cfg_free_hosts (db->hosts);
-	}
-      db->hosts = cfg_get_hosts (host_name, &num_hosts, false);
-    }
+  db->hosts = cfg_get_hosts (host_name, &num_hosts, false);
 
   /* Dismount lgat */
   fileio_dismount (log_vdes);

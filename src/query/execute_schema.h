@@ -70,7 +70,9 @@ struct partition_insert_cache
 typedef struct partition_select_info PARTITION_SELECT_INFO;
 struct partition_select_info
 {
-  DB_VALUE *ptype, *pexpr, *pattr;
+  DB_VALUE *ptype;
+  DB_VALUE *pexpr;
+  DB_VALUE *pattr;
   SM_CLASS *smclass;
 };
 

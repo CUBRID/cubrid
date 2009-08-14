@@ -1,0 +1,34 @@
+task:addmethod
+status:success
+note:none
+open:classinfo
+dbname:demodb
+classname:business
+type:user
+owner:DBA
+virtual:normal
+open:attribute
+name:name
+type:character varying(1073741823)
+inherit:business
+indexed:n
+notnull:n
+shared:n
+unique:n
+default:
+close:attribute
+open:classmethod
+name:add_new_business
+inherit:business
+argument:
+argument:character varying(1073741823)
+function:new_business
+close:classmethod
+open:method
+name:testmethodname
+inherit:business
+argument:void
+function:testfunction
+close:method
+close:classinfo
+

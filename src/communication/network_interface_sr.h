@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -110,10 +110,8 @@ extern void slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
-/* AsyncCommit */
 extern void slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
-
 extern void slock_dump (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen);
 extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -194,6 +192,9 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
+extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
+					       unsigned int rid,
+					       char *request, int reqlen);
 extern void slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
 extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -230,6 +231,9 @@ extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p,
 					      int reqlen);
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
+extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p,
+				     unsigned int rid, char *request,
+				     int reqlen);
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p,
 				      unsigned int rid, char *request,
 				      int reqlen);
@@ -300,9 +304,9 @@ extern int xs_send_action_to_client (THREAD_ENTRY * thread_p,
 				     VACOMM_BUFFER_CLIENT_ACTION action);
 extern void stest_performance (THREAD_ENTRY * thread_p, unsigned int rid,
 			       char *request, int reqlen);
-extern void
-slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid,
-			   char *request, int reqlen);
+extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p,
+				       unsigned int rid, char *request,
+				       int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
 					       unsigned int rid,
 					       char *request, int reqlen);
@@ -316,6 +320,9 @@ extern void sthread_kill_tran_index (THREAD_ENTRY * thread_p,
 extern void slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
+extern void slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
+
 extern int xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
 					   FILEIO_REMOTE_PROMPT_TYPE
 					   prompt_id, const char *buffer,
@@ -326,8 +333,8 @@ extern int xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
 extern int xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
 					  char *logpb_area, int area_size,
 					  LOGWR_MODE mode);
-extern int xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p, 
-					     PAGEID * fpageid_ptr, 
+extern int xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
+					     PAGEID * fpageid_ptr,
 					     LOGWR_MODE * mode_ptr);
 extern void shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
@@ -342,6 +349,9 @@ extern void sprm_server_change_parameters (THREAD_ENTRY * thread_p,
 extern void sprm_server_obtain_parameters (THREAD_ENTRY * thread_p,
 					   unsigned int rid, char *request,
 					   int reqlen);
+extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen);
 extern void shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
 extern void stran_get_local_transaction_id (THREAD_ENTRY * thread_p,

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -41,16 +41,32 @@
 #define SIZE_INT        sizeof(int)
 #define SIZE_FLOAT      sizeof(float)
 #define SIZE_DOUBLE     sizeof(double)
-#define SIZE_BIGINT     sizeof(INT64)
+#define SIZE_INT64      sizeof(INT64)
+#define SIZE_BIGINT     SIZE_INT64
 #define SIZE_DATE       6
 #define SIZE_TIME       6
 #define SIZE_OBJECT     8
 
-#define NET_WRITE_ERROR_CODE(SOCK_FD, ERROR_CODE)       \
-	do {                                            \
-	  net_write_int(SOCK_FD, SIZE_INT);             \
-	  net_write_int(SOCK_FD, ERROR_CODE);           \
-	} while (0)
+#define NET_WRITE_ERROR_CODE_WITH_MSG(SOCK_FD, cas_info, ERROR_CODE, ERROR_MSG) \
+        do {                                                    	\
+          net_write_int (SOCK_FD, strlen (ERROR_MSG) + SIZE_INT + 1);      	\
+          if (cas_info_size > 0)					\
+	  {								\
+	    net_write_stream (SOCK_FD, cas_info, cas_info_size); 	\
+	  }                                                     	\
+          net_write_int (SOCK_FD, ERROR_CODE);                  	\
+          net_write_stream (SOCK_FD, ERROR_MSG, strlen (ERROR_MSG) + 1);\
+        } while (0)
+
+#define NET_WRITE_ERROR_CODE(SOCK_FD, cas_info, ERROR_CODE)       	\
+        do {                                            		\
+          net_write_int(SOCK_FD, SIZE_INT);                    		\
+          if (cas_info_size > 0) 					\
+          {								\
+            net_write_stream(SOCK_FD, cas_info, cas_info_size);       	\
+          }								\
+          net_write_int(SOCK_FD, ERROR_CODE);           		\
+        } while (0)
 
 #define NET_ARG_GET_SIZE(SIZE, ARG)                     \
 	do {                                            \
@@ -106,11 +122,13 @@
 	  memcpy(&_size, cur_p, SIZE_INT);              \
 	  _size = ntohl(_size);                         \
 	  cur_p += SIZE_INT;                            \
-	  if (_size <= 0)                               \
+	  if (_size <= 0) {                             \
 	    VALUE = NULL;                               \
-	  else                                          \
+	    SIZE = 0;                                 	\
+	  } else {                                      \
 	    VALUE = ((char*) cur_p);                    \
-	  SIZE = _size;                                 \
+	    SIZE = _size;                               \
+	  }                                             \
 	} while (0)
 
 #define NET_ARG_GET_DATE(YEAR, MON, DAY, ARG)   		\
@@ -255,6 +273,14 @@ extern SOCKET
 #else
   net_init_env (void);
 #endif
+
+typedef struct
+{
+  int *msg_body_size_ptr;
+  char *info_ptr;
+  char buf[MSG_HEADER_SIZE];
+} MSG_HEADER;
+
 extern SOCKET net_connect_client (SOCKET srv_sock_fd);
 extern int net_read_stream (SOCKET sock_fd, char *buf, int size);
 extern int net_write_stream (SOCKET sock_fd, const char *buf, int size);
@@ -266,6 +292,9 @@ extern int net_read_to_file (SOCKET sock_fd, int file_size, char *filename);
 extern int net_write_from_file (SOCKET sock_fd, int file_size,
 				char *filename);
 extern void net_timeout_set (int timeout_sec);
+extern void init_msg_header (MSG_HEADER * header);
+extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
+extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
 
 extern int net_timeout_flag;
 

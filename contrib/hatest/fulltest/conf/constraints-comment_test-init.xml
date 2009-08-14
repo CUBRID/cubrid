@@ -1,0 +1,34 @@
+     <constraints>
+       <rsc_location id="loc_cubrid_nbd1_0_ldup_1" rsc="group_cubrid_nbd1_0_ldup_1">
+         <rule id="nonprefered_loc_cubrid_nbd1_0_ldup_1:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="A1_NODE"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd1_0_ldup_1:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="A1_NODE"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="loc_cubrid_nbd1_1_ldup_0" rsc="group_cubrid_nbd1_1_ldup_0">
+         <rule id="nonprefered_loc_cubrid_nbd1_1_ldup_0:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="S1_NODE"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd1_1_ldup_0:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="S1_NODE"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="loc_cubrid_nbd2_0_ldup_1" rsc="group_cubrid_nbd2_0_ldup_1">
+         <rule id="nonprefered_loc_cubrid_nbd2_0_ldup_1:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="A1_NODE"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd2_0_ldup_1:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="A1_NODE"/>
+         </rule>
+       </rsc_location>
+       <rsc_location id="loc_cubrid_nbd2_1_ldup_0" rsc="group_cubrid_nbd2_1_ldup_0">
+         <rule id="nonprefered_loc_cubrid_nbd2_1_ldup_0:0" score="-INFINITY">
+           <expression attribute="#uname" operation="ne" value="S1_NODE"/>
+         </rule>
+         <rule id="prefered_loc_cubrid_nbd2_1_ldup_0:1" score="INFINITY">
+           <expression attribute="#uname" operation="eq" value="S1_NODE"/>
+         </rule>
+       </rsc_location>
+     </constraints>

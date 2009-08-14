@@ -1,0 +1,2 @@
+ALTER TABLE "testschemaalterddltest" ADD SUPERCLASS "sup2"
+INHERIT CLASS "float" OF "sup1", "bigint" OF "sup1", "float" OF "sup1", "numeric1" OF "sup1", "numeric2" OF "sup1";

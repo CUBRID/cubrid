@@ -1,0 +1,205 @@
+﻿
+<html>
+<head>
+<title>연결 문자열(connection string) 구성</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nOLE DB API\nOLE DB 프로그래밍\n연결 문자열(connection string) 구성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_oledb_programming_dialog.htm\">OLE DB API<\/a> &nbsp;&gt;&nbsp; <a href=\"api_oledb_programming_dialog.htm\">OLE DB 프로그래밍<\/a> &nbsp;&gt;&nbsp; 연결 문자열(connection string) 구성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>연결 문자열(connection string) 구성</h4>
+<p>ADO(ActiveX Data Object) 혹은 ADO.net을 이용하여 CUBRID OLE DB Provider 프로그래밍을 할 때 연결 문자열(connection string)은 다음과 같이 작성한다.<br /></p>
+<table border="1" width="60%">
+<thead>
+<tr>
+<th>
+<p>항목</p>
+</th>
+<th>
+<p>예</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+</thead>
+<tr>
+<td>
+<p>Provider</p>
+</td>
+<td>
+<p>CUBRIDProvider</p>
+</td>
+<td>
+<p>공급자 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Data Source</p>
+</td>
+<td>
+<p>demodb</p>
+</td>
+<td>
+<p>데이터베이스 이름</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Location</p>
+</td>
+<td>
+<p>192.168.1.11</p>
+</td>
+<td>
+<p>서버 IP</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>User ID</p>
+</td>
+<td>
+<p>PUBLIC</p>
+</td>
+<td>
+<p>사용자 ID</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Password</p>
+</td>
+<td>
+<p>xxx</p>
+</td>
+<td>
+<p>비밀번호</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Port</p>
+</td>
+<td>
+<p>30000</p>
+</td>
+<td>
+<p>브로커 Port 번호</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Fetch Size</p>
+</td>
+<td>
+<p>100</p>
+</td>
+<td>
+<p>Fetch 크기</p>
+</td>
+</tr>
+</table>
+<p>위의 예를 이용한 연결 문자열은 다음과 같다.</p>
+<table border="1">
+<tr>
+<td>
+<p align="left">&#160;</p>
+<p align="left">"Provider = CUBRIDProvider;Data Source = demodb;Location = 192.168.1.11;User ID = PUBLIC;Password =xxx;Port = 30000;Fetch Size = 100"</p>
+<p align="left">&#160;</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,0 +1,529 @@
+#!/bin/sh
+#
+# 
+# cubrid
+#
+# Description:	Manages an CUBRID Database as a High-Availability
+#		resource
+#
+#
+# Author:	Dejan Muhamedagic
+# Support:	linux-ha@lists.linux-ha.org
+# License:	GNU General Public License (GPL)
+# Copyright:	(C) 2006 International Business Machines, Inc.
+#
+#		This code inspired by the DB2 resource script
+#		written by Alan Robertson
+#
+# An example usage in /etc/ha.d/haresources: 
+#       node1  10.0.0.170 cubrid::demodb::/home/joe/cubrid::joe
+#
+# See usage() function below for more details...
+#
+# OCF instance parameters:
+#	OCF_RESKEY_database
+#	OCF_RESKEY_home (optional; figure it out by checking HOME env)
+#	OCF_RESKEY_dbpath (optional; CUBRID databases path)
+#	OCF_RESKEY_user (optional; figure it out by checking file ownership)
+#	OCF_RESKEY_is_distribute_db (optional; set true if db is distribute db)
+#
+# Initialization:
+
+. ${OCF_ROOT}/resource.d/heartbeat/.ocf-shellfuncs
+PATH="$PATH:$CUBRID_HOME/bin"
+
+#######################################################################
+
+usage() {
+  methods=`cubrid_methods`
+  methods=`echo $methods | tr ' ' '|'`
+  cat <<-!
+	usage: $0 {$methods}
+
+	$0 manages an CUBRID Database instance as an HA resource.
+
+	The 'start' operation starts the database.
+	The 'stop' operation stops the database.
+	The 'promote' operation promote the database.
+	The 'demote' operation demote the database.
+	The 'notify' operation notify.
+	The 'status' operation reports whether the database is running
+	The 'monitor' operation reports whether the database seems to be working
+	The 'validate-all' operation reports whether the parameters are valid
+	The 'methods' operation reports on the methods $0 supports
+
+	!
+}
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="cubrid">
+<version>1.0</version>
+
+<longdesc lang="en">
+Resource script for cubrid. Manages an CUBRID Database instance
+as an HA resource.
+</longdesc>
+<shortdesc lang="en">cubrid resource agent</shortdesc>
+
+<parameters>
+
+ <parameter name="database" unique="1" required="1">
+  <longdesc lang="en">
+   The CUBRID Dababase name.
+  </longdesc>
+  <shortdesc lang="en">db name</shortdesc>
+  <content type="string" default="" />
+ </parameter>
+
+ <parameter name="home">
+  <longdesc lang="en">
+   The CUBRID home directory (aka CUBRID).
+   If not specified, then it is set to the HOME environment variable's value.
+  </longdesc>
+  <shortdesc lang="en">home</shortdesc>
+  <content type="string" default="" />
+ </parameter>
+
+ <parameter name="dbpath">
+  <longdesc lang="en">
+   The CUBRID databases directory (aka CUBRID_DATABASES).
+   If not specified, then it is set to the \$CUBRID/db.
+  </longdesc>
+  <shortdesc lang="en">dbpath</shortdesc>
+  <content type="string" default="" />
+ </parameter>
+
+ <parameter name="user" unique="0">
+  <longdesc lang="en">
+   The CUBRID owner.
+   If not specified, then it is set to the owner of
+   file \$CUBRID/bin/cubrid.
+   If this does not work for you, just set it explicitely.
+  </longdesc>
+  <shortdesc lang="en">user</shortdesc>
+  <content type="string" default="" />
+ </parameter>
+
+ <parameter name="is_distribute_db" unique="1" required="0">
+  <longdesc lang="en">If DB is distrubute db, set this to TRUE</longdesc>
+  <shortdesc lang="en">is it distrubute db</shortdesc>
+  <content type="boolean" default="false"/>
+ </parameter>
+</parameters>
+
+<actions>
+<action name="start" timeout="15" />
+<action name="stop" timeout="15" />
+<action name="promote"   timeout="90" />
+<action name="demote"   timeout="90" />
+<action name="notify"   timeout="90" />
+<action name="status" timeout="5" />
+<action name="monitor" depth="0" timeout="30" interval="120" start-delay="10" />
+<action name="validate-all" timeout="5" />
+<action name="methods" timeout="5" />
+<action name="meta-data" timeout="5" />
+</actions>
+</resource-agent>
+END
+}
+
+
+#
+# methods: What methods/operations do we support?
+#
+cubrid_methods() {
+  cat <<-!
+	start
+	stop
+	promote
+	demote
+	notify
+	status
+	monitor
+	validate-all
+	methods
+	meta-data
+	usage
+	!
+}
+
+
+#	Gather up information about our cubrid instance
+cubrid_info() {
+	DATABASE_NAME=$1
+	CUBRID_HOME=$2
+	CUBRID_DBPATH=$3
+	CUBRID_OWNER=$4
+
+	# get CUBRID_HOME from $HOME if not set
+	[ x = "x$CUBRID_HOME" ] &&
+		CUBRID_HOME=$HOME
+
+	# get CUBRID_DBPATH from $CUBRID_HOME/db if not set
+	[ x = "x$CUBRID_DBPATH" ] &&
+		CUBRID_DBPATH=$CUBRID_HOME/db
+
+	# there a better way to find out CUBRID_OWNER?
+	[ x = "x$CUBRID_OWNER" ] &&
+		CUBRID_OWNER=`ls -ld $CUBRID_HOME/bin/cubrid 2>/dev/null | awk 'NR==1{print $3}'`
+}
+
+testcubridenv() {
+	#	Let's make sure a few important things are set...
+	[ x != "x$CUBRID_HOME" -a x != "x$CUBRID_OWNER" ] ||
+		return 1
+	#	and some important things are there
+	check_binary cubrid
+
+	# These don't seem to be used anywhere...
+	check_binary csql
+
+	return 0
+}
+
+setcubridenv() {
+	CUBRID=$CUBRID_HOME
+	CUBRID_DATABASES=$CUBRID_DBPATH
+	LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$CUBRID/lib
+	LIBPATH=$LD_LIBRARY_PATH
+	PATH=$CUBRID/bin:$PATH
+	export DATABASE_NAME CUBRID_HOME CUBRID_OWNER
+	export CUBRID CUBRID_DATABASES
+	export LD_LIBRARY_PATH LIBPATH PATH
+}
+
+
+#
+# cubrid_status: is the CUBRID instance running?
+#
+# quick check to see if the instance is up
+is_cubrid_up() {
+	pgrep -u $CUBRID_OWNER -f "cub_server ${DATABASE_NAME}"
+}
+# instance in WORKING state?
+instance_live() {
+	pgrep -u $CUBRID_OWNER -f "cub_server ${DATABASE_NAME}"
+}
+
+is_cubrid_active() {
+	su $CUBRID_OWNER -c "cubrid changemode ${DATABASE_NAME}@localhost" | grep -w ${DATABASE_NAME} | grep -wqs "active"
+}
+
+CUBRID_ACTIVE=1
+CUBRID_TO_BE_ACTIVE=2
+CUBRID_STANDBY=3
+CUBRID_TO_BE_STANDBY=4
+check_cubrid_state() {
+	STATE=`su $CUBRID_OWNER -c "cubrid changemode ${DATABASE_NAME}@localhost" | awk {'print $9'}`
+	case $STATE in
+	to-be-standby*)
+		return $CUBRID_TO_BE_STANDBY
+		;;
+	to-be-active*)
+		return $CUBRID_TO_BE_ACTIVE
+		;;
+	active*)
+		return $CUBRID_ACTIVE
+		;;
+	standby*)
+		return $CUBRID_STANDBY
+		;;
+	esac
+	return 0
+}
+
+#
+# cubrid_start: Start the CUBRID instance
+#
+
+cubrid_start() {
+	typeset status output
+	if is_cubrid_up; then
+		: nothing to be done, we can leave right now
+		ocf_log info "CUBRID instance $DATABASE_NAME already running"
+		return $OCF_SUCCESS
+	else
+		output=`su $CUBRID_OWNER -c "cubrid server start ${DATABASE_NAME} >/dev/null 2>&1"`
+	fi
+
+	if is_cubrid_up; then
+		: cool, we are up and running
+		ocf_log info "CUBRID instance $DATABASE_NAME started: $output"
+		return $OCF_SUCCESS
+	else
+		ocf_log err "CUBRID instance $DATABASE_NAME not started: $output"
+		return $OCF_ERR_GENERIC
+	fi
+}
+
+#
+# cubrid_stop: Stop the CUBRID instance
+#
+cubrid_stop() {
+	typeset status output
+	if is_cubrid_up; then
+		output=`su $CUBRID_OWNER -c "cubrid server stop ${DATABASE_NAME} >/dev/null 2>&1"`
+	else
+		ocf_log info "CUBRID instance $DATABASE_NAME already stopped"
+		return $OCF_SUCCESS
+	fi
+	cubrid_kill  # kill any processes left
+	if is_cubrid_up; then
+		ocf_log err "CUBRID instance $DATABASE_NAME not stopped: $output"
+		return $OCF_ERR_GENERIC
+	else
+		ocf_log info "CUBRID instance $DATABASE_NAME stopped: $output"
+		sleep 1  # give em a chance to cleanup
+		return $OCF_SUCCESS
+	fi
+}
+#
+# cubrid_promote: promote the CUBRID instance
+#
+cubrid_promote() {
+	typeset status output
+	if is_cubrid_up; then
+		ocf_log info "CUBRID instance $DATABASE_NAME promoting..."
+		su $CUBRID_OWNER -c "cubrid changemode -m active $DATABASE_NAME@localhost"
+		ocf_log info "CUBRID instance $DATABASE_NAME promoted"
+		return $OCF_SUCCESS
+	else
+		return $OCF_NOT_RUNNING
+	fi
+}
+#
+# cubrid_demote: demote the CUBRID instance
+#
+cubrid_demote() {
+	typeset status output
+	if is_cubrid_up; then
+		check_cubrid_state
+		if [ $? -eq $CUBRID_ACTIVE ]; then
+			ocf_log info "CUBRID instance $DATABASE_NAME demoting..."
+			su $CUBRID_OWNER -c "cubrid changemode -m standby $DATABASE_NAME@localhost"
+			ocf_log info "CUBRID instance $DATABASE_NAME demoted"
+		fi
+		return $OCF_SUCCESS
+	else
+		ocf_log info "CUBRID instance $DATABASE_NAME already stopped"
+		return $OCF_SUCCESS
+	fi
+}
+cubrid_notify() {
+	local n_type="$OCF_RESKEY_CRM_meta_notify_type"
+	local n_op="$OCF_RESKEY_CRM_meta_notify_operation"
+	set -- $OCF_RESKEY_CRM_meta_notify_active_resource
+	local n_active="$#"
+	set -- $OCF_RESKEY_CRM_meta_notify_stop_resource
+	local n_stop="$#"
+	set -- $OCF_RESKEY_CRM_meta_notify_start_resource
+	local n_start="$#"
+
+	ocf_log info "$OCF_RESOURCE_INSTANCE notify: $n_type for $n_op - counts: active $n_active - starting $n_start - stopping $n_stop"
+	ocf_log info "                  active : $OCF_RESKEY_CRM_meta_notify_active_resource"
+	ocf_log info "                inactive : $OCF_RESKEY_CRM_meta_notify_inactive_resource"
+	ocf_log info "                  stop   : $OCF_RESKEY_CRM_meta_notify_stop_resource"
+	ocf_log info "                  start  : $OCF_RESKEY_CRM_meta_notify_start_resource"
+	
+	case $n_type in
+	pre)
+		case $n_op in
+		promote) # TODO:
+			 # Resist promotion of the other side in case we
+			 # are already primary - though the CRM should
+			 # not even attempt that.
+			;;
+		esac
+		;;
+	post)	# TODO: Entire case statement which follows redundant?
+		case $n_op in
+		start)
+			if [ "$n_active" -eq 2 ]; then
+				# The other side is running
+				: huh?
+			fi
+			;;
+		stop)
+			# TODO BUG: disconnect seems to force
+			# non-primary mode?!?
+
+			# TODO: If we are secondary, do we need to do
+			# anything about a stopped primary in case we
+			# had an outdated flag...?
+			;;
+		promote)
+			# if i am 'to-be-standby'
+			#   just do killtran cub_cas for test
+			#check_cubrid_state
+		        #if [ $? -eq $CUBRID_TO_BE_ACTIVE ]; then
+			#	ocf_log info "CUBRID instance $DATABASE_NAME killtran cub_cas"
+			#	cubrid killtran -f --kill-program-name=cub_cas ${DATABASE_NAME}@localhost
+                        #fi
+			;;
+		esac
+
+		# After something has been done is a good time to
+		# recheck our status:
+		if is_cubrid_up; then
+			crm_master -v 100 -l reboot
+		fi
+		;;
+	esac
+	
+	return $OCF_SUCCESS
+}
+# kill the database processes (if any left)
+# give them 30 secs to exit cleanly (6 times 5)
+killprocs() {
+	typeset sig=$1
+	shift 1
+	kill -$sig $* >/dev/null 2>&1
+}
+cubrid_kill() {
+	killprocs TERM `eval $procs | awk '{print $1}'`
+	for i in 1 2 3 4 5; do
+		killprocs 0 `eval $procs | awk '{print $1}'` ||
+			return
+		sleep 5
+	done
+	killprocs KILL `eval $procs | awk '{print $1}'`
+}
+
+#
+# cubrid_monitor: Can the CUBRID instance do anything useful?
+#
+cubrid_monitor() {
+	if is_cubrid_up
+	then
+		#ocf_log info "CUBRID instance $DATABASE_NAME is alive"
+		if is_cubrid_active
+		then
+			if [ $IS_DISTRIBUTE_DB -eq 1 ]
+			then
+				return $OCF_SUCCESS
+			else
+				return $OCF_RUNNING_MASTER
+			fi
+		else
+			return $OCF_SUCCESS
+		fi
+	else
+		ocf_log info "CUBRID instance $DATABASE_NAME is down"
+		return $OCF_NOT_RUNNING
+	fi
+
+	return $OCF_ERR_GENERIC
+}
+
+#
+#	'main' starts here...
+#
+
+if [ $# -ne 1 ]
+then
+  usage
+  exit $OCF_ERR_ARGS
+fi
+
+# These operations don't require OCF instance parameters to be set
+case "$1" in
+  meta-data)	meta_data
+		exit $OCF_SUCCESS;;
+
+  usage) 	usage
+		exit $OCF_SUCCESS;;
+
+  methods)	cubrid_methods
+		exit $?;;
+
+  *);;
+esac
+
+if [ x = "x$OCF_RESKEY_database" ]
+then
+  ocf_log err "Please set OCF_RESKEY_database to the database name !"
+  exit $OCF_ERR_ARGS
+fi
+
+if [ x = "x$OCF_RESKEY_is_distribute_db" ]
+then
+  IS_DISTRIBUTE_DB=0
+else
+  case "$OCF_RESKEY_is_distribute_db" in
+   1|true|TRUE|yes|YES) IS_DISTRIBUTE_DB=1;;
+   0|false|FALSE|no|NO) IS_DISTRIBUTE_DB=0;;
+   *) ocf_log err "Parsing parameter is_distribute_db: '$is_distribute_db' is not a boolean value!"
+      exit $OCF_ERR_ARGS ;;
+  esac
+fi
+
+cubrid_info "$OCF_RESKEY_database" "$OCF_RESKEY_home" "$OCF_RESKEY_dbpath" "$OCF_RESKEY_user"
+
+setcubridenv # important: set the environment for the SID
+
+LSB_STATUS_STOPPED=3
+if ! testcubridenv; then
+	ocf_log info "CUBRID environment for DB $DATABASE_NAME does not exist"
+	case "$1" in
+		stop) exit $OCF_SUCCESS;;
+		monitor) exit $OCF_NOT_RUNNING;;
+		status) exit $LSB_STATUS_STOPPED;;
+		*)
+			ocf_log err "CUBRID environment for DB $DATABASE_NAME broken"
+			exit $OCF_ERR_ARGS
+		;;
+	esac
+fi
+
+procs="ps -e -o pid,args | grep -v grep | grep -i \"cub_server $DATABASE_NAME\""
+
+US=`id -u -n`
+if [ $US != root -a $US != $CUBRID_OWNER ]
+then
+  ocf_log err "$0 must be run as root or $CUBRID_OWNER"
+  exit $OCF_ERR_PERM
+fi
+
+# What kind of method was invoked?
+case "$1" in
+
+  start)	cubrid_start
+		exit $?;;
+
+  stop)		cubrid_stop
+		exit $?;;
+
+  promote)	cubrid_promote
+		exit $?;;
+
+  demote)	cubrid_demote
+		exit $?;;
+
+  notify)	cubrid_notify
+		exit $?;;
+
+  status)	if is_cubrid_up
+		then
+		  echo CUBRID instance $DATABASE_NAME is running
+		  exit $OCF_SUCCESS
+		else
+		  echo CUBRID instance $DATABASE_NAME is stopped
+		  exit $OCF_NOT_RUNNING
+		fi
+		;;
+
+  monitor)	cubrid_monitor
+		exit $?;;
+
+  validate-all)	# OCF_RESKEY_database was already checked by testcubridenv(),
+		# just exit successfully here.
+		exit $OCF_SUCCESS;;
+
+  *)		cubrid_methods
+		exit $OCF_ERR_UNIMPLEMENTED;;
+esac
+
+# vim:set tabstop=4 shiftwidth=4:

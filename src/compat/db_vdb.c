@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -145,6 +145,8 @@ db_open_local (void)
   session = (DB_SESSION *) malloc (sizeof (DB_SESSION));
   if (session == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (DB_SESSION));
       return NULL;
     }
 
@@ -276,7 +278,7 @@ db_parse_one_statement (DB_SESSION * session)
 	  parser_free_tree (session->parser, session->statements[0]);
 	  session->statements[0] = NULL;
 	}
-      session->stage[0] = StatementInitialStage;
+
       session->dimension = 0;
       session->stmt_ndx = 0;
 
@@ -293,6 +295,11 @@ db_parse_one_statement (DB_SESSION * session)
     {
       session->parser->statements =
 	(PT_NODE **) parser_alloc (session->parser, 2 * sizeof (PT_NODE *));
+      if (session->parser->statements == NULL)
+	{
+	  return -1;
+	}
+
       session->parser->statements[0] = session->parser->node_stack[0];
       session->parser->statements[1] = NULL;
 
@@ -410,14 +417,16 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* allocate memory for session->type_list and session->stage
      if not allocated */
-  if (!session->type_list && !session->stage)
+  if (session->type_list == NULL)
     {
       size_t size = session->dimension * sizeof (DB_QUERY_TYPE *)
 	+ session->dimension * sizeof (char);
       void *p = malloc (size);
-      if (!p)
+      if (p == NULL)
 	{
-	  return er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       (void) memset (p, 0, size);
       session->type_list = (DB_QUERY_TYPE **) p;
@@ -535,7 +544,7 @@ db_compile_statement_local (DB_SESSION * session)
   statement = mq_translate (parser, statement);
   if (!statement || pt_has_error (parser))
     {
-      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();
     }
 
@@ -1838,12 +1847,19 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
   int err;
   PT_NODE *statement;
 
-  if (session && session->statements &&
-      stmt_ndx > 0 && stmt_ndx <= session->dimension &&
-      session->statements[stmt_ndx - 1])
+  if (session == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (session->statements && stmt_ndx > 0 && stmt_ndx <= session->dimension
+      && session->statements[stmt_ndx - 1])
     {
       session->statements[stmt_ndx - 1]->do_not_keep = 1;
     }
+
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
 
   statement = session->statements[stmt_ndx - 1];
@@ -2177,15 +2193,14 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
   int rc;
 
   parser = parser_create_parser ();
-  if (!parser)
+  if (parser == NULL)
     {
       rc = ER_GENERIC_ERROR;
     }
   else
     {
-
       spec = parser_parse_string (parser, query_spec);
-      if (!pt_has_error (parser))
+      if (spec != NULL && !pt_has_error (parser))
 	{
 	  rc = pt_validate_query_spec (parser, *spec, vclass);
 	}
@@ -2194,8 +2209,9 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
 	  pt_report_to_ersys (parser, PT_SYNTAX);
 	  rc = er_errid ();
 	}
+
+      parser_free_parser (parser);
     }
-  parser_free_parser (parser);
 
   return rc;
 }
@@ -2210,7 +2226,7 @@ static char *
 get_reasonable_predicate (DB_ATTRIBUTE * att)
 {
   static char predicate[300];
-  const char *att_name;
+  const char *att_name, *cond;
 
   if (!att
       || db_attribute_is_shared (att)
@@ -2218,8 +2234,6 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
     {
       return NULL;
     }
-
-  strcpy (predicate, att_name);
 
   switch (db_attribute_type (att))
     {
@@ -2229,34 +2243,45 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
     case DB_TYPE_SHORT:
     case DB_TYPE_BIGINT:
     case DB_TYPE_MONETARY:
-      strcat (predicate, " = 1 ");
-      return predicate;
+      cond = " = 1 ";
+      break;
+
     case DB_TYPE_STRING:
-      strcat (predicate, " = 'x' ");
-      return predicate;
+      cond = " = 'x' ";
+      break;
+
     case DB_TYPE_OBJECT:
-      strcat (predicate, " is null ");
-      return predicate;
+      cond = " is null ";
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      strcat (predicate, " = {} ");
-      return predicate;
+      cond = " = {} ";
+      break;
+
     case DB_TYPE_TIME:
-      strcat (predicate, " = '09:30' ");
-      return predicate;
+      cond = " = '09:30' ";
+      break;
+
     case DB_TYPE_TIMESTAMP:
-      strcat (predicate, " = '10/15/1986 5:45 am' ");
-      return predicate;
+      cond = " = '10/15/1986 5:45 am' ";
+      break;
+
     case DB_TYPE_DATETIME:
-      strcat (predicate, " = '10/15/1986 5:45:15.135 am' ");
-      return predicate;
+      cond = " = '10/15/1986 5:45:15.135 am' ";
+      break;
+
     case DB_TYPE_DATE:
-      strcat (predicate, " = '10/15/1986' ");
-      return predicate;
+      cond = " = '10/15/1986' ";
+      break;
+
     default:
       return NULL;
     }
+
+  snprintf (predicate, sizeof (predicate) - 1, "%s%s", att_name, cond);
+  return predicate;
 }
 
 /*
@@ -2317,6 +2342,7 @@ db_validate (DB_OBJECT * vc)
       attributes = db_get_attributes (vc);
       len = strlen (buffer);
       bufp = buffer;
+
       while (attributes)
 	{
 	  pred = get_reasonable_predicate (attributes);
@@ -2329,9 +2355,11 @@ db_validate (DB_OBJECT * vc)
 		  /* increase buffer by BUF_SIZE */
 		  limit += BUF_SIZE;
 		  newbuf = (char *) malloc (limit * sizeof (char));
-
-		  if (!newbuf)
+		  if (newbuf == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      limit * sizeof (char));
 		      break;	/* ran out of memory */
 		    }
 
@@ -2350,6 +2378,7 @@ db_validate (DB_OBJECT * vc)
 	    }
 	  attributes = db_attribute_next (attributes);
 	}
+
       retval = db_query_execute (bufp, &result, NULL);
       if (result)
 	{

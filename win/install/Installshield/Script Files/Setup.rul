@@ -35,6 +35,7 @@
 
     // your DLL function prototypes
 
+#include "../../../version.h"
 
 // ---- script function prototypes -----
 prototype   BOOL USER.SendMessageTimeout(HWND, SHORT, SHORT, POINTER, SHORT, SHORT, POINTER);
@@ -54,6 +55,7 @@ NUMBER  nvCheckDeskTopIcon, nvCheckQuickLaunchIcon, nvCheckStartMenuIcon;
 STRING  szVersionName, szVersionName1, szVersionName2;
 LIST    szVersionList;
 BOOL    cp_old_dbtxt;
+BOOL    remove_completely, old_conf;
 // CodePage 체크를 위한 Global variable 선언
 NUMBER  nvCodePage;
 
@@ -63,15 +65,13 @@ NUMBER  nvCodePage;
 
 #define SD_AGREE				14
 #define SD_DISAGREE				15
-#define SD_CUSTOM_LICENSE                 103
+#define SD_CUSTOM_LICENSE                 104
 #define	ST_CUBRID_VERSION		@PRODUCT_VERSION
 #define ODBC_VERSION            @PRODUCT_VERSION
 
 #ifndef STILL_ACTIVE
 	#define STILL_ACTIVE    0x00000103
 #endif
-
-prototype SdLicenseCustom(STRING, STRING, STRING, STRING);
 
 prototype RunProgram(STRING, STRING, NUMBER, NUMBER, NUMBER, BYREF NUMBER);
 prototype BOOL kernel32.CreateProcessA(POINTER, BYVAL STRING, POINTER, 
@@ -123,140 +123,10 @@ begin
     return 0;
 end;
 
-function SdLicenseCustom( szTitle, szMsg, szQuestion, szLicenseFile )
-	STRING  szDlg, szTemp, szFinalFile;
-	INT     nId, list, nValue1, nValue2;
-	HWND    hwndDlg,hwndItem;
-	BOOL    bDone, bOpt1, bOpt2;
-	NUMBER nSdDialog;
-begin
-	//szDlg     = SD_CUSTOM_LICENSE;
-	nSdDialog = SD_CUSTOM_LICENSE;
-
-	// record data produced by this dialog
-	if (MODE=SILENTMODE) then
-		SdMakeName( szAppKey, szDlg, szTitle, nSdLicense );
-		SilentReadData( szAppKey, "Result", DATA_NUMBER, szTemp, nId );
-		return nId;
-	endif;
-
-	// Determine license file location. Check path for UNC or disk id
-	szFinalFile = SUPPORTDIR ^ szLicenseFile;
-	GetByte( nValue1, szLicenseFile, 0 );
-	GetByte( nValue2, szLicenseFile, 1 );
-
-	switch (nValue2)
-		case 58: // colon
-			if ( ((nValue1 >= 'a') && (nValue1 <= 'z')) ||
-				((nValue1 >= 'A') && (nValue1 <= 'Z')) ) then
-				szFinalFile = szLicenseFile; // path contains drive-path-file
-			endif;
-		case 92: // slash
-			if (nValue1 = 92) then
-				szFinalFile = szLicenseFile; // path is UNC
-			endif;
-	endswitch;
-
-
-	// ensure general initialization is complete
-	if (!bSdInit) then
-		SdInit();
-	endif;
-
-	if (EzDefineDialog( szDlg, "", "", SD_CUSTOM_LICENSE) = DLG_ERR) then
-		return -1;
-	endif;
-
-	// Loop in dialog until the user selects a standard button
-	bDone = FALSE;
-
-	while (!bDone)
-		nId = WaitOnDialog( szDlg );
-		switch (nId)
-			case DLG_INIT: 
-				if(szMsg != "") then   
-					SdSetStatic( szDlg, SD_STA_MSG1, szMsg );
-				endif;
-	
-				if(szQuestion != "") then
-					SdSetStatic( szDlg, SD_STA_MSG2, szQuestion );
-				endif;
-	
-				hwndDlg = CmdGetHwndDlg( szDlg );
-				SdGeneralInit( szDlg, hwndDlg, 0, szSdProduct );
-				hwndItem = GetDlgItem( hwndDlg, 1 );
-				EnableWindow( hwndItem, FALSE);
-	
-				if(szTitle != "") then
-					SetWindowText( hwndDlg, szTitle );
-				endif;
-
-				// set agreement multi-line edit field
-				list = ListCreate( STRINGLIST );
-				if (!ListReadFromFile( list, szFinalFile )) then
-					CtrlSetMLEText( szDlg, SD_MULTEDIT_FIELD1, list );
-				endif;
-	
-				ListDestroy( list );
-	
-			case SD_PBUT_CONTINUE:
-				nId   = NEXT;
-				bDone = TRUE;
-	
-			case SD_AGREE: 
-				//GetDlgItem retrieves the handle of the NEXT button      
-				hwndItem = GetDlgItem( hwndDlg, 1 );
-				//EnableWindow Enables or Disables the field whose handle is 
-				//specified in the first parameter  
-				//In this case the function enables the Next button
-				EnableWindow( hwndItem, TRUE);
-			case SD_DISAGREE:  
-				//GetDlgItem retrieves the handle of the NEXT button
-				hwndItem = GetDlgItem( hwndDlg, 1 );
-				//EnableWindow Enables or Disables the field whose handle is
-				//specified in the first parameter.
-				//In this case the function disables the Next button
-				EnableWindow( hwndItem, FALSE); 	
-			case SD_PBUT_YES:
-				nId   = YES;
-				bDone = TRUE;
-	
-			case BACK:
-				nId    = BACK;
-				bDone  = TRUE;
-	
-			case DLG_ERR:
-				SdError( -1, szDlg );
-				nId   = -1;
-				bDone = TRUE;
-	
-			case DLG_CLOSE:
-				SdCloseDlg( hwndDlg, nId, bDone );
-	
-			default:
-				// check standard handling
-				if (SdIsStdButton( nId ) && SdDoStdButton( nId )) then
-					bDone = TRUE;
-				endif;
-		endswitch;
-
-	endwhile;
-
-	EndDialog( szDlg );
-	ReleaseDialog( szDlg );
-
-	SdUnInit();
-
-	// record data produced by this dialog
-	SdMakeName( szAppKey, szDlg, szTitle, nSdLicense );
-	SilentWriteData( szAppKey, "Result", DATA_NUMBER, "", nId );
-
-	return nId;
-end;
- 
 function OnMaintUIBefore()
-	STRING svResult, szCaption, PROGRAM;
-	NUMBER nResult;
+	STRING svResult, szCaption, PROGRAM, szMsg;
+	NUMBER nResult, nType, nvSize, ExitCode;
+	STRING unInstallString, szKey, szNale, szName;
 begin    
     //Maintenance Mode
    	nResult = StrFind(CMDLINE, "CUB_UNINSTALL");
@@ -272,17 +142,25 @@ begin
         endif;
         exit;
 	endif;	
-
+	
 	svResult = SdLoadString(IFX_MAINTUI_MSG);
 	szCaption = SdLoadString(IFX_ONMAINTUI_CAPTION);
 	nResult = SprintfBox(MB_OKCANCEL,szCaption,"%s",svResult);
-
+	remove_completely = FALSE;
+	
 	if (nResult = IDOK) then 
+	    szMsg = "데이터베이스와 설정파일을 모두 삭제 하시겠습니까?\r\n" + 
+	            "데이터베이스를 다시 사용하려면 '아니오'를 선택하시기 바랍니다.";
+	    szCaption = "데이터베이스 삭제 확인";
+	    nResult = SprintfBox(MB_YESNO, szCaption, "%s", szMsg);
+	    if (nResult = IDYES) then
+			remove_completely = TRUE;
+  		endif;
+
 		SetStatusWindow(0, "");
 		Enable(STATUSEX);
 		StatusUpdate(ON, 100);
-
-		FeatureRemoveAll();
+		FeatureRemoveAll();		
 	else
 		exit;		
 	endif;
@@ -294,6 +172,21 @@ function OnMaintUIAfter()
 	int	   ExitCode;
 	BOOL   bOpt1, bOpt2;
 begin
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", NOWAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", NOWAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", NOWAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "cubridmanager", NOWAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "doc", NOWAIT, SW_HIDE, -1, ExitCode) ;
+   
+	if (remove_completely = TRUE) then
+		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", NOWAIT, SW_HIDE, -1, ExitCode) ;
+		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"databases", NOWAIT, SW_HIDE, -1, ExitCode) ;
+		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q" + TARGETDIR, NOWAIT, SW_HIDE, -1, ExitCode) ;
+	endif;
+	
+	DeleteProgramFolder ("CUBRID");
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q " + TARGETDIR, NOWAIT, SW_HIDE, -1, ExitCode) ;
+
    	SdFinish("", "Uninstall operation has been completed.", "", "", "", bOpt1, bOpt2);
 end;
 
@@ -316,6 +209,7 @@ function OnFirstUIBefore()
     STRING  szDir, PROGRAM;
     STRING  szfolder, szTarget;
     STRING  szComponents, szTargetdir;
+    STRING  szValue, szPath, svResult;
     NUMBER  nLevel, ExitCode;
     LIST    listStartCopy;
     NUMBER  nvSize, nvType;
@@ -364,9 +258,9 @@ Dlg_SdWelcome:
     szTitle = "CUBRID " + ST_CUBRID_VERSION + " for Windows";       
     if (nvCodePage = 949 ) then
     	szMsg   = "본 설치 프로그램은 컴퓨터에 큐브리드를 설치할 것입니다.\n\n"+
-    	          "CUBRID 7.3 또는 이하 버전에서 생성된 큐브리드 데이터\n"+
-    	          "베이스는 CUBRID " + ST_CUBRID_VERSION + "와 호환되지 않습니다. CUBRID " +
-    	          ST_CUBRID_VERSION + " 에서 사용하려면 마이그레이션이 필요합니다.";
+    	          "CUBRID 2008 R1.x 또는 이하 버전에서 생성된 큐브리드 데이터베이스는\n"+
+    	          "CUBRID " + ST_CUBRID_VERSION + "와 호환되지 않습니다. CUBRID " +
+    	          ST_CUBRID_VERSION + " 에서 사용하려면\n마이그레이션이 필요합니다.";
     else
     	szMsg   = "\n\nThis program will install CUBRID on your computer\n";    	
 	endif;
@@ -424,7 +318,7 @@ Dlg_SdAskDestPath:
        
       endif;   
       
-    endif;            
+    endif;
     
     TARGETDIR = szTarget;
     szDir = TARGETDIR;
@@ -433,15 +327,15 @@ Dlg_SdAskDestPath:
 Dlg_SdLicense:                               
 	if (nvCodePage = 949 ) then
     	szLicenseFile = SUPPORTDIR ^ "license.txt";
-	    szTitle    = "CUBRID " + ST_CUBRID_VERSION + "  라이센스";
-    	szMsg      = "라이센스 동의서" ;
+	    szTitle    = "CUBRID " + ST_CUBRID_VERSION + "  라이선스";
+    	szMsg      = "라이선스 동의서" ;
     else
     	szLicenseFile = SUPPORTDIR ^ "license_eng.txt";
 	    szTitle    = "CUBRID " + ST_CUBRID_VERSION + " License";
 	    szMsg      = "License agreement";
     endif ;      
 	szQuestion = "";
-    nResult    = SdLicenseCustom( szTitle, szMsg, szQuestion, szLicenseFile );
+	nResult = SdLicense2(szTitle, "예 동의합니다", "아니오", szLicenseFile, FALSE);
     if (nResult = BACK) goto Dlg_SdAskDestPath;
     
 Dlg_SetupType:
@@ -519,12 +413,22 @@ Dlg_SetupType:
    	endif;
 
 Dlg_AskShortcutPath:
-	SetDialogTitle(DLG_ASK_OPTIONS, "Additional Options");
-	szMsg = "Select Additional Options below for make shortcut icon.";
+	if ( nvCodePage = 949 ) then
+	  szTitle = "바로가기 아이콘 생성";
+	  szMsg = "바로 가기 아이콘을 생성하시려면 다음 옵션을 선택하시기 바랍니다.";
+	  szTextDeskTopIcon = "데스크탑 아이콘 생성";
+	  szTextQuickLaunchIcon = "빠른 실행 아이콘 생성";
+	  szTextStartMenuIcon = "시작 메뉴 아이콘 생성";
+	else
+	  szTitle = "Additional Options";
+	  szMsg = "Select Additional Options below for make shortcut icon.";
+      szTextDeskTopIcon = "Make Desktop Icon";
+	  szTextQuickLaunchIcon = "Make Quick Launch Icon";
+	  szTextStartMenuIcon = "Make Start Menu Icon";
+	endif;
+	
+	SetDialogTitle(DLG_ASK_OPTIONS, szTitle);
 
-	szTextDeskTopIcon = "Make Desktop Icon";
-	szTextQuickLaunchIcon = "Make Quick Launch Icon";
-	szTextStartMenuIcon = "Make Start Menu Icon";
 
  	nResult = AskOptions (NONEXCLUSIVE, szMsg,
 						szTextDeskTopIcon, nvCheckDeskTopIcon,
@@ -540,49 +444,115 @@ Dlg_AskShortcutPath:
 	endif;
 
 Dlg_SdStartCopy:
-    szTitle = "Start Install the CUBRID " + ST_CUBRID_VERSION;
+	if ( nvCodePage = 949 ) then
+	   	szTitle = "CUBRID " + ST_CUBRID_VERSION + " 설치를 시작합니다";
+	else
+    	szTitle = "Start Install the CUBRID " + ST_CUBRID_VERSION;
+	endif;
     //The following is an example of how to add a string(svName) to a list(listStartCopy).
     //eg. ListAddString(listStartCopy,svName,AFTER);
     listStartCopy = ListCreate( STRINGLIST );
     
-	ListAddString(listStartCopy, "Target Directory : " + TARGETDIR, AFTER);
-	ListAddString(listStartCopy, szSummaryMsg, AFTER);
-	ListAddString(listStartCopy, "Short Cut Icon : ", AFTER);
+	if ( nvCodePage = 949 ) then
+		ListAddString(listStartCopy, "대상 디렉토리 : " + TARGETDIR, AFTER);
+		ListAddString(listStartCopy, szSummaryMsg, AFTER);
+		ListAddString(listStartCopy, "바로가기 아이콘 : ", AFTER);
+	
+		// Add short cut icon information that will be added.
+		if (nvCheckDeskTopIcon = TRUE) then
+			ListAddString(listStartCopy, "   데스크탑 아이콘 생성", AFTER);
+		endif;
+			
+		if (nvCheckQuickLaunchIcon = TRUE) then
+			ListAddString(listStartCopy, "   빠른실행 아이콘 생성", AFTER);
+		endif;
+			
+		if (nvCheckStartMenuIcon = TRUE) then
+			ListAddString(listStartCopy, "   시작 메뉴 아이콘 생성", AFTER);
+		endif;	  
+	else
+		ListAddString(listStartCopy, "Target Directory : " + TARGETDIR, AFTER);
+		ListAddString(listStartCopy, szSummaryMsg, AFTER);
+		ListAddString(listStartCopy, "Short Cut Icon : ", AFTER);
+	
+		// Add short cut icon information that will be added.
+		if (nvCheckDeskTopIcon = TRUE) then
+			ListAddString(listStartCopy, "   Make Desktop Icon", AFTER);
+		endif;
+			
+		if (nvCheckQuickLaunchIcon = TRUE) then
+			ListAddString(listStartCopy, "   Make QuickLaunch Icon", AFTER);
+		endif;
+			
+		if (nvCheckStartMenuIcon = TRUE) then
+			ListAddString(listStartCopy, "   Make StartMenu Icon", AFTER);
+		endif;
+	endif;
+	    		
+    nResult = SdStartCopy( szTitle, "", listStartCopy );
 
-	// Add short cut icon information that will be added.
-	if (nvCheckDeskTopIcon = TRUE) then
-		ListAddString(listStartCopy, "   Make Desktop Icon", AFTER);
-	endif;
-		
-	if (nvCheckQuickLaunchIcon = TRUE) then
-		ListAddString(listStartCopy, "   Make QuickLaunch Icon", AFTER);
-	endif;
-		
-	if (nvCheckStartMenuIcon = TRUE) then
-		ListAddString(listStartCopy, "   Make StartMenu Icon", AFTER);
-	endif;
-		
-    nResult = SdStartCopy( szTitle, "", listStartCopy );	
+    if (nResult = BACK) goto Dlg_AskShortcutPath;
   
     ListDestroy(listStartCopy);
 
-    if (nResult = BACK) goto Dlg_AskShortcutPath;
+    /* check if 2008 redistributable is installed */
+    // 1. check registry key(redistributable)      
+    nvType = REGDB_STRING;
+    szValue = "";
+    
+   	szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
 
-	cp_old_dbtxt = FALSE;
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	nResult = RegDBGetKeyValueEx (szKey, "DisplayVersion", nvType, szValue, nvSize);
+	if (nResult < 0) then
+	//		SprintfBox(WARNING, "", "SendMessageTimeout failed in RefreshEnvironment, Error %d", GetLastError());
+	    
+	    szTitle = "Microsoft Visual C++ 2008 재배포 가능 패키지";
+	    szMsg = "Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\r\n" +
+	            "계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\r\n" +
+	            "(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\r\n\r\n" + 
+	            "CUBRID 2008 설치를 중단 하시겠습니까?";
 
-	ordblist_txt = TARGETDIR^"Databases\\ordblist.txt";
-	LongPathToQuote(ordblist_txt, TRUE);
-	nResult  = Is (FILE_EXISTS, ordblist_txt);
+		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+        if (nResult = IDYES) then
+	        exit;
+	    endif;
+    endif;
+    
+    /* check if jvm is installed */
+    if (RunProgram("javaw.exe", "", WAIT, SW_HIDE, -1, ExitCode) < 0) then
+		szMsg = "JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\r\n" +
+    			"CUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\r\n";
+        MessageBox (szMsg, INFORMATION); 
+    endif;
 
-	if (nResult = FALSE) then
-		ordblist_txt = TARGETDIR^"CUBRID_DATABASES\\ordblist.txt";
-		LongPathToQuote(ordblist_txt, TRUE);
-		nResult = Is (FILE_EXISTS, ordblist_txt);
-		if (nResult = TRUE) then
-			cp_old_dbtxt = TRUE;
-		endif;
+    szPath = TARGETDIR^"conf";
+    LongPathToQuote (szPath, TRUE);
+       
+    if (FindFile ( szPath, "cubrid.conf", svResult ) = 0) then
+      old_conf = TRUE;
+    elseif (FindFile ( szPath, "cubrid_broker.conf", svResult ) = 0) then
+      old_conf = TRUE;      
+    elseif (FindFile ( szPath, "cm.conf", svResult ) = 0) then
+      old_conf = TRUE;
+    elseif (FindFile ( szPath, "cm.pass", svResult ) = 0) then
+      old_conf = TRUE;
+    elseif (FindFile ( szPath, "cmdb.pass", svResult ) = 0) then
+      old_conf = TRUE;
+    endif;
+     
+    if (old_conf = TRUE) then
+	    szTitle = "설정 파일 유지";
+	    szMsg = "설정파일(.conf또는 .pass파일)이 이미 존재합니다.\r\n기존 파일을 유지하시겠습니까?";
+	    
+		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+	    if (nResult = IDNO) then
+	      old_conf = FALSE;
+	    endif;
 	endif;
 
+    REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;                        
+    
     // setup default status
     SetStatusWindow(0, "");
     Enable(STATUSEX);
@@ -602,12 +572,21 @@ end;
 ///////////////////////////////////////////////////////////////////////////////
 function OnMoving()
     STRING szAppPath;
+    STRING szProgramFolder; 
 begin
     // Set LOGO Compliance Application Path 
     // TO DO : if your application .exe is in a subfolder of TARGETDIR then add subfolder 
+    szProgramFolder = FOLDER_PROGRAMS^"CUBRID";
+    
     szAppPath = TARGETDIR;
     RegDBSetItem(REGDB_APPPATH, szAppPath);
     RegDBSetItem(REGDB_APPPATH_DEFAULT, szAppPath ^ @PRODUCT_KEY);
+    if (!MAINTENANCE) then
+        if (nvCheckStartMenuIcon = TRUE) then
+            szAppPath = UNINSTALL_STRING;
+            AddFolderIcon( szProgramFolder, "Uninstall CUBRID", szAppPath, "", "", 0, "", REPLACE);
+        endif;
+    endif;
 end;
  
 function OnFileLocked(szFile)
@@ -618,12 +597,18 @@ begin
 		return ERR_IGNORE;
 	else                                  // 파일일때
 		if ( nvCodePage = 949 ) then
-	 		msg = "잠금된 파일(" + szFile + ")이 발견되었습니다.\r\n 큐브리드 서비스를 중지시키고, 모든 클라이언트 프로그램과 큐브리드 서비스 트레이를 종료시킨 후, 프로그램 삭제를 재시도하십시오.";
+	 		msg = "잠금된 파일(" + szFile + ")이 발견되었습니다.\r\n큐브리드 서비스를 중지시키고, 모든 클라이언트 프로그램과 큐브리드 서비스 트레이를 종료후 계속 진행하십시오.\r\n";
+	 		msg = msg + "계속 진행하시겠습니까?";
 		else
 	 		msg = "Locked file detected(" + szFile + ").\r\n" + " Please stop CUBRID service and terminate all client programs and CUBRID Service Tray. And then, retry uninstallation.";
 	 	endif;
-		MessageBox(msg, SEVERE);
-		exit;
+       if (AskYesNo (msg, YES) = NO) then
+            msg = "삭제가 중단되었습니다.\r\n큐브리드 서비스를 중지시키고, 모든 클라이언트 프로그램과 큐브리드 서비스 트레이를 종료후, 다시 삭제해 주시기 바랍니다. ";
+            MessageBox(msg, WARNING);
+       		exit;
+       else
+            return ERR_RETRY;
+       endif;
 	endif;
 end;
 
@@ -712,10 +697,11 @@ Dlg_Completed:
 		szDocTempFolder = "CUBRID";
 		CreateProgramFolder(szDocTempFolder);
 					
-		AddFolderIcon (szDocTempFolder, "Q&A", szProgramQA, TARGETDIR^"\\doc", "", 0, "", REPLACE);
-		szDocCUBRIDManual = TARGETDIR^"\\doc\\index.htm";
+		szDocCUBRIDManual = TARGETDIR^"\\\cubridmanager\\plugins\\com.cubrid.cubridmanager.help_"
+		                    + VERSION_STRING + "\\html\\index.htm";
 		LongPathToQuote( szDocCUBRIDManual, TRUE);
 		AddFolderIcon (szDocTempFolder, "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
+		AddFolderIcon (TARGETDIR^"\\doc", "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
 
 		if (nSetupType = "ALL") then
 			szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
@@ -730,6 +716,8 @@ Dlg_Completed:
 	
 	SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
 	
+	RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+
     if (nSetupType = "ALL") then
 		// 인스톨후 CUBRID Service Tray 를 실행.
 		PROGRAM = TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe";
@@ -739,7 +727,8 @@ Dlg_Completed:
 		PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe";
 		LongPathToQuote (PROGRAM, TRUE);
 		LaunchAppAndWait (PROGRAM, "-start", NOWAIT);
-	endif;		
+	endif;
+	
 /*
 	setupfilecopy_program = SRCDIR^"\\cubsetupcopy.bat";
 	setupfilecopy_param = SRCDIR;                       
@@ -747,6 +736,7 @@ Dlg_Completed:
 	LongPathToQuote(setupfilecopy_param, TRUE);
 	RunProgram(setupfilecopy_program, "-d " + setupfilecopy_param, NOWAIT, SW_HIDE, -1, ExitCode);
 */
+    REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
     return 0;
 end;
 
@@ -768,9 +758,10 @@ end;
 
 function makeconf(conffile)
 	STRING  confcopy_program, conffilename, distfilename, versionfilename;
+	STRING  cmd_arg;
 	int	   ExitCode;
 begin
-	confcopy_program = SRCDIR^"\\makeconf.bat";	
+	confcopy_program = SRCDIR^"\\makeconf.bat";
 	conffilename = conffile;
 	distfilename = conffilename+"-dist";
 	versionfilename = conffilename + "."+szVersionName;
@@ -778,8 +769,15 @@ begin
 	LongPathToQuote(conffilename, TRUE);
 	LongPathToQuote(distfilename, TRUE);
 	LongPathToQuote(versionfilename, TRUE);
-	
-	RunProgram(confcopy_program, conffilename + " " + distfilename + " " + versionfilename, WAIT, SW_HIDE, -1, ExitCode);
+	cmd_arg = conffilename + " " + distfilename + " " + versionfilename;
+
+    if (old_conf) then
+    	cmd_arg = cmd_arg + " TRUE";
+    else
+    	cmd_arg = cmd_arg + " FALSE";
+    endif;
+    
+    RunProgram(confcopy_program, cmd_arg, WAIT, SW_HIDE, -1, ExitCode);
 end;
 //---------------------------------------------------------------------------
 // OnSetUpdateMode

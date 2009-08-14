@@ -1,0 +1,319 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>데이터베이스 가져오기(load)</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 마이그레이션\n데이터베이스 가져오기(load)");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_migration_migration.htm\">데이터베이스 마이그레이션<\/a> &nbsp;&gt;&nbsp; 데이터베이스 가져오기(load)<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 가져오기(load)</h3>
+<p>데이터베이스 로드는 다음과 같은 경우에 <span class="keyword">cubrid loaddb</span> 유틸리티를 이용하여 수행된다.</p>
+<ul>
+<li>이전 버전의 CUBRID 데이터베이스를 새로운 버전의 데이터베이스로 마이그레이션하는 경우</li>
+<li>타 DBMS의 데이터베이스를 CUBRID 데이터베이스로 마이그레이션하는 경우</li>
+<li><span class="keyword">INSERT</span> 구문 실행보다 빠른 성능으로 대용량 데이터를 입력하는 경우</li>
+</ul>
+<p>일반적으로 <span class="keyword">cubrid loaddb</span> 유틸리티는 <span class="keyword">cubrid unloaddb</span> 유틸리티가 생성한 파일(스키마 정의 파일, 객체 입력 파일, 인덱스 정의 파일)을 사용한다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">cubrid loaddb</span>&#160;[ <span class="var">options</span> ] <span class="var">database_name</span><br />
+[ <span class="var">options</span> ]&#160;<br />
+<span class="keyword">-u</span> | <span class="keyword">-p</span> | <span class="keyword">-l</span> | <span class="keyword">-v</span>&#160;| <span class="keyword">-c</span> | <span class="keyword">-s</span> | <span class="keyword">-i</span> | <span class="keyword">-d</span> |<br />
+<span class="keyword">--user</span> | <span class="keyword">--password</span> | <span class="keyword">--load-only</span> | <span class="keyword">--verbose</span> | <span class="keyword">--periodic-commit</span> |&#160; <span class="keyword">--schema-file</span> | <span class="keyword">--index-file</span> | <span class="keyword">--data-file</span> | <span class="keyword">--data-file-check-only</span> | <span class="keyword">--estimated-size</span> | <span class="keyword">--no-oid&#160;</span>| <span class="keyword">--error-control-file</span> |</p>
+<ul>
+<li><span class="keyword">cubrid</span>&#160;:&#160;CUBRID 서비스 및 데이터베이스 관리를 위한 통합 유틸리티이다.</li>
+<li><span class="keyword">loaddb</span>&#160;:&#160;언로드 작업에 의해 생성된 파일을 로드하여 새로운 데이터베이스를 생성하는 유틸리티로&#160;사용자가 작성한 별도의 입력 파일을 로드하여 대용량 데이터를 데이터베이스에 보다 신속하게 입력하는 목적으로도 이용된다. 데이터베이스 로드 작업은 독립 모드에서 <span class="keyword">DBA</span> 권한으로 수행된다.</li>
+<li><span class="var">options</span>&#160;: 단축 옵션은 <span class="keyword">-</span>와 함께 사용하고, 전체 옵션은 <span class="keyword">--</span>와 함께 사용해야 한다. 대소문자는 구별해서 사용해야 한다.</li>
+<li><span class="var">database_name</span> : 새로 생성될 데이터베이스의 이름을 지정한다.</li>
+</ul>
+<h6>반환 값</h6>
+<p><span class="keyword">cubrid loaddb</span> 유틸리티의 반환 값은 다음과 같다.</p>
+<ul>
+<li>&#160;0 : 성공</li>
+<li>&#160;Non-zero :&#160;실패</li>
+</ul>
+<h6>입력&#160;파일</h6>
+<ul>
+<li>스키마 파일(<span class="var">database-name</span><span class="keyword">_schema</span>): 언로드 작업에 의해 생성된 파일로서, 데이터베이스에 정의된 스키마 정보를 포함하는 파일이다.</li>
+<li>객체 파일(<span class="var">database-name</span><span class="keyword">_objects</span>) : 언로드 작업에 의해 생성된 파일로서, 데이터베이스에 포함된 인스턴스 정보를 포함하는 파일이다.</li>
+<li>인덱스 파일(<span class="var">database-name</span><span class="keyword">_indexes</span>) : 언로드 작업에 의해 생성된 파일로서, 데이터베이스에 정의된 인덱스 정보를 포함하는 파일이다.</li>
+<li>트리거 파일(<span class="var">database-name</span><span class="keyword">_trigger</span>) : 언로드 작업에 의해&#160;생성된 파일로서, 데이터베이스에 정의된 트리거 정보를 포함하는 파일이다.</li>
+<li>사용자&#160;정의 객체 파일(<span class="var">user_defined_object_file</span>) :&#160;대용량 데이터 입력을 위해 사용자가 테이블 형식으로 작성한 입력 파일이다.</li>
+</ul>
+<h6>옵션</h6>
+<p>다음은 <span class="keyword">cubrid&#160;loaddb</span> 유틸리티와 결합할 수 있는 옵션을 정리한 표이다. 대소문자를 구별해서 사용해야 한다.</p>
+<table border="1">
+<tbody>
+<tr>
+<th>
+<p>옵션</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td>
+<p class="keyword">-u&#160;&#160;</p>
+<p class="keyword">--user</p>
+</td>
+<td>
+<p>데이터베이스 사용자의 계정을 입력한다. 디폴트 값은 <span class="keyword">PUBLIC</span>이다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-p</p>
+<p class="keyword">--password</p>
+</td>
+<td>
+<p>데이터베이스 사용자의 암호를 입력한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-l</p>
+<p class="keyword">--load-only</p>
+</td>
+<td>
+<p>객체 파일에 포함된 구문과 데이터 타입 검사를 생략하고 인스턴스를 로드한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-v</p>
+<p class="keyword">--verbose</p>
+</td>
+<td>
+<p>데이터 로딩 상태에 관한 상세 정보를 화면에 출력한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-c</p>
+<p class="keyword">--periodic-commit</p>
+</td>
+<td>
+<p>지정된 개수의 인스턴스가 입력될 때마다 트랜잭션을 커밋한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-s</p>
+<p class="keyword">--schema-file</p>
+</td>
+<td>
+<p>언로드 작업에 의해 생성된 스키마 파일을 지정하여, 스키마 로딩을 수행한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-i</p>
+<p class="keyword">--index-file</p>
+</td>
+<td>
+<p>언로드 작업에 의해 생성된 인덱스 파일을 지정하여, 인덱스 로딩을 수행한다.&#160;</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">-d</p>
+<p class="keyword">--data-file</p>
+</td>
+<td>
+<p>언로드 작업에 의해 생성된&#160;데이터 파일을 지정하여,&#160;인스턴스 로딩을 수행한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">--data-file-check-only</p>
+</td>
+<td>
+<p>데이터 파일에 포함된 구문과 데이터 타입 검사만 수행하고, 인스턴스 로딩은 수행하지 않는다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">--estimated-size</p>
+</td>
+<td>
+<p>예상되는 인스턴스 수를 지정한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">--no-oid</p>
+</td>
+<td>
+<p>데이터 파일에 포함된 OID 참조 관계를 무시하고 인스턴스를 로딩한다.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p class="keyword">--error-control-file</p>
+</td>
+<td>
+<p>데이터 로딩 중에 발생되는 특정 에러의 처리 방식을 명세한 파일을 지정한다.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li class="title">사용자 계정 입력(-u 또는 --user)</li>
+<li class="desc"><span class="keyword">-u</span>는 인스턴스를 로딩할 데이터베이스의 사용자 계정을 지정하는 옵션이다. 옵션을 지정하지 않으면 디폴트 값은 <span class="keyword">PUBLIC</span>이 된다.</li>
+</ul>
+<p class="code">cubrid loaddb -u&#160;admin -d demodb_objects newdb</p>
+<ul>
+<li class="title">암호 입력(-p 또는 --password)</li>
+<li class="desc"><span class="keyword">-p</span>는 인스턴스를 로딩할 데이터베이스의 사용자 암호를 지정하는 옵션이다. 옵션을 지정하지 않으면 암호 입력을 요청하는 프롬프트가 출력된다.</li>
+</ul>
+<p class="code">cubrid loaddb -p&#160;admin -d demodb_objects newdb</p>
+<ul>
+<li class="title">구문을 확인하지 않고 인스턴스 로딩(-l 또는 --load-only)</li>
+<li class="desc"><span class="keyword">-l</span>은 로딩할 데이터의 구문을 확인하지 않고 곧바로 데이터를 로딩하는 옵션이다. 다음은 demodb_objects에 포함된 데이터를 newdb로 로딩하는 구문이다.<br />
+<span class="keyword">-l</span> 옵션을 사용하면 demodb_objects에 포함된 데이터의&#160;구문을 확인하지 않고 곧바로 데이터를 로딩하기 때문에&#160;속도는 빠르지만, 오류가 발생할 수도 있다.</li>
+</ul>
+<p class="code">cubrid loaddb -l -d demodb_objects newdb</p>
+<ul>
+<li class="title">로딩 상태 정보 출력(-v 또는 --verbose)</li>
+<li class="desc">데이터베이스 로딩&#160;작업이 진행되는 동안, 로딩되는 데이터베이스의 테이블 및 인스턴스에 관한 상세 정보를 화면에 출력하는 구문이다. <span class="keyword">-v</span> 옵션을 이용하여 진행되는 단계, 로딩되는 클래스, 입력된 인스턴스의 개수와 같은 상세 정보를 확인할 수 있다.</li>
+</ul>
+<p class="code">cubrid loaddb -v -d demodb_objects newdb</p>
+<ul>
+<li class="title">커밋 주기 설정(-c 또는 --periodic-commit)</li>
+<li class="desc"><span class="keyword">-c</span> 옵션을 이용하여 100개의 인스턴스가 newdb로 입력될 때마다 커밋을 주기적으로 실행하는 명령이다. 만약, <span class="keyword">-c</span> 옵션을 지정하지 않으면 demodb_objects에 포함된 모든 인스턴스가 newdb로 로딩된 후에 트랜잭션이 커밋된다. 또한, <span class="keyword">-c</span> 옵션이 <span class="keyword">-s</span> 옵션이나 <span class="keyword">-i</span> 옵션과 함께 사용하는 경우에는 100개의 DDL문이 로딩될 때마다 커밋을 주기적으로 실행한다.</li>
+<li class="desc">권장되는 커밋 주기는 로딩되는 데이터에 따라 다른데, 스키마 로딩의 경우에는 <span class="keyword">-c</span>의 인수를 50으로 설정하고, 인스턴스 로딩의 경우에는 1,000으로 설정하며, 인덱스 로딩의 경우에는 1로 설정하는 것이 바람직하다.</li>
+</ul>
+<p class="code">cubrid loaddb -c&#160;100 -d demodb_objects newdb</p>
+<ul>
+<li class="title">스키마 로딩(-s 또는 --schema-file)</li>
+<li class="desc">demodb에 정의된 스키마 정보를 새로 생성한 newdb에 로딩하는 구문이다. demodb_schema 파일은 언로드 작업에 의해 생성된 파일이며, 언로드된 데이터베이스의 스키마 정보를 포함한다.&#160;<span class="keyword">-s</span> 옵션을 이용하여 스키마 정보를 먼저 로딩한 후,&#160;실제 인스턴스를 로딩할 수 있다.</li>
+</ul>
+<p class="code">cubrid loaddb -u dba -s demodb_schema newdb<br />
+CUBRID 2008 R1.0<br />
+Start schema loading.<br />
+Total&#160;&#160;&#160;&#160;&#160;&#160; 86 statements executed.<br />
+Schema loading from demodb_schema finished.<br />
+Statistics for Catalog classes have been updated.</p>
+<ul>
+<li class="title">인덱스 로딩(-i 또는 --index-file)</li>
+<li class="desc">demodb에 정의된 인덱스 정보를 새로 생성한 newdb에 로딩하는 명령이다. demo_indexes 파일은 언로드 작업에 의해 생성된 파일이며, 언로드된 데이터베이스의 인덱스 정보를 포함한다. <span class="keyword">-d</span> 옵션을 이용하여 인스턴스를 로딩한 후, <span class="keyword">-i</span> 옵션을 이용하여 인덱스를 생성할 수 있다.</li>
+</ul>
+<p class="code">cubrid loaddb -u dba -i demodb_indexes newdb</p>
+<ul>
+<li class="title">데이터 로딩(-d 또는&#160;--data-file)</li>
+<li class="desc"><span class="keyword">-d</span> 옵션을 이용하여 데이터 파일 또는 사용자 정의 객체 파일을 지정함으로써 인스턴스 정보를 newdb로 로딩하는 명령이다. demodb_objects 파일은 언로드 작업에 의해 생성된 객체 파일이거나, 사용자가 대량의 데이터 로딩을 위하여 작성한 사용자 정의 객체 파일 중 하나이다.</li>
+</ul>
+<p class="code">cubrid loaddb -u dba -d demodb_objects newdb</p>
+<ul>
+<li class="title">로딩될 데이터의 구문 체크만 수행(--data-file-check-only)</li>
+<li class="desc"><span class="keyword">--data-file-check-only</span> 옵션을 이용하여 demodb_objects에 포함된 데이터의 구문을 확인만 하는 명령이다. 따라서, 위&#160;명령을 수행하여도 newdb에는&#160;인스턴스가 로딩되지 않는다.</li>
+</ul>
+<p class="code">cubrid loaddb&#160;--data-file-check-only -d demodb_objects newdb</p>
+<ul>
+<li class="title">예상되는 인스턴스 수(--estimated-size)</li>
+<li class="desc"><span class="keyword">--estimated-size</span>&#160;옵션은 언로드할 인스턴스의 수가 디폴트 값인 5,000개보다 많은 경우 로딩 성능 향상을 위해 사용할 수 있는 옵션이다. 즉, 이 옵션을 통해 인스턴스 저장을 위한 해시 메모리를 크게 할당함으로써 로드 성능을 향상시킬 수 있다.</li>
+</ul>
+<p class="code">cubrid loaddb&#160;--estimated-size 8000 -d demodb_objects newdb</p>
+<ul>
+<li class="title">참조 관계 무시하고 인스턴스 로딩(<span class="keyword">--no-oid</span>)</li>
+<li class="desc">demodb_objects에 포함된 OID를 무시하고 인스턴스를 newdb로 로딩하는 명령이다.</li>
+</ul>
+<p class="code">cubrid loaddb --no-oid&#160;-d demodb_objects newdb</p>
+<ul>
+<li class="title">에러 정보 파일 지정(--error-control-file)</li>
+<li class="desc">데이터베이스 로드 작업 중에 발생되는 에러 중 특정 에러를 처리하는 방식에 관해 명세한 파일을 지정하는 옵션이다.</li>
+</ul>
+<p class="code">cubrid loaddb --error-control-file error_test -d demodb_objects newdb</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

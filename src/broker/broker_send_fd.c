@@ -76,7 +76,7 @@ send_fd (int server_fd, int client_fd, int rid)
   *(int *) CMSG_DATA (cmptr) = client_fd;
 #endif
 
-  if (sendmsg (server_fd, &msg, 0) < 0)
+  if (sendmsg (server_fd, &msg, 0) < sizeof (int))
     {
       return (FALSE);
     }

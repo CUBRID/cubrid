@@ -44,6 +44,9 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+extern int parser_function_code;
+
+
 #define PT_NAMES_HASH_SIZE                50
 
 typedef struct extra_specs_frame PT_EXTRA_SPECS_FRAME;
@@ -151,8 +154,6 @@ static PT_NODE *pt_object_to_data_type (PARSER_CONTEXT * parser,
 static int pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE * arg_list,
 				 PT_NODE * spec_list);
 static int pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser,
-					PT_NODE * index, PT_NODE * from);
 static const char *pt_unique_id (PARSER_CONTEXT * parser, UINTPTR t);
 static PT_NODE *pt_copy_data_type_entity (PARSER_CONTEXT * parser,
 					  PT_NODE * data_type);
@@ -312,6 +313,11 @@ pt_bind_parameter (PARSER_CONTEXT * parser, PT_NODE * parameter)
     {
       /* create a PT_VALUE image of the matching DB_VALUE */
       node = pt_dbval_to_value (parser, db_val);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+
       /* NOTE node IS NO LONGER TYPE PT_NAME! */
       parameter->type_enum = node->type_enum;
       if (parameter->data_type)
@@ -1059,9 +1065,14 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
 	    break;
 	  }
 
-	if (pt_is_set_type (node))
+	if (node && pt_is_set_type (node))
 	  {
 	    pt_semantic_type (parser, node, bind_arg->sc_info);
+	    if (node == NULL)
+	      {
+		return node;
+	      }
+
 	    elem = node->info.value.data_value.set;
 	    while (elem)
 	      {
@@ -1251,7 +1262,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   SCOPES scopestack;
   PT_NODE *node1 = NULL;
   PT_EXTRA_SPECS_FRAME spec_frame;
-  PT_NODE *ui_node;
   PT_NODE *prev_attr, *attr, *next_attr, *as_attr, *resolved_attrs;
   PT_NODE *spec, *derived_table, *flat, *range_var;
   bool do_resolve = true;
@@ -1489,18 +1499,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	}
 
       (void) pt_resolve_hint (parser, node);
-
-      for (ui_node = node->info.query.q.select.using_index;
-	   ui_node; ui_node = ui_node->next)
-	{
-	  if (!pt_resolve_using_index (parser, ui_node,
-				       node->info.query.q.select.from))
-	    {
-	      parser_free_tree (parser, node);
-	      node = NULL;
-	      goto select_end;
-	    }
-	}
 
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
@@ -2237,17 +2235,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
-      for (ui_node = node->info.update.using_index;
-	   ui_node; ui_node = ui_node->next)
-	{
-	  if (!pt_resolve_using_index (parser, ui_node,
-				       node->info.update.spec))
-	    {
-	      parser_free_tree (parser, node);
-	      node = NULL;
-	      goto error;
-	    }
-	}
+
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
@@ -2273,17 +2261,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
-      for (ui_node = node->info.delete_.using_index;
-	   ui_node; ui_node = ui_node->next)
-	{
-	  if (!pt_resolve_using_index (parser, ui_node,
-				       node->info.delete_.spec))
-	    {
-	      parser_free_tree (parser, node);
-	      node = NULL;
-	      goto error;
-	    }
-	}
+
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
@@ -2529,9 +2507,21 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		   */
 		  if (!pt_type_generic_func (parser, node))
 		    {
-		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				  node->info.function.generic_name);
+		      if (parser_function_code != PT_EMPTY)
+			{
+			  PT_ERRORmf (parser, node,
+				      MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				      node->info.function.generic_name);
+			}
+		      else
+			{
+			  PT_ERRORmf (parser, node,
+				      MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
+				      node->info.function.generic_name);
+			}
+
 		    }
 		}
 	    }
@@ -2617,16 +2607,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
     }
 
   return node;
-
-error:
-  bind_arg->spec_frames = bind_arg->spec_frames->next;
-
-  /* remove this level's scope */
-  bind_arg->scopes = bind_arg->scopes->next;
-
-  /* don't revisit leaves */
-  *continue_walk = PT_LIST_WALK;
-  return NULL;
 }
 
 /*
@@ -2843,6 +2823,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
   PT_NODE *col;
   PT_NODE *range_var;
   const char *resolved_name;
+
+  if (spec == NULL)
+    {
+      return 0;
+    }
 
   resolved_name = name->info.name.resolved;
   range_var = spec->info.spec.range_var;
@@ -3901,6 +3886,13 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 	      in_node->info.name.meta_class = PT_META_CLASS;
 	      in_node->type_enum = PT_TYPE_OBJECT;
 	      in_node->data_type = parser_new_node (parser, PT_DATA_TYPE);
+
+	      if (in_node->data_type == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return NULL;
+		}
+
 	      in_node->data_type->type_enum = PT_TYPE_OBJECT;
 	      in_node->data_type->info.data_type.entity =
 		parser_copy_tree (parser, in_node);
@@ -4052,8 +4044,12 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 	}
       else if (arg1_name->info.name.meta_class == PT_META_CLASS)
 	{
-	  /* Arg1 was a meta class name */
+	  if (arg1->data_type == NULL)
+	    {
+	      return NULL;
+	    }
 
+	  /* Arg1 was a meta class name */
 	  if (pt_find_class_attribute
 	      (parser, arg1->data_type->info.data_type.entity, arg2))
 	    {
@@ -5158,6 +5154,13 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		     We generate a unique name and attach it.
 		   */
 		  r = parser_new_node (parser, PT_NAME);
+
+		  if (r == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		      return 0;
+		    }
+
 		  r->info.name.spec_id = p->info.spec.id;
 		  r->info.name.meta_class = p->info.spec.meta_class;
 		  r->info.name.original = pt_unique_id (parser,
@@ -5198,6 +5201,12 @@ pt_object_to_data_type (PARSER_CONTEXT * parser, PT_NODE * class_list)
 {
   PT_NODE *result;
   result = parser_new_node (parser, PT_DATA_TYPE);
+  if (result == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   result->type_enum = PT_TYPE_OBJECT;
   result->info.data_type.entity = parser_copy_tree_list (parser, class_list);
   result->info.data_type.virt_type_enum = PT_TYPE_OBJECT;
@@ -5502,7 +5511,7 @@ exit_on_error:
  *   index(in):
  *   from(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_resolve_using_index (PARSER_CONTEXT * parser,
 			PT_NODE * index, PT_NODE * from)
 {
@@ -5823,13 +5832,16 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path,
 	  entity->info.spec.id = (UINTPTR) entity;
 	  entity->line_number = path->info.dot.arg2->line_number;
 	  entity->column_number = path->info.dot.arg2->column_number;
+
 	  /* mark if it is a pseudo entity for a method */
 	  if (arg1->node_type == PT_METHOD_CALL)
 	    {
 	      entity->info.spec.flavor = PT_METHOD_ENTITY;
 	    }
+
 	  entity->info.spec.entity_name =
 	    pt_copy_data_type_entity (parser, res);
+
 	  if (entity->info.spec.entity_name)
 	    {
 	      entity->info.spec.entity_name->info.name.spec_id =
@@ -5955,6 +5967,12 @@ pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot,
     }
   conjunct->info.expr.op = PT_EQ;
   conjunct->info.expr.arg1 = parser_copy_tree (parser, conj_name);
+  if (conjunct->info.expr.arg1 == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
+
   if (conj_name->node_type == PT_METHOD_CALL)
     {
       conjunct->info.expr.arg1->info.method_call.method_name->
@@ -5968,6 +5986,12 @@ pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot,
 
   conjunct->info.expr.arg2 =
     parser_copy_tree (parser, prev_entity->info.spec.flat_entity_list);
+  if (conjunct->info.expr.arg2 == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return NULL;
+    }
+
   conjunct->info.expr.arg2->info.name.resolved =
     conjunct->info.expr.arg2->info.name.original;
   conjunct->info.expr.arg2->info.name.original = "";
@@ -6019,10 +6043,11 @@ pt_lookup_entity (PARSER_CONTEXT * parser,
 	    {
 	      name = expr->info.dot.arg1->info.name.original;
 	    }
+
 	  if (arg1_of_conj->node_type == PT_NAME)
 	    {
 	      cname = arg1_of_conj->info.name.original;
-	      if (intl_mbs_casecmp (name, cname) == 0)
+	      if (name != NULL && intl_mbs_casecmp (name, cname) == 0)
 		{
 		  found = true;
 		}
@@ -6079,7 +6104,7 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
       val = pt_value_to_db (parser, obj_param);
     }
 
-  if (!val)			/* parameter not found */
+  if (val == NULL)		/* parameter not found */
     {
       PT_ERRORm (parser, obj_param, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_UNDEFINED_ARGUMENT);
@@ -6094,7 +6119,7 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   node->info.update.object = DB_GET_OBJECT (val);
   class_op = db_get_class (node->info.update.object);
-  if (!class_op)
+  if (class_op == NULL)
     {
       PT_ERRORm (parser, obj_param, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_UNDEFINED_ARGUMENT);
@@ -6103,10 +6128,22 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* create an entity */
   entity = parser_new_node (parser, PT_SPEC);
+  if (entity == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return;
+    }
+
   entity->info.spec.id = (UINTPTR) entity;
   entity->line_number = node->line_number;
   entity->column_number = node->column_number;
   entity->info.spec.entity_name = parser_new_node (parser, PT_NAME);
+  if (entity->info.spec.entity_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return;
+    }
+
   entity->info.spec.entity_name->info.name.spec_id = entity->info.spec.id;
   entity->info.spec.entity_name->info.name.meta_class = PT_CLASS;
   entity->info.spec.entity_name->info.name.original =
@@ -6114,6 +6151,12 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
   entity->info.spec.only_all = PT_ONLY;
   entity->info.spec.range_var =
     parser_copy_tree (parser, entity->info.spec.entity_name);
+  if (entity->info.spec.range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+      return;
+    }
+
   entity->info.spec.range_var->info.name.resolved = NULL;
   node->info.update.spec = entity;
 }
@@ -6222,28 +6265,50 @@ pt_make_method_call (PARSER_CONTEXT * parser,
   /* initialize the new node with the corresponding fields from the
    * PT_FUNCTION node. */
   new_node = parser_new_node (parser, PT_METHOD_CALL);
+  if (new_node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   new_node->info.method_call.method_name = parser_new_node (parser, PT_NAME);
+  if (new_node->info.method_call.method_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   PT_NODE_COPY_NUMBER_OUTERLINK (new_node, node);
+
   new_node->info.method_call.method_name->info.name.original =
     node->info.function.generic_name;
+
   new_node->info.method_call.arg_list =
     parser_copy_tree_list (parser, node->info.function.arg_list);
+
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
+
   if (jsp_is_exist_stored_procedure
       (new_node->info.method_call.method_name->info.name.original))
     {
       new_node->info.method_call.method_name->info.name.spec_id =
 	(UINTPTR) new_node->info.method_call.method_name;
+
       new_node->info.method_call.method_name->info.name.meta_class =
 	PT_METHOD;
+
       parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
+
       new_node->type_enum = (PT_TYPE_ENUM) pt_db_to_type_enum
 	((DB_TYPE) jsp_get_return_type
 	 (new_node->info.method_call.method_name->info.name.original));
+
       new_node->data_type = pt_domain_to_data_type
 	(parser, pt_type_enum_to_db_domain (new_node->type_enum));
+
       new_node->info.method_call.method_id = (UINTPTR) new_node;
+
       return new_node;
     }
   else
@@ -6260,15 +6325,18 @@ pt_make_method_call (PARSER_CONTEXT * parser,
       new_node->info.method_call.arg_list =
 	new_node->info.method_call.arg_list->next;
       new_node->info.method_call.on_call_target->next = NULL;
+
       /* make method name look resolved */
       new_node->info.method_call.method_name->info.name.spec_id =
 	(UINTPTR) new_node->info.method_call.method_name;
       new_node->info.method_call.method_name->info.name.meta_class =
 	PT_METHOD;
+
       /* bind the names in the method arguments and target, their
        * scope will be the same as the method node's scope */
       parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
+
       /* find the type of the method here */
       if (!pt_resolve_method_type (parser, new_node))
 	{
@@ -6371,6 +6439,13 @@ pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser,
 {
   PT_NODE *spec, *temp;
   int location = 0;
+  if (scopes == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+
   for (spec = scopes->specs; spec; spec = spec->next)
     {
       if (spec->node_type != PT_SPEC)

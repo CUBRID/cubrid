@@ -1,0 +1,130 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>EVALUATE 문</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n메소드\n메소드 호출하기\nEVALUATE 문");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_method_intro.htm\">메소드<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_method_call_intro.htm\">메소드 호출하기<\/a> &nbsp;&gt;&nbsp; EVALUATE 문<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>EVALUATE 문</h4>
+<h6>설명</h6>
+<p><span class="keyword">EVALUATE</span> 문 또한 데이터베이스에 정의된 메소드를 호출하는데 사용된다.</p>
+<p><span class="keyword">EVALUATE</span> 문에서 메소드 호출은 표현식의 용어(<span class="var">term</span>)로 주어진다. 메소드의 결과가 상수 값이면, 다른 상수(또는 상수를 반환하는 메소드) 또한 표현식의 용어로 주어질 수 있다. 클래스 메소드와 인스턴스 메소드 모두 <span class="keyword">EVALUATE</span> 문으로 호출할 수 있다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">EVALUATE</span> <span class="var">expression</span> [ ; ]<br />
+<span class="var">expression</span>:<br />
+&#160;&#160;&#160;&#160;[ + | - ] <span class="var">term</span> [ { + | - | * | / } <span class="var">term</span> ]<br />
+<span class="var">term</span>:<br />
+• <span class="var">method_call</span><br />
+• See <a href="csql_notation_expression.htm">표현식</a> for additional expression syntax&#160;<span class="var"><br />
+method_call</span> :<br />
+• <span class="var">method_name</span> ( <span class="var">call_target</span> [, <span class="var">arg_value</span> [ {, <span class="var">arg_value</span> }_ ] ] ) [ <span class="var">to_variable</span> ]<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="var">method_name</span> ( [ <span class="var">arg_value</span> [ {, <span class="var">arg_value</span> }_ ] ] )<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span class="keyword">ON</span> <span class="var">call_target</span> [ <span class="var">to_variable</span> ]<br />
+<span class="var">arg_value</span> :<br />
+• <span class="var">literal</span><br />
+• <span class="var">variable</span><br />
+• <span class="var">expression</span><br />
+<span class="var">call_target</span> :<br />
+• <span class="keyword">CLASS</span> <span class="var">class_name<br />
+• variable<br />
+• expression<br />
+• method_call<br />
+to_variable</span> :<br />
+• <span class="keyword">INTO</span> <span class="var">variable</span><br />
+• <span class="keyword">TO</span> <span class="var">variable</span></p>
+<p><span class="keyword">EVALUATE</span> 문에서 지명된 메소드를 위한 대상 인수는 <span class="var">method_name</span> 뒤에 괄호 안에 기술된다. 대상은 리스트에서 첫 번째로 주어질 수 있으며, 메소드 인수들이 뒤따른다. 수행된 메소드가 클래스 메소드이면, <span class="keyword">CLASS</span> 키워드가 반드시 리스트의 첫 항목으로써 목표 클래스 앞에 놓여야 한다. 괄호가 메소드 인수만 포함하고 있을 때 <span class="var">call_target</span>은 반드시 <span class="keyword">ON</span> 절에 주어진다.</p>
+<p><span class="keyword">EVALUATE</span> 문 또한 한 메소드 호출이 또 다른 메소드의 대상이나 인수로 기술함으로써 중첩된 메소드 호출을 허용한다. 이러한 유형의 기술은 외부(outer) 메소드의 결과를 결정하기 위하여 내부(inner) 메소드의 결과를 사용한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

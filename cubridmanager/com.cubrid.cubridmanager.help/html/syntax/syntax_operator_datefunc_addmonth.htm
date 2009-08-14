@@ -1,0 +1,125 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="61539" />
+<meta name="layout-width" content="1328" />
+<title>ADD_MONTH 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n날짜/시간 함수\nADD_MONTH 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_datefunc_addmonth.htm\">날짜/시간 함수<\/a> &nbsp;&gt;&nbsp; ADD_MONTH 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>ADD_MONTH 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">ADD_MONTHS</span> 함수는 주어진 날짜에 개월을 더한 날짜를 반환한다. 계산된 날짜가 해당 월의 마지막 날보다 크면 마지막 날이 반환된다. 그 외에는 같은 날이 반환된다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">ADD_MONTHS</span> ( <span class="var">date_argument</span> , <span class="var">month</span> )<br />
+<br />
+<span class="var">date_argument</span> :<br />
+date<br />
+<span class="keyword">NULL</span><br />
+<br />
+<span class="var">month</span> :<br />
+integer<br />
+<span class="keyword">NULL</span></p>
+<ul>
+<li><span class="var">date_argument</span>로 주어진 날짜에 <span class="var">month</span> 만큼의 개월을 더한 날짜를 반환한다. 계산된 값이 <span class="keyword">DATE</span> 값의 한계를 초과하면 에러가 발생된다.</li>
+<li><span class="var">date_argument</span> :&#160;대상 날짜를 지정한다. 값이 <span class="keyword">NULL</span>이면 <span class="keyword">NULL</span>을 반환한다.<span class="keyword">TIMESTAMP</span> 값을 적용하려면 <span class="keyword">DATE</span> 타입으로 명시적으로 변환해 주어야 한다.</li>
+<li><span class="var">month</span> : <span class="var">date_argument</span>에 더할 개월 수를 지정한다. 값이 <span class="keyword">NULL</span>이면 <span class="keyword">NULL</span>을 반환한다. 정수가 아닌 타입의 값이 주어지면 우선 묵시적으로 정수 타입으로 변환된다. 값이 음수로 지정될 수도 있다.</li>
+</ul>
+<h6>예제</h6>
+<p>다음은 날짜 2/29/1980에 12개월을 더한 값을&#160;반환하는 예제이다.</p>
+<p class="code">SELECT ADD_MONTHS(DATE '2/29/1980',12) FROM db_root;</p>
+<p>결과값: '1981-02-28'</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -97,7 +97,7 @@ typedef struct
   int return_type;
 } SP_ARGS;
 
-static SOCKET sock_fds[MAX_CALL_COUNT];
+static SOCKET sock_fds[MAX_CALL_COUNT] = { INVALID_SOCKET };
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
@@ -160,11 +160,9 @@ static char *jsp_unpack_object_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_monetary_value (char *buffer, DB_VALUE * retval);
 static char *jsp_unpack_resultset (char *buffer, DB_VALUE * retval);
 
-#if !defined(DISABLE_JSP)	/* from CUBRID_CAS */
 extern int libcas_main (SOCKET fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
-#endif /* not DISABLE_JSP */
 
 static int jsp_send_call_request (const SOCKET sockfd,
 				  const SP_ARGS * sp_args);
@@ -188,9 +186,15 @@ static int jsp_do_call_stored_procedure (DB_VALUE * returnval,
 void
 jsp_init (void)
 {
+  int i;
+
   sock_fds[0] = INVALID_SOCKET;
   call_cnt = 0;
-  memset (is_prepare_call, 0, sizeof (bool) * MAX_CALL_COUNT);
+
+  for (i = 0; i < MAX_CALL_COUNT; i++)
+    {
+      is_prepare_call[i] = false;
+    }
 
 #if defined(WINDOWS)
   windows_socket_startup ();
@@ -462,10 +466,12 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   int i;
   int err = NO_ERROR;
 
+  CHECK_MODIFICATION_ERROR ();
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
+              0);
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
@@ -511,10 +517,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
   int param_count;
 
+  CHECK_MODIFICATION_ERROR ();
+
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-	      0);
+              0);
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
@@ -1694,7 +1702,14 @@ jsp_pack_object_argument (char *buffer, DB_VALUE * value)
 
   ptr = buffer;
   mop = DB_GET_OBJECT (value);
-  oid = WS_OID (mop);
+  if (mop != NULL)
+    {
+      oid = WS_OID (mop);
+    }
+  else
+    {
+      oid = (OID *) &oid_Null_oid;
+    }
 
   ptr = or_pack_int (ptr, sizeof (int) * 3);
   ptr = or_pack_int (ptr, oid->pageid);
@@ -2028,7 +2043,7 @@ jsp_unpack_numeric_value (char *buffer, DB_VALUE * retval)
   char *ptr;
 
   ptr = or_unpack_string_nocopy (buffer, &val);
-  if (numeric_coerce_string_to_num (val, retval) != NO_ERROR)
+  if (val == NULL || numeric_coerce_string_to_num (val, retval) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2078,7 +2093,7 @@ jsp_unpack_date_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  if (db_string_to_date (val, &date) != NO_ERROR)
+  if (val == NULL || db_string_to_date (val, &date) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2109,7 +2124,7 @@ jsp_unpack_time_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  if (db_string_to_time (val, &time) != NO_ERROR)
+  if (val == NULL || db_string_to_time (val, &time) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2140,7 +2155,7 @@ jsp_unpack_timestamp_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  if (db_string_to_timestamp (val, &timestamp) != NO_ERROR)
+  if (val == NULL || db_string_to_timestamp (val, &timestamp) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2171,7 +2186,7 @@ jsp_unpack_datetime_value (char *buffer, DB_VALUE * retval)
   ptr = buffer;
   ptr = or_unpack_string_nocopy (ptr, &val);
 
-  if (db_string_to_datetime (val, &datetime) != NO_ERROR)
+  if (val == NULL || db_string_to_datetime (val, &datetime) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2445,9 +2460,7 @@ redo:
 
   if (start_code == 0x08)
     {				/* jdbc call */
-#if !defined(DISABLE_JSP)
       libcas_main (sockfd);
-#endif /* not DISABLE_JSP */
       goto redo;
     }
 
@@ -2742,7 +2755,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
 			      DB_ARG_LIST * args, const char *name)
 {
   DB_OBJECT *mop_p, *arg_mop_p;
-  SP_ARGS sp_args = { NULL, NULL, NULL, 0, {0}, {0}, 0 };
+  SP_ARGS sp_args;
   DB_VALUE method, param, param_cnt_val, return_type, temp, mode, arg_type;
   int arg_cnt, param_cnt, i;
   DB_SET *param_set;
@@ -2753,6 +2766,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
 
   db_make_null (&method);
   db_make_null (&param);
+  memset(&sp_args, 0, sizeof(SP_ARGS));
 
   mop_p = jsp_find_stored_procedure (name);
   if (!mop_p)
@@ -2957,11 +2971,7 @@ jsp_unset_prepare_call (void)
 void *
 jsp_get_db_result_set (int h_id)
 {
-#if !defined(DISABLE_JSP)
   return libcas_get_db_result_set (h_id);
-#else /* DISABLE_JSP */
-  return NULL;
-#endif /* DISABLE_JSP */
 }
 
 /*
@@ -2975,7 +2985,5 @@ jsp_get_db_result_set (int h_id)
 void
 jsp_srv_handle_free (int h_id)
 {
-#if !defined(DISABLE_JSP)
   libcas_srv_handle_free (h_id);
-#endif /* not DISABLE_JSP */
 }

@@ -89,6 +89,8 @@ static int query_execute_local (const char *CSQL_query, void *result,
 				DB_QUERY_ERROR * query_error,
 				int include_oid, int execute,
 				QUERY_EXEC_MODE exec_mode);
+static DB_QUERY_TYPE *db_cp_query_type_helper (DB_QUERY_TYPE * src,
+					       DB_QUERY_TYPE * dest);
 
 /*
  * allocate_query_result() - This function allocates a query_result structure
@@ -110,6 +112,11 @@ allocate_query_result (void)
   else
     {
       q_res = (DB_QUERY_RESULT *) malloc (DB_SIZEOF (DB_QUERY_RESULT));
+      if (q_res == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (DB_QUERY_RESULT));
+	}
     }
 
   return q_res;
@@ -188,20 +195,22 @@ db_free_query_format (DB_QUERY_TYPE * q)
 void
 db_free_colname_list (char **colname_list, int cnt)
 {
-  char **namep;
-  int k;
+  int i;
 
   if (colname_list == NULL)
     {
       return;
     }
 
-  for (k = 0, namep = colname_list; k < cnt; k++, namep++)
+  for (i = 0; i < cnt; i++)
     {
-      free_and_init (*namep);
+      if (colname_list[i] != NULL)
+	{
+	  free_and_init (colname_list[i]);
+	}
     }
-  free_and_init (colname_list);
 
+  free_and_init (colname_list);
 }
 
 /*
@@ -213,23 +222,22 @@ db_free_colname_list (char **colname_list, int cnt)
 void
 db_free_domain_list (SM_DOMAIN ** domain_list, int cnt)
 {
-  SM_DOMAIN **domainp;
-  int k;
+  int i;
 
   if (domain_list == NULL)
     {
       return;
     }
 
-  for (k = 0, domainp = domain_list; k < cnt; k++, domainp++)
+  for (i = 0; i < cnt; i++)
     {
-      if ((*domainp) != NULL)
+      if (domain_list[i] != NULL)
 	{
-	  regu_free_domain (*domainp);
+	  regu_free_domain (domain_list[i]);
 	}
     }
-  free_and_init (domain_list);
 
+  free_and_init (domain_list);
 }
 
 /*
@@ -331,6 +339,8 @@ db_alloc_query_format (int cnt)
   q = (DB_QUERY_TYPE *) malloc (DB_SIZEOF (DB_QUERY_TYPE));
   if (q == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (DB_QUERY_TYPE));
       return NULL;
     }
   /* initialize */
@@ -351,6 +361,8 @@ db_alloc_query_format (int cnt)
       p->next = (DB_QUERY_TYPE *) malloc (DB_SIZEOF (DB_QUERY_TYPE));
       if (p->next == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, DB_SIZEOF (DB_QUERY_TYPE));
 	  db_free_query_format (q);
 	  return NULL;
 	}
@@ -408,6 +420,9 @@ db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt)
 	    malloc (QP_QRES_LIST_INIT_CNT * DB_SIZEOF (DB_QUERY_RESULT *));
 	  if (Qres_table.qres_list == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      QP_QRES_LIST_INIT_CNT * DB_SIZEOF (DB_QUERY_RESULT *));
 	      return (DB_QUERY_RESULT *) NULL;
 	    }
 	  Qres_table.entry_cnt = QP_QRES_LIST_INIT_CNT;
@@ -476,6 +491,9 @@ db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt)
 	  (DB_VALUE **) malloc (col_cnt * DB_SIZEOF (DB_VALUE *));
 	if (r->res.o.valptr_list == NULL)
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		    ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    col_cnt * DB_SIZEOF (DB_VALUE *));
 	    db_free_query_result (r);
 	    return NULL;
 	  }
@@ -500,6 +518,9 @@ db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt)
 	    (DB_VALUE *) malloc (col_cnt * DB_SIZEOF (DB_VALUE));
 	  if (r->res.g.tpl_list == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      col_cnt * DB_SIZEOF (DB_VALUE));
 	      db_free_query_result (r);
 	      return NULL;
 	    }
@@ -628,40 +649,38 @@ char **
 db_cp_colname_list (char **colname_list, int cnt)
 {
   char **newname_list;
-  char **namep2;
-  char **namep1;
-  int size, k;
+  int size, i;
 
-  newname_list = NULL;
   if (colname_list == NULL)
     {
-      return (char **) NULL;
+      return NULL;
     }
 
   newname_list = (char **) malloc (cnt * DB_SIZEOF (char *));
   if (newname_list == NULL)
     {
-      return (char **) NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, cnt * DB_SIZEOF (char *));
+      return NULL;
     }
 
-  namep1 = newname_list;
-  for (k = 0; k < cnt; k++, namep1++)
+  for (i = 0; i < cnt; i++)
     {
-      *namep1 = NULL;
+      newname_list[i] = NULL;
     }
 
-  namep1 = newname_list;
-  namep2 = colname_list;
-  for (k = 0; k < cnt; k++, namep1++, namep2++)
+  for (i = 0; i < cnt; i++)
     {
-      size = strlen (*namep2) + 1;
-      *namep1 = (char *) malloc (size);
-      if (*namep1 == NULL)
+      size = strlen (colname_list[i]) + 1;
+      newname_list[i] = (char *) malloc (size);
+      if (newname_list[i] == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
 	  db_free_colname_list (newname_list, cnt);
-	  return (char **) NULL;
+	  return NULL;
 	}
-      memcpy (*namep1, *namep2, size);
+      memcpy (newname_list[i], colname_list[i], size);
     }
 
   return newname_list;
@@ -681,36 +700,33 @@ SM_DOMAIN **
 db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt)
 {
   SM_DOMAIN **newdomain_list;
-  SM_DOMAIN **domainp1, **domainp2;
-  int k;
+  int i;
 
-  newdomain_list = NULL;
   if (domain_list == NULL)
     {
-      return (SM_DOMAIN **) NULL;
+      return NULL;
     }
 
   newdomain_list = (SM_DOMAIN **) malloc (cnt * DB_SIZEOF (SM_DOMAIN *));
   if (newdomain_list == NULL)
     {
-      return (SM_DOMAIN **) NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, cnt * DB_SIZEOF (SM_DOMAIN *));
+      return NULL;
     }
 
-  domainp1 = newdomain_list;
-  for (k = 0; k < cnt; k++, domainp1++)
+  for (i = 0; i < cnt; i++)
     {
-      *domainp1 = (SM_DOMAIN *) NULL;
+      newdomain_list[i] = NULL;
     }
 
-  domainp1 = newdomain_list;
-  domainp2 = domain_list;
-  for (k = 0; k < cnt; k++, domainp1++, domainp2++)
+  for (i = 0; i < cnt; i++)
     {
-      *domainp1 = regu_cp_domain (*domainp2);
-      if (*domainp1 == NULL)
+      newdomain_list[i] = regu_cp_domain (domain_list[i]);
+      if (newdomain_list[i] == NULL)
 	{
 	  db_free_domain_list (newdomain_list, cnt);
-	  return (SM_DOMAIN **) NULL;
+	  return NULL;
 	}
     }
 
@@ -789,21 +805,103 @@ db_final_client_query_result (void)
 }
 
 /*
- * db_cp_query_type() - This function copies the given type list into a newly
- *    allocated type list.
- * return : new type list or NULL on error.
- * query_type(in): query type list to be copied
- * copy_only_user(in):
+ * db_cp_query_type_helper() - Copies the given type to a newly allocated type
+ * return : dest or NULL on error.
+ * src(in): query type to be copied
+ * dest(in): query type newly allocated
  *
  * note : It is no longer necessary to use regu_cp_domain() to copy the
  *  domain field, since it is now a pointer to a cached domain structure.
+ */
+static DB_QUERY_TYPE *
+db_cp_query_type_helper (DB_QUERY_TYPE * src, DB_QUERY_TYPE * dest)
+{
+  int size;
+
+  dest->db_type = src->db_type;
+  dest->size = src->size;
+  dest->name = NULL;
+  dest->attr_name = NULL;
+  dest->spec_name = NULL;
+  dest->original_name = NULL;
+  dest->domain = src->domain;
+  dest->src_domain = NULL;
+  dest->visible_type = src->visible_type;
+  dest->col_type = src->col_type;
+
+  if (src->name != NULL)
+    {
+      size = strlen (src->name) + 1;
+      dest->name = (char *) malloc (size);
+      if (dest->name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return NULL;
+	}
+      memcpy ((char *) dest->name, src->name, size);
+    }
+
+  if (src->attr_name != NULL)
+    {
+      size = strlen (src->attr_name) + 1;
+      dest->attr_name = (char *) malloc (size);
+      if (dest->attr_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return NULL;
+	}
+      memcpy ((char *) dest->attr_name, src->attr_name, size);
+    }
+
+  if (src->spec_name != NULL)
+    {
+      size = strlen (src->spec_name) + 1;
+      dest->spec_name = (char *) malloc (size);
+      if (dest->spec_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return NULL;
+	}
+      memcpy ((char *) dest->spec_name, src->spec_name, size);
+    }
+
+  if (src->original_name != NULL)
+    {
+      size = strlen (src->original_name) + 1;
+      dest->original_name = (char *) malloc (size);
+      if (dest->original_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  return NULL;
+	}
+      memcpy ((char *) dest->original_name, src->original_name, size);
+    }
+
+  if (src->src_domain != NULL)
+    {
+      dest->src_domain = regu_cp_domain (src->src_domain);
+    }
+
+  return dest;
+}
+
+/*
+ * db_cp_query_type() - This function copies the given type list into a newly
+ *                      allocated type list.
+ * return : new type list or NULL on error.
+ * query_type(in): query type list to be copied
+ * copy_only_user(in):
  */
 DB_QUERY_TYPE *
 db_cp_query_type (DB_QUERY_TYPE * query_type, int copy_only_user)
 {
   DB_QUERY_TYPE *q;
   DB_QUERY_TYPE *ptr1, *ptr2;
-  int size, cnt;
+  int cnt;
 
   /* find count of nodes to copy */
   for (cnt = 0, ptr1 = query_type; ptr1; ptr1 = ptr1->next)
@@ -814,10 +912,11 @@ db_cp_query_type (DB_QUERY_TYPE * query_type, int copy_only_user)
 	  cnt++;
 	}
     }
+
   q = db_alloc_query_format (cnt);
   if (q == NULL)
     {
-      return (DB_QUERY_TYPE *) NULL;
+      return NULL;
     }
 
   for (ptr1 = query_type, ptr2 = q; ptr1; ptr1 = ptr1->next)
@@ -825,64 +924,11 @@ db_cp_query_type (DB_QUERY_TYPE * query_type, int copy_only_user)
       if ((ptr1->visible_type != SYSTEM_ADDED_COLUMN) &&
 	  (!copy_only_user || ptr1->visible_type == USER_COLUMN))
 	{
-	  ptr2->db_type = ptr1->db_type;
-	  ptr2->size = ptr1->size;
-	  ptr2->name = (char *) NULL;
-	  ptr2->attr_name = (char *) NULL;
-	  ptr2->spec_name = (char *) NULL;
-	  ptr2->original_name = (char *) NULL;
-	  ptr2->domain = ptr1->domain;
-	  ptr2->src_domain = (SM_DOMAIN *) NULL;
-	  ptr2->visible_type = ptr1->visible_type;
-	  ptr2->col_type = ptr1->col_type;
-	  if (ptr1->name != NULL)
+	  ptr2 = db_cp_query_type_helper (ptr1, ptr2);
+	  if (ptr2 == NULL)
 	    {
-	      size = strlen (ptr1->name) + 1;
-	      ptr2->name = (char *) malloc (size);
-	      if (ptr2->name == NULL)
-		{
-		  db_free_query_format (q);
-		  return (DB_QUERY_TYPE *) NULL;
-		}
-	      memcpy ((char *) ptr2->name, ptr1->name, size);
-	    }
-	  if (ptr1->attr_name != NULL)
-	    {
-	      size = strlen (ptr1->attr_name) + 1;
-	      ptr2->attr_name = (char *) malloc (size);
-	      if (ptr2->attr_name == NULL)
-		{
-		  db_free_query_format (q);
-		  return (DB_QUERY_TYPE *) NULL;
-		}
-	      memcpy ((char *) ptr2->attr_name, ptr1->attr_name, size);
-	    }
-	  if (ptr1->spec_name != NULL)
-	    {
-	      size = strlen (ptr1->spec_name) + 1;
-	      ptr2->spec_name = (char *) malloc (size);
-	      if (ptr2->spec_name == NULL)
-		{
-		  db_free_query_format (q);
-		  return (DB_QUERY_TYPE *) NULL;
-		}
-	      memcpy ((char *) ptr2->spec_name, ptr1->spec_name, size);
-	    }
-	  if (ptr1->original_name != NULL)
-	    {
-	      size = strlen (ptr1->original_name) + 1;
-	      ptr2->original_name = (char *) malloc (size);
-	      if (ptr2->original_name == NULL)
-		{
-		  db_free_query_format (q);
-		  return (DB_QUERY_TYPE *) NULL;
-		}
-	      memcpy ((char *) ptr2->original_name, ptr1->original_name,
-		      size);
-	    }
-	  if (ptr1->src_domain != NULL)
-	    {
-	      ptr2->src_domain = regu_cp_domain (ptr1->src_domain);
+	      db_free_query_format (q);
+	      return NULL;
 	    }
 
 	  ptr2 = ptr2->next;
@@ -968,6 +1014,8 @@ db_get_query_type (DB_TYPE * type_list, int *size_list,
 	      type_ptr->name = (char *) malloc (size);
 	      if (type_ptr->name == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		  db_free_query_format (q);
 		  return NULL;
 		}
@@ -981,6 +1029,8 @@ db_get_query_type (DB_TYPE * type_list, int *size_list,
 		  type_ptr->attr_name = (char *) malloc (size);
 		  if (type_ptr->attr_name == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      db_free_query_format (q);
 		      return NULL;
 		    }
@@ -1066,12 +1116,14 @@ query_compile_local (const char *CSQL_query, DB_QUERY_ERROR * query_error,
   if (*stmt_no < 0 || error < 0)
     {
       db_close_session_local (*session);
+      *session = NULL;
       return (er_errid ());
     }
 
   if (error < 0)
     {
       db_close_session_local (*session);
+      *session = NULL;
       return (er_errid ());
     }
 
@@ -1095,11 +1147,11 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result,
 {
   int error;
   int stmt_no;
-  DB_SESSION *session;
+  DB_SESSION *session = NULL;
 
   error = query_compile_local (CSQL_query, query_error, DB_NO_OIDS,
 			       &session, &stmt_no);
-  if (error < 0)
+  if (session == NULL)
     {
       return error;
     }
@@ -1136,7 +1188,7 @@ query_execute_local (const char *CSQL_query, void *result,
 {
   int error;			/* return code from funcs */
   int stmt_no;			/* compiled stmt number */
-  DB_SESSION *session;
+  DB_SESSION *session = NULL;
 
   if (result)
     {
@@ -1146,7 +1198,7 @@ query_execute_local (const char *CSQL_query, void *result,
   /* compile the query */
   error = query_compile_local (CSQL_query, query_error, include_oid,
 			       &session, &stmt_no);
-  if (error < 0)
+  if (session == NULL)
     {
       return error;
     }
@@ -1399,6 +1451,10 @@ db_query_format_class_name (DB_QUERY_TYPE * query_type)
     {
       return (const char *) NULL;
     }
+  if (src_domain->class_mop == NULL)
+    {
+      return NULL;
+    }
 
   return db_get_class_name (src_domain->class_mop);
 }
@@ -1418,15 +1474,14 @@ db_query_format_is_non_null (DB_QUERY_TYPE * query_type)
   CHECK_1ARG_RETURN_EXPR (query_type, ER_OBJ_INVALID_ARGUMENT);
 
   src_domain = db_query_format_src_domain (query_type);
-  if (src_domain)
+  if (src_domain && src_domain->class_mop && query_type->attr_name)
     {
-      attr = db_get_attribute (src_domain->class_mop, query_type->name);
+      attr = db_get_attribute (src_domain->class_mop, query_type->attr_name);
       if (attr)
 	{
 	  return db_attribute_is_non_null (attr);
 	}
     }
-
 
   return ER_OBJ_INVALID_ATTRIBUTE;
 }
@@ -1615,6 +1670,8 @@ db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt,
 	      typep->name = (char *) malloc (str_size);
 	      if (typep->name == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size);
 		  db_free_query_result (r);
 		  return NULL;
 		}
@@ -1630,6 +1687,8 @@ db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt,
 		  typep->attr_name = (char *) malloc (str_size);
 		  if (typep->attr_name == NULL)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size);
 		      db_free_query_result (r);
 		      return NULL;
 		    }
@@ -2399,13 +2458,15 @@ db_query_get_tplpos (DB_QUERY_RESULT * result)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OPR_ON_CLOSED_QRES,
 	      0);
-      return (DB_QUERY_TPLPOS *) NULL;
+      return NULL;
     }
 
   tplpos = (DB_QUERY_TPLPOS *) malloc (DB_SIZEOF (DB_QUERY_TPLPOS));
   if (tplpos == NULL)
     {
-      return (DB_QUERY_TPLPOS *) NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_SIZEOF (DB_QUERY_TPLPOS));
+      return NULL;
     }
 
   switch (result->type)
@@ -2442,7 +2503,7 @@ db_query_get_tplpos (DB_QUERY_RESULT * result)
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_RESTYPE,
 		0);
       }
-      return (DB_QUERY_TPLPOS *) NULL;
+      return NULL;
     }
 
   return tplpos;

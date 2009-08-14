@@ -1,0 +1,160 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>SET</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n데이터 타입\n집합형 데이터 타입\nSET");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_string_def.htm\">데이터 타입<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_datatype_collection_def.htm\">집합형 데이터 타입<\/a> &nbsp;&gt;&nbsp; SET<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>SET</h4>
+<h6>설명</h6>
+<p><span class="keyword">SET</span>는 각 요소가 서로 다른 값을 갖는 집합이다. <span class="keyword">SET</span>의 요소는 여러 종류의 데이터 타입을 가질 수 있고, 다른 클래스의 인스턴스를 가질 수도 있다.</p>
+<h6>예제</h6>
+<table border="1">
+<tr>
+<th>
+<p>정의</p>
+</th>
+<th>
+<p>컬렉션 값의 예</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>SET(VARCHAR(20), INTEGER)</p>
+</td>
+<td>
+<p>{'golf', 'handicap', 10}</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>SET CHAR(5)</p>
+</td>
+<td>
+<p>{'aaa', 'bbbb', 'ccccc'}</p>
+</td>
+</tr>
+</table>
+<p>아래는 SET에서 중복을 없애는 예를 보이고 있다.</p>
+<table border="1">
+<tr>
+<th>
+<p>정의</p>
+</th>
+<th>
+<p>입력 데이터</p>
+</th>
+<th>
+<p>저장&#160;데이터</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>SET VARCHAR(10)</p>
+</td>
+<td>
+<p>{'golf', 'scuba', 'golf'}</p>
+</td>
+<td>
+<p>{'golf', 'scuba'}</p>
+</td>
+</tr>
+</table>
+<h6>주의 사항</h6>
+<ul>
+<li>만약, 중복된 값이 포함되어 있으면 자동으로 중복을 제거한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

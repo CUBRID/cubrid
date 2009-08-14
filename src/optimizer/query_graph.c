@@ -64,12 +64,8 @@
 #define SIZEOF_USING_INDEX(n) \
     (sizeof(QO_USING_INDEX) + (((n)-1) * sizeof(QO_USING_INDEX_ENTRY)))
 
-#define ALLOC_USING_INDEX(env, n) \
-    (QO_USING_INDEX *)malloc(SIZEOF_USING_INDEX(n))
-
 /* any number that won't overlap PT_MISC_TYPE */
 #define PREDICATE_TERM  -2
-
 
 /* used by build_graph_for_entity() */
 #define IS_OID(name_spec) \
@@ -85,17 +81,20 @@
 #define RANK_EXPR_FUNCTION 4	/* agg function, set    */
 #define RANK_QUERY         8	/* subquery             */
 
+/*  log2(sizeof(POINTER)) */
+#if __WORDSIZE == 64
+/*  log2(8) */
+#define LOG2_SIZEOF_POINTER 3
+#else
+/*  log2(4) */
+#define LOG2_SIZEOF_POINTER 2
+#endif
+
 /*
  * Figure out how many bytes a QO_INDEX struct with n entries requires.
  */
 #define SIZEOF_INDEX(n) \
     (sizeof(QO_INDEX) + (((n)-1)* sizeof(QO_INDEX_ENTRY)))
-
-/*
- * Malloc a QO_INDEX struct with n entries.
- */
-#define ALLOC_INDEX(env, n) \
-    (QO_INDEX *)malloc(SIZEOF_INDEX(n))
 
 /*
  * Figure out how many bytes a QO_CLASS_INFO struct with n entries requires.
@@ -104,28 +103,10 @@
     (sizeof(QO_CLASS_INFO) + (((n)-1) * sizeof(QO_CLASS_INFO_ENTRY)))
 
 /*
- * Malloc a QO_CLASS_INFO struct with n entries.
- */
-#define ALLOC_CLASS_INFO(env, n) \
-    (QO_CLASS_INFO *)malloc(SIZEOF_CLASS_INFO(n))
-
-/*
- * Malloc a QO_ATTR_INFO struct with n entries.
- */
-#define ALLOC_ATTR_INFO(env) \
-    (QO_ATTR_INFO *)malloc(sizeof(QO_ATTR_INFO))
-
-/*
  * Figure out how many bytes a pkeys[] struct with n entries requires.
  */
 #define SIZEOF_ATTR_CUM_STATS_PKEYS(n) \
     ((n) * sizeof(int))
-
-/*
- * Malloc a pkeys[] struct with n entries.
- */
-#define ALLOC_ATTR_CUM_STATS_PKEYS(env, n) \
-    (int *)malloc(SIZEOF_ATTR_CUM_STATS_PKEYS(n))
 
 #define NOMINAL_HEAP_SIZE(class)	200	/* pages */
 #define NOMINAL_OBJECT_SIZE(class)	 64	/* bytes */
@@ -463,8 +444,7 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
       /*
        * No clue.
        */
-      er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__,
-	      ER_QO_FAILED_ASSERTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
       break;
     }
 
@@ -687,6 +667,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
   int i;
+  size_t size;
 
   if (query == NULL)
     {
@@ -704,29 +685,81 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       goto error;
     }
 
-  env->segs = NALLOCATE (env, QO_SEGMENT, env->nsegs);
-  env->nodes = NALLOCATE (env, QO_NODE, env->nnodes);
-  env->terms = NALLOCATE (env, QO_TERM, env->nterms);
-  env->eqclasses = NALLOCATE (env, QO_EQCLASS,
-			      MAX (env->nnodes, env->nterms) + env->nsegs);
-  env->partitions = NALLOCATE (env, QO_PARTITION, env->nnodes);
-
-  if (env->segs == NULL
-      || env->nodes == NULL
-      || (env->nterms && env->terms == NULL)
-      || env->eqclasses == NULL || env->partitions == NULL)
+  env->segs = NULL;
+  if (env->nsegs > 0)
     {
-      goto error;
+      size = sizeof (QO_SEGMENT) * env->nsegs;
+      env->segs = (QO_SEGMENT *) malloc (size);
+      if (env->segs == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  goto error;
+	}
+    }
+
+  env->nodes = NULL;
+  if (env->nnodes > 0)
+    {
+      size = sizeof (QO_NODE) * env->nnodes;
+      env->nodes = (QO_NODE *) malloc (size);
+      if (env->nodes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  goto error;
+	}
+    }
+
+  env->terms = NULL;
+  if (env->nterms > 0)
+    {
+      size = sizeof (QO_TERM) * env->nterms;
+      env->terms = (QO_TERM *) malloc (size);
+      if (env->terms == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  goto error;
+	}
+    }
+
+  env->eqclasses = NULL;
+  size = sizeof (QO_EQCLASS) * (MAX (env->nnodes, env->nterms) + env->nsegs);
+  if (size > 0)
+    {
+      env->eqclasses = (QO_EQCLASS *) malloc (size);
+      if (env->eqclasses == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  goto error;
+	}
+    }
+
+  env->partitions = NULL;
+  if (env->nnodes > 0)
+    {
+      size = sizeof (QO_PARTITION) * env->nnodes;
+      env->partitions = (QO_PARTITION *) malloc (size);
+      if (env->partitions == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  goto error;
+	}
     }
 
   for (i = 0; i < env->nsegs; ++i)
     {
       qo_seg_clear (env, i);
     }
+
   for (i = 0; i < env->nnodes; ++i)
     {
       qo_node_clear (env, i);
     }
+
   for (i = 0; i < env->nterms; ++i)
     {
       qo_term_clear (env, i);
@@ -749,10 +782,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 error:
   qo_env_free (env);
   return NULL;
-
 }
-
-
 
 /*
  * qo_validate () -
@@ -1056,9 +1086,15 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
    * If it is null, we'll make one unless we're dealing with a derived
    * table.
    */
-  if (!attr && !entity->info.spec.derived_table)
+  if (attr == NULL && entity->info.spec.derived_table == NULL)
     {
       attr = parser_new_node (parser, PT_NAME);
+      if (attr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
       attr->info.name.resolved =
 	entity->info.spec.flat_entity_list->info.name.original;
       attr->info.name.original = "";
@@ -2404,6 +2440,11 @@ wrapup:
 	    if (QO_TERM_CLASS (t_term) == QO_TC_PATH
 		&& QO_TERM_JOIN_TYPE (t_term) == JOIN_LEFT)
 	      {
+		if (head_node == NULL)
+		  {
+		    break;
+		  }
+
 		if ((QO_NODE_IDX (QO_TERM_HEAD (t_term)) ==
 		     QO_NODE_IDX (head_node))
 		    || (QO_NODE_IDX (QO_TERM_TAIL (t_term)) ==
@@ -2469,6 +2510,12 @@ void
 qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 {
   PT_NODE *next;
+
+  if (pt_expr == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_FAILED_ASSERTION, 0);
+      return;
+    }
 
   /* remember the next link and then break it */
   next = pt_expr->next;
@@ -3319,7 +3366,22 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
    * way to make sure that they are consistent is to use the bitset_assign()
    * macro, not just to do the bitcopy that memcpy() will do.
    */
-  tmp = NALLOCATE (env, QO_SUBQUERY, n + 1);
+  tmp = NULL;
+  if ((n + 1) > 0)
+    {
+      tmp = (QO_SUBQUERY *) malloc (sizeof (QO_SUBQUERY) * (n + 1));
+      if (tmp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (QO_SUBQUERY) * (n + 1));
+	  return;
+	}
+    }
+  else
+    {
+      return;
+    }
+
   memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
   for (i = 0; i < n; i++)
     {
@@ -3329,7 +3391,10 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       BITSET_MOVE (tmp[i].nodes, subq->nodes);
       BITSET_MOVE (tmp[i].terms, subq->terms);
     }
-  DEALLOCATE (env, env->subqueries);
+  if (env->subqueries)
+    {
+      free_and_init (env->subqueries);
+    }
   env->subqueries = tmp;
 
   tmp = &env->subqueries[n];
@@ -3756,8 +3821,23 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
          this node or USING INDEX NONE case */
 
       /* allocate QO_USING_INDEX structure */
-      uip = QO_NODE_USING_INDEX (nodep) =
-	(n == 0) ? ALLOC_USING_INDEX (env, 1) : ALLOC_USING_INDEX (env, n);
+      if (n == 0)
+	{
+	  uip = (QO_USING_INDEX *) malloc (SIZEOF_USING_INDEX (1));
+	}
+      else
+	{
+	  uip = (QO_USING_INDEX *) malloc (SIZEOF_USING_INDEX (n));
+	}
+      QO_NODE_USING_INDEX (nodep) = uip;
+
+      if (uip == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, SIZEOF_USING_INDEX (n ? n : 1));
+	  return;
+	}
+
       QO_UI_N (uip) = n;
       /* attach indexes to QO_NODE */
       n = 0;
@@ -3800,7 +3880,14 @@ qo_alloc_index (QO_ENV * env, int n)
   QO_INDEX *indexp;
   QO_INDEX_ENTRY *entryp;
 
-  indexp = ALLOC_INDEX (env, n);
+  indexp = (QO_INDEX *) malloc (SIZEOF_INDEX (n));
+  if (indexp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      SIZEOF_INDEX (n));
+      return NULL;
+    }
+
   indexp->n = 0;
   indexp->max = n;
 
@@ -3855,13 +3942,25 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
 	}
       if (entryp->nsegs)
 	{
-	  DEALLOCATE (env, entryp->seg_equal_terms);
-	  DEALLOCATE (env, entryp->seg_other_terms);
-	  DEALLOCATE (env, entryp->seg_idxs);
+	  if (entryp->seg_equal_terms)
+	    {
+	      free_and_init (entryp->seg_equal_terms);
+	    }
+	  if (env, entryp->seg_other_terms)
+	    {
+	      free_and_init (entryp->seg_other_terms);
+	    }
+	  if (entryp->seg_idxs)
+	    {
+	      free_and_init (entryp->seg_idxs);
+	    }
 	}
     }
 
-  DEALLOCATE (env, indexp);
+  if (indexp)
+    {
+      free_and_init (indexp);
+    }
 }
 
 /*
@@ -3881,7 +3980,13 @@ qo_get_class_info (QO_ENV * env, QO_NODE * node)
 
   dom_set = QO_NODE_ENTITY_SPEC (node)->info.spec.flat_entity_list;
   n = count_classes (dom_set);
-  info = ALLOC_CLASS_INFO (env, n);
+  info = (QO_CLASS_INFO *) malloc (SIZEOF_CLASS_INFO (n));
+  if (info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      SIZEOF_CLASS_INFO (n));
+      return NULL;
+    }
 
   for (i = 0; i < n; ++i)
     {
@@ -3933,11 +4038,15 @@ qo_free_class_info (QO_ENV * env, QO_CLASS_INFO * info)
       info->info[i].name = NULL;
       info->info[i].mop = NULL;
       if (info->info[i].self_allocated)
-	DEALLOCATE (env, info->info[i].stats);
+	{
+	  free_and_init (info->info[i].stats);
+	}
       info->info[i].smclass = NULL;
     }
-  DEALLOCATE (env, info);
-
+  if (info)
+    {
+      free_and_init (info);
+    }
 }
 
 /*
@@ -4005,7 +4114,14 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 
       if (smclass->stats == NULL)
 	{
-	  info->stats = ALLOCATE (env, CLASS_STATS);
+	  info->stats = (CLASS_STATS *) malloc (sizeof (CLASS_STATS));
+	  if (info->stats == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_STATS));
+	      return NULL;
+	    }
+
 	  info->self_allocated = 1;
 	  info->stats->n_attrs = 0;
 	  info->stats->attr_stats = NULL;
@@ -4055,8 +4171,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_attrs;
   const char *name;
   int n, i, j;
-  bool is_unique_index;
-  SM_CLASS_CONSTRAINT *constraints, *consp;
+  SM_CLASS_CONSTRAINT *consp;
 
   /* actual attribute name of the given segment */
   name = QO_SEG_NAME (seg);
@@ -4078,10 +4193,11 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   class_info_entryp = &QO_NODE_INFO (nodep)->info[0];
 
   /* allocate QO_ATTR_INFO within the current optimizer environment */
-  attr_infop = ALLOC_ATTR_INFO (env);
-  if (!attr_infop)
+  attr_infop = (QO_ATTR_INFO *) malloc (sizeof (QO_ATTR_INFO));
+  if (attr_infop == NULL)
     {
-      /* already, error has been set */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_ATTR_INFO));
       return NULL;
     }
 
@@ -4102,12 +4218,11 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
     {
-
       attr_id = sm_att_id (class_info_entryp->mop, name);
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
       attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-      if (!attr_statsp)
+      if (attr_statsp == NULL)
 	{
 	  /* the attribute statistics of the class were not set */
 	  cum_statsp->is_indexed = false;
@@ -4118,7 +4233,6 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	     (segment and index) scans of a node that represents more than
 	     one node. */
 	}
-
 
       /* The stats vector isn't kept in id order because of the effects
          of schema updates (attribute deletion, most notably). We need
@@ -4146,25 +4260,26 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  continue;
 	}
 
-      /* if the atrribute is numeric type so its min/max values are
-         meaningful, keep the min/max existing values */
-      if (DB_NUMERIC_TYPE (attr_statsp->type))
+      if (cum_statsp->valid_limits == false)
 	{
-
-	  if (!cum_statsp->valid_limits)
+	  /* first time */
+	  cum_statsp->type = attr_statsp->type;
+	  cum_statsp->valid_limits = true;
+	  /* if the atrribute is numeric type so its min/max values are
+	     meaningful, keep the min/max existing values */
+	  if (DB_NUMERIC_TYPE (attr_statsp->type))
 	    {
-
-	      /* first time */
-	      cum_statsp->type = attr_statsp->type;
-	      cum_statsp->valid_limits = true;
 	      /* assign values, bitwise-copy of DB_DATA structure */
 	      cum_statsp->min_value = attr_statsp->min_value;
 	      cum_statsp->max_value = attr_statsp->max_value;
-
 	    }
-	  else
-	    {			/* if (!cum_statsp->valid_limits) */
-
+	}
+      else
+	{
+	  /* if the atrribute is numeric type so its min/max values are
+	     meaningful, keep the min/max existing values */
+	  if (DB_NUMERIC_TYPE (attr_statsp->type))
+	    {
 	      /* compare with previsous values */
 	      if (qo_data_compare (&attr_statsp->min_value,
 				   &cum_statsp->min_value,
@@ -4184,11 +4299,8 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	         because the values are meaningful only when their types
 	         are numeric and we are considering compatible indexes
 	         under class hierarchy. */
-
-	    }			/* if (!cum_statsp->valid_limits) */
-
-	}			/* if (DB_NUMERIC_TYPE(attr_statsp->type)) */
-
+	    }
+	}
 
       if (attr_statsp->n_btstats <= 0 || !attr_statsp->bt_stats)
 	{
@@ -4220,24 +4332,17 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	     for example: select ... from all p */
 
 	  /* check index uniqueness */
-	  is_unique_index = false;	/* init */
-
-	  constraints = sm_class_constraints (class_info_entryp->mop);
-	  for (consp = constraints; consp; consp = consp->next)
+	  for (consp = sm_class_constraints (class_info_entryp->mop);
+	       consp; consp = consp->next)
 	    {
-	      /* found index */
-	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type)
+	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type)
 		  && BTID_IS_EQUAL (&bt_statsp->btid, &consp->index))
 		{
-		  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type))
-		    {
-		      is_unique_index = true;
-		    }
 		  break;
 		}
 	    }
 
-	  if (is_unique_index)
+	  if (consp)		/* is unique index */
 	    {
 	      /* is class hierarchy index: set unique index statistics */
 	      cum_statsp->leafs = bt_statsp->leafs;
@@ -4250,15 +4355,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      cum_statsp->key_type = bt_statsp->key_type;
 	      cum_statsp->key_size = bt_statsp->key_size;
 	      /* alloc pkeys[] within the current optimizer environment */
-	      if (cum_statsp->pkeys)
+	      if (cum_statsp->pkeys != NULL)
 		{
-		  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
 	      cum_statsp->pkeys =
-		ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
-	      if (!cum_statsp->pkeys)
+		(int *)
+		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+	      if (cum_statsp->pkeys == NULL)
 		{
-		  /* already, error has been set */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
 		  qo_free_attr_info (env, attr_infop);
 		  return NULL;
 		}
@@ -4270,90 +4378,45 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      /* immediately return the allocated QO_ATTR_INFO */
 	      return attr_infop;
 	    }
-	  else
-	    {
-	      /* keep cumulative totals of index statistics */
-	      cum_statsp->leafs += bt_statsp->leafs;
-	      cum_statsp->pages += bt_statsp->pages;
-	      cum_statsp->oids += bt_statsp->oids;
-	      cum_statsp->nulls += bt_statsp->nulls;
-	      /* Assume that the key distributions overlap here, so that the
-	         number of distinct keys in all of the attributes equal to the
-	         maximum number of distinct keys in any one of the attributes.
-	         This is probably not far from the truth; it is almost
-	         certainly a better guess than assuming that all key ranges
-	         are distinct. */
-	      cum_statsp->height =
-		MAX (cum_statsp->height, bt_statsp->height);
-	      if (cum_statsp->key_size == 0 ||	/* the first found */
-		  cum_statsp->keys < bt_statsp->keys)
-		{
-		  cum_statsp->keys = bt_statsp->keys;
-		  cum_statsp->ukeys = bt_statsp->ukeys;
-		  cum_statsp->key_type = bt_statsp->key_type;
-		  cum_statsp->key_size = bt_statsp->key_size;
-		  /* alloc pkeys[] within the current optimizer environment */
-		  if (cum_statsp->pkeys)
-		    {
-		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
-		    }
-		  cum_statsp->pkeys =
-		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
-		  if (!cum_statsp->pkeys)
-		    {
-		      /* already, error has been set */
-		      qo_free_attr_info (env, attr_infop);
-		      return NULL;
-		    }
-		  for (j = 0; j < cum_statsp->key_size; j++)
-		    {
-		      cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
-		    }
-		}
-	    }
 	}
-      else
-	{
-	  /* dynamic classes spec, etc
-	     for example: select ... from (x, y, z) p
-	     select ... from x p
-	   */
 
-	  /* keep cumulative totals of index statistics */
-	  cum_statsp->leafs += bt_statsp->leafs;
-	  cum_statsp->pages += bt_statsp->pages;
-	  cum_statsp->oids += bt_statsp->oids;
-	  cum_statsp->nulls += bt_statsp->nulls;
-	  /* Assume that the key distributions overlap here, so that the
-	     number of distinct keys in all of the attributes equal to the
-	     maximum number of distinct keys in any one of the attributes.
-	     This is probably not far from the truth; it is almost certainly
-	     a better guess than assuming that all key ranges are distinct. */
-	  cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
-	  if (cum_statsp->key_size == 0 ||	/* the first found */
-	      cum_statsp->keys < bt_statsp->keys)
+      /* keep cumulative totals of index statistics */
+      cum_statsp->leafs += bt_statsp->leafs;
+      cum_statsp->pages += bt_statsp->pages;
+      cum_statsp->oids += bt_statsp->oids;
+      cum_statsp->nulls += bt_statsp->nulls;
+      /* Assume that the key distributions overlap here, so that the
+         number of distinct keys in all of the attributes equal to the
+         maximum number of distinct keys in any one of the attributes.
+         This is probably not far from the truth; it is almost certainly
+         a better guess than assuming that all key ranges are distinct. */
+      cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
+      if (cum_statsp->key_size == 0 ||	/* the first found */
+	  cum_statsp->keys < bt_statsp->keys)
+	{
+	  cum_statsp->keys = bt_statsp->keys;
+	  cum_statsp->ukeys = bt_statsp->ukeys;
+	  cum_statsp->key_type = bt_statsp->key_type;
+	  cum_statsp->key_size = bt_statsp->key_size;
+	  /* alloc pkeys[] within the current optimizer environment */
+	  if (cum_statsp->pkeys)
 	    {
-	      cum_statsp->keys = bt_statsp->keys;
-	      cum_statsp->ukeys = bt_statsp->ukeys;
-	      cum_statsp->key_type = bt_statsp->key_type;
-	      cum_statsp->key_size = bt_statsp->key_size;
-	      /* alloc pkeys[] within the current optimizer environment */
-	      if (cum_statsp->pkeys)
-		{
-		  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
-		}
-	      cum_statsp->pkeys =
-		ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
-	      if (!cum_statsp->pkeys)
-		{
-		  /* already, error has been set */
-		  qo_free_attr_info (env, attr_infop);
-		  return NULL;
-		}
-	      for (j = 0; j < cum_statsp->key_size; j++)
-		{
-		  cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
-		}
+	      free_and_init (cum_statsp->pkeys);
+	    }
+	  cum_statsp->pkeys =
+	    (int *)
+	    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+	  if (cum_statsp->pkeys == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+	      qo_free_attr_info (env, attr_infop);
+	      return NULL;
+	    }
+	  for (j = 0; j < cum_statsp->key_size; j++)
+	    {
+	      cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
 	    }
 	}
 
@@ -4380,11 +4443,10 @@ qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info)
       cum_statsp = &info->cum_stats;
       if (cum_statsp->pkeys)
 	{
-	  DEALLOCATE (env, cum_statsp->pkeys);
+	  free_and_init (cum_statsp->pkeys);
 	}
-      DEALLOCATE (env, info);
+      free_and_init (info);
     }
-
 }
 
 /*
@@ -4408,7 +4470,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   ATTR_STATS *attr_statsp;
   BTREE_STATS *bt_statsp;
   int i, j, k;
-  bool is_unique_index;
 
   /* pointer to QO_NODE_INDEX structure of QO_NODE */
   node_indexp = QO_NODE_INDEXES (node);
@@ -4429,7 +4490,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
       for (j = 0, index_entryp = (ni_entryp)->head;
 	   index_entryp != NULL; j++, index_entryp = index_entryp->next)
 	{
-
 	  /* The index information is associated with the first attribute of
 	     index keys in the case of multi-column index and 'seg_idx[]'
 	     array of QO_INDEX_ENTRY structure was built by
@@ -4469,31 +4529,32 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  index_entryp->stats = attr_statsp;
 	  index_entryp->bt_stats_idx = -1;
 
-	  if (!attr_statsp)
+	  if (attr_statsp == NULL)
 	    {
 	      /* absence of the attribute statistics? */
 	      continue;
 	    }
 
-	  /* if the attribute is numeric type so its min/max values are
-	     meaningful, keep the min/max existing values */
-	  if (DB_NUMERIC_TYPE (attr_statsp->type))
+	  if (cum_statsp->valid_limits == false)
 	    {
-
-	      if (!cum_statsp->valid_limits)
+	      /* first time */
+	      cum_statsp->type = attr_statsp->type;
+	      cum_statsp->valid_limits = true;
+	      /* if the attribute is numeric type so its min/max values are
+	         meaningful, keep the min/max existing values */
+	      if (DB_NUMERIC_TYPE (attr_statsp->type))
 		{
-
-		  /* first time */
-		  cum_statsp->type = attr_statsp->type;
-		  cum_statsp->valid_limits = true;
 		  /* assign values, bitwise-copy of DB_DATA structure */
 		  cum_statsp->min_value = attr_statsp->min_value;
 		  cum_statsp->max_value = attr_statsp->max_value;
-
 		}
-	      else
-		{		/* if (!cum_statsp->valid_limits) */
-
+	    }
+	  else
+	    {
+	      /* if the attribute is numeric type so its min/max values are
+	         meaningful, keep the min/max existing values */
+	      if (DB_NUMERIC_TYPE (attr_statsp->type))
+		{
 		  /* compare with previsous values */
 		  if (qo_data_compare (&attr_statsp->min_value,
 				       &cum_statsp->min_value,
@@ -4513,23 +4574,18 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		     because the values are meaningful only when their types
 		     are numeric and we are considering compatible indexes
 		     under class hierarchy. */
-
-		}		/* if (!cum_statsp->valid_limits) */
-
-	    }			/* if (DB_NUMERIC_TYPE(attr_statsp->type)) */
-
+		}
+	    }
 
 	  /* find the index that we are interesting within BTREE_STATS[] array */
-	  for (k = 0, bt_statsp = attr_statsp->bt_stats; k <
-	       attr_statsp->n_btstats; k++, bt_statsp++)
+	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
+	       k < attr_statsp->n_btstats; k++, bt_statsp++)
 	    {
-
 	      if (BTID_IS_EQUAL (&bt_statsp->btid, &(index_entryp->btid)))
 		{
 		  index_entryp->bt_stats_idx = k;
 		  break;
 		}
-
 	    }			/* for (k = 0, ...) */
 	  if (k == attr_statsp->n_btstats)
 	    {
@@ -4543,13 +4599,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	         for example: select ... from all p */
 
 	      /* check index uniqueness */
-	      is_unique_index = false;	/* init */
 	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->type))
-		{
-		  is_unique_index = true;
-		}
-
-	      if (is_unique_index)
 		{
 		  /* is class hierarchy index: set unique index statistics */
 		  cum_statsp->leafs = bt_statsp->leafs;
@@ -4564,13 +4614,18 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
 		    {
-		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
+		      free_and_init (cum_statsp->pkeys);
 		    }
 		  cum_statsp->pkeys =
-		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
-		  if (!cum_statsp->pkeys)
+		    (int *)
+		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS
+			    (cum_statsp->key_size));
+		  if (cum_statsp->pkeys == NULL)
 		    {
-		      /* already, error has been set */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
+							   key_size));
 		      return;	/* give up */
 		    }
 		  for (k = 0; k < cum_statsp->key_size; k++)
@@ -4579,93 +4634,47 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    }
 
 		  /* immediately finish getting index statistics */
-		  return;
-		}
-	      else
-		{
-		  /* keep cumulative totals of index statistics */
-		  cum_statsp->leafs += bt_statsp->leafs;
-		  cum_statsp->pages += bt_statsp->pages;
-		  cum_statsp->oids += bt_statsp->oids;
-		  cum_statsp->nulls += bt_statsp->nulls;
-		  /* Assume that the key distributions overlap here, so that
-		     the number of distinct keys in all of the attributes
-		     equal to the maximum number of distinct keys in any one
-		     of the attributes. This is probably not far from the
-		     truth; it is almost certainly a better guess than
-		     assuming that all key ranges are distinct. */
-		  cum_statsp->height =
-		    MAX (cum_statsp->height, bt_statsp->height);
-		  if (cum_statsp->key_size == 0 ||	/* the first found */
-		      cum_statsp->keys < bt_statsp->keys)
-		    {
-		      cum_statsp->keys = bt_statsp->keys;
-		      cum_statsp->ukeys = bt_statsp->ukeys;
-		      cum_statsp->key_type = bt_statsp->key_type;
-		      cum_statsp->key_size = bt_statsp->key_size;
-		      /* alloc pkeys[] within the current optimizer environment */
-		      if (cum_statsp->pkeys)
-			{
-			  DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
-			}
-		      cum_statsp->pkeys =
-			ALLOC_ATTR_CUM_STATS_PKEYS (env,
-						    cum_statsp->key_size);
-		      if (!cum_statsp->pkeys)
-			{
-			  /* already, error has been set */
-			  return;	/* give up */
-			}
-		      for (k = 0; k < cum_statsp->key_size; k++)
-			{
-			  cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
-			}
-		    }
+		  break;	/* for (j = 0, ... ) */
 		}
 	    }
-	  else
-	    {
-	      /* dynamic classes spec, etc
-	         for example: select ... from (x, y, z) p
-	         select ... from x p
-	       */
 
-	      /* keep cumulative totals of index statistics */
-	      cum_statsp->leafs += bt_statsp->leafs;
-	      cum_statsp->pages += bt_statsp->pages;
-	      cum_statsp->oids += bt_statsp->oids;
-	      cum_statsp->nulls += bt_statsp->nulls;
-	      /* Assume that the key distributions overlap here, so that the
-	         number of distinct keys in all of the attributes equal to the
-	         maximum number of distinct keys in any one of the attributes.
-	         This is probably not far from the truth; it is almost
-	         certainly a better guess than assuming that all key ranges
-	         are distinct. */
-	      cum_statsp->height =
-		MAX (cum_statsp->height, bt_statsp->height);
-	      if (cum_statsp->key_size == 0 ||	/* the first found */
-		  cum_statsp->keys < bt_statsp->keys)
+	  /* keep cumulative totals of index statistics */
+	  cum_statsp->leafs += bt_statsp->leafs;
+	  cum_statsp->pages += bt_statsp->pages;
+	  cum_statsp->oids += bt_statsp->oids;
+	  cum_statsp->nulls += bt_statsp->nulls;
+	  /* Assume that the key distributions overlap here, so that the
+	     number of distinct keys in all of the attributes equal to the
+	     maximum number of distinct keys in any one of the attributes.
+	     This is probably not far from the truth; it is almost
+	     certainly a better guess than assuming that all key ranges
+	     are distinct. */
+	  cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
+	  if (cum_statsp->key_size == 0 ||	/* the first found */
+	      cum_statsp->keys < bt_statsp->keys)
+	    {
+	      cum_statsp->keys = bt_statsp->keys;
+	      cum_statsp->ukeys = bt_statsp->ukeys;
+	      cum_statsp->key_type = bt_statsp->key_type;
+	      cum_statsp->key_size = bt_statsp->key_size;
+	      /* alloc pkeys[] within the current optimizer environment */
+	      if (cum_statsp->pkeys)
 		{
-		  cum_statsp->keys = bt_statsp->keys;
-		  cum_statsp->ukeys = bt_statsp->ukeys;
-		  cum_statsp->key_type = bt_statsp->key_type;
-		  cum_statsp->key_size = bt_statsp->key_size;
-		  /* alloc pkeys[] within the current optimizer environment */
-		  if (cum_statsp->pkeys)
-		    {
-		      DEALLOCATE (env, cum_statsp->pkeys);	/* free alloced */
-		    }
-		  cum_statsp->pkeys =
-		    ALLOC_ATTR_CUM_STATS_PKEYS (env, cum_statsp->key_size);
-		  if (!cum_statsp->pkeys)
-		    {
-		      /* already, error has been set */
-		      return;	/* give up */
-		    }
-		  for (k = 0; k < cum_statsp->key_size; k++)
-		    {
-		      cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
-		    }
+		  free_and_init (cum_statsp->pkeys);
+		}
+	      cum_statsp->pkeys =
+		(int *)
+		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+	      if (cum_statsp->pkeys == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+		  return;	/* give up */
+		}
+	      for (k = 0; k < cum_statsp->key_size; k++)
+		{
+		  cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
 		}
 	    }
 	}			/* for (j = 0, ... ) */
@@ -4698,11 +4707,11 @@ qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp)
 	  cum_statsp = &(ni_entryp)->cum_stats;
 	  if (cum_statsp->pkeys)
 	    {
-	      DEALLOCATE (env, cum_statsp->pkeys);
+	      free_and_init (cum_statsp->pkeys);
 	    }
 	}
 
-      DEALLOCATE (env, node_indexp);
+      free_and_init (node_indexp);
     }
 }
 
@@ -4829,6 +4838,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env = (QO_ENV *) malloc (sizeof (QO_ENV));
   if (env == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_ENV));
       return NULL;
     }
 
@@ -4923,7 +4934,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_seg_free (QO_ENV_SEG (env, i));
 	    }
-	  DEALLOCATE (env, env->segs);
+	  free_and_init (env->segs);
 	}
 
       if (env->nodes)
@@ -4932,7 +4943,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_node_free (QO_ENV_NODE (env, i));
 	    }
-	  DEALLOCATE (env, env->nodes);
+	  free_and_init (env->nodes);
 	}
 
       if (env->eqclasses)
@@ -4941,7 +4952,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_eqclass_free (QO_ENV_EQCLASS (env, i));
 	    }
-	  DEALLOCATE (env, env->eqclasses);
+	  free_and_init (env->eqclasses);
 	}
 
       if (env->terms)
@@ -4950,7 +4961,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_term_free (QO_ENV_TERM (env, i));
 	    }
-	  DEALLOCATE (env, env->terms);
+	  free_and_init (env->terms);
 	}
 
       if (env->partitions)
@@ -4959,7 +4970,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_partition_free (QO_ENV_PARTITION (env, i));
 	    }
-	  DEALLOCATE (env, env->partitions);
+	  free_and_init (env->partitions);
 	}
 
       if (env->subqueries)
@@ -4968,7 +4979,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      qo_subquery_free (&env->subqueries[i]);
 	    }
-	  DEALLOCATE (env, env->subqueries);
+	  free_and_init (env->subqueries);
 	}
 
       bitset_delset (&(env->final_segs));
@@ -5573,6 +5584,10 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       /* qo_alloc_index(env, n) will allocate QO_INDEX structure and
          QO_INDEX_ENTRY structure array */
       indexp = class_entryp->index = qo_alloc_index (env, n);
+      if (indexp == NULL)
+	{
+	  return;
+	}
 
       indexp->n = 0;
 
@@ -5646,6 +5661,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      seg_idx = (int *) malloc (sizeof (int) * col_num);
 	      if (seg_idx == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  sizeof (int) * col_num);
 		  /* cannot allocate seg_idx, use seg_idx_arr instead. */
 		  seg_idx = seg_idx_arr;
 		  col_num = NELEMENTS;
@@ -5669,11 +5687,59 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      /* fill in QO_INDEX_ENTRY structure */
 	      index_entryp = QO_INDEX_INDEX (indexp, indexp->n);
-	      index_entryp->seg_idxs = (int *) NALLOCATE (env, int, nseg_idx);
-	      index_entryp->seg_equal_terms =
-		(BITSET *) NALLOCATE (env, BITSET, nseg_idx);
-	      index_entryp->seg_other_terms =
-		(BITSET *) NALLOCATE (env, BITSET, nseg_idx);
+	      index_entryp->seg_idxs = NULL;
+	      if (nseg_idx > 0)
+		{
+		  size_t size = sizeof (int) * nseg_idx;
+
+		  index_entryp->seg_idxs = (int *) malloc (size);
+		  if (index_entryp->seg_idxs == NULL)
+		    {
+		      if (seg_idx != seg_idx_arr)
+			{
+			  free_and_init (seg_idx);
+			}
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      return;
+		    }
+		}
+
+	      index_entryp->seg_equal_terms = NULL;
+	      if (nseg_idx > 0)
+		{
+		  size_t size = sizeof (BITSET) * nseg_idx;
+
+		  index_entryp->seg_equal_terms = (BITSET *) malloc (size);
+		  if (index_entryp->seg_equal_terms == NULL)
+		    {
+		      if (seg_idx != seg_idx_arr)
+			{
+			  free_and_init (seg_idx);
+			}
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      return;
+		    }
+		}
+
+	      index_entryp->seg_other_terms = NULL;
+	      if (nseg_idx > 0)
+		{
+		  size_t size = sizeof (BITSET) * nseg_idx;
+		  index_entryp->seg_other_terms = (BITSET *) malloc (size);
+		  if (index_entryp->seg_other_terms == NULL)
+		    {
+		      if (seg_idx != seg_idx_arr)
+			{
+			  free_and_init (seg_idx);
+			}
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      return;
+		    }
+		}
+
 	      index_entryp->type = consp->type;
 	      index_entryp->class_ = class_entryp;
 	      index_entryp->btid = consp->index;
@@ -5730,9 +5796,15 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   node_indexp =
     QO_NODE_INDEXES (nodep) =
     (QO_NODE_INDEX *) malloc (SIZEOF_NODE_INDEX (indexp->n));
-  memset (node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
 
-  memset(node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
+  if (node_indexp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      SIZEOF_NODE_INDEX (indexp->n));
+      return;
+    }
+
+  memset (node_indexp, 0, SIZEOF_NODE_INDEX (indexp->n));
 
   QO_NI_N (node_indexp) = 0;
 
@@ -5907,7 +5979,22 @@ qo_discover_partitions (QO_ENV * env)
   int M_offset, join_info_size;
   int rel_idx;
 
-  buddy = NALLOCATE (env, int, (2 * N));
+  buddy = NULL;
+  if (N > 0)
+    {
+      buddy = (int *) malloc (sizeof (int) * (2 * N));
+      if (buddy == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (int) * (2 * N));
+	  return;
+	}
+    }
+  else
+    {
+      return;
+    }
+
   partition = buddy + N;
 
   /*
@@ -5930,7 +6017,7 @@ qo_discover_partitions (QO_ENV * env)
        * the tree in which it resides.
        */
       hi = bitset_iterate (&(QO_TERM_NODES (term)), &bi);
-      while (buddy[hi] != -1)
+      while (hi != -1 && buddy[hi] != -1)
 	{
 	  hi = buddy[hi];
 	}
@@ -6025,11 +6112,17 @@ qo_discover_partitions (QO_ENV * env)
 	}
       /* alloc size check
        * 2: for signed max int. 2**30 is positive, 2**31 is negative
-       * 2: for sizeof(QO_INFO *)
+       * LOG2_SIZEOF_POINTER: log2(sizeof(QO_INFO *))
        */
-      QO_ASSERT (env,
-		 bitset_cardinality (&(QO_PARTITION_NODES (part))) <=
-		 _WORDSIZE - 2 - 2);
+      if (bitset_cardinality (&(QO_PARTITION_NODES (part)))
+	  > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
+	{
+	  if (buddy)
+	    {
+	      free_and_init (buddy);
+	    }
+	  QO_ABORT (env);
+	}
 
       /* set the starting point the join_info vector that
        * correspond to each partition.
@@ -6039,9 +6132,15 @@ qo_discover_partitions (QO_ENV * env)
 	  QO_PARTITION_M_OFFSET (part) = M_offset;
 	}
       join_info_size = QO_JOIN_INFO_SIZE (part);
-      QO_ASSERT (env,
-		 INT_MAX - M_offset * sizeof (QO_INFO *) >=
-		 join_info_size * sizeof (QO_INFO *));
+      if (INT_MAX - M_offset * sizeof (QO_INFO *)
+	  < join_info_size * sizeof (QO_INFO *))
+	{
+	  if (buddy)
+	    {
+	      free_and_init (buddy);
+	    }
+	  QO_ABORT (env);
+	}
       M_offset += join_info_size;
 
       /* set the relative id of nodes in the partition
@@ -6057,7 +6156,10 @@ qo_discover_partitions (QO_ENV * env)
 
   env->npartitions = P;
 
-  DEALLOCATE (env, buddy);
+  if (buddy)
+    {
+      free_and_init (buddy);
+    }
 }
 
 /*
@@ -6073,7 +6175,19 @@ qo_assign_eq_classes (QO_ENV * env)
   BITSET segs;
 
   bitset_init (&segs, env);
-  eq_map = NALLOCATE (env, QO_EQCLASS *, env->nsegs);
+
+  eq_map = NULL;
+  if (env->nsegs > 0)
+    {
+      eq_map = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * env->nsegs);
+      if (eq_map == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (QO_EQCLASS *) * env->nsegs);
+	  return;
+	}
+    }
+
   for (i = 0; i < env->nsegs; ++i)
     {
       eq_map[i] = NULL;
@@ -6136,7 +6250,10 @@ qo_assign_eq_classes (QO_ENV * env)
     }
 
   bitset_delset (&segs);
-  DEALLOCATE (env, eq_map);
+  if (eq_map)
+    {
+      free_and_init (eq_map);
+    }
 
   /*
    * Now squirrel away the eqclass info for each term so that we don't
@@ -6332,7 +6449,10 @@ qo_node_free (QO_NODE * node)
     {
       qo_free_node_index_info (QO_NODE_ENV (node), QO_NODE_INDEXES (node));
     }
-  DEALLOCATE (env, QO_NODE_USING_INDEX (node));
+  if (QO_NODE_USING_INDEX (node))
+    {
+      free_and_init (QO_NODE_USING_INDEX (node));
+    }
 }
 
 /*

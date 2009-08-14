@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -60,10 +60,6 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-
-#ifdef WINDOWS
-#define vsnprintf       _vsnprintf
-#endif
 
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
@@ -155,6 +151,11 @@ void
 desc_free (DESC_OBJ * obj)
 {
   int i;
+
+  if (obj == NULL)
+    {
+      return;
+    }
 
   if (obj->count && obj->values != NULL)
     {
@@ -352,7 +353,10 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	  else
 	    {
 	      pr_writeval (buf, &obj->values[i]);
-	      OR_ENABLE_BOUND_BIT (bits, att->storage_order);
+	      if (bits != NULL)
+		{
+		  OR_ENABLE_BOUND_BIT (bits, att->storage_order);
+		}
 	    }
 	}
       else
@@ -365,7 +369,10 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	  else
 	    {
 	      pr_writeval (buf, &att->value);
-	      OR_ENABLE_BOUND_BIT (bits, att->storage_order);
+	      if (bits != NULL)
+		{
+		  OR_ENABLE_BOUND_BIT (bits, att->storage_order);
+		}
 	    }
 	}
     }
@@ -420,8 +427,9 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 
 error:
   if (bits != NULL)
-    free_and_init (bits);
-
+    {
+      free_and_init (bits);
+    }
   or_abort (buf);
 }
 
@@ -670,15 +678,16 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
     }
 
   /* variable */
-  for (i = class_->fixed_count, j = 0; i < class_->att_count;
-       i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
-    {
-      (*(att->type->readval)) (buf, &obj->values[i], att->domain, vars[j],
-			       true, NULL, 0);
-    }
-
   if (vars != NULL)
     {
+      for (i = class_->fixed_count, j = 0;
+	   i < class_->att_count && j < class_->variable_count;
+	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  (*(att->type->readval)) (buf, &obj->values[i], att->domain, vars[j],
+				   true, NULL, 0);
+	}
+
       free_and_init (vars);
     }
 }
@@ -732,7 +741,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
   PR_TYPE *type;
   int *vars = NULL;
   int i, offset, offset2, total, bytes, att_index, padded_size, fixed_size;
-  SM_ATTRIBUTE **attmap;
+  SM_ATTRIBUTE **attmap = NULL;
   char *bits, *start;
   int rc = NO_ERROR;
 
@@ -751,7 +760,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	  vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
 	  if (vars == NULL)
 	    {
-	      or_abort (buf);
+	      goto abort_on_error;
 	    }
 	  offset = or_get_int (buf, &rc);
 	  for (i = 0; i < oldrep->variable_count; i++)
@@ -767,14 +776,13 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
       attmap = (SM_ATTRIBUTE **) malloc (sizeof (SM_ATTRIBUTE *) * total);
       if (attmap == NULL)
 	{
-	  or_abort (buf);
+	  goto abort_on_error;
 	}
-      else
-	{
-	  for (rat = oldrep->attributes, i = 0;
-	       rat != NULL; rat = rat->next, i++)
-	    attmap[i] = find_current_attribute (class_, rat->attid);
-	}
+
+      memset (attmap, 0, sizeof (SM_ATTRIBUTE *) * total);
+
+      for (rat = oldrep->attributes, i = 0; rat != NULL; rat = rat->next, i++)
+	attmap[i] = find_current_attribute (class_, rat->attid);
 
       rat = oldrep->attributes;
 
@@ -784,6 +792,11 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	   i++, rat = rat->next)
 	{
 	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  if (type == NULL)
+	    {
+	      goto abort_on_error;
+	    }
+
 	  if (attmap[i] == NULL)
 	    {
 	      /* its gone, skip over it */
@@ -839,6 +852,11 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	   i++, rat = rat->next)
 	{
 	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  if (type == NULL)
+	    {
+	      goto abort_on_error;
+	    }
+
 	  att_index = i + oldrep->fixed_count;
 	  if (attmap[att_index] == NULL)
 	    {
@@ -892,6 +910,18 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 
       obj->updated_flag = 1;
     }
+  return;
+
+abort_on_error:
+  if (attmap != NULL)
+    {
+      free (attmap);
+    }
+  if (vars != NULL)
+    {
+      free (vars);
+    }
+  or_abort (buf);
 }
 
 
@@ -919,7 +949,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record,
 
   if (obj == NULL)
     {
-      return error;
+      return ER_FAILED;
     }
   else
     {
@@ -1453,7 +1483,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* fall through */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      ptr = DB_GET_STRING (value);
+      ptr = DB_PULL_STRING (value);
 
       len = db_get_string_size (value);
       if (len < 0)
@@ -1461,8 +1491,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  len = strlen (ptr);
 	}
 
-      /* FIXME :: error handling */
-      print_quoted_str (tout, ptr, len, MAX_DISPLAY_COLUMN);
+      CHECK_PRINT_ERROR (print_quoted_str (tout,
+                                             ptr, len,
+                                             MAX_DISPLAY_COLUMN));
       break;
 
     case DB_TYPE_NUMERIC:
@@ -1494,7 +1525,10 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) ==
 	    NO_ERROR)
 	  {
-	    CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "X'%s'", ptr));
+            CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
+            CHECK_PRINT_ERROR (print_quoted_str (tout,
+                                                   ptr, max_size - 1,
+                                                   MAX_DISPLAY_COLUMN));
 	  }
 
 	if (ptr != buf)
@@ -1660,8 +1694,8 @@ lo_migrate_out (LOID * loid, const char *pathname)
 
       while (remaining && !error)
 	{
-	  if ((readlen =
-	       largeobjmgr_read (loid, offset, chunk, migration_buffer)) < 0)
+	  readlen = largeobjmgr_read (loid, offset, chunk, migration_buffer);
+	  if (readlen < 0)
 	    {
 	      error = er_errid ();
 	    }
@@ -1671,7 +1705,7 @@ lo_migrate_out (LOID * loid, const char *pathname)
 	    }
 	  else
 	    {
-	      if (readlen <= 0)
+	      if (readlen <= 0 || readlen > MIGRATION_CHUNK)
 		{
 		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 						   MSGCAT_UTIL_SET_MIGDB,
@@ -1743,12 +1777,12 @@ lo_migrate_in (LOID * loid, const char *pathname)
 	  offset = 0;
 
 	  while (!error
-		 && ((length = read (fd, migration_buffer, chunk)) > 0))
+		 && ((length = (int) read (fd, migration_buffer, chunk)) > 0))
 	    {
 
-	      if ((writelen =
-		   largeobjmgr_write (loid, offset, length,
-				      migration_buffer)) < 0)
+	      writelen = largeobjmgr_write (loid, offset, length,
+					    migration_buffer);
+	      if (writelen < 0)
 		{
 		  error = er_errid ();
 		}

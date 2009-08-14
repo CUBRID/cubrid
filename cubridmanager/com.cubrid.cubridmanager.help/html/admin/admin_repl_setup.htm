@@ -1,0 +1,142 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>복제 설정 단계</title>
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("관리자 안내서\n데이터베이스 복제\n복제 설정\n복제 설정 단계");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"admin.htm\">관리자 안내서<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_concept.htm\">데이터베이스 복제<\/a> &nbsp;&gt;&nbsp; <a href=\"admin_repl_setup.htm\">복제 설정<\/a> &nbsp;&gt;&nbsp; 복제 설정 단계<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>복제 설정 단계</h3>
+<p>복제는 다음과 같은 단계로 설정한다.</p>
+<p><img src="images/image008.jpg" height="146" width="354" alt="" /></p>
+<p class="caption">복제 설정 단계</p>
+<ol>
+<li class="NumberTitle">배포 데이터베이스 설정
+<ol>
+<li class="desc">배포 데이터베이스를 생성하고 복제에 필요한 파라미터를 설정하는 단계로서 <span class="keyword">repl_make_distdb</span> 유틸리티를 이용한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">마스터 데이터베이스의 파라미터 조정 후 재시작(이미 복제 관련 파라미터가 설정되어 있는 경우 불필요)
+<ol>
+<li class="desc">마스터 데이터베이스의 <span class="keyword" style="font-family:'맑은 고딕'; font-size:10pt;">cubrid.conf</span> 파일에 <span class="keyword">replication</span>이 <span class="keyword">no</span>로 되어 있는 경우 이를 <span class="keyword">yes</span>로 변경한 후 마스터 데이터베이스 서버를 재시작한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">마스터 데이터베이스 백업
+<ol>
+<li class="desc">마스터 데이터베이스와 슬레이브 데이터베이스를 동기화 하기 위해 마스터 데이터베이스를 백업한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">마스터 데이터베이스 백업본을 슬레이브 데이터베이스가 위치할 서버로 이동
+<ol>
+<li class="desc">마스터 데이터베이스의 백업 볼륨 및 볼륨 정보 파일을 슬레이브 시스템으로 복사한다. (ftp 나 파일 복사 이용)</li>
+</ol>
+</li>
+<li class="NumberTitle">슬레이브 데이터베이스 설정(추가)
+<ol>
+<li class="desc"><span class="keyword">repl_make_slavedb</span> 유틸리티를 이용하여 슬레이브 데이터베이스를 마스터 데이터베이스와 동기화하고 복제에 필요한 작업을 수행한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">복제 서버 시작
+<ol>
+<li class="desc">마스터 시스템에서 복제 서버를 구동한다.</li>
+</ol>
+</li>
+<li class="NumberTitle">복제 에이전트 시작
+<ol>
+<li class="desc">슬레이브 시스템에서 복제 에이전트를 구동한다. 이 작업이 완료되면 복제 환경 구성이 종료되고 마스터 데이터베이스 백업 이후에 발생한 변경 데이터가 슬레이브 데이터베이스로 동기화된다.</li>
+</ol>
+</li>
+</ol>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

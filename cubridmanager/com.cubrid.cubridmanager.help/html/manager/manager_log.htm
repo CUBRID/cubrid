@@ -1,0 +1,123 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>로그</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n로그");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; 로그<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>로그</h2>
+<p>로그는 브로커 로그, 매니저 로그, 데이터베이스 로그로 구성되어 있다. 로그 정보를 구성하는 것은 접근 로그, 오류 로그 그리고 관리 로그로 분류해 볼 수 있다. 각 로그는 다음과 같이 구성된다.</p>
+<p><img src="images/manager_log_arch.png" border="0" alt="" /></p>
+<h6>접근 로그</h6>
+<p>접근 로그 파일은 응용 클라이언트 접속에 관한 정보를 기록하며, "broker_name.access"의 이름으로 저장된 것을 분석하여 출력한다. 또한, 브로커 환경 설정 파일에서 <span class="keyword">LOG_BACKUP</span> 매개 변수가 "ON"으로 설정된 경우, 브로커의 구동이 정상적으로 종료되면 접속 로그 파일에 종료된 날짜와 시간 정보가 추가되어 로그 파일이 저장된다.</p>
+<p><img src="images/manager_log_access.jpg" border="0" alt="" /></p>
+<h6>오류 로그</h6>
+<p>오류 로그 파일은 응용 클라이언트의 요청을 처리하는 도중에 발생된 오류에 관한 정보를 기록하며, "broker_name_app_server_num.err"의 이름으로 저장된다.</p>
+<p><img src="images/manager_log_error.png" border="0" alt="" /></p>
+<p>다음은 오류 로그의 예와 설명이다.</p>
+<p class="codep">Time: 02/04/09 13:45:17.687 - SYNTAX ERROR *** ERROR CODE = -493, Tran = 1, EID = 38</p>
+<p class="codep">Syntax: Unknown class "unknown_tbl". select * from unknown_tbl</p>
+<ul>
+<li><span class="keyword">Time: 02/04/09 13:45:17.687</span> : 오류 발생 시각</li>
+<li><span class="keyword">SYNTAX ERROR</span> : 오류의 종류(SYNTAX ERROR, ERROR 등)</li>
+<li><span class="keyword">*** ERROR CODE = -493</span> : 에러 코드</li>
+<li><span class="keyword">Tran = 1</span> : 트랜잭션 ID. -1은 트랜잭션 ID를 할당받지 못한 경우.</li>
+<li><span class="keyword">EID = 38</span> : 오류&#160;ID. SQL 문 처리 중 오류가 발생한 경우, 서버와 클라이언트 오류 로그가 관련이 있는 SQL 로그를 찾을 때 사용함.</li>
+</ul>
+<h6>관리 로그</h6>
+<p>서비스 구동 및 정지에 관한 이력을 관리한다.</p>
+<p><img src="images/manager_log_manage.jpg" border="1" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

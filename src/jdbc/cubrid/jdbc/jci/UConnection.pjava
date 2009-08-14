@@ -36,6 +36,12 @@
 
 package cubrid.jdbc.jci;
 
+#ifdef JDBC_CONSOLE_DEBUG
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.*;
+#endif
+
 import java.net.Socket;
 import java.net.InetAddress;
 import java.util.Vector;
@@ -104,6 +110,24 @@ public class UConnection
 
   private final static int SOCKET_TIMEOUT = 5000;
 
+  /* casinfo */
+  private final static byte CAS_INFO_STATUS_INACTIVE = 0;
+  private final static byte CAS_INFO_STATUS_ACTIVE = 1;
+
+  private final static byte CAS_INFO_RESERVED_DEFAULT	= -1;
+
+  private final static int CAS_INFO_SIZE = 4;
+
+  /* casinfo field def */
+  private final static int CAS_INFO_STATUS = 0;
+  private final static int CAS_INFO_RESERVED_1 = 1;
+  private final static int CAS_INFO_RESERVED_2 = 2;
+  private final static int CAS_INFO_RESERVED_3 = 3;
+
+  private final static int BROKER_INFO_DBMS_TYPE = 0;
+  private final static int BROKER_INFO_KEEP_CONNECTION = 1;
+  private final static int BROKER_INFO_STATEMENT_POOLING = 2;
+
   String conCharsetName;
   UOutputBuffer outBuffer;
   CUBRIDConnection cubridcon;
@@ -126,28 +150,36 @@ public class UConnection
   private int lastIsolationLevel;
   private int lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
   private boolean lastAutoCommit = true;
-  private String dbname, user, passwd;
-  private ArrayList aConList = null;
-  private int activeConId = 0;
+  private String dbname, user, passwd, url;
+  private ArrayList<String> altHosts = null;
+  private int connectedHostId = 0;
   // jci 3.0
   private byte[] broker_info = null;
-  private byte[] save_broker_info = null;
-  private byte con_status = CON_STATUS_OUT_TRAN;
+  private byte[] casinfo = null;
 
   private boolean isServerSideJdbc = false;
   #ifdef SERVER_SIDE_JDBC
   private ExecuteThread curThread;
   #endif
   private byte[] checkCasMsg = null;
-  int delayed_close_handle = 0;
   boolean skip_checkcas;
   boolean need_checkcas;
   Vector pooled_ustmts;
+  Vector deferred_close_handle;
 
   private UUrlCache url_cache = null;
   private boolean isAutoCommitBySelf = false;
 
   private static byte[] driverInfo;
+
+  private long lastRCTime = 0;
+  private int reconnectionTime = 600;
+
+#ifdef JDBC_CONSOLE_DEBUG
+  public File f;
+  public PrintStream fs;
+  public long myid;
+#endif
 
   static
   {
@@ -156,16 +188,31 @@ public class UConnection
     driverInfo[5] = CAS_CLIENT_JDBC;
     driverInfo[6] = CUBRIDDriver.major_version;
     driverInfo[7] = CUBRIDDriver.minor_version;
-    ;
     driverInfo[8] = CUBRIDDriver.patch_version;
-    ;
   }
+
+#ifdef JDBC_CONSOLE_DEBUG
+  private void init_file()
+  {
+    Date d = new Date();
+    long seed = d.getTime();
+    Random ran = new Random(seed);
+    myid = ran.nextInt(128);
+    try {
+      f = new File ("mylog.txt");
+      fs = new PrintStream (f);
+    } catch (Exception e)
+    {
+      System.out.println(e.toString());
+    }
+  }
+#endif
 
   /*
    * the normal constructor of the class UConnection
    */
 
-  UConnection(String ip, int port, String dbname, String user, String passwd)
+  UConnection(String ip, int port, String dbname, String user, String passwd, String url)
       throws CUBRIDException
   {
     CASIp = ip;
@@ -173,11 +220,15 @@ public class UConnection
     this.dbname = dbname;
     this.user = user;
     this.passwd = passwd;
+    this.url = url;
     update_executed = false;
 
     needReconnection = true;
     conCharsetName = UJCIManager.sysCharsetName;
 
+#ifdef JDBC_CONSOLE_DEBUG
+    init_file();
+#endif
     String version = getDatabaseProductVersion();
     UError cpErr = errorHandler;
     endTransaction(true);
@@ -187,33 +238,36 @@ public class UConnection
     }
   }
 
-  UConnection(ArrayList aConList, String dbname, String user, String passwd)
+  UConnection(ArrayList<String> altHostList, String dbname, String user, String passwd, String url)
       throws CUBRIDException
   {
-    this.aConList = aConList;
-
-    ArrayList aCon = (ArrayList) aConList.get(0);
-    CASIp = (String) aCon.get(0);
-    CASPort = ((Integer)aCon.get(1)).intValue();
-
+    try
+    {
+      setAltHosts(altHostList);
+    }
+    catch (CUBRIDException e)
+    {
+      throw e;
+    }
     this.dbname = dbname;
     this.user = user;
     this.passwd = passwd;
+    this.url = url;
     update_executed = false;
 
     needReconnection = true;
     conCharsetName = UJCIManager.sysCharsetName;
 
-#ifndef IS_PROJ
-    String version = getDatabaseProductVersion();
+#ifdef JDBC_CONSOLE_DEBUG
+    init_file();
 #endif
+    String version = getDatabaseProductVersion();
     UError cpErr = errorHandler;
     endTransaction(true);
-#ifndef IS_PROJ
-    if (version == null) {
+    if (version == null)
+    {
       throw new CUBRIDException(cpErr);
     }
-#endif
   }
 
   /*
@@ -228,17 +282,24 @@ public class UConnection
     initConnection(ip, port);
     needReconnection = false;
     conCharsetName = UJCIManager.sysCharsetName;
+#ifdef JDBC_CONSOLE_DEBUG
+    init_file();
+#endif
   }
 
 #ifdef SERVER_SIDE_JDBC
   UConnection(Socket socket, ExecuteThread curThread) throws CUBRIDException
   {
+#ifdef JDBC_CONSOLE_DEBUG
+    init_file();
+#endif
     errorHandler = new UError();
     try
     {
       initConnection(socket);
       needReconnection = false;
-      con_status = CON_STATUS_IN_TRAN;
+      casinfo = new byte [CAS_INFO_SIZE];
+      casinfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
       conCharsetName = UJCIManager.sysCharsetName;
       isServerSideJdbc = true;
       lastAutoCommit = false;
@@ -260,7 +321,9 @@ public class UConnection
     {
       client = socket;
       client.setTcpNoDelay(true);
+#if !defined(SERVER_SIDE_JDBC)
       client.setSoTimeout(SOCKET_TIMEOUT);
+#endif
 
       out = client.getOutputStream();
       output = new DataOutputStream(client.getOutputStream());
@@ -275,6 +338,41 @@ public class UConnection
     {
       throw new UJciException(UErrorCode.ER_CONNECTION);
     }
+  }
+
+  public void setAltHosts(ArrayList<String> altHostList)
+      throws CUBRIDException
+  {
+    if (altHostList.size() < 1)
+    {
+      throw new CUBRIDException(UErrorCode.ER_INVALID_ARGUMENT);
+    }
+
+    this.altHosts = altHostList;
+
+    String hostPort = altHosts.get(0);
+    int pos = hostPort.indexOf(':');
+    if (pos < 0)
+      {
+        CASIp = hostPort.substring(0);
+      }
+    else
+      {
+        CASIp = hostPort.substring(0, pos);
+      }
+    if (pos > 0)
+    {
+      CASPort = Integer.valueOf(hostPort.substring(pos + 1)).intValue();
+    }
+    else
+    {
+      CASPort = CUBRIDDriver.default_port;
+    }
+  }
+
+  public void setReconnectionTime(int sec)
+  {
+    reconnectionTime = sec;
   }
 
   public void setCharset(String newCharsetName)
@@ -419,8 +517,7 @@ public class UConnection
       }
       catch (IOException e)
       {
-        errorHandler.setErrorMessage(UErrorCode.ER_COMMUNICATION, e
-            .getMessage()
+        errorHandler.setErrorMessage(UErrorCode.ER_COMMUNICATION, e.getMessage()
             + "in close");
       }
     }
@@ -491,6 +588,12 @@ public class UConnection
     }
   }
 
+#if defined(JDBC_CONSOLE_DEBUG)
+  void reportInfo() throws Exception
+  {
+    throw new Exception("Check It Out!");
+  }
+#endif
   synchronized public void endTransaction(boolean type)
   {
     errorHandler = new UError();
@@ -501,37 +604,43 @@ public class UConnection
       return;
     }
 
-    if (needReconnection == true || con_status == CON_STATUS_OUT_TRAN)
+    if (needReconnection == true)
       return;
 
     try
     {
       clearTransactionList();
-      if (client != null)
+      if (client != null && getCASInfoStatus() != CAS_INFO_STATUS_INACTIVE)
       {
         checkReconnect();
         if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
           return;
 
-        if (!lastAutoCommit || isAutoCommitBySelf || type == false)
+        if (getCASInfoStatus() == CAS_INFO_STATUS_ACTIVE)
         {
+#if defined(JDBC_CONSOLE_DEBUG)
+          if (!lastAutoCommit || isAutoCommitBySelf || type == false)
+          {
+	    //this is ok;
+          }
+          else
+          {
+            // we need check
+            reportInfo();
+          }
+#endif
           outBuffer.newRequest(out, UFunctionCode.END_TRANSACTION);
           outBuffer.addByte((type == true) ? END_TRAN_COMMIT
               : END_TRAN_ROLLBACK);
 
           UInputBuffer inBuffer;
-          inBuffer = send_recv_msg(type);
+          inBuffer = send_recv_msg();
 
           if (lastAutoCommit)
           {
             turnOffAutoCommitBySelf();
           }
         }
-        if (brokerInfoKeepConnection() == false)
-        { // jci 3.0
-          // clientSocketClose();
-        }
-        delayed_close_handle = 0;
       }
     }
     catch (UJciException e)
@@ -552,8 +661,19 @@ public class UConnection
      * errorHandler.clear();
      */
 
+    boolean keepConnection = brokerInfoKeepConnection();
+    long currentTime = System.currentTimeMillis() / 1000;
+    if (connectedHostId > 0
+	&& lastRCTime != 0
+	&& reconnectionTime > 0
+	&& currentTime - lastRCTime > reconnectionTime)
+    {
+	keepConnection = false;
+        lastRCTime = currentTime;
+    }
+
     if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR
-        || brokerInfoKeepConnection() == false) // jci 3.0
+        || keepConnection == false) // jci 3.0
     {
       if (type == false)
         errorHandler.clear();
@@ -567,7 +687,8 @@ public class UConnection
       }
       needReconnection = true;
     }
-    con_status = CON_STATUS_OUT_TRAN;
+
+    casinfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
     update_executed = false;
   }
 
@@ -959,6 +1080,12 @@ public class UConnection
       outBuffer.addByte(prepareFlag);
       outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 
+      while (deferred_close_handle.isEmpty() != true)
+      {
+        Integer close_handle = (Integer) deferred_close_handle.remove(0);
+	outBuffer.addInt(close_handle.intValue());
+      }
+
       UInputBuffer inBuffer;
       inBuffer = send_recv_msg();
 
@@ -1187,12 +1314,31 @@ public class UConnection
    * errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION); } }
    */
 
+  public byte getCASInfoStatus()
+  {
+    if (casinfo == null)
+    {
+      return (byte) CAS_INFO_STATUS_INACTIVE;
+    }
+    return casinfo[CAS_INFO_STATUS];
+  }
+
+  public byte[] getCASInfo()
+  {
+    return casinfo;
+  }
+
+  public void setCASInfo(byte[] casinfo)
+  {
+    this.casinfo = casinfo;
+  }
+
   synchronized public byte getDbmsType()
   {
     // jci 3.0
     if (broker_info == null)
       return DBMS_CUBRID;
-    return broker_info[0];
+    return broker_info[BROKER_INFO_DBMS_TYPE];
 
     /*
      * jci 2.x return DBMS_CUBRID;
@@ -1204,7 +1350,7 @@ public class UConnection
     if (broker_info == null)
       return false;
 
-    if (broker_info[2] == (byte) 1)
+    if (broker_info[BROKER_INFO_STATEMENT_POOLING] == (byte) 1)
       return true;
     else
       return false;
@@ -1349,16 +1495,44 @@ public class UConnection
         if (checkCasMsg == null)
         {
           int msgSize = 1;
-          checkCasMsg = new byte[5];
+          checkCasMsg = new byte[9];
           checkCasMsg[0] = (byte) ((msgSize >>> 24) & 0xFF);
           checkCasMsg[1] = (byte) ((msgSize >>> 16) & 0xFF);
           checkCasMsg[2] = (byte) ((msgSize >>> 8) & 0xFF);
           checkCasMsg[3] = (byte) ((msgSize >>> 0) & 0xFF);
-          checkCasMsg[4] = UFunctionCode.CHECK_CAS;
+          checkCasMsg[4] = (byte) casinfo[CAS_INFO_STATUS];
+          checkCasMsg[5] = (byte) casinfo[CAS_INFO_RESERVED_1];
+          checkCasMsg[6] = (byte) casinfo[CAS_INFO_RESERVED_2];
+          checkCasMsg[7] = (byte) casinfo[CAS_INFO_RESERVED_3];
+          checkCasMsg[8] = UFunctionCode.CHECK_CAS;
         }
+	else
+	{
+	  checkCasMsg[4] = (byte) casinfo[CAS_INFO_STATUS];
+          checkCasMsg[5] = (byte) casinfo[CAS_INFO_RESERVED_1];
+          checkCasMsg[6] = (byte) casinfo[CAS_INFO_RESERVED_2];
+          checkCasMsg[7] = (byte) casinfo[CAS_INFO_RESERVED_3];
+	}
+
+#ifdef JDBC_CONSOLE_DEBUG
+    byte[] prev_casinfo = casinfo;
+#endif
 
         output.write(checkCasMsg);
         int res = input.readInt();
+        byte[] l_casinfo = new byte[CAS_INFO_SIZE];
+        input.readByte(l_casinfo);
+        casinfo = l_casinfo;
+
+#ifdef JDBC_CONSOLE_DEBUG
+    if (prev_casinfo != null)
+    {
+      Timestamp timestamp = new Timestamp (System.currentTimeMillis());
+      SimpleDateFormat fmt = new SimpleDateFormat ("MM-dd hh:mm:ss.SSS");
+      fs.println (fmt.format(timestamp) + " [" + casinfo[0] + "][PREV : " + prev_casinfo[0] + ", RECV : " + casinfo[0] + "], [preffunc : " + prev_casinfo[1] + ", recvfunc : " + casinfo[1] + "], [REQ: " + prev_casinfo[2] + ", REQ:" + prev_casinfo[2] + "], [JID : " + casinfo[3] + "]");
+    }
+#endif
+
         if (res == 0) /* yaw */
           return true;
         if (res < 4)
@@ -1476,26 +1650,35 @@ public class UConnection
       outBuffer.addByte(cmd);
       outBuffer.addOID(oid);
 
-      if (cmd == GLO_CMD_DATA_SIZE)
+      /* add arguments */
+      switch(cmd)
       {
-      }
-      else if (cmd == GLO_CMD_READ_DATA || cmd == GLO_CMD_DELETE_DATA)
-      {
-        outBuffer.addInt(pos);
-        outBuffer.addInt(len);
-      }
-      else if (cmd == GLO_CMD_WRITE_DATA || cmd == GLO_CMD_INSERT_DATA
-          || cmd == GLO_CMD_BINARY_SEARCH)
-      {
-        outBuffer.addInt(pos);
-        outBuffer.addBytes(buf, start, len);
-      }
-      else if (cmd == GLO_CMD_TRUNCATE_DATA)
-      {
-        outBuffer.addInt(pos);
-      }
-      else
-      {
+        case GLO_CMD_READ_DATA:
+        case GLO_CMD_DELETE_DATA:
+          outBuffer.addInt(pos);
+          outBuffer.addInt(len);
+          break;
+
+        case GLO_CMD_WRITE_DATA:
+        case GLO_CMD_INSERT_DATA:
+        case GLO_CMD_BINARY_SEARCH:
+          outBuffer.addInt(pos);
+          outBuffer.addBytes(buf, start, len);
+          break;
+
+        case GLO_CMD_TRUNCATE_DATA:
+          outBuffer.addInt(pos);
+          break;
+
+        case GLO_CMD_APPEND_DATA:
+          outBuffer.addBytes(buf, start, len);
+          break;
+
+        case GLO_CMD_DATA_SIZE:
+        case GLO_CMD_COMPRESS_DATA:
+        case GLO_CMD_DESTROY_DATA:
+        default:
+          break;
       }
 
       UInputBuffer inBuffer;
@@ -1505,9 +1688,13 @@ public class UConnection
       res_code = inBuffer.getResCode();
 
       if (cmd == GLO_CMD_READ_DATA)
+      {
         inBuffer.readBytes(buf, start, res_code);
+      }
       else if (cmd == GLO_CMD_BINARY_SEARCH)
+      {
         res_code = inBuffer.readInt();
+      }
 
       return res_code;
     }
@@ -1569,16 +1756,28 @@ public class UConnection
     {
     }
     clearPooledUStatements();
+    deferred_close_handle.clear();
   }
 
   UInputBuffer send_recv_msg(boolean recv_result) throws UJciException,
       IOException
   {
+#ifdef JDBC_CONSOLE_DEBUG
+    byte prev_casinfo[] = casinfo;
+#endif
     outBuffer.sendData();
-    if (recv_result)
-      return (new UInputBuffer(in));
-    else
-      return null;
+    /* set cas info to UConnection member variable and return InputBuffer */
+    UInputBuffer inputBuffer = new UInputBuffer (in, this);
+
+#ifdef JDBC_CONSOLE_DEBUG
+    if (prev_casinfo != null)
+    {
+      Timestamp timestamp = new Timestamp (System.currentTimeMillis());
+      SimpleDateFormat fmt = new SimpleDateFormat ("MM-dd hh:mm:ss.SSS");
+      fs.println (fmt.format(timestamp) + " [" + casinfo[1] + "][PREV : " + prev_casinfo[0] + ", RECV : " + casinfo[0] + "], [preffunc : " + prev_casinfo[1] + ", recvfunc : " + casinfo[1] + "], [REQ: " + prev_casinfo[2] + ", REQ:" + casinfo[2] + "], [JID : " + casinfo[3] + "]");
+    }
+#endif
+    return inputBuffer;
   }
 
   UInputBuffer send_recv_msg() throws UJciException, IOException
@@ -1623,27 +1822,26 @@ public class UConnection
     return url_cache;
   }
 
-  private void switchBrokerInfoOnFailback()
-  {
-    if (this.activeConId == 0)
-    {
-      broker_info[0] = save_broker_info[0];
-      broker_info[1] = save_broker_info[1];
-    }
-    else
-    {
-      broker_info[0] = 0;
-      broker_info[1] = 0;
-    }
-  }
-
   private void reconnectWorker() throws IOException, UJciException
   {
-    initConnection(CASIp, CASPort);
-    sendDriverInfo();
-    whetherConnectOtherPortOrNot();
-    connectDB();
+    try {
+      initConnection(CASIp, CASPort);
+      sendDriverInfo();
+      whetherConnectOtherPortOrNot();
+      connectDB();
+    }
+    catch (UJciException e)
+    {
+      throw e;
+    }
+    catch (IOException e)
+    {
+      throw e;
+    }
     needReconnection = false;
+    if (reconnectionTime > 0)
+      lastRCTime = System.currentTimeMillis() / 1000;
+
     if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
       setIsolationLevel(lastIsolationLevel);
     if (lastLockTimeout != LOCK_TIMEOUT_NOT_USED)
@@ -1651,58 +1849,77 @@ public class UConnection
     /*
      * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
      */
-    switchBrokerInfoOnFailback();
   }
 
-  private boolean setActiveConnection(int conId)
+  private boolean setActiveHost(int hostId)
   {
-    if (conId >= this.aConList.size())
+    if (hostId >= altHosts.size())
       return false;
 
-    ArrayList aCon = (ArrayList) this.aConList.get(conId);
-    this.CASIp = (String) aCon.get(0);
-    this.CASPort = ((Integer) aCon.get(1)).intValue();
-    this.activeConId = conId;
+    String hostPort = altHosts.get(hostId);
+    int pos = hostPort.indexOf(':');
+    if (pos < 0)
+      {
+        CASIp = hostPort.substring(0);
+      }
+    else
+      {
+        CASIp = hostPort.substring(0, pos);
+      }
+    if (pos > 0)
+    {
+      CASPort = Integer.valueOf(hostPort.substring(pos + 1)).intValue();
+    }
+    else
+    {
+      CASPort = CUBRIDDriver.default_port;
+    }
     return true;
   }
 
   private void reconnect() throws IOException, UJciException
   {
-    if (this.aConList == null) {
+    if (altHosts == null)
+    {
       reconnectWorker();
-
-    } else {
-      int nextConId = 1;
-      setActiveConnection(0);
-
-      while(true)
+    }
+    else
+    {
+      for (int hostId = 0; hostId < altHosts.size(); hostId++)
       {
-    	try
-    	{
-    	  reconnectWorker();
-    	    break;
-    	}
-    	catch (Exception e)
-    	{
-    	  if (e instanceof IOException || //e instanceof UJciException ||
-		      ((UJciException)e).getJciError() == UErrorCode.ER_COMMUNICATION ||
-		      //((UJciException)e).getJciError() == UErrorCode.ER_DBMS ||
-		      ((UJciException)e).getJciError() == UErrorCode.ER_CONNECTION)
-	      {
-    		if (setActiveConnection(nextConId++) == false)
-		    {
-		      e.printStackTrace();
-		      throw new UJciException(UErrorCode.ER_COMMUNICATION, 0, e.getMessage());
-		    }
-		  }
-		  else
-		  {
-		    e.printStackTrace();
-		    throw new UJciException(UErrorCode.ER_UNKNOWN, 0, e.getMessage());
-		  }
-		}
+        try
+        {
+          setActiveHost(hostId);
+          reconnectWorker();
+          connectedHostId = hostId;
+          return; // success to connect
+        }
+        catch (IOException e)
+        {
+          // continue to connect to next host
+        }
+        catch (UJciException e)
+        {
+          int errno = e.getJciError();
+          if (errno == UErrorCode.ER_COMMUNICATION ||
+            //errno == UErrorCode.ER_DBMS ||
+              errno == UErrorCode.ER_CONNECTION)
+          {
+            // continue to connect to next host
+          }
+          else
+          {
+            throw e;
+          }
+        }
+        catch (Exception e)
+        {
+          throw new UJciException(UErrorCode.ER_CONNECTION);
+        }
       }
-	}
+      // failed to connect to neither hosts
+      throw new UJciException(UErrorCode.ER_CONNECTION);
+    }
   }
 
   // jci 3.0
@@ -1711,13 +1928,11 @@ public class UConnection
     if (broker_info == null)
       return false;
 
-    if (broker_info[1] == (byte) 1)
+    if (broker_info[BROKER_INFO_KEEP_CONNECTION] == (byte) 1)
       return true;
     else
       return false;
   }
-
-  /* Database와의 connection을 만드는 method이다. */
 
   private void connectDB() throws IOException, UJciException
   {
@@ -1732,26 +1947,18 @@ public class UConnection
       {
         synchronized (in)
         {
-          inBuffer = new UInputBuffer(in);
+          inBuffer = new UInputBuffer(in, this);
           processId = inBuffer.getResCode();
           if (inBuffer.remainedCapacity() >= 4)
           {
             if (broker_info == null)
               broker_info = new byte[4];
             inBuffer.readBytes(broker_info);
-            if (save_broker_info == null)
-              save_broker_info = new byte[4];
-            save_broker_info[0] = broker_info[0];
-            save_broker_info[1] = broker_info[1];
           }
         }
       }
     }
   }
-
-  /*
-   * CAS와의 connection을 만드는 부분이다.
-   */
 
   private void initConnection(String ip, int port) throws UJciException
   {
@@ -1775,12 +1982,6 @@ public class UConnection
     }
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인
-   * sequence type attribute에 행해지는 operation들의 공통된 부분이다.
-   * insertElementIntoSequence, putElementInSequence에서 call한다.
-   */
-
   private void manageElementOfSequence(CUBRIDOID oid, String attributeName,
       int index, Object value, byte flag) throws UJciException, IOException
   {
@@ -1801,12 +2002,6 @@ public class UConnection
     inBuffer = send_recv_msg();
   }
 
-  /*
-   * oidString에 해당되는 object instance의 attribute name이 attributeName인 set
-   * type attribute에 행해지는 operation들의 공통된 부분이다. addElementToSet,
-   * dropElementInSet에서 call한다.
-   */
-
   private void manageElementOfSet(CUBRIDOID oid, String attributeName,
       Object value, byte flag) throws UJciException, IOException
   {
@@ -1826,18 +2021,23 @@ public class UConnection
     inBuffer = send_recv_msg();
   }
 
-  /*
-   * CAS에 보낼 data들을 저장해 놓을 buffer를 준비하는 method이다.
-   */
-
   void checkReconnect() throws IOException, UJciException
   {
     if (dbInfo == null)
     {
-      dbInfo = new byte[96];
+      // see broker/cas_protocol.h
+      // #define SRV_CON_DBNAME_SIZE		32
+      // #define SRV_CON_DBUSER_SIZE		32
+      // #define SRV_CON_DBPASSWD_SIZE		32
+      // #define SRV_CON_URL_SIZE		512
+      // #define SRV_CON_DB_INFO_SIZE \
+      //         (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE + \
+      //          SRV_CON_URL_SIZE)
+      dbInfo = new byte[32 + 32 + 32 + 512];
       UJCIUtil.copy_byte(dbInfo, 0, 32, dbname);
       UJCIUtil.copy_byte(dbInfo, 32, 32, user);
       UJCIUtil.copy_byte(dbInfo, 64, 32, passwd);
+      UJCIUtil.copy_byte(dbInfo, 96, 512, url);
       dbInfo[dbInfo.length - 1] = (byte) 0;
     }
 
@@ -1850,6 +2050,11 @@ public class UConnection
     {
       transactionList = new Vector();
     }
+    if (deferred_close_handle == null)
+    {
+      deferred_close_handle = new Vector();
+    }
+
     if (pooled_ustmts == null)
     {
       pooled_ustmts = new Vector();
@@ -1857,7 +2062,7 @@ public class UConnection
 
     if (!isServerSideJdbc)
     {
-      if (con_status == CON_STATUS_OUT_TRAN && check_cas() == false)
+      if (getCASInfoStatus() == CAS_INFO_STATUS_INACTIVE && check_cas() == false)
       {
         clientSocketClose();
       }
@@ -1870,7 +2075,6 @@ public class UConnection
 #endif
       }
     }
-    con_status = CON_STATUS_IN_TRAN;
   }
 
 #ifdef SEND_APP_INFO

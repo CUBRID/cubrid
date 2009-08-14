@@ -1,0 +1,128 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>CUBRID 매니저 서버 실행</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\nCUBRID 매니저 실행\nCUBRID 매니저 서버 실행");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_execute_setting.htm\">CUBRID 매니저 실행<\/a> &nbsp;&gt;&nbsp; CUBRID 매니저 서버 실행<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CUBRID 매니저 서버 실행</h3>
+<p>CUBRID 매니저는 서버와 클라이언트로 구성되며, &#160;CUBRID 매니저 서버가 실행 중일 때에만 CUBRID 매니저 클라이언트를 실행할 수 있다.</p>
+<h6>Windows 환경에서 실행</h6>
+<ul>
+<li>[제어판] &gt; [성능 및 유지 관리] &gt; [관리도구] &gt; [서비스]에서 CUBRIDService를 통해 실행할 수 있다.</li>
+<li class="desc"><img src="images/manager_execute_server_service.jpg" border="0" alt="" /></li>
+</ul>
+<ul>
+<li>CUBRID 서비스 트레이(CUBRID Service Tray)를 클릭하고 [CUBRID Server] &gt; [Start]를 선택한다.</li>
+<li class="desc"><img src="images/manager_execute_server_tray.jpg" border="0" alt="" /></li>
+</ul>
+<p class="note"><span class="note-title">참고</span> CUBRID가 실행&#160;중일 때, CUBRID 서비스 트레이에서 [Exit]를 선택하면 해당 서버에서 실행&#160;중인 모든 서비스와 프로세스가 중지되므로 주의한다.</p>
+<h6>Linux 환경에서 실행</h6>
+<p>셸에서 다음의 명령 중 하나를 입력하면 CUBRID 매니저 서버가 실행된다.</p>
+<ul>
+<li><span class="codep">%cubrid service start</span></li>
+<li><span class="codep">%cubrid manager start</span></li>
+</ul>
+<h6>CUBRID 매니저 서버 로그</h6>
+<p>CUBRID 매니저 서버를 통해 이루어지는 작업이나 오류에 관한 로그는 <span class="keyword">$CUBRID/log/manager</span>에 기록되며, 실행 중인 서버의 PID는 <span class="keyword">$CUBRID/var/manager</span>에 기록된다. 기록되는 파일은 다음과 같다.</p>
+<ul>
+<li><span class="keyword">cub_js.access.log</span> : <span class="keyword">cub_js</span>가 처리하는 작업을 기록한다.</li>
+<li><span class="keyword">cub_js.error.log</span> : <span class="keyword">cub_js</span>의 작업 처리 중 발생한 에러를 기록한다.</li>
+<li><span class="keyword">cub_auto.access.log</span> : 서버에 로그인한 클라이언트에 대한 정보를 기록한다.</li>
+<li><span class="keyword">cub_auto.error.log</span> : 서버 로그인에 실패한 클라이언트에 대한 정보를 기록한다.</li>
+<li><span class="keyword">connlist</span> : 현재 CUBRID 매니저 서버에 접속 중인 클라이언트들의 리스트를 기록한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -62,10 +62,13 @@ extern void rel_set_disk_compatible (float level);
 extern int rel_bit_platform (void);
 
 extern int rel_compare (const char *rel_a, const char *rel_b);
-extern REL_COMPATIBILITY rel_is_disk_compatible (float db_level,
-						 REL_FIXUP_FUNCTION **
-						 fixups);
+extern REL_COMPATIBILITY
+rel_is_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups);
 extern bool rel_is_log_compatible (const char *writer_rel_str,
 				   const char *reader_rel_str);
+extern REL_COMPATIBILITY
+rel_is_net_compatibile (const char *client_rel_str,
+			const char *server_rel_str);
+
 
 #endif /* _RELEASE_STRING_H_ */

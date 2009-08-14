@@ -1,0 +1,262 @@
+﻿
+<html>
+<head>
+<title>매뉴얼 소개</title>
+<link type="text/css" rel="stylesheet" href="nhelp.css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("매뉴얼 소개");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);
+
+	if(strUrl.toLowerCase().indexOf("/help/")==-1){
+	document.write("<p style=\"text-align:left\"> ");
+AddMasterBreadcrumbs("index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "cubrid.htm");
+document.write("매뉴얼 소개<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>매뉴얼 소개</h2>
+<h5>매뉴얼 구성</h5>
+<p>CUBRID 데이터베이스 관리 시스템(Database Management System, DBMS) 매뉴얼의 구성은 다음과 같다.</p>
+<ul>
+<li><span class="keyword"><a href="gs/gs.htm">CUBRID 시작</a></span> : CUBRID를 처음 시작하는데 참고할 수 있는 내용을 제공한다. 시스템 설치 및 실행 방법, CSQL 인터프리터와 CUBRID 매니저의 간단한 사용 방법을 찾아볼 수 있다. 또한, JDBC나 PHP, ODBC, CCI 등을 이용한 응용 프로그램 작성 예제를 제공한다.</li>
+<li><span class="keyword"><a href="intro/intro.htm">CUBRID 소개</a></span> : CUBRID 데이터베이스 관리 시스템의 구조 및 특징을 설명한다.</li>
+<li><span class="keyword"><a href="csql/csql.htm">CSQL 인터프리터</a></span> : CSQL은 CUBRID에서 명령어 방식으로 SQL 문을 사용할 수 있는 프로그램이다. CSQL 인터프리터의 간단한 사용법과 관련 명령어들을 설명한다.</li>
+<li><span class="keyword"><a href="admin/admin.htm">관리자 안내서</a></span> : 데이터베이스 생성 및 삭제, 백업 및 복구, 마이그레이션, 복제 작업 등을 수행하는 방법을 설명한다. CUBRID 서버, 브로커 및 매니저 서버 등의 구동과 정지 등을 수행하는 CUBRID 유틸리티의 사용법도 포함되어 있다.</li>
+<li><span class="keyword"><a href="pm/pm.htm">성능 튜닝</a></span> : 성능에 영향을 미칠 수 있는 시스템 파라미터의 설정 방법을 설명한다. 서버, 브로커, CUBRID 매니저 서버 각각의 설정 파일 사용법과 개별 파라미터의 의미를 설명한다.</li>
+<li><span class="keyword"><a href="syntax/syntax.htm">CUBRID SQL 설명서</a></span> : 데이터 타입, 함수와 연산자, 데이터 조회나 테이블 조작 등, CUBRID에서 사용할 수 있는 SQL 구문에 대해 설명한다. 인덱스나 트리거, 분할, 시리얼 및 사용자 정보 변경 등의 작업을 위한 SQL 구문도 찾아볼 수 있다.</li>
+<li><span class="keyword"><a href="manager/manager.htm">CUBRID 매니저</a></span> : GUI (Graphic User Interface) 방식의 데이터베이스 관리 및 질의 도구인 "CUBRID 매니저"의 사용 방법을 설명한다. "CUBRID 매니저"는 다양한 관리 작업을 손쉽게 하도록 도와주며, 접속한 데이터베이스에 SQL 문을 실행할 수 있는 "질의 편집기" 기능을 제공한다.</li>
+<li><span class="keyword"><a href="api/api.htm">API 레퍼런스</a></span> : JDBC API, ODBC API, OLE DB API, PHP API 및 CCI API에 대해 설명한다.</li>
+</ul>
+<h5>매뉴얼 규약</h5>
+<p>다음 표는 CUBRID 데이터베이스 관리 시스템 제품 매뉴얼에서 '문장', '명령어', 그리고 '텍스트 안에서의 참조'를 식별하는데 사용되는 문서 규약이다.</p>
+<table border="1">
+<tr>
+<th>
+<p>&#160; 규약</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+<th>
+<p>예제</p>
+</th>
+</tr>
+<tr>
+<td>
+<p>Italics</p>
+</td>
+<td>
+<p>Italics type은 변수 이름을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p><span class="var">persistent</span>:</p>
+<p class="var">stringVariableName</p>
+</td>
+</tr>
+<tr>
+<td>
+<p><strong>Boldface</strong></p>
+</td>
+<td>
+<p><span class="keyword">Boldface</span>는 멤버 함수 이름, 클래스 이름, 상수, CUBRID 키워드 또는 다른 필수 문자와 같은 이름을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p><span class="keyword">fetch</span> ( ) member function</p>
+<p>class <span class="keyword">odb_User</span></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Constant Width</p>
+</td>
+<td>
+<p><font face="Courier New">Constant Width type</font>의 글꼴은 코드 예제 또는 명령어의 실행 및 결과를 나타내는데 사용된다.</p>
+</td>
+<td>
+<p><font face="Courier New">csql database_name</font></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>UPPER-CASE</p>
+</td>
+<td>
+<p>UPPER-CASE는 CUBRID 키워드를 나타내는데 사용된다(Boldface 참조).</p>
+</td>
+<td>
+<p class="keyword">SELECT</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Single Quotes (' ')</p>
+</td>
+<td>
+<p>중괄호, 대괄호와 같이 사용하는 작은 따옴표(' ')는 문법의 필요한 부분을 나타낸다. 또한 작은 따옴표는 스트링을 싸는데도 사용된다.</p>
+</td>
+<td>
+<p>{'{' const_list'}'}</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Brackets ([ ])</p>
+</td>
+<td>
+<p>대괄호([&#160; ])는 파라미터나 키워드가 선택적임을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>[ONLY]</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Underline( _ )</p>
+</td>
+<td>
+<p>밑줄(_)은 명시되지 않을 때의&#160; 디폴트 키워드를 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>[DISTINCT|UNIQUE|ALL]</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Vertical bar( | )</p>
+</td>
+<td>
+<p>수직 막대(|)는 여럿 중의 하나만을 선택할 수 있음을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>[ATTRIBUTE|COLUMN]</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Braces around parameters({&#160; })</p>
+</td>
+<td>
+<p>중괄호로 싼 파라미터는 문장의 문법으로 여럿 중에서 하나만을 반드시 선택해야 함을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>CREATE {CLASS|TABLE}</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Braces around values({ })</p>
+</td>
+<td>
+<p>중괄호로 싼 값은 집합을 구성하는 원소를 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>{2. 4, 6}</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Braces with ellipsis({ }...)</p>
+</td>
+<td>
+<p>중괄호 뒤의 생략 부호(...)는 파라미터 지정이 반복될 수 있음을 나타내는데 사용된다.</p>
+</td>
+<td>
+<p>{, class_name}...</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Angle brackets(&lt; &gt; )</p>
+</td>
+<td>
+<p>산괄호(&lt; &gt; )는 단일 키 또는 일련의 키 입력을&#160; 나타내는데 사용된다.&#160;</p>
+</td>
+<td>
+<p>&lt; Ctrl+n&gt;</p>
+</td>
+</tr>
+</table>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

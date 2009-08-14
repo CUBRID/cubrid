@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -49,6 +49,7 @@
 #include "parser.h"
 #include "esql_gadget.h"
 #include "environment_variable.h"
+#include "authenticate.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
@@ -606,7 +607,8 @@ uci_connect (const char *db_name, const char *user_name, const char *passwd)
       CHK_SQLCODE ();
     }
 
-  error = db_login ((user_name ? user_name : AU_PUBLIC_USER_NAME), passwd);
+  error =
+    db_login ((user_name ? user_name : au_get_public_user_name ()), passwd);
   CHECK_DBI (error < 0, return);
 
   /* error handling option will be initialized by db_restart */
@@ -630,7 +632,7 @@ uci_disconnect (void)
 
   if (connected)
     {
-      if (PRM_COMMIT_ON_SHUTDOWN)
+      if (prm_get_commit_on_shutdown ())
 	{
 	  uci_commit ();
 	}
@@ -757,10 +759,10 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
     {
       /* ad hoc or first trial of repetitive */
       session = db_open_buffer (stmt);
-      if (!(session))
+      if (session == NULL)
 	{
-	  error = er_errid ();
-	  CHECK_DBI (error < 0, return);
+	  /* alwarys er_error() < 0 */
+	  CHECK_DBI (true, return);
 	}
 
       statement = db_get_statement (session, 0);
@@ -778,8 +780,9 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	  attrs = (char **) malloc ((attrlist_len + 1) * sizeof (char *));
 	  if (attrs == NULL)
 	    {
-	      error = er_errid ();
-	      CHECK_DBI (error < 0, return);
+	      PUT_UCI_ERR_NOMOREMEMORY ((attrlist_len + 1) * sizeof (char *));
+	      db_close_session (session);
+	      CHECK_DBI (true, return);
 	    }
 
 	  for (i = 0, att = pt_attrs_part (statement); att;
@@ -864,8 +867,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	  if (stmt_id < 0)
 	    {
 	      db_close_session (session);
-	      error = er_errid ();
-	      CHECK_DBI (error < 0, return);
+	      CHECK_DBI (true, return);
 	    }
 
 	  stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session,
@@ -993,6 +995,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
   DB_QUERY_RESULT *tmp_result;
   int n;
   int error;
+  bool prm_query_mode_sync = prm_get_query_mode_sync ();
 
   CHK_SQLCODE ();
 
@@ -1039,8 +1042,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
       if (stmt_id < 0)
 	{
 	  db_close_session (session);
-	  error = er_errid ();
-	  CHECK_DBI (error < 0, return);
+	  CHECK_DBI (true, return);
 	}
 
       num_markers = db_number_of_input_markers (session, stmt_id);
@@ -1067,7 +1069,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
       SET_WARN_VARS_MISMATCH ();
     }
 
-  if (PRM_QUERY_MODE_SYNC)
+  if (prm_query_mode_sync)
     {
       db_set_session_mode_sync (session);
     }
@@ -1092,7 +1094,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
     }
 
   SQLCA_NUM_AFFECTED_OBJECTS = n;
-  if (PRM_QUERY_MODE_SYNC)
+  if (prm_query_mode_sync)
     {
       if (n == 0)
 	{
@@ -1300,8 +1302,7 @@ uci_prepare (int stmt_no, const char *stmt, int length)
   if (stmt_id < 0)
     {
       db_close_session (session);
-      error = er_errid ();
-      CHECK_DBI (error < 0, return);
+      CHECK_DBI (true, return);
     }
 
   markers = db_number_of_input_markers (session, stmt_id);
@@ -1487,8 +1488,7 @@ uci_execute_immediate (const char *stmt, int length)
   if (stmt_id < 0)
     {
       db_close_session (session);
-      e = er_errid ();
-      CHECK_DBI (e < 0, return);
+      CHECK_DBI (true, return);
     }
 
   markers = db_number_of_input_markers (session, stmt_id);

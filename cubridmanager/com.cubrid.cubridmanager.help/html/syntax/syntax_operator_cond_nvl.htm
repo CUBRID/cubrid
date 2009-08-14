@@ -1,0 +1,127 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>NVL, NVL2 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="NVL" />
+<meta name="MS-HKWD" content="NVL2" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n조건/비교 관련 함수와 연산자\nNVL, NVL2 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_cond_case.htm\">조건/비교 관련 함수와 연산자<\/a> &nbsp;&gt;&nbsp; NVL, NVL2 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>NVL, NVL2 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">NVL</span> 함수와 <span class="keyword">NVL2</span> 함수는 <span class="keyword">NULL</span>을 지정된 대체 값으로 바꾼다.</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">NVL</span>( <span class="var">expr</span>, <span class="var">expr2</span> )<br />
+<span class="keyword">NVL2</span>( <span class="var">expr</span>, <span class="var">expr1</span>, <span class="var">expr2</span> )</p>
+<p><span class="keyword">NVL</span> 함수는 만약 <span class="var">expr</span>의 값이 <span class="keyword">NULL</span>이면 <span class="var">expr2</span>의 값을 반환하고 <span class="keyword">NULL</span>이 아니면 <span class="var">expr</span>의 값을&#160;그대로 반환한다.</p>
+<p><span class="keyword">NVL2</span> 함수는 만약 <span class="var">expr</span>의 값이 <span class="keyword">NULL</span>이 아니면 <span class="var">expr1</span>의 값을 반환하고 <span class="keyword">NULL</span>이면 <span class="var">expr2</span>의 값을&#160;반환한다.</p>
+<ul>
+<li><span class="var">expr</span> : <span class="keyword">NULL</span>일 경우 대체할 값을 지정한다.</li>
+<li><span class="var">expr1</span> : <span class="var">expr</span>의 값이 <span class="keyword">NULL</span>이 아닌 경우 반환할 값을 지정한다.</li>
+<li><span class="var">expr2</span> : <span class="var">expr</span>의 값이 <span class="keyword">NULL</span>일 경우 반환할 값을 지정한다.</li>
+</ul>
+<h6>예제</h6>
+<ul>
+<li>다음은 mascot 속성의 값이 <span class="keyword">NULL</span>이 아니면 그 값을, <span class="keyword">NULL</span>이면 'Not Exist'를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT host_year, NVL( mascot, 'Not Exist' ) FROM olympic;</p>
+<ul>
+<li>다음은 mascot 속성의 값이 <span class="keyword">NULL</span>이 아니면 'Exist'를, <span class="keyword">NULL</span>이면 'Not Exist'를 반환하는 예제이다.</li>
+</ul>
+<p class="code">SELECT host_year, NVL2( mascot, 'Exist', 'Not Exist' ) FROM olympic;</p>
+<p></p>
+<p>&#160;</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

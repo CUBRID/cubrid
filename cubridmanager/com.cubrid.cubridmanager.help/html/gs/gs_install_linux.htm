@@ -1,0 +1,186 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>Linux에서의 설치와 실행</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\n설치와 실행\nLinux에서의 설치와 실행");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_install_linux.htm\">설치와 실행<\/a> &nbsp;&gt;&nbsp; Linux에서의 설치와 실행<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>Linux에서의 설치와 실행</h3>
+<h6>설치 시 확인 사항</h6>
+<p>Linux 버전의 CUBRID 데이터베이스를 설치하기 전에 다음 사항을 점검한다.</p>
+<table border="1">
+<tr>
+<th width="151">
+<p>구분</p>
+</th>
+<th>
+<p>내용</p>
+</th>
+</tr>
+<tr>
+<td width="158">
+<p>운영체제 버전</p>
+</td>
+<td>
+<p>운영체제 버전에 상관 없이 glibc 2.3.4 버전 이상만 지원한다.</p>
+<p>glibc 버전은 다음과 같은 방법으로 확인한다.</p>
+<p>rpm -q glibc</p>
+</td>
+</tr>
+<tr>
+<td width="158">
+<p>64비트 여부</p>
+</td>
+<td>
+<p>CUBRID 2008 R2.0이후부터 32비트 버전과 64비트 버전을 사용할 수 있다. 32비트 Linux에서는 CUBRID 32비트 버전을, 64비트 Linux에서는 64비트 버전을 설치한다. 설치할 추가 라이브러리는 다음과 같다.</p>
+<p>Curses Library (rpm -q ncurses)</p>
+<p>gcrypt Library (rpm -q libgcrypt)</p>
+<p>stdc++ Library (rpm -q libstdc++)</p>
+</td>
+</tr>
+</table>
+<h6>CUBRID 설치</h6>
+<p>설치 프로그램은 바이너리 셸로 되어 있어&#160;자동으로 설치할 수 있다. 설치를 진행하려면 다운로드한 설치 파일을 바이너리 모드로 Linux 서버의 FTP로 전송한다.</p>
+<p>다음 예제와 같이 설치 프로그램을 수행한다.</p>
+<p class="code">[daniel@d78740 ~]$ sh CUBRID-8.2.0.1150-linux.x86_64.sh<br />
+Do you agree to the above license terms? (yes or no) : yes<br />
+Do you want to install this software(CUBRID) to the default(/home1/daniel/CUBRID) directory? (yes or no) [Default: yes] : yes<br />
+Install CUBRID to '/home1/daniel/CUBRID' ...<br />
+In case a different version of the CUBRID product is being used in other machines, please note that the CUBRID 2008 R2.0 servers are only compatible with the CUBRID 2008 R2.0 clients and vice versa.<br />
+Do you want to continue? (yes or no) [Default: yes] : yes<br />
+Copying old .cubrid.sh to .cubrid.sh.bak ...<br />
+&#160;<br />
+CUBRID has been successfully installed.<br />
+&#160;<br />
+demodb has been successfully created.<br />
+&#160;<br />
+If you want to use CUBRID, run the following commands<br />
+&#160;&#160;% . /home1/daniel/.cubrid.sh<br />
+&#160;&#160;% cubrid service start</p>
+<p>위의 예제와 같이 다운로드한 파일(CUBRID-8.2.0.1150-linux.x86_64.sh)을 설치한 후, CUBRID 데이터베이스를 사용하기 위해서는 CUBRID 관련 환경 정보를 설정해야 한다. 이 설정은 해당 터미널에 로그인할 때 자동 설정되도록 지정되어 있으므로 설치 후 최초 한 번만 수행하면 된다.&#160;</p>
+<p class="code">[daniel@d78740 ~]$ . /home1/daniel/.cubrid.sh</p>
+<p>이제 CUBRID 매니저에 접속할 수 있다. JDBC와 같은 드라이버에서 접속하려면 CUBRID 매니저 서버와 브로커를 구동시켜야 한다.</p>
+<p>구동 방법은 다음과 같다.</p>
+<p class="code">[daniel@d78740 ~]$ cubrid service start</p>
+<p>cubrid service를 구동시킨 후 정상적으로 구동되었는지 확인하려면 다음과 같이 grep으로 cub_* 프로세스들이 구동되어 있는지를 확인한다.</p>
+<p class="code">[daniel@d78740 ~]$ ps -ef | grep cub_<br />
+daniel 15200 1 0 18:57 ? 00:00:00 cub_master<br />
+daniel 15205 1 0 18:57 pts/17 00:00:00 cub_broker<br />
+daniel 15210 1 0 18:57 pts/17 00:00:00 query_editor_cub_cas_1<br />
+daniel 15211 1 0 18:57 pts/17 00:00:00 query_editor_cub_cas_2<br />
+daniel 15212 1 0 18:57 pts/17 00:00:00 query_editor_cub_cas_3<br />
+daniel 15213 1 0 18:57 pts/17 00:00:00 query_editor_cub_cas_4<br />
+daniel 15214 1 0 18:57 pts/17 00:00:00 query_editor_cub_cas_5<br />
+daniel 15217 1 0 18:57 pts/17 00:00:00 cub_broker<br />
+daniel 15222 1 0 18:57 pts/17 00:00:00 broker1_cub_cas_1<br />
+daniel 15223 1 0 18:57 pts/17 00:00:00 broker1_cub_cas_2<br />
+daniel 15224 1 0 18:57 pts/17 00:00:00 broker1_cub_cas_3<br />
+daniel 15225 1 0 18:57 pts/17 00:00:00 broker1_cub_cas_4<br />
+daniel 15226 1 0 18:57 pts/17 00:00:00 broker1_cub_cas_5<br />
+daniel 15229 1 0 18:57 ? 00:00:00 cub_auto start<br />
+daniel 15232 1 0 18:57 ? 00:00:00 cub_js start</p>
+<h6>CUBRID 업그레이드</h6>
+<p>다른 버전의 CUBRID가 설치된 디렉터리를 CUBRID를 설치할 디렉터리로 지정하면, 해당 디렉터리가 존재하는 것을 알리고 덮어쓸 것인지 확인한다. <span class="keyword">no</span>를 입력하면 설치가 중단된다.</p>
+<p class="code">Directory '/home1/daniel/CUBRID' exist!<br />
+If a CUBRID service is running on this directory, it may be terminated abnormally.<br />
+And if you don't have right access permission on this directory(subdirectories or files), install operation will be failed.<br />
+Overwrite anyway? (yes or no) [Default: no] : yes</p>
+<p>CUBRID를 설치하고 설정 파일을 구성할 때 기존의 설정 파일을 그대로 사용할 것인지, 새 설정 파일을 사용할 것인지 확인한다. &#160;<span class="keyword">yes</span>를 입력하면 기존의 설정 파일을 확장자가 .bak인 백업 파일로 보관한다.</p>
+<p class="code">The configuration file (.conf or .pass) already exists. Do you want to overwrite it? (yes or no) : yes</p>
+<h6>환경 설정</h6>
+<p>서비스 포트 등 사용자 환경에 맞춰 설정을 변경하려면 <span class="keyword">$CUBRID/conf</span> 디렉터리에서 설정 파일의 파라미터를 수정한다. 자세한 사항은 <a href="gs_install_windows.htm#config">환경 설정</a>을 참고한다.</p>
+<p class="note"><span class="note-title">참고</span> - RPM으로 설치할 때에는 의존성을 꼭 확인해야 한다. 의존성을 무시(--nodeps)하고 설치하면 실행되지 않을 수 있다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

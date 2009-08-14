@@ -1,0 +1,359 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>_db_class</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 클래스\n_db_class");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_class_class.htm\">시스템 카탈로그 클래스<\/a> &nbsp;&gt;&nbsp; _db_class<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>_db_class</h4>
+<p>클래스에 대한 정보를 표현하며 class_name에 대한 인덱스가 생성되어 있다.</p>
+<table border="1" width="80%">
+<thead>
+<tr>
+<th width="120">
+<p>속성명</p>
+</th>
+<th width="180">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width="120">
+<p>class_of&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</p>
+</td>
+<td width="180">
+<p>object</p>
+</td>
+<td>
+<p>클래스 객체로서 시스템 내부에 저장된 클래스에 대한 메타 정보 객체를 의미한다.</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>inst_attr_count</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>인스턴스 속성의 개수</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>shared_attr_count</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>공유 속성의 개수</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>inst_meth_count</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>인스턴스 메소드의 개수</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_meth_count</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>클래스 메소드의 개수</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_attr_count</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>클래스 속성의 개수</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>is_system_class</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>사용자가 정의한 클래스이면 0, 시스템 클래스이면 1</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_type</p>
+</td>
+<td width="180">
+<p>INTEGER</p>
+</td>
+<td>
+<p>클래스이면 0, 가상 클래스이면 1</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>owner</p>
+</td>
+<td width="180">
+<p>db_user</p>
+</td>
+<td>
+<p>클래스 소유자</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_name</p>
+</td>
+<td width="180">
+<p>VARCHAR(255)</p>
+</td>
+<td>
+<p>클래스명</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>sub_classes</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_class</p>
+</td>
+<td>
+<p>한 단계 하위 클래스</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>super_classes</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_class</p>
+</td>
+<td>
+<p>한 단계 상위 클래스</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>inst_attrs&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_attribute</p>
+</td>
+<td>
+<p>인스턴스 속성</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>shared_attrs</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_attribute</p>
+</td>
+<td>
+<p>공유 속성</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_attrs</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_attribute</p>
+</td>
+<td>
+<p>클래스 속성</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>inst_meths</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_method</p>
+</td>
+<td>
+<p>인스턴스 메소드</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>class_meths</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_method</p>
+</td>
+<td>
+<p>클래스 메소드</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>meth_files</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_methfile</p>
+</td>
+<td>
+<p>메소드에 대한 함수가 위치한 파일 경로</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>query_specs</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_queryspec</p>
+</td>
+<td>
+<p>가상 클래스인 경우 그 SQL 정의문</p>
+</td>
+</tr>
+<tr>
+<td width="120">
+<p>indexes</p>
+</td>
+<td width="180">
+<p>SEQUENCE OF _db_index</p>
+</td>
+<td>
+<p>클래스에 생성된 인덱스</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h6>예제</h6>
+<p>다음 예제에서는 사용자 'PUBLIC'이 소유하고 있는 클래스의 모든 하위 클래스를 검색한다(결과로 보이는 하위 클래스 female_event는 <a href="syntax_table_inherit_add.htm">수퍼클래스 추가</a>의 예제를 참조한다).</p>
+<p class="code">csql&gt; select class_name, sequence(select class_name<br />
+csql&gt;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; from _db_class s<br />
+csql&gt;&#160;&#160;&#160;&#160;&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;where s in c.sub_classes)<br />
+csql&gt; from _db_class c<br />
+csql&gt; where c.owner.name = 'PUBLIC' and<br />
+csql&gt;&#160;&#160;&#160;&#160;&#160;&#160;&#160; c.sub_classes is NOT NULL;<br />
+csql&gt; ;x<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+&#160; class_name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; sequence((select class_name from _db_class s where s in c.sub_classes))<br />
+============================================<br />
+&#160; 'event'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; {'female_event'}<br />
+1 rows selected.</p>
+<p class="note"><span class="note-title">참고</span> 시스템 카탈로그 클래스에 대한 모든 예제는 csql 프로그램에서 작성되었는데, 여기에서는 <span class="keyword">--no-auto-commit</span> (auto-commit 모드 비활성화), <span class="keyword">-u</span> (사용자 dba를 명시) 옵션을 사용하였다.<br />
+<br />
+<span class="code">% csql --no-auto-commit -u dba demodb</span></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -40,6 +40,17 @@
 #include "transaction_sr.h"
 #include "replication.h"
 #include "xserver_interface.h"
+
+#define SR_ATT_NAME_ID          9
+#define SR_ATT_OWNER_ID         8
+#define SR_ATT_CURRENT_VAL_ID   7
+#define SR_ATT_INCREMENT_VAL_ID 6
+#define SR_ATT_MAX_VAL_ID       5
+#define SR_ATT_MIN_VAL_ID       4
+#define SR_ATT_CYCLIC_ID        3
+#define SR_ATT_STARTED_ID       2
+#define SR_ATT_CLASS_NAME_ID    1
+#define SR_ATT_ATT_NAME_ID      0
 
 /*
  * xqp_get_serial_current_value () -
@@ -71,7 +82,18 @@ xqp_get_serial_current_value (THREAD_ENTRY * thread_p,
   assert (result_num != (DB_VALUE *) NULL);
 
   oid_str = DB_GET_STRING (oid_str_val);
+  if (oid_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENT, 0);
+      goto exit_on_error;
+    }
+
   sscanf (oid_str, "%d %d %d", &pageid, &slotid, &volid);
+  if ((SHRT_MAX < volid) || (volid < SHRT_MIN))
+    {
+      return ER_FAILED;
+    }
+
   serial_oid.pageid = pageid;
   serial_oid.slotid = slotid;
   serial_oid.volid = volid;
@@ -82,7 +104,6 @@ xqp_get_serial_current_value (THREAD_ENTRY * thread_p,
   /* lock and fetch page */
   pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		     PGBUF_UNCONDITIONAL_LATCH);
-
   if (pgptr == NULL)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -125,16 +146,15 @@ xqp_get_serial_current_value (THREAD_ENTRY * thread_p,
   or_class_oid (&recdesc, &serial_class_oid);
 
   /* retrieve attribute */
-  attr_id = 2;
-  ret =
-    heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attr_id,
-			 &attr_info);
+  attr_id = SR_ATT_CURRENT_VAL_ID;
+  ret = heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attr_id,
+			     &attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
-  ret =
-    heap_attrinfo_read_dbvalues (thread_p, &serial_oid, &recdesc, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, &serial_oid, &recdesc,
+				     &attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -202,7 +222,7 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
 
   HEAP_CACHE_ATTRINFO attr_info;
   ATTR_ID attr_id;
-  DB_VALUE *val, tmp_val, cmp_result;
+  DB_VALUE *val = NULL, tmp_val, cmp_result;
   DB_VALUE cur_val;
   DB_VALUE inc_val;
   DB_VALUE max_val;
@@ -232,10 +252,29 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
     }
 
   DB_MAKE_NULL (&tmp_val);
+  DB_MAKE_NULL (&cmp_result);
+  DB_MAKE_NULL (&cur_val);
+  DB_MAKE_NULL (&inc_val);
+  DB_MAKE_NULL (&max_val);
+  DB_MAKE_NULL (&min_val);
+  DB_MAKE_NULL (&cyclic);
+  DB_MAKE_NULL (&started);
   DB_MAKE_NULL (&next_val);
+  DB_MAKE_NULL (&key_val);
 
   oid_str = DB_GET_STRING (oid_str_val);
+  if (oid_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENT, 0);
+      goto exit_on_error;
+    }
+
   sscanf (oid_str, "%d %d %d", &pageid, &slotid, &volid);
+  if ((SHRT_MAX < volid) || (volid < SHRT_MIN))
+    {
+      return ER_FAILED;
+    }
+
   serial_oid.pageid = pageid;
   serial_oid.slotid = slotid;
   serial_oid.volid = volid;
@@ -253,12 +292,10 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
     }
   savepoint_used = 1;
 
-#if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_start_flush_mark (thread_p);
     }
-#endif /* WINDOWS */
 
   /* lock and fetch page */
   pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -327,50 +364,51 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   catalog_free_class_info (cls_info);
 
   /* retrieve attribute */
-  ret =
-    heap_attrinfo_start (thread_p, &serial_class_oid, -1, NULL, &attr_info);
+  ret = heap_attrinfo_start (thread_p, &serial_class_oid, -1, NULL,
+			     &attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
-  ret =
-    heap_attrinfo_read_dbvalues (thread_p, &serial_oid, &recdesc, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, &serial_oid, &recdesc,
+				     &attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
-  attr_id = 0;
+  attr_id = SR_ATT_NAME_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &key_val);
 
-  attr_id = 2;
+  attr_id = SR_ATT_CURRENT_VAL_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &cur_val);
 
-  attr_id = 3;
+  attr_id = SR_ATT_INCREMENT_VAL_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &inc_val);
 
-  attr_id = 4;
+  attr_id = SR_ATT_MAX_VAL_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &max_val);
 
-  attr_id = 5;
+  attr_id = SR_ATT_MIN_VAL_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &min_val);
 
-  attr_id = 6;
+  attr_id = SR_ATT_CYCLIC_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &cyclic);
 
-  attr_id = 7;
+  attr_id = SR_ATT_STARTED_ID;
   val = heap_attrinfo_access (attr_id, &attr_info);
   pr_clone_value (val, &started);
 
   if (DB_GET_INT (&started) == 0)
     {
       DB_MAKE_INT (&started, 1);
-      ret = heap_attrinfo_set (&serial_oid, 7, &started, &attr_info);
+      ret = heap_attrinfo_set (&serial_oid, SR_ATT_STARTED_ID, &started,
+			       &attr_info);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -458,7 +496,8 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
 	}
 
       /* Now update record */
-      ret = heap_attrinfo_set (&serial_oid, 2, &next_val, &attr_info);
+      ret = heap_attrinfo_set (&serial_oid, SR_ATT_CURRENT_VAL_ID, &next_val,
+			       &attr_info);
       if (ret != NO_ERROR)
 	{
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -480,9 +519,8 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
       new_recdesc.data = new_copyarea->mem;
       new_recdesc.area_size = new_copyarea->length;
 
-      scan =
-	heap_attrinfo_transform_to_disk (thread_p, &attr_info, &recdesc,
-					 &new_recdesc);
+      scan = heap_attrinfo_transform_to_disk (thread_p, &attr_info, &recdesc,
+					      &new_recdesc);
       if (scan != S_SUCCESS)
 	{
 	  new_copyarea_length = new_copyarea->length;
@@ -518,8 +556,8 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   addr.offset = serial_oid.slotid;
   addr.pgptr = pgptr;
 
-  if (spage_is_updatable
-      (thread_p, addr.pgptr, serial_oid.slotid, &new_recdesc) == false)
+  if (spage_is_updatable (thread_p, addr.pgptr, serial_oid.slotid,
+			  &new_recdesc) == false)
     {
       heap_attrinfo_end (thread_p, &attr_info);
       locator_free_copy_area (new_copyarea);
@@ -535,8 +573,8 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   log_append_redo_crumbs (thread_p, RVHF_UPDATE, &addr, 2, redo_crumbs);
 
   /* Now really update */
-  sp_success =
-    spage_update (thread_p, addr.pgptr, serial_oid.slotid, &new_recdesc);
+  sp_success = spage_update (thread_p, addr.pgptr, serial_oid.slotid,
+			     &new_recdesc);
   if (sp_success != SP_SUCCESS)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -546,21 +584,21 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-#if !defined (WINDOWS)
   /* make replication log for the special type of update for serial */
-  if (IS_REPLICATED_MODE (&serial_class_oid, true, true)
+  if (db_Enable_replications > 0
+      && repl_class_is_replicated (&serial_class_oid)
       && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_log_insert (thread_p, &serial_class_oid, &serial_oid,
-		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, &key_val);
+		       LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, &key_val,
+		       REPL_INFO_TYPE_STMT_NORMAL);
       repl_add_update_lsa (thread_p, &serial_oid);
     }
 
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, false);
     }
-#endif /* WINDOWS */
 
   /* copy result value */
   pr_clone_value (&next_val, result_num);
@@ -582,12 +620,10 @@ xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
   /* free and unlock page */
   pgbuf_unfix (thread_p, pgptr);
 
-#if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, false);
     }
-#endif /* WINDOWS */
 
   if (savepoint_used)
     {
@@ -621,12 +657,10 @@ exit_on_error:
       pgbuf_unfix (thread_p, pgptr);
     }
 
-#if !defined (WINDOWS)
-  if (PRM_REPLICATION_MODE && !LOG_CHECK_LOG_APPLIER (thread_p))
+  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       repl_end_flush_mark (thread_p, true);
     }
-#endif /* WINDOWS */
 
   if (savepoint_used)
     {

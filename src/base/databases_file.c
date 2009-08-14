@@ -422,7 +422,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		  str = cfg_pop_token (str, &db->name);
 		  str = cfg_pop_token (str, &db->pathname);
 		  str = cfg_pop_token (str, &primary_host);
-		  db->hosts = cfg_get_hosts (primary_host, &db->num_hosts, 
+		  db->hosts = cfg_get_hosts (primary_host, &db->num_hosts,
 					     false);
 		  if (primary_host != NULL)
 		    {
@@ -867,6 +867,7 @@ cfg_new_db (const char *name, const char *path,
 
   db_info_p->pathname = NULL;
   db_info_p->logpath = NULL;
+  db_info_p->hosts = NULL;
   db_info_p->num_hosts = 0;
 
   db_info_p->name = strdup (name);
@@ -890,7 +891,8 @@ cfg_new_db (const char *name, const char *path,
     {
       db_info_p->hosts = cfg_copy_hosts (hosts, &db_info_p->num_hosts);
     }
-  db_info_p->pathname = strdup (path);
+
+  db_info_p->pathname = (path != NULL) ? strdup (path) : NULL;
   if (db_info_p->pathname == NULL)
     goto error;
 
@@ -925,6 +927,11 @@ error:
 	{
 	  free_and_init (db_info_p->logpath);
 	}
+      if (db_info_p->hosts != NULL)
+	{
+	  free_and_init (db_info_p->hosts);
+	}
+
       free_and_init (db_info_p);
     }
 
@@ -1145,11 +1152,14 @@ cfg_get_hosts (const char *prim_host, int *count, bool include_local_host)
     {
       host_array[i] = hosts_data;
       hosts_data = strchr (hosts_data, CFG_HOST_SEPARATOR);
-      if (hosts_data != NULL)
+      if (hosts_data == NULL)
 	{
-	  *hosts_data++ = '\0';
+	  break;
 	}
+
+      *hosts_data++ = '\0';
     }
+
   return host_array;
 }
 
@@ -1264,17 +1274,26 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
       if (next_sep == NULL)
 	{
 	  if (strcmp (current_host, hostname) == 0)
-	    return (true);
+	    {
+	      return true;
+	    }
+	  else
+	    {
+	      return false;
+	    }
 	}
       else
 	{
 	  if (strncmp (current_host, hostname, next_sep - current_host) == 0)
-	    return (true);
+	    {
+	      return true;
+	    }
 	}
+
       i++;
       current_host = next_sep + 1;
     }
-  return (false);
+  return false;
 }				/* cfg_host_exists() */
 
 /*
@@ -1309,22 +1328,35 @@ cfg_copy_hosts (const char **host_array, int *num_hosts)
   buffer = (char *) malloc (buffer_size);
   if (buffer == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      buffer_size);
       return NULL;
     }
+
   new_array = (char **) calloc (num + 1, sizeof (char **));
   if (new_array == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (char **));
       free_and_init (buffer);
       return NULL;
     }
+
   for (num = 0, host = host_array[0]; host; num++, host = host_array[num])
     {
-      new_array[num] = strcpy (buffer, host);
+      strcpy (buffer, host);
+      new_array[num] = buffer;
       buffer += strlen (host) + 1;
     }
+
+  if (host_array[0] == NULL)
+    {
+      free_and_init (buffer);
+    }
+
   *num_hosts = num;
 
-  return (new_array);
+  return new_array;
 }
 
 /*
@@ -1444,10 +1476,12 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
 	  host_count++;
 	}
     }
+
   /* remove last separator */
-  if (*(host_ptr - 1) == CFG_HOST_SEPARATOR)
+  host_ptr--;
+  if (*host_ptr == CFG_HOST_SEPARATOR)
     {
-      *(host_ptr - 1) = '\0';
+      *host_ptr = '\0';
     }
 
   /* return host list and counter */
@@ -1461,4 +1495,3 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
   free_and_init (full_host_list);
   return NULL;
 }
-

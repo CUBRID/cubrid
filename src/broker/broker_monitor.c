@@ -31,6 +31,12 @@
 #include <signal.h>
 #include <time.h>
 #include <string.h>
+#include <stdarg.h>
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#else
+#include "getopt.h"
+#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -48,6 +54,7 @@
 #include <sys/time.h>
 #endif
 
+#include "porting.h"
 #include "cas_common.h"
 #include "broker_config.h"
 #include "broker_shm.h"
@@ -58,63 +65,13 @@
 #include "broker_process_info.h"
 #endif
 
-#include "broker_getopt.h"
-
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 
-#if defined(WINDOWS)
-#define STR_TO_SCREEN(MSG)	\
-	do {			\
-		DWORD	size;	\
-		WriteConsole(h_console, MSG, strlen(MSG), &size, NULL);	\
-	} while (0)
-#else
-#define STR_TO_SCREEN(MSG)	addstr(MSG)
-#endif
-
-#define STR_OUT(FMT, STR)		\
-	do {				\
-	  char		out_buf[1024];	\
-	  if (refresh_sec > 0 && !tty_mode) {	\
-	    sprintf(out_buf, FMT, STR);	\
-	    STR_TO_SCREEN(out_buf);	\
-	  }				\
-	  else {			\
-	    printf(FMT, STR);		\
-	  }				\
-	} while (0)
-
-#define PRINT_NEWLINE()			\
-	do {				\
-	  if (refresh_sec > 0 && !tty_mode) {	\
-	    clrtoeol();			\
-	    STR_TO_SCREEN("\n");	\
-	  }				\
-	  else {			\
-	    printf("\n");		\
-	  }				\
-	} while (0)
-
-#if defined(WINDOWS)
-#define GET_CHAR(VAR)					\
-	do {						\
-	  int	i;					\
-	  VAR = 0;					\
-	  for (i=0 ; i < refresh_sec * 10 ; i++) {	\
-	    if (_kbhit()) {				\
-	      VAR = _getch();				\
-	      break;					\
-	    }						\
-	    else {					\
-	      SLEEP_MILISEC(0, 100);			\
-	    }						\
-	  }						\
-	} while (0)
-#else
-#define GET_CHAR(VAR)		VAR = getch()
-#endif
-
+static void str_to_screen (const char *msg);
+static void print_newline ();
+static int get_char (void);
+static void print_usage (void);
 static int get_args (int argc, char *argv[], char *br_vector);
 static void print_job_queue (T_MAX_HEAP_NODE *);
 static void ip2str (unsigned char *ip, char *ip_str);
@@ -124,7 +81,7 @@ static int br_monitor (char *br_vector);
 #ifdef GET_PSINFO
 static void time_format (int t, char *time_str);
 #endif
-static void print_header (char use_pdh_flag);
+static void print_header (bool use_pdh_flag);
 
 #if defined(WINDOWS)
 static void move (int x, int y);
@@ -136,12 +93,13 @@ static void endwin ();
 #endif
 
 static T_SHM_BROKER *shm_br;
-static char display_job_queue;
+static bool display_job_queue = false;
 static int refresh_sec = 0;
-static char br_monitor_flag = FALSE;
+static bool br_monitor_flag = false;
 static int last_access_sec = 0;
-static int tty_mode = FALSE;
-static int tty_print_header = TRUE;
+static bool tty_mode = false;
+static bool tty_print_header = true;
+static bool full_info_flag = false;
 
 static int max_col_len = 0;
 
@@ -149,12 +107,76 @@ static int max_col_len = 0;
 HANDLE h_console;
 CONSOLE_SCREEN_BUFFER_INFO scr_info;
 #endif
+static void
+str_to_screen (const char *msg)
+{
+#ifdef WINDOWS
+  DWORD size;
+  (void) WriteConsole (h_console, msg, strlen (msg), &size, NULL);
+#else
+  (void) addstr (msg);
+#endif
+}
+
+static void
+str_out (const char *fmt, ...)
+{
+  va_list ap;
+  char out_buf[1024];
+
+  va_start (ap, fmt);
+  if (refresh_sec > 0 && !tty_mode)
+    {
+      vsprintf (out_buf, fmt, ap);
+      str_to_screen (out_buf);
+    }
+  else
+    {
+      vprintf (fmt, ap);
+    }
+  va_end (ap);
+}
+
+static void
+print_newline ()
+{
+  if (refresh_sec > 0 && !tty_mode)
+    {
+      clrtoeol ();
+      str_to_screen ("\n");
+    }
+  else
+    {
+      printf ("\n");
+    }
+}
+
+static int
+get_char (void)
+{
+#ifdef WINDOWS
+  int i;
+  for (i = 0; i < refresh_sec * 10; i++)
+    {
+      if (_kbhit ())
+	{
+	  return _getch ();
+	}
+      else
+	{
+	  SLEEP_MILISEC (0, 100);
+	}
+    }
+#else
+  return getch ();
+#endif
+}
+
 
 int
 main (int argc, char **argv)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
-  char admin_log_file[256];
   int num_broker, master_shm_id;
   int err, i;
   char *br_vector;
@@ -169,13 +191,12 @@ main (int argc, char **argv)
       return 1;
     }
 
-  ut_cd_work_dir ();
-
-  err =
-    broker_config_read (br_info, &num_broker, &master_shm_id, admin_log_file);
-
+  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
+			    0, NULL);
   if (err < 0)
     exit (1);
+
+  ut_cd_work_dir ();
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
@@ -185,6 +206,11 @@ main (int argc, char **argv)
       fprintf (stderr, "master shared memory open error\r\n");
       exit (1);
     }
+  if (shm_br->num_broker < 1 || shm_br->num_broker > MAX_BROKER_NUM)
+    {
+      fprintf (stderr, "broker configuration error\r\n");
+      return 1;
+    }
 
   br_vector = (char *) malloc (shm_br->num_broker);
   if (br_vector == NULL)
@@ -193,12 +219,15 @@ main (int argc, char **argv)
       return 1;
     }
   for (i = 0; i < shm_br->num_broker; i++)
-    br_vector[i] = 0;
-
-  display_job_queue = FALSE;
+    {
+      br_vector[i] = 0;
+    }
 
   if (get_args (argc, argv, br_vector) < 0)
-    return 1;
+    {
+      free (br_vector);
+      return 1;
+    }
 
   if (refresh_sec > 0 && !tty_mode)
     {
@@ -241,7 +270,7 @@ main (int argc, char **argv)
       else
 	{
 #endif
-	  if (br_monitor_flag == TRUE)
+	  if (br_monitor_flag == true)
 	    br_monitor (br_vector);
 	  else
 	    appl_monitor (br_vector);
@@ -257,7 +286,7 @@ main (int argc, char **argv)
 	  clrtobot ();
 	  move (0, 0);
 	  refresh ();
-	  GET_CHAR (in_ch);
+	  in_ch = get_char ();
 
 	  if (in_ch == 'q')
 	    {
@@ -288,48 +317,64 @@ main (int argc, char **argv)
   exit (0);
 }
 
+static void
+print_usage (void)
+{
+  printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-f] [<expr>]\n");
+  printf ("\t-b brief mode (show broker info)\n");
+  printf ("\t-q display job queue\n");
+  printf ("\t-s refresh time in sec\n");
+  printf ("\t-f full info\n");
+}
+
 static int
 get_args (int argc, char *argv[], char *br_vector)
 {
   int c, j;
   int status;
-  char br_name_opt_flag = FALSE, errflag = FALSE;
+  bool br_name_opt_flag = false;
 #if !defined(WINDOWS)
   regex_t re;
 #endif
 
-  while ((c = getopt (argc, argv, "bqts:l:")) != EOF)
+  display_job_queue = false;
+  refresh_sec = 0;
+  br_monitor_flag = false;
+  last_access_sec = 0;
+  full_info_flag = false;
+
+  while ((c = getopt (argc, argv, "hbqts:l:f")) != EOF)
     {
       switch (c)
 	{
 	case 't':
-	  tty_mode = TRUE;
+	  tty_mode = true;
 	  break;
 	case 'q':
-	  display_job_queue = TRUE;
+	  display_job_queue = true;
 	  break;
 	case 's':
 	  refresh_sec = atoi (optarg);
 	  break;
 	case 'b':
-	  br_monitor_flag = TRUE;
+	  br_monitor_flag = true;
 	  break;
 	case 'l':
 	  last_access_sec = atoi (optarg);
 	  break;
+	case 'f':
+	  full_info_flag = true;
+	  break;
+	case 'h':
 	case '?':
-	  errflag = TRUE;
+	  print_usage ();
+	  return -1;
 	}
-    }
-
-  if (errflag == TRUE)
-    {
-      return -1;
     }
 
   for (; optind < argc; optind++)
     {
-      br_name_opt_flag = TRUE;
+      br_name_opt_flag = true;
 #if !defined(WINDOWS)
       if (regcomp (&re, argv[optind], 0) != 0)
 	{
@@ -355,7 +400,7 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
     }
 
-  if (br_name_opt_flag == FALSE)
+  if (br_name_opt_flag == false)
     {
       for (j = 0; j < shm_br->num_broker; j++)
 	br_vector[j] = 1;
@@ -374,7 +419,7 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
   while (1)
     {
       char ip_str[64];
-      char time_str[16];
+      char time_str[64];
 
       if (max_heap_delete (job_queue, &item) < 0)
 	break;
@@ -383,8 +428,8 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
 	{
 	  sprintf (outbuf, "%5s  %s%9s%13s%13s", "ID", "PRIORITY", "IP",
 		   "TIME", "REQUEST");
-	  STR_OUT ("%s", outbuf);
-	  PRINT_NEWLINE ();
+	  str_out ("%s", outbuf);
+	  print_newline ();
 	  first_flag = 0;
 	}
 
@@ -393,11 +438,11 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
       sprintf (outbuf, "%5d%7d%17s%10s   %s:%s",
 	       item.id, item.priority, ip_str, time_str, item.script,
 	       item.prg_name);
-      STR_OUT ("%s", outbuf);
-      PRINT_NEWLINE ();
+      str_out ("%s", outbuf);
+      print_newline ();
     }
   if (!first_flag)
-    PRINT_NEWLINE ();
+    print_newline ();
 }
 
 static void
@@ -413,27 +458,73 @@ time2str (const time_t t, char *str)
 {
   struct tm s_tm;
 
-  s_tm = *localtime (&t);
+#if defined (WINDOWS)
+  if (localtime_s (&s_tm, &t) != 0)
+#else /* !WINDOWS */
+  if (localtime_r (&t, &s_tm) == NULL)
+#endif /* !WINDOWS */
+    {
+      *str = '\0';
+      return;
+    }
   sprintf (str, "%02d:%02d:%02d", s_tm.tm_hour, s_tm.tm_min, s_tm.tm_sec);
 }
 
 static int
 appl_monitor (char *br_vector)
 {
-  struct tm *cur_tm;
-  time_t last_access_time;
-  T_TIMEVAL cur_tv;
+  struct tm cur_tm;
+  time_t last_access_time, last_connect_time;
+  struct timeval cur_tv;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
   int i, j;
   int col_len;
   char line_buf[1024];
-  char use_pdh_flag;
-  time_t current_time;
+  static time_t time_old;
+  static INT64 *qps_olds = NULL, *lqs_olds = NULL;
+  INT64 *p_qps_old, *p_lqs_old;
+  time_t current_time, time_cur;
+  INT64 qps, lqs;
 #ifdef GET_PSINFO
   T_PSINFO proc_info;
   char time_str[32];
 #endif
+
+  if (qps_olds == NULL)
+    {
+      int n = 0;
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  n += shm_br->br_info[i].appl_server_max_num;
+	}
+      qps_olds = (INT64 *) calloc (sizeof (INT64), n);
+      if (qps_olds == NULL)
+	{
+	  return -1;
+	}
+
+      (void) time (&time_old);
+      time_old--;
+    }
+  if (lqs_olds == NULL)
+    {
+      int n = 0;
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  n += shm_br->br_info[i].appl_server_max_num;
+	}
+      lqs_olds = (INT64 *) calloc (sizeof (INT64), n);
+      if (lqs_olds == NULL)
+	{
+	  return -1;
+	}
+
+      (void) time (&time_old);
+      time_old--;
+    }
+
+  (void) time (&time_cur);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -441,7 +532,7 @@ appl_monitor (char *br_vector)
       if (br_vector[i] == 0)
 	continue;
 
-      STR_OUT ("%% %s ", shm_br->br_info[i].name);
+      str_out ("%% %s ", shm_br->br_info[i].name);
 
       if (shm_br->br_info[i].service_flag == ON)
 	{
@@ -451,97 +542,117 @@ appl_monitor (char *br_vector)
 
 	  if (shm_appl == NULL)
 	    {
-	      STR_OUT ("%s", "shared memory open error");
-	      PRINT_NEWLINE ();
+	      str_out ("%s", "shared memory open error");
+	      print_newline ();
 	    }
 	  else
 	    {
-#if defined(WINDOWS)
-	      use_pdh_flag = shm_appl->use_pdh_flag;
-#else
-	      use_pdh_flag = 0;
-#endif
 	      if (shm_appl->suspend_mode != SUSPEND_NONE)
 		{
-		  STR_OUT ("%s", " SUSPENDED");
-		  PRINT_NEWLINE ();
-		  STR_OUT ("%s", "  ");
+		  str_out ("%s", " SUSPENDED");
+		  print_newline ();
+		  str_out ("%s", "  ");
 		}
-	      STR_OUT (" - %s ", shm_appl->appl_server_name);
-	      STR_OUT ("[%d,", shm_br->br_info[i].pid);
-	      STR_OUT ("%d] ", shm_br->br_info[i].port);
-	      STR_OUT ("%s ", shm_br->br_info[i].access_log_file);
-	      STR_OUT ("%s ", shm_br->br_info[i].error_log_file);
-	      PRINT_NEWLINE ();
-	      STR_OUT ("%s", "  ");
+	      str_out (" - %s ", shm_appl->appl_server_name);
+	      str_out ("[%d,", shm_br->br_info[i].pid);
+	      str_out ("%d] ", shm_br->br_info[i].port);
+	      str_out ("%s ", shm_br->br_info[i].access_log_file);
+	      str_out ("%s ", shm_br->br_info[i].error_log_file);
+	      print_newline ();
 
-	      if (display_job_queue == TRUE)
+	      if (display_job_queue == true)
 		{
 		  memcpy (job_queue, shm_appl->job_queue,
 			  sizeof (T_MAX_HEAP_NODE) * (JOB_QUEUE_MAX_SIZE +
 						      1));
-		  STR_OUT ("job_queue : %d, ", job_queue[0].id);
+		  str_out (" JOB QUEUE:%d", job_queue[0].id);
 		}
 	      else
 		{
-		  STR_OUT ("job_queue : %d, ", shm_appl->job_queue[0].id);
+		  str_out (" JOB QUEUE:%d", shm_appl->job_queue[0].id);
 		}
 
 	      if (shm_br->br_info[i].auto_add_appl_server == ON)
-		STR_OUT ("%s", "AUTO-ADD-ON, ");
-	      else
-		STR_OUT ("%s", "AUTO-ADD-OFF, ");
-
-	      if ((shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
-		  || (shm_br->br_info[i].appl_server ==
-		      APPL_SERVER_CAS_ORACLE)
-		  || (shm_br->br_info[i].appl_server ==
-		      APPL_SERVER_CAS_MYSQL))
 		{
-		  STR_OUT ("TIMEOUT:%d, ",
+		  str_out (", AUTO_ADD_APPL_SERVER:%s", "ON");
+		}
+	      else
+		{
+		  str_out (", AUTO_ADD_APPL_SERVER:%s", "OFF");
+		}
+
+	      if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE)
+		{
+		  str_out (", SQL_LOG_MODE:%s:%d", "NONE",
+			   shm_appl->sql_log_max_size);
+		}
+	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_ERROR)
+		{
+		  str_out (", SQL_LOG_MODE:%s:%d", "ERROR",
+			   shm_appl->sql_log_max_size);
+		}
+	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_TIMEOUT)
+		{
+		  str_out (", SQL_LOG_MODE:%s:%d", "TIMEOUT",
+			   shm_appl->sql_log_max_size);
+		}
+	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_NOTICE)
+		{
+		  str_out (", SQL_LOG_MODE:%s:%d", "NOTICE",
+			   shm_appl->sql_log_max_size);
+		}
+	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_ALL)
+		{
+		  str_out (", SQL_LOG_MODE:%s:%d", "ALL",
+			   shm_appl->sql_log_max_size);
+		}
+	      print_newline ();
+
+	      str_out (" LONG_TRANSACTION_TIME:%d",
+		       shm_appl->long_transaction_time);
+	      str_out (", LONG_QUERY_TIME:%d", shm_appl->long_query_time);
+
+	      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+		{
+		  str_out (", SESSION_TIMEOUT:%d",
 			   shm_br->br_info[i].session_timeout);
 		}
+	      print_newline ();
 
-	      if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
+	      if (shm_appl->keep_connection == KEEP_CON_OFF)
 		{
-		  STR_OUT ("%s", "SQL-LOG-ON");
-		  if (shm_appl->sql_log_mode ^ SQL_LOG_MODE_ON)
-		    {
-		      STR_OUT ("%s", ":");
-		      if (shm_appl->sql_log_mode & SQL_LOG_MODE_APPEND)
-			STR_OUT ("%s", "A");
-		      if (shm_appl->sql_log_mode & SQL_LOG_MODE_BIND_VALUE)
-			STR_OUT ("%s", "B");
-
-		      if ((shm_appl->sql_log_mode & SQL_LOG_MODE_APPEND) &&
-			  (shm_appl->sql_log_max_size > 0))
-			{
-			  STR_OUT (":%d", shm_appl->sql_log_max_size);
-			}
-		    }
-		  if ((!(shm_appl->sql_log_mode & SQL_LOG_MODE_APPEND)) &&
-		      (shm_appl->sql_log_time < SQL_LOG_TIME_MAX))
-		    {
-		      STR_OUT ("(%d)", shm_appl->sql_log_time);
-		    }
+		  str_out (" KEEP_CONNECTION:%s", "OFF");
 		}
-	      else
-		STR_OUT ("%s", "SQL-LOG-OFF");
-
-	      if (shm_appl->keep_connection == KEEP_CON_ON)
+	      else if (shm_appl->keep_connection == KEEP_CON_ON)
 		{
-		  STR_OUT (", %s", "KC:ON");
+		  str_out (" KEEP_CONNECTION:%s", "ON");
 		}
 	      else if (shm_appl->keep_connection == KEEP_CON_AUTO)
 		{
-		  STR_OUT (", %s", "KC:AUTO");
+		  str_out (" KEEP_CONNECTION:%s", "AUTO");
 		}
 
-	      PRINT_NEWLINE ();
+	      if (shm_appl->access_mode == READ_WRITE_ACCESS_MODE)
+		{
+		  str_out (", ACCESS_MODE:%s", "RW");
+		}
+	      else if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
+		{
+		  str_out (", ACCESS_MODE:%s", "RO");
+		}
+	      else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
+		{
+		  str_out (", ACCESS_MODE:%s", "SO");
+		}
+	      print_newline ();
 
-	      print_header (use_pdh_flag);
+#if defined (WINDOWS)
+	      print_header (shm_appl->use_pdh_flag);
+#else
+	      print_header (false);
+#endif
 
-	      TIMEVAL_MAKE (&cur_tv);
+	      gettimeofday (&cur_tv, NULL);
 
 	      current_time = time (NULL);
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
@@ -562,16 +673,23 @@ appl_monitor (char *br_vector)
 		  col_len = 0;
 
 		  col_len += sprintf (line_buf + col_len, "%2d ", j + 1);
-#if 0
-		  if (shm_appl->as_info[j].service_flag == SERVICE_ON)
-		    col_len += sprintf (line_buf + col_len, "ON  ");
-		  else
-		    col_len += sprintf (line_buf + col_len, "OFF ");
-#endif
 		  col_len += sprintf (line_buf + col_len, "%5d ",
 				      shm_appl->as_info[j].pid);
-		  col_len += sprintf (line_buf + col_len, "%5d ",
-				      shm_appl->as_info[j].num_request);
+
+		  p_qps_old = qps_olds
+		    + (i * shm_br->br_info[i].appl_server_max_num) + j;
+		  qps = (shm_appl->as_info[j].num_queries_processed -
+			 *p_qps_old) / difftime (time_cur, time_old);
+		  *p_qps_old = shm_appl->as_info[j].num_queries_processed;
+		  col_len += sprintf (line_buf + col_len, "%5ld ", qps);
+
+		  p_lqs_old = lqs_olds
+		    + (i * shm_br->br_info[i].appl_server_max_num) + j;
+		  lqs = (shm_appl->as_info[j].num_long_queries -
+			 *p_lqs_old) / difftime (time_cur, time_old);
+		  *p_lqs_old = shm_appl->as_info[j].num_long_queries;
+		  col_len += sprintf (line_buf + col_len, "%5ld ", lqs);
+
 #if defined(WINDOWS)
 		  col_len +=
 		    sprintf (line_buf + col_len, "%5d ",
@@ -590,62 +708,53 @@ appl_monitor (char *br_vector)
 #endif
 		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
 		    {
-		      if ((shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
-			  || (shm_br->br_info[i].appl_server ==
-			      APPL_SERVER_CAS_ORACLE)
-			  || (shm_br->br_info[i].appl_server ==
-			      APPL_SERVER_CAS_MYSQL))
+		      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
 			{
 			  if (shm_appl->as_info[j].con_status ==
 			      CON_STATUS_OUT_TRAN)
 			    {
-			      col_len += sprintf (line_buf + col_len, "%-12s",
-						  "CLOSE WAIT ");
+			      col_len +=
+				sprintf (line_buf + col_len, "%-12s ",
+					 "CLOSE WAIT");
 			    }
 			  else if (shm_appl->as_info[j].log_msg[0] == '\0')
 			    {
-			      col_len += sprintf (line_buf + col_len, "%-12s",
-						  "CLIENT WAIT ");
+			      col_len +=
+				sprintf (line_buf + col_len, "%-12s ",
+					 "CLIENT WAIT");
 			    }
 			  else
 			    {
-			      col_len += sprintf (line_buf + col_len, "%-12s",
-						  " BUSY  ");
+			      col_len +=
+				sprintf (line_buf + col_len, "%-12s ",
+					 "BUSY");
 			    }
 			}
 		      else
 			{
-			  col_len += sprintf (line_buf + col_len, "%-12s",
-					      " BUSY  ");
+			  col_len += sprintf (line_buf + col_len, "%-12s ",
+					      "BUSY");
 			}
 		    }
 #if defined(WINDOWS)
 		  else if (shm_appl->as_info[j].uts_status ==
 			   UTS_STATUS_BUSY_WAIT)
 		    {
-		      col_len += sprintf (line_buf + col_len, "%-12s",
-					  " BUSY  ");
+		      col_len += sprintf (line_buf + col_len, "%-12s ",
+					  "BUSY");
 		    }
 #endif
 		  else if (shm_appl->as_info[j].uts_status ==
 			   UTS_STATUS_RESTART)
 		    {
-		      col_len += sprintf (line_buf + col_len,
-					  "INITIALIZE APPL_SERVER ");
+		      col_len += sprintf (line_buf + col_len, "%-12s ",
+					  "INITIALIZE");
 		    }
 		  else
 		    {
-		      col_len += sprintf (line_buf + col_len, "%-12s",
-					  " IDLE  ");
+		      col_len += sprintf (line_buf + col_len, "%-12s ",
+					  "IDLE");
 		    }
-#if 0
-		  col_len += sprintf (line_buf + col_len, "%s ",
-				      shm_appl->as_info[j].appl_name);
-#endif
-#if 0
-		  col_len += sprintf (line_buf + col_len, "%d ",
-				      shm_appl->as_info[j].port);
-#endif
 
 #ifdef GET_PSINFO
 		  get_psinfo (shm_appl->as_info[j].pid, &proc_info);
@@ -671,46 +780,48 @@ appl_monitor (char *br_vector)
 		    }
 #endif
 
-		  last_access_time = shm_appl->as_info[j].last_access_time;
-		  cur_tm = localtime (&last_access_time);
-		  cur_tm->tm_year += 1900;
+		  if (full_info_flag)
+		    {
+		      last_access_time =
+			shm_appl->as_info[j].last_access_time;
+		      localtime_r (&last_access_time, &cur_tm);
+		      cur_tm.tm_year += 1900;
 
-		  col_len += sprintf (line_buf + col_len,
-				      "%02d/%02d/%02d %02d:%02d:%02d ",
-				      cur_tm->tm_year, cur_tm->tm_mon + 1,
-				      cur_tm->tm_mday, cur_tm->tm_hour,
-				      cur_tm->tm_min, cur_tm->tm_sec);
-		  if (shm_appl->as_info[j].clt_ip_addr[0] != '\0')
-		    {
-		      col_len += sprintf (line_buf + col_len, "%s ",
-					  shm_appl->as_info[j].clt_ip_addr);
+		      col_len += sprintf (line_buf + col_len,
+					  "%02d/%02d/%02d %02d:%02d:%02d ",
+					  cur_tm.tm_year, cur_tm.tm_mon + 1,
+					  cur_tm.tm_mday, cur_tm.tm_hour,
+					  cur_tm.tm_min, cur_tm.tm_sec);
+
+		      if (shm_appl->as_info[j].database_name[0] != '\0')
+			{
+			  col_len += sprintf (line_buf + col_len, "%16.16s ",
+					      shm_appl->as_info[j].
+					      database_name);
+			  col_len +=
+			    sprintf (line_buf + col_len, "%16.16s ",
+				     shm_appl->as_info[j].database_host);
+			  last_connect_time =
+			    shm_appl->as_info[j].last_connect_time;
+			  localtime_r (&last_connect_time, &cur_tm);
+			  cur_tm.tm_year += 1900;
+
+			  col_len += sprintf (line_buf + col_len,
+					      "%02d/%02d/%02d %02d:%02d:%02d ",
+					      cur_tm.tm_year,
+					      cur_tm.tm_mon + 1,
+					      cur_tm.tm_mday,
+					      cur_tm.tm_hour, cur_tm.tm_min,
+					      cur_tm.tm_sec);
+			}
+		      else
+			{
+			  col_len +=
+			    sprintf (line_buf + col_len, "%16c %16c %19c ",
+				     '-', '-', '-');
+			}
 		    }
-		  if (shm_appl->as_info[j].clt_appl_name[0] != '\0')
-		    {
-		      col_len += sprintf (line_buf + col_len, "%s ",
-					  shm_appl->as_info[j].clt_appl_name);
-		    }
-		  if (shm_appl->as_info[j].clt_req_path_info[0] != '\0')
-		    {
-		      col_len += sprintf (line_buf + col_len, "%s ",
-					  shm_appl->as_info[j].
-					  clt_req_path_info);
-		    }
-		  if (shm_appl->as_info[j].session_keep == TRUE)
-		    {
-		      col_len += sprintf (line_buf + col_len, "T ");
-		    }
-#if 0
-		  else
-		    {
-		      col_len += sprintf (line_buf + col_len, "F ");
-		    }
-#endif
-		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
-		    {
-		      col_len += sprintf (line_buf + col_len, "%s ",
-					  shm_appl->as_info[j].log_msg);
-		    }
+
 		  if (col_len >= max_col_len)
 		    {
 		      max_col_len = col_len;
@@ -720,12 +831,19 @@ appl_monitor (char *br_vector)
 		      sprintf (line_buf + col_len, "%*c",
 			       max_col_len - col_len, ' ');
 		    }
-		  STR_OUT ("%s", line_buf);
-		  PRINT_NEWLINE ();
+		  str_out ("%s", line_buf);
+		  print_newline ();
+		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
+		    {
+		      sprintf (line_buf, "SQL: %s",
+			       shm_appl->as_info[j].log_msg);
+		      str_out ("%s", line_buf);
+		      print_newline ();
+		    }
 		}
-	      PRINT_NEWLINE ();
+	      print_newline ();
 
-	      if (display_job_queue == TRUE)
+	      if (display_job_queue == true)
 		print_job_queue (job_queue);
 
 	      uw_shm_detach (shm_appl);
@@ -733,11 +851,12 @@ appl_monitor (char *br_vector)
 	}
       else
 	{			/* service_flag == OFF */
-	  STR_OUT ("%s", "OFF");
-	  PRINT_NEWLINE ();
-	  PRINT_NEWLINE ();
+	  str_out ("%s", "OFF");
+	  print_newline ();
+	  print_newline ();
 	}
     }
+  time_old = time_cur;
 
   return 0;
 }
@@ -753,14 +872,13 @@ br_monitor (char *br_vector)
   T_PSINFO proc_info;
   char time_str[32];
 #endif
-  static unsigned int *num_tx_olds = NULL;
-  static unsigned int *num_qx_olds = NULL;
+  static INT64 *num_tx_olds = NULL, *num_qx_olds = NULL;
+  static INT64 *num_lt_olds = NULL, *num_lq_olds = NULL, *num_eq_olds = NULL;
   static time_t time_old;
-  unsigned int num_tx_cur = 0;
-  unsigned int num_qx_cur = 0;
   time_t time_cur;
-  unsigned long tps = 0;
-  unsigned long qps = 0;
+  INT64 num_tx_cur = 0, num_qx_cur = 0;
+  INT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
+  INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
@@ -774,34 +892,69 @@ br_monitor (char *br_vector)
   buf_len += sprintf (buf + buf_len, "%6s", "TIME");
 #endif
   buf_len += sprintf (buf + buf_len, "%9s", "REQ");
-  buf_len += sprintf (buf + buf_len, "%4s", "TPS");
-  buf_len += sprintf (buf + buf_len, "%4s", "QPS");
-  buf_len += sprintf (buf + buf_len, "%5s", "AUTO");
-  buf_len += sprintf (buf + buf_len, "%5s", "SES");
-  buf_len += sprintf (buf + buf_len, "%5s", "SQLL");
-  buf_len += sprintf (buf + buf_len, "%5s", "CONN");
+  buf_len += sprintf (buf + buf_len, "%5s", "TPS");
+  buf_len += sprintf (buf + buf_len, "%5s", "QPS");
+  buf_len += sprintf (buf + buf_len, "%8s", "LONG-T");
+  buf_len += sprintf (buf + buf_len, "%8s", "LONG-Q");
+  buf_len += sprintf (buf + buf_len, "%6s", "ERR-Q");
 
-  if (tty_mode == FALSE || tty_print_header == TRUE)
+  if (tty_mode == false || tty_print_header == true)
     {
-      STR_OUT ("%s", buf);
-      PRINT_NEWLINE ();
+      str_out ("%s", buf);
+      print_newline ();
       for (i = strlen (buf); i > 0; i--)
-	STR_OUT ("%s", "=");
-      tty_print_header = FALSE;
+	str_out ("%s", "=");
+      tty_print_header = false;
     }
 
-  PRINT_NEWLINE ();
+  print_newline ();
   if (num_tx_olds == NULL)
     {
-      num_tx_olds =
-	(unsigned int *) calloc (sizeof (unsigned int), shm_br->num_broker);
+      num_tx_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
+      if (num_tx_olds == NULL)
+	{
+	  return -1;
+	}
       (void) time (&time_old);
     }
   if (num_qx_olds == NULL)
     {
-      num_qx_olds =
-	(unsigned int *) calloc (sizeof (unsigned int), shm_br->num_broker);
+      num_qx_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
+      if (num_qx_olds == NULL)
+	{
+	  return -1;
+	}
       (void) time (&time_old);
+    }
+  if (num_lt_olds == NULL)
+    {
+      num_lt_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
+      if (num_lt_olds == NULL)
+	{
+	  return -1;
+	}
+      (void) time (&time_old);
+      time_old--;
+    }
+  if (num_lq_olds == NULL)
+    {
+      num_lq_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
+      if (num_lq_olds == NULL)
+	{
+	  return -1;
+	}
+      (void) time (&time_old);
+      time_old--;
+    }
+  if (num_eq_olds == NULL)
+    {
+      num_eq_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
+      if (num_eq_olds == NULL)
+	{
+	  return -1;
+	}
+      (void) time (&time_old);
+      time_old--;
     }
 
   (void) time (&time_cur);
@@ -812,7 +965,7 @@ br_monitor (char *br_vector)
       if (br_vector[i] == 0)
 	continue;
 
-      STR_OUT ("* %-12s", shm_br->br_info[i].name);
+      str_out ("* %-12s", shm_br->br_info[i].name);
 
       if (shm_br->br_info[i].service_flag == ON)
 	{
@@ -822,22 +975,22 @@ br_monitor (char *br_vector)
 
 	  if (shm_appl == NULL)
 	    {
-	      STR_OUT ("%s", "shared memory open error");
-	      PRINT_NEWLINE ();
+	      str_out ("%s", "shared memory open error");
+	      print_newline ();
 	    }
 	  else
 	    {
-	      STR_OUT ("%6d", shm_br->br_info[i].pid);
-	      STR_OUT ("%6d", shm_br->br_info[i].port);
-	      STR_OUT ("%4d", shm_br->br_info[i].appl_server_num);
-	      STR_OUT ("%4d", shm_appl->job_queue[0].id);
+	      str_out ("%6d", shm_br->br_info[i].pid);
+	      str_out ("%6d", shm_br->br_info[i].port);
+	      str_out ("%4d", shm_br->br_info[i].appl_server_num);
+	      str_out ("%4d", shm_appl->job_queue[0].id);
 
 #ifdef GET_PSINFO
 	      get_psinfo (shm_br->br_info[i].pid, &proc_info);
-	      STR_OUT ("%4d", proc_info.num_thr);
-	      STR_OUT ("%6.2f", proc_info.pcpu);
+	      str_out ("%4d", proc_info.num_thr);
+	      str_out ("%6.2f", proc_info.pcpu);
 	      time_format (proc_info.cpu_time, time_str);
-	      STR_OUT ("%6s", time_str);
+	      str_out ("%6s", time_str);
 #endif
 
 	      num_req = 0;
@@ -845,78 +998,48 @@ br_monitor (char *br_vector)
 		{
 		  num_req += shm_appl->as_info[j].num_request;
 		}
-	      STR_OUT (" %8d", num_req);
+	      str_out (" %8d", num_req);
 
-	      if (refresh_sec > 0)
+	      num_tx_cur = 0;
+	      num_qx_cur = 0;
+	      num_lt_cur = 0;
+	      num_lq_cur = 0;
+	      num_eq_cur = 0;
+	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
-		  num_tx_cur = 0;
-		  num_qx_cur = 0;
-		  for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		    {
-		      num_tx_cur +=
-			(unsigned long) shm_appl->as_info[j].
-			num_transactions_processed;
-		      num_qx_cur +=
-			(unsigned long) shm_appl->as_info[j].
-			num_query_processed;
-
-		    }
-		  tps =
-		    ((num_tx_cur - num_tx_olds[i]) / difftime (time_cur,
+		  num_tx_cur +=
+		    shm_appl->as_info[j].num_transactions_processed;
+		  num_qx_cur += shm_appl->as_info[j].num_queries_processed;
+		  num_lt_cur += shm_appl->as_info[j].num_long_transactions;
+		  num_lq_cur += shm_appl->as_info[j].num_long_queries;
+		  num_eq_cur += shm_appl->as_info[j].num_error_queries;
+		}
+	      tps = ((num_tx_cur - num_tx_olds[i]) / difftime (time_cur,
 							       time_old));
-		  qps =
-		    ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
+	      qps = ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
 							       time_old));
-
-		  num_tx_olds[i] = num_tx_cur;
-		  num_qx_olds[i] = num_qx_cur;
-		  STR_OUT (" %3ld", tps);
-		  STR_OUT (" %3ld", qps);
-		}
-	      else
-		{
-		  STR_OUT (" %3s", "---");
-		  STR_OUT (" %3s", "---");
-		}
-
-	      if (shm_br->br_info[i].auto_add_appl_server == ON)
-		STR_OUT ("%5s", "ON ");
-	      else
-		STR_OUT ("%5s", "OFF");
-
-	      STR_OUT ("%5d", shm_br->br_info[i].session_timeout);
-
-	      if (shm_appl->sql_log_mode & SQL_LOG_MODE_ON)
-		{
-		  if (shm_appl->sql_log_mode & SQL_LOG_MODE_APPEND)
-		    {
-		      strcpy (buf, "ON:A");
-		    }
-		  else
-		    {
-		      if (shm_appl->sql_log_time < SQL_LOG_TIME_MAX)
-			sprintf (buf, "%d", shm_appl->sql_log_time);
-		      else
-			strcpy (buf, "ON");
-		    }
-		}
-	      else
-		strcpy (buf, "OFF");
-	      STR_OUT ("%5s", buf);
-
-	      if (shm_appl->keep_connection == KEEP_CON_OFF)
-		STR_OUT ("%5s", "OFF");
-	      else if (shm_appl->keep_connection == KEEP_CON_ON)
-		STR_OUT ("%5s", "ON ");
-	      else if (shm_appl->keep_connection == KEEP_CON_AUTO)
-		STR_OUT ("%5s", "AUTO");
-
-	      PRINT_NEWLINE ();
+	      lts = ((num_lt_cur - num_lt_olds[i]) / difftime (time_cur,
+							       time_old));
+	      lqs = ((num_lq_cur - num_lq_olds[i]) / difftime (time_cur,
+							       time_old));
+	      eqs = ((num_eq_cur - num_eq_olds[i]) / difftime (time_cur,
+							       time_old));
+	      num_tx_olds[i] = num_tx_cur;
+	      num_qx_olds[i] = num_qx_cur;
+	      num_lt_olds[i] = num_lt_cur;
+	      num_lq_olds[i] = num_lq_cur;
+	      num_eq_olds[i] = num_eq_cur;
+	      str_out (" %4ld", tps);
+	      str_out (" %4ld", qps);
+	      str_out (" %4ld/%-2d", lts, shm_appl->long_transaction_time);
+	      str_out (" %4ld/%-2d", lqs, shm_appl->long_query_time);
+	      str_out (" %4ld", eqs);
+	      print_newline ();
 
 	      if (shm_appl->suspend_mode != SUSPEND_NONE)
 		{
-		  STR_OUT ("%s", "	SUSPENDED");
-		  PRINT_NEWLINE ();
+		  str_out ("%s", "	SUSPENDED");
+		  print_newline ();
 		}
 
 	      uw_shm_detach (shm_appl);
@@ -924,8 +1047,8 @@ br_monitor (char *br_vector)
 	}
       else
 	{			/* service_flag == OFF */
-	  STR_OUT ("%s", "OFF");
-	  PRINT_NEWLINE ();
+	  str_out ("%s", " OFF");
+	  print_newline ();
 	}
     }
   time_old = time_cur;
@@ -946,52 +1069,59 @@ time_format (int t, char *time_str)
 #endif
 
 static void
-print_header (char use_pdh_flag)
+print_header (bool use_pdh_flag)
 {
   char buf[128];
   char line_buf[128];
   int col_len = 0;
   int i;
 
-  col_len += sprintf (buf + col_len, "%2s", "ID ");
-  col_len += sprintf (buf + col_len, "%6s", "PID ");
-  col_len += sprintf (buf + col_len, "%6s", "C ");
+  col_len += sprintf (buf + col_len, "%2s ", "ID");
+  col_len += sprintf (buf + col_len, "%5s ", "PID");
+  col_len += sprintf (buf + col_len, "%5s ", "QPS");
+  col_len += sprintf (buf + col_len, "%5s ", "LQS");
 #if defined(WINDOWS)
-  col_len += sprintf (buf + col_len, "%6s", "PORT ");
+  col_len += sprintf (buf + col_len, "%6s ", "PORT");
 #endif
 #if defined(WINDOWS)
-  if (use_pdh_flag == TRUE)
+  if (use_pdh_flag == true)
     {
-      col_len += sprintf (buf + col_len, "%5s", "PSIZE ");
+      col_len += sprintf (buf + col_len, "%5s ", "PSIZE");
     }
 #else
-  col_len += sprintf (buf + col_len, "%5s", "PSIZE ");
+  col_len += sprintf (buf + col_len, "%5s ", "PSIZE");
 #endif
-  col_len += sprintf (buf + col_len, "%-12s", "STATUS ");
+  col_len += sprintf (buf + col_len, "%-12s ", "STATUS");
 #if 0
-  col_len += sprintf (buf + col_len, "%6s", "PORT ");
+  col_len += sprintf (buf + col_len, "%6s ", "PORT");
 #endif
 #ifdef GET_PSINFO
-  col_len += sprintf (buf + col_len, "%5s", "CPU ");
-  col_len += sprintf (buf + col_len, "%8s", "CTIME ");
+  col_len += sprintf (buf + col_len, "%5s ", "CPU");
+  col_len += sprintf (buf + col_len, "%8s ", "CTIME");
 #elif WINDOWS
-  if (use_pdh_flag == TRUE)
+  if (use_pdh_flag == true)
     {
-      col_len += sprintf (buf + col_len, "%5s", "CPU ");
+      col_len += sprintf (buf + col_len, "%5s ", "CPU");
     }
 #endif
-  col_len += sprintf (buf + col_len, "%19s", "LAST ACCESS TIME ");
+  if (full_info_flag)
+    {
+      col_len += sprintf (buf + col_len, "%19s ", "LAST ACCESS TIME");
+      col_len += sprintf (buf + col_len, "%16s ", "DB");
+      col_len += sprintf (buf + col_len, "%16s ", "HOST");
+      col_len += sprintf (buf + col_len, "%19s ", "LAST CONNECT TIME");
+    }
 
   for (i = 0; i < col_len; i++)
     line_buf[i] = '-';
-  line_buf[i] = 0;
+  line_buf[i] = '\0';
 
-  STR_OUT ("%s", line_buf);
-  PRINT_NEWLINE ();
-  STR_OUT ("%s", buf);
-  PRINT_NEWLINE ();
-  STR_OUT ("%s", line_buf);
-  PRINT_NEWLINE ();
+  str_out ("%s", line_buf);
+  print_newline ();
+  str_out ("%s", buf);
+  print_newline ();
+  str_out ("%s", line_buf);
+  print_newline ();
 }
 
 #if defined(WINDOWS)

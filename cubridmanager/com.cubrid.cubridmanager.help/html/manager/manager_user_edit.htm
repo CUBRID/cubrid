@@ -1,0 +1,122 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>사용자 추가, 편집 및 삭제</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n사용자 관리\n사용자 추가, 편집 및 삭제");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_user_auth.htm\">사용자 관리<\/a> &nbsp;&gt;&nbsp; 사용자 추가, 편집 및 삭제<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>사용자 추가, 편집 및 삭제</h3>
+<h5>사용자 추가</h5>
+<p>사용자 추가는 사용자 계정 정보 및 권한 설정과 데이터베이스 접속 권한 설정으로 이루어진다.</p>
+<h6>사용자 계정 및 권한 설정</h6>
+<p><img src="images/manager_user_edit_add.jpg" border="0" alt="" /></p>
+<ul>
+<li><strong>사용자 이름</strong>: 사용자 이름의 길이는 최소 4자리 최대 32자리이다. 사용자 이름으로는 숫자와 알파벳만 입력할 수 있으며, 공백을 포함할 수 없다. 사용자 이름으로 "admin"을 사용할 수 없으며, 사용자 이름은 해당 호스트 내에서 유일해야 한다.</li>
+<li><strong>비밀번호</strong>: 비밀번호의 길이는 최소 4바이트 최대 32바이트이며, 공백을 포함할 수 없다. 비밀번호로 "admin"을 사용할 수 없다.</li>
+</ul>
+<h6>데이터베이스 권한 설정</h6>
+<p><img src="images/manager_user_edit_addauth.png" border="0" alt="" /></p>
+<ul>
+<li><strong>연결 권한</strong>: 추가 중인 CUBRID 매니저 사용자가 연결할 수 있는 데이터베이스를 선택한다. [Yes]를 선택한 데이터베이스만 호스트 탐색 트리에 출력된다.</li>
+<li><strong>DB 계정</strong>: 추가 중인 CUBRID 매니저 사용자가 해당 데이터베이스에 접속할 때 사용하는 데이터베이스 계정 정보를 입력한다. "dba" 또는 "public"과 같은 값을 입력할 수 있다.</li>
+<li><strong>브로커 주소</strong>: 해당 데이터베이스에 접속하기 위해 사용할 브로커 주소를 입력한다. 디폴트&#160;값은 데이터베이스 서버의 주소와 동일하다. 브로커 서버가 분리되어 있다면&#160;이 값을 변경하여 접속 정보를 부여할 수 있다.</li>
+<li><strong>브로커 포트</strong>: 추가 중인 CUBRID 매니저 사용자가 해당 데이터베이스에 접속할 때 사용할 브로커 포트를 정의한다. 브로커 포트는 현재 정의되어 있는 브로커 정보를 통해서 선택할 수 있다. 브로커 정보는 "브로커 이름[포트/구동상태]"로 구성되어 있다.</li>
+</ul>
+<h5>사용자 편집&#160;</h5>
+<p>편집할 사용자를 리스트에서 선택한 후, 사용자 추가와 동일한 방법으로 사용자를 편집할 수 있다. 단, <span class="keyword">admin</span> 계정에 대한 편집은 비밀번호만 변경할 수 있으며, 나머지 권한은 <span class="keyword">admin</span> 권한에서 다른 권한으로 변경할 수 없다.</p>
+<h5>사용자 삭제</h5>
+<p>삭제할 사용자를 리스트에서 선택한 후 [삭제] 버튼을 클릭하면 사용자를 삭제할 수 있다. 단, <span class="keyword">admin</span> 계정은 삭제할 수 없다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

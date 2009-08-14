@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -43,9 +43,17 @@
 #include "file_io.h"
 
 
-#define BO_ISSERVER_RESTARTED() (boot_Server_up)
+typedef enum boot_server_status BOOT_SERVER_STATUS;
+enum boot_server_status
+{ BOOT_SERVER_UP, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
+extern BOOT_SERVER_STATUS boot_Server_status;
 
-extern int boot_Server_up;
+#define BO_IS_SERVER_RESTARTED() \
+        (boot_Server_status == BOOT_SERVER_UP \
+         || boot_Server_status == BOOT_SERVER_MAINTENANCE)
+
+extern void boot_server_status (BOOT_SERVER_STATUS status);
+
 extern bool skip_to_check_ct_classes_for_rebuild;
 
 #if defined(SERVER_MODE)

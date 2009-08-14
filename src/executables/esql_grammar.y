@@ -3282,9 +3282,6 @@ bool g_indicator = false;
 varstring *g_varstring = NULL;
 varstring *g_subscript = NULL;
 
-extern FILE *esql_yyin;
-extern FILE *esql_yyout;
-
 typedef struct pt_host_refs
 {
   unsigned char *descr[2];	/* at most 2 descriptors: 1 in, 1 out */
@@ -3311,7 +3308,7 @@ enum esqlmain_msg
 const char *VARCHAR_ARRAY_NAME = "array";
 const char *VARCHAR_LENGTH_NAME = "length";
 const char *pp_include_path;
-const char *pp_include_file;
+const char *pp_include_file = NULL;
 const char *prog_name;
 
 unsigned int pp_uci_opt = 0;
@@ -3410,7 +3407,7 @@ ofile_name (char *fname)
 
   /* Get the last pathname component into buf. */
   p = strrchr (fname, '/');
-  strcpy (buf, p ? (p + 1) : fname);
+  strncpy (buf, p ? (p + 1) : fname, sizeof(buf));
 
   /* Now add the .c suffix, copying over the .ec suffix if present. */
   p = strrchr (buf, '.');
@@ -3420,7 +3417,7 @@ ofile_name (char *fname)
     }
   else
     {
-      strcat (buf, ".c");
+      strncat (buf, ".c", sizeof(buf) - strnlen(buf, sizeof(buf)));
     }
 
   return buf;
@@ -3576,9 +3573,17 @@ main (int argc, char **argv)
 	  pp_emit_line_directives = true;
 	  break;
 	case 'o':
+	  if (outfile_name != NULL)
+	    {
+	      free_and_init(outfile_name);
+	    }
 	  outfile_name = strdup (optarg);
 	  break;
 	case 'h':
+	  if (pp_include_file != NULL)
+	    {
+	      free_and_init(pp_include_file);
+	    }
 	  pp_include_file = strdup (optarg);
 	  break;
 	case 's':
@@ -3683,7 +3688,6 @@ main (int argc, char **argv)
   parser = parser_create_parser ();
   pt_buffer = pt_append_string (parser, NULL, NULL);
 
-//  ANTLRf (translation_unit (), get_next);
   esql_yyparse ();
 
   if (esql_yyout != stdout)
@@ -3701,13 +3705,23 @@ main (int argc, char **argv)
 	}
     }
 
-  fclose (esql_yyin);
-  fclose (esql_yyout);
+  if (esql_yyin != NULL)
+    {
+      fclose (esql_yyin);
+    }
+
+  if (esql_yyout != NULL)
+    {
+      fclose (esql_yyout);
+    }
 
   msgcat_final ();
   exit (errors);
-  return errors;
 
+  free_and_init (outfile_name);
+  free_and_init (pp_include_file);
+
+  return errors;
 }
 
 /*
@@ -4035,6 +4049,12 @@ void
 esql_yy_push_mode (enum scanner_mode new_mode)
 {
   SCANNER_MODE_RECORD *next = malloc (sizeof (SCANNER_MODE_RECORD));
+  if (next == NULL)
+    {
+      esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+      exit(1);
+      return;
+    }
 
   next->previous_mode = mode;
   next->recognize_keywords = recognize_keywords;
@@ -4231,6 +4251,12 @@ echo_string_constant (const char *str, int length)
    */
 
   result = q = malloc (length + 1);
+  if (q == NULL)
+    {
+      esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+      exit(1);
+      return;
+    }
 
   /*
    * Copy the spans between escaped newlines to the new buffer.  If we

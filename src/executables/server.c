@@ -63,7 +63,7 @@ static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
 #endif /* WINDOWS */
 
-const char *database_name = "";
+static const char *database_name = "";
 
 #define EXECUTABLE_BIN_DIR      "bin"
 static char executable_path[PATH_MAX];
@@ -209,7 +209,7 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       return;
     }
 
-  if (!BO_ISSERVER_RESTARTED () || !PRM_AUTO_RESTART_SERVER)
+  if (!BO_IS_SERVER_RESTARTED () || !PRM_AUTO_RESTART_SERVER)
     {
       return;
     }
@@ -222,12 +222,12 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       int ppid;
       int fd, fd_max;
 
-      fd_max = css_get_max_socket_fds();
+      fd_max = css_get_max_socket_fds ();
 
       for (fd = 3; fd < fd_max; fd++)
-        {
-          close (fd);
-        }
+	{
+	  close (fd);
+	}
 
       ppid = getppid ();
       while (1)
@@ -262,7 +262,7 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 int
 main (int argc, char **argv)
 {
-  char *bn;
+  char *binary_name;
   int ret_val;
 #if !defined(WINDOWS)
   sigset_t sigurg_mask;
@@ -293,24 +293,34 @@ main (int argc, char **argv)
       return 1;
     }
 
+  fprintf (stdout, "\nThis may take a long time depending on the amount "
+	   "of recovery works to do.\n");
+
   /* save executable path */
-  bn = basename (argv[0]);
+  binary_name = basename (argv[0]);
 #if defined (WINDOWS)
   (void) snprintf (executable_path, PATH_MAX, "%s\\%s\\%s", envvar_root (),
-		   EXECUTABLE_BIN_DIR, bn);
+		   EXECUTABLE_BIN_DIR, binary_name);
 
 
 #else /* WINDOWS */
   (void) snprintf (executable_path, PATH_MAX, "%s/%s/%s", envvar_root (),
-		   EXECUTABLE_BIN_DIR, bn);
+		   EXECUTABLE_BIN_DIR, binary_name);
 #endif /* !WINDOWS */
+  /* save database name */
+  database_name = argv[1];
 
-  ret_val = net_server_start (argv[1]);
+#if !defined(WINDOWS)
+  /* create a new session */
+  setsid ();
+#endif
+
+  ret_val = net_server_start (database_name);
 
 #if defined(WINDOWS)
 } __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
 {
 }
 #endif
-  return ret_val;
+return ret_val;
 }

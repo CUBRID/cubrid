@@ -917,6 +917,35 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   return pgptr;
 }
 
+
+/*
+ * below two functions are dummies for Windows build
+ * (which defined at cubridsa.def)
+ */
+#if defined(WINDOWS)
+#if !defined(NDEBUG)
+
+PAGE_PTR
+pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
+		   int request_mode, PGBUF_LATCH_CONDITION condition)
+{
+  return NULL;
+}
+
+#else
+
+PAGE_PTR
+pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
+		 int request_mode, PGBUF_LATCH_CONDITION condition,
+		 const char *caller_file, int caller_line)
+{
+  return NULL;
+}
+
+#endif
+#endif
+
+
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -932,8 +961,8 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 		 const char *caller_file, int caller_line)
 #else /* NDEBUG */
 PAGE_PTR
-pgbuf_fix (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
-	   int request_mode, PGBUF_LATCH_CONDITION condition)
+pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
+		   int request_mode, PGBUF_LATCH_CONDITION condition)
 #endif				/* NDEBUG */
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1166,7 +1195,18 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;
+#endif /* CUBRID_DEBUG */
 
+#if defined (NDEBUG)
+  if (pgptr == NULL)
+    {
+      return;
+    }
+#else /* NDEBUG */
+  assert (pgptr != NULL);
+#endif /* NDEBUG */
+
+#if defined(CUBRID_DEBUG)
   if (pgbuf_Expensive_debug_free == true)
     {
       if (!(pgbuf_is_valid_page_ptr (pgptr)))
@@ -2780,7 +2820,7 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       || LSA_IS_INIT_NONTEMP (&bufptr->iopage.prv.lsa))
     {
       restart_lsa = logtb_find_current_tran_lsa (thread_p);
-      if (LSA_ISNULL (restart_lsa))
+      if (restart_lsa == NULL || LSA_ISNULL (restart_lsa))
 	{
 	  restart_lsa = log_get_restart_lsa ();
 	}
@@ -2955,19 +2995,20 @@ static int
 pgbuf_initialize_lock_table (void)
 {
   int i;
+  size_t size;
 
   /* allocate memory space for the buffer lock table */
-  pb_Pool.buf_lock_table =
-    (PGBUF_BUFFER_LOCK *) malloc (MAX_NTHRDS * PGBUF_BUFFER_LOCK_SIZE);
+  size = thread_num_total_threads () * PGBUF_BUFFER_LOCK_SIZE;
+  pb_Pool.buf_lock_table = (PGBUF_BUFFER_LOCK *) malloc (size);
   if (pb_Pool.buf_lock_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (MAX_NTHRDS * PGBUF_BUFFER_LOCK_SIZE));
+	      1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* initialize each entry of the buffer lock table */
-  for (i = 0; i < MAX_NTHRDS; i++)
+  for (i = 0; i < thread_num_total_threads (); i++)
     {
       VPID_SET_NULL (&pb_Pool.buf_lock_table[i].vpid);
       pb_Pool.buf_lock_table[i].lock_next = NULL;
@@ -4145,6 +4186,7 @@ try_again:
 	  MUTEX_UNLOCK (bufptr->BCB_mutex);
 	}
 
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
       return ER_FAILED;
     }
   else if (r == TIMEDWAIT_TIMEOUT)

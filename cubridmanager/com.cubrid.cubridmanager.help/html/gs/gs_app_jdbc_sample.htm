@@ -1,0 +1,178 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>JDBC 예제 프로그램</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nJDBC를 이용한 프로그램 작성\nJDBC 예제 프로그램");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_app_jdbc_setting.htm\">JDBC를 이용한 프로그램 작성<\/a> &nbsp;&gt;&nbsp; JDBC 예제 프로그램<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>JDBC 예제 프로그램</h4>
+<p>다음은 JDBC 드라이버를 통해 CUBRID에 접속하여 데이터를 조회, 삽입하는 것을 간단하게 구성한 예제이다. 예제를 실행하려면 먼저 접속하고자 하는 데이터베이스와 CUBRID 브로커가 구동되어 있어야 한다. 예제에서는 설치 시 자동으로 생성되는 <span class="keyword">demodb</span> 데이터베이스를 사용한다.</p>
+<h5>Connection 방법</h5>
+<p class="code">Connection conn = DriverManager.getConnection("jdbc:cubrid:IP:PORT:DB_NAME:::", "ID", "PASSWORD");</p>
+<ul>
+<li>IP : 데이터베이스가 동작하고 있는 서버의 IP&#160;</li>
+<li>PORT : CUBRID 브로커의 포트 번호(디폴트 값 : 33000)</li>
+<li>DB_NAME : 접속할 데이터베이스 이름</li>
+<li>ID : 데이터베이스에 접속할 사용자. 기본적으로 데이터베이스에는 DBA와 PUBLIC 2개의 사용자가 존재한다. ID 파라미터에 빈 문자열("")을 입력하면 PUBLIC 사용자로 데이터베이스에 접속한다.</li>
+<li>PASSWORD :&#160;접속할 사용자의 암호. 만약 해당 사용자에 암호가 설정되어 있지 않다면 빈 문자열("")을 입력한다.</li>
+</ul>
+<h5>selectData.java</h5>
+<p>다음은 데이터 조회 예제이다.</p>
+<p class="code">import java.sql.*;<br />
+public class selectData {<br />
+&#160;&#160; public static void main(String[] args) throws Exception {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Connection conn = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;ResultSet rs = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;// CUBRID에 Connect<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;conn =&#160;DriverManager.getConnection("jdbc:CUBRID:localhost:33000:demodb:::","","");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;String sql = "select name, players from event";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt = conn.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs = stmt.executeQuery(sql);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;while(rs.next()) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;String name = rs.getString("name");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;String players = rs.getString("players");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("name ==&gt; " + name);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("Number of players==&gt; " + players);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("\n=========================================\n");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;rs.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;conn.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch ( SQLException e ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.err.println(e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch ( Exception e ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.err.println(e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} finally {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;if ( conn != null ) conn.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<ul>
+<li>CUBRID JDBC 드라이버 클래스를 로드한다.</li>
+<li>데이터베이스와 접속한다.</li>
+<li>이 예제 코드에서와 같이 ID 파라미터 값이 설정되어 있지 않으면 PUBLIC 사용자로 데이터베이스에 접속된다.&#160;특정 사용자로 접속하거나 암호가 설정된 경우 파라미터 값을 입력한다.&#160;&#160;</li>
+<li>접속용 브로커 포트로 33000번을 사용하였다.</li>
+</ul>
+<h5>insertData.java</h5>
+<p>다음은 데이터 삽입 예제이다.</p>
+<p class="code">import java.sql.*;<br />
+public class insertData {<br />
+&#160;&#160;&#160;public static void main(String[] args) throws Exception {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Connection conn = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;Statement stmt = null;<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;try {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;// CUBRID에 Connect<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;Class.forName("cubrid.jdbc.driver.CUBRIDDriver");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;conn = DriverManager.getConnection("jdbc:cubrid:localhost:33000:demodb:::","","");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;String sql = "insert into olympic(host_year, host_nation, host_city, opening_date, &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;closing_date) values (2008, 'China', 'Beijing', to_date('08-08-2008','mm-dd-yyyy'), &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;to_date('08-24-2008','mm-dd-yyyy'))";<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt = conn.createStatement();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.executeUpdate(sql);<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.out.println("데이터가 입력되었습니다.");<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;stmt.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch ( SQLException e ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.err.println(e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} catch ( Exception e ) {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;System.err.println(e.getMessage());<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;} finally {<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;if ( conn != null ) conn.close();<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;}<br />
+&#160;&#160;&#160;}<br />
+}</p>
+<p>데이터 삭제 및 갱신 방법은 입력과 수행 방법이 같으므로, 위의 코드에서 질의문만 변경해서 사용한다.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

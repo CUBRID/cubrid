@@ -1402,7 +1402,6 @@ PR_TYPE *tp_Type_resultset = &tp_ResultSet;
  */
 
 
-
 /*
  * pr_area_init - Initialize the area for allocation of value containers.
  *    return: void
@@ -1439,7 +1438,6 @@ pr_make_value (void)
   return (value);
 }
 
-
 /*
  * pr_make_ext_value - reates an external value container suitable for passing
  * beyond the interface layer to application programs.
@@ -1460,7 +1458,6 @@ pr_make_ext_value (void)
     }
   return (value);
 }
-
 
 /*
  * pr_clear_value - clear an internal or external DB_VALUE and initialize
@@ -1579,7 +1576,6 @@ pr_clear_value (DB_VALUE * value)
   return error;
 }
 
-
 /*
  * pr_free_value - free an internval value container any anything that it
  * references
@@ -1599,7 +1595,6 @@ pr_free_value (DB_VALUE * value)
     }
   return (error);
 }
-
 
 /*
  * pr_free_ext_value - free an external value container and anything that it
@@ -1623,7 +1618,6 @@ pr_free_ext_value (DB_VALUE * value)
     }
   return (error);
 }
-
 
 /*
  * pr_clone_value - copy the contents of one value container to another.
@@ -1681,7 +1675,6 @@ pr_clone_value (DB_VALUE * src, DB_VALUE * dest)
   return NO_ERROR;
 }
 
-
 /*
  * pr_copy_value - This creates a new internal value container with a copy
  * of the contents of the source container.
@@ -1710,8 +1703,6 @@ pr_copy_value (DB_VALUE * value)
     }
   return (new_);
 }
-
-
 
 /*
  * pr_share_value - This is used to copy the contents of one value
@@ -3445,6 +3436,7 @@ static int
 mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
+  OID *oid;
 
 #if !defined (SERVER_MODE)
   if (src == NULL || DB_IS_NULL (src))
@@ -3457,7 +3449,8 @@ mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
       /* make sure that the target type is set properly */
       db_value_domain_init (dest, DB_TYPE_OID,
 			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      error = db_make_oid (dest, db_get_oid (src));
+      oid = db_get_oid (src);
+      error = db_make_oid (dest, oid);
     }
   else if (DB_VALUE_TYPE (src) == DB_TYPE_OBJECT)
     {
@@ -3469,10 +3462,11 @@ mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
 	{
 	  DB_OBJECT *obj;
 	  /* what should this do for ISVID mops? */
-	  obj = db_get_object (src);
+	  obj = db_pull_object (src);
 	  db_value_domain_init (dest, DB_TYPE_OID,
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  error = db_make_oid (dest, WS_OID (obj));
+	  oid = WS_OID (obj);
+	  error = db_make_oid (dest, oid);
 	}
       else
 	{
@@ -3487,9 +3481,14 @@ mr_setval_object (DB_VALUE * dest, DB_VALUE * src, bool copy)
    * through set element domains.  The value must contain an OID.
    */
   if (src == NULL || DB_IS_NULL (src) || DB_VALUE_TYPE (src) != DB_TYPE_OID)
-    PRIM_SET_NULL (dest);
+    {
+      PRIM_SET_NULL (dest);
+    }
   else
-    error = db_make_oid (dest, db_get_oid (src));
+    {
+      oid = db_get_oid (src);
+      error = db_make_oid (dest, oid);
+    }
 #endif /* !SERVER_MODE */
 
   return error;
@@ -3819,7 +3818,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
    */
   if (db_value_domain_type (value1) == DB_TYPE_OID)
     {
-      o1 = DB_GET_OID (value1);
+      o1 = DB_PULL_OID (value1);
     }
   else
     {
@@ -3829,7 +3828,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
 
   if (db_value_domain_type (value2) == DB_TYPE_OID)
     {
-      o2 = DB_GET_OID (value2);
+      o2 = DB_PULL_OID (value2);
     }
   else
     {
@@ -3851,10 +3850,12 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
    * say object, it may really be an OID (especially on the server).
    */
   if (db_value_domain_type (value1) == DB_TYPE_OID)
-    o1 = DB_GET_OID (value1);
+    {
+      o1 = DB_PULL_OID (value1);
+    }
   else
     {
-      mop1 = DB_GET_OBJECT (value1);
+      mop1 = DB_PULL_OBJECT (value1);
       if (WS_ISVID (mop1))
 	{
 	  if (db_is_updatable_object (mop1))
@@ -3865,14 +3866,22 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
 	    {
 	      nonupdate = 1;
 	    }
-	  if (WS_ISVID (mop1))
+
+	  if (mop1 != NULL)
 	    {
-	      /* non updateble object or proxy object */
-	      virtual_ = 1;
+	      if (WS_ISVID (mop1))
+		{
+		  /* non updateble object or proxy object */
+		  virtual_ = 1;
+		}
+	      else
+		{
+		  o1 = WS_OID (mop1);
+		}
 	    }
 	  else
 	    {
-	      o1 = WS_OID (mop1);
+	      o1 = (OID *) (&oid_Null_oid);
 	    }
 	}
       else
@@ -3882,10 +3891,12 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
     }
 
   if (db_value_domain_type (value2) == DB_TYPE_OID)
-    o2 = DB_GET_OID (value2);
+    {
+      o2 = DB_PULL_OID (value2);
+    }
   else
     {
-      mop2 = DB_GET_OBJECT (value2);
+      mop2 = DB_PULL_OBJECT (value2);
       if (WS_ISVID (mop2))
 	{
 	  if (db_is_updatable_object (mop2))
@@ -3896,14 +3907,22 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
 	    {
 	      nonupdate += 2;
 	    }
-	  if (WS_ISVID (mop2))
+
+	  if (mop2 != NULL)
 	    {
-	      /* non updateble object or proxy object */
-	      virtual_ += 2;
+	      if (WS_ISVID (mop2))
+		{
+		  /* non updateble object or proxy object */
+		  virtual_ += 2;
+		}
+	      else
+		{
+		  o2 = WS_OID (mop2);
+		}
 	    }
 	  else
 	    {
-	      o2 = WS_OID (mop2);
+	      o2 = (OID *) (&oid_Null_oid);
 	    }
 	}
       else
@@ -3961,8 +3980,8 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
        */
       class1 = db_get_class (mop1);
       class2 = db_get_class (mop2);
-      o1 = WS_OID (class1);
-      o2 = WS_OID (class2);
+      o1 = (class1) ? WS_OID (class1) : (OID *) (&oid_Null_oid);
+      o2 = (class2) ? WS_OID (class2) : (OID *) (&oid_Null_oid);
       c = oid_compare (o1, o2);
       /*
        * as long as the result is not equal, we are done
@@ -4792,9 +4811,16 @@ mr_setmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   else
     {
       oid = db_get_oid (value);
-      mem->volid = oid->volid;
-      mem->pageid = oid->pageid;
-      mem->slotid = oid->slotid;
+      if (oid)
+	{
+	  mem->volid = oid->volid;
+	  mem->pageid = oid->pageid;
+	  mem->slotid = oid->slotid;
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
     }
   return NO_ERROR;
 }
@@ -4814,6 +4840,8 @@ mr_getmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static int
 mr_setval_oid (DB_VALUE * dest, DB_VALUE * src, bool copy)
 {
+  OID *oid;
+
   if (src == NULL || DB_IS_NULL (src))
     {
       PRIM_SET_NULL (dest);
@@ -4821,7 +4849,8 @@ mr_setval_oid (DB_VALUE * dest, DB_VALUE * src, bool copy)
     }
   else
     {
-      return db_make_oid (dest, db_get_oid (src));
+      oid = db_get_oid (src);
+      return db_make_oid (dest, oid);
     }
 }
 
@@ -4902,8 +4931,17 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2,
 	       int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  OID *oid1, *oid2;
 
-  c = oid_compare (DB_GET_OID (value1), DB_GET_OID (value2));
+  oid1 = DB_GET_OID (value1);
+  oid2 = DB_GET_OID (value2);
+
+  if (oid1 == NULL || oid2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = oid_compare (oid1, oid2);
   if (do_reverse || (domain && domain->is_desc))
     {
       c = -c;
@@ -5488,10 +5526,15 @@ mr_cmpdisk_set (void *mem1, void *mem2,
 		int do_coercion, int total_order, int *start_colp)
 {
   int c;
-  SETOBJ *set1, *set2;
+  SETOBJ *set1 = NULL, *set2 = NULL;
 
   mem1 = or_unpack_set ((char *) mem1, &set1, domain);
   mem2 = or_unpack_set ((char *) mem2, &set2, domain);
+
+  if (set1 == NULL || set2 == NULL)
+    {
+      return DB_UNK;
+    }
 
   c = setobj_compare_order (set1, set2, do_coercion, total_order);
   if (do_reverse || (domain && domain->is_desc))
@@ -5631,10 +5674,15 @@ mr_cmpdisk_sequence (void *mem1, void *mem2,
 		     int do_coercion, int total_order, int *start_colp)
 {
   int c;
-  SETOBJ *seq1, *seq2;
+  SETOBJ *seq1 = NULL, *seq2 = NULL;
 
   mem1 = or_unpack_set ((char *) mem1, &seq1, domain);
   mem2 = or_unpack_set ((char *) mem2, &seq2, domain);
+
+  if (seq1 == NULL || seq2 == NULL)
+    {
+      return DB_UNK;
+    }
 
   c = setobj_compare_order (seq1, seq2, do_coercion, total_order);
   if (do_reverse || (domain && domain->is_desc))
@@ -5771,6 +5819,7 @@ mr_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
 	{
 	  return ER_FAILED;
 	}
+
       return or_advance (buf, size);
     }
 
@@ -5825,7 +5874,7 @@ mr_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
 	  db_value_domain_init (value, domain->type->id,
 				TP_FLOATING_PRECISION_VALUE, 0);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  0);
+		  1, size);
 	  or_abort (buf);
 	  return ER_FAILED;
 	}
@@ -6376,10 +6425,15 @@ mr_cmpdisk_vobj (void *mem1, void *mem2,
 		 int do_coercion, int total_order, int *start_colp)
 {
   int c;
-  SETOBJ *seq1, *seq2;
+  SETOBJ *seq1 = NULL, *seq2 = NULL;
 
   mem1 = or_unpack_set ((char *) mem1, &seq1, domain);
   mem2 = or_unpack_set ((char *) mem2, &seq2, domain);
+
+  if (seq1 == NULL || seq2 == NULL)
+    {
+      return DB_UNK;
+    }
 
   c = setvobj_compare (seq1, seq2, do_coercion, total_order);
   if (do_reverse || (domain && domain->is_desc))
@@ -6448,7 +6502,8 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
       src_scale = db_value_scale (value);
 
       /* this should have been handled by now */
-      if (src_precision != domain->precision || src_scale != domain->scale)
+      if (src_num == NULL || src_precision != domain->precision
+	  || src_scale != domain->scale)
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
@@ -6626,6 +6681,12 @@ mr_readval_numeric (OR_BUF * buf, DB_VALUE * value,
 		    char *copy_buf, int copy_buf_len)
 {
   int rc = NO_ERROR;
+
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+
   /*
    * If size is -1, the caller doesn't know the size and we must determine
    * it from the domain.
@@ -6636,7 +6697,9 @@ mr_readval_numeric (OR_BUF * buf, DB_VALUE * value,
     }
 
   if (size == 1)
-    size = OR_NUMERIC_SIZE (domain->precision);
+    {
+      size = OR_NUMERIC_SIZE (domain->precision);
+    }
 
   if (value == NULL)
     {
@@ -6656,6 +6719,7 @@ mr_readval_numeric (OR_BUF * buf, DB_VALUE * value,
       value->need_clear = false;
       rc = or_advance (buf, size);
     }
+
   return rc;
 }
 
@@ -6914,18 +6978,20 @@ pr_find_type (const char *name)
   PR_TYPE *type, *found;
   int i;
 
-  found = NULL;
-  if (name != NULL)
+  if (name == NULL)
     {
-      for (i = DB_TYPE_FIRST; i <= DB_TYPE_LAST && found == NULL; i++)
+      return NULL;
+    }
+
+  found = NULL;
+  for (i = DB_TYPE_FIRST; i <= DB_TYPE_LAST && found == NULL; i++)
+    {
+      type = tp_Type_id_map[i];
+      if (type->name != NULL)
 	{
-	  type = tp_Type_id_map[i];
-	  if (type->name != NULL)
+	  if (intl_mbs_casecmp (name, type->name) == 0)
 	    {
-	      if (intl_mbs_casecmp (name, type->name) == 0)
-		{
-		  found = type;
-		}
+	      found = type;
 	    }
 	}
     }
@@ -6960,7 +7026,6 @@ pr_find_type (const char *name)
 	{
 	  found = tp_Type_sequence;
 	}
-
     }
 
   return (found);
@@ -7251,14 +7316,22 @@ pr_writeval_disk_size (DB_VALUE * value)
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
-  if (type->lengthval == NULL)
+
+  assert (type != NULL);
+
+  if (type)
     {
-      return type->disksize;
+      if (type->lengthval == NULL)
+	{
+	  return type->disksize;
+	}
+      else
+	{
+	  return (*(type->lengthval)) (value, 1);
+	}
     }
-  else
-    {
-      return (*(type->lengthval)) (value, 1);
-    }
+
+  return 0;
 }
 
 void
@@ -7400,6 +7473,11 @@ pr_valstring (DB_VALUE * val)
   dbval_type = DB_VALUE_DOMAIN_TYPE (val);
   pr_type = PR_TYPE_FROM_ID (dbval_type);
 
+  if (pr_type == NULL)
+    {
+      return NULL;
+    }
+
   /*
    * Guess a size; if we're wrong, we'll learn about it later and be told
    * how big to make the actual buffer.  Most things are pretty small, so
@@ -7412,6 +7490,7 @@ pr_valstring (DB_VALUE * val)
     {
       return NULL;
     }
+
   str_size = (*(pr_type->sptrfunc)) (val, str, str_size);
   if (str_size < 0)
     {
@@ -7438,7 +7517,6 @@ pr_valstring (DB_VALUE * val)
     }
 
   return str;
-
 }
 
 /*
@@ -7964,19 +8042,27 @@ mr_readval_string (OR_BUF * buf, DB_VALUE * value,
   if (value == NULL)
     {
       if (size == -1)
-	rc = or_skip_varchar (buf);
+	{
+	  rc = or_skip_varchar (buf);
+	}
       else
 	{
 	  if (size)
-	    rc = or_advance (buf, size);
+	    {
+	      rc = or_advance (buf, size);
+	    }
 	}
     }
   else
     {
       if (domain != NULL)
-	precision = domain->precision;
+	{
+	  precision = domain->precision;
+	}
       else
-	precision = DB_MAX_VARCHAR_PRECISION;
+	{
+	  precision = DB_MAX_VARCHAR_PRECISION;
+	}
 
       if (!copy)
 	{
@@ -8036,26 +8122,32 @@ mr_readval_string (OR_BUF * buf, DB_VALUE * value,
 	      if (new_ == NULL)
 		{
 		  /* need to be able to return errors ! */
-		  db_value_domain_init (value, domain->type->id,
-					TP_FLOATING_PRECISION_VALUE, 0);
+		  if (domain)
+		    {
+		      db_value_domain_init (value, domain->type->id,
+					    TP_FLOATING_PRECISION_VALUE, 0);
+		    }
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
 	      else
 		{
 		  /* read the kludge NULL terminator */
-		  if ((rc =
-		       or_get_data (buf, new_, str_length + 1)) == NO_ERROR)
+		  rc = or_get_data (buf, new_, str_length + 1);
+		  if (rc == NO_ERROR)
 		    {
 		      /* round up to a word boundary */
 		      rc = or_get_align32 (buf);
 		    }
+
 		  if (rc != NO_ERROR)
 		    {
 		      if (new_ != copy_buf)
-			db_private_free_and_init (NULL, new_);
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
 		      return ER_FAILED;
 		    }
 
@@ -8076,7 +8168,9 @@ mr_readval_string (OR_BUF * buf, DB_VALUE * value,
 		       */
 		      pad = size - (int) (buf->ptr - start);
 		      if (pad > 0)
-			rc = or_advance (buf, pad);
+			{
+			  rc = or_advance (buf, pad);
+			}
 		    }		/* size != -1 */
 		}		/* else */
 	    }			/* size != 0 */
@@ -8121,11 +8215,18 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
 		  int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = qstr_compare ((unsigned char *) DB_GET_STRING (value1),
-		    (int) DB_GET_STRING_SIZE (value1),
-		    (unsigned char *) DB_GET_STRING (value2),
-		    (int) DB_GET_STRING_SIZE (value2));
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = qstr_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+		    string2, (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
   return c;
@@ -8588,7 +8689,7 @@ mr_readval_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	      db_value_domain_init (value, domain->type->id,
 				    TP_FLOATING_PRECISION_VALUE, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -8666,7 +8767,7 @@ mr_readval_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	      db_value_domain_init (value, domain->type->id,
 				    domain->precision, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -8743,11 +8844,18 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2,
 		int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = char_compare ((unsigned char *) DB_GET_STRING (value1),
-		    (int) DB_GET_STRING_SIZE (value1),
-		    (unsigned char *) DB_GET_STRING (value2),
-		    (int) DB_GET_STRING_SIZE (value2));
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = char_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+		    string2, (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
   return c;
@@ -9266,7 +9374,7 @@ mr_readval_nchar (OR_BUF * buf, DB_VALUE * value,
 	      db_value_domain_init (value, domain->type->id,
 				    TP_FLOATING_PRECISION_VALUE, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -9332,7 +9440,7 @@ mr_readval_nchar (OR_BUF * buf, DB_VALUE * value,
 	      db_value_domain_init (value, domain->type->id,
 				    domain->precision, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -9431,11 +9539,18 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2,
 		 int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = nchar_compare ((unsigned char *) DB_GET_STRING (value1),
-		     (int) DB_GET_STRING_SIZE (value1),
-		     (unsigned char *) DB_GET_STRING (value2),
-		     (int) DB_GET_STRING_SIZE (value2),
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = nchar_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+		     string2, (int) DB_GET_STRING_SIZE (value2),
 		     (INTL_CODESET) DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
@@ -9809,7 +9924,7 @@ mr_lengthval_varnchar (DB_VALUE * value, int disk)
   int src_length, len;
   const char *str;
 #if !defined (SERVER_MODE)
-  INTL_CODESET src_codeset = (INTL_CODESET) db_get_string_codeset (value);
+  INTL_CODESET src_codeset;
 #endif
 
   len = 0;
@@ -9820,6 +9935,8 @@ mr_lengthval_varnchar (DB_VALUE * value, int disk)
 	src_length = strlen (str);
 
 #if !defined (SERVER_MODE)
+      src_codeset = (INTL_CODESET) db_get_string_codeset (value);
+
       /*
        * If this is a client side string, and the disk representation length
        * is requested,  Need to return the length of a converted string.
@@ -9915,11 +10032,15 @@ mr_readval_varnchar (OR_BUF * buf, DB_VALUE * value,
   if (value == NULL)
     {
       if (size == -1)
-	rc = or_skip_varchar (buf);
+	{
+	  rc = or_skip_varchar (buf);
+	}
       else
 	{
 	  if (size)
-	    rc = or_advance (buf, size);
+	    {
+	      rc = or_advance (buf, size);
+	    }
 	}
     }
   else
@@ -9995,26 +10116,32 @@ mr_readval_varnchar (OR_BUF * buf, DB_VALUE * value,
 	      if (new_ == NULL)
 		{
 		  /* need to be able to return errors ! */
-		  db_value_domain_init (value, domain->type->id,
-					TP_FLOATING_PRECISION_VALUE, 0);
+		  if (domain)
+		    {
+		      db_value_domain_init (value, domain->type->id,
+					    TP_FLOATING_PRECISION_VALUE, 0);
+		    }
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
 	      else
 		{
 		  /* read the kludge NULL terminator */
-		  if ((rc =
-		       or_get_data (buf, new_, str_length + 1)) == NO_ERROR)
+		  rc = or_get_data (buf, new_, str_length + 1);
+		  if (rc == NO_ERROR)
 		    {
 		      /* round up to a word boundary */
 		      rc = or_get_align32 (buf);
 		    }
+
 		  if (rc != NO_ERROR)
 		    {
 		      if (new_ != copy_buf)
-			db_private_free_and_init (NULL, new_);
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
 		      return ER_FAILED;
 		    }
 
@@ -10036,7 +10163,9 @@ mr_readval_varnchar (OR_BUF * buf, DB_VALUE * value,
 		       */
 		      pad = size - (int) (buf->ptr - start);
 		      if (pad > 0)
-			rc = or_advance (buf, pad);
+			{
+			  rc = or_advance (buf, pad);
+			}
 		    }		/* size != -1 */
 		}		/* else */
 	    }			/* size != 0 */
@@ -10106,11 +10235,18 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2,
 		    int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = varnchar_compare ((unsigned char *) DB_GET_STRING (value1),
-			(int) DB_GET_STRING_SIZE (value1),
-			(unsigned char *) DB_GET_STRING (value2),
-			(int) DB_GET_STRING_SIZE (value2),
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = varnchar_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+			string2, (int) DB_GET_STRING_SIZE (value2),
 			(INTL_CODESET) DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
@@ -10522,7 +10658,7 @@ mr_readval_bit (OR_BUF * buf, DB_VALUE * value,
 	      db_value_domain_init (value, domain->type->id,
 				    TP_FLOATING_PRECISION_VALUE, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -10588,7 +10724,7 @@ mr_readval_bit (OR_BUF * buf, DB_VALUE * value,
 	      db_value_domain_init (value, domain->type->id,
 				    domain->precision, 0);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, mem_length + 1);
 	      or_abort (buf);
 	      return ER_FAILED;
 	    }
@@ -10659,11 +10795,18 @@ mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2,
 	       int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = bit_compare ((unsigned char *) DB_GET_STRING (value1),
-		   (int) DB_GET_STRING_SIZE (value1),
-		   (unsigned char *) DB_GET_STRING (value2),
-		   (int) DB_GET_STRING_SIZE (value2));
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = bit_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+		   string2, (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
   return c;
@@ -11063,7 +11206,9 @@ mr_readval_varbit (OR_BUF * buf, DB_VALUE * value,
   if (value == NULL)
     {
       if (size == -1)
-	rc = or_skip_varbit (buf);
+	{
+	  rc = or_skip_varbit (buf);
+	}
       else
 	{
 	  if (size)
@@ -11073,9 +11218,13 @@ mr_readval_varbit (OR_BUF * buf, DB_VALUE * value,
   else
     {
       if (domain != NULL)
-	precision = domain->precision;
+	{
+	  precision = domain->precision;
+	}
       else
-	precision = DB_MAX_VARBIT_PRECISION;
+	{
+	  precision = DB_MAX_VARBIT_PRECISION;
+	}
 
       if (!copy)
 	{
@@ -11137,25 +11286,32 @@ mr_readval_varbit (OR_BUF * buf, DB_VALUE * value,
 	      if (new_ == NULL)
 		{
 		  /* need to be able to return errors ! */
-		  db_value_domain_init (value, domain->type->id,
-					TP_FLOATING_PRECISION_VALUE, 0);
+		  if (domain)
+		    {
+		      db_value_domain_init (value, domain->type->id,
+					    TP_FLOATING_PRECISION_VALUE, 0);
+		    }
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, str_length + 1);
 		  or_abort (buf);
 		  return ER_FAILED;
 		}
 	      else
 		{
 		  /* do not read the kludge NULL terminator */
-		  if ((rc = or_get_data (buf, new_, str_length)) == NO_ERROR)
+		  rc = or_get_data (buf, new_, str_length);
+		  if (rc == NO_ERROR)
 		    {
 		      /* round up to a word boundary */
 		      rc = or_get_align32 (buf);
 		    }
+
 		  if (rc != NO_ERROR)
 		    {
 		      if (new_ != copy_buf)
-			db_private_free_and_init (NULL, new_);
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
 		      return ER_FAILED;
 		    }
 
@@ -11178,7 +11334,9 @@ mr_readval_varbit (OR_BUF * buf, DB_VALUE * value,
 		       */
 		      pad = size - (int) (buf->ptr - start);
 		      if (pad > 0)
-			rc = or_advance (buf, pad);
+			{
+			  rc = or_advance (buf, pad);
+			}
 		    }		/* size != -1 */
 		}		/* else */
 	    }			/* size != 0 */
@@ -11218,11 +11376,18 @@ mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2,
 		  int do_coercion, int total_order, int *start_colp)
 {
   int c;
+  unsigned char *string1, *string2;
 
-  c = varbit_compare ((unsigned char *) DB_GET_STRING (value1),
-		      (int) DB_GET_STRING_SIZE (value1),
-		      (unsigned char *) DB_GET_STRING (value2),
-		      (int) DB_GET_STRING_SIZE (value2));
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  c = varbit_compare (string1, (int) DB_GET_STRING_SIZE (value1),
+		      string2, (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
 
   return c;

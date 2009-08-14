@@ -34,6 +34,7 @@
 #include "glo_class.h"
 #include "memory_alloc.h"
 #include "db.h"
+#include "locator_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -267,12 +268,20 @@ esm_define_esm_classes (void)
   if (glo_name_class == NULL)
     {
       glo_name_class = db_find_class (GLO_NAME_CLASS_NAME);
+      if (glo_name_class == NULL)
+	{
+	  return;
+	}
     }
 
   glo_holder_class = db_create_class (GLO_HOLDER_CLASS_NAME);
   if (glo_holder_class == NULL)
     {
       glo_holder_class = db_find_class (GLO_HOLDER_CLASS_NAME);
+      if (glo_holder_class == NULL)
+	{
+	  return;
+	}
     }
 
   user = db_find_user ("public");
@@ -319,6 +328,10 @@ esm_define_esm_classes (void)
   if (glo_class == NULL)
     {
       glo_class = db_find_class (GLO_CLASS_NAME);
+      if (glo_class == NULL)
+	{
+	  return;
+	}
     }
 
   ADD_ATTRIBUTE (glo_class, GLO_CLASS_HOLDER_NAME,
@@ -344,8 +357,8 @@ esm_define_esm_classes (void)
 				db_get_type_name (DB_TYPE_STRING),	/*buffer */
 				NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_SEEK, "esm_Glo_seek");
-  (*define_instance_signature) (glo_class, GLO_METHOD_SEEK, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
-				db_get_type_name (DB_TYPE_BIGINT),	/*position */
+  (*define_instance_signature) (glo_class, GLO_METHOD_SEEK, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
+				db_get_type_name (DB_TYPE_INTEGER),	/*position */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_INSERT, "esm_Glo_insert");
   (*define_instance_signature) (glo_class, GLO_METHOD_INSERT, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
@@ -365,7 +378,7 @@ esm_define_esm_classes (void)
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_TRUNCATE, "esm_Glo_truncate");
-  (*define_instance_signature) (glo_class, GLO_METHOD_TRUNCATE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_TRUNCATE, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_APPEND, "esm_Glo_append");
@@ -374,7 +387,7 @@ esm_define_esm_classes (void)
 				db_get_type_name (DB_TYPE_STRING),	/*buffer */
 				NULL, NULL, NULL, NULL, NULL, NULL);
   ADD_METHOD (glo_class, GLO_METHOD_SIZE, "esm_Glo_size");
-  (*define_instance_signature) (glo_class, GLO_METHOD_SIZE, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_SIZE, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_COMPRESS, "esm_Glo_compress");
@@ -396,7 +409,7 @@ esm_define_esm_classes (void)
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_POSITION, "esm_Glo_position");
-  (*define_instance_signature) (glo_class, GLO_METHOD_POSITION, db_get_type_name (DB_TYPE_BIGINT),	/*return arg */
+  (*define_instance_signature) (glo_class, GLO_METHOD_POSITION, db_get_type_name (DB_TYPE_INTEGER),	/*return arg */
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 				NULL);
   ADD_METHOD (glo_class, GLO_METHOD_LIKE_SEARCH, "esm_Glo_like_search");
@@ -445,6 +458,10 @@ esm_define_esm_classes (void)
 			       TR_TIME_BEFORE, TR_ACT_EXPRESSION, tmp);
 
   grant_authorization (user, glo_class);
+
+  (void) locator_has_heap (glo_name_class);
+  (void) locator_has_heap (glo_holder_class);
+  (void) locator_has_heap (glo_class);
 }
 
 /* This routine just an aid to testing/adding new methods. */

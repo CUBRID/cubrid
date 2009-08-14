@@ -154,7 +154,7 @@ pp_discard_symbol (SYMBOL * sym)
 	}
 
       if (sym->type)
-        {
+	{
 	  if (IS_FUNCT (sym->type))
 	    {
 	      pp_discard_symbol_chain (sym->args);
@@ -208,6 +208,8 @@ pp_new_link (void)
       LINKCHUNK *new_chunk = malloc (sizeof (LINKCHUNK));
       if (new_chunk == NULL)
 	{
+	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+	  exit (1);
 	  return NULL;
 	}
 
@@ -296,7 +298,7 @@ pp_new_structdef (const char *tag)
    * are used in the manufacture of those names.
    */
   static int anon_tag = 0;
-  char buf[10];
+  char buf[20];
 
   STRUCTDEF *sdef;
 
@@ -461,19 +463,24 @@ pp_add_declarator (SYMBOL * sym, int type)
     }
 
   link = pp_new_link ();
+  if (link == NULL)
+    {
+      return;
+    }
+
   link->decl.d.dcl_type = type;
 
-  if (!sym->type)
+  if (sym->type == NULL)
     {
       sym->type = sym->etype = link;
     }
-  else
+  else if (sym->etype != NULL)
     {
       sym->etype->next = link;
       sym->etype = link;
     }
 
-  if (type == D_FUNCTION)
+  if (type == D_FUNCTION && sym->etype != NULL)
     {
       sym->args = NULL;
       sym->etype->decl.d.args = NULL;
@@ -491,6 +498,11 @@ pp_clone_symbol (SYMBOL * sym)
   SYMBOL *newsym;
 
   newsym = pp_new_symbol ((char *) sym->name, sym->level);
+  if (newsym == NULL)
+    {
+      return NULL;
+    }
+
   newsym->type = pp_clone_type (sym->type, &newsym->etype);
   newsym->next = NULL;
 
@@ -512,13 +524,17 @@ pp_clone_type (LINK * tchain, LINK ** endp)
 
   for (; tchain; tchain = tchain->next)
     {
-      if (head == NULL)		/* 1st node in the chain */
+      if (head == NULL && last == NULL)	/* 1st node in the chain */
 	{
 	  head = last = pp_new_link ();
 	}
       else			/* Subsequent node */
 	{
 	  last->next = pp_new_link ();
+	  if (last->next == NULL)
+	    {
+	      return NULL;
+	    }
 	  last = last->next;
 	}
 
@@ -659,8 +675,7 @@ const char *
 pp_type_str (LINK * link)
 {
   static char target[80];
-  static char buf[64];
-  int available = sizeof (target) - 1;
+  static char buf[256];
 
   target[0] = '\0';
   buf[0] = '\0';
@@ -673,7 +688,6 @@ pp_type_str (LINK * link)
   if (link->tdef)
     {
       strcpy (target, "tdef ");
-      available -= 5;
     }
 
   for (; link; link = link->next)
@@ -683,16 +697,16 @@ pp_type_str (LINK * link)
 	  switch (link->decl.d.dcl_type)
 	    {
 	    case D_ARRAY:
-	      strcpy (buf, "array of ");
+	      strncpy (buf, "array of ", sizeof (buf));
 	      break;
 	    case D_POINTER:
-	      strcpy (buf, "ptr to ");
+	      strncpy (buf, "ptr to ", sizeof (buf));
 	      break;
 	    case D_FUNCTION:
-	      strcpy (buf, "function returning ");
+	      strncpy (buf, "function returning ", sizeof (buf));
 	      break;
 	    default:
-	      strcpy (buf, "BAD DECL");
+	      strncpy (buf, "BAD DECL", sizeof (buf));
 	      break;
 	    }
 	}
@@ -701,7 +715,7 @@ pp_type_str (LINK * link)
 	  /* it's a specifier */
 	  const char *noun_str;
 
-	  strcpy (buf, pp_attr_str (link));
+	  strncpy (buf, pp_attr_str (link), sizeof (buf));
 
 	  switch (link->decl.s.noun)
 	    {
@@ -737,22 +751,20 @@ pp_type_str (LINK * link)
 	      noun_str = "BAD NOUN";
 	      break;
 	    }
-	  strcat (buf, noun_str);
+	  strncat (buf, noun_str, sizeof (buf) - strnlen (buf, sizeof (buf)));
 
 	  if (link->decl.s.noun == N_STRUCTURE)
 	    {
-	      strncat (target, buf, available);
-	      available -= strlen (buf);
-
-	      sprintf (buf, " %s",
-		       (link->decl.s.val.v_struct->tag
-			? link->decl.s.val.v_struct->tag
-			: ((unsigned char *) "untagged")));
+	      strncat (target, buf,
+		       sizeof (target) - strnlen (target, sizeof (target)));
+	      snprintf (buf, sizeof (buf), " %s",
+			(link->decl.s.val.v_struct->tag ? link->decl.s.val.
+			 v_struct->tag : ((unsigned char *) "untagged")));
 	    }
 	}
 
-      strncat (target, buf, available);
-      available -= strlen (buf);
+      strncat (target, buf,
+	       sizeof (target) - strnlen (target, sizeof (target)));
     }
 
   return target;

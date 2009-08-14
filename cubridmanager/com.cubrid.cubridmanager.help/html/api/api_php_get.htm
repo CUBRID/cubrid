@@ -1,0 +1,126 @@
+﻿
+<html>
+<head>
+<title>cubrid_get</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_get");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_get<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_get</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_get</span> 함수는 OID를 이용해 인스턴스의 원하는 속성을 얻어온다. <span class="var">attr</span> 인수에 문자열 타입을 사용하여 하나의 속성을 얻을 수도 있고, 배열 타입을 사용하여 여러 개의 속성을 한꺼번에 얻을 수도 있다.</p>
+<h6>구문</h6>
+<p class="syntax">mixed <span class="keyword">cubrid_get</span> (int <span class="var">conn_handle</span>, string <span class="var">oid</span>[, mixed <span class="var">attr</span>])</p>
+<ul>
+<li><span class="var">conn_handle</span>&#160;: 연결 핸들</li>
+<li><span class="var">oid</span>&#160;: 값을 얻기 원하는 인스턴스의 OID</li>
+<li><span class="var">attr</span>&#160;: 값을 얻기 원하는 속성의 이름</li>
+</ul>
+<h6>리턴 값</h6>
+<p><span class="var">attr</span> 인수에 문자열 타입으로 설정했을 경우에 결과는 문자열로 반환되며, <span class="var">attr</span> 인수에 배열 타입(0-기본 수치배열)으로 설정했을 경우에 결과는 연관배열로 반환된다. 만약 <span class="var">attr</span> 인수가 생략되는 경우에는 인스턴스의 모든 속성을 연관 배열 형태로 받아온다.</p>
+<ul>
+<li>성공 : 요청한 속성의 내용</li>
+<li>실패 : false. 빈 문자열이나 <span class="keyword">NULL</span>과 오류를 구별하기 위해서 오류가 발생하면, 경고 메시지를 출력하고, <span class="keyword"><a href="api_php_errorcode.htm">cubrid_error_code</a></span>를 통해 오류를 확인할 수 있다.</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$attrarray = cubrid_get ($con, $oid);<br />
+echo $attrarray["id"];<br />
+echo $attrarray["name"];</p>
+<h6>관련 항목</h6>
+<ul>
+<li class="keyword"><a href="api_php_put.htm">cubrid_put</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

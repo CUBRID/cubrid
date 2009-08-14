@@ -1,0 +1,155 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>INCR과 DECR 함수</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="INCR" />
+<meta name="MS-HKWD" content="DECR" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n연산자와 함수\n클릭 카운터 함수\nINCR과 DECR 함수");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_rel.htm\">연산자와 함수<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_operator_counter_incr.htm\">클릭 카운터 함수<\/a> &nbsp;&gt;&nbsp; INCR과 DECR 함수<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>INCR과 DECR 함수</h4>
+<h6>설명</h6>
+<p><span class="keyword">INCR</span> 함수는 <span class="keyword"><a href="syntax_retreive_select.htm">SELECT</a></span> 절에 포함되어 인자로 주어진 컬럼의 값을 1 증가시켜 주는 기능을 한다.&#160;<span class="keyword">DECR</span> 함수는 해당 컬럼의 값을 1 감소시킨다..</p>
+<h6>구문</h6>
+<p class="syntax"><span class="keyword">SELECT</span> [ <span class="var">qualifier</span> ] <span class="var">select_expression</span><br />
+[ { <span class="keyword">TO</span> | <span class="keyword">INTO</span> } <span class="var">variable</span> [ {, <span class="var">variable</span> }...; ] ]<br />
+...;<br />
+<span class="var">select_expression</span> :<br />
+&#160;*<br />
+&#160;<span class="var">table_name.</span> *<br />
+&#160;[<span class="var">expression</span> | <span class="var">counter_expression</span>] [ {, <span class="var">expression</span> | <span class="var">counter_expression</span>}...]<br />
+<br />
+<span class="var">counter_expression</span> :<br />
+<span class="keyword">INCR</span>(<span class="var">path_expression</span>)</p>
+<p><span class="keyword">INCR</span> 함수와 <span class="keyword">DECR</span> 함수는 일명 '클릭 카운터' 함수로 불리며, 게시판 유형의 웹 서비스에서 게시물의 조회수를 증가시키는데 유용하게 사용될 수 있다. 게시물의 내용을 <span class="keyword"><a href="syntax_retreive_select.htm">SELECT</a></span>하고 곧바로 게시물의 조회수를 <span class="keyword">UPDATE</span>로 1 증가하는 유형의 시나리오에서 하나의 <span class="keyword">SELECT</span> 문에 <span class="keyword">INCR</span> 함수를 사용함으로써 한번에 게시물 내용 조회와 조회수 증가 작업을 수행할 수 있다.</p>
+<p><span class="keyword">INCR</span> 함수는 인자로 명시된 컬럼 값을 증가시킨다. 단, 인자로는 정수 타입의 숫자형만 올 수 있고, 값이 <span class="keyword">NULL</span>인 경우 <span class="keyword">INCR</span> 함수를 수행하여도 값은 <span class="keyword">NULL</span>을 유지한다. 즉, 값이 설정되어야 <span class="keyword">INCR</span> 함수를 써서 값을 증가시킬 수 있다. <span class="keyword">DECR</span> 함수는 인자로 명시된 컬럼 값을 감소시킨다.</p>
+<p><span class="keyword"><a href="syntax_retreive_select.htm">SELECT</a></span> 절에 <span class="keyword">INCR</span> 함수를 명시한 경우, <span class="keyword">COUNTER</span> 값을 1 증가하고 질의 결과는 증가하기 전의 값으로 출력한다. 그리고, <span class="keyword">INCR</span> 함수는 질의 처리 과정에서 참여한 행(tuple)이 아니라 최종 결과에 참여한 행에 대해서만 값을 증가시킨다.</p>
+<h6>참고 사항</h6>
+<ul>
+<li><span class="keyword">INCR/DECR</span> 함수는 사용자 정의 트랜잭션과 별도로 시스템 내부에서 사용되는 top operation이 적용되어 트랜잭션의 <span class="keyword">COMMIT/ROLLBACK</span>과 상관없이 데이터베이스에 자동으로 적용된다..</li>
+<li>하나의 <span class="keyword"><a href="syntax_retreive_select.htm">SELECT</a></span> 문에 <span class="keyword">INCR/DECR</span> 함수를 여러 개 사용할 경우, 해당 질의 내의 각각의 <span class="keyword">INCR/DECR</span> 함수 중&#160;하나라도 실패하면 전부 실패된다.</li>
+<li><span class="keyword">INCR/DECR</span> 함수는 최상위 <span class="keyword"><a href="syntax_retreive_select.htm">SELECT</a></span> 문에만 적용된다. <span class="keyword">INSERT</span> ...; <span class="keyword">SELECT</span> ... 구문과 <span class="keyword">UPDATE</span> table <span class="keyword">SET</span> col = <span class="keyword">SELECT</span> ... 등과 같은 <span class="keyword">SUB</span> <span class="keyword">SELECT</span>문은 지원하지 않는다. 다음은 <span class="keyword">INCR</span> 함수가 허용되지 않는 예이다.</li>
+</ul>
+<p class="code">SELECT b.content, INCR(b.read_count) FROM (SELECT * FROM board WHERE id = 1) AS b</p>
+<ul>
+<li><span class="keyword">INCR/DECR</span> 함수가 포함된 <span class="keyword">SELECT</span> 문의 경우, 결과 행 의 개수가 둘 이상이면 오류로 처리한다. 최종 결과가 1 건만 있을 경우만 유효하다.</li>
+<li><span class="keyword">INCR/DECR</span> 함수는 숫자 형식의 도메인에 대해서만 사용할 수 있다. 적용 가능한 도메인은 <span class="keyword">SMALLINT</span>, <span class="keyword">INTEGER</span>와 같은 정수형 데이터 타입으로 제한된다. 기타 도메인에는 사용할 수 없다.</li>
+<li><span class="keyword">INCR</span> 함수 호출 시 결과 값은 현재 값이며, 저장 값은 현재 값 +1인 값이 저장된다. 결과를 저장값과 같은 값을 조회하고자 할 경우는 다음과 같이 수행한다.</li>
+</ul>
+<p class="code"><span class="keyword">SELECT</span> content, <span class="keyword">INCR</span>(read_count) + 1 <span class="keyword">FROM</span> board <span class="keyword">WHERE</span> id = 1;</p>
+<ul>
+<li>정의된 도메인의 최대값을 초과 할 경우 <span class="keyword">INCR</span> 함수는 해당 컬럼을 0으로 초기화 한다. 반대로 최소값에 <span class="keyword">DECR</span> 함수가 적용되어도 0으로 초기화된다.</li>
+</ul>
+<h6>예제</h6>
+<p>먼저, board&#160;테이블에는 아래와 같이 3건의 데이터가 입력되었다고 가정한다.</p>
+<p class="code">CREATE TABLE board (<br />
+id&#160; INT, title&#160; VARCHAR(100), content&#160; VARCHAR(4000), read_count&#160; INT );<br />
+INSERT INTO board VALUES (1, 'aaa', 'text...', 0);<br />
+INSERT INTO board VALUES (2, 'bbb', 'text...', 0);<br />
+INSERT INTO board VALUES (3, 'ccc', 'text...', 0);</p>
+<ul>
+<li>다음은 id 값이 1인 데이터의 read_count 컬럼의 값을 <span class="keyword">INCR</span> 함수로 증가시키는 예이다.&#160;</li>
+</ul>
+<p class="code">SELECT content, INCR(read_count) FROM board WHERE id = 1;</p>
+<p class="definition">결과 값:</p>
+<p class="definition">'text...' &#160;&#160;&#160;0&#160;</p>
+<ul>
+<li>예와 같이 <span class="keyword">SELECT</span>문에 <span class="keyword">INCR</span> 함수를 사용함으로써 해당 컬럼 값은 read_count + 1이 된다. 결과는 다음과 같은 <span class="keyword">SELECT</span> 문을 통해 확인해 볼 수 있다.&#160;</li>
+</ul>
+<p class="code">SELECT content, read_count FROM board WHERE id = 1;</p>
+<p class="definition">결과 값:</p>
+<p class="definition">'text...' &#160;&#160;&#160;1</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

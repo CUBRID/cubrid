@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -615,7 +615,6 @@ static int add_argument (LDR_CONTEXT * context);
 static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
-////static function
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
@@ -646,7 +645,6 @@ ldr_increment_err_count (LDR_CONTEXT * context, int i)
     context->err_count += i;
 }
 
-
 /*
  * ldr_clear_err_count - clear err_count of a context
  *    return: in
@@ -658,7 +656,6 @@ ldr_clear_err_count (LDR_CONTEXT * context)
   if (context)
     context->err_count = 0;
 }
-
 
 /*
  * ldr_clear_err_total - clear err_total of a context
@@ -691,7 +688,6 @@ ldr_class_name (LDR_CONTEXT * context)
   return (name);
 }
 
-
 /*
  * ldr_attr_name - Returns the name of the attribute we are currently dealing
  * with.
@@ -722,7 +718,6 @@ ldr_attr_name (LDR_CONTEXT * context)
     }
   return (name);
 }
-
 
 /*
  * select_set_domain - looks through a domain list and selects a domain that
@@ -777,7 +772,6 @@ select_set_domain (LDR_CONTEXT * context,
     }
   return err;
 }
-
 
 /*
  * check_object_domain - checks the type of an incomming value against the
@@ -858,7 +852,6 @@ check_object_domain (LDR_CONTEXT * context,
   return err;
 }
 
-
 /*
  * check_class_domain - checks the domain for an incomming reference to an
  * actual class object (not an instance).
@@ -895,7 +888,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * idmap_init - Initialize the global class id map.
  *    return: void
@@ -922,7 +914,6 @@ idmap_final (void)
       Id_map_size = 0;
     }
 }
-
 
 /*
  * idmap_grow - This makes sure the class id map is large enough to accomodate
@@ -962,7 +953,6 @@ idmap_grow (int size)
   return err;
 }
 
-
 /*
  * ldr_assign_class_id - assign an id to a class
  *    return: NO_ERROR if successful, error code otherwise
@@ -981,7 +971,6 @@ ldr_assign_class_id (DB_OBJECT * class_, int id)
 
   return err;
 }
-
 
 /*
  * ldr_act_set_id - Assign an id number to a class.
@@ -1022,10 +1011,11 @@ ldr_find_class (const char *classname)
   int err = NO_ERROR;
 
   /* Check for internal error */
-  if (!classname)
+  if (classname == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      CHECK_ERR (err, ER_GENERIC_ERROR);
+      display_error (0);
+      return NULL;
     }
 
   sm_downcase_name (classname, realname, SM_MAX_IDENTIFIER_LENGTH);
@@ -1039,11 +1029,8 @@ ldr_find_class (const char *classname)
 
   ldr_Hint_classnames[0] = NULL;
 
-error_exit:
   return (class_);
 }
-
-
 
 /*
  * ldr_get_class_from_id - return the class with the given 'id' from global
@@ -1061,7 +1048,6 @@ ldr_get_class_from_id (int id)
 
   return (class_);
 }
-
 
 /*
  * ldr_act_start_id - Begin the specification of a class id assignment.
@@ -1094,7 +1080,6 @@ ldr_act_start_id (LDR_CONTEXT * context, char *name)
 	}
     }
 }
-
 
 /*
  * ldr_clear_context - clears any information on the class/attribute/argument
@@ -1151,7 +1136,6 @@ ldr_clear_context (LDR_CONTEXT * context)
   context->id_class = NULL;
   context->attribute_type = LDR_ATTRIBUTE_ANY;
 }
-
 
 /*
  * ldr_clear_and_free_context - Frees up the space allocated for the
@@ -1210,7 +1194,6 @@ ldr_clear_and_free_context (LDR_CONTEXT * context)
  *
  */
 
-
 /*
  * ldr_internal_error - handle internal error
  *    return: void
@@ -1228,7 +1211,6 @@ ldr_internal_error (LDR_CONTEXT * context)
   ldr_clear_and_free_context (context);
   ldr_abort ();
 }
-
 
 /*
  * display_error_line - display error line
@@ -1248,7 +1230,6 @@ display_error_line (int adjust)
 				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	   loader_yylineno + adjust);
 }
-
 
 /*
  * display_error - ldr_ function error handler
@@ -1270,7 +1251,6 @@ display_error (int adjust)
   fprintf (stderr, "\n");
 }
 
-
 /*
  * ldr_invalid_class_error - invalid class error handler
  *    return: void
@@ -1287,7 +1267,6 @@ ldr_invalid_class_error (LDR_CONTEXT * context)
 				   LOADDB_MSG_UNKNOWN_ATT_CLASS),
 	   ldr_attr_name (context), ldr_class_name (context));
 }
-
 
 /*
  * parse_error - parse error handler
@@ -1316,7 +1295,6 @@ parse_error (LDR_CONTEXT * context, DB_TYPE token_type, const char *token)
 	   db_get_type_name (token_type), ldr_attr_name (context),
 	   ldr_class_name (context));
 }
-
 
 /*
  * clist_init - Initializes the list of internal classes.
@@ -1358,7 +1336,6 @@ clist_init (void)
   return NO_ERROR;
 }
 
-
 /*
  * clist_final - free the list of internal classes
  *    return: void
@@ -1369,7 +1346,6 @@ clist_final (void)
   ml_ext_free (internal_classes);
   internal_classes = NULL;
 }
-
 
 /*
  * is_internal_class - test to see if a class is an internal class
@@ -1382,7 +1358,6 @@ is_internal_class (DB_OBJECT * class_)
   return (ml_find (internal_classes, class_));
 }
 
-
 /*
  *                         LEXER ACTION ROUTINES
  *
@@ -1393,7 +1368,6 @@ is_internal_class (DB_OBJECT * class_)
  * optimizations (usually based on the domain of the attribute it's known to
  * be setting).
  */
-
 
 /*
  * ldr_act_attr - Invokes the appropriate setter from a vector of setters
@@ -1500,7 +1474,6 @@ error_exit:
   LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
 }
 
-
 /*
  * ldr_act_elem - Invokes the appropriate convertor from a set of vectored
  * convertors indexed by the parser type.
@@ -1577,7 +1550,6 @@ error_exit:
   LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
 }
 
-
 /*
  * ldr_act_meth - set up the attr desc for an instance generated via a
  * constructor.
@@ -1593,7 +1565,7 @@ static void
 ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 {
   int err = NO_ERROR;
-  LDR_ATTDESC *attdesc;
+  LDR_ATTDESC *attdesc = NULL;
 
   /* we have reached an invalid state, ignore the tuples */
 
@@ -1617,7 +1589,12 @@ ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
    */
   if (attdesc->parser_buf_len == 0)
     {
-      CHECK_PTR (err, attdesc->parser_str = (char *) (malloc (len + 1)));
+      attdesc->parser_str = (char *) (malloc (len + 1));
+      if (attdesc->parser_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	}
+      CHECK_PTR (err, attdesc->parser_str);
       attdesc->parser_buf_len = len;
     }
   else if (len > attdesc->parser_buf_len)
@@ -1625,10 +1602,13 @@ ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
       char *parser_str_old;
       parser_str_old = attdesc->parser_str;
       /* Prevent leak from realloc call failure */
-      if ((attdesc->parser_str = (char *) (realloc (attdesc->parser_str,
-						    len + 1))) == NULL)
-	/* Prevent leakage if realloc fails */
-	free_and_init (parser_str_old);
+      attdesc->parser_str = (char *) realloc (attdesc->parser_str, len + 1);
+      if (attdesc->parser_str == NULL)
+	{
+	  /* Prevent leakage if realloc fails */
+	  free_and_init (parser_str_old);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	}
       CHECK_PTR (err, attdesc->parser_str);
       attdesc->parser_buf_len = len;
     }
@@ -1640,7 +1620,6 @@ error_exit:
   context->next_attr += 1;
   LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
 }
-
 
 /*
  * ldr_mismatch -  always error handler.
@@ -1659,7 +1638,6 @@ ldr_mismatch (LDR_CONTEXT * context,
   display_error (0);
   return ER_OBJ_DOMAIN_CONFLICT;
 }
-
 
 /*
  * ldr_ignore - always ignoring handler.
@@ -1715,7 +1693,6 @@ ldr_null_elem (LDR_CONTEXT * context,
   DB_MAKE_NULL (val);
   return NO_ERROR;
 }
-
 
 /*
  * ldr_null_db_generic - set attribute value to null
@@ -2011,7 +1988,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_int_db_generic -
  *    return:
@@ -2222,7 +2198,6 @@ error_exit:
   return err;
 }
 
-
 /*
  *  STRING SETTERS
  *
@@ -2384,7 +2359,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_str_db_generic -
  *    return:
@@ -2468,7 +2442,6 @@ error_exit:
   db_value_clear (&temp);
   return err;
 }
-
 
 /*
  * ldr_bstr_db_varbit -
@@ -2658,7 +2631,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_numeric_db_generic -
  *    return:
@@ -2680,8 +2652,6 @@ ldr_numeric_db_generic (LDR_CONTEXT * context,
 error_exit:
   return err;
 }
-
-
 
 /*
  * ldr_double_elem -
@@ -2783,7 +2753,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_real_db_float -
  *    return:
@@ -2828,7 +2797,6 @@ ldr_real_db_float (LDR_CONTEXT * context,
 error_exit:
   return err;
 }
-
 
 /*
  * ldr_real_db_double -
@@ -2875,7 +2843,6 @@ error_exit:
   return err;
 }
 
-
 /*
  *  DATE/TIME/TIMESTAMP/DATETIME SETTERS
  *
@@ -2883,7 +2850,6 @@ error_exit:
  *  had the tag and surrounding quotes stripped off.  We know which one we
  *  have by virtue knowing which function has been called.
  */
-
 
 /*
  * ldr_date_elem -
@@ -2954,7 +2920,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_time_db_time -
  *    return:
@@ -2979,7 +2944,6 @@ ldr_time_db_time (LDR_CONTEXT * context,
 error_exit:
   return err;
 }
-
 
 /*
  * ldr_timestamp_elem -
@@ -3147,7 +3111,6 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
   return err;
 }
 
-
 /*
  * ldr_elo_int_elem -
  *    return:
@@ -3178,7 +3141,7 @@ ldr_elo_int_elem (LDR_CONTEXT * context,
 
   PARSE_ELO_STR (str, new_len);
 
-  if (new_len)
+  if (new_len > 0 && new_len < (int) sizeof (name))
     {
       strncpy (name, str, new_len);
       name[new_len] = '\0';
@@ -3220,7 +3183,6 @@ ldr_elo_int_elem (LDR_CONTEXT * context,
   return (err);
 }
 
-
 /*
  * ldr_elo_int_db_elo -
  *    return:
@@ -3241,7 +3203,7 @@ ldr_elo_int_db_elo (LDR_CONTEXT * context,
 
   PARSE_ELO_STR (str, new_len);
 
-  if (new_len)
+  if (new_len > 0 && new_len < (int) sizeof (name))
     {
       strncpy (name, str, new_len);
       name[new_len] = '\0';
@@ -3286,7 +3248,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
 
   PARSE_ELO_STR (str, new_len);
 
-  if (new_len)
+  if (new_len > 0 && new_len < (int) sizeof (name))
     {
       strncpy (name, str, new_len);
       name[new_len] = '\0';
@@ -3322,7 +3284,6 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
   return (err);
 }
 
-
 /*
  * ldr_elo_ext_db_elo -
  *    return:
@@ -3344,8 +3305,10 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context,
   PARSE_ELO_STR (str, new_len);
 
   if (new_len && str[new_len - 1] == '\"')
-    new_len--;
-  if (new_len)
+    {
+      new_len--;
+    }
+  if (new_len > 0 && new_len < (int) sizeof (name))
     {
       strncpy (name, str, new_len);
       name[new_len] = '\0';
@@ -3386,8 +3349,8 @@ ldr_mop_tempoid_maps_init (void)
        (LDR_MOP_TEMPOID_MAPS *) malloc (sizeof (LDR_MOP_TEMPOID_MAPS))) ==
       NULL)
     {
-      err = er_errid ();
-      return (err);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+      return ER_LDR_MEMORY_ERROR;
     }
 
   presize = LDR_MOP_TEMPOID_MAPS_PRESIZE;
@@ -3396,7 +3359,8 @@ ldr_mop_tempoid_maps_init (void)
        (LDR_MOP_TEMPOID_MAP *) malloc (presize *
 				       sizeof (LDR_MOP_TEMPOID_MAP))) == NULL)
     {
-      err = er_errid ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+      err = ER_LDR_MEMORY_ERROR;
       ldr_Mop_tempoid_maps->count = -1;
       ldr_Mop_tempoid_maps->index = -1;
       ldr_Mop_tempoid_maps->size = 0;
@@ -3419,7 +3383,6 @@ ldr_mop_tempoid_maps_init (void)
   return err;
 }
 
-
 /*
  * ldr_mop_tempoid_maps_final - Frees ldr_Mop_tempoid_maps.
  *    return: NO_ERROR if successful, error code otherwise
@@ -3438,7 +3401,6 @@ ldr_mop_tempoid_maps_final (void)
   return;
 }
 
-
 /*
  * ldr_add_mop_tempoid_map - add a temporary oid mop to CLASS_TABLE mapping
  * to ldr_Mop_tempoid_maps.
@@ -3452,8 +3414,16 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
 {
   int err = NO_ERROR;
 
-  if (!ldr_Mop_tempoid_maps)
-    CHECK_ERR (err, ldr_mop_tempoid_maps_init ());
+  if (ldr_Mop_tempoid_maps == NULL
+      || ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
+    {
+      err = ldr_mop_tempoid_maps_init ();
+      if (err != NO_ERROR)
+	{
+	  display_error (0);
+	  return err;
+	}
+    }
 
   ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].mop =
     mop;
@@ -3478,21 +3448,24 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
 					 (ldr_Mop_tempoid_maps->size +
 					  LDR_MOP_TEMPOID_MAPS_PRESIZE));
 
-      if (!ldr_Mop_tempoid_maps->mop_tempoid_maps)
+      if (ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
 	{
 	  /* Prevent realloc memory leak, if error occurs. */
 	  if (mop_tempoid_maps_old)
-	    free_and_init (mop_tempoid_maps_old);
-	  return (er_errid ());
+	    {
+	      free_and_init (mop_tempoid_maps_old);
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	  return ER_LDR_MEMORY_ERROR;
 	}
       else
-	ldr_Mop_tempoid_maps->size += LDR_MOP_TEMPOID_MAPS_PRESIZE;
+	{
+	  ldr_Mop_tempoid_maps->size += LDR_MOP_TEMPOID_MAPS_PRESIZE;
+	}
     }
 
-error_exit:
   return err;
 }
-
 
 /*
  * ldr_assign_all_perm_oids - traverses ldr_Mop_tempoid_maps and creates a
@@ -3792,7 +3765,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_oid_db_object -
  *    return:
@@ -3876,7 +3848,6 @@ error_exit:
   return (err);
 }
 
-
 /*
  * ldr_monetary_db_monetary -
  *    return:
@@ -3902,7 +3873,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_collection_elem -
  *    return:
@@ -3921,7 +3891,6 @@ ldr_collection_elem (LDR_CONTEXT * context,
   (void) ldr_null_elem (context, str, len, val);
   return err;
 }
-
 
 /*
  * ldr_collection_db_collection -
@@ -4029,17 +3998,30 @@ ldr_reset_context (LDR_CONTEXT * context)
 	   * This instance was already referenced and a workspace MOP created.
 	   */
 	  context->obj = ws_mop (&(inst->oid), context->cls);
+	  if (context->obj == NULL)
+	    {
+	      err = er_filter_errid (false);
+	      display_error (0);
+	      goto error_exit;
+	    }
 	  /*
 	   * If this was a forward reference from a class attribute than we
 	   * do not want to mark it as releasable.
 	   */
 	  if (!(inst->flags & INST_FLAG_CLASS_ATT))
-	    ws_release_instance (context->obj);
+	    {
+	      ws_release_instance (context->obj);
+	    }
 	}
       else
 	{
-	  if ((context->obj = db_create_internal (context->cls)) == NULL)
-	    CHECK_ERR (err, er_errid ());
+	  context->obj = db_create_internal (context->cls);
+	  if (context->obj == NULL)
+	    {
+	      err = er_filter_errid (false);
+	      display_error (0);
+	      goto error_exit;
+	    }
 	  /*
 	   * Mark this mop as released so that we can cull it when we
 	   * complete inserting this instance.
@@ -4073,7 +4055,6 @@ ldr_flush (LDR_CONTEXT * context)
   context->flush_total += 1;
   context->inst_count = 0;
 }
-
 
 /*
  * check_commit - check interrupt and commit w.r.t. commit period
@@ -4199,7 +4180,6 @@ ldr_restore_pin_and_drop_obj (LDR_CONTEXT * context, bool drop_obj)
     }
 }
 
-
 /*
  * ldr_act_finish_line - Completes an instance line.
  *    return: void
@@ -4290,7 +4270,6 @@ error_exit:
   context->instance_started = 0;
   return;
 }
-
 
 /*
  * ldr_fini_context - finish parse context
@@ -4386,7 +4365,9 @@ ldr_partition_info (LDR_CONTEXT * context)
 
   if (!context || !context->cls)
     return -1;
+
   AU_DISABLE (au_save);
+
   if (au_fetch_class (context->cls, &smclass,
 		      AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
@@ -4394,6 +4375,7 @@ ldr_partition_info (LDR_CONTEXT * context)
       AU_ENABLE (au_save);
       return NO_ERROR;
     }
+
   if (smclass->partition_of && context->partition_of != smclass->partition_of)
     {
       context->partition_of = smclass->partition_of;
@@ -4402,33 +4384,44 @@ ldr_partition_info (LDR_CONTEXT * context)
       DB_MAKE_NULL (&pclassof);
       DB_MAKE_NULL (&pname);
       DB_MAKE_NULL (&classobj);
-      if ((error = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
-			   &pclassof)) != NO_ERROR)
-	goto error_return;
-      if ((error = db_get (smclass->partition_of, PARTITION_ATT_PNAME,
-			   &pname)) != NO_ERROR)
-	goto error_return;
+
+      error = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
+		      &pclassof);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      error = db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
       if (!DB_IS_NULL (&pname))
 	{
-	  if ((error =
-	       db_get (db_get_object (&pclassof), PARTITION_ATT_CLASSOF,
-		       &classobj)) != NO_ERROR)
-	    goto error_return;
-	  error =
-	    do_init_partition_select (db_get_object (&classobj),
-				      &context->psi);
+	  error = db_get (db_get_object (&pclassof), PARTITION_ATT_CLASSOF,
+			  &classobj);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+
+	  error = do_init_partition_select (db_get_object (&classobj),
+					    &context->psi);
 	}
     }
   else
     {
       AU_ENABLE (au_save);
+
       return NO_ERROR;
     }
+
 error_return:
   AU_ENABLE (au_save);
   pr_clear_value (&pclassof);
   pr_clear_value (&pname);
   pr_clear_value (&classobj);
+
   return error;
 }
 
@@ -4476,6 +4469,8 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	   */
 	  if ((context->class_name = (char *) malloc (len + 1)) == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR,
+		      0);
 	      CHECK_CONTEXT_VALIDITY (context, true);
 	      ldr_abort ();
 	      goto error_exit;
@@ -4492,7 +4487,9 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	      CHECK_ERR (err, err);
 	    }
 	  if (context->psi)
-	    do_clear_partition_select (context->psi);
+	    {
+	      do_clear_partition_select (context->psi);
+	    }
 	  if (ldr_partition_info (context) != NO_ERROR)
 	    {
 	      CHECK_CONTEXT_VALIDITY (context, true);
@@ -4645,12 +4642,14 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   n = context->num_attrs + context->arg_count;
 
   attrs_old = context->attrs;
-  if ((context->attrs = (LDR_ATTDESC *) realloc (context->attrs,
-						 (n +
-						  1) *
-						 sizeof (context->
-							 attrs[0]))) == NULL)
-    free_and_init (attrs_old);	/* Prevent leakage if realloc fails */
+  context->attrs = (LDR_ATTDESC *) realloc (context->attrs,
+					    (n +
+					     1) * sizeof (context->attrs[0]));
+  if (context->attrs == NULL)
+    {
+      free_and_init (attrs_old);	/* Prevent leakage if realloc fails */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+    }
 
   CHECK_PTR (err, context->attrs);
   attdesc = &context->attrs[n];
@@ -4868,10 +4867,17 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     }
   if (context->partition_of && context->psi)
     {
-      if ((err = set_get_element (context->psi->pattr->data.set, 0, &ele))
-	  != NO_ERROR)
-	goto error_exit;
-      if (intl_mbs_casecmp (attr_name, db_get_string (&ele)) == 0)
+      err = set_get_element (context->psi->pattr->data.set, 0, &ele);
+      if (err != NO_ERROR || db_value_is_null (&ele))
+	{
+	  goto error_exit;
+	}
+      if (db_value_type (&ele) != DB_TYPE_STRING)
+	{
+	  pr_clear_value (&ele);
+	  goto error_exit;
+	}
+      if (intl_mbs_casecmp (attr_name, db_pull_string (&ele)) == 0)
 	{
 	  context->key_attr_idx = n;
 	}
@@ -4908,9 +4914,11 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
   int i;
   SM_CLASS *class_;
 
-  if ((context->cls = ldr_find_class (context->class_name)) == NULL)
+  context->cls = ldr_find_class (context->class_name);
+  if (context->cls == NULL)
     {
-      CHECK_ERR (err, er_errid ());
+      display_error (0);
+      return er_filter_errid (false);
     }
 
   for (i = 0; i < context->num_attrs; i += 1)
@@ -4934,7 +4942,6 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
 error_exit:
   return err;
 }
-
 
 /*
  * ldr_act_restrict_attributes - called after ldr_start_class to indicate that
@@ -4962,7 +4969,6 @@ ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type)
   return;
 }
 
-
 /*
  * update_default_count - Updates the default instances counter.
  *    return: none
@@ -4976,7 +4982,6 @@ update_default_count (CLASS_TABLE * table, OID * oid)
   table->total_inserts++;
   return NO_ERROR;
 }
-
 
 /*
  * update_default_instances_stats - Update the statics of the number of
@@ -5043,7 +5048,6 @@ ldr_act_finish (LDR_CONTEXT * context, int parse_error)
     printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			    MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
 }
-
 
 /*
  * insert_instance - Adds the instance to the loader internal oid table,
@@ -5247,7 +5251,6 @@ error_exit:
   return context->obj;
 }
 
-
 /*
  * insert_meth_instance - Inserts the pending instance generated for by a
  * method call into the database.
@@ -5323,7 +5326,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * ldr_act_set_constructor - Specifies a constructor method for the instances
  * of the current class.
@@ -5384,7 +5386,6 @@ error_exit:
   return err;
 }
 
-
 /*
  * add_element - add an element to either the loader's argument array
  *    return: success code (non-zero if ok)
@@ -5411,15 +5412,18 @@ add_element (void ***elements, int *count, int *max, int grow)
 
       elements_old = elements;
 
-      if ((*elements =
-	   (void **) realloc (*elements, sizeof (void *) * resize)) == NULL)
-	free_and_init (*elements_old);	/* Prevent leak if realloc fails */
-
+      *elements = (void **) realloc (*elements, sizeof (void *) * resize);
+      if (*elements == NULL)
+	{
+	  free_and_init (*elements_old);	/* Prevent leak if realloc fails */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	}
       CHECK_PTR (err, *elements);
 
       for (i = *count; i < resize; i++)
-	(*elements)[i] = NULL;
-
+	{
+	  (*elements)[i] = NULL;
+	}
       *max = resize;
     }
   new_ = *count;
@@ -5427,10 +5431,11 @@ add_element (void ***elements, int *count, int *max, int grow)
 
 error_exit:
   if (err != NO_ERROR || *elements == NULL)
-    return (-1);
+    {
+      return (-1);
+    }
   return new_;
 }
-
 
 /*
  * add_argument - Extends the loader's argument array.
@@ -5446,7 +5451,6 @@ add_argument (LDR_CONTEXT * context)
 		       &(context->maxarg), LDR_ARG_GROW_SIZE);
   return index;
 }
-
 
 /*
  * ldr_act_add_argument - spefify paramters to an instance constructor method
@@ -5541,7 +5545,6 @@ invalid_class_id_error (LDR_CONTEXT * context, int id)
   CHECK_CONTEXT_VALIDITY (context, true);
 }
 
-
 /*
  * ldr_act_set_ref_class - Find the class that is about to be used in an
  * instance reference.
@@ -5571,7 +5574,6 @@ ldr_act_set_ref_class (LDR_CONTEXT * context, char *name)
     }
 }
 
-
 /*
  * ldr_act_set_instance_id - Set the instance to be used from the reference
  * class
@@ -5595,7 +5597,6 @@ ldr_act_set_instance_id (LDR_CONTEXT * context, int id)
 	}
     }
 }
-
 
 /*
  * ldr_act_set_ref_class_id - Find the class that is about to be used in an
@@ -5738,8 +5739,6 @@ ldr_init_loader (LDR_CONTEXT * context)
   return (err);
 }
 
-
-
 /*
  * ldr_init - This prepares the loader for use.
  *    return: none
@@ -5784,7 +5783,6 @@ ldr_init (bool verbose)
 
   return NO_ERROR;
 }
-
 
 /*
  * ldr_start - This prepares the loader for actual insertion of data.
@@ -5831,7 +5829,6 @@ ldr_start (int periodic_commit)
   return NO_ERROR;
 }
 
-
 /*
  * ldr_final - shut down the loader.
  *    return: void
@@ -5876,7 +5873,6 @@ ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler,
   ldr_post_interrupt_handler = handler;
 }
 
-
 /*
  * ldr_register_post_commit_handler - registers a post commit callback
  * function.
@@ -5889,7 +5885,6 @@ ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg)
 {
   ldr_post_commit_handler = handler;
 }
-
 
 /*
  * ldr_interrupt_has_occurred - set interrupt type
@@ -5925,7 +5920,6 @@ ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit)
   if (lastcommit != NULL)
     *lastcommit = Last_committed_line;
 }
-
 
 /*
  * ldr_update_statistics - update statistics
@@ -5986,7 +5980,6 @@ print_parser_lineno (FILE * fp)
   else
     printf ("%d\n", loader_yylineno);
 }
-
 
 void
 ldr_act_set_skipCurrentclass (char *classname, size_t size)

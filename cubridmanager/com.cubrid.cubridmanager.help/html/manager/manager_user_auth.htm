@@ -1,0 +1,123 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>사용자 권한 설정</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n사용자 관리\n사용자 권한 설정");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_user_auth.htm\">사용자 관리<\/a> &nbsp;&gt;&nbsp; 사용자 권한 설정<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>사용자 권한 설정</h3>
+<p>CUBRID 매니저의 사용자로 다수를 등록할 수 있으며, 사용자 정보는 CUBRID 매니저 서버에서 저장된다. 따라서, 해당 호스트에 접속하기 위해서는 반드시 사전에 CUBRID 매니저 사용 권한을 취득해야 한다.</p>
+<p>관리자 계정인 <span class="keyword">admin</span>과, <span class="keyword">admin</span>이 등록한 일반 사용자만 CUBRID 매니저에 접속할 수 있다. CUBRID 매니저 사용자 관리 기능은 <span class="keyword">admin</span>에게만 허용되며, &#160;[도구] &gt; [사용자 관리]를 선택해서 실행할 수 있다.</p>
+<p>사용자 관리에서는 각 사용자에게 다음의 권한을 설정할 수 있다.</p>
+<p><img src="images/manager_user_auth.jpg" border="0" alt="" /></p>
+<h6>DB 생성 권한</h6>
+<ul>
+<li><span class="keyword">admin</span> : 새 데이터베이스를 생성할 수 있는 권한을 의미하며, 오직 관리자 계정인 <span class="keyword">admin</span> 사용자한테만 부여된다.</li>
+<li><span class="keyword">none</span> : 권한이 없음을 의미한다.</li>
+</ul>
+<h6>브로커 권한</h6>
+<ul>
+<li><span class="keyword">admin</span> : 브로커를 시작/정지할 수 있고 브로커를 추가, 편집, 삭제할 수 있는 관리 권한을 의미한다.</li>
+<li><span class="keyword">monitor</span> : 브로커의 상태 보기 기능을 통해 브로커의 진행 상황을 모니터링할 수 있는 권한을 의미한다.</li>
+<li><span class="keyword">none</span> : 권한이 없음을 의미한다.</li>
+</ul>
+<h6>상태 모니터 권한</h6>
+<ul>
+<li><span class="keyword">admin</span> : 상태 모니터를 수행할 수 있고 추가, 편집, 삭제할 수 있는 관리 권한을 의미한다.</li>
+<li><span class="keyword">monitor</span> : 상태 모니터를 수행하여 모니터링할 수 있는 권한을 의미한다.</li>
+<li><span class="keyword">none</span> : 권한이 없음을 의미한다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

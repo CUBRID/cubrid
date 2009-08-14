@@ -170,7 +170,6 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   AREA *area;
   size_t adjust;
 #if defined (SERVER_MODE)
-  int n_work_threads, dummy1, dummy2;
   unsigned int i;
   int rv;
 #endif /* SERVER_MODE */
@@ -193,13 +192,12 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   area->need_gc = need_gc;
 
 #if defined (SERVER_MODE)
-  thread_get_info_threads (&n_work_threads, &dummy1, &dummy2);
-  area->n_threads = n_work_threads + NUM_PRE_DEFINED_THREADS;
+  area->n_threads = thread_num_total_threads ();
   if (area->n_threads < 100)
     {
 #if defined(CUBRID_DEBUG)
       fprintf (stderr,
-	       "area(%s)->nthreads is smaller than 100. set to 100.\n",
+	       "area(%s)->n_threads is smaller than 100. set to 100.\n",
 	       area->name);
 #endif
       area->n_threads = 100;

@@ -76,7 +76,8 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 					 LC_COPYAREA_OPERATION operation,
 					 int op_type,
 					 HEAP_SCANCACHE * scan_cache,
-					 int *force_count, bool not_check_fk);
+					 int *force_count, bool not_check_fk,
+					 REPL_INFO_TYPE repl_info);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					OID * oid, HFID * newhfid,
 					OID * newoid,
@@ -106,6 +107,7 @@ extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				 int n_att_id, OID * inst_oid,
 				 OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
-				 bool data_update, bool replyn);
+				 bool data_update, bool replyn,
+				 REPL_INFO_TYPE repl_info);
 
 #endif /* _LOCATOR_SR_H_ */

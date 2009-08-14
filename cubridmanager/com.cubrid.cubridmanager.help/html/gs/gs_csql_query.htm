@@ -1,0 +1,166 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>CSQL에서 SQL 실행</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nCSQL 인터프리터\nCSQL에서 SQL 실행");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_csql_start.htm\">CSQL 인터프리터<\/a> &nbsp;&gt;&nbsp; CSQL에서 SQL 실행<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>CSQL에서 SQL 실행</h3>
+<p>csql을 실행하고 난 후에는 csql&gt; 프롬프트에서 원하는 SQL문을 입력해서 실행할 수 있다. 하나의 SQL 문은 세미콜론(;)으로 끝나도록 입력하며, 여러 개의 SQL문을 한꺼번에 입력할 수도 있다. 입력된 SQL 문들을 실행하기 위해서는 ;x 세션 명령어를 사용한다. 세션 명령어는 ;help 명령으로 간단한 사용법을 찾아 볼 수 있으며 상세한 내용은 "<a href="../csql/csql_sessioncommand.htm">세션 명령어</a>"를 참고한다.&#160;</p>
+<p class="code">% csql demodb<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;CUBRID SQL 수행기<br />
+<br />
+도움말 메시지를 보려면 ';help' 명령어를 입력하세요.<br />
+csql&gt; select * from olympic;<br />
+csql&gt; ;x<br />
+=== &lt;SELECT의 결과, 명령어 라인 1&gt; ===<br />
+<br />
+&#160;&#160;&#160;&#160;host_year &#160;host_nation &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;host_city &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;opening_date &#160;closing<br />
+_date &#160;mascot &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;slogan &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;introduction<br />
+================================================================================<br />
+=======================================================================<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;2004 &#160;'Greece' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'Athens' &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;08/13/2004 &#160;&#160;&#160;08/29/2<br />
+004 &#160;&#160;&#160;'Athena &#160;Phevos' &#160;&#160;&#160;&#160;&#160;'Welcome Home' &#160;&#160;&#160;&#160;&#160;&#160;&#160;'In 2004 the Olympic Games re<br />
+turned to Greece,<br />
+<br />
+the home of both the ancient Olympics and the first modern Olympics. For the fir<br />
+st time ever a record 201 National Olympic<br />
+<br />
+Committees (NOCs) participated in the Olympic Games. The overall tally for event<br />
+s on the programme was 301 (one more than in<br />
+<br />
+Sydney 2000). Popularity in the Games soared to new highs as 3.9 billion people<br />
+had access to the television coverage compared to<br />
+<br />
+3.6 billion for Sydney 2000. Women''s wrestling was included in the program for<br />
+the first time. Swimmer Michael Phelps won 6<br />
+<br />
+gold medals and set a single-Games record with 8 total medals. Leontien Ziljaard<br />
+-van Moorsel became the first female cyclist to<br />
+<br />
+earn 4 career gold medals and 6 total medals, while canoeist Birgit Fischer beca<br />
+me the first athlete in any sport to win two<br />
+<br />
+medals in each of 5 Olympics. Runner Hicham El Guerrouj won both the 1,500m and<br />
+the 5,000m, while on the women''s side Kelly<br />
+<br />
+Holmes triumphed in both the 800m and the 1,500m. In team play, Argentina won th<br />
+e men''s football tournament without giving up a<br />
+<br />
+goal, and the U.S. softball team won by outscoring their opponents 51-1.'<br />
+<span class="var">&lt;중간 생략&gt;</span><br />
+25 개의 열이 selected.<br />
+<br />
+진행 중인 트랜잭션이 커밋 되었습니다.<br />
+<br />
+1 개의 명령어가 실행되었습니다.<br />
+csql&gt; SELECT SUM(n) FROM (SELECT gold FROM participant WHERE nation_code='KOR'<br />
+csql&gt; UNION ALL SELECT silver FROM participant WHERE nation_code='JPN') AS t(n);<br />
+csql&gt; ;x<br />
+<br />
+=== &lt;SELECT의 결과, 명령어 라인 1&gt; ===<br />
+<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;sum(n)<br />
+=============<br />
+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;82<br />
+<br />
+1 개의 열이 selected.<br />
+<br />
+진행 중인 트랜잭션이 커밋 되었습니다.<br />
+<br />
+1 개의 명령어가 실행되었습니다.<br />
+csql&gt; ;exit</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

@@ -1,13 +1,9 @@
 LIBRARY	cubridcs
 EXPORTS
 ;
-; variables
-;
-    PRM_TCP_PORT_ID
-    boot_Host_connected
-;
 ; functions
 ;
+	basename_r
     cas_default_isolation_level
     cas_default_lock_timeout
     cas_send_result_flag
@@ -16,9 +12,11 @@ EXPORTS
     css_does_master_exist
     css_free_conn
     css_gethostname
+    css_ha_server_state_string
     css_make_conn
     css_master_accept
     css_net_recv
+    css_readn
     css_receive_data
     css_receive_request
     css_send_close_request
@@ -30,6 +28,8 @@ EXPORTS
     css_transfer_fd
     css_windows_shutdown
     css_windows_startup
+    css_get_peer_name
+    css_get_sock_name
     db_2pc_attach_transaction
     db_2pc_prepare_transaction
     db_2pc_prepared_transactions
@@ -86,6 +86,7 @@ EXPORTS
     db_datetime_decode
     db_datetime_encode
     db_disable_first_user
+    db_disable_modification
     db_domain_class
     db_domain_next
     db_domain_precision
@@ -170,6 +171,7 @@ EXPORTS
     db_get_timestamp
     db_get_tran_settings
     db_get_type_name
+    db_get_host_connected
     db_grant
     db_identifier
     db_include_oid
@@ -249,6 +251,7 @@ EXPORTS
     db_resolution_name
     db_resolution_next
     db_restart
+    db_restart_ex
     db_revoke
     db_savepoint_transaction
     db_send
@@ -345,6 +348,7 @@ EXPORTS
     tran_reset_wait_times
     utility_get_generic_message
     utility_initialize
+    au_get_public_user_name
 ;
 ; utility functions
 ;
@@ -360,9 +364,6 @@ EXPORTS
 ;
 ; libesql reference's functions
 ;
-    AU_PUBLIC_USER_NAME
-    PRM_COMMIT_ON_SHUTDOWN
-    PRM_QUERY_MODE_SYNC
     db_attdesc_domain
     db_free_attribute_descriptor
     db_get_attribute_descriptor
@@ -387,6 +388,8 @@ EXPORTS
     pt_value_to_db
     pt_values_part
     tp_value_coerce
+    prm_get_commit_on_shutdown
+    prm_get_query_mode_sync
 ;
 ; cubrid_esql reference's functions
 ;

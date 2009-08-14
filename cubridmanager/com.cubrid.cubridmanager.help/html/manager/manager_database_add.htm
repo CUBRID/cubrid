@@ -1,0 +1,141 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>데이터베이스 생성</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 매니저\n데이터베이스\n데이터베이스 생성");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"manager.htm\">CUBRID 매니저<\/a> &nbsp;&gt;&nbsp; <a href=\"manager_database_architecture.htm\">데이터베이스<\/a> &nbsp;&gt;&nbsp; 데이터베이스 생성<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>데이터베이스 생성</h3>
+<p>데이터베이스 생성은 바로가기 메뉴 또는 상단 툴바에서 [데이터베이스 생성 <img src="images/icon_adddb.png" border="0" align="middle" alt="" />]을 클릭하여 수행 할 수 있다. 데이터베이스 생성 마법사는 총 5단계로 구성되어 있다.</p>
+<p>CUBRID 매니저 <span class="keyword">admin</span> 계정만 데이터베이스를 생성할 수 있으며, 이에 대한 자세한 사항은 <a href="manager_user_auth.htm">사용자 권한 설정</a>을&#160;참조한다.</p>
+<h6>1단계: 기본 설정</h6>
+<p>데이터베이스 이름, 일반 볼륨 정보 로그 볼륨 정보와 같은 기본 정보를 설정한다.</p>
+<p><img src="images/manager_database_add_default.jpg" border="0" alt="" /></p>
+<ul>
+<li><strong>데이터베이스 이름</strong>: 데이터베이스 이름은 해당 호스트 내에서 유일해야 하며, 같은 이름이 있으면&#160;경고 메시지를 출력한다. 데이터베이스 이름은 다음과 같은 규칙을 지켜야 한다.
+<ul>
+<li>데이터베이스 이름으로는 숫자와 알파벳만 입력할 수 있으며, 최대 길이는 16자이다.</li>
+<li>Linux (Unix) 파일명으로 사용할 수 없는 글자(공백, *, &amp;, %, $, |, ^, /, ~, \)와 특수 문자는 사용할 수 없다.</li>
+<li>"."과 ".."은 데이터베이스 이름으로 사용할 수 없다.</li>
+</ul>
+</li>
+<li><strong>페이지 크기</strong>: 1024, 2048, 4096, 8192, 16384 중에서 선택한다. 디폴트&#160;값은 <span class="keyword">4096</span>이다. 데이터베이스를 생성한 후에는 변경할 수 없으므로 생성하는&#160;데이터베이스의 사용 목적에 따라 조정한다. 특별한 경우가 아니면 디폴트&#160;값을 사용하는 것을 권장한다.</li>
+<li><strong>일반 볼륨 정보</strong>: 일반 볼륨(generic volume)의 볼륨 크기를 Mbyte 단위로 입력하면, 생성하고자 하는 볼륨의 페이지 수를 자동으로 연산하여 보여 준다. 일반 볼륨 경로의 디폴트 값은 데이터베이스 위치 정보 파일(<span class="keyword">$CUBRID_DATABASES/databases.txt</span>)에 설정된 값이다. CUBRID 매니저와 동일한 서버(PC)에 데이터베이스를 생성한다면, [찾아보기]를 클릭해서 디렉터리를 선택할 수 있다.</li>
+<li><strong>로그 볼륨 정보</strong>: 로그 볼륨(log volume)의 볼륨 크기 및 로그 볼륨 경로를 입력한다. 로그 볼륨 경로의 디폴트 값은&#160;일반 볼륨 경로와 동일한 경로이다.</li>
+</ul>
+<h6>2단계: 추가 볼륨 설정</h6>
+<p>볼륨 형식(generic, data, index, temp)별로 추가 볼륨에 관한 정보를 입력한다. 단, 추가 볼륨 설정에서는 볼륨 형식별 자동 볼륨 추가 설정을 위해 반드시 데이터 볼륨과 인덱스 볼륨을 설정해야 한다.</p>
+<p><img src="images/manager_database_add_addition.jpg" border="0" alt="" /></p>
+<ul>
+<li><strong>추가 볼륨 정보</strong>: 데이터베이스 생성 시에 추가 용량이 예측되는 경우, 이&#160;단계에서 추가될 볼륨에 관한 정보를 설정한다. 새로 추가할 볼륨의 이름과 경로, 볼륨 타입 및 볼륨 크기를 입력하고, [볼륨 추가]를&#160;클릭하면 입력된 설정 정보에 따라 볼륨이 새로 추가된다. 볼륨 형식은 목적에 따라 data, index, temp, generic 중 하나를 선택할 수 있다. 추가 볼륨에 데이터 볼륨과 인덱스 볼륨은 반드시 추가로 입력한다.</li>
+<li><strong>볼륨 추가/볼륨 삭제</strong>: [볼륨 추가]를&#160;클릭하면 입력한 설정 정보에 따라 추가될 볼륨이 리스트에 표시된다. 또한, 볼륨 리스트에서 볼륨을 선택한 후, [볼륨 삭제] 버튼을 클릭하면 추가 볼륨 리스트에서 삭제되어 생성되지 않는다.</li>
+<li><strong>추가 볼륨 리스트</strong>: 데이터베이스 생성 단계에서 추가될 볼륨의 정보를 나열한다.</li>
+</ul>
+<h6>3단계: 자동 볼륨 추가 설정</h6>
+<p>볼륨 형식(data, index)별로 남은 공간이 부족할 경우 자동으로 해당 볼륨을 추가할 수 있는 정보를 설정한다. 데이터 볼륨 또는 인덱스 볼륨에 대해서만 자동 추가 기능을 사용할 수 있다.</p>
+<p><img src="images/manager_database_add_autoadd.jpg" border="0" alt="" /></p>
+<ul>
+<li><strong>볼륨 자동 추가 기능 사용</strong>: 선택하면 해당 형식의 볼륨에 대해 자동 추가 기능을 사용한다.</li>
+<li><strong>여유 공간 비율</strong>: [여유 공간 비율]에 지정한 값과 남은 볼륨이 같을 때, 자동으로 볼륨을 추가한다. 예를 들어, 여유 공간 비율이 5%이면, 기존 볼륨의 여유 공간이 5% 남았을 때, 자동으로 데이터 볼륨을 추가한다. 최소 값은 5이고 최대 값은 30이다.</li>
+<li><strong>볼륨 크기</strong>: 자동으로 추가할 볼륨의 크기를 설정한다.</li>
+</ul>
+<h6>4단계: DBA 비밀번호 설정</h6>
+<p>새로 생성하는 데이터베이스의 DBA 계정의 비밀번호를 설정한다. 비밀번호는 공백을 포함할 수 없고 4자리 이상이어야 한다.</p>
+<p><img src="images/manager_database_add_password.jpg" border="0" alt="" /></p>
+<h6>5단계: 생성 정보 확인</h6>
+<p>4단계까지 설정한 정보를 확인 한 후&#160;데이터베이스를 생성한다. 수정 사항이 있으면&#160;[이전]을 클릭하면 이전 단계로 이동하여 수정할 수 있다.</p>
+<p><img src="images/manager_database_add_confirm.jpg" border="0" alt="" /></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

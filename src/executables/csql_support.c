@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -31,7 +31,9 @@
 #include <setjmp.h>
 #if defined(WINDOWS)
 #include <io.h>
-#endif
+#else /* !WINDOWS */
+#include <pwd.h>
+#endif /* !WINDOWS */
 
 #include "csql.h"
 #include "memory_alloc.h"
@@ -64,6 +66,9 @@ static void iq_pipe_handler (int sig_no);
 static void iq_format_err (char *string, int line_no, int col_no);
 static bool iq_input_device_is_a_tty (void);
 static bool iq_output_device_is_a_tty (void);
+#if !defined(WINDOWS)
+static int csql_get_user_home (char *homebuf, int bufsize);
+#endif /* !WINDOWS */
 
 /*
  * iq_output_device_is_a_tty() - return if output stream is associated with
@@ -86,6 +91,35 @@ iq_input_device_is_a_tty ()
 {
   return (csql_Input_fp == stdin && isatty (fileno (stdin)));
 }
+
+#if !defined(WINDOWS)
+/*
+ * csql_get_user_home() - get user home directory from /etc/passwd file
+  *   return: 0 if success, -1 otherwise
+ *   homedir(in/out) : user home directory
+ *   homedir_size(in) : size of homedir buffer
+ */
+static int
+csql_get_user_home (char *homedir, int homedir_size)
+{
+  struct passwd *ptr = NULL;
+  uid_t userid = getuid ();
+
+  setpwent ();
+
+  while ((ptr = getpwent ()) != NULL)
+    {
+      if (userid == ptr->pw_uid)
+	{
+	  snprintf (homedir, homedir_size, "%s", ptr->pw_dir);
+	  endpwent ();
+	  return NO_ERROR;
+	}
+    }
+  endpwent ();
+  return ER_FAILED;
+}
+#endif /* !WINDOWS */
 
 /*
  * csql_get_real_path() - get the real pathname (without wild/meta chars) using
@@ -114,12 +148,9 @@ csql_get_real_path (const char *pathname)
   return pathname;
 #else /* ! WINDOWS */
   static char real_path[PATH_MAX];	/* real path name */
-  FILE *pp;			/* pipe stream pointer */
-  char cmd[PATH_MAX * 5];	/* to store `echo pathname' command */
-  int bytes;
-  const char *home;
+  char home[PATH_MAX];
 
-  if (!pathname)
+  if (pathname == NULL)
     {
       return NULL;
     }
@@ -135,38 +166,23 @@ csql_get_real_path (const char *pathname)
     }
 
   /*
-   * Do tilde-expansion here, since the default shell (often /bin/sh) may
-   * not understand it.
+   * Do tilde-expansion here.
    */
-  if (pathname[0] == '~' && (home = getenv ("HOME")))
+  if (pathname[0] == '~')
     {
-      sprintf (cmd, "echo %s%s", home, &pathname[1]);
+      if (csql_get_user_home (home, sizeof (home)) != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      snprintf (real_path, sizeof (real_path), "%s%s", home, &pathname[1]);
     }
   else
     {
-      sprintf (cmd, "echo %s", pathname);
+      snprintf (real_path, sizeof (real_path), "%s", pathname);
     }
 
-  pp = popen (cmd, "r");
-  if (pp == NULL)
-    {
-      return (pathname);
-    }
-
-  bytes = fread (real_path, sizeof (char), PATH_MAX - 1, pp);
-  pclose (pp);
-
-  real_path[bytes] = '\0';	/* force trailing null */
-
-  if (bytes > 0)
-    {
-      real_path[bytes - 1] = '\0';	/* replace trailing '\n' to '\0' */
-      return (real_path);
-    }
-  else
-    {
-      return (pathname);
-    }
+  return real_path;
 #endif /* !WINDOWS */
 }
 

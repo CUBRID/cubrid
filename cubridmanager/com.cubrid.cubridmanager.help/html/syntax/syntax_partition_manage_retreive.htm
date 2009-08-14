@@ -1,0 +1,140 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta name="layout-height" content="25810" />
+<meta name="layout-width" content="1072" />
+<title>분할에서 데이터 조회와 조작</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\n분할\n분할 관리\n분할에서 데이터 조회와 조작");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition.htm\">분할<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_partition_manage_retreive.htm\">분할 관리<\/a> &nbsp;&gt;&nbsp; 분할에서 데이터 조회와 조작<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>분할에서 데이터 조회와 조작</h4>
+<h6>설명</h6>
+<p>데이터를 조회할 때에는 분할 테이블뿐만 아니라&#160;각 분할에 대해서도 <span class="keyword">SELECT</span> 문을 이용하여 조회가 가능하다.</p>
+<h6>예제</h6>
+<p>다음은&#160;종목에 따라 리스트 분할한 athlete2 테이블을 생성하고 데이터를 삽입한 뒤 event1 분할과 event2 분할을 조회하는 예제이다.</p>
+<p class="code">CREATE TABLE athlete2( name VARCHAR(40), event VARCHAR(30) )<br />
+PARTITION BY LIST (event) (<br />
+PARTITION event1 VALUES IN ('Swimming', 'Athletics ' ),<br />
+PARTITION event2 VALUES IN ('Judo', 'Taekwondo','Boxing'),<br />
+PARTITION event3 VALUES IN ('Football', 'Basketball', 'Baseball')<br />
+);<br />
+<br />
+INSERT INTO athlete2 VALUES ('Hwang Young-Cho', 'Athletics');<br />
+INSERT INTO athlete2 VALUES ('Lee Seung-Yuop', 'Baseball');<br />
+INSERT INTO athlete2 VALUES ('Moon Dae-Sung','Taekwondo');<br />
+INSERT INTO athlete2 VALUES ('Cho In-Chul', 'Judo');</p>
+<p class="code">csql&gt; select * from athlete2__p__event1;<br />
+csql&gt; ;x<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160; name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; event<br />
+============================================<br />
+&#160; 'Hwang Young-Cho'&#160;&#160;&#160;&#160; 'Athletics'<br />
+<br />
+1 rows selected.</p>
+<p class="code">csql&gt; select * from athlete2__p__event2;<br />
+csql&gt; ;x<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160; name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; event<br />
+============================================<br />
+&#160; 'Moon Dae-Sung'&#160;&#160;&#160;&#160;&#160;&#160; 'Taekwondo'<br />
+&#160; 'Cho In-Chul'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'Judo'<br />
+&#160; &#160;&#160;<br />
+2 rows selected.</p>
+<h6>주의 사항</h6>
+<ul>
+<li>분할 테이블의 각&#160;분할에 대해서 데이터 삽입, 갱신, 삭제 등 데이터 조작은 불가능하다.</li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

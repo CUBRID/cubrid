@@ -1,0 +1,132 @@
+﻿
+<html>
+<head>
+<title>cubrid_is_instance</title>
+<link href="../nhelp.css" rel="Stylesheet" type="text/css" />
+<meta name="MS-HKWD" content="" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("API 레퍼런스\nPHP API\ncubrid_is_instance");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"api.htm\">API 레퍼런스<\/a> &nbsp;&gt;&nbsp; <a href=\"api_php_programming_basic.htm\">PHP API<\/a> &nbsp;&gt;&nbsp; cubrid_is_instance<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>cubrid_is_instance</h3>
+<h6>설명</h6>
+<p><span class="keyword">cubrid_is_instance</span> 함수는 OID가 가리키는 인스턴스가 데이터베이스에 존재하는지 검사하는 데 사용한다.</p>
+<h6>구문</h6>
+<p class="syntax">int <span class="keyword">cubrid_is_instance</span> (int <span class="var">conn_handle</span>, string <span class="var">oid</span>)</p>
+<ul>
+<li><span class="var">conn_handle</span>&#160;: 연결 핸들</li>
+<li><span class="var">oid</span>&#160;:&#160;존재하는지 알기 원하는 인스턴스의 OID</li>
+</ul>
+<h6>리턴 값</h6>
+<ul>
+<li>1 : 인스턴스 있음</li>
+<li>0 : 인스턴스 없음</li>
+<li>-1 : 오류 발생</li>
+</ul>
+<h6>예제</h6>
+<p class="code">$target_oid = cubrid_get ($con, $oid, "customer");<br />
+$res = cubrid_is_instance ($con, $target_oid);<br />
+if ($res == 1) {<br />
+&#160;&#160;&#160;echo "$oid is presents.\n";<br />
+} else if ($res == 0){<br />
+&#160;&#160;&#160;echo "$oid is not presents.\n";<br />
+} else {<br />
+&#160;&#160;&#160;echo "error\n";<br />
+}</p>
+<h6>관련 항목</h6>
+<ul>
+<li class="keyword"><a href="api_php_drop.htm">cubrid_drop</a></li>
+<li class="keyword"><a href="api_php_getclassname.htm">cubrid_get_class_name</a></li>
+</ul>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

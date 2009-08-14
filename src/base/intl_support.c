@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -96,7 +96,7 @@ intl_mbs_chr (const char *mbs, wchar_t wc)
 
   if (!*mbs && wc)
     {
-      mbs = NULL;
+      return NULL;
     }
 
   return (char *) mbs;
@@ -155,6 +155,10 @@ intl_mbs_nth (const char *mbs, size_t n)
   int clen;
 
   assert (mbs != NULL);
+  if (mbs == NULL)
+    {
+      return NULL;
+    }
 
   if (!intl_Mbs_support)
     {
@@ -459,26 +463,28 @@ intl_mbs_nlower (char *dest, const char *src, const int max_len)
       return 0;
     }
 
+
+  dest[0] = '\0';
+
   if (src)
     {
       length_in_bytes = strlen (src);
-    }
 
-  if (length_in_bytes >= max_len)
-    {
-      length_in_bytes = max_len - 1;	/* include null */
-    }
-  if (length_in_bytes)
-    {
-      memcpy (dest, src, length_in_bytes);
-      intl_char_count ((unsigned char *) dest, length_in_bytes,
-		       lang_charset (), &char_count);
-      intl_lower_string ((unsigned char *) dest, char_count, lang_charset ());
-      dest[length_in_bytes] = '\0';
-    }
-  else
-    {
-      dest[0] = '\0';
+      if (length_in_bytes >= max_len)
+	{
+	  length_in_bytes = max_len - 1;	/* include null */
+	}
+
+      if (length_in_bytes > 0)
+	{
+	  memcpy (dest, src, length_in_bytes);
+	  intl_char_count ((unsigned char *) dest, length_in_bytes,
+			   lang_charset (), &char_count);
+	  intl_lower_string ((unsigned char *) dest, char_count,
+			     lang_charset ());
+	  dest[length_in_bytes] = '\0';
+	}
+
     }
 
   return 0;
@@ -998,7 +1004,7 @@ intl_language (int category)
 #if defined(WINDOWS) || defined(SOLARIS)
   return INTL_LANG_ENGLISH;
 #else /* !WINDOWS && !SOLARIS */
-  if (strcmp (loc, LOCALE_KOREAN) == 0)
+  if (loc != NULL && strcmp (loc, LOCALE_KOREAN) == 0)
     {
       return INTL_LANG_KOREAN;
     }
@@ -1023,7 +1029,7 @@ intl_zone (int category)
 #if defined(WINDOWS) || defined(SOLARIS)
   return INTL_ZONE_US;
 #else /* !WINDOWS && !SOLARIS */
-  if (strcmp (loc, LOCALE_KOREAN) == 0)
+  if (loc != NULL && strcmp (loc, LOCALE_KOREAN) == 0)
     {
       return INTL_ZONE_KR;
     }
@@ -1048,7 +1054,7 @@ intl_codeset (int category)
 #if defined(WINDOWS) || defined(SOLARIS)
   return INTL_CODESET_ISO88591;
 #else /* !WINDOWS && !SOLARIS */
-  if (strcmp (loc, LOCALE_KOREAN) == 0)
+  if (loc != NULL && strcmp (loc, LOCALE_KOREAN) == 0)
     {
       return INTL_CODESET_KSC5601_EUC;
     }

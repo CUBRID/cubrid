@@ -1500,9 +1500,12 @@ qdump_print_like_eval_term (EVAL_TERM * term_p)
       return false;
     }
 
-  if (et_like_p->esc_char_set)
+  if (et_like_p->esc_char)
     {
-      fprintf (foutput, "ESC-CHAR:%c", et_like_p->esc_char);
+      if (!qdump_print_value (et_like_p->esc_char))
+	{
+	  return false;
+	}
     }
 
   return true;
@@ -2215,6 +2218,11 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->outarith list:");
       qdump_print_arith (ARITH_EXP, (void *) node_p->outarith_list);
+    }
+
+  if (node_p->is_always_false)
+    {
+      fprintf (foutput, "-->always-false\n");
     }
 
   return true;

@@ -80,9 +80,9 @@ struct largeobjmgr_alloc_npages
   int nth_next_free;
 };
 
-static FSIZE_T largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid,
-				      int op_mode, FSIZE_T offset,
-				      FSIZE_T length, char *buffer);
+static INT64 largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid,
+				    int op_mode, INT64 offset,
+				    INT64 length, char *buffer);
 
 static void largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv);
 static bool largeobjmgr_slot_split_possible (THREAD_ENTRY * thread_p,
@@ -128,23 +128,23 @@ static int largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 				     LARGEOBJMGR_DIRSTATE * ds,
 				     LARGEOBJMGR_DIRENTRY * dir_entry_p,
 				     int bg_doffset, int end_doffset);
-static FSIZE_T largeobjmgr_insert_internal (THREAD_ENTRY * thread_p,
-					    LOID * loid,
-					    LARGEOBJMGR_DIRSTATE * ds,
-					    FSIZE_T lo_offset, FSIZE_T length,
-					    char *buffer);
-static FSIZE_T largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p,
-					     LOID * loid,
-					     LARGEOBJMGR_DIRSTATE * ds,
-					     FSIZE_T length, char *buffer);
-static FSIZE_T largeobjmgr_append_internal (THREAD_ENTRY * thread_p,
-					    LOID * loid,
-					    LARGEOBJMGR_DIRSTATE * ds,
-					    FSIZE_T offset, FSIZE_T length,
-					    char *buffer);
-static FSIZE_T largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid,
-				    int opr_mode, FSIZE_T offset,
-				    FSIZE_T length, char *buffer);
+static int largeobjmgr_insert_internal (THREAD_ENTRY * thread_p,
+					LOID * loid,
+					LARGEOBJMGR_DIRSTATE * ds,
+					INT64 lo_offset, int length,
+					char *buffer);
+static int largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p,
+					 LOID * loid,
+					 LARGEOBJMGR_DIRSTATE * ds,
+					 int length, char *buffer);
+static int largeobjmgr_append_internal (THREAD_ENTRY * thread_p,
+					LOID * loid,
+					LARGEOBJMGR_DIRSTATE * ds,
+					INT64 offset, int length,
+					char *buffer);
+static INT64 largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid,
+				  int opr_mode, INT64 offset,
+				  INT64 length, char *buffer);
 static int largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid);
 
 static bool largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p,
@@ -1355,10 +1355,10 @@ exit_on_error:
  *   length(in): Length of data to be inserted
  *   buffer(in): Data to be inserted
  */
-static FSIZE_T
+static int
 largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
-			     LARGEOBJMGR_DIRSTATE * ds, FSIZE_T lo_offset,
-			     FSIZE_T length, char *buffer)
+			     LARGEOBJMGR_DIRSTATE * ds, INT64 lo_offset,
+			     int length, char *buffer)
 {
   LARGEOBJMGR_DIRENTRY *cur_dir_entry_p;
   LARGEOBJMGR_DIRENTRY temp_dir_entry;
@@ -1369,8 +1369,8 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
   INT16 right_slot_id;
   char *temp_area = NULL;
   int plength;
-  FSIZE_T xlength;
-  FSIZE_T inserted_length;
+  int xlength;
+  int inserted_length;
   int ret = ER_FAILED;
 
   inserted_length = 0;
@@ -1666,9 +1666,9 @@ exit_on_error:
  * Note: Distribute the given data to a set of data pages and insert
  *       corresponding new entries to the directory at the current position.
  */
-static FSIZE_T
+static int
 largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
-			      LARGEOBJMGR_DIRSTATE * ds, FSIZE_T length,
+			      LARGEOBJMGR_DIRSTATE * ds, int length,
 			      char *buffer)
 {
   VPID vpid;
@@ -1680,9 +1680,9 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
   int ent_cnt;
   LARGEOBJMGR_DIRENTRY *dir_entries = NULL;
   int index;
-  FSIZE_T buf_offset;
+  int buf_offset;
   char *buf_ptr;
-  FSIZE_T inserted_length;
+  int inserted_length;
   LOG_DATA_ADDR addr;
   LARGEOBJMGR_ALLOC_NPAGES alloc;
   LARGEOBJMGR_ALLOC_NPAGES *new_alloc = NULL;
@@ -1791,20 +1791,22 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
 	  /* Use one of the newly allocated pages */
 	  recdes.length = MIN (length - buf_offset,
 			       LARGEOBJMGR_MAX_DATA_SLOT_SIZE);
-	  page_ptr = largeobjmgr_fetch_nxallocset_page (thread_p, new_alloc,
-							&vpid);
-	  if (page_ptr == NULL)
+	  if (new_alloc != NULL)
 	    {
-	      if (new_alloc != NULL)
+	      page_ptr = largeobjmgr_fetch_nxallocset_page (thread_p,
+							    new_alloc, &vpid);
+	      if (page_ptr == NULL)
 		{
 		  (void) largeobjmgr_deallocset_all_pages (thread_p,
 							   new_alloc);
+		  goto exit_on_error;
 		}
-	      goto exit_on_error;
 	    }
 	}
 
-      if (spage_insert (thread_p, page_ptr, &recdes, &slotid) != SP_SUCCESS)
+      if (page_ptr == NULL
+	  || spage_insert (thread_p, page_ptr, &recdes,
+			   &slotid) != SP_SUCCESS)
 	{
 	  if (new_alloc != NULL)
 	    {
@@ -1908,17 +1910,17 @@ exit_on_error:
  *
  * Note: If offset > lo_length, a hole is inserted to the end.
  */
-static FSIZE_T
+static int
 largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
-			     LARGEOBJMGR_DIRSTATE * ds, FSIZE_T offset,
-			     FSIZE_T length, char *buffer)
+			     LARGEOBJMGR_DIRSTATE * ds, INT64 offset,
+			     int length, char *buffer)
 {
   LARGEOBJMGR_DIRENTRY *cur_dir_entry_p;
   LARGEOBJMGR_DIRENTRY temp_dir_entry;
   PAGE_PTR page_ptr = NULL;
   int hole_length, plength;
-  FSIZE_T xlength;
-  FSIZE_T appended_length;
+  int xlength;
+  int appended_length;
   int ret = ER_FAILED;
 
   appended_length = 0;
@@ -1929,7 +1931,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
       if (offset > ds->tot_length)
 	{
 	  /* a hole need to be inserted */
-	  hole_length = offset - ds->tot_length;
+	  hole_length = (int) (offset - ds->tot_length);
 	  LARGEOBJMGR_SET_HOLE_DIRENTRY (&temp_dir_entry, hole_length);
 
 	  ret = largeobjmgr_dir_insert (thread_p, ds, &temp_dir_entry, 1);
@@ -1948,7 +1950,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 						  length, buffer);
 	  if (xlength < 0)
 	    {
-	      ret = (int) xlength;
+	      ret = xlength;
 	      goto exit_on_error;
 	    }
 	  appended_length += xlength;
@@ -1989,7 +1991,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 							  ds, length, buffer);
 		  if (xlength < 0)
 		    {
-		      ret = (int) xlength;
+		      ret = xlength;
 		      goto exit_on_error;
 		    }
 
@@ -2020,7 +2022,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 							  ds, length, buffer);
 		  if (xlength < 0)
 		    {
-		      ret = (int) xlength;
+		      ret = xlength;
 		      goto exit_on_error;
 		    }
 		  appended_length += xlength;
@@ -2090,7 +2092,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 						      length, buffer);
 	      if (xlength < 0)
 		{
-		  ret = (int) xlength;
+		  ret = xlength;
 		  goto exit_on_error;
 		}
 	      appended_length += xlength;
@@ -2138,25 +2140,25 @@ exit_on_error:
  *       Operation mode can only be LARGEOBJMGR_READ_MODE, LARGEOBJMGR_WRITE_MODE, LARGEOBJMGR_DELETE_MODE
  *       and LARGEOBJMGR_TRUNCATE_MODE.
  */
-static FSIZE_T
+static INT64
 largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
-		     FSIZE_T offset, FSIZE_T length, char *buffer)
+		     INT64 offset, INT64 length, char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
   SCAN_CODE lo_scan;
   LARGEOBJMGR_DIRENTRY *cur_dir_entry_p;
-  FSIZE_T xlength;
+  int xlength;
   PAGE_PTR page_ptr = NULL;
   RECDES recdes;
   char *buffer_ptr;
-  FSIZE_T end_offset;
-  FSIZE_T cur_slot_begin_offset;
+  INT64 end_offset;
+  INT64 cur_slot_begin_offset;
   int cur_slot_length;
   int process_begin_offset;
   int process_end_offset;
   int cur_data_length;
-  FSIZE_T processed_length;
-  FSIZE_T process_length;
+  INT64 processed_length;
+  INT64 process_length;
   int ret = ER_FAILED;
 
   ds = &ds_info;
@@ -2224,7 +2226,7 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 	    }
 	  else
 	    {
-	      process_begin_offset = offset - cur_slot_begin_offset;
+	      process_begin_offset = (int) (offset - cur_slot_begin_offset);
 	    }
 
 	  if (cur_slot_begin_offset + cur_slot_length <= end_offset)
@@ -2233,7 +2235,7 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 	    }
 	  else
 	    {
-	      process_end_offset = end_offset - cur_slot_begin_offset;
+	      process_end_offset = (int) (end_offset - cur_slot_begin_offset);
 	    }
 
 	  /* process current slot according to the mode */
@@ -2339,7 +2341,8 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 	  /* append data to the end */
 	  xlength = largeobjmgr_append_internal (thread_p, loid, ds,
 						 offset + processed_length,
-						 length - processed_length,
+						 (int) (length -
+							processed_length),
 						 buffer + processed_length);
 	  if (xlength < 0)
 	    {
@@ -2421,8 +2424,8 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
   temp_page_ptr = NULL;
 
   /* first compress data pages */
-  lo_scan =
-    largeobjmgr_dir_open (thread_p, loid, 0, LARGEOBJMGR_COMPRESS_MODE, ds);
+  lo_scan = largeobjmgr_dir_open (thread_p, loid, 0,
+				  LARGEOBJMGR_COMPRESS_MODE, ds);
   if (lo_scan == S_ERROR)
     {
       return ER_FAILED;
@@ -2790,8 +2793,8 @@ exit_on_error:
  *   oid(in): OID of the object associated with this OID
  */
 LOID *
-xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T length,
-		     char *buffer, FSIZE_T est_lo_len, OID * oid)
+xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
+		     char *buffer, int est_lo_len, OID * oid)
 {
   int est_data_pg_cnt;
   int dir_pg_cnt;
@@ -2878,12 +2881,12 @@ xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid)
  *   length(in): Length of data to be read
  *   buffer(in): Buffer where data read is to be copied
  */
-FSIZE_T
-xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
-		   FSIZE_T length, char *buffer)
+int
+xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
+		   int length, char *buffer)
 {
-  return largeobjmgr_process (thread_p, loid, LARGEOBJMGR_READ_MODE, offset,
-			      length, buffer);
+  return (int) largeobjmgr_process (thread_p, loid, LARGEOBJMGR_READ_MODE,
+				    offset, length, buffer);
 }
 
 /*
@@ -2895,11 +2898,11 @@ xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
  *   length(in): Length of data to be written
  *   buffer(in):Buffer from which data is to be copied
  */
-static FSIZE_T
+static INT64
 largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid, int op_mode,
-		       FSIZE_T offset, FSIZE_T length, char *buffer)
+		       INT64 offset, INT64 length, char *buffer)
 {
-  FSIZE_T ret_length = ER_FAILED;
+  INT64 ret_length = ER_FAILED;
 
 
   if (log_start_system_op (thread_p) == NULL)
@@ -2945,12 +2948,12 @@ exit_on_error:
  *   length(in): Length of data to be written
  *   buffer(in):Buffer from which data is to be copied
  */
-FSIZE_T
-xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
-		    FSIZE_T length, char *buffer)
+int
+xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
+		    int length, char *buffer)
 {
-  return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_WRITE_MODE,
-				offset, length, buffer);
+  return (int) largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_WRITE_MODE,
+				      offset, length, buffer);
 }
 
 /*
@@ -2960,9 +2963,9 @@ xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
  *   offset(in): Offset where deletion is to start
  *   length(in): Length of data to be deleted
  */
-FSIZE_T
-xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
-		     FSIZE_T length)
+INT64
+xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
+		     INT64 length)
 {
   return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_DELETE_MODE,
 				offset, length, NULL);
@@ -2974,8 +2977,8 @@ xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
  *   loid(in): Large Object Identifier
  *   offset(in): Offset to truncate large object from
  */
-FSIZE_T
-xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset)
+INT64
+xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset)
 {
   return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_TRUNCATE_MODE,
 				offset, -1, NULL);
@@ -2989,12 +2992,12 @@ xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset)
  *   length(in): Length of data to be inserted
  *   buffer(in): Data to be inserted
  */
-FSIZE_T
-xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T offset,
-		     FSIZE_T length, char *buffer)
+int
+xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
+		     int length, char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
-  FSIZE_T inserted_length;
+  int inserted_length;
   int ret = ER_FAILED;
 
   ds = &ds_info;
@@ -3069,12 +3072,12 @@ exit_on_error:
  *   length(in): Length of data to be appended
  *   buffer(in): Data to be appended
  */
-FSIZE_T
-xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, FSIZE_T length,
+int
+xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length,
 		     char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
-  FSIZE_T appended_length;
+  int appended_length;
   int ret = ER_FAILED;
 
   ds = &ds_info;
@@ -3182,7 +3185,7 @@ exit_on_error:
  *   return: length of large object or -1
  *   loid(in): Large Object Identifier
  */
-FSIZE_T
+INT64
 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid)
 {
   return largeobjmgr_dir_get_lolength (thread_p, loid);

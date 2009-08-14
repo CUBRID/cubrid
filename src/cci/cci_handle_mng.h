@@ -42,6 +42,8 @@
 #error include error
 #endif
 
+#include "config.h"
+
 /************************************************************************
  * IMPORTED SYSTEM HEADER FILES						*
  ************************************************************************/
@@ -151,7 +153,6 @@ typedef struct
 typedef struct
 {
   T_REQ_HANDLE *req_handle;
-  SOCKET sock_fd;
   char flag;
   int max_col_size;
   T_CCI_ERROR err_buf;
@@ -162,9 +163,27 @@ typedef struct
 
 typedef struct
 {
+  char *sql;
+  int req_handle;
+  char available;
+  int next;
+} T_STMT_POOL_NODE;
+
+typedef struct
+{
+  T_STMT_POOL_NODE *stmt_list;
+  int head_index;
+  int tail_index;
+  int max_pool_entries;
+  int cur_pool_entries;
+} T_STMT_POOL;
+
+typedef struct
+{
   char is_first;
   char con_status;
   char tran_status;
+  char autocommit_mode;
   unsigned char ip_addr[4];
   int port;
   char *db_name;
@@ -179,6 +198,8 @@ typedef struct
   int req_handle_count;
   int cas_pid;
   char broker_info[BROKER_INFO_SIZE];
+  char cas_info[CAS_INFO_SIZE];
+  T_STMT_POOL stmt_pool;
 } T_CON_HANDLE;
 
 /************************************************************************
@@ -205,6 +226,19 @@ extern void req_handle_col_info_free (T_REQ_HANDLE * req_handle);
 extern void hm_conv_value_buf_clear (T_VALUE_BUF * val_buf);
 extern void req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse);
 extern void hm_invalidate_all_req_handle (T_CON_HANDLE * con_handle);
+extern int hm_ip_str_to_addr (char *ip_str, unsigned char *ip_addr);
+extern int hm_get_con_from_pool (unsigned char *ip_addr, int port,
+				 char *dbname, char *dbuser, char *dbpasswd);
+extern int hm_put_con_to_pool (int con);
+extern int hm_get_req_handle_from_pool (T_CON_HANDLE * con_handle, char *sql);
+extern bool hm_mark_stmt_pool_node_available (T_STMT_POOL * stmt_pool,
+					      int req_handle);
+extern void hm_mark_all_stmt_pool_node_available (T_STMT_POOL * stmt_pool);
+extern int hm_add_stmt_node_to_pool (T_STMT_POOL * stmt_pool,
+				     T_STMT_POOL_NODE * node);
+extern void hm_make_stmt_pool_node (T_STMT_POOL_NODE * node, char *sql,
+				    int req_handle);
+
 
 /************************************************************************
  * PUBLIC VARIABLES							*

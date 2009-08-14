@@ -81,6 +81,20 @@ typedef enum
   CLASS_RESOLUTION
 } RESOLUTION_QUALIFIER;
 
+typedef enum
+{
+  SERIAL_NAME,
+  SERIAL_OWNER_NAME,
+  SERIAL_CURRENT_VAL,
+  SERIAL_INCREMENT_VAL,
+  SERIAL_MAX_VAL,
+  SERIAL_MIN_VAL,
+  SERIAL_CYCLIC,
+  SERIAL_STARTED,
+
+  SERIAL_VALUE_INDEX_MAX
+} SERIAL_VALUE_INDEX;
+
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
 static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered,
@@ -132,7 +146,7 @@ static int emit_autoincrement_def (DB_ATTRIBUTE * attribute);
 static void emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier);
 static void emit_methfile_def (DB_METHFILE * methfile);
 static void emit_partition_parts (MOP parts, int partcnt);
-static void emit_partition_info (MOP clsobj, int do_auth);
+static void emit_partition_info (MOP clsobj);
 static int emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (void);
 static int emit_foreign_key (DB_OBJLIST * classes);
@@ -559,25 +573,20 @@ export_serial (FILE * outfp)
   int i;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
-  DB_VALUE serial_val;
-  const char *query =
-    "select owner.name, name, cast(current_val as string), "
-    "cast(increment_val as string), "
-    "cast(min_val as string), cast( max_val as string), "
-    "cast(cyclic as string), cast(started as string), name "
+  DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+
+  /*
+   * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
+   * when changing the following query. Notice the order of the result.
+   */
+  const char *query = "select name, owner.name, "
+    "current_val, "
+    "increment_val, "
+    "max_val, "
+    "min_val, "
+    "cast(cyclic as integer), "
+    "cast(started as integer) "
     "from db_serial where class_name is null and att_name is null";
-  const char *format_str[] = {
-    "call find_user('%s') on class db_user to auser;\n",
-    "create serial %s%s%s\n",
-    "\t start with %s \n",
-    "\t increment by %s \n",
-    "\t minvalue %s \n",
-    "\t maxvalue %s \n",
-    "\t %scycle;\n",
-    "update db_serial set owner = :auser, started=%s",
-    " where name= '%s';\n\n",
-    NULL
-  };
 
   if ((error = db_execute (query, &query_result, &query_error)) < 0)
     goto err;
@@ -587,52 +596,151 @@ export_serial (FILE * outfp)
 
   do
     {
-      for (i = 0; format_str[i]; i++)
+      for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
 	{
 	  if ((error = db_query_get_tuple_value (query_result,
-						 i, &serial_val)) < 0)
+						 i, &values[i])) < 0)
 	    {
 	      goto err;
 	    }
-	  if (i == 0)
+
+	  /* Validation of the result value */
+	  switch (i)
 	    {
-	      if (DB_IS_NULL (&serial_val))
-		{
-		  fprintf (outfp, format_str[i], "PUBLIC");
-		}
-	      else
-		{
-		  fprintf (outfp, format_str[i], DB_GET_STRING (&serial_val));
-		}
+	    case SERIAL_OWNER_NAME:
+	      {
+		if (DB_IS_NULL (&values[i])
+		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		  {
+		    db_make_string (&values[i], "PUBLIC");
+		  }
+	      }
+	      break;
+
+	    case SERIAL_NAME:
+	      {
+		if (DB_IS_NULL (&values[i])
+		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_INVALID_SERIAL_VALUE, 0);
+		    error = ER_INVALID_SERIAL_VALUE;
+		    goto err;
+		  }
+	      }
+	      break;
+
+	    case SERIAL_CURRENT_VAL:
+	    case SERIAL_INCREMENT_VAL:
+	    case SERIAL_MAX_VAL:
+	    case SERIAL_MIN_VAL:
+	      {
+		if (DB_IS_NULL (&values[i])
+		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_INVALID_SERIAL_VALUE, 0);
+		    error = ER_INVALID_SERIAL_VALUE;
+		    goto err;
+		  }
+	      }
+	      break;
+
+	    case SERIAL_CYCLIC:
+	    case SERIAL_STARTED:
+	      {
+		if (DB_IS_NULL (&values[i])
+		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_INVALID_SERIAL_VALUE, 0);
+		    error = ER_INVALID_SERIAL_VALUE;
+		    goto err;
+		  }
+	      }
+	      break;
+
+	    default:
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_INVALID_SERIAL_VALUE, 0);
+	      error = ER_INVALID_SERIAL_VALUE;
+	      goto err;
 	    }
-	  else
+	}
+
+      if (DB_GET_INTEGER (&values[SERIAL_STARTED]) == 1)
+	{
+	  /* Calculate next value of serial */
+	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL],
+					&values[SERIAL_CURRENT_VAL],
+					&diff_value);
+	  if (error != NO_ERROR)
 	    {
-	      if (DB_IS_NULL (&serial_val))
+	      goto err;
+	    }
+
+	  error =
+	    numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL],
+				      &diff_value, &answer_value);
+	  if (error != NO_ERROR)
+	    {
+	      goto err;
+	    }
+	  /* increment > diff */
+	  if (DB_GET_INTEGER (&answer_value) > 0)
+	    {
+	      /* no cyclic case */
+	      if (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_INVALID_SERIAL_VALUE, 0);
-		  error = ER_INVALID_SERIAL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW,
+			  0);
+		  error = ER_NUM_OVERFLOW;
 		  goto err;
 		}
 
-	      if (i == 1)
-		{
-		  char *name = DB_GET_STRING (&serial_val);
-		  fprintf (outfp, format_str[i], PRINT_IDENTIFIER (name));
-		}
-	      else if (i == 6)
-		{
-		  char *cyclic = DB_GET_STRING (&serial_val);
-		  fprintf (outfp, format_str[i],
-			   (strcmp ("1", cyclic) == 0) ? "" : "no");
-		}
-	      else
-		{
-		  fprintf (outfp, format_str[i], DB_GET_STRING (&serial_val));
-		}
+	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
+	      values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
 	    }
+	  /* increment <= diff */
+	  else
+	    {
+	      error = numeric_db_value_add (&values[SERIAL_CURRENT_VAL],
+					    &values[SERIAL_INCREMENT_VAL],
+					    &answer_value);
+	      if (error != NO_ERROR)
+		{
+		  goto err;
+		}
 
-	  db_value_clear (&serial_val);
+	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
+	      values[SERIAL_CURRENT_VAL] = answer_value;
+	    }
+	}
+
+      fprintf (outfp, "call find_user('%s') on class db_user to auser;\n",
+	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
+      fprintf (outfp, "create serial %s%s%s\n",
+	       PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
+      fprintf (outfp, "\t start with %s\n",
+	       numeric_db_value_print (&values[SERIAL_CURRENT_VAL]));
+      fprintf (outfp, "\t increment by %s\n",
+	       numeric_db_value_print (&values[SERIAL_INCREMENT_VAL]));
+      fprintf (outfp, "\t minvalue %s\n",
+	       numeric_db_value_print (&values[SERIAL_MIN_VAL]));
+      fprintf (outfp, "\t maxvalue %s\n",
+	       numeric_db_value_print (&values[SERIAL_MAX_VAL]));
+      fprintf (outfp, "\t %scycle;\n",
+	       (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
+      fprintf (outfp,
+	       "call change_serial_owner ('%s', '%s') on class db_serial;\n\n",
+	       DB_PULL_STRING (&values[SERIAL_NAME]),
+	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
+
+      db_value_clear (&diff_value);
+      db_value_clear (&answer_value);
+      for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	{
+	  db_value_clear (&values[i]);
 	}
     }
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
@@ -931,11 +1039,11 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	  fprintf (output_file, ";\n");
 	}
       else
-	fprintf (output_file, "CREATE CLASS %s%s%s;\n",
-		 PRINT_IDENTIFIER (name));
+	{
+	  fprintf (output_file, "CREATE CLASS %s%s%s;\n",
+		   PRINT_IDENTIFIER (name));
+	}
 
-      if (do_auth)
-	emit_class_owner (output_file, cl->op);
       fprintf (output_file, "\n");
     }
 
@@ -961,20 +1069,40 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
       is_vclass = db_is_vclass (cl->op);
       name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
-	continue;
+	{
+	  continue;
+	}
 
       class_type = (is_vclass) ? "VCLASS" : "CLASS";
 
       if (emit_all_attributes (cl->op, class_type, &has_indexes))
-	found = true;
+	{
+	  found = true;
+	}
 
       if (emit_methods (cl->op, class_type))
-	found = true;
+	{
+	  found = true;
+	}
 
       if (found)
-	(void) fprintf (output_file, "\n");
+	{
+	  (void) fprintf (output_file, "\n");
+	}
       if (is_partitioned)
-	emit_partition_info (cl->op, do_auth);
+	{
+	  emit_partition_info (cl->op);
+	}
+
+      /*
+       * change_owner method should be called after adding all columns.
+       * If some column has auto_increment attribute, change_owner method
+       * will change serial object's owner related to that attribute.
+       */
+      if (do_auth)
+	{
+	  emit_class_owner (output_file, cl->op);
+	}
     }
 
   fprintf (output_file, "\n");
@@ -1001,6 +1129,11 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
       fprintf (output_file, "\n");
       for (cl = classes; cl != NULL; cl = cl->next)
 	{
+	  name = db_get_class_name (cl->op);
+	  if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
+	    {
+	      continue;
+	    }
 	  au_export_grants (output_file, cl->op, delimited_id_flag);
 	}
     }
@@ -1075,19 +1208,26 @@ emit_query_specs (DB_OBJLIST * classes)
 		       * each column
 		       */
 		      parser = parser_create_parser ();
+		      if (parser == NULL)
+			{
+			  continue;
+			}
+
 		      query_ptr =
 			parser_parse_string (parser,
 					     db_query_spec_string (s));
-
-		      parser_walk_tree (parser, *query_ptr,
-					pt_has_using_index_clause,
-					&has_using_index, NULL, NULL);
-
-		      if (has_using_index == true)
+		      if (query_ptr != NULL)
 			{
-			  /* all view specs should be emitted at index file */
-			  ml_append (&vclass_list_has_using_index, cl->op,
-				     NULL);
+			  parser_walk_tree (parser, *query_ptr,
+					    pt_has_using_index_clause,
+					    &has_using_index, NULL, NULL);
+
+			  if (has_using_index == true)
+			    {
+			      /* all view specs should be emitted at index file */
+			      ml_append (&vclass_list_has_using_index, cl->op,
+					 NULL);
+			    }
 			}
 		      parser_free_parser (parser);
 		    }
@@ -1097,16 +1237,24 @@ emit_query_specs (DB_OBJLIST * classes)
 		      for (s = specs; s; s = db_query_spec_next (s))
 			{
 			  parser = parser_create_parser ();
+			  if (parser == NULL)
+			    {
+			      continue;
+			    }
+
 			  query_ptr =
 			    parser_parse_string (parser,
 						 db_query_spec_string (s));
+			  if (query_ptr != NULL)
+			    {
+			      null_spec =
+				pt_print_query_spec_no_list (parser,
+							     *query_ptr);
 
-			  null_spec =
-			    pt_print_query_spec_no_list (parser, *query_ptr);
-			  fprintf (output_file,
-				   "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-				   PRINT_IDENTIFIER (name), null_spec);
-
+			      fprintf (output_file,
+				       "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
+				       PRINT_IDENTIFIER (name), null_spec);
+			    }
 			  parser_free_parser (parser);
 			}
 		    }
@@ -1199,15 +1347,21 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 		       * each column
 		       */
 		      parser = parser_create_parser ();
+		      if (parser == NULL)
+			{
+			  continue;
+			}
 		      query_ptr =
 			parser_parse_string (parser,
 					     db_query_spec_string (s));
-
-		      null_spec =
-			pt_print_query_spec_no_list (parser, *query_ptr);
-		      fprintf (output_file,
-			       "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-			       PRINT_IDENTIFIER (name), null_spec);
+		      if (query_ptr != NULL)
+			{
+			  null_spec =
+			    pt_print_query_spec_no_list (parser, *query_ptr);
+			  fprintf (output_file,
+				   "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
+				   PRINT_IDENTIFIER (name), null_spec);
+			}
 		      parser_free_parser (parser);
 		    }
 		}
@@ -1404,8 +1558,8 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
   int unique_flag = 0;
   int reverse_unique_flag = 0;
   int index_flag = 0;
-  DB_VALUE cur_val, started_val, sr_name;
-  const char *name;
+  DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
+  const char *name, *start_with;
 
   attribute_list = db_get_attributes (class_);
 
@@ -1475,6 +1629,9 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		  DB_MAKE_NULL (&sr_name);
 		  DB_MAKE_NULL (&cur_val);
 		  DB_MAKE_NULL (&started_val);
+		  DB_MAKE_NULL (&min_val);
+		  DB_MAKE_NULL (&max_val);
+		  DB_MAKE_NULL (&inc_val);
 
 		  sr_error = db_get (a->auto_increment, "name", &sr_name);
 		  if (sr_error < 0)
@@ -1489,6 +1646,28 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		    }
 
 		  sr_error =
+		    db_get (a->auto_increment, "increment_val", &inc_val);
+		  if (sr_error < 0)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+
+		  sr_error = db_get (a->auto_increment, "min_val", &min_val);
+		  if (sr_error < 0)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+
+		  sr_error = db_get (a->auto_increment, "max_val", &max_val);
+		  if (sr_error < 0)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+
+		  sr_error =
 		    db_get (a->auto_increment, "started", &started_val);
 		  if (sr_error < 0)
 		    {
@@ -1496,13 +1675,55 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		      continue;
 		    }
 
+		  if (DB_GET_INTEGER (&started_val) == 1)
+		    {
+		      DB_VALUE diff_val, answer_val;
+
+		      sr_error =
+			numeric_db_value_sub (&max_val, &cur_val, &diff_val);
+		      if (sr_error != NO_ERROR)
+			{
+			  pr_clear_value (&sr_name);
+			  continue;
+			}
+		      sr_error =
+			numeric_db_value_compare (&inc_val, &diff_val,
+						  &answer_val);
+		      if (sr_error != NO_ERROR)
+			{
+			  pr_clear_value (&sr_name);
+			  continue;
+			}
+		      /* auto_increment is always non-cyclic */
+		      if (DB_GET_INTEGER (&answer_val) > 0)
+			{
+			  pr_clear_value (&sr_name);
+			  continue;
+			}
+
+		      sr_error =
+			numeric_db_value_add (&cur_val, &inc_val,
+					      &answer_val);
+		      if (sr_error != NO_ERROR)
+			{
+			  pr_clear_value (&sr_name);
+			  continue;
+			}
+
+		      pr_clear_value (&cur_val);
+		      cur_val = answer_val;
+		    }
+
+		  start_with = numeric_db_value_print (&cur_val);
+		  if (start_with[0] == '\0')
+		    {
+		      start_with = "NULL";
+		    }
+
 		  fprintf (output_file,
-			   "UPDATE db_serial SET current_val = %s",
-			   numeric_db_value_print (&cur_val));
-		  fprintf (output_file, ", started = %d",
-			   DB_GET_INTEGER (&started_val));
-		  fprintf (output_file, " WHERE name = '%s';",
-			   DB_GET_STRING (&sr_name));
+			   "ALTER SERIAL %s%s%s START WITH %s;\n",
+			   PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)),
+			   start_with);
 
 		  pr_clear_value (&sr_name);
 		}
@@ -1979,10 +2200,14 @@ emit_index_def (DB_OBJECT * class_)
   if (constraint_list != NULL)
     {
       cls_name = db_get_class_name (class_);
-      if (cls_name)
+      if (cls_name != NULL)
 	{
 	  partitioned_subclass =
 	    do_is_partitioned_subclass (NULL, cls_name, NULL);
+	}
+      else
+	{
+	  cls_name = "";
 	}
       if (partitioned_subclass)
 	{
@@ -1993,11 +2218,13 @@ emit_index_def (DB_OBJECT * class_)
 	      NO_ERROR && smclass->partition_of
 	      && db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
 			 &pclass) == NO_ERROR
-	      && db_get (DB_GET_OBJECT (&pclass), PARTITION_ATT_CLASSOF,
+	      && DB_VALUE_TYPE (&pclass) == DB_TYPE_OBJECT
+	      && db_get (DB_PULL_OBJECT (&pclass), PARTITION_ATT_CLASSOF,
 			 &classobj) == NO_ERROR)
 	    {
-	      if (au_fetch_class (DB_GET_OBJECT (&classobj), &supclass,
-				  AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	      if (DB_VALUE_TYPE (&classobj) == DB_TYPE_OBJECT
+		  && au_fetch_class (DB_PULL_OBJECT (&classobj), &supclass,
+				     AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 		{
 		  supclass = NULL;
 		}
@@ -2076,6 +2303,10 @@ emit_domain_def (DB_DOMAIN * domains)
 
       type = db_domain_type (domain);
       prtype = PR_TYPE_FROM_ID (type);
+      if (prtype == NULL)
+	{
+	  continue;
+	}
 
       if (type == DB_TYPE_OBJECT)
 	{
@@ -2282,7 +2513,7 @@ emit_partition_parts (MOP parts, int partcnt)
 	{
 
 	  fprintf (output_file, "PARTITION %s%s%s ",
-		   PRINT_IDENTIFIER (DB_GET_STRING (&pname)));
+		   PRINT_IDENTIFIER (DB_PULL_STRING (&pname)));
 
 	  switch (DB_GET_INT (&ptype))
 	    {
@@ -2332,10 +2563,9 @@ emit_partition_parts (MOP parts, int partcnt)
  * emit_partition_info - emit PARTINTION query for a class
  *    return: void
  *    clsobj(in): class object
- *    do_auth(in): if set, do authorization
  */
 static void
-emit_partition_info (MOP clsobj, int do_auth)
+emit_partition_info (MOP clsobj)
 {
   DB_VALUE ptype, ele, pexpr, pattr;
   int save, partcnt = 0;
@@ -2425,11 +2655,6 @@ emit_partition_info (MOP clsobj, int do_auth)
 	}
       fprintf (output_file, ";\n");
 
-      if (do_auth)
-	{
-	  emit_class_owner (output_file, clsobj);
-	}
-
     end:
       AU_ENABLE (save);
 
@@ -2474,7 +2699,7 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 	  continue;
 	}
       fprintf (output_file, "%s%s%s ",
-	       PRINT_IDENTIFIER (DB_GET_STRING (&arg_name_val)));
+	       PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
 
       arg_mode = DB_GET_INT (&arg_mode_val);
       fprintf (output_file, "%s ", arg_mode == SP_MODE_IN ? "IN" :
@@ -2552,7 +2777,7 @@ emit_stored_procedure (void)
 	       sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
       fprintf (output_file, " %s%s%s (",
-	       PRINT_IDENTIFIER (DB_GET_STRING (&sp_name_val)));
+	       PRINT_IDENTIFIER (DB_PULL_STRING (&sp_name_val)));
 
       arg_cnt = DB_GET_INT (&arg_cnt_val);
       arg_set = DB_GET_SET (&args_val);

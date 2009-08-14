@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -147,6 +147,10 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
    * finish translating this to ldb tables.
    */
   subquery = mq_translate (parser, subquery);
+  if (subquery == NULL)
+    {
+      return NULL;
+    }
 
   error = do_select (parser, subquery);
   if (error == NO_ERROR)
@@ -461,11 +465,18 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
 	  char query_prefix[65], *p;
 
 	  p = parser_print_tree (parser, tree);
-	  strncpy (query_prefix, p, 60);
-	  if (query_prefix[59])
+	  if (p == NULL)
 	    {
-	      query_prefix[60] = 0;
-	      strcat (query_prefix, "...");
+	      query_prefix[0] = '\0';
+	    }
+	  else
+	    {
+	      strncpy (query_prefix, p, 60);
+	      if (query_prefix[59])
+		{
+		  query_prefix[60] = '\0';
+		  strcat (query_prefix, "...");
+		}
 	    }
 
 	  PT_ERRORmf (parser, select_list, MSGCAT_SET_PARSER_RUNTIME,

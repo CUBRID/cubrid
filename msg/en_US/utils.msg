@@ -181,7 +181,7 @@ Available command:\n\
     start\n\
     stop\n\
     restart\n\
-    status      [-b] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          broker-name\n\
     off         broker-name\n
 27 cubrid utility, version %s\n\
@@ -207,6 +207,7 @@ Available command:\n\
     status\n
 30 '%s' argument is not needed.\n
 31 A database-name is missing.\n
+32 Replication is not supported in this platform
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -497,7 +498,8 @@ valid options:\n\
   -K, --shutdown-repl-server=NAME  shutdown NAME replication server\n\
   -k, --shutdown-repl-agent=NAME   shutdown NAME replication agent\n\
   -A, --shutdown-all               shutdown all processes\n\
-  -h, --host=HOST                  connect to the master server on the given HOST\n
+  -h, --host=HOST                  connect to the master server on the given HOST\n\
+  -c, --server-mode=NAME           print NAME database server's HA mode\n
 28 Sorry, unknown command: %s\n
 29 Could not get host name for local host - aborting\n
 30 Could not find parameter file\n
@@ -782,6 +784,8 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 39 ERROR(%d): There are too many masters registered in master_info class of distributor db
 40 ERROR(%d): Invalid trail info. Please check the trail_info class of distributor DB
 41 ERROR(%d): Unilaterally aborted by the system. Try to increase the value of the max_block_size and max_block_count(cubrid.conf).
+51 LOG(%d): The repl_agent process is restarting.
+52 LOG(%d): An update log record of the replication was converted into insert log.
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file `%s'\n
@@ -796,12 +800,16 @@ valid options:\n\
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Cannot open output file `%s'\n
+21 System parameters to be used by the client program.\n
+22 System parameters loaded by the server '%s'\n
+23 System parameters to be used in standalone mode.\n
 60 \
 paramdump: Dump system parameter settings.\n\
 usage: %s paramdump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -b, --both                   dump both client and server parameters\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
 
@@ -811,6 +819,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 21 Enter DBA password:
 22 The server `%s''s current HA running mode is %s.\n
 23 The server `%s''s HA running mode is changed to \"%s\".\n
+24 The server was not set to HA mode.\n
 59 changemode cannot run as standlone mode.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
@@ -819,12 +828,12 @@ usage: %s changemode [OPTION] database-name\n\
 valid options:\n\
   -m, --mode=MODE             change the server mode to MODE; default; none\n\
   -w, --wait                  wait util the mode is changed\n\
-  -f, --force                 force to change\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+  -f, --force                 force to change\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
+22 The server was not set to HA mode.\n
 59 copylogdb cannot run as standlone mode.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
@@ -832,12 +841,12 @@ usage: %s copylogdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
-  -m, --mode=MODE             operation mode; default: async\n\
-                              MODE: async or sync\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
+  -m, --mode=MODE             operation mode; default: sync\n\
+                              MODE: sync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
+22 The server was not set to HA mode.\n
 59 applylogdb cannot run as standlone mode.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
@@ -845,5 +854,4 @@ usage: %s applylogdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH of copied log volumes\n\
-  -p, --dba-password=PASS     password of the DBA user; will prompt if not specified\n
-
+      --max-mem-size=SIZE     maximum process SIZE in MB; max 1000\n

@@ -34,6 +34,9 @@
 #include <arpa/inet.h>
 #endif
 
+#include "cas_protocol.h"
+#include "cas_network.h"
+
 #include "dbtype.h"
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)
@@ -80,9 +83,11 @@
 #define NET_BUF_SIZE                    (128 * NET_BUF_KBYTE)
 #define NET_BUF_EXTRA_SIZE              (64 * NET_BUF_KBYTE)
 #define NET_BUF_ALLOC_SIZE              (NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
-#define NET_BUF_HEADER_SIZE             ((int) sizeof(int))
+
+#define NET_BUF_HEADER_MSG_SIZE         (SIZE_INT)
+#define NET_BUF_HEADER_SIZE             (NET_BUF_HEADER_MSG_SIZE + cas_info_size)
 #define NET_BUF_CURR_SIZE(n)                            \
-  (NET_BUF_HEADER_SIZE + (n)->data_size)
+  (((n)->alloc_size > 0) ? (NET_BUF_HEADER_SIZE + (n)->data_size) : 0)
 #define NET_BUF_FREE_SIZE(n)                            \
   ((n)->alloc_size - NET_BUF_CURR_SIZE(n))
 #define NET_BUF_CURR_PTR(n)                             \

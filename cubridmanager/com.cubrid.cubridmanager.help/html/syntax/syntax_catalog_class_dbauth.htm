@@ -1,0 +1,202 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>_db_auth</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nCUBRID 시스템 카탈로그\n시스템 카탈로그 클래스\n_db_auth");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_intro.htm\">CUBRID 시스템 카탈로그<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_catalog_class_class.htm\">시스템 카탈로그 클래스<\/a> &nbsp;&gt;&nbsp; _db_auth<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h4>_db_auth</h4>
+<p>클래스에 대한 사용자 권한 정보를 나타내며, grantee에 인덱스가 생성되어 있다.</p>
+<table border="1" width="80%">
+<tbody>
+<tr>
+<th width="100">
+<p>속성명</p>
+</th>
+<th width="100">
+<p>데이터 타입</p>
+</th>
+<th>
+<p>설명</p>
+</th>
+</tr>
+<tr>
+<td width="100">
+<p>grantor</p>
+</td>
+<td width="100">
+<p>db_user</p>
+</td>
+<td>
+<p>권한 부여자</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>grantee</p>
+</td>
+<td width="100">
+<p>db_user</p>
+</td>
+<td>
+<p>권한 받은자</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>class_of</p>
+</td>
+<td width="100">
+<p>_db_class</p>
+</td>
+<td>
+<p>권한부여 대상인 클래스 객체</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>auth_type</p>
+</td>
+<td width="100">
+<p>VARCHAR(7)</p>
+</td>
+<td>
+<p>부여된 권한 타입 이름</p>
+</td>
+</tr>
+<tr>
+<td width="100">
+<p>is_grantable</p>
+</td>
+<td width="100">
+<p>INTEGER</p>
+</td>
+<td>
+<p>권한 받은 클래스에 대해 다른 사용자에게 권한을 부여할 수 있으면 1, 아니면 0</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>CUBRID가 지원하는 권한 타입은 다음과 같다.</p>
+<ul>
+<li class="keyword">SELECT</li>
+<li class="keyword">INSERT</li>
+<li class="keyword">UPDATE</li>
+<li class="keyword">DELETE</li>
+<li class="keyword">ALTER</li>
+<li class="keyword">INDEX</li>
+<li class="keyword">EXECUTE</li>
+</ul>
+<h6>예제</h6>
+<p>다음 예제에서는 클래스 ‘glo’에 정의되어 있는 권한 정보를 검색한다.</p>
+<p class="code">csql&gt; select grantor.name, grantee.name, auth_type<br />
+csql&gt; from _db_auth<br />
+csql&gt; where class_of.class_name = 'glo';<br />
+csql&gt; ;xrun<br />
+&#160;<br />
+=== &lt;Result of SELECT Command in Line 1&gt; ===<br />
+&#160;<br />
+&#160; grantor.name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; grantee.name&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; auth_type<br />
+==================================================================<br />
+&#160; 'DBA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'PUBLIC'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'SELECT'<br />
+&#160; 'DBA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'PUBLIC'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'INSERT'<br />
+&#160; 'DBA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'PUBLIC'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'UPDATE'<br />
+&#160; 'DBA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'PUBLIC'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'DELETE'<br />
+&#160; 'DBA'&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; 'PUBLIC'&#160;&#160;&#160; &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;'EXECUTE'<br />
+&#160;<br />
+&#160;<br />
+5 rows selected.</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

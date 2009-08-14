@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * broker_access_list.c - 
+ * broker_access_list.c -
  */
 
 #ident "$Id$"
@@ -89,8 +89,10 @@ uw_acl_make (char *acl_file)
       acl[num_acl - 1] = ip_addr;
     }
 
-  qsort (acl, num_acl, sizeof (T_IP), ip_comp);
-
+  if (acl != NULL)
+    {
+      qsort (acl, num_acl, sizeof (T_IP), ip_comp);
+    }
   v3_acl->num_acl = num_acl;
   v3_acl->acl = acl;
 
@@ -103,11 +105,23 @@ int
 uw_acl_check (unsigned char *ip_addr)
 {
   int i;
+  size_t len;
 
   for (i = 0; i < v3_acl->num_acl; i++)
     {
-      if (memcmp (ip_addr, v3_acl->acl[i].ip, v3_acl->acl[i].ip_length) == 0)
-	return 0;
+      if (v3_acl->acl[i].ip_length > IPV4_LENGTH_MAX)
+        {
+          len = IPV4_LENGTH_MAX;
+        }
+      else
+        {
+          len = v3_acl->acl[i].ip_length;
+        }
+
+      if (memcmp (ip_addr, v3_acl->acl[i].ip, len) == 0)
+        {
+          return 0;
+        }
     }
 
   return -1;

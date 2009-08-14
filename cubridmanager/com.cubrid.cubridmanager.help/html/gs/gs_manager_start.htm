@@ -1,0 +1,295 @@
+﻿
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+ <meta name="generator" content="Adobe RoboHelp 8" />
+<title>사이트 등록</title>
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID 시작\nCUBRID 매니저 사용\nCUBRID 매니저 시작");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"gs.htm\">CUBRID 시작<\/a> &nbsp;&gt;&nbsp; <a href=\"gs_manager_start.htm\">CUBRID 매니저 사용<\/a> &nbsp;&gt;&nbsp; CUBRID 매니저 시작<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h2>CUBRID 매니저 시작</h2>
+<p>GUI 방식의 데이터베이스 관리 및 질의 도구인 "CUBRID 매니저"는 다양한 관리 작업을 손쉽게 하도록 도와주며, 접속한 데이터베이스에 SQL 문을 실행할 수 있는 "질의 편집기" 기능을 제공한다..</p>
+<p>CUBRID 매니저는 자바 환경에서 구동되므로 자바 실행 환경이 구성되어 있어야 한다. 자바 실행 환경의 구축에 관해서는 <a href="http://java.sun.com" target="_blank">http://java.sun.com</a>을 참고한다.</p>
+<h5>CUBRID 서버 실행</h5>
+<h6>Windows 환경에서 실행</h6>
+<ul>
+<li>[제어판] &gt; [성능 및 유지 관리] &gt; [관리도구] &gt; [서비스]에서 CUBRIDService를 통해 실행할 수 있다.</li>
+<li class="desc"><img src="images/manager_execute_server_service.jpg" width="490" height="266" border="0" alt="" /></li>
+</ul>
+<ul>
+<li>CUBRID 서비스 트레이(CUBRID Service Tray)를 클릭하고 [CUBRID Server] &gt; [Start]를 선택한다.</li>
+<li class="desc"><img src="images/manager_execute_server_tray.jpg" width="201" height="118" border="0" alt="" /></li>
+</ul>
+<p class="note"><span class="note-title">참고</span> CUBRID가 실행&#160;중일 때, CUBRID 서비스 트레이에서 [Exit]를 선택하면 해당 서버에서 실행&#160;중인 모든 서비스와 프로세스가 중지되므로 주의한다.</p>
+<h6>Linux 환경에서 실행</h6>
+<p>셸에서 다음의 명령을 입력하면 CUBRID 매니저 서버가 실행된다.</p>
+<p class="code">%cubrid service start</p>
+<h5>CUBRID 매니저 실행</h5>
+<h6>Windows 환경에서 실행</h6>
+<ul>
+<li>CUBRID 서비스 트레이를 클릭하고 [Tools] &gt; [CUBRID Manager]를 선택한다.</li>
+<li class="desc"><img src="images/manager_execute_client_tray.jpg" width="273" height="120" border="0" alt="" /></li>
+</ul>
+<h6>Linux 환경에서 실행</h6>
+<p>셸에서 다음 중 하나의 명령을 입력하여 CUBRID 매니저 클라이언트를 실행할 수 있다.</p>
+<ul>
+<li><span class="codep">% cubridmanager</span></li>
+<li><span class="codep">% $CUBRID/cubridmanager/cmclient/cubridmanager</span></li>
+</ul>
+<h5>호스트 추가</h5>
+<p>매니저 클라이언트에서 접속할 호스트 사이트를 등록한다. 즉, CUBRID 매니저 서버가 구동되는 사이트 정보를 입력하여야 한다.&#160;</p>
+<p>호스트 탭에서 마우스 오른쪽 버튼 클릭하여 [호스트 추가]를 선택하면 호스트를 추가할 수 있다. 기본으로 등록된 호스트는&#160;로컬 호스트이고,&#160; 통신포트는 8001로 설정되며, 사용자 아이디와 비밀번호는 모두&#160;"admin"으로 설정되어 있다. 등록에 대한 자세한 내용은 <a href="../manager/manager_host_default.htm">호스트 관리</a>를 참조한다.</p>
+<p>처음 접속할 때 반드시 admin 아이디의 비밀번호를 변경해야 한다. 이후에는&#160;변경한 비밀번호를 입력해야 로그인할 수 있다.</p>
+<p><img src="images/manager_host_default_info.jpg" width="400" height="350" border="0" alt="" /></p>
+<h5>호스트 연결</h5>
+<p>호스트 탐색 트리에 등록된 호스트를 더블 클릭하면 해당 호스트로 연결된다. 또는 해당 호스트를 마우스 오른쪽 버튼 클릭하여 [연결]을 선택하고,&#160;사용자 이름을 확인한 후 [연결]을 클릭하면 호스트에 연결된다.</p>
+<p>연결이 성공하면 호스트 아이콘이 <img src="images/icon_host.png" alt="" align="middle" border="0" />에서 <img src="images/icon_hostconnected.png" alt="" align="middle" border="0" />로 변경된다. 연결 후 해당 호스트의 초기 화면은 다음과 같다.</p>
+<p><img src="images/manager_host_connect_host.jpg" alt="" border="0" /></p>
+<h5>데이터베이스 연결</h5>
+<p>CUBRID 매니저에서 데이터베이스를 구동하려면 데이터베이스에 로그인해야 한다. 호스트 탐색 트리에서 데이터베이스 항목을 마우스 오른쪽 버튼 클릭하고&#160;[로그인]을 선택하거나, 더블 클릭한다.</p>
+<p>&#160;<img src="images/gs_manager_start_logindb.png" width="342" height="238" border="0" alt="" /></p>
+<p>CUBRID매니저가 데이터베이스에 연결되면 다음과 같이 사용자, 테이블 등의 데이터베이스 정보를 볼 수 있다.</p>
+<p><img src="images/gs_manager_start_dbtree.png" width="258" height="375" border="0" alt="" /></p>
+<p>CUBRID 매니저가 정상적으로 구동되지 않는 경우, "서버에 접속할 수 없습니다. CUBRID 매니저 서버의 구동 및 기타 접속 환경을 점검하시기 바랍니다."라는 오류 메시지가 출력된다. 이 때, 사용자는 다음 사항을 확인하여 문제를 해결할 수 있다.</p>
+<ul>
+<li>등록된 호스트 사이트에서 CUBRID 매니저 서버가 시작되었는지 확인한다.</li>
+<li>CUBRID 매니저 서버의 환경 설정 파일을 열고 <span class="keyword">cm_port</span> 파라미터의 값이 사이트 등록하기 절에서 등록한 통신 포트와 동일한지 확인한다.</li>
+<li>매니저 클라이언트가 구동되는 현재 시스템에 방화벽이 설정되어 있다면, 매니저 클라이언트 접속을 위한 통신 포트를 모두 연다.</li>
+</ul>
+<h5>데이터베이스 시작</h5>
+<p>CUBRID 매니저에서 질의를 실행하려면 데이터베이스를 시작해야 한다. 데이터베이스를 선택한 후, 선택한 후 툴바에서 [시작 <img align="middle" src="images/icon_start.png" width="16" height="16" border="0" alt="" />]을 클릭한다.</p>
+<p><img src="images/gs_manager_start_startdb.png" width="336" height="238" border="0" alt="" /></p>
+<h5>매니저의 화면 구성</h5>
+<p>CUBRID 매니저는 데이터베이스를 보다 편리하고 효율적으로 관리할 수 있는 도구이다. CUBRID 매니저를 실행하면 다음과 같은 화면이 나타난다. CUBRID 매니저 화면은 메뉴바, 툴바, 탐색 창, 보기 창, 로그인 정보, 메모리 정보로 구성된다.</p>
+<p><img src="images/manager_architecture_client_rcp.png" width="560" height="387" border="0" alt="" /></p>
+<p></p>
+<h6>메뉴</h6>
+<p>창 위쪽의 메뉴는 파일, 편집, 도구, 동작, 도움말로 구성되며, 자세한 내용은 <a href="../manager/manager_architecture_client_rcp.htm">CUBRID 매니저 클라이언트</a>를 참조한다.</p>
+<h6>툴바</h6>
+<p>툴바는 전체 기능 중 자주 사용되고 중요한 기능으로&#160;구성되며, 해당 기능이 수행 가능할 때 활성화되고 수행 불가능할 때에는&#160;비활성화된다.</p>
+<p>툴바에서 제공하는 기능은 다음과 같다.</p>
+<p><img src="images/manager_architecture_client_rcp_toolbar.png" border="0" alt="" /></p>
+<table border="1">
+<tr>
+<td width="30">
+<p><img src="images/icon_addhost.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>호스트 추가</p>
+</td>
+<td width="30">
+<p><img src="images/icon_unloaddb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 언로드</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_adddb.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>데이터베이스 생성</p>
+</td>
+<td width="30">
+<p><img src="images/icon_loaddb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 로드</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_adduser.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>사용자 추가</p>
+</td>
+<td width="30">
+<p><img src="images/icon_backupdb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 백업</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_addtable.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>테이블 추가</p>
+</td>
+<td width="30">
+<p><img src="images/icon_restoredb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 복구</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_queryedit.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>새 질의 편집기</p>
+</td>
+<td width="30">
+<p><img src="images/icon_optimizedb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 최적화</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_refresh.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>새로 고침</p>
+</td>
+<td width="30">
+<p><img src="images/icon_checkdb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 검사</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_start.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>시작</p>
+</td>
+<td width="30">
+<p><img src="images/icon_transaction.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 트랜잭션 정보</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p><img src="images/icon_stop.png" border="0" alt="" /></p>
+</td>
+<td width="150">
+<p>정지</p>
+</td>
+<td width="30">
+<p><img src="images/icon_lockdb.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>데이터베이스 잠금 정보</p>
+</td>
+</tr>
+<tr>
+<td width="30">
+<p>&#160;</p>
+</td>
+<td width="150">
+<p>&#160;</p>
+</td>
+<td width="30">
+<p><img src="images/icon_version.png" border="0" alt="" /></p>
+</td>
+<td width="180">
+<p>서버 버전</p>
+</td>
+</tr>
+</table>
+<h6>메모리 정보</h6>
+<p>상태 표시줄에서는 메모리 정보를 볼 수 있다. 현재 메모리 사용 현황을 확인하고, 필요 시 상태 표시줄의 휴지통 아이콘을 클릭하면, 메모리를 최적화(garbage collection)한다.</p>
+<p><img src="images/gs_manager_start_memory.png" border="0" alt="" /></p>
+<p></p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>

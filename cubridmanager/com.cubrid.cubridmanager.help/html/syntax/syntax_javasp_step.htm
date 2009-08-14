@@ -1,0 +1,148 @@
+﻿
+<html>
+<head>
+<title>Java 저장 함수/프로시저 작성 단계</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link type="text/css" rel="stylesheet" href="../nhelp.css" />
+<script type="text/javascript" language="JavaScript">
+//<![CDATA[
+function reDo() {
+  if (innerWidth != origWidth || innerHeight != origHeight)
+     location.reload();
+}
+if ((parseInt(navigator.appVersion) == 4) && (navigator.appName == "Netscape")) {
+	origWidth = innerWidth;
+	origHeight = innerHeight;
+	onresize = reDo;
+}
+onerror = null; 
+//]]>
+</script>
+<style type="text/css">
+<!--
+div.WebHelpPopupMenu { position:absolute;
+left:0px;
+top:0px;
+z-index:4;
+visibility:hidden; }
+-->
+</style>
+<script type="text/javascript" language="javascript1.2" src="../whmsg.js"></script>
+<script type="text/javascript" language="javascript" src="../whver.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whproxy.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whutils.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whlang.js"></script>
+<script type="text/javascript" language="javascript1.2" src="../whtopic.js"></script>
+
+ <meta name="generator" content="Adobe RoboHelp 8" />
+</head>
+<body><script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.gbWhTopic)
+{
+	var strUrl = document.location.href;
+	var bc = 0;
+	var n = strUrl.toLowerCase().indexOf("bc-");
+	if(n != -1)
+	{
+		document.location.href = strUrl.substring(0, n);
+		bc = strUrl.substring(n+3);
+	}
+
+	if (window.addTocInfo)
+	{
+	addTocInfo("CUBRID SQL 설명서\nJava 저장 함수/프로시저\nJava 저장 함수/프로시저 작성 단계");
+         if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+    addButton("show",BTN_TEXT,"Show","","","","",0,0,"","","");
+
+    }
+
+
+	}
+	if (window.writeBtnStyle)
+		writeBtnStyle();
+
+	if (window.writeIntopicBar)
+		writeIntopicBar(1);if(strUrl.toLowerCase().indexOf("/help/")==-1){
+
+         document.write("<p style=\"text-align:left\"> ");
+
+AddMasterBreadcrumbs("../index.htm", "", "&nbsp;&gt;&nbsp;", "홈", "../cubrid.htm");
+
+document.write("<a href=\"syntax.htm\">CUBRID SQL 설명서<\/a> &nbsp;&gt;&nbsp; <a href=\"syntax_javasp_overview.htm\">Java 저장 함수/프로시저<\/a> &nbsp;&gt;&nbsp; Java 저장 함수/프로시저 작성 단계<\/p>");}
+
+
+	if (window.setRelStartPage)
+	{
+	setRelStartPage("../index.htm");
+
+		autoSync(1);
+		sendSyncInfo();
+		sendAveInfoOut();
+	}
+}
+else
+	if (window.gbIE4)
+		document.location.reload();
+
+//-->
+//]]></script>
+<h3>Java 저장 함수/프로시저 작성 단계</h3>
+<p>Java 저장 함수/프로시저를 작성하는 순서는 다음과 같다.</p>
+<ol>
+<li><a href="#conf"><span class="keyword">cubrid.conf</span> 확인</a></li>
+<li><a href="#compile">Java 소스 작성 및 컴파일</a></li>
+<li><a href="#load">CUBRID로 Java 클래스 로드</a></li>
+<li><a href="#register">로딩한 Java 클래스 등록</a></li>
+<li><a href="#call">Java 저장 함수/프로시저 호출</a></li>
+</ol>
+<h6><a name="conf" id="conf">cubrid.conf 확인</a></h6>
+<span class="keyword">cubrid.conf</span>에 있는 <span class="keyword">java_stored_procedure</span>의 설정값은 <span class="keyword">no</span>가 기본이다. Java 저장함수/프로시저를 사용하기 위해서는 이 값을 <span class="keyword">yes</span>로 변경하여야 한다. 이 값과 관련한 자세한 설명은 데이터베이스 서버 설정의 <a href="../pm/pm_db_classify_etc.htm">기타 파라미터</a>를 참조한다.
+<h6><a name="compile" id="compile">Java 소스 작성 및 컴파일</a></h6>
+<p>다음과 같이 SpCubrid.java를 컴파일 한다.</p>
+<p class="code">public class SpCubrid{<br />
+&#160; &#160; &#160; public static String HelloCubrid() {<br />
+&#160; &#160; &#160; &#160; &#160; &#160; &#160; return "Hello, Cubrid !!";<br />
+&#160; &#160; &#160; }<br />
+&#160; &#160; &#160; public static int SpInt(int i) {<br />
+&#160; &#160; &#160; &#160; &#160; &#160; &#160; return i + 1;<br />
+&#160; &#160; &#160; }<br />
+&#160; &#160; &#160; public static void outTest(String[] o) {<br />
+&#160; &#160; &#160; &#160; &#160; &#160; &#160; o[0] = "Hello, CUBRID";<br />
+&#160; &#160; &#160; }<br />
+}<br />
+<br />
+%javac SpCubrid.java</p>
+<p>이 때, Java 클래스의 메소드는 반드시 public static이어야 한다.</p>
+<h6><a name="load" id="load">CUBRID로 컴파일된 Java 클래스 로드</a></h6>
+<p>컴파일된 Java 클래스를 CUBRID로 로딩한다.</p>
+<p class="code">% loadjava demodb SpCubrid.class</p>
+<h6><a name="register" id="register">로딩한 Java 클래스 등록</a></h6>
+<p>다음과 같이 CUBRID 저장 함수를 생성하여 Java 클래스를 등록한다.</p>
+<p class="code">csql&gt; create function hello() return string<br />
+csql&gt; as language java<br />
+csql&gt; name 'SpCubrid.HelloCubrid() return java.lang.String';<br />
+csql&gt; ;xrun</p>
+<h6><a name="call" id="call">Java 저장 함수/프로시저 호출</a></h6>
+<p>다음과 같이 등록된 Java 저장 함수를 호출한다.</p>
+<p class="code">csql&gt; call hello() into :Hello;<br />
+csql&gt; ;xrun<br />
+<br />
+=== &lt; Result of CALL Command in Line 1&gt; ===<br />
+<br />
+<br />
+&#160; Result<br />
+======================<br />
+'Hello, Cubrid !!'</p>
+<script type="text/javascript" language="javascript1.2">//<![CDATA[
+<!--
+if (window.writeIntopicBar)
+	writeIntopicBar(0);
+
+
+highlightSearch();
+//-->
+//]]></script>
+</body>
+</html>
